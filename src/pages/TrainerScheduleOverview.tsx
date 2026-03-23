@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Locale } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { format, isPast, isFuture, parseISO } from "date-fns";
@@ -13,10 +13,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Search,
   ChevronDown,
@@ -26,7 +38,9 @@ import {
   Pencil,
   MapPin,
   Loader2,
+  X,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es };
 
@@ -57,10 +71,25 @@ export default function TrainerScheduleOverview() {
   const { t, i18n } = useTranslation("trainer");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [tab, setTab] = useState<TabValue>("current");
   const [search, setSearch] = useState("");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["__individual__"]));
   const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
+
+  // Rename cycle dialog
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameCycleId, setRenameCycleId] = useState<string | null>(null);
+  const [renameCycleName, setRenameCycleName] = useState("");
+  const [savingRename, setSavingRename] = useState(false);
+
+  // Remove player confirm
+  const [removeBookingId, setRemoveBookingId] = useState<string | null>(null);
+  const [removingBooking, setRemovingBooking] = useState(false);
+
+  // Payment toggle loading
+  const [togglingPayment, setTogglingPayment] = useState<string | null>(null);
 
   const dateFnsLocale = localeMap[i18n.language] || enUS;
 
@@ -110,7 +139,6 @@ export default function TrainerScheduleOverview() {
   // Filter by tab
   const filtered = useMemo(() => {
     const result = new Map<string, { name: string; slots: SlotWithBookings[] }>();
-    const now = new Date();
 
     grouped.forEach((group, key) => {
       const filteredSlots = group.slots.filter((s) => {
@@ -118,12 +146,10 @@ export default function TrainerScheduleOverview() {
         const start = parseISO(s.start_time);
         if (tab === "past") return isPast(end);
         if (tab === "future") return isFuture(start);
-        // "current" = today or future
         return !isPast(end) || isFuture(start);
       });
 
       if (filteredSlots.length > 0) {
-        // Apply search
         if (search.trim()) {
           const q = search.toLowerCase();
           const nameMatch = group.name.toLowerCase().includes(q);
@@ -173,6 +199,70 @@ export default function TrainerScheduleOverview() {
 
   const getUnpaidCount = (bookings: SlotWithBookings["bookings"]) =>
     getActiveBookings(bookings).filter((b) => b.payment_status !== "paid").length;
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["trainer-schedule-overview"] });
+
+  // Rename cycle
+  const openRenameDialog = (cycleId: string, currentName: string) => {
+    setRenameCycleId(cycleId);
+    setRenameCycleName(currentName);
+    setRenameDialogOpen(true);
+  };
+
+  const handleRenameCycle = async () => {
+    if (!renameCycleId || !renameCycleName.trim()) return;
+    setSavingRename(true);
+    const { error } = await supabase
+      .from("availability_slots")
+      .update({ cyclus_name: renameCycleName.trim() })
+      .eq("cyclus_id", renameCycleId);
+    setSavingRename(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: t("scheduleOverview.cycleSaved", "Cycle name updated") });
+      setRenameDialogOpen(false);
+      invalidate();
+    }
+  };
+
+  // Toggle payment
+  const handleTogglePayment = async (bookingId: string, currentStatus: string) => {
+    setTogglingPayment(bookingId);
+    const newStatus = currentStatus === "paid" ? "pending" : "paid";
+    const updates: Record<string, unknown> = {
+      payment_status: newStatus,
+      paid_at: newStatus === "paid" ? new Date().toISOString() : null,
+      paid_externally: newStatus === "paid" ? true : false,
+    };
+    const { error } = await supabase.from("bookings").update(updates).eq("id", bookingId);
+    setTogglingPayment(null);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: t("scheduleOverview.paymentUpdated", "Payment status updated") });
+      invalidate();
+    }
+  };
+
+  // Remove player
+  const handleRemovePlayer = async () => {
+    if (!removeBookingId) return;
+    setRemovingBooking(true);
+    const { error } = await supabase
+      .from("bookings")
+      .update({ status: "cancelled" })
+      .eq("id", removeBookingId);
+    setRemovingBooking(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: t("scheduleOverview.playerRemoved", "Player removed from session") });
+      setRemoveBookingId(null);
+      invalidate();
+    }
+  };
 
   if (isLoading) {
     return (
@@ -235,24 +325,26 @@ export default function TrainerScheduleOverview() {
           return (
             <div key={key} className="border rounded-lg bg-card">
               {/* Group header */}
-              <button
-                onClick={() => toggleGroup(key)}
-                className="flex items-center gap-2 w-full p-3 text-left hover:bg-muted/50 transition-colors rounded-t-lg"
-              >
-                {isOpen ? (
-                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                )}
-                <span className="font-semibold text-sm flex-1 truncate">
-                  {key === "__individual__" ? (
-                    group.name
+              <div className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 transition-colors rounded-t-lg">
+                <button
+                  onClick={() => toggleGroup(key)}
+                  className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                >
+                  {isOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                   ) : (
-                    <>
-                      {t("scheduleOverview.cycle", "Cycle")}: {group.name}
-                    </>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                   )}
-                </span>
+                  <span className="font-semibold text-sm flex-1 truncate">
+                    {key === "__individual__" ? (
+                      group.name
+                    ) : (
+                      <>
+                        {t("scheduleOverview.cycle", "Cycle")}: {group.name}
+                      </>
+                    )}
+                  </span>
+                </button>
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
                   {totalSlots} {t("scheduleOverview.sessions", "sessions")}
                 </span>
@@ -266,7 +358,21 @@ export default function TrainerScheduleOverview() {
                     {totalUnpaid} {t("scheduleOverview.unpaid", "unpaid")}
                   </Badge>
                 )}
-              </button>
+                {key !== "__individual__" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openRenameDialog(key, group.name);
+                    }}
+                    title={t("scheduleOverview.renameCycle", "Rename")}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
 
               {/* Slot rows */}
               {isOpen && (
@@ -287,7 +393,7 @@ export default function TrainerScheduleOverview() {
                           {/* Date & time */}
                           <div className="min-w-[140px] shrink-0">
                             <span className="font-medium">
-                              {format(startDate, "EEE d MMM", { locale: dateFnsLocale })}
+                              {format(startDate, "EEEEEE d MMM", { locale: dateFnsLocale })}
                             </span>
                             <span className="text-muted-foreground ml-2">
                               {format(startDate, "HH:mm")}-{format(endDate, "HH:mm")}
@@ -370,24 +476,51 @@ export default function TrainerScheduleOverview() {
                                 b.profiles?.full_name ||
                                 b.guest_players?.full_name ||
                                 t("scheduleOverview.unknownPlayer", "Unknown");
+                              const isToggling = togglingPayment === b.id;
                               return (
                                 <div
                                   key={b.id}
-                                  className="flex items-center justify-between text-xs py-1"
+                                  className="flex items-center justify-between text-xs py-1 group"
                                 >
                                   <span>{name}</span>
-                                  <Badge
-                                    variant="secondary"
-                                    className={
-                                      b.payment_status === "paid"
-                                        ? "text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                                        : "text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                                    }
-                                  >
-                                    {b.payment_status === "paid"
-                                      ? t("scheduleOverview.paid", "paid")
-                                      : t("scheduleOverview.unpaid", "unpaid")}
-                                  </Badge>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => handleTogglePayment(b.id, b.payment_status)}
+                                      disabled={isToggling}
+                                      title={
+                                        b.payment_status === "paid"
+                                          ? t("scheduleOverview.markAsUnpaid", "Mark as unpaid")
+                                          : t("scheduleOverview.markAsPaid", "Mark as paid")
+                                      }
+                                      className="cursor-pointer"
+                                    >
+                                      <Badge
+                                        variant="secondary"
+                                        className={
+                                          b.payment_status === "paid"
+                                            ? "text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                                            : "text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors"
+                                        }
+                                      >
+                                        {isToggling ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : b.payment_status === "paid" ? (
+                                          t("scheduleOverview.paid", "paid")
+                                        ) : (
+                                          t("scheduleOverview.unpaid", "unpaid")
+                                        )}
+                                      </Badge>
+                                    </button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                      onClick={() => setRemoveBookingId(b.id)}
+                                      title={t("scheduleOverview.removePlayer", "Remove player")}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </Button>
+                                  </div>
                                 </div>
                               );
                             })}
@@ -402,6 +535,55 @@ export default function TrainerScheduleOverview() {
           );
         })}
       </div>
+
+      {/* Rename Cycle Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t("scheduleOverview.renameCycleTitle", "Rename Cycle")}
+            </DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameCycleName}
+            onChange={(e) => setRenameCycleName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleRenameCycle()}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+              {t("scheduleOverview.cancel", "Cancel")}
+            </Button>
+            <Button onClick={handleRenameCycle} disabled={savingRename || !renameCycleName.trim()}>
+              {savingRename && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {t("scheduleOverview.save", "Save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Player Confirm */}
+      <AlertDialog open={!!removeBookingId} onOpenChange={(open) => !open && setRemoveBookingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("scheduleOverview.removePlayer", "Remove player")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("scheduleOverview.removePlayerConfirm", "Are you sure you want to remove this player from the session?")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingBooking}>
+              {t("scheduleOverview.cancel", "Cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemovePlayer} disabled={removingBooking}>
+              {removingBooking && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {t("scheduleOverview.removePlayer", "Remove player")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

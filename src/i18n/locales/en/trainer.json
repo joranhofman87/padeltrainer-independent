@@ -40,7 +40,18 @@
     "private": "Private",
     "edit": "Edit",
     "noResults": "No sessions found.",
-    "unknownPlayer": "Unknown"
+    "unknownPlayer": "Unknown",
+    "renameCycle": "Rename",
+    "renameCycleTitle": "Rename Cycle",
+    "cycleSaved": "Cycle name updated",
+    "markAsPaid": "Mark as paid",
+    "markAsUnpaid": "Mark as unpaid",
+    "paymentUpdated": "Payment status updated",
+    "removePlayer": "Remove player",
+    "removePlayerConfirm": "Are you sure you want to remove this player from the session?",
+    "playerRemoved": "Player removed from session",
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "profile": {
     "shareProfile": "Share Profile",
