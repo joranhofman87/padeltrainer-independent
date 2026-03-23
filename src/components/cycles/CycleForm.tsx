@@ -973,6 +973,20 @@ export default function CycleForm({
                   {t('form.priceTableHelp', 'Add price rows that players can see before applying')}
                 </p>
 
+                {/* VAT toggle — shown above price inputs for clarity */}
+                <div className="flex items-center gap-3 pt-1 pb-1">
+                  <Switch
+                    id="prices-include-vat"
+                    checked={pricesIncludeVat}
+                    onCheckedChange={setPricesIncludeVat}
+                  />
+                  <Label htmlFor="prices-include-vat" className="text-sm cursor-pointer">
+                    {pricesIncludeVat
+                      ? t('form.pricesIncludeVat', 'Prices are including VAT (incl. BTW)')
+                      : t('form.pricesExcludeVat', 'Prices are excluding VAT (excl. BTW)')}
+                  </Label>
+                </div>
+
                 {/* Column headers when extra columns exist */}
                 {priceColumns.length > 0 && (
                   <div className={cn("grid items-end gap-2", `grid-cols-[1fr_repeat(${priceColumns.length + 1},6rem)_auto]`)} style={{ gridTemplateColumns: `1fr repeat(${priceColumns.length + 1}, 6rem) auto` }}>
