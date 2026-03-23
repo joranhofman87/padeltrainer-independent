@@ -83,7 +83,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     setUploadingLogo(true);
     try {
       const ext = file.name.split('.').pop();
-      const path = `invoice-logos/academy-${academyId}.${ext}`;
+      const path = `academies/${academyId}/invoice-logo.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(path, file, { upsert: true });
