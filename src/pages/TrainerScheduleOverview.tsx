@@ -9,9 +9,18 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { getTrainerProfile } from "@/lib/auth";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +48,7 @@ import {
   MapPin,
   Loader2,
   X,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -53,6 +63,7 @@ type SlotWithBookings = {
   max_participants: number | null;
   is_public: boolean;
   location_id: string | null;
+  price_per_session: number | null;
   locations?: { name: string; city: string } | null;
   bookings: {
     id: string;
@@ -67,6 +78,19 @@ type SlotWithBookings = {
 
 type TabValue = "current" | "future" | "past";
 
+type CycleEditData = {
+  name: string;
+  pricePerSession: string;
+  locationId: string;
+  maxParticipants: string;
+};
+
+type TrainerLocationOption = {
+  id: string;
+  name: string;
+  city: string;
+};
+
 export default function TrainerScheduleOverview() {
   const { t, i18n } = useTranslation("trainer");
   const { user } = useAuth();
@@ -78,11 +102,17 @@ export default function TrainerScheduleOverview() {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["__individual__"]));
   const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
 
-  // Rename cycle dialog
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-  const [renameCycleId, setRenameCycleId] = useState<string | null>(null);
-  const [renameCycleName, setRenameCycleName] = useState("");
-  const [savingRename, setSavingRename] = useState(false);
+  // Edit cycle dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editCycleId, setEditCycleId] = useState<string | null>(null);
+  const [editCycleSlotCount, setEditCycleSlotCount] = useState(0);
+  const [cycleEditData, setCycleEditData] = useState<CycleEditData>({
+    name: "",
+    pricePerSession: "",
+    locationId: "",
+    maxParticipants: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Remove player confirm
   const [removeBookingId, setRemoveBookingId] = useState<string | null>(null);
@@ -103,7 +133,7 @@ export default function TrainerScheduleOverview() {
       const { data, error } = await supabase
         .from("availability_slots")
         .select(`
-          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, location_id,
+          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, location_id, price_per_session,
           locations:location_id (name, city),
           bookings (id, status, payment_status, player_id, guest_player_id,
             profiles:player_id (full_name),
@@ -119,7 +149,25 @@ export default function TrainerScheduleOverview() {
     enabled: !!user,
   });
 
-  // Group by cyclus
+  // Fetch trainer locations for edit dialog
+  const { data: trainerLocations } = useQuery({
+    queryKey: ["trainer-locations-for-overview", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const tp = await getTrainerProfile(user.id);
+      if (!tp) return [];
+      const { data, error } = await supabase
+        .from("trainer_locations")
+        .select("location_id, locations:location_id (id, name, city)")
+        .eq("trainer_id", tp.id);
+      if (error) return [];
+      return (data || [])
+        .map((tl: any) => tl.locations)
+        .filter(Boolean) as TrainerLocationOption[];
+    },
+    enabled: !!user,
+  });
+
   const grouped = useMemo(() => {
     if (!slots) return new Map<string, { name: string; slots: SlotWithBookings[] }>();
     const map = new Map<string, { name: string; slots: SlotWithBookings[] }>();
@@ -203,26 +251,45 @@ export default function TrainerScheduleOverview() {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["trainer-schedule-overview"] });
 
-  // Rename cycle
-  const openRenameDialog = (cycleId: string, currentName: string) => {
-    setRenameCycleId(cycleId);
-    setRenameCycleName(currentName);
-    setRenameDialogOpen(true);
+  // Edit cycle
+  const openEditDialog = (cycleId: string, group: { name: string; slots: SlotWithBookings[] }) => {
+    const firstSlot = group.slots[0];
+    setEditCycleId(cycleId);
+    setEditCycleSlotCount(group.slots.length);
+    setCycleEditData({
+      name: group.name,
+      pricePerSession: firstSlot?.price_per_session != null ? String(firstSlot.price_per_session) : "",
+      locationId: firstSlot?.location_id || "",
+      maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
+    });
+    setEditDialogOpen(true);
   };
 
-  const handleRenameCycle = async () => {
-    if (!renameCycleId || !renameCycleName.trim()) return;
-    setSavingRename(true);
+  const handleSaveCycleEdit = async () => {
+    if (!editCycleId || !cycleEditData.name.trim()) return;
+    setSavingEdit(true);
+    const updates: Record<string, unknown> = {
+      cyclus_name: cycleEditData.name.trim(),
+    };
+    if (cycleEditData.pricePerSession !== "") {
+      updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
+    }
+    if (cycleEditData.locationId) {
+      updates.location_id = cycleEditData.locationId;
+    }
+    if (cycleEditData.maxParticipants !== "") {
+      updates.max_participants = parseInt(cycleEditData.maxParticipants, 10);
+    }
     const { error } = await supabase
       .from("availability_slots")
-      .update({ cyclus_name: renameCycleName.trim() })
-      .eq("cyclus_id", renameCycleId);
-    setSavingRename(false);
+      .update(updates)
+      .eq("cyclus_id", editCycleId);
+    setSavingEdit(false);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: t("scheduleOverview.cycleSaved", "Cycle name updated") });
-      setRenameDialogOpen(false);
+      toast({ title: t("scheduleOverview.cycleSaved", "Cycle updated") });
+      setEditDialogOpen(false);
       invalidate();
     }
   };
@@ -365,9 +432,9 @@ export default function TrainerScheduleOverview() {
                     className="h-7 w-7 shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
-                      openRenameDialog(key, group.name);
+                      openEditDialog(key, group);
                     }}
-                    title={t("scheduleOverview.renameCycle", "Rename")}
+                    title={t("scheduleOverview.editCycle", "Edit cycle")}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
@@ -536,26 +603,77 @@ export default function TrainerScheduleOverview() {
         })}
       </div>
 
-      {/* Rename Cycle Dialog */}
-      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+      {/* Edit Cycle Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {t("scheduleOverview.renameCycleTitle", "Rename Cycle")}
+              {t("scheduleOverview.editCycleTitle", "Edit Cycle")}
             </DialogTitle>
           </DialogHeader>
-          <Input
-            value={renameCycleName}
-            onChange={(e) => setRenameCycleName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleRenameCycle()}
-            autoFocus
-          />
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.cycleName", "Name")}</Label>
+              <Input
+                value={cycleEditData.name}
+                onChange={(e) => setCycleEditData((prev) => ({ ...prev, name: e.target.value }))}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.pricePerSession", "Price per session")}</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">€</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="pl-7"
+                  value={cycleEditData.pricePerSession}
+                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, pricePerSession: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.location", "Location")}</Label>
+              <Select
+                value={cycleEditData.locationId}
+                onValueChange={(val) => setCycleEditData((prev) => ({ ...prev, locationId: val }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("scheduleOverview.selectLocation", "Select location")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {trainerLocations?.map((loc) => (
+                    <SelectItem key={loc.id} value={loc.id}>
+                      {loc.name}, {loc.city}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.maxPlayers", "Max players")}</Label>
+              <Input
+                type="number"
+                min="1"
+                value={cycleEditData.maxParticipants}
+                onChange={(e) => setCycleEditData((prev) => ({ ...prev, maxParticipants: e.target.value }))}
+              />
+            </div>
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-sm text-muted-foreground">
+                {t("scheduleOverview.bulkWarning", "Changes apply to all {{count}} sessions in this cycle.", { count: editCycleSlotCount })}
+              </AlertDescription>
+            </Alert>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               {t("scheduleOverview.cancel", "Cancel")}
             </Button>
-            <Button onClick={handleRenameCycle} disabled={savingRename || !renameCycleName.trim()}>
-              {savingRename && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            <Button onClick={handleSaveCycleEdit} disabled={savingEdit || !cycleEditData.name.trim()}>
+              {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {t("scheduleOverview.save", "Save")}
             </Button>
           </DialogFooter>
