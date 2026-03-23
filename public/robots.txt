@@ -3,6 +3,7 @@
 User-agent: *
 Allow: /
 Disallow: /app/
+Disallow: /*/pay/
 
 # Sitemap location
 Sitemap: https://padeltrainer.ai/sitemap.xml

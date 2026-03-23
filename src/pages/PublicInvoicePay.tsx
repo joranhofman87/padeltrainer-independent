@@ -189,6 +189,7 @@ export default function PublicInvoicePay() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <SEO title="Invoice Payment" description="Pay your invoice online." noIndex={true} />
       <Card className="max-w-lg w-full overflow-hidden">
         {/* Banner header */}
         {(academy?.logoUrl || bannerColor) && (
