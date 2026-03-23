@@ -244,21 +244,27 @@ export function TrainerCalendarGrid({
             ))}
           </div>
 
-          {/* Time Grid */}
+          {/* Time Grid - Half-hour rows */}
           <div className="relative">
-            {HOURS.map((hour) => (
-              <div key={hour} className="grid grid-cols-8 border-b min-h-[80px]">
-                <div className="p-2 text-xs text-muted-foreground text-right pr-3 pt-1">
-                  {String(hour).padStart(2, "0")}:00
-                </div>
-                {weekDays.map((day) => {
-                  const dayKey = format(day, "yyyy-MM-dd");
-                  const slotsInCell = slotsByDayAndHour[dayKey]?.[hour] || [];
-                  const cellKey = `${dayKey}-${hour}`;
-                  const isCellOccupied = occupiedCells.has(cellKey);
+            {HALF_HOURS.map((hh) => {
+              const isFullHour = hh % 1 === 0;
+              const hourLabel = isFullHour ? `${String(hh).padStart(2, "0")}:00` : null;
+              
+              return (
+                <div key={hh} className={cn("grid grid-cols-8 min-h-[40px]", isFullHour && "border-b")}>
+                  <div className="p-1 text-xs text-muted-foreground text-right pr-3 pt-0.5">
+                    {hourLabel}
+                  </div>
+                  {weekDays.map((day) => {
+                    const dayKey = format(day, "yyyy-MM-dd");
+                    const slotsInCell = slotsByDayAndHalfHour[dayKey]?.[hh] || [];
+                    const cellKey = `${dayKey}-${hh}`;
+                    const isCellOccupied = occupiedCells.has(cellKey);
 
+                    const cellHour = Math.floor(hh);
+                    const cellMinutes = (hh % 1) * 60;
                     const isPastCell = isBefore(
-                      new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour),
+                      new Date(day.getFullYear(), day.getMonth(), day.getDate(), cellHour, cellMinutes),
                       new Date()
                     );
 
@@ -266,43 +272,52 @@ export function TrainerCalendarGrid({
                       <div
                         key={cellKey}
                         className={cn(
-                          "border-l p-1 space-y-1 min-h-[80px] group relative",
+                          "border-l p-0.5 min-h-[40px] group relative",
                           isToday(day) && "bg-primary/5",
+                          isFullHour && "border-b",
                           !isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && "cursor-pointer hover:bg-muted/50"
                         )}
                         onClick={() => {
                           if (!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick) {
-                            onCellClick(day, hour);
+                            onCellClick(day, cellHour);
                           }
                         }}
                       >
-                        {slotsInCell.map((slot) => (
-                          <CalendarSlotCard 
-                            key={slot.id} 
-                            slot={slot} 
-                            durationHours={getSlotDurationHours(slot)}
-                            startOffset={getSlotStartOffset(slot)}
-                            showTrainerInfo={showTrainerInfo}
-                            onSlotClick={onSlotClick}
-                            onBookForPlayer={onBookForPlayer}
-                            onDuplicateCyclus={onDuplicateCyclus}
-                            onDeleteSlot={onDeleteSlot}
-                            onEditBooking={onEditBooking}
-                            onToggleMarkedFull={onToggleMarkedFull}
-                          />
-                        ))}
-                        {!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && (
+                        {slotsInCell.map((slot) => {
+                          const span = getSlotRowSpan(slot);
+                          return (
+                            <div
+                              key={slot.id}
+                              className="relative z-10"
+                              style={span > 1 ? { height: `${span * 40 - 4}px` } : undefined}
+                            >
+                              <CalendarSlotCard 
+                                slot={slot} 
+                                rowSpan={span}
+                                showTrainerInfo={showTrainerInfo}
+                                onSlotClick={onSlotClick}
+                                onBookForPlayer={onBookForPlayer}
+                                onDuplicateCyclus={onDuplicateCyclus}
+                                onDeleteSlot={onDeleteSlot}
+                                onEditBooking={onEditBooking}
+                                onToggleMarkedFull={onToggleMarkedFull}
+                              />
+                            </div>
+                          );
+                        })}
+                        {!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && isFullHour && (
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <div className="bg-primary/10 rounded-md p-2">
-                              <Plus className="h-4 w-4 text-primary" />
+                            <div className="bg-primary/10 rounded-md p-1.5">
+                              <Plus className="h-3 w-3 text-primary" />
                             </div>
                           </div>
                         )}
                       </div>
                     );
-                })}
-              </div>
-            ))}
+                  })}
+                </div>
+              );
+            })}
 
             {/* Empty State */}
             {slots.length === 0 && (
