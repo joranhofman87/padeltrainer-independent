@@ -742,6 +742,64 @@ export default function TrainerScheduleOverview() {
         </div>
       </div>
 
+      {/* Day / Location / Time filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <Select value={filterDay} onValueChange={setFilterDay}>
+          <SelectTrigger className="w-[140px] h-9 text-sm">
+            <SelectValue placeholder={t("scheduleOverview.allDays", "All days")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("scheduleOverview.allDays", "All days")}</SelectItem>
+            {[1, 2, 3, 4, 5, 6, 0].map((dayIdx) => {
+              const refDate = new Date(2024, 0, dayIdx === 0 ? 7 : dayIdx);
+              return (
+                <SelectItem key={dayIdx} value={dayIdx.toString()}>
+                  {format(refDate, "EEEE", { locale: dateFnsLocale })}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+
+        <Select value={filterLocation} onValueChange={setFilterLocation}>
+          <SelectTrigger className="w-[180px] h-9 text-sm">
+            <SelectValue placeholder={t("scheduleOverview.allLocations", "All locations")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("scheduleOverview.allLocations", "All locations")}</SelectItem>
+            {trainerLocations?.map((loc) => (
+              <SelectItem key={loc.id} value={loc.id}>
+                {loc.name}, {loc.city}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={filterTime} onValueChange={setFilterTime}>
+          <SelectTrigger className="w-[150px] h-9 text-sm">
+            <SelectValue placeholder={t("scheduleOverview.allTimes", "All times")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("scheduleOverview.allTimes", "All times")}</SelectItem>
+            <SelectItem value="morning">{t("scheduleOverview.morning", "Morning")} (06-12)</SelectItem>
+            <SelectItem value="afternoon">{t("scheduleOverview.afternoon", "Afternoon")} (12-17)</SelectItem>
+            <SelectItem value="evening">{t("scheduleOverview.evening", "Evening")} (17-23)</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 text-sm"
+            onClick={() => { setFilterDay("all"); setFilterLocation("all"); setFilterTime("all"); }}
+          >
+            <X className="h-3.5 w-3.5 mr-1" />
+            {t("scheduleOverview.clearFilters", "Clear filters")}
+          </Button>
+        )}
+      </div>
+
       {filtered.size === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           <Calendar className="h-12 w-12 mx-auto mb-3 opacity-40" />
