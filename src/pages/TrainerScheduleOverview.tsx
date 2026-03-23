@@ -67,6 +67,8 @@ import { useToast } from "@/hooks/use-toast";
 
 const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es };
 
+type ExtraCost = { description: string; price: number };
+
 type SlotWithBookings = {
   id: string;
   start_time: string;
@@ -78,6 +80,7 @@ type SlotWithBookings = {
   is_marked_full: boolean;
   location_id: string | null;
   price_per_session: number | null;
+  extra_costs: ExtraCost[] | null;
   locations?: { name: string; city: string } | null;
   bookings: {
     id: string;
