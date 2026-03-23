@@ -530,12 +530,7 @@ export default function AcademyCalendar() {
             availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
           />
 
-          <DuplicateCyclusDialog
-            open={duplicateCyclusOpen}
-            onOpenChange={setDuplicateCyclusOpen}
-            trainerId={selectedSlotTrainerId || (trainers.length > 0 ? trainers[0].id : "")}
-            onCyclusCreated={() => fetchSlots()}
-          />
+
         </>
       )}
     </>
