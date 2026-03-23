@@ -491,7 +491,7 @@ export default function EditProfile() {
           </div>
           <Button onClick={handleSubmit} disabled={saving}>
             <Save className="h-4 w-4 mr-2" />
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? t('editProfile.saving') : t('editProfile.save')}
           </Button>
         </div>
       </header>
