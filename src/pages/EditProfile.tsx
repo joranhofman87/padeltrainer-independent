@@ -566,7 +566,7 @@ export default function EditProfile() {
                     className="text-xs text-primary hover:underline mt-1"
                     disabled={uploadingAvatar}
                   >
-                    {uploadingAvatar ? 'Uploading...' : 'Change photo'}
+                    {uploadingAvatar ? t('editProfile.uploading') : t('editProfile.changePhoto')}
                   </button>
                 </div>
               </div>
