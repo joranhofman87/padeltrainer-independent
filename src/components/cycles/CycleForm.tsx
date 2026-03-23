@@ -973,11 +973,25 @@ export default function CycleForm({
                   {t('form.priceTableHelp', 'Add price rows that players can see before applying')}
                 </p>
 
+                {/* VAT toggle — shown above price inputs for clarity */}
+                <div className="flex items-center gap-3 pt-1 pb-1">
+                  <Switch
+                    id="prices-include-vat"
+                    checked={pricesIncludeVat}
+                    onCheckedChange={setPricesIncludeVat}
+                  />
+                  <Label htmlFor="prices-include-vat" className="text-sm cursor-pointer">
+                    {pricesIncludeVat
+                      ? t('form.pricesIncludeVat', 'Prices are including VAT (incl. BTW)')
+                      : t('form.pricesExcludeVat', 'Prices are excluding VAT (excl. BTW)')}
+                  </Label>
+                </div>
+
                 {/* Column headers when extra columns exist */}
                 {priceColumns.length > 0 && (
                   <div className={cn("grid items-end gap-2", `grid-cols-[1fr_repeat(${priceColumns.length + 1},6rem)_auto]`)} style={{ gridTemplateColumns: `1fr repeat(${priceColumns.length + 1}, 6rem) auto` }}>
                     <span className="text-xs font-medium text-muted-foreground">{t('form.priceLabel', 'Label')}</span>
-                    <span className="text-xs font-medium text-muted-foreground text-center">{t('detail.pricePerSession', 'Price')}</span>
+                    <span className="text-xs font-medium text-muted-foreground text-center">{t('detail.pricePerSession', 'Price')} {pricesIncludeVat ? t('form.inclVatShort', '(incl.)') : t('form.exclVatShort', '(excl.)')}</span>
                     {priceColumns.map((col, ci) => (
                       <div key={ci} className="flex flex-col gap-0.5">
                         <Input
@@ -1104,17 +1118,6 @@ export default function CycleForm({
                   {t('form.addPriceRow', 'Add price row')}
                 </Button>
 
-                {/* VAT toggle */}
-                <div className="flex items-center gap-3 pt-2">
-                  <Switch
-                    id="prices-include-vat"
-                    checked={pricesIncludeVat}
-                    onCheckedChange={setPricesIncludeVat}
-                  />
-                  <Label htmlFor="prices-include-vat" className="text-sm cursor-pointer">
-                    {t('form.pricesIncludeVat', 'Prices are including VAT (incl. BTW)')}
-                  </Label>
-                </div>
                 <p className="text-xs text-muted-foreground">
                   {pricesIncludeVat
                     ? t('form.pricesIncludeVatHint', 'Players will see: "All prices include VAT"')
