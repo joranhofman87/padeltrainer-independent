@@ -646,8 +646,8 @@ export default function EditProfile() {
           {role === 'player' && (
             <Card>
               <CardHeader>
-                <CardTitle>Player Details</CardTitle>
-                <CardDescription>Your padel skill information</CardDescription>
+                <CardTitle>{t('editProfile.playerDetails')}</CardTitle>
+                <CardDescription>{t('editProfile.playerDetailsDescription')}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
