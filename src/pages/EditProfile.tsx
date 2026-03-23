@@ -709,7 +709,7 @@ export default function EditProfile() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="skill_rating">Padel Rating</Label>
+                  <Label htmlFor="skill_rating">{t('editProfile.padelRating')}</Label>
                   <Input
                     id="skill_rating"
                     type="number"
