@@ -332,6 +332,12 @@ export function BookForPlayerDialog({
 
         if (bookingError) throw bookingError;
 
+        // Mark guest players as has_trained
+        const singleGuestIds = selectedPlayers.map(p => p.id);
+        if (singleGuestIds.length > 0) {
+          await supabase.from("guest_players").update({ has_trained: true }).in("id", singleGuestIds);
+        }
+
         // Send email notifications
         const { data: { session: emailSession } } = await supabase.auth.getSession();
         await Promise.all(

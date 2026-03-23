@@ -583,6 +583,9 @@ export default function TrainerScheduleOverview() {
           payment_status: 'pending',
         }));
         await supabase.from("bookings").insert(newBookings);
+
+        // Mark player as has_trained
+        await supabase.from("guest_players").update({ has_trained: true }).eq("id", guestPlayerId);
       }
 
       // Update local player list
