@@ -1,39 +1,51 @@
 
 
-# Fix Invoice Logo Upload + Add Banner Color
+# Secure Public Invoice Payment Links
 
 ## Problem
-The logo upload fails because the storage path uses `invoice-logos/academy-{id}` but RLS policies only allow uploads to `academies/{academyId}/...` folder. Additionally, the user wants a configurable banner/header color for invoices (for white logos on dark backgrounds, like the RL Padel Performance example).
+Using sequential invoice numbers (e.g. `/pay/INV-2026-001`) in public URLs is a privacy risk — anyone can guess the next invoice URL by incrementing the number.
 
-## Plan
+## Solution
+Use a random, unguessable token (UUID) instead of the invoice number in the public URL.
 
 ### Step 1: Database Migration
-- Add `invoice_banner_color` column (text, nullable, default null) to `academy_profiles`
+- Add `public_token` column (UUID, unique, default `gen_random_uuid()`) to the `invoices` table
+- Backfill existing invoices with random tokens
+- Add unique index on `public_token`
 
-### Step 2: Fix Logo Upload Path
-In `AcademyInvoiceSettingsCard.tsx`, change the upload path from:
-- `invoice-logos/academy-${academyId}.${ext}` 
-to:
-- `academies/${academyId}/invoice-logo.${ext}`
+### Step 2: Public URL format
+- URL becomes `/pay/{public_token}` e.g. `/pay/a1b2c3d4-e5f6-7890-abcd-ef1234567890`
+- Completely unguessable — no sequential pattern
 
-This matches the existing RLS policy that allows academy managers to upload to `avatars/academies/{academyId}/...`.
+### Step 3: Edge Function `get-public-invoice`
+- Looks up invoice by `public_token` instead of `invoice_number`
+- Returns only safe display data (amount, line items, academy branding) — no sensitive info
 
-Also fix `handleRemoveLogo` to use the correct path.
+### Step 4: Public Invoice Page (`PublicInvoicePay.tsx`)
+- Branded page showing invoice summary with academy logo/banner color
+- "Pay now" button triggers Mollie checkout
+- Post-payment: success message + "Create account to view your invoices" CTA
 
-### Step 3: Add Banner Color Picker
-In `AcademyInvoiceSettingsCard.tsx`:
-- Add a color input next to the logo upload section
-- Default suggestion: dark navy (#1a2332) based on the example
-- Include a few preset color swatches (dark navy, black, white, brand blue) + custom color picker
-- Save `invoice_banner_color` alongside other settings
-- Load it from the database on init
+### Step 5: Share UI in `AcademyInvoices.tsx`
+- "Copy payment link" button copies `/pay/{public_token}` URL
+- Available for draft and sent invoices
+- Trainer shares via WhatsApp/text
 
-### Step 4: Translations
-Add keys for banner color label/description in EN and NL academy.json.
+### Step 6: Guest-to-account linking (DB trigger)
+- On new profile creation, match email against `guest_players` table
+- Link matching invoices (`player_id = NULL`) to the new user profile
+
+### Step 7: Translations
+- EN and NL keys for share button, public page, success page
 
 ## Files
-- **Migration**: Add `invoice_banner_color` to `academy_profiles`
-- `src/components/academy/AcademyInvoiceSettingsCard.tsx` — Fix upload path, add color picker
+- **Migration**: Add `public_token` to `invoices`, backfill, add trigger for guest linking
+- `supabase/functions/get-public-invoice/index.ts` — New edge function
+- `src/pages/PublicInvoicePay.tsx` — New public payment page
+- `src/pages/academy/AcademyInvoices.tsx` — Share/copy link buttons for draft+sent
+- `src/components/DomainRouter.tsx` — Add `/pay/:token` route
+- `supabase/functions/create-invoice-payment/index.ts` — Update redirect URL
 - `src/i18n/locales/en/academy.json` — Translations
 - `src/i18n/locales/nl/academy.json` — Translations
+- `src/i18n/locales/de/academy.json` — Translations
 
