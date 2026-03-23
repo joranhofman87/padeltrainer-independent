@@ -21,8 +21,10 @@ export default function TrainerBookingSettings() {
   const [requireApproval, setRequireApproval] = useState(false);
   const [useManualInvoicing, setUseManualInvoicing] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingWelcome, setSavingWelcome] = useState(false);
+  const [savingVat, setSavingVat] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
 
   useEffect(() => {
