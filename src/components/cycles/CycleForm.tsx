@@ -991,7 +991,7 @@ export default function CycleForm({
                 {priceColumns.length > 0 && (
                   <div className={cn("grid items-end gap-2", `grid-cols-[1fr_repeat(${priceColumns.length + 1},6rem)_auto]`)} style={{ gridTemplateColumns: `1fr repeat(${priceColumns.length + 1}, 6rem) auto` }}>
                     <span className="text-xs font-medium text-muted-foreground">{t('form.priceLabel', 'Label')}</span>
-                    <span className="text-xs font-medium text-muted-foreground text-center">{t('detail.pricePerSession', 'Price')}</span>
+                    <span className="text-xs font-medium text-muted-foreground text-center">{t('detail.pricePerSession', 'Price')} {pricesIncludeVat ? t('form.inclVatShort', '(incl.)') : t('form.exclVatShort', '(excl.)')}</span>
                     {priceColumns.map((col, ci) => (
                       <div key={ci} className="flex flex-col gap-0.5">
                         <Input
