@@ -64,6 +64,7 @@
     "markAsPublic": "Gemarkeerd als openbaar",
     "cyclePrivate": "Privé (verborgen voor spelers)",
     "extraCosts": "Extra kosten",
+    "pricesIncludeVat": "Prijzen zijn inclusief BTW",
     "addCost": "Kosten toevoegen",
     "costDescription": "Omschrijving",
     "costPrice": "Prijs",

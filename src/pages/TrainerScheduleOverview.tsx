@@ -80,6 +80,7 @@ type SlotWithBookings = {
   is_marked_full: boolean;
   location_id: string | null;
   price_per_session: number | null;
+  prices_include_vat: boolean;
   extra_costs: ExtraCost[] | null;
   locations?: { name: string; city: string } | null;
   bookings: {
@@ -106,6 +107,7 @@ type CycleEditData = {
   originalStartDate: Date | undefined;
   repeatCount: string;
   originalRepeatCount: number;
+  pricesIncludeVat: boolean;
 };
 
 type TrainerLocationOption = {
@@ -140,6 +142,7 @@ export default function TrainerScheduleOverview() {
     originalStartDate: undefined,
     repeatCount: "0",
     originalRepeatCount: 0,
+    pricesIncludeVat: true,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -172,7 +175,7 @@ export default function TrainerScheduleOverview() {
       const { data, error } = await supabase
         .from("availability_slots")
         .select(`
-          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, is_marked_full, location_id, price_per_session, extra_costs,
+          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, is_marked_full, location_id, price_per_session, prices_include_vat, extra_costs,
           locations:location_id (name, city),
           bookings (id, status, payment_status, player_id, guest_player_id,
             profiles:player_id (full_name),
@@ -309,6 +312,7 @@ export default function TrainerScheduleOverview() {
       originalStartDate: earliestStart,
       repeatCount: String(group.slots.length),
       originalRepeatCount: group.slots.length,
+      pricesIncludeVat: firstSlot?.prices_include_vat ?? true,
     });
 
     // Collect unique players from all bookings across cycle slots
@@ -359,6 +363,7 @@ export default function TrainerScheduleOverview() {
         cyclus_name: cycleEditData.name.trim(),
         is_marked_full: cycleEditData.isPrivate,
         extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : null,
+        prices_include_vat: cycleEditData.pricesIncludeVat,
       };
       if (cycleEditData.pricePerSession !== "") {
         updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
@@ -444,7 +449,7 @@ export default function TrainerScheduleOverview() {
                 rating_system: lastSlot.rating_system,
                 training_level: lastSlot.training_level,
                 total_price: lastSlot.total_price,
-                prices_include_vat: lastSlot.prices_include_vat,
+                prices_include_vat: cycleEditData.pricesIncludeVat,
               });
             }
             await supabase.from("availability_slots").insert(newSlots);
@@ -996,6 +1001,17 @@ export default function TrainerScheduleOverview() {
                   onChange={(e) => setCycleEditData((prev) => ({ ...prev, pricePerSession: e.target.value }))}
                 />
               </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label htmlFor="edit-vat-toggle" className="text-sm">
+                {t("scheduleOverview.pricesIncludeVat", "Prices include VAT")}
+              </Label>
+              <Switch
+                id="edit-vat-toggle"
+                checked={cycleEditData.pricesIncludeVat}
+                onCheckedChange={(checked) => setCycleEditData((prev) => ({ ...prev, pricesIncludeVat: checked }))}
+              />
             </div>
 
             {/* Extra costs */}
