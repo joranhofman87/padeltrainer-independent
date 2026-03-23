@@ -377,5 +377,40 @@
     "enableDescription": "When enabled, players can sign up for your waiting list on your public profile. You'll be notified when someone joins.",
     "enabled": "Waiting list is now active on your profile",
     "disabled": "Waiting list has been turned off"
+  },
+  "invoices": {
+    "title": "Invoices",
+    "description": "Manage invoices for your academy",
+    "editSettings": "Invoice Settings",
+    "totalUnpaid": "Unpaid",
+    "draft": "Draft",
+    "sent": "Sent",
+    "paid": "Paid",
+    "overdue": "Overdue",
+    "sentOverdue": "Sent / Overdue",
+    "all": "All",
+    "number": "Number",
+    "player": "Player",
+    "date": "Date",
+    "dueDate": "Due",
+    "amount": "Amount",
+    "status": "Status",
+    "actions": "Actions",
+    "noInvoices": "No invoices found",
+    "send": "Send",
+    "sendAllDrafts": "Send all drafts",
+    "markedAsSent": "Invoices marked as sent",
+    "markedAsPaid": "Invoice marked as paid",
+    "markPaid": "Mark as paid",
+    "paymentLink": "Payment link",
+    "generateLink": "Generate payment link",
+    "copyLink": "Copy link",
+    "linkCopied": "Payment link copied to clipboard",
+    "linkError": "Failed to generate payment link",
+    "downloadPdf": "Download PDF",
+    "noPdf": "No PDF available"
+  },
+  "nav": {
+    "invoices": "Invoices"
   }
 }

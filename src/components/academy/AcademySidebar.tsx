@@ -81,7 +81,8 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/academy/settings") ||
     location.pathname.includes("/app/academy/subscription") ||
-    location.pathname.includes("/app/academy/earnings")
+    location.pathname.includes("/app/academy/earnings") ||
+    location.pathname.includes("/app/academy/invoices")
   );
 
   const handleLogout = async () => {
@@ -393,7 +394,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.business")}
-                      className={isActive("/app/academy/settings") || isActive("/app/academy/subscription") || isActive("/app/academy/earnings")
+                      className={isActive("/app/academy/settings") || isActive("/app/academy/subscription") || isActive("/app/academy/earnings") || isActive("/app/academy/invoices")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -439,6 +440,18 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
                             {t("nav.earnings")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/invoices"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            <FileText className="h-4 w-4" />
+                            {t("nav.invoices", "Invoices")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
