@@ -256,8 +256,9 @@ export default function AcademyInvoices() {
 
       {/* Tabs + Table */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="all">{t("invoices.all", "All")} ({invoices.length})</TabsTrigger>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <TabsList>
+            <TabsTrigger value="all">{t("invoices.all", "All")} ({invoices.length})</TabsTrigger>
           <TabsTrigger value="draft">{t("invoices.draft", "Draft")} ({draftInvoices.length})</TabsTrigger>
           <TabsTrigger value="sent">{t("invoices.sentOverdue", "Sent / Overdue")} ({sentInvoices.length})</TabsTrigger>
           <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
