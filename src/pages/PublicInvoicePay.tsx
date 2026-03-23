@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { SEO } from "@/components/SEO";
 import { supabase } from "@/lib/supabaseClient";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -40,7 +41,78 @@ interface PublicInvoiceData {
     logoUrl: string | null;
     bannerColor: string | null;
     contactEmail: string | null;
+    businessName: string | null;
+    businessAddress: string | null;
+    kvkNumber: string | null;
+    btwNumber: string | null;
+    iban: string | null;
+    bic: string | null;
   } | null;
+}
+
+function PostPaymentCTA() {
+  return (
+    <div className="pt-4">
+      <Link to="/app/signup/player">
+        <Button variant="outline" className="gap-2">
+          <UserPlus className="h-4 w-4" />
+          Create account to view your invoices
+        </Button>
+      </Link>
+    </div>
+  );
+}
+
+function InvoiceBanner({ academy }: { academy: PublicInvoiceData["academy"] }) {
+  if (!academy) return null;
+  const bannerColor = academy.bannerColor || "hsl(var(--primary))";
+
+  return (
+    <div
+      className="px-6 py-6 flex items-center justify-center"
+      style={{ backgroundColor: bannerColor }}
+    >
+      {academy.logoUrl ? (
+        <img
+          src={academy.logoUrl}
+          alt={academy.name || "Logo"}
+          className="h-12 max-w-[200px] object-contain"
+        />
+      ) : (
+        <h2 className="text-xl font-bold text-white">{academy.name}</h2>
+      )}
+    </div>
+  );
+}
+
+function BusinessDetails({ academy }: { academy: PublicInvoiceData["academy"] }) {
+  if (!academy) return null;
+  const hasDetails = academy.businessName || academy.businessAddress || academy.kvkNumber || academy.btwNumber;
+  if (!hasDetails) return null;
+
+  return (
+    <div className="text-sm text-muted-foreground space-y-0.5">
+      {academy.businessName && <p className="font-medium text-foreground">{academy.businessName}</p>}
+      {academy.businessAddress && <p className="whitespace-pre-line">{academy.businessAddress}</p>}
+      {academy.kvkNumber && <p>KvK: {academy.kvkNumber}</p>}
+      {academy.btwNumber && <p>BTW: {academy.btwNumber}</p>}
+    </div>
+  );
+}
+
+function PaymentBankDetails({ academy }: { academy: PublicInvoiceData["academy"] }) {
+  if (!academy?.iban) return null;
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
+      <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Bank details for manual payment</p>
+      <p><span className="text-muted-foreground">IBAN:</span> {academy.iban}</p>
+      {academy.bic && <p><span className="text-muted-foreground">BIC:</span> {academy.bic}</p>}
+      {(academy.businessName || academy.name) && (
+        <p><span className="text-muted-foreground">Name:</span> {academy.businessName || academy.name}</p>
+      )}
+    </div>
+  );
 }
 
 export default function PublicInvoicePay() {
@@ -51,7 +123,6 @@ export default function PublicInvoicePay() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPaid, setIsPaid] = useState(false);
-  const [paidInvoiceNumber, setPaidInvoiceNumber] = useState<string | null>(null);
   const [payLoading, setPayLoading] = useState(false);
 
   useEffect(() => {
@@ -69,7 +140,6 @@ export default function PublicInvoicePay() {
 
       if (result?.error === "already_paid") {
         setIsPaid(true);
-        setPaidInvoiceNumber(result.invoiceNumber);
         return;
       }
 
@@ -123,24 +193,14 @@ export default function PublicInvoicePay() {
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">Payment Received</h1>
-            <p className="text-muted-foreground">
-              This invoice has been paid. Thank you!
-            </p>
-            <div className="pt-4">
-              <Link to="/app/signup/player">
-                <Button variant="outline">
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Create account to view your invoices
-                </Button>
-              </Link>
-            </div>
+            <p className="text-muted-foreground">This invoice has been paid. Thank you!</p>
+            <PostPaymentCTA />
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // Show processing state when redirected from Mollie but payment not yet confirmed
   if (isSuccessRedirect && data && data.invoice.status !== "paid") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
@@ -149,17 +209,8 @@ export default function PublicInvoicePay() {
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
             <h1 className="text-2xl font-bold">Payment Processing</h1>
-            <p className="text-muted-foreground">
-              Your payment is being processed. You'll receive a confirmation shortly.
-            </p>
-            <div className="pt-4">
-              <Link to="/app/signup/player">
-                <Button variant="outline">
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Create account to view your invoices
-                </Button>
-              </Link>
-            </div>
+            <p className="text-muted-foreground">Your payment is being processed. You'll receive a confirmation shortly.</p>
+            <PostPaymentCTA />
           </CardContent>
         </Card>
       </div>
@@ -174,9 +225,7 @@ export default function PublicInvoicePay() {
           <CardContent className="py-12 text-center space-y-4">
             <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto" />
             <h1 className="text-2xl font-bold">Invoice Not Found</h1>
-            <p className="text-muted-foreground">
-              This invoice link is invalid or has expired.
-            </p>
+            <p className="text-muted-foreground">This invoice link is invalid or has expired.</p>
           </CardContent>
         </Card>
       </div>
@@ -184,32 +233,17 @@ export default function PublicInvoicePay() {
   }
 
   const { invoice, academy } = data;
-  const bannerColor = academy?.bannerColor || null;
   const isOverdue = new Date(invoice.dueDate) < new Date();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <SEO title="Invoice Payment" description="Pay your invoice online." noIndex={true} />
       <Card className="max-w-lg w-full overflow-hidden">
-        {/* Banner header */}
-        {(academy?.logoUrl || bannerColor) && (
-          <div
-            className="px-6 py-6 flex items-center justify-center"
-            style={{ backgroundColor: bannerColor || "hsl(var(--primary))" }}
-          >
-            {academy?.logoUrl ? (
-              <img
-                src={academy.logoUrl}
-                alt={academy.name || "Logo"}
-                className="h-12 max-w-[200px] object-contain"
-              />
-            ) : (
-              <h2 className="text-xl font-bold text-white">{academy?.name}</h2>
-            )}
-          </div>
-        )}
+        {/* Branded banner */}
+        <InvoiceBanner academy={academy} />
 
-        <CardHeader className="pb-2">
+        <CardContent className="p-6 space-y-6">
+          {/* Invoice header */}
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted-foreground font-mono">{invoice.invoiceNumber}</p>
@@ -225,26 +259,39 @@ export default function PublicInvoicePay() {
               </Badge>
             )}
           </div>
-        </CardHeader>
 
-        <CardContent className="space-y-6">
-          {/* Invoice meta */}
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <Separator />
+
+          {/* From / To */}
+          <div className="grid grid-cols-2 gap-6">
             <div>
-              <p className="text-muted-foreground">To</p>
-              <p className="font-medium">{invoice.playerName}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">From</p>
+              <BusinessDetails academy={academy} />
+              {!academy?.businessName && academy?.name && (
+                <p className="text-sm font-medium">{academy.name}</p>
+              )}
             </div>
             <div>
-              <p className="text-muted-foreground">Date</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">To</p>
+              <p className="text-sm font-medium">{invoice.playerName}</p>
+            </div>
+          </div>
+
+          {/* Dates */}
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Invoice date</p>
               <p className="font-medium">{format(new Date(invoice.invoiceDate), "dd MMM yyyy")}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Due</p>
+              <p className="text-muted-foreground">Due date</p>
               <p className={`font-medium ${isOverdue ? "text-destructive" : ""}`}>
                 {format(new Date(invoice.dueDate), "dd MMM yyyy")}
               </p>
             </div>
           </div>
+
+          <Separator />
 
           {/* Line items */}
           <div className="border rounded-lg overflow-hidden">
@@ -301,6 +348,10 @@ export default function PublicInvoicePay() {
             {payLoading ? "Redirecting..." : `Pay €${formatEuro(invoice.total)}`}
           </Button>
 
+          {/* Bank details for manual payment */}
+          <PaymentBankDetails academy={academy} />
+
+          {/* Contact */}
           {academy?.contactEmail && (
             <p className="text-xs text-center text-muted-foreground">
               Questions? Contact{" "}

@@ -24,7 +24,6 @@ serve(async (req) => {
       });
     }
 
-    // Fetch invoice by public_token
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
       .select("id, invoice_number, invoice_date, due_date, player_name, total, subtotal, vat_amount, vat_rate, line_items, status, mollie_payment_url, academy_profile_id, public_token")
@@ -38,7 +37,6 @@ serve(async (req) => {
       });
     }
 
-    // Don't show paid/cancelled invoices on public page
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       return new Response(JSON.stringify({
         error: invoice.status === "paid" ? "already_paid" : "cancelled",
@@ -50,25 +48,18 @@ serve(async (req) => {
       });
     }
 
-    // Fetch academy branding
     let academy = null;
     if (invoice.academy_profile_id) {
       const { data: academyData } = await supabase
         .from("academy_profiles")
-        .select("name, slug, invoice_logo_url, invoice_banner_color, contact_email")
+        .select("name, slug, invoice_logo_url, invoice_banner_color, contact_email, business_name, business_address, kvk_number, btw_number, iban, bic")
         .eq("id", invoice.academy_profile_id)
         .single();
       academy = academyData;
     }
 
-    // Build logo URL if exists
-    let logoUrl = null;
-    if (academy?.invoice_logo_url) {
-      const { data: signedData } = await supabase.storage
-        .from("avatars")
-        .createSignedUrl(academy.invoice_logo_url, 3600);
-      logoUrl = signedData?.signedUrl || null;
-    }
+    // invoice_logo_url stores a full public URL from the avatars bucket — use directly
+    const logoUrl = academy?.invoice_logo_url || null;
 
     return new Response(JSON.stringify({
       invoice: {
@@ -91,6 +82,12 @@ serve(async (req) => {
         logoUrl,
         bannerColor: academy.invoice_banner_color,
         contactEmail: academy.contact_email,
+        businessName: academy.business_name,
+        businessAddress: academy.business_address,
+        kvkNumber: academy.kvk_number,
+        btwNumber: academy.btw_number,
+        iban: academy.iban,
+        bic: academy.bic,
       } : null,
     }), {
       status: 200,
