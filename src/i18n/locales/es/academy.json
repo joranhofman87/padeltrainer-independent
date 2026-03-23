@@ -271,7 +271,8 @@
     "business": "Negocio",
     "academy": "Academia",
     "waitingList": "Lista de espera",
-    "openSlots": "Plazas abiertas"
+    "openSlots": "Plazas abiertas",
+    "invoices": "Facturas"
   },
   "common": {
     "cancel": "Cancelar",
