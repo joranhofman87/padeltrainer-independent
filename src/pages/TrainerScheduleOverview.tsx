@@ -128,6 +128,9 @@ export default function TrainerScheduleOverview() {
   const { toast } = useToast();
   const [tab, setTab] = useState<TabValue>("current");
   const [search, setSearch] = useState("");
+  const [filterDay, setFilterDay] = useState("all");
+  const [filterLocation, setFilterLocation] = useState("all");
+  const [filterTime, setFilterTime] = useState("all");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["__individual__"]));
   const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
 
@@ -234,7 +237,9 @@ export default function TrainerScheduleOverview() {
     return map;
   }, [slots, t]);
 
-  // Filter by tab
+  const hasActiveFilters = filterDay !== "all" || filterLocation !== "all" || filterTime !== "all";
+
+  // Filter by tab + day/location/time
   const filtered = useMemo(() => {
     const result = new Map<string, { name: string; slots: SlotWithBookings[] }>();
 
@@ -242,9 +247,27 @@ export default function TrainerScheduleOverview() {
       const filteredSlots = group.slots.filter((s) => {
         const end = parseISO(s.end_time);
         const start = parseISO(s.start_time);
-        if (tab === "past") return isPast(end);
-        if (tab === "future") return isFuture(start);
-        return !isPast(end) || isFuture(start);
+
+        // Tab filter
+        if (tab === "past" && !isPast(end)) return false;
+        if (tab === "future" && !isFuture(start)) return false;
+        if (tab === "current" && isPast(end) && !isFuture(start)) return false;
+
+        // Day filter
+        if (filterDay !== "all" && start.getDay().toString() !== filterDay) return false;
+
+        // Location filter
+        if (filterLocation !== "all" && s.location_id !== filterLocation) return false;
+
+        // Time filter
+        if (filterTime !== "all") {
+          const hour = start.getHours();
+          if (filterTime === "morning" && (hour < 6 || hour >= 12)) return false;
+          if (filterTime === "afternoon" && (hour < 12 || hour >= 17)) return false;
+          if (filterTime === "evening" && (hour < 17 || hour >= 23)) return false;
+        }
+
+        return true;
       });
 
       if (filteredSlots.length > 0) {
@@ -269,7 +292,7 @@ export default function TrainerScheduleOverview() {
     });
 
     return result;
-  }, [grouped, tab, search]);
+  }, [grouped, tab, search, filterDay, filterLocation, filterTime]);
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => {
@@ -717,6 +740,64 @@ export default function TrainerScheduleOverview() {
             className="pl-9"
           />
         </div>
+      </div>
+
+      {/* Day / Location / Time filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <Select value={filterDay} onValueChange={setFilterDay}>
+          <SelectTrigger className="w-[140px] h-9 text-sm">
+            <SelectValue placeholder={t("scheduleOverview.allDays", "All days")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("scheduleOverview.allDays", "All days")}</SelectItem>
+            {[1, 2, 3, 4, 5, 6, 0].map((dayIdx) => {
+              const refDate = new Date(2024, 0, dayIdx === 0 ? 7 : dayIdx);
+              return (
+                <SelectItem key={dayIdx} value={dayIdx.toString()}>
+                  {format(refDate, "EEEE", { locale: dateFnsLocale })}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+
+        <Select value={filterLocation} onValueChange={setFilterLocation}>
+          <SelectTrigger className="w-[180px] h-9 text-sm">
+            <SelectValue placeholder={t("scheduleOverview.allLocations", "All locations")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("scheduleOverview.allLocations", "All locations")}</SelectItem>
+            {trainerLocations?.map((loc) => (
+              <SelectItem key={loc.id} value={loc.id}>
+                {loc.name}, {loc.city}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={filterTime} onValueChange={setFilterTime}>
+          <SelectTrigger className="w-[150px] h-9 text-sm">
+            <SelectValue placeholder={t("scheduleOverview.allTimes", "All times")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("scheduleOverview.allTimes", "All times")}</SelectItem>
+            <SelectItem value="morning">{t("scheduleOverview.morning", "Morning")} (06-12)</SelectItem>
+            <SelectItem value="afternoon">{t("scheduleOverview.afternoon", "Afternoon")} (12-17)</SelectItem>
+            <SelectItem value="evening">{t("scheduleOverview.evening", "Evening")} (17-23)</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 text-sm"
+            onClick={() => { setFilterDay("all"); setFilterLocation("all"); setFilterTime("all"); }}
+          >
+            <X className="h-3.5 w-3.5 mr-1" />
+            {t("scheduleOverview.clearFilters", "Clear filters")}
+          </Button>
+        )}
       </div>
 
       {filtered.size === 0 && (
