@@ -36,7 +36,7 @@ export default function TrainerBookingSettings() {
   const fetchSettings = async () => {
     const { data } = await supabase
       .from('trainer_profiles')
-      .select('require_booking_approval, use_manual_invoicing, welcome_message')
+      .select('require_booking_approval, use_manual_invoicing, welcome_message, prices_include_vat')
       .eq('user_id', user!.id)
       .single();
 
