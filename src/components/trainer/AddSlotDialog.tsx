@@ -788,27 +788,31 @@ export function BulkCreateSheet({
         });
       }
 
-      // Notify followers with authentication
-      try {
-        const earliestStart = new Date(
-          Math.min(...slotsToInsert.map((s) => new Date(s.start_time).getTime()))
-        );
-        const latestEnd = new Date(
-          Math.max(...slotsToInsert.map((s) => new Date(s.start_time).getTime()))
-        );
+      // Notify followers with authentication — only if at least one slot is public (not marked private)
+      const hasPublicSlots = slotsToInsert.some(s => !s.is_marked_full);
+      if (hasPublicSlots) {
+        try {
+          const publicSlots = slotsToInsert.filter(s => !s.is_marked_full);
+          const earliestStart = new Date(
+            Math.min(...publicSlots.map((s) => new Date(s.start_time).getTime()))
+          );
+          const latestEnd = new Date(
+            Math.max(...publicSlots.map((s) => new Date(s.start_time).getTime()))
+          );
 
-        const { data: { session } } = await supabase.auth.getSession();
-        await supabase.functions.invoke("notify-followers", {
-          body: {
-            slot_count: slotsToInsert.length,
-            date_range: `${format(earliestStart, "MMM d")} - ${format(latestEnd, "MMM d, yyyy")}`,
-          },
-          headers: {
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-        });
-      } catch (notifyError) {
-        logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });
+          const { data: { session } } = await supabase.auth.getSession();
+          await supabase.functions.invoke("notify-followers", {
+            body: {
+              slot_count: publicSlots.length,
+              date_range: `${format(earliestStart, "MMM d")} - ${format(latestEnd, "MMM d, yyyy")}`,
+            },
+            headers: {
+              Authorization: `Bearer ${session?.access_token}`,
+            },
+          });
+        } catch (notifyError) {
+          logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });
+        }
       }
 
       toast({
