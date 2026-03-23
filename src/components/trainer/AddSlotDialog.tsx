@@ -717,11 +717,11 @@ export function BulkCreateSheet({
             allow_single_booking: config.allowSingleBooking,
             min_participants: config.minParticipants,
             max_participants: config.maxParticipants,
-            prices_include_vat: pricesIncludeVat,
             extra_costs: (config.hasExtraCosts && config.extraCosts.length > 0 
               ? config.extraCosts.filter(c => c.description || c.price > 0) 
               : []) as unknown as Json,
-          });
+            prices_include_vat: pricesIncludeVat,
+          } as any);
 
           // Add to existing times to prevent duplicates within same batch
           trainerExistingTimes.add(currentSlotStart.toISOString());
