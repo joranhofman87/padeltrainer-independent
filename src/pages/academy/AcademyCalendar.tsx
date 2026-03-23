@@ -99,7 +99,7 @@ export default function AcademyCalendar() {
   const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
-  const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
+  
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string>();
   const [selectedSlotTrainerId, setSelectedSlotTrainerId] = useState<string | null>(null);
