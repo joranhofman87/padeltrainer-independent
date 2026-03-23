@@ -1,54 +1,44 @@
 
 
-# Fix `has_trained` Status + Smarter Player Categorization
+# Add Filters to Schedule Overview
 
-## Problem
-1. **Bug**: When a player is added to a cycle (via schedule overview or calendar), `has_trained` on `guest_players` is never set to `true`. It stays as the default `false` ("prospect") forever.
-2. **Feature gap**: The current binary (prospect/active) doesn't help trainers quickly find players who could fill open spots.
+## Summary
+Add day, location, and time filters below the existing search bar on the Schedule Overview page, allowing trainers to quickly narrow down their sessions.
 
-## Proposed Approach
+## Changes
 
-### 1. Fix: Update `has_trained` when booking a player
+### `src/pages/TrainerScheduleOverview.tsx`
 
-In `handleAddPlayerToCycle` (TrainerScheduleOverview.tsx) and wherever bookings are created for guest players (BookForPlayerDialog, BulkCreateSheet), add:
+1. **New filter state** (3 variables):
+   - `filterDay: string` — day of week filter ("all", "0"-"6" for Sun-Sat)
+   - `filterLocation: string` — location ID or "all"
+   - `filterTime: string` — time range preset ("all", "morning" 06-12, "afternoon" 12-17, "evening" 17-23)
 
-```sql
-UPDATE guest_players SET has_trained = true WHERE id = <guestPlayerId>
-```
+2. **Filter UI** — Add a row of 3 `<Select>` dropdowns between the tabs/search row and the results:
+   - **Day**: "All days" + localized day names (Mon-Sun) derived from `date-fns` locale
+   - **Location**: "All locations" + entries from `trainerLocations` (already fetched)
+   - **Time**: "All times" + Morning (06:00-12:00) / Afternoon (12:00-17:00) / Evening (17:00-23:00)
+   - A small "Clear filters" button when any filter is active
 
-This ensures the flag flips to `true` as soon as a player gets their first booking.
+3. **Extend `filtered` useMemo** — After tab and search filtering, also apply:
+   - Day filter: check `getDay()` of slot's `start_time`
+   - Location filter: check `slot.location_id`
+   - Time filter: check hour of slot's `start_time` against range
 
-### 2. Smarter player status categories
+### Translation keys (`en/trainer.json` + `nl/trainer.json`)
+- `scheduleOverview.allDays` / "Alle dagen"
+- `scheduleOverview.allLocations` / "Alle locaties"
+- `scheduleOverview.allTimes` / "Alle tijden"
+- `scheduleOverview.morning` / "Ochtend"
+- `scheduleOverview.afternoon` / "Middag"
+- `scheduleOverview.evening` / "Avond"
+- `scheduleOverview.clearFilters` / "Filters wissen"
+- `scheduleOverview.filterDay` / "Dag"
+- `scheduleOverview.filterLocation` / "Locatie"
+- `scheduleOverview.filterTime` / "Tijd"
 
-Replace the simple `has_trained` boolean display with a computed status based on actual booking data:
-
-| Status | Meaning | Badge |
-|--------|---------|-------|
-| **Waiting list** | Player has an active waiting list entry | Amber outline |
-| **Active** | Player has bookings in a current/future cycle | Green/default |
-| **Available** | Player has trained before but has NO current/future cycle bookings | Blue outline |
-| **Prospect** | Never booked (`has_trained = false`) | Grey outline |
-
-The "Available" status is the key addition — these are players a trainer can quickly identify to fill spots.
-
-### 3. Implementation
-
-**Query enhancement** (TrainerPlayers.tsx, TrainerDashboard.tsx):
-- When loading players, also check if each guest player has any bookings in current/future cycles (join `bookings` → `availability_slots` where `start_time >= now()` and status not cancelled)
-- Check waiting list entries for each player
-- Compute status client-side from these flags
-
-**Display changes:**
-- Update the status badge logic in TrainerPlayers.tsx, TrainerDashboard.tsx, AcademyPlayers.tsx, AcademyDashboard.tsx
-- Add filter tabs or a status filter dropdown so trainers can quickly filter by "Available" players
-
-### Files
-- `src/pages/TrainerScheduleOverview.tsx` — Add `has_trained = true` update in `handleAddPlayerToCycle`
-- `src/pages/TrainerPlayers.tsx` — Enhanced status computation + filter
-- `src/pages/TrainerDashboard.tsx` — Updated badge logic
-- `src/pages/academy/AcademyPlayers.tsx` — Same status updates
-- `src/pages/academy/AcademyDashboard.tsx` — Same status updates
-- `src/components/trainer/AddSlotDialog.tsx` — Update `has_trained` when booking via BulkCreateSheet
-- `src/i18n/locales/en/trainer.json` — Add "available", "waitingList" status labels
-- `src/i18n/locales/nl/trainer.json` — Dutch translations
+## Files
+- `src/pages/TrainerScheduleOverview.tsx`
+- `src/i18n/locales/en/trainer.json`
+- `src/i18n/locales/nl/trainer.json`
 
