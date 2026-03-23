@@ -168,6 +168,7 @@ export function AddSlotDialog({
         rating_system: slotRatingSystem,
         min_rating: slotMinRating,
         max_rating: slotMaxRating,
+        prices_include_vat: pricesIncludeVat,
       });
 
       if (error) throw error;
