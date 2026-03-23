@@ -8,6 +8,9 @@ import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus } fro
 import { format } from "date-fns";
 import { toast } from "sonner";
 
+const formatEuro = (amount: number | null | undefined) =>
+  (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 interface LineItem {
   description: string;
   quantity: number;
@@ -32,6 +35,7 @@ interface PublicInvoiceData {
   };
   academy: {
     name: string;
+    slug: string | null;
     logoUrl: string | null;
     bannerColor: string | null;
     contactEmail: string | null;
@@ -251,7 +255,7 @@ export default function PublicInvoicePay() {
                   <tr key={idx} className="border-b last:border-0">
                     <td className="p-3">{item.description}</td>
                     <td className="text-right p-3">{item.quantity}</td>
-                    <td className="text-right p-3">€{item.total.toFixed(2)}</td>
+                    <td className="text-right p-3">€{formatEuro(item.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -262,17 +266,17 @@ export default function PublicInvoicePay() {
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal</span>
-              <span>€{invoice.subtotal.toFixed(2)}</span>
+              <span>€{formatEuro(invoice.subtotal)}</span>
             </div>
             {invoice.vatAmount > 0 && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">VAT ({invoice.vatRate}%)</span>
-                <span>€{invoice.vatAmount.toFixed(2)}</span>
+                <span className="text-muted-foreground">VAT ({invoice.vatRate ?? 0}%)</span>
+                <span>€{formatEuro(invoice.vatAmount)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-lg pt-2 border-t">
               <span>Total</span>
-              <span>€{invoice.total.toFixed(2)}</span>
+              <span>€{formatEuro(invoice.total)}</span>
             </div>
           </div>
 
@@ -288,7 +292,7 @@ export default function PublicInvoicePay() {
             ) : (
               <CreditCard className="h-5 w-5 mr-2" />
             )}
-            {payLoading ? "Redirecting..." : `Pay €${invoice.total.toFixed(2)}`}
+            {payLoading ? "Redirecting..." : `Pay €${formatEuro(invoice.total)}`}
           </Button>
 
           {academy?.contactEmail && (

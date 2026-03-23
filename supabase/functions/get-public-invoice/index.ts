@@ -55,7 +55,7 @@ serve(async (req) => {
     if (invoice.academy_profile_id) {
       const { data: academyData } = await supabase
         .from("academy_profiles")
-        .select("name, invoice_logo_url, invoice_banner_color, contact_email")
+        .select("name, slug, invoice_logo_url, invoice_banner_color, contact_email")
         .eq("id", invoice.academy_profile_id)
         .single();
       academy = academyData;
@@ -87,6 +87,7 @@ serve(async (req) => {
       },
       academy: academy ? {
         name: academy.name,
+        slug: academy.slug,
         logoUrl,
         bannerColor: academy.invoice_banner_color,
         contactEmail: academy.contact_email,
