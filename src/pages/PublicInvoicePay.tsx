@@ -118,12 +118,13 @@ export default function PublicInvoicePay() {
   if (isPaid) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <SEO title="Invoice Paid" description="This invoice has been paid." noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">Payment Received</h1>
             <p className="text-muted-foreground">
-              Invoice {paidInvoiceNumber} has already been paid. Thank you!
+              This invoice has been paid. Thank you!
             </p>
             <div className="pt-4">
               <Link to="/app/signup/player">
