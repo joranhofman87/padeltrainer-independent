@@ -1036,7 +1036,7 @@ export default function EditProfile() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Certifications</Label>
+                    <Label>{tTrainer('editProfile.certifications')}</Label>
                     <CertificationsPicker
                       selectedCertifications={trainerData.certifications}
                       onChange={(certs) => setTrainerData({ ...trainerData, certifications: certs })}
