@@ -207,7 +207,7 @@ export default function AcademyInvoices() {
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Unpaid")}</p>
-            <p className="text-2xl font-bold">€{totalUnpaid.toFixed(2)}</p>
+            <p className="text-2xl font-bold">€{formatEuro(totalUnpaid)}</p>
           </CardContent>
         </Card>
         <Card>
