@@ -98,7 +98,10 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
 
   const handleRemoveLogo = async () => {
     try {
-      await supabase.storage.from('avatars').remove([`invoice-logos/academy-${academyId}`]);
+      // Try to remove common extensions
+      const extensions = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
+      const paths = extensions.map(ext => `academies/${academyId}/invoice-logo.${ext}`);
+      await supabase.storage.from('avatars').remove(paths);
     } catch {}
     setLogoUrl(null);
   };
