@@ -386,6 +386,7 @@
   "invoices": {
     "title": "Invoices",
     "description": "Manage invoices for your academy",
+    "searchPlaceholder": "Search player name...",
     "editSettings": "Invoice Settings",
     "totalUnpaid": "Unpaid",
     "draft": "Draft",
