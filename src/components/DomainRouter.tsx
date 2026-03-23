@@ -156,6 +156,7 @@ const AcademyEarnings = lazy(() => import('@/pages/academy/AcademyEarnings'));
 const AcademyWaitingList = lazy(() => import('@/pages/academy/AcademyWaitingList'));
 const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
 const AcademyOpenSlots = lazy(() => import('@/pages/academy/AcademyOpenSlots'));
+const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
 
 // Other
 const NotFound = lazy(() => import('@/pages/NotFound'));
