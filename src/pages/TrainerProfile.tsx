@@ -779,6 +779,18 @@ export default function TrainerProfile() {
               }
             />
 
+            {/* About */}
+            {profile.bio && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('common:about', 'About')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground whitespace-pre-line">{profile.bio}</p>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Specializations */}
             {trainer.specializations && trainer.specializations.length > 0 && (
               <Card>
