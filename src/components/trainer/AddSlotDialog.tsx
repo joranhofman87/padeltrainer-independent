@@ -391,6 +391,7 @@ export function BulkCreateSheet({
   const [addPlayerContext, setAddPlayerContext] = useState<{ slotIndex: number; playerIndex: number } | null>(null);
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [trainerHourlyRates, setTrainerHourlyRates] = useState<Map<string, number>>(new Map());
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
 
   useEffect(() => {
     if (open && trainerId) {
