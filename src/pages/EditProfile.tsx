@@ -724,7 +724,7 @@ export default function EditProfile() {
                   {currentRatingSystem && (
                     <p className="text-xs text-muted-foreground">
                       {currentRatingSystem.min_rating} - {currentRatingSystem.max_rating}
-                      {currentRatingSystem.lower_is_better && ' (lower is better)'}
+                      {currentRatingSystem.lower_is_better && ` ${t('editProfile.lowerIsBetter')}`}
                     </p>
                   )}
                 </div>
