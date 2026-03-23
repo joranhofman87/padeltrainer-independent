@@ -635,7 +635,7 @@ export default function EditProfile() {
                   id="bio"
                   value={formData.bio}
                   onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                  placeholder="Tell us about yourself..."
+                  placeholder={t('editProfile.bioPlaceholder')}
                   rows={4}
                 />
               </div>
