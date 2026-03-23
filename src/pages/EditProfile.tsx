@@ -290,8 +290,8 @@ export default function EditProfile() {
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast({
-        title: 'File too large',
-        description: 'Please select an image smaller than 5MB',
+        title: t('editProfile.fileTooLarge'),
+        description: t('editProfile.fileTooLargeDescription'),
         variant: 'destructive',
       });
       return;
