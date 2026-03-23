@@ -254,7 +254,7 @@ export default function PublicInvoicePay() {
                   <tr key={idx} className="border-b last:border-0">
                     <td className="p-3">{item.description}</td>
                     <td className="text-right p-3">{item.quantity}</td>
-                    <td className="text-right p-3">€{item.total.toFixed(2)}</td>
+                    <td className="text-right p-3">€{formatEuro(item.total)}</td>
                   </tr>
                 ))}
               </tbody>
