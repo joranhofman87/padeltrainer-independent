@@ -368,6 +368,7 @@ interface BulkCreateSheetProps {
   onSlotsCreated: () => void;
   availableLocations?: SlotLocation[];
   availableTrainers?: TrainerOption[];
+  prefillFromCyclusId?: string | null;
 }
 
 export function BulkCreateSheet({
