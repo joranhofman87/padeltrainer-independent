@@ -1,66 +1,54 @@
 
 
-# Translate Hardcoded English Strings in EditProfile
+# Fix `has_trained` Status + Smarter Player Categorization
 
 ## Problem
-The Edit Profile page (`/app/trainer/profile`) has ~30 hardcoded English strings that don't go through i18n.
+1. **Bug**: When a player is added to a cycle (via schedule overview or calendar), `has_trained` on `guest_players` is never set to `true`. It stays as the default `false` ("prospect") forever.
+2. **Feature gap**: The current binary (prospect/active) doesn't help trainers quickly find players who could fill open spots.
 
-## Hardcoded Strings Found
+## Proposed Approach
 
-**Header & buttons:**
-- "Edit Profile" (line 490)
-- "Saving..." / "Save" (line 494)
-- "Save Changes" / "Saving..." (line 1076)
+### 1. Fix: Update `has_trained` when booking a player
 
-**Avatar section:**
-- "Your Name" fallback (line 561)
-- "User" fallback (line 562)
-- "Uploading..." / "Change photo" (line 569)
+In `handleAddPlayerToCycle` (TrainerScheduleOverview.tsx) and wherever bookings are created for guest players (BookForPlayerDialog, BulkCreateSheet), add:
 
-**Basic Information card:**
-- "Basic Information" title (line 581)
-- "Full Name" label (line 587)
-- "Phone" label (line 613)
-- "Location" label (line 622)
-- "Bio" label (line 633)
-- Placeholder "Tell us about yourself..." (line 638)
+```sql
+UPDATE guest_players SET has_trained = true WHERE id = <guestPlayerId>
+```
 
-**Player Details card:**
-- "Player Details" title (line 649)
-- "Your padel skill information" description (line 650)
-- "Padel Rating" label (line 712)
-- "(lower is better)" text (line 727)
-- "Your official ... registration number" (line 706)
+This ensures the flag flips to `true` as soon as a player gets their first booking.
 
-**Trainer Details card:**
-- "Trainer Details" title (line 941)
-- "Your professional information" description (line 942)
-- "Hourly Rate (€)" label (line 947)
-- "Coaching Since (year)" label (line 962)
-- "Your Padel Rating" label (line 979)
-- "Rating System" labels (lines 870, 982)
-- "Rating" label (line 1007)
-- "Certifications" label (line 1039)
-- "Specializations" label (line 1048)
-- "Teaching Locations" label (line 1059)
-- "Where do you offer training?..." description (line 1062)
-- "(lower is better)" (line 1028)
-- "Level range:" (line 907)
+### 2. Smarter player status categories
 
-**Toast messages:**
-- "Avatar updated" / "Your profile picture has been updated." (lines 333-334)
-- "Profile updated" / "Your changes have been saved." (lines 443-444)
-- "Upload failed" (line 339)
-- "Invalid file type" / "File too large" (lines 283, 293)
+Replace the simple `has_trained` boolean display with a computed status based on actual booking data:
 
-## Changes
+| Status | Meaning | Badge |
+|--------|---------|-------|
+| **Waiting list** | Player has an active waiting list entry | Amber outline |
+| **Active** | Player has bookings in a current/future cycle | Green/default |
+| **Available** | Player has trained before but has NO current/future cycle bookings | Blue outline |
+| **Prospect** | Never booked (`has_trained = false`) | Grey outline |
 
-### `src/i18n/locales/en/player.json` + `nl/player.json`
-Add keys under `editProfile.*` for all shared and player-specific strings.
+The "Available" status is the key addition — these are players a trainer can quickly identify to fill spots.
 
-### `src/i18n/locales/en/trainer.json` + `nl/trainer.json`
-Add keys under `editProfile.*` for trainer-specific strings (details card, locations, certifications).
+### 3. Implementation
 
-### `src/pages/EditProfile.tsx`
-Replace all hardcoded strings with `t()` / `tTrainer()` calls using the new keys. No layout or logic changes.
+**Query enhancement** (TrainerPlayers.tsx, TrainerDashboard.tsx):
+- When loading players, also check if each guest player has any bookings in current/future cycles (join `bookings` → `availability_slots` where `start_time >= now()` and status not cancelled)
+- Check waiting list entries for each player
+- Compute status client-side from these flags
+
+**Display changes:**
+- Update the status badge logic in TrainerPlayers.tsx, TrainerDashboard.tsx, AcademyPlayers.tsx, AcademyDashboard.tsx
+- Add filter tabs or a status filter dropdown so trainers can quickly filter by "Available" players
+
+### Files
+- `src/pages/TrainerScheduleOverview.tsx` — Add `has_trained = true` update in `handleAddPlayerToCycle`
+- `src/pages/TrainerPlayers.tsx` — Enhanced status computation + filter
+- `src/pages/TrainerDashboard.tsx` — Updated badge logic
+- `src/pages/academy/AcademyPlayers.tsx` — Same status updates
+- `src/pages/academy/AcademyDashboard.tsx` — Same status updates
+- `src/components/trainer/AddSlotDialog.tsx` — Update `has_trained` when booking via BulkCreateSheet
+- `src/i18n/locales/en/trainer.json` — Add "available", "waitingList" status labels
+- `src/i18n/locales/nl/trainer.json` — Dutch translations
 
