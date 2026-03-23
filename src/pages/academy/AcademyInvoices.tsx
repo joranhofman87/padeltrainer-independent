@@ -176,12 +176,29 @@ export default function AcademyInvoices() {
             {t("invoices.description", "Manage invoices for your academy")}
           </p>
         </div>
-        <Link to="/app/academy/settings">
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            {t("invoices.editSettings", "Invoice Settings")}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => backfillMutation.mutate()}
+            disabled={backfillMutation.isPending}
+          >
+            {backfillMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4 mr-2" />
+            )}
+            {backfillMutation.isPending
+              ? t("invoices.generating", "Generating...")
+              : t("invoices.generateMissing", "Generate missing invoices")}
           </Button>
-        </Link>
+          <Link to="/app/academy/settings">
+            <Button variant="outline" size="sm">
+              <Settings className="h-4 w-4 mr-2" />
+              {t("invoices.editSettings", "Invoice Settings")}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}

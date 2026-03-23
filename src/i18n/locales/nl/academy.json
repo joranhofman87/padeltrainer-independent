@@ -420,7 +420,12 @@
     "linkCopied": "Betaallink gekopieerd naar klembord",
     "linkError": "Betaallink genereren mislukt",
     "downloadPdf": "PDF downloaden",
-    "noPdf": "Geen PDF beschikbaar"
+    "noPdf": "Geen PDF beschikbaar",
+    "generateMissing": "Ontbrekende facturen genereren",
+    "generating": "Bezig met genereren...",
+    "backfillSuccess": "{{count}} conceptfacturen aangemaakt",
+    "backfillNone": "Alle boekingen zijn al gefactureerd",
+    "backfillError": "Facturen genereren mislukt"
   },
   "calendar": {
     "created": "Aangemaakt"
