@@ -67,6 +67,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
           invoice_next_number: (data as any).invoice_next_number || 1,
         });
         setLogoUrl((data as any).invoice_logo_url || null);
+        setBannerColor((data as any).invoice_banner_color || '');
         setForwardEmails((data as any).invoice_forward_emails || []);
       }
       setLoading(false);
