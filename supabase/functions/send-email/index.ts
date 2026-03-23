@@ -339,7 +339,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
             </div>
             <p>Please review this request in your dashboard and approve or decline it.</p>
             <p style="margin-top: 24px;">
-              <a href="${data.bookingUrl || 'https://padeltrainer.ai/app/trainer/bookings'}" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Review Request</a>
+              <a href="${data.bookingUrl || 'https://padeltrainer.ai/app/trainer/schedule-overview'}" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Review Request</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
