@@ -375,6 +375,14 @@
     "status": "Status",
     "prospect": "Prospect",
     "active": "Active",
+    "statuses": {
+      "all": "All",
+      "active": "Active",
+      "available": "Available",
+      "prospect": "Prospect",
+      "waiting_list": "Waiting List",
+      "registered": "Registered"
+    },
     "edit": "Edit",
     "delete": "Delete",
     "bookLesson": "Book Session",
