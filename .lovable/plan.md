@@ -1,48 +1,66 @@
 
 
-# Add Player Management to Cycle Edit Dialog
+# Translate Hardcoded English Strings in EditProfile
 
-## Summary
-Add a "Players" section to the existing cycle edit dialog in Schedule Overview, allowing trainers to add/remove players across all sessions in a cycle without leaving the page.
+## Problem
+The Edit Profile page (`/app/trainer/profile`) has ~30 hardcoded English strings that don't go through i18n.
 
-## Current State
-- The edit cycle dialog manages name, price, location, extra costs, privacy, dates, and repeat count
-- Players can only be removed per-session (expand slot → X button) or added via the calendar's BookForPlayerDialog
-- The trainer's guest_players list is already fetched in other components (BookForPlayerDialog, AddSlotDialog)
+## Hardcoded Strings Found
+
+**Header & buttons:**
+- "Edit Profile" (line 490)
+- "Saving..." / "Save" (line 494)
+- "Save Changes" / "Saving..." (line 1076)
+
+**Avatar section:**
+- "Your Name" fallback (line 561)
+- "User" fallback (line 562)
+- "Uploading..." / "Change photo" (line 569)
+
+**Basic Information card:**
+- "Basic Information" title (line 581)
+- "Full Name" label (line 587)
+- "Phone" label (line 613)
+- "Location" label (line 622)
+- "Bio" label (line 633)
+- Placeholder "Tell us about yourself..." (line 638)
+
+**Player Details card:**
+- "Player Details" title (line 649)
+- "Your padel skill information" description (line 650)
+- "Padel Rating" label (line 712)
+- "(lower is better)" text (line 727)
+- "Your official ... registration number" (line 706)
+
+**Trainer Details card:**
+- "Trainer Details" title (line 941)
+- "Your professional information" description (line 942)
+- "Hourly Rate (€)" label (line 947)
+- "Coaching Since (year)" label (line 962)
+- "Your Padel Rating" label (line 979)
+- "Rating System" labels (lines 870, 982)
+- "Rating" label (line 1007)
+- "Certifications" label (line 1039)
+- "Specializations" label (line 1048)
+- "Teaching Locations" label (line 1059)
+- "Where do you offer training?..." description (line 1062)
+- "(lower is better)" (line 1028)
+- "Level range:" (line 907)
+
+**Toast messages:**
+- "Avatar updated" / "Your profile picture has been updated." (lines 333-334)
+- "Profile updated" / "Your changes have been saved." (lines 443-444)
+- "Upload failed" (line 339)
+- "Invalid file type" / "File too large" (lines 283, 293)
 
 ## Changes
 
-### `src/pages/TrainerScheduleOverview.tsx`
+### `src/i18n/locales/en/player.json` + `nl/player.json`
+Add keys under `editProfile.*` for all shared and player-specific strings.
 
-1. **Add state for player management in edit dialog:**
-   - `editCyclePlayers`: list of unique players currently booked across cycle slots (id, name, booking count)
-   - `availableGuestPlayers`: trainer's guest_players list for the dropdown
-   - `addingPlayer` / `removingPlayer` loading states
+### `src/i18n/locales/en/trainer.json` + `nl/trainer.json`
+Add keys under `editProfile.*` for trainer-specific strings (details card, locations, certifications).
 
-2. **Extend `openEditDialog`:**
-   - Collect unique players from all bookings across cycle slots
-   - Fetch trainer's guest_players list for the "add player" dropdown
-
-3. **Add "Players" section in the edit dialog UI (before the location field):**
-   - List current players with their booking count (e.g., "3/14 sessions") and a remove (X) button
-   - "Add player" dropdown/select from the trainer's guest_players (filtered to exclude already-enrolled players)
-   - When adding: create bookings for all future cycle slots
-   - When removing: cancel all bookings for that player across cycle slots (with confirmation)
-
-4. **Add/Remove player handlers:**
-   - `handleAddPlayerToCycle`: Insert bookings for the selected guest_player across all future slots in the cycle
-   - `handleRemovePlayerFromCycle`: Cancel all bookings for that player across all cycle slots (show confirmation first)
-
-### Translation keys
-- `scheduleOverview.players`: "Players"
-- `scheduleOverview.addPlayerToCycle`: "Add player"
-- `scheduleOverview.removeFromCycle`: "Remove from all sessions"
-- `scheduleOverview.noPlayersInCycle`: "No players in this cycle"
-- `scheduleOverview.addedToCycle`: "Player added to cycle"
-- `scheduleOverview.removedFromCycle`: "Player removed from cycle"
-
-## Files
-- `src/pages/TrainerScheduleOverview.tsx` — Add player section to edit dialog + handlers
-- `src/i18n/locales/en/trainer.json` — Translation keys
-- `src/i18n/locales/nl/trainer.json` — Translation keys
+### `src/pages/EditProfile.tsx`
+Replace all hardcoded strings with `t()` / `tTrainer()` calls using the new keys. No layout or logic changes.
 
