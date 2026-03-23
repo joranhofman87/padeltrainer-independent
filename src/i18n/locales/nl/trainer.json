@@ -72,7 +72,15 @@
     "cannotRemoveBookedSlots": "Kan {{count}} sessie(s) met actieve boekingen niet verwijderen",
     "removeCost": "Verwijderen",
     "perSession": "Per sessie",
-    "oneTime": "Eenmalig"
+    "oneTime": "Eenmalig",
+    "players": "Spelers",
+    "addPlayerToCycle": "Speler toevoegen",
+    "removeFromCycle": "Verwijder uit alle sessies",
+    "removeFromCycleConfirm": "{{name}} verwijderen uit alle sessies in deze cyclus?",
+    "noPlayersInCycle": "Geen spelers in deze cyclus",
+    "addedToCycle": "Speler toegevoegd aan alle sessies",
+    "removedFromCycle": "Speler verwijderd uit alle sessies",
+    "sessionsLabel": "{{count}} sessies"
   },
   "profile": {
     "shareProfile": "Profiel Delen",

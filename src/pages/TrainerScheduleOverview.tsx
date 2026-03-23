@@ -143,6 +143,15 @@ export default function TrainerScheduleOverview() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Cycle player management
+  type CyclePlayer = { id: string; name: string; type: 'player' | 'guest'; bookingCount: number };
+  type GuestPlayerOption = { id: string; full_name: string };
+  const [editCyclePlayers, setEditCyclePlayers] = useState<CyclePlayer[]>([]);
+  const [availableGuestPlayers, setAvailableGuestPlayers] = useState<GuestPlayerOption[]>([]);
+  const [addingPlayerToCycle, setAddingPlayerToCycle] = useState(false);
+  const [removingPlayerFromCycle, setRemovingPlayerFromCycle] = useState<string | null>(null);
+  const [confirmRemoveCyclePlayer, setConfirmRemoveCyclePlayer] = useState<CyclePlayer | null>(null);
+
   // Remove player confirm
   const [removeBookingId, setRemoveBookingId] = useState<string | null>(null);
   const [removingBooking, setRemovingBooking] = useState(false);
