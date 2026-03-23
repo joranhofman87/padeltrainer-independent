@@ -265,7 +265,7 @@ export default function PublicInvoicePay() {
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal</span>
-              <span>€{invoice.subtotal.toFixed(2)}</span>
+              <span>€{formatEuro(invoice.subtotal)}</span>
             </div>
             {invoice.vatAmount > 0 && (
               <div className="flex justify-between">
