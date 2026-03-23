@@ -414,9 +414,9 @@ export default function TrainerScheduleOverview() {
                     className="h-7 w-7 shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
-                      openRenameDialog(key, group.name);
+                      openEditDialog(key, group);
                     }}
-                    title={t("scheduleOverview.renameCycle", "Rename")}
+                    title={t("scheduleOverview.editCycle", "Edit cycle")}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
