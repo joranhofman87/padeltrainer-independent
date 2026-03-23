@@ -269,8 +269,8 @@ export default function PublicInvoicePay() {
             </div>
             {invoice.vatAmount > 0 && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">VAT ({invoice.vatRate}%)</span>
-                <span>€{invoice.vatAmount.toFixed(2)}</span>
+                <span className="text-muted-foreground">VAT ({invoice.vatRate ?? 0}%)</span>
+                <span>€{formatEuro(invoice.vatAmount)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-lg pt-2 border-t">
