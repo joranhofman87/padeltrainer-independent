@@ -306,6 +306,8 @@ export default function TrainerScheduleOverview() {
     const firstSlot = group.slots[0];
     const sortedSlots = [...group.slots].sort((a, b) => a.start_time.localeCompare(b.start_time));
     const earliestStart = sortedSlots[0] ? parseISO(sortedSlots[0].start_time) : undefined;
+    const slotStartTime = firstSlot ? format(parseISO(firstSlot.start_time), "HH:mm") : "";
+    const slotEndTime = firstSlot ? format(parseISO(firstSlot.end_time), "HH:mm") : "";
     const extraCosts: ExtraCost[] = Array.isArray(firstSlot?.extra_costs) ? (firstSlot.extra_costs as ExtraCost[]) : [];
     setEditCycleId(cycleId);
     setEditCycleSlotCount(group.slots.length);
@@ -318,6 +320,10 @@ export default function TrainerScheduleOverview() {
       extraCosts: extraCosts.length > 0 ? extraCosts : [],
       startDate: earliestStart,
       originalStartDate: earliestStart,
+      startTime: slotStartTime,
+      endTime: slotEndTime,
+      originalStartTime: slotStartTime,
+      originalEndTime: slotEndTime,
       repeatCount: String(group.slots.length),
       originalRepeatCount: group.slots.length,
       pricesIncludeVat: firstSlot?.prices_include_vat ?? true,
