@@ -40,10 +40,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import {
   Search,
   ChevronDown,
   ChevronRight,
   Calendar,
+  CalendarIcon,
   Users,
   Pencil,
   MapPin,
@@ -52,7 +59,10 @@ import {
   AlertTriangle,
   Lock,
   LockOpen,
+  Plus,
+  Trash2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
 const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es };
