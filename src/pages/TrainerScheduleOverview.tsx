@@ -967,7 +967,6 @@ export default function TrainerScheduleOverview() {
                     </label>
                   </div>
                 </div>
-                </div>
               ))}
             </div>
 
