@@ -538,9 +538,29 @@ export default function TrainerScheduleOverview() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
+                              onClick={() => handleToggleSlotPrivacy(slot.id, slot.is_marked_full)}
+                              disabled={togglingPrivacy === slot.id}
+                              title={
+                                slot.is_marked_full
+                                  ? t("scheduleOverview.markAsPublic", "Mark as public")
+                                  : t("scheduleOverview.markAsPrivate", "Mark as private")
+                              }
+                            >
+                              {togglingPrivacy === slot.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : slot.is_marked_full ? (
+                                <Lock className="h-3.5 w-3.5" />
+                              ) : (
+                                <LockOpen className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
                               onClick={() =>
                                 navigate(
-                                  `/trainer/calendar?date=${format(startDate, "yyyy-MM-dd")}`
+                                  `/app/trainer/calendar?date=${format(startDate, "yyyy-MM-dd")}`
                                 )
                               }
                               title={t("scheduleOverview.edit", "Edit")}
