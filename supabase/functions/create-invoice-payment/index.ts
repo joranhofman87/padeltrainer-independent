@@ -201,6 +201,7 @@ serve(async (req) => {
       description: `Factuur ${invoice.invoice_number}`,
       redirectUrl,
       webhookUrl,
+      profileId: mollieProfileId,
       metadata: {
         invoice_id: invoice.id,
       },
