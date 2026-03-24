@@ -138,6 +138,24 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
       toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
     } else {
       toast({ title: t('invoiceSettings.saved') });
+
+      // If VAT rate changed, bulk-update unpaid invoices
+      if (resolvedVatRate !== initialVatRate) {
+        try {
+          const { error: bulkError } = await supabase.functions.invoke('bulk-update-vat', {
+            body: { academyId, newVatRate: resolvedVatRate, pricesIncludeVat: true },
+          });
+          if (bulkError) {
+            logger.error('Bulk VAT update error', bulkError instanceof Error ? bulkError : new Error(String(bulkError)), { component: 'AcademyInvoiceSettingsCard' });
+            toast({ title: 'Openstaande facturen konden niet worden bijgewerkt', variant: 'destructive' });
+          } else {
+            toast({ title: 'Openstaande facturen bijgewerkt met nieuw BTW-tarief' });
+          }
+        } catch (err) {
+          logger.error('Bulk VAT update failed', err instanceof Error ? err : new Error(String(err)), { component: 'AcademyInvoiceSettingsCard' });
+        }
+        setInitialVatRate(resolvedVatRate);
+      }
     }
     setSaving(false);
   };
