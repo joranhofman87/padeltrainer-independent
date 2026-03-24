@@ -69,11 +69,17 @@ interface PublicInvoiceData {
   } | null;
 }
 
-function PostPaymentCTA() {
+function PostPaymentCTA({ playerName, playerEmail }: { playerName?: string; playerEmail?: string | null }) {
   const { t } = useTranslation();
+  const params = new URLSearchParams();
+  if (playerEmail) params.set('email', playerEmail);
+  if (playerName) params.set('name', playerName);
+  params.set('redirect', '/app/player');
+  const signupUrl = `/app/signup/player?${params.toString()}`;
+
   return (
     <div className="pt-4">
-      <Link to="/app/signup/player">
+      <Link to={signupUrl}>
         <Button variant="outline" className="gap-2">
           <UserPlus className="h-4 w-4" />
           {t("invoice.createAccountToViewInvoices")}
