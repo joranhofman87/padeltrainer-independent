@@ -109,6 +109,8 @@ export interface CycleSettings {
   prices_include_vat?: boolean;
   // Stored trainer availability windows from the proposal wizard
   trainer_availability_windows?: TrainerAvailabilityWindow[];
+  // Pre-selected days & time frames available for registration
+  available_days?: Record<string, { start: string; end: string }[]>;
   [key: string]: unknown; // Allow for Json compatibility
 }
 

@@ -103,6 +103,7 @@ export default function CycleApplicationForm({
   const hasDurationOptions = durationOptions.length > 0;
   const availableDurations = ((cycle.settings as any)?.available_duration_minutes as number[] | undefined) || [...DEFAULT_DURATIONS];
   const effectiveDurations = availableDurations.sort((a, b) => a - b);
+  const cyclAvailableDays = (cycle.settings as any)?.available_days as DayAvailability | undefined;
   
   // Load rating systems
   useEffect(() => {
@@ -183,7 +184,7 @@ export default function CycleApplicationForm({
       lesson_types: ['group3'] as string[],
       preferred_duration_minutes: availableDurations.length === 1 ? availableDurations[0] : (cycle.settings.default_duration_minutes || 60),
       sessions_per_week: 1,
-      availability: {},
+      availability: cyclAvailableDays && Object.keys(cyclAvailableDays).length > 0 ? cyclAvailableDays : {},
       preferred_trainer_id: '',
       location_id: '',
       notes: '',
@@ -903,6 +904,7 @@ export default function CycleApplicationForm({
                     <DayAvailabilityPicker
                       value={field.value as DayAvailability}
                       onChange={field.onChange}
+                      allowedDays={cyclAvailableDays}
                     />
                   </FormControl>
                   <FormMessage />

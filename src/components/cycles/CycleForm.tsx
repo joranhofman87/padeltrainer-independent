@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow, type CyclusOption } from '@/lib/cycles';
+import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
@@ -129,6 +130,9 @@ export default function CycleForm({
   );
   const [customLessonType2, setCustomLessonType2] = useState<string>(
     (cycle?.settings as any)?.custom_lesson_types?.[1] ?? ''
+  );
+  const [availableDays, setAvailableDays] = useState<DayAvailability>(
+    (cycle?.settings as any)?.available_days ?? {}
   );
   const isEdit = !!cycle?.id;
   const isRegistration = formType === 'registration';
@@ -255,6 +259,7 @@ export default function CycleForm({
       setPricingNote((cycle?.settings as any)?.pricing_note ?? '');
       setAvailableDurations((cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
       setCustomDurationInput('');
+      setAvailableDays((cycle?.settings as any)?.available_days ?? {});
     }
   }, [cycle, open]);
 
@@ -346,6 +351,7 @@ export default function CycleForm({
         price_columns: priceColumns.length > 0 ? priceColumns : undefined,
         prices_include_vat: pricesIncludeVat,
         pricing_note: pricingNote && pricingNote !== '<p></p>' ? pricingNote : undefined,
+        available_days: isRegistration && Object.keys(availableDays).length > 0 ? availableDays : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -928,6 +934,20 @@ export default function CycleForm({
                 {t('form.levelRequirementHelp', 'Only players within this level range can register')}
               </FormDescription>
               </div>
+
+            {/* Available Days & Times — for registrations */}
+            {isRegistration && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.availableDays', 'Available Days & Times')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('form.availableDaysHelp', 'Select which days and time frames are available for training. Players will only see these options.')}
+                </p>
+                <DayAvailabilityPicker
+                  value={availableDays}
+                  onChange={setAvailableDays}
+                />
+              </div>
+            )}
 
             {/* Terms / Voorwaarden — for registrations and events */}
             {(isRegistration || isEvent) && (

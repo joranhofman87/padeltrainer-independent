@@ -115,7 +115,9 @@
     "perLesson": "Per lesson",
     "pricesIncludeVat": "Prices are including VAT (incl. BTW)",
     "pricesIncludeVatHint": "Players will see: \"All prices include VAT\"",
-    "pricesExcludeVatHint": "Players will see: \"All prices exclude VAT\""
+    "pricesExcludeVatHint": "Players will see: \"All prices exclude VAT\"",
+    "availableDays": "Available Days & Times",
+    "availableDaysHelp": "Select which days and time frames are available for training. Players will only see these options."
   },
 
   "detail": {

@@ -35,12 +35,15 @@ interface DayAvailabilityPickerProps {
   value: DayAvailability;
   onChange: (value: DayAvailability) => void;
   disabled?: boolean;
+  /** When provided, only show these days and constrain time ranges */
+  allowedDays?: DayAvailability;
 }
 
 export default function DayAvailabilityPicker({
   value,
   onChange,
   disabled = false,
+  allowedDays,
 }: DayAvailabilityPickerProps) {
   const { t } = useTranslation('cycles');
 
@@ -119,9 +122,14 @@ export default function DayAvailabilityPicker({
     return time;
   };
 
+  // When allowedDays is set, only show those days
+  const visibleDays = allowedDays
+    ? DAYS.filter(day => allowedDays[day] && allowedDays[day].length > 0)
+    : DAYS;
+
   return (
     <div className="space-y-3">
-      {DAYS.map((day) => {
+      {visibleDays.map((day) => {
         const dayEnabled = isDayEnabled(day);
         const blocks = value[day] || [];
 
