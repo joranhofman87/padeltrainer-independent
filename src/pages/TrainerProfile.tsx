@@ -692,21 +692,6 @@ export default function TrainerProfile() {
               stats={quickStats}
             />
 
-            <ProfileContactCard
-              title={t('common:contactInfo', 'Contact Info')}
-              description={t('common:contactSharedAfterBooking', 'Contact details are shared after booking a lesson.')}
-              action={
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full"
-                  onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}
-                >
-                  <Calendar className="h-4 w-4 mr-2" />
-                  {t('common:bookToConnect', 'Book to Connect')}
-                </Button>
-              }
-            />
 
             {/* About */}
             {profile.bio && (
