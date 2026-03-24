@@ -487,11 +487,9 @@ export default function AcademyInvoices() {
                                 <Send className="h-4 w-4 mr-1" />{t("invoices.send", "Send")}
                               </Button>
                             )}
-                            {inv.sent_at && (
-                              <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
-                                <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
-                              </Button>
-                            )}
+                            <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
+                              <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
+                            </Button>
                           </>
                         )}
                         {inv.pdf_url && (
