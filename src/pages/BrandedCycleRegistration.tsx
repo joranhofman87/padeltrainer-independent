@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Calendar, Clock, AlertCircle, MapPin, Building2 } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, MapPin } from 'lucide-react';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import CycleDetailDisplay from '@/components/cycles/CycleDetailDisplay';
 import { ProfileLayout } from '@/components/profiles/ProfileLayout';
