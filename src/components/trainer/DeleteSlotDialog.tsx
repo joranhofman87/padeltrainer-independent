@@ -197,7 +197,9 @@ export function DeleteSlotDialog({
       });
     }
 
-    // Add extra costs from cycle
+    // Add extra costs from cycle settings, fall back to slot extra_costs
+    let extraCosts: any[] | null = null;
+
     if (sharedCyclusId) {
       const { data: cycleData } = await supabase
         .from("cycles")
@@ -205,17 +207,26 @@ export function DeleteSlotDialog({
         .eq("id", sharedCyclusId)
         .maybeSingle();
 
-      const extraCosts = (cycleData?.settings as any)?.extra_costs;
-      if (extraCosts && Array.isArray(extraCosts)) {
-        for (const ec of extraCosts) {
-          if (ec.description && ec.price > 0) {
-            const isOneTime = ec.type === 'one_time';
-            lineItems.push({
-              description: ec.description,
-              quantity: isOneTime ? 1 : remainingBookings.length,
-              unit_price: ec.price,
-            });
-          }
+      extraCosts = (cycleData?.settings as any)?.extra_costs || null;
+    }
+
+    // Fallback: use extra_costs from the first slot if no cycle-level costs
+    if (!extraCosts || !Array.isArray(extraCosts) || extraCosts.length === 0) {
+      const slotExtraCosts = (remainingBookings[0].availability_slots as any).extra_costs;
+      if (slotExtraCosts && Array.isArray(slotExtraCosts)) {
+        extraCosts = slotExtraCosts;
+      }
+    }
+
+    if (extraCosts && Array.isArray(extraCosts)) {
+      for (const ec of extraCosts) {
+        if (ec.description && ec.price > 0) {
+          const isOneTime = ec.type === 'one_time';
+          lineItems.push({
+            description: isOneTime ? ec.description : `${ec.description} (per sessie)`,
+            quantity: isOneTime ? 1 : remainingBookings.length,
+            unit_price: ec.price,
+          });
         }
       }
     }
