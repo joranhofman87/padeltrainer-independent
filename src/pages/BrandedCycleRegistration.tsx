@@ -275,38 +275,24 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
       )}
       <ProfileLayout breadcrumbs={breadcrumbs} bannerUrl={owner.banner_url} showBackButton={false}>
         <div className="max-w-2xl mx-auto">
-          {/* Owner branding header */}
-          <div className="flex items-center gap-3 mb-6">
-            <Avatar className="h-10 w-10 sm:h-14 sm:w-14 border bg-muted">
-              <AvatarImage src={owner.logo_url || undefined} alt={owner.name} />
-              <AvatarFallback>
-                <Building2 className="h-6 w-6" />
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">{ownerTypeLabel}</p>
-              <p className="font-semibold text-lg">{owner.name}</p>
+          {/* Location at top */}
+          {cycleLocation && (
+            <div className="flex items-center gap-2 mb-4">
+              {cycleLocation.logo_url ? (
+                <Avatar className="h-8 w-8 shrink-0 border">
+                  <AvatarImage src={cycleLocation.logo_url} alt={cycleLocation.name} />
+                  <AvatarFallback><MapPin className="h-4 w-4" /></AvatarFallback>
+                </Avatar>
+              ) : (
+                <MapPin className="h-5 w-5 text-primary shrink-0" />
+              )}
+              <span className="font-semibold text-base">{cycleLocation.name}, {cycleLocation.city}</span>
             </div>
-          </div>
+          )}
 
-          {/* Cycle hero section */}
-          <div className="mb-6 space-y-3">
-            <h1 className="text-2xl sm:text-3xl font-bold">{cycle.name}</h1>
-
-            {/* Prominent location */}
-            {cycleLocation && (
-              <div className="flex items-center gap-2 text-base font-medium text-foreground">
-                {cycleLocation.logo_url ? (
-                  <Avatar className="h-6 w-6 shrink-0 border">
-                    <AvatarImage src={cycleLocation.logo_url} alt={cycleLocation.name} />
-                    <AvatarFallback><MapPin className="h-3.5 w-3.5" /></AvatarFallback>
-                  </Avatar>
-                ) : (
-                  <MapPin className="h-5 w-5 text-primary shrink-0" />
-                )}
-                <span>{cycleLocation.name}, {cycleLocation.city}</span>
-              </div>
-            )}
+          {/* Cycle title + meta */}
+          <div className="mb-6 space-y-2">
+            <h1 className="text-lg sm:text-xl font-semibold">{cycle.name}</h1>
 
             {/* Compact meta row */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
