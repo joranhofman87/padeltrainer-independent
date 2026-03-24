@@ -1,31 +1,41 @@
 
 
-# Fix: Guest Player Creation Fails from Academy Calendar
+# Bulk Update VAT Setting on Unpaid Invoices & Slots
 
-## Root Cause
-When an academy manager opens the "Add Player" dialog from a slot (via `AddSlotDialog` or `BulkCreateSheet`), the `trainerId` can be `null` if no specific trainer is selected in the filter dropdown (`selectedTrainerId === "all"`). The `AddPlayerDialog` is never given an `academyId`.
+## What happens today
+When a trainer toggles the VAT setting (inclusive ↔ exclusive), it only affects **new** slots. Existing slots and their invoices keep the old setting. If the trainer made a mistake, they have to manually fix everything.
 
-This means the insert sends both `trainer_id: null` and `academy_profile_id: null`, which:
-1. Violates the database CHECK constraint (`trainer_id IS NOT NULL OR academy_profile_id IS NOT NULL`)
-2. Fails RLS because neither condition in the INSERT policy matches
+## Plan
 
-## Fix
+### 1. Add confirmation dialog after VAT toggle
+**File: `src/pages/TrainerBookingSettings.tsx`**
 
-### 1. Pass `academyId` from `AcademyCalendar` to slot dialogs
-**File: `src/pages/academy/AcademyCalendar.tsx`**
+After successfully saving the new `prices_include_vat` value, show a confirmation dialog:
+- "Do you also want to update all unpaid invoices and future sessions to use this new VAT setting?"
+- Two buttons: **Yes, update all** / **No, only new sessions**
 
-Pass `academyId={activeAcademy?.id}` as a new prop to both `AddSlotDialog` and `BulkCreateSheet`.
+### 2. Create edge function to bulk recalculate
+**File: `supabase/functions/bulk-update-vat/index.ts`**
 
-### 2. Accept and forward `academyId` in `AddSlotDialog` / `BulkCreateSheet`
-**File: `src/components/trainer/AddSlotDialog.tsx`**
+Accepts `{ trainerId, pricesIncludeVat }`. Does three things:
 
-- Add `academyId?: string` to both component prop interfaces
-- Forward it to `AddPlayerDialog`: `academyId={academyId}`
+1. **Update all future slots** — set `prices_include_vat` on all `availability_slots` where `trainer_id` matches and `start_time > now()`
+2. **Recalculate unpaid invoices** — for all invoices with `status` in (`draft`, `sent`) belonging to this trainer:
+   - Recalculate `subtotal`, `vat_amount`, `total` based on the new VAT direction (same line item unit prices, different math)
+   - Update the invoice record
+3. **Regenerate PDFs** — call `generate-invoice` for each updated invoice so the HTML/PDF reflects correct totals
 
-### 3. `AddPlayerDialog` already handles `academyId`
-The dialog already accepts `academyId` and inserts it as `academy_profile_id`. No changes needed there.
+Returns a summary: `{ slotsUpdated, invoicesUpdated }`.
 
-## Files
-- `src/pages/academy/AcademyCalendar.tsx` — Pass `academyId` to `AddSlotDialog` and `BulkCreateSheet`
-- `src/components/trainer/AddSlotDialog.tsx` — Add `academyId` prop, forward to `AddPlayerDialog`
+### 3. Wire dialog to edge function
+**File: `src/pages/TrainerBookingSettings.tsx`**
+
+When user clicks "Yes, update all":
+- Call `bulk-update-vat` edge function
+- Show toast with result: "Updated X sessions and Y invoices"
+- On error, show error toast
+
+### Files
+- `src/pages/TrainerBookingSettings.tsx` — Add confirmation dialog after VAT toggle, call edge function
+- `supabase/functions/bulk-update-vat/index.ts` — New edge function for bulk slot + invoice recalculation
 
