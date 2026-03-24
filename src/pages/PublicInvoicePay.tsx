@@ -41,6 +41,7 @@ interface PublicInvoiceData {
     dueDate: string;
     playerName: string;
     playerId: string | null;
+    playerEmail: string | null;
     playerBusinessName: string | null;
     playerAddress: string | null;
     playerBtwNumber: string | null;
