@@ -18,7 +18,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil } from "lucide-react";
+import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -69,8 +69,22 @@ interface PublicInvoiceData {
   } | null;
 }
 
-function PostPaymentCTA({ playerName, playerEmail }: { playerName?: string; playerEmail?: string | null }) {
+function PostPaymentCTA({ playerName, playerEmail, playerId }: { playerName?: string; playerEmail?: string | null; playerId?: string | null }) {
   const { t } = useTranslation();
+
+  if (playerId) {
+    return (
+      <div className="pt-4">
+        <Link to="/app/player">
+          <Button variant="outline" className="gap-2">
+            <LogIn className="h-4 w-4" />
+            {t("invoice.goToMyAccount")}
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
   const params = new URLSearchParams();
   if (playerEmail) params.set('email', playerEmail);
   if (playerName) params.set('name', playerName);
@@ -370,7 +384,7 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentReceived")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentReceivedDescription")}</p>
-            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} />
+            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} playerId={data?.invoice.playerId} />
           </CardContent>
         </Card>
       </div>
@@ -386,7 +400,7 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentProcessing")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentProcessingDescription")}</p>
-            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} />
+            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} playerId={data?.invoice.playerId} />
           </CardContent>
         </Card>
       </div>

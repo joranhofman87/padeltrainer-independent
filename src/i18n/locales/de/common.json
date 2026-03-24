@@ -110,6 +110,7 @@
     "paymentReceivedDescription": "Diese Rechnung wurde bezahlt. Vielen Dank!",
     "invoiceNotFound": "Rechnung nicht gefunden",
     "invoiceNotFoundDescription": "Dieser Rechnungslink ist ungültig oder abgelaufen.",
-    "createAccountToViewInvoices": "Erstelle ein Konto, um deine Rechnungen einzusehen"
+    "createAccountToViewInvoices": "Erstelle ein Konto, um deine Rechnungen einzusehen",
+    "goToMyAccount": "Zu meinem Konto"
   }
 }

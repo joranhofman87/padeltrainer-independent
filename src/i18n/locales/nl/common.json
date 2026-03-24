@@ -281,6 +281,7 @@
     "paymentReceivedDescription": "Deze factuur is betaald. Bedankt!",
     "invoiceNotFound": "Factuur niet gevonden",
     "invoiceNotFoundDescription": "Deze factuurlink is ongeldig of verlopen.",
-    "createAccountToViewInvoices": "Maak een account aan om je facturen te bekijken"
+    "createAccountToViewInvoices": "Maak een account aan om je facturen te bekijken",
+    "goToMyAccount": "Ga naar mijn account"
   }
 }

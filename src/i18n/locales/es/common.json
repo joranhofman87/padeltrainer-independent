@@ -270,6 +270,7 @@
     "paymentReceivedDescription": "Esta factura ha sido pagada. ¡Gracias!",
     "invoiceNotFound": "Factura no encontrada",
     "invoiceNotFoundDescription": "Este enlace de factura es inválido o ha expirado.",
-    "createAccountToViewInvoices": "Crea una cuenta para ver tus facturas"
+    "createAccountToViewInvoices": "Crea una cuenta para ver tus facturas",
+    "goToMyAccount": "Ir a mi cuenta"
   }
 }

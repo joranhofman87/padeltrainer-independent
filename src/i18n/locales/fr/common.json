@@ -110,6 +110,7 @@
     "paymentReceivedDescription": "Cette facture a été payée. Merci !",
     "invoiceNotFound": "Facture introuvable",
     "invoiceNotFoundDescription": "Ce lien de facture est invalide ou a expiré.",
-    "createAccountToViewInvoices": "Créez un compte pour consulter vos factures"
+    "createAccountToViewInvoices": "Créez un compte pour consulter vos factures",
+    "goToMyAccount": "Aller à mon compte"
   }
 }
