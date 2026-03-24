@@ -114,35 +114,12 @@ export default function AdminAcademies() {
     return academy.subscription_status || "inactive";
   };
 
-  // Prepare data with computed fields for sorting
-  const academiesWithComputed = useMemo(() => {
-    return academies.map((a) => ({
+  // Use server-side data directly with client-side sorting
+  const { sortedData, sortConfig, handleSort } = useTableSort<AcademyWithComputedFields>(
+    academies.map((a) => ({
       ...a,
       _subscriptionStatus: getSubscriptionStatus(a),
-    }));
-  }, [academies]);
-
-  const filteredAcademies = academiesWithComputed.filter((a) => {
-    const matchesSearch =
-      !searchQuery ||
-      a.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.contact_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.slug?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const status = a._subscriptionStatus;
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "verified" && a.is_verified) ||
-      (statusFilter === "unverified" && !a.is_verified) ||
-      (statusFilter === "public" && a.is_public) ||
-      (statusFilter === "private" && !a.is_public) ||
-      status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const { sortedData, sortConfig, handleSort } = useTableSort<AcademyWithComputedFields>(
-    filteredAcademies,
+    })),
     "created_at",
     "desc"
   );
