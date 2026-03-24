@@ -386,6 +386,7 @@ export function BulkCreateSheet({
   availableLocations,
   availableTrainers,
   prefillFromCyclusId,
+  academyId,
 }: BulkCreateSheetProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
