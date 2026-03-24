@@ -120,7 +120,7 @@ export function ProfileSocialCard({ socialLinks, title, children }: ProfileSocia
             </a>
           ))}
         </div>
-      </CardContent>
+        {children}
     </Card>
   );
 }
