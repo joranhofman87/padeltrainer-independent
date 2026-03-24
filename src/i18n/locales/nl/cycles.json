@@ -4,33 +4,31 @@
   "cycles": "Cycli",
   "cyclesCount": "cycli",
   "registration": {
-    "openCycles": "Open voor Inschrijving",
+    "openCycles": "Open voor inschrijving",
     "deadline": "Deadline",
-    "notFound": "Inschrijving Niet Gevonden",
+    "notFound": "Inschrijving niet gevonden",
     "noCycles": "Geen open inschrijvingen",
     "checkBackLater": "Kom later terug voor aankomende trainings-cycli."
   },
-  "createCycle": "Cyclus Aanmaken",
-  "createRegistration": "Inschrijving Aanmaken",
-  "editCycle": "Cyclus Bewerken",
-  "deleteCycle": "Cyclus Verwijderen",
+  "createCycle": "Cyclus aanmaken",
+  "createRegistration": "Inschrijving aanmaken",
+  "editCycle": "Cyclus bewerken",
+  "deleteCycle": "Cyclus verwijderen",
   "noCycles": "Nog geen trainingscycli",
   "noCyclesDescription": "Maak je eerste trainingscyclus aan om aanmeldingen te accepteren",
   "noRegistrations": "Nog geen inschrijvingen",
   "noRegistrationsDescription": "Maak een inschrijving aan om interesse van spelers te verzamelen",
   "academyDescription": "Beheer inschrijvingscycli voor je academy programma's",
-  
   "status": {
     "draft": "Concept",
     "open": "Open",
     "closed": "Gesloten",
     "archived": "Gearchiveerd"
   },
-  
-  "editRegistration": "Inschrijving Bewerken",
-  "deleteRegistration": "Inschrijving Verwijderen",
+  "editRegistration": "Inschrijving bewerken",
+  "deleteRegistration": "Inschrijving verwijderen",
   "form": {
-    "name": "Cyclus Naam",
+    "name": "Cyclus naam",
     "namePlaceholder": "bijv. Voorjaarscyclus 2026",
     "description": "Beschrijving",
     "descriptionPlaceholder": "Beschrijf deze trainingscyclus...",
@@ -41,25 +39,25 @@
     "startTime": "Starttijd",
     "endTime": "Eindtijd",
     "enrollmentDeadline": "Inschrijfdeadline",
-    "lessonTypes": "Aangeboden Lesvormen",
+    "lessonTypes": "Aangeboden lesvormen",
     "customLessonTypes": "Eigen lesvormen (optioneel)",
     "customLessonTypePlaceholder": "Eigen type {{number}}",
     "showPreferredTrainer": "Trainer voorkeur toestaan",
     "showPreferredTrainerHelp": "Spelers kunnen een voorkeurscoach aangeven bij aanmelding",
-    "maxGroupSize": "Max Groepsgrootte",
-    "minGroupSize": "Min Groepsgrootte",
+    "maxGroupSize": "Max groepsgrootte",
+    "minGroupSize": "Min groepsgrootte",
     "minGroupSizeHelp": "Minimum aantal spelers vereist per sessie",
-    "assignedTrainer": "Toegewezen Trainer",
+    "assignedTrainer": "Toegewezen trainer",
     "selectTrainer": "Selecteer trainer",
     "assignedTrainerHelp": "De trainer die de lessen geeft in deze cyclus",
     "levelRequirement": "Niveauvereiste",
     "ratingSystem": "Ratingsysteem",
-    "minLevel": "Min Niveau",
-    "maxLevel": "Max Niveau",
+    "minLevel": "Min niveau",
+    "maxLevel": "Max niveau",
     "minLevelPlaceholder": "bijv. 3.0",
     "maxLevelPlaceholder": "bijv. 5.0",
     "levelRequirementHelp": "Alleen spelers binnen dit niveaubereik kunnen zich inschrijven",
-    "applicableTrainers": "Beschikbare Trainers",
+    "applicableTrainers": "Beschikbare trainers",
     "applicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze cyclus",
     "location": "Trainingslocatie",
     "locationHelp": "Voor welke club is deze inschrijving?",
@@ -69,12 +67,12 @@
     "totalPrice": "Totaalprijs (pakket)",
     "currency": "Valuta",
     "pricingHelp": "Stel een prijs per les of een vast pakketprijs in",
-    "save": "Cyclus Opslaan",
-    "saveRegistration": "Inschrijving Opslaan",
-    "saveAndOpen": "Opslaan & Inschrijving Openen",
+    "save": "Cyclus opslaan",
+    "saveRegistration": "Inschrijving opslaan",
+    "saveAndOpen": "Opslaan & inschrijving openen",
     "allowSingleBooking": "Individuele les boeking toestaan",
     "allowSingleBookingHelp": "Indien uit, moeten spelers de hele cyclus boeken",
-    "extraCosts": "Extra Kosten",
+    "extraCosts": "Extra kosten",
     "extraCostsHelp": "Voeg kosten toe zoals baanhuur die als aparte factuurregel verschijnen",
     "perSession": "Per sessie",
     "oneTime": "Eenmalig",
@@ -99,10 +97,10 @@
     "registrationDescriptionHelp": "Zichtbaar voor spelers voordat ze zich aanmelden",
     "successMessage": "Succesbericht",
     "successMessagePlaceholder": "bijv. Bedankt voor je aanmelding! We nemen binnen 2 dagen contact met je op.",
-    "successMessageHelp": "Eigen bericht dat spelers zien nadat ze het formulier hebben ingestuurd. Laat leeg voor het standaard bericht.",
+    "successMessageHelp": "Eigen bericht dat spelers zien nadat ze het formulier hebben ingestuurd. laat leeg voor het standaard bericht.",
     "confirmationEmailText": "Bevestigingsmail tekst",
     "confirmationEmailTextPlaceholder": "bijv. De training begint op 1 maart. Neem je eigen racket mee.",
-    "confirmationEmailTextHelp": "Deze tekst wordt opgenomen in de bevestigingsmail die spelers ontvangen na inschrijving. Laat leeg voor een standaard bevestiging.",
+    "confirmationEmailTextHelp": "Deze tekst wordt opgenomen in de bevestigingsmail die spelers ontvangen na inschrijving. laat leeg voor een standaard bevestiging.",
     "registrationAssignedTrainerHelp": "De trainer die de lessen geeft voor deze inschrijving",
     "registrationApplicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze inschrijving",
     "availableDurations": "Lesduur opties",
@@ -127,9 +125,8 @@
     "pricesIncludeVatHint": "Spelers zien: \"Alle prijzen zijn inclusief BTW\"",
     "pricesExcludeVatHint": "Spelers zien: \"Alle prijzen zijn exclusief BTW\"",
     "availableDays": "Beschikbare dagen & tijden",
-    "availableDaysHelp": "Selecteer op welke dagen en tijden er getraind kan worden. Spelers zien alleen deze opties."
+    "availableDaysHelp": "Selecteer op welke dagen en tijden er getraind kan worden. spelers zien alleen deze opties."
   },
-
   "detail": {
     "priceTable": "Tarieven",
     "type": "Type",
@@ -144,24 +141,21 @@
     "pricesIncludeVat": "Alle prijzen zijn inclusief BTW",
     "pricesExcludeVat": "Alle prijzen zijn exclusief BTW"
   },
-  
   "actions": {
-    "openEnrollment": "Inschrijving Openen",
-    "closeEnrollment": "Inschrijving Sluiten",
-    "generateProposals": "Voorstellen Genereren",
-    "viewRequests": "Aanmeldingen Bekijken",
+    "openEnrollment": "Inschrijving openen",
+    "closeEnrollment": "Inschrijving sluiten",
+    "generateProposals": "Voorstellen genereren",
+    "viewRequests": "Aanmeldingen bekijken",
     "archive": "Archiveren",
-    "shareLink": "Registratielink Delen",
+    "shareLink": "Registratielink delen",
     "linkCopied": "Registratielink gekopieerd!",
     "copyLink": "Registratielink kopiëren"
   },
-  
   "paymentBadge": {
     "upfront": "Vooraf betalen",
     "invoice_after_weeks": "Factuur na {{count}} wk",
     "manual": "Handmatige betaling"
   },
-  
   "stats": {
     "applications": "Aanmeldingen",
     "new": "Nieuw",
@@ -169,11 +163,10 @@
     "confirmed": "Bevestigd",
     "waitlist": "Wachtlijst"
   },
-  
   "application": {
-    "title": "Aanmelden voor Training",
+    "title": "Aanmelden voor training",
     "subtitle": "Dien je aanmelding in voor {{cycleName}}",
-    "applyButton": "Aanmelden voor Training",
+    "applyButton": "Aanmelden voor training",
     "loginRequired": "Log in om je aan te melden",
     "alreadyApplied": "Je hebt je al aangemeld",
     "enrollmentClosed": "Inschrijving is gesloten",
@@ -181,16 +174,14 @@
     "apply": "Aanmelden",
     "signUpAndApply": "Aanmelden & inschrijven",
     "loginToApply": "Log in om aan te melden",
-    
     "form": {
-      "personalInfo": "Persoonlijke Informatie",
-      "name": "Volledige Naam",
+      "personalInfo": "Persoonlijke informatie",
+      "name": "Volledige naam",
       "email": "E-mail",
       "phone": "Telefoon (optioneel)",
-      "rating": "Actuele Rating",
-      "ratingLabel": "Actuele Rating",
+      "rating": "Actuele rating",
+      "ratingLabel": "Actuele rating",
       "ratingSystem": "Ratingsysteem",
-      
       "preferences": "Trainingsvoorkeuren",
       "lessonType": "Lesvorm",
       "lessonTypeRequired": "Selecteer minimaal één lesvorm",
@@ -202,7 +193,7 @@
         "group4": "Groep (4 spelers)",
         "kids": "Kindertraining"
       },
-      "preferredDuration": "Gewenste Duur",
+      "preferredDuration": "Gewenste duur",
       "sessionsPerWeek": "Trainingen per week",
       "chooseCyclus": "Kies je cyclus",
       "chooseDuration": "Kies je gewenste duur",
@@ -211,7 +202,7 @@
       "lessons": "lessen",
       "perLesson": "per les",
       "groupNotes": "Groepsvoorkeuren (optioneel)",
-      "groupNotesPlaceholder": "Bijv. Ik wil graag samen trainen met Jan en Sara. We hebben al een groep van 4.",
+      "groupNotesPlaceholder": "Bijv. ik wil graag samen trainen met Jan en sara. we hebben al een groep van 4.",
       "sessionsPerWeekHelp": "Hoe vaak per week wil je trainen?",
       "timesPerWeek": "per week",
       "preferredTrainer": "Voorkeurstrainer (optioneel)",
@@ -219,8 +210,7 @@
       "preferredTrainersHelp": "Selecteer trainers waar je graag mee wilt trainen",
       "noPreference": "Geen voorkeur",
       "location": "Voorkeurslocatie",
-      
-      "availability": "Je Beschikbaarheid",
+      "availability": "Je beschikbaarheid",
       "availabilityLabel": "Beschikbaarheid",
       "availabilityHelp": "Selecteer de dagen en tijden waarop je beschikbaar bent voor training, hoe meer tijden je aangeeft hoe groter de kans dat je wordt ingedeeld.",
       "preferredDays": "Voorkeursdagen",
@@ -246,30 +236,26 @@
         "weekend": "Weekenden"
       },
       "customTimes": "Of stel specifieke tijden in",
-      
       "additional": "Meer informatie over je padel ervaring",
       "birthDate": "Geboortedatum",
       "birthDateRequired": "Vul je geboortedatum in",
       "notes": "Ervaring",
-      "notesPlaceholder": "Hoe lang speel je al padel? Heb je al eerder les gehad? Heb je een tennisachtergrond?",
+      "notesPlaceholder": "Hoe lang speel je al padel? heb je al eerder les gehad? heb je een tennisachtergrond?",
       "experienceRequired": "Vertel ons over je ervaring",
       "consent": "Ik ga akkoord om te worden gecontacteerd over mijn aanmelding en stem in met de verwerking van mijn gegevens.",
       "consentRequired": "Je moet akkoord gaan om door te gaan",
-      
       "createAccount": "Maak je account aan",
-      "createAccountHelp": "Kies een wachtwoord om je account aan te maken. Hiermee kun je je aanmelding volgen en je boekingen beheren.",
+      "createAccountHelp": "Kies een wachtwoord om je account aan te maken. hiermee kun je je aanmelding volgen en je boekingen beheren.",
       "password": "Wachtwoord",
       "passwordPlaceholder": "Kies een wachtwoord",
       "passwordMin": "Wachtwoord moet minimaal 6 tekens bevatten",
-
       "nameMin": "Naam moet minimaal 2 tekens bevatten",
       "emailInvalid": "Vul een geldig e-mailadres in",
       "submitError": "Aanmelding kon niet worden verzonden",
-      "submit": "Aanmelding Indienen",
+      "submit": "Aanmelding indienen",
       "submitting": "Bezig met indienen...",
       "validationSummary": "Controleer de volgende velden:"
     },
-    
     "summary": {
       "title": "Jouw keuze",
       "lessonType": "Lestype",
@@ -283,18 +269,16 @@
       "priceIndication": "Prijsindicatie",
       "indicativeNote": "Indicatieve prijzen — bevestigd na inschrijving"
     },
-    
     "success": {
-      "title": "Aanmelding Ingediend!",
-      "message": "Bedankt voor je aanmelding. Je ontvangt binnenkort een bevestigingsmail.",
+      "title": "Aanmelding ingediend!",
+      "message": "Bedankt voor je aanmelding. je ontvangt binnenkort een bevestigingsmail.",
       "whatNext": "Wat gebeurt er nu?",
       "step1": "We bekijken je aanmelding en beschikbaarheid",
       "step2": "Je wordt gekoppeld aan een passend trainingsmoment",
       "step3": "Je ontvangt een e-mail met je bevestigde schema",
-      "backToProfile": "Terug naar Profiel"
+      "backToProfile": "Terug naar profiel"
     }
   },
-  
   "intakeRequests": {
     "title": "Aanmeldingen",
     "noRequests": "Nog geen aanmeldingen",
@@ -304,8 +288,8 @@
     "addManualTitle": "Handmatige registratie",
     "addManualDescription": "Registreer een speler die zich telefonisch, per e-mail of persoonlijk heeft aangemeld",
     "addManualSuccess": "Registratie succesvol toegevoegd",
-    "addManualSuccessNewAccount": "Registratie toegevoegd. Er is een spelersaccount aangemaakt.",
-    "profileCreationNote": "Als deze speler nog geen account heeft, wordt er automatisch een aangemaakt. Ze ontvangen een e-mail ter bevestiging van hun inschrijving.",
+    "addManualSuccessNewAccount": "Registratie toegevoegd. er is een spelersaccount aangemaakt.",
+    "profileCreationNote": "Als deze speler nog geen account heeft, wordt er automatisch een aangemaakt. ze ontvangen een e-mail ter bevestiging van hun inschrijving.",
     "filters": {
       "all": "Alle",
       "new": "Nieuw",
@@ -321,7 +305,7 @@
       "lessonType": "Lesvorm",
       "rating": "Rating",
       "availability": "Beschikbaarheid",
-      "preferredTrainer": "Voork. Trainer",
+      "preferredTrainer": "Voork. trainer",
       "status": "Status",
       "applied": "Aangemeld"
     },
@@ -331,39 +315,38 @@
       "preferences": "Voorkeuren",
       "availability": "Beschikbaarheid",
       "notes": "Opmerkingen",
-      "proposal": "Voorgestelde Toewijzing",
+      "proposal": "Voorgestelde toewijzing",
       "noProposal": "Nog geen voorstel gegenereerd"
     },
     "actions": {
-      "propose": "Voorstel Genereren",
+      "propose": "Voorstel genereren",
       "confirm": "Bevestigen",
       "reject": "Afwijzen",
-      "waitlist": "Naar Wachtlijst",
-      "viewProposal": "Voorstel Bekijken",
+      "waitlist": "Naar wachtlijst",
+      "viewProposal": "Voorstel bekijken",
       "delete": "Verwijderen",
       "deleteSuccess": "Aanmelding verwijderd"
     },
     "delete": {
       "title": "Aanmelding verwijderen?",
-      "description": "Dit verwijdert de aanmelding permanent. Deze actie kan niet ongedaan worden gemaakt.",
+      "description": "Dit verwijdert de aanmelding permanent. deze actie kan niet ongedaan worden gemaakt.",
       "cancel": "Annuleren",
       "confirm": "Verwijderen"
     }
   },
-  
   "proposals": {
-    "title": "Voorgestelde Toewijzingen",
+    "title": "Voorgestelde toewijzingen",
     "noProposals": "Nog geen voorstellen",
     "noProposalsDescription": "Genereer voorstellen vanuit de aanmeldingen",
-    "generateAll": "Alle Voorstellen Genereren",
-    "approveAll": "Alles Goedkeuren",
+    "generateAll": "Alle voorstellen genereren",
+    "approveAll": "Alles goedkeuren",
     "generating": "Voorstellen genereren...",
     "generated": "{{count}} voorstellen gegenereerd",
     "card": {
       "player": "Speler",
-      "slot": "Voorgesteld Moment",
+      "slot": "Voorgesteld moment",
       "trainer": "Trainer",
-      "confidence": "Match Score",
+      "confidence": "Match score",
       "rationale": "Waarom deze match?"
     },
     "rationaleTypes": {
@@ -380,40 +363,40 @@
       "approve": "Goedkeuren",
       "edit": "Bewerken",
       "reject": "Afwijzen",
-      "changeSlot": "Moment Wijzigen",
-      "changeTrainer": "Trainer Wijzigen"
+      "changeSlot": "Moment wijzigen",
+      "changeTrainer": "Trainer wijzigen"
     },
     "reassign": {
       "title": "Verplaats {{name}}",
       "description": "Selecteer een ander moment om deze speler naartoe te verplaatsen",
       "current": "Huidige toewijzing",
       "noSlots": "Geen andere momenten beschikbaar",
-      "confirm": "Speler Verplaatsen",
+      "confirm": "Speler verplaatsen",
       "success": "{{name}} is verplaatst"
     },
     "confirmDialog": {
-      "title": "Toewijzing Bevestigen",
+      "title": "Toewijzing bevestigen",
       "message": "Dit voegt de speler toe aan het moment en stuurt een bevestigingsmail.",
-      "confirm": "Bevestigen & Versturen",
+      "confirm": "Bevestigen & versturen",
       "cancel": "Annuleren"
     },
     "weights": {
-      "title": "Score Instellingen",
+      "title": "Score instellingen",
       "description": "Pas aan hoe spelers worden gematcht aan slots",
       "timeMatch": "Tijdvoorkeur",
       "timeMatchHelp": "Hoeveel gewicht aan het matchen van voorkeursdagen/-tijden",
-      "preferredTrainer": "Trainer Voorkeur",
+      "preferredTrainer": "Trainer voorkeur",
       "preferredTrainerHelp": "Hoeveel gewicht wanneer de voorkeurstrainer beschikbaar is",
-      "levelCompatible": "Niveau Compatibiliteit",
+      "levelCompatible": "Niveau compatibiliteit",
       "levelCompatibleHelp": "Hoeveel gewicht aan rating/vaardigheidsniveau matching",
       "priorityBonus": "Registratievolgorde",
       "priorityBonusHelp": "Bonus voor spelers die eerder hebben geregistreerd",
-      "capacityAvailable": "Slot Capaciteit",
+      "capacityAvailable": "Slot capaciteit",
       "capacityAvailableHelp": "Houd rekening met beschikbare plekken in het slot",
-      "total": "Totaal Gewicht",
+      "total": "Totaal gewicht",
       "saveAsDefault": "Opslaan als standaard voor deze cyclus",
-      "generate": "Voorstellen Genereren",
-      "sessionsPerWeek": "Trainingen Per Week",
+      "generate": "Voorstellen genereren",
+      "sessionsPerWeek": "Trainingen per week",
       "sessionsPerWeekHelp": "Prioriteer spelers die minder sessies willen om meer unieke personen te helpen",
       "presets": {
         "balanced": "Gebalanceerd",
@@ -421,20 +404,19 @@
         "levelFocused": "Niveau-gericht"
       },
       "customize": "Gewichten aanpassen",
-      "ratingSettings": "Niveau Compatibiliteit",
-      "maxRatingSpread": "Max. Niveauverschil",
+      "ratingSettings": "Niveau compatibiliteit",
+      "maxRatingSpread": "Max. niveauverschil",
       "maxRatingSpreadHelp": "Maximaal toegestaan niveauverschil tussen spelers in dezelfde groep",
       "ratingSystem": "Ratingsysteem",
       "spreadPlaceholder": "bijv. 0.5 voor KNLTB"
     },
     "guard": {
       "title": "Belangrijk",
-      "description": "Om voorstellen te genereren, moet je eerst slots of trainingscycli in je agenda aanmaken. Zodra de slots zijn aangemaakt, kunnen we spelers matchen op basis van hun beschikbaarheid en voorkeuren.",
-      "goToCalendar": "Ga naar Agenda",
+      "description": "Om voorstellen te genereren, moet je eerst slots of trainingscycli in je agenda aanmaken. zodra de slots zijn aangemaakt, kunnen we spelers matchen op basis van hun beschikbaarheid en voorkeuren.",
+      "goToCalendar": "Ga naar agenda",
       "continue": "Doorgaan"
     }
   },
-
   "unplacedSidebar": {
     "title": "Niet ingedeeld",
     "search": "Spelers zoeken...",
@@ -444,7 +426,6 @@
     "playerAssigned": "Speler toegewezen aan slot",
     "playerUnassigned": "Speler terug naar niet-ingedeeld"
   },
-
   "skipReasons": {
     "no_matching_slots": {
       "short": "Geen match",
@@ -472,18 +453,16 @@
       "description": "Het verschil met andere spelers in beschikbare slots overschrijdt het toegestane maximum."
     }
   },
-  
   "emails": {
-    "applicationReceived": "Aanmelding Ontvangen",
-    "scheduleConfirmed": "Je Trainingsschema is Bevestigd"
+    "applicationReceived": "Aanmelding ontvangen",
+    "scheduleConfirmed": "Je trainingsschema is bevestigd"
   },
-
   "workflow": {
     "generate": "Genereren",
     "generateDesc": "{{count}} nieuwe aanmeldingen",
-    "review": "Bekijken & Bewerken",
+    "review": "Bekijken & bewerken",
     "reviewDesc": "{{count}} voorstellen",
-    "approve": "Goedkeuren & Inplannen",
+    "approve": "Goedkeuren & inplannen",
     "approveDesc": "{{count}} bevestigd"
   }
 }

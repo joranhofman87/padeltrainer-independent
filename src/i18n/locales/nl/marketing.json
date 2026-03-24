@@ -11,7 +11,7 @@
   "footer": {
     "tagline": "Alles wat je nodig hebt om je padelspel te verbeteren.",
     "platform": "Platform",
-    "findTrainers": "Vind Padeltrainers",
+    "findTrainers": "Vind padeltrainers",
     "locations": "Padelclubs",
     "academies": "Padelacademies",
     "learnPadel": "Leer Padel",
@@ -19,12 +19,12 @@
     "registerClub": "Registreer je club",
     "company": "Bedrijf",
     "aboutUs": "Over ons",
-    "becomePartner": "Word Partner",
+    "becomePartner": "Word partner",
     "contact": "Contact",
     "legal": "Juridisch",
     "privacyPolicy": "Privacybeleid",
-    "termsOfService": "Algemene Voorwaarden",
-    "copyright": "© {{year}} PadelTrainer.ai. Alle rechten voorbehouden."
+    "termsOfService": "Algemene voorwaarden",
+    "copyright": "© {{year}} PadelTrainer.ai. alle rechten voorbehouden."
   },
   "home": {
     "badge": "Van beginner tot pro",
@@ -32,8 +32,8 @@
       "title": "Vind jouw perfecte",
       "titleHighlight": "Padeltrainer",
       "subtitle": "Maak kennis met gecertificeerde trainers, boek lessen die passen bij jouw niveau en begin vandaag nog met verbeteren.",
-      "cta": "Start als Speler",
-      "ctaSecondary": "Word Trainer"
+      "cta": "Start als speler",
+      "ctaSecondary": "Word trainer"
     },
     "trust": {
       "freeToJoin": "Gratis aanmelden",
@@ -41,36 +41,36 @@
       "securePayments": "Veilige betalingen"
     },
     "stats": {
-      "trainers": "Gecertificeerde Trainers",
-      "lessons": "Geboekte Sessies",
-      "rating": "Gemiddelde Beoordeling",
+      "trainers": "Gecertificeerde trainers",
+      "lessons": "Geboekte sessies",
+      "rating": "Gemiddelde beoordeling",
       "cities": "Steden"
     },
     "features": {
       "title": "Alles wat je nodig hebt om je spel te verbeteren",
       "subtitle": "Van het vinden van de juiste trainer tot boeken en betalen, wij maken het hele proces naadloos.",
       "verified": {
-        "title": "Geverifieerde Trainers",
-        "description": "Elke trainer is geverifieerd met KNLTB-referenties en echte reviews van spelers."
+        "title": "Geverifieerde trainers",
+        "description": "Elke trainer is geverifieerd met kNLTB-referenties en echte reviews van spelers."
       },
       "booking": {
-        "title": "Makkelijk Boeken",
-        "description": "Boek lessen met slechts een paar klikken. Flexibele planning die past bij jouw leven."
+        "title": "Makkelijk boeken",
+        "description": "Boek lessen met slechts een paar klikken. flexibele planning die past bij jouw leven."
       },
       "matching": {
-        "title": "Niveau Matching",
+        "title": "Niveau matching",
         "description": "Vind trainers die gespecialiseerd zijn in jouw niveau, van beginner tot gevorderd."
       },
       "local": {
-        "title": "Lokale Trainers",
+        "title": "Lokale trainers",
         "description": "Verbind met trainers bij jou in de buurt, wereldwijd."
       },
       "payments": {
-        "title": "Veilige Betalingen",
+        "title": "Veilige betalingen",
         "description": "Betaal veilig via ons platform met iDEAL en creditcard."
       },
       "progress": {
-        "title": "Volg Voortgang",
+        "title": "Volg voortgang",
         "description": "Monitor je verbetering en krijg inzichten in je padel-reis."
       }
     },
@@ -79,7 +79,7 @@
       "subtitle": "Begin in 3 eenvoudige stappen",
       "step1": {
         "title": "Maak je profiel aan",
-        "description": "Meld je aan en voeg je KNLTB-rating toe voor gepersonaliseerde trainer-aanbevelingen."
+        "description": "Meld je aan en voeg je kNLTB-rating toe voor gepersonaliseerde trainer-aanbevelingen."
       },
       "step2": {
         "title": "Vind je trainer",
@@ -95,14 +95,14 @@
       "subtitle": "Bekijk wat onze community te zeggen heeft",
       "items": {
         "1": {
-          "name": "Thomas de Vries",
+          "name": "Thomas de vries",
           "role": "Speler sinds 2023",
-          "content": "Binnen enkele minuten een geweldige trainer gevonden. Mijn spel is in slechts 2 maanden aanzienlijk verbeterd!"
+          "content": "Binnen enkele minuten een geweldige trainer gevonden. mijn spel is in slechts 2 maanden aanzienlijk verbeterd!"
         },
         "2": {
-          "name": "Lisa van den Berg",
-          "role": "KNLTB Niveau 6",
-          "content": "De niveau-matching is spot-on. Mijn trainer weet precies hoe hij me naar het volgende niveau moet pushen."
+          "name": "Lisa van den berg",
+          "role": "KNLTB niveau 6",
+          "content": "De niveau-matching is spot-on. mijn trainer weet precies hoe hij me naar het volgende niveau moet pushen."
         },
         "3": {
           "name": "Mark Jansen",
@@ -114,37 +114,37 @@
     "cta": {
       "title": "Klaar om je padelspel naar een hoger niveau te tillen?",
       "subtitle": "Sluit je aan bij duizenden spelers die al verbeteren met PadelTrainer.ai",
-      "button": "Gratis Beginnen",
-      "browseTrainers": "Bekijk Trainers"
+      "button": "Gratis beginnen",
+      "browseTrainers": "Bekijk trainers"
     }
   },
   "pricing": {
     "hero": {
       "title": "Eenvoudige, transparante prijzen",
-      "subtitle": "Gratis voor spelers. Flexibele abonnementen voor trainers om hun bedrijf te laten groeien."
+      "subtitle": "Gratis voor spelers. flexibele abonnementen voor trainers om hun bedrijf te laten groeien."
     },
     "players": {
-      "badge": "Voor Spelers",
-      "title": "Altijd Gratis",
-      "description": "Geen abonnementskosten. Betaal alleen voor de lessen die je boekt.",
-      "cta": "Gratis Beginnen",
+      "badge": "Voor spelers",
+      "title": "Altijd gratis",
+      "description": "Geen abonnementskosten. betaal alleen voor de lessen die je boekt.",
+      "cta": "Gratis beginnen",
       "features": {
         "browse": "Bekijk alle geverifieerde trainers",
         "reviews": "Lees reviews en beoordelingen",
         "book": "Boek lessen online",
         "payments": "Veilige iDEAL & kaartbetalingen",
-        "calendar": "Google Agenda synchronisatie",
+        "calendar": "Google agenda synchronisatie",
         "notifications": "E-mailnotificaties",
         "tracking": "Volg je boekingen"
       }
     },
     "trainers": {
-      "badge": "Voor Trainers",
+      "badge": "Voor trainers",
       "title": "Kies je abonnement",
-      "subtitle": "Begin gratis en upgrade naarmate je bedrijf groeit. Lagere platformkosten bij hogere niveaus.",
+      "subtitle": "Begin gratis en upgrade naarmate je bedrijf groeit. lagere platformkosten bij hogere niveaus.",
       "platformFee": "per boeking",
-      "feeTooltip": "Een vast bedrag wordt afgetrokken van elke lesbetaling. Hogere abonnementen betalen minder.",
-      "mostPopular": "Meest Populair",
+      "feeTooltip": "Een vast bedrag wordt afgetrokken van elke lesbetaling. hogere abonnementen betalen minder.",
+      "mostPopular": "Meest populair",
       "monthly": "Maandelijks",
       "yearly": "Jaarlijks",
       "month": "maand",
@@ -156,7 +156,7 @@
           "name": "Starter",
           "price": "€9",
           "description": "Alles wat je nodig hebt om je administratie te stroomlijnen.",
-          "cta": "Start Gratis",
+          "cta": "Start gratis",
           "featureList": [
             {
               "title": "Trainersprofiel",
@@ -216,7 +216,7 @@
           "period": "/maand",
           "yearlyPrice": "€831,60/jaar (bespaar 30%)",
           "description": "Voor trainingsacademies",
-          "cta": "Neem Contact Op",
+          "cta": "Neem contact op",
           "featureList": [
             {
               "title": "Voeg tot 15 trainers toe",
@@ -232,21 +232,21 @@
             },
             {
               "title": "€0,50 per boekingskosten",
-              "description": "Stroomlijn je boekhouding. Laat klanten vooraf betalen en synchroniseer facturen met je boekhoudsoftware. Laagste kosten per boeking"
+              "description": "Stroomlijn je boekhouding. laat klanten vooraf betalen en synchroniseer facturen met je boekhoudsoftware. laagste kosten per boeking"
             }
           ]
         }
       }
     },
     "clubs": {
-      "badge": "Voor Clubs",
-      "title": "Club Abonnement",
+      "badge": "Voor clubs",
+      "title": "Club abonnement",
       "subtitle": "Compleet platform voor het beheren van de trainingsactiviteiten van je club",
       "price": "€199",
       "period": "/maand",
       "billedAnnually": "Jaarlijks gefactureerd voor €2.388/jaar",
       "trialBadge": "14 dagen gratis proberen",
-      "cta": "Start Gratis Proefperiode",
+      "cta": "Start gratis proefperiode",
       "features": {
         "trainers": "Onbeperkt trainers",
         "calendar": "Gecombineerde trainer agenda",
@@ -267,19 +267,19 @@
         },
         "changePlans": {
           "q": "Kan ik later van abonnement wisselen?",
-          "a": "Ja! Je kunt op elk moment upgraden of downgraden. Bij upgraden krijg je direct toegang tot nieuwe functies. Bij downgraden gaan de wijzigingen in aan het einde van je factureringsperiode."
+          "a": "Ja! je kunt op elk moment upgraden of downgraden. bij upgraden krijg je direct toegang tot nieuwe functies. bij downgraden gaan de wijzigingen in aan het einde van je factureringsperiode."
         },
         "contract": {
           "q": "Is er een contract of verplichting?",
-          "a": "Geen langlopende contracten. Alle abonnementen worden maandelijks of jaarlijks gefactureerd en je kunt op elk moment opzeggen. Jaarlijkse abonnementen bieden 20% korting."
+          "a": "Geen langlopende contracten. alle abonnementen worden maandelijks of jaarlijks gefactureerd en je kunt op elk moment opzeggen. jaarlijkse abonnementen bieden 20% korting."
         },
         "payouts": {
           "q": "Hoe werken uitbetalingen?",
-          "a": "Betalingen worden verwerkt via Mollie, onze betrouwbare betalingspartner. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
+          "a": "Betalingen worden verwerkt via Mollie, onze betrouwbare betalingspartner. nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
         },
         "clubTrial": {
           "q": "Hoe werkt de gratis proefperiode voor clubs?",
-          "a": "Clubs krijgen 14 dagen gratis toegang tot alle functies. Geen creditcard nodig om te starten. Na de proefperiode wordt je jaarlijks gefactureerd voor €2.388/jaar."
+          "a": "Clubs krijgen 14 dagen gratis toegang tot alle functies. geen creditcard nodig om te starten. na de proefperiode wordt je jaarlijks gefactureerd voor €2.388/jaar."
         }
       }
     }
@@ -291,20 +291,20 @@
       "subtitle": "Onze missie is om elke padelspeler in Nederland te verbinden met de perfecte trainer om hun spel te verbeteren."
     },
     "story": {
-      "title": "Ons Verhaal",
-      "p1": "PadelTrainer.ai is ontstaan uit een simpele frustratie: het vinden van een goede padeltrainer zou niet zo moeilijk moeten zijn. Toen padel explosief groeide in Nederland, zagen we spelers worstelen om kwaliteitstraining te vinden, terwijl getalenteerde trainers geen gemakkelijke manier hadden om nieuwe studenten te bereiken.",
-      "p2": "We besloten het platform te bouwen dat we zelf hadden gewild. Een platform waar spelers gemakkelijk geverifieerde trainers kunnen vinden die passen bij hun niveau, en waar trainers hun bedrijf kunnen laten groeien zonder het gedoe van het beheren van boekingen, betalingen en planning.",
-      "p3": "Vandaag verbindt PadelTrainer.ai honderden trainers met duizenden spelers door heel Nederland. We zijn trots om deel uit te maken van de groeiende padelgemeenschap en enthousiast over waar we naartoe gaan."
+      "title": "Ons verhaal",
+      "p1": "PadelTrainer.ai is ontstaan uit een simpele frustratie: het vinden van een goede padeltrainer zou niet zo moeilijk moeten zijn. toen padel explosief groeide in Nederland, zagen we spelers worstelen om kwaliteitstraining te vinden, terwijl getalenteerde trainers geen gemakkelijke manier hadden om nieuwe studenten te bereiken.",
+      "p2": "We besloten het platform te bouwen dat we zelf hadden gewild. een platform waar spelers gemakkelijk geverifieerde trainers kunnen vinden die passen bij hun niveau, en waar trainers hun bedrijf kunnen laten groeien zonder het gedoe van het beheren van boekingen, betalingen en planning.",
+      "p3": "Vandaag verbindt PadelTrainer.ai honderden trainers met duizenden spelers door heel Nederland. we zijn trots om deel uit te maken van de groeiende padelgemeenschap en enthousiast over waar we naartoe gaan."
     },
     "values": {
-      "title": "Onze Waarden",
+      "title": "Onze waarden",
       "subtitle": "De principes die alles wat we doen sturen",
       "quality": {
-        "title": "Kwaliteit Eerst",
+        "title": "Kwaliteit eerst",
         "description": "We verifiëren elke trainer om ervoor te zorgen dat spelers de best mogelijke ervaring krijgen."
       },
       "playerFocused": {
-        "title": "Speler Gericht",
+        "title": "Speler gericht",
         "description": "Elke functie die we bouwen begint met de vraag: hoe helpt dit spelers verbeteren?"
       },
       "community": {
@@ -325,15 +325,15 @@
       "title": "Word lid van onze gemeenschap",
       "subtitle": "Of je nu een speler bent die wil verbeteren of een trainer die wil groeien, we heten je welkom.",
       "getStarted": "Aan de slag",
-      "contact": "Neem Contact Op"
+      "contact": "Neem contact op"
     }
   },
   "blog": {
     "title": "Blog",
-    "subtitle": "Tips, inzichten en verhalen uit de Nederlandse padelgemeenschap",
-    "recentArticles": "Recente Artikelen",
+    "subtitle": "Tips, inzichten en verhalen uit de nederlandse padelgemeenschap",
+    "recentArticles": "Recente artikelen",
     "categories": {
-      "tips": "Tips & Advies",
+      "tips": "Tips & advies",
       "industry": "Branche",
       "training": "Training",
       "spotlight": "Spotlight",
@@ -354,29 +354,29 @@
     "backToBlog": "Terug naar Blog",
     "readyToFind": "Klaar om je perfecte trainer te vinden?",
     "browseTrainers": "Bekijk geverifieerde trainers die passen bij jouw niveau.",
-    "findTrainers": "Vind Trainers"
+    "findTrainers": "Vind trainers"
   },
   "privacy": {
     "title": "Privacybeleid",
     "lastUpdated": "Laatst bijgewerkt: {{date}}",
     "sections": {
       "introduction": {
-        "title": "1. Inleiding",
-        "content": "Welkom bij PadelTrainer.ai (\"wij,\" \"ons,\" of \"onze\"). Wij zetten ons in voor de bescherming van uw persoonlijke gegevens en uw recht op privacy. Dit Privacybeleid legt uit hoe wij uw informatie verzamelen, gebruiken, openbaar maken en beschermen wanneer u ons platform gebruikt."
+        "title": "1. inleiding",
+        "content": "Welkom bij PadelTrainer.ai (\"wij,\" \"ons,\" of \"onze\"). wij zetten ons in voor de bescherming van uw persoonlijke gegevens en uw recht op privacy. dit privacybeleid legt uit hoe wij uw informatie verzamelen, gebruiken, openbaar maken en beschermen wanneer u ons platform gebruikt."
       },
       "dataCollection": {
-        "title": "2. Gegevens die wij verzamelen",
+        "title": "2. gegevens die wij verzamelen",
         "intro": "Wij verzamelen informatie die u rechtstreeks aan ons verstrekt, waaronder:",
         "items": {
-          "account": "Accountgegevens: Naam, e-mailadres, telefoonnummer en profielfoto wanneer u een account aanmaakt.",
-          "profile": "Profielgegevens: Voor trainers omvat dit certificeringen, ervaring, specialisaties, KNLTB-ratings en beschikbaarheidsschema's.",
-          "booking": "Boekingsinformatie: Lesdetails, boekingsgeschiedenis en communicatie tussen spelers en trainers.",
-          "payment": "Betalingsinformatie: Wij gebruiken Mollie voor betalingsverwerking. Wij slaan geen volledige creditcardgegevens op onze servers op.",
-          "communications": "Communicatie: Wanneer u contact met ons opneemt of reageert op enquêtes, verzamelen wij de informatie die u verstrekt."
+          "account": "Accountgegevens: naam, e-mailadres, telefoonnummer en profielfoto wanneer u een account aanmaakt.",
+          "profile": "Profielgegevens: voor trainers omvat dit certificeringen, ervaring, specialisaties, kNLTB-ratings en beschikbaarheidsschema's.",
+          "booking": "Boekingsinformatie: lesdetails, boekingsgeschiedenis en communicatie tussen spelers en trainers.",
+          "payment": "Betalingsinformatie: wij gebruiken Mollie voor betalingsverwerking. wij slaan geen volledige creditcardgegevens op onze servers op.",
+          "communications": "Communicatie: wanneer u contact met ons opneemt of reageert op enquêtes, verzamelen wij de informatie die u verstrekt."
         }
       },
       "usage": {
-        "title": "3. Hoe wij uw gegevens gebruiken",
+        "title": "3. hoe wij uw gegevens gebruiken",
         "intro": "Wij gebruiken de verzamelde informatie voor:",
         "items": {
           "provide": "Het leveren, onderhouden en verbeteren van ons platform",
@@ -390,17 +390,17 @@
         }
       },
       "sharing": {
-        "title": "4. Delen van informatie",
+        "title": "4. delen van informatie",
         "intro": "Wij kunnen uw informatie delen in de volgende situaties:",
         "items": {
-          "users": "Met Trainers/Spelers: Om boekingen te faciliteren, delen wij relevante contact- en boekingsinformatie tussen partijen.",
-          "providers": "Dienstverleners: Wij gebruiken externe diensten voor betalingsverwerking (Mollie), e-mailbezorging (Resend) en hostinginfrastructuur.",
-          "legal": "Wettelijke vereisten: Wij kunnen informatie openbaar maken indien wettelijk vereist of om onze rechten, privacy, veiligheid of eigendom te beschermen.",
-          "business": "Bedrijfsoverdrachten: In verband met een fusie, overname of verkoop van activa."
+          "users": "Met trainers/Spelers: om boekingen te faciliteren, delen wij relevante contact- en boekingsinformatie tussen partijen.",
+          "providers": "Dienstverleners: wij gebruiken externe diensten voor betalingsverwerking (Mollie), e-mailbezorging (Resend) en hostinginfrastructuur.",
+          "legal": "Wettelijke vereisten: wij kunnen informatie openbaar maken indien wettelijk vereist of om onze rechten, privacy, veiligheid of eigendom te beschermen.",
+          "business": "Bedrijfsoverdrachten: in verband met een fusie, overname of verkoop van activa."
         }
       },
       "cookies": {
-        "title": "5. Cookies en tracking",
+        "title": "5. cookies en tracking",
         "intro": "Wij gebruiken cookies en vergelijkbare trackingtechnologieën om:",
         "items": {
           "login": "U ingelogd te houden op uw account",
@@ -411,38 +411,38 @@
         "control": "U kunt cookies beheren via uw browserinstellingen, maar het uitschakelen ervan kan de functionaliteit van het platform beïnvloeden."
       },
       "security": {
-        "title": "6. Gegevensbeveiliging",
-        "content": "Wij implementeren passende technische en organisatorische beveiligingsmaatregelen om uw persoonlijke informatie te beschermen. Echter, geen enkele methode van overdracht via internet of elektronische opslag is 100% veilig. Wij streven ernaar commercieel aanvaardbare middelen te gebruiken om uw gegevens te beschermen, maar kunnen geen absolute veiligheid garanderen."
+        "title": "6. gegevensbeveiliging",
+        "content": "Wij implementeren passende technische en organisatorische beveiligingsmaatregelen om uw persoonlijke informatie te beschermen. echter, geen enkele methode van overdracht via internet of elektronische opslag is 100% veilig. wij streven ernaar commercieel aanvaardbare middelen te gebruiken om uw gegevens te beschermen, maar kunnen geen absolute veiligheid garanderen."
       },
       "gdpr": {
-        "title": "7. Uw rechten (AVG)",
-        "intro": "Onder de Algemene Verordening Gegevensbescherming (AVG) heeft u de volgende rechten:",
+        "title": "7. uw rechten (AVG)",
+        "intro": "Onder de algemene verordening gegevensbescherming (AVG) heeft u de volgende rechten:",
         "items": {
-          "access": "Inzage: Vraag een kopie van uw persoonlijke gegevens op",
-          "rectification": "Rectificatie: Vraag correctie van onjuiste gegevens",
-          "erasure": "Wissen: Vraag verwijdering van uw gegevens (\"recht om vergeten te worden\")",
-          "restriction": "Beperking: Vraag beperking van gegevensverwerking",
-          "portability": "Overdraagbaarheid: Vraag overdracht van uw gegevens naar een andere dienst",
-          "objection": "Bezwaar: Maak bezwaar tegen verwerking van uw gegevens",
-          "withdraw": "Toestemming intrekken: Trek eerder gegeven toestemming in"
+          "access": "Inzage: vraag een kopie van uw persoonlijke gegevens op",
+          "rectification": "Rectificatie: vraag correctie van onjuiste gegevens",
+          "erasure": "Wissen: vraag verwijdering van uw gegevens (\"recht om vergeten te worden\")",
+          "restriction": "Beperking: vraag beperking van gegevensverwerking",
+          "portability": "Overdraagbaarheid: vraag overdracht van uw gegevens naar een andere dienst",
+          "objection": "Bezwaar: maak bezwaar tegen verwerking van uw gegevens",
+          "withdraw": "Toestemming intrekken: trek eerder gegeven toestemming in"
         },
         "contact": "Om deze rechten uit te oefenen, neem contact met ons op via privacy@padeltrainer.ai."
       },
       "retention": {
-        "title": "8. Gegevensbewaring",
-        "content": "Wij bewaren uw persoonlijke informatie zolang uw account actief is of zolang nodig is om u diensten te leveren. Wij kunnen bepaalde informatie bewaren voor legitieme bedrijfsdoeleinden of zoals wettelijk vereist, zoals voor belasting-, juridische rapportage- en auditverplichtingen."
+        "title": "8. gegevensbewaring",
+        "content": "Wij bewaren uw persoonlijke informatie zolang uw account actief is of zolang nodig is om u diensten te leveren. wij kunnen bepaalde informatie bewaren voor legitieme bedrijfsdoeleinden of zoals wettelijk vereist, zoals voor belasting-, juridische rapportage- en auditverplichtingen."
       },
       "children": {
-        "title": "9. Privacy van kinderen",
-        "content": "Ons platform is niet bedoeld voor kinderen onder de 16 jaar. Wij verzamelen niet bewust persoonlijke informatie van kinderen onder de 16. Als wij ontdekken dat wij gegevens van een kind onder de 16 hebben verzameld, zullen wij stappen ondernemen om die informatie te verwijderen."
+        "title": "9. privacy van kinderen",
+        "content": "Ons platform is niet bedoeld voor kinderen onder de 16 jaar. wij verzamelen niet bewust persoonlijke informatie van kinderen onder de 16. als wij ontdekken dat wij gegevens van een kind onder de 16 hebben verzameld, zullen wij stappen ondernemen om die informatie te verwijderen."
       },
       "changes": {
-        "title": "10. Wijzigingen in dit beleid",
-        "content": "Wij kunnen dit Privacybeleid van tijd tot tijd bijwerken. Wij zullen u op de hoogte stellen van eventuele wijzigingen door het nieuwe beleid op deze pagina te plaatsen en de datum \"Laatst bijgewerkt\" bij te werken. Wij moedigen u aan dit beleid periodiek te bekijken."
+        "title": "10. wijzigingen in dit beleid",
+        "content": "Wij kunnen dit privacybeleid van tijd tot tijd bijwerken. wij zullen u op de hoogte stellen van eventuele wijzigingen door het nieuwe beleid op deze pagina te plaatsen en de datum \"Laatst bijgewerkt\" bij te werken. wij moedigen u aan dit beleid periodiek te bekijken."
       },
       "contact": {
-        "title": "11. Contact opnemen",
-        "content": "Als u vragen heeft over dit Privacybeleid of onze gegevenspraktijken, neem dan contact met ons op via:",
+        "title": "11. contact opnemen",
+        "content": "Als u vragen heeft over dit privacybeleid of onze gegevenspraktijken, neem dan contact met ons op via:",
         "company": "PadelTrainer.ai",
         "emailPrivacy": "E-mail: privacy@padeltrainer.ai",
         "emailGeneral": "Algemene vragen: hello@padeltrainer.ai"
@@ -450,19 +450,19 @@
     }
   },
   "terms": {
-    "title": "Algemene Voorwaarden",
+    "title": "Algemene voorwaarden",
     "lastUpdated": "Laatst bijgewerkt: {{date}}",
     "sections": {
       "agreement": {
-        "title": "1. Aanvaarding van voorwaarden",
-        "content": "Door toegang tot of gebruik van PadelTrainer.ai (\"Platform\") stemt u in met deze Algemene Voorwaarden (\"Voorwaarden\"). Als u het niet eens bent met enig deel van deze voorwaarden, mag u het Platform niet gebruiken. Deze Voorwaarden zijn van toepassing op alle bezoekers, gebruikers en anderen die toegang hebben tot of gebruik maken van het Platform."
+        "title": "1. aanvaarding van voorwaarden",
+        "content": "Door toegang tot of gebruik van PadelTrainer.ai (\"Platform\") stemt u in met deze algemene voorwaarden (\"Voorwaarden\"). als u het niet eens bent met enig deel van deze voorwaarden, mag u het platform niet gebruiken. deze voorwaarden zijn van toepassing op alle bezoekers, gebruikers en anderen die toegang hebben tot of gebruik maken van het platform."
       },
       "description": {
-        "title": "2. Beschrijving van de dienst",
-        "content": "PadelTrainer.ai is een online platform dat padelspelers (\"Spelers\") verbindt met padeltrainers (\"Trainers\"). Wij bieden planning-, boekings- en betalingsverwerkingstools om trainingssessies te faciliteren. PadelTrainer.ai fungeert als tussenpersoon en is geen partij bij de overeenkomsten tussen Spelers en Trainers."
+        "title": "2. beschrijving van de dienst",
+        "content": "PadelTrainer.ai is een online platform dat padelspelers (\"Spelers\") verbindt met padeltrainers (\"Trainers\"). wij bieden planning-, boekings- en betalingsverwerkingstools om trainingssessies te faciliteren. PadelTrainer.ai fungeert als tussenpersoon en is geen partij bij de overeenkomsten tussen spelers en trainers."
       },
       "accounts": {
-        "title": "3. Gebruikersaccounts",
+        "title": "3. gebruikersaccounts",
         "intro": "Wanneer u een account bij ons aanmaakt, moet u nauwkeurige, volledige en actuele informatie verstrekken. U bent verantwoordelijk voor:",
         "items": {
           "confidentiality": "Het vertrouwelijk houden van uw account en wachtwoord",
@@ -472,8 +472,8 @@
         }
       },
       "players": {
-        "title": "4. Voor spelers",
-        "intro": "Als Speler die ons Platform gebruikt, stemt u ermee in om:",
+        "title": "4. voor spelers",
+        "intro": "Als speler die ons platform gebruikt, stemt u ermee in om:",
         "items": {
           "accurate": "Nauwkeurige informatie te verstrekken bij het boeken van lessen",
           "pay": "Te betalen voor geboekte lessen zoals overeengekomen",
@@ -484,8 +484,8 @@
         }
       },
       "trainers": {
-        "title": "5. Voor trainers",
-        "intro": "Als Trainer die ons Platform gebruikt, stemt u ermee in om:",
+        "title": "5. voor trainers",
+        "intro": "Als trainer die ons platform gebruikt, stemt u ermee in om:",
         "items": {
           "qualifications": "Nauwkeurige informatie te verstrekken over uw kwalificaties en ervaring",
           "certifications": "Passende certificeringen en verzekeringen te handhaven",
@@ -497,42 +497,42 @@
         }
       },
       "payments": {
-        "title": "6. Betalingen en kosten",
+        "title": "6. betalingen en kosten",
         "forPlayers": {
-          "title": "Voor Spelers:",
-          "content": "Betaling wordt verwerkt via Mollie op het moment van boeken. De volledige lesprijs wordt in rekening gebracht op uw betaalmethode. Terugbetalingen worden afgehandeld volgens ons annuleringsbeleid."
+          "title": "Voor spelers:",
+          "content": "Betaling wordt verwerkt via Mollie op het moment van boeken. de volledige lesprijs wordt in rekening gebracht op uw betaalmethode. terugbetalingen worden afgehandeld volgens ons annuleringsbeleid."
         },
         "forTrainers": {
-          "title": "Voor Trainers:",
-          "content": "PadelTrainer.ai brengt een vast bedrag per voltooide boeking in rekening, afhankelijk van uw abonnement (bijv. €1,00 voor Starter, €0,75 voor Professional, €0,50 voor Academy). Het resterende bedrag wordt overgemaakt naar uw gekoppelde Mollie-account. Abonnementskosten worden gefactureerd volgens uw gekozen plan."
+          "title": "Voor trainers:",
+          "content": "PadelTrainer.ai brengt een vast bedrag per voltooide boeking in rekening, afhankelijk van uw abonnement (bijv. €1,00 voor Starter, €0,75 voor Professional, €0,50 voor academy). het resterende bedrag wordt overgemaakt naar uw gekoppelde mollie-account. abonnementskosten worden gefactureerd volgens uw gekozen plan."
         }
       },
       "cancellation": {
-        "title": "7. Annuleringsbeleid",
+        "title": "7. annuleringsbeleid",
         "items": {
-          "24h": "Meer dan 24 uur van tevoren: Volledige terugbetaling",
+          "24h": "Meer dan 24 uur van tevoren: volledige terugbetaling",
           "12h": "12-24 uur van tevoren: 50% terugbetaling",
-          "less12h": "Minder dan 12 uur van tevoren: Geen terugbetaling",
-          "trainer": "Annuleringen door trainer: Spelers ontvangen volledige terugbetaling voor elke door de trainer geïnitieerde annulering"
+          "less12h": "Minder dan 12 uur van tevoren: geen terugbetaling",
+          "trainer": "Annuleringen door trainer: spelers ontvangen volledige terugbetaling voor elke door de trainer geïnitieerde annulering"
         },
         "note": "Herhaalde annuleringen door een van beide partijen kunnen leiden tot accountbeperkingen of beëindiging."
       },
       "ip": {
-        "title": "8. Intellectueel eigendom",
-        "content": "Het Platform en de originele inhoud, functies en functionaliteit zijn eigendom van PadelTrainer.ai en worden beschermd door internationale auteursrechten, handelsmerken, octrooien, handelsgeheimen en andere intellectuele eigendomswetten. U mag geen inhoud van ons Platform reproduceren, distribueren, wijzigen, afgeleide werken maken, openbaar tonen of exploiteren zonder voorafgaande schriftelijke toestemming."
+        "title": "8. intellectueel eigendom",
+        "content": "Het platform en de originele inhoud, functies en functionaliteit zijn eigendom van PadelTrainer.ai en worden beschermd door internationale auteursrechten, handelsmerken, octrooien, handelsgeheimen en andere intellectuele eigendomswetten. U mag geen inhoud van ons platform reproduceren, distribueren, wijzigen, afgeleide werken maken, openbaar tonen of exploiteren zonder voorafgaande schriftelijke toestemming."
       },
       "userContent": {
-        "title": "9. Gebruikersinhoud",
-        "content": "U behoudt het eigendom van alle inhoud die u indient bij het Platform (reviews, profielinformatie, etc.). Door inhoud in te dienen, verleent u ons een wereldwijde, niet-exclusieve, royaltyvrije licentie om dergelijke inhoud te gebruiken, reproduceren, wijzigen en weer te geven in verband met de werking van het Platform. U bent als enige verantwoordelijk voor de inhoud die u indient en moet ervoor zorgen dat deze geen rechten van derden of toepasselijke wetten schendt."
+        "title": "9. gebruikersinhoud",
+        "content": "U behoudt het eigendom van alle inhoud die u indient bij het platform (reviews, profielinformatie, etc.). door inhoud in te dienen, verleent u ons een wereldwijde, niet-exclusieve, royaltyvrije licentie om dergelijke inhoud te gebruiken, reproduceren, wijzigen en weer te geven in verband met de werking van het platform. U bent als enige verantwoordelijk voor de inhoud die u indient en moet ervoor zorgen dat deze geen rechten van derden of toepasselijke wetten schendt."
       },
       "prohibited": {
-        "title": "10. Verboden activiteiten",
+        "title": "10. verboden activiteiten",
         "intro": "U stemt ermee in om niet:",
         "items": {
-          "illegal": "Het Platform te gebruiken voor illegale doeleinden",
+          "illegal": "Het platform te gebruiken voor illegale doeleinden",
           "harass": "Andere gebruikers te intimideren, misbruiken of schaden",
           "false": "Valse of misleidende informatie te verstrekken",
-          "circumvent": "Te proberen het Platform te omzeilen om kosten te vermijden",
+          "circumvent": "Te proberen het platform te omzeilen om kosten te vermijden",
           "scrape": "Gebruikersgegevens te verzamelen zonder toestemming",
           "malicious": "Kwaadaardige code te uploaden of te proberen de platformbeveiliging te compromitteren",
           "impersonate": "Zich voor te doen als een andere persoon of entiteit",
@@ -540,40 +540,40 @@
         }
       },
       "disclaimer": {
-        "title": "11. Disclaimer van garanties",
-        "content": "Het Platform wordt geleverd op een \"AS IS\" en \"AS AVAILABLE\" basis. Wij geven geen garanties, uitdrukkelijk of impliciet, met betrekking tot de werking van het Platform of de informatie, inhoud of materialen die erin zijn opgenomen. Wij garanderen niet de nauwkeurigheid, betrouwbaarheid of volledigheid van enige informatie op het Platform. Wij zijn niet verantwoordelijk voor de kwaliteit, veiligheid of legaliteit van trainingssessies die via het Platform worden geregeld."
+        "title": "11. disclaimer van garanties",
+        "content": "Het platform wordt geleverd op een \"AS IS\" en \"AS AVAILABLE\" basis. wij geven geen garanties, uitdrukkelijk of impliciet, met betrekking tot de werking van het platform of de informatie, inhoud of materialen die erin zijn opgenomen. wij garanderen niet de nauwkeurigheid, betrouwbaarheid of volledigheid van enige informatie op het platform. wij zijn niet verantwoordelijk voor de kwaliteit, veiligheid of legaliteit van trainingssessies die via het platform worden geregeld."
       },
       "liability": {
-        "title": "12. Beperking van aansprakelijkheid",
-        "content": "Voor zover maximaal toegestaan door de wet, is PadelTrainer.ai niet aansprakelijk voor indirecte, incidentele, speciale, gevolgschade of punitieve schade, inclusief verlies van winst, gegevens of andere immateriële verliezen, als gevolg van uw gebruik of onvermogen om het Platform te gebruiken, enig gedrag van derden op het Platform, of ongeautoriseerde toegang tot uw account."
+        "title": "12. beperking van aansprakelijkheid",
+        "content": "Voor zover maximaal toegestaan door de wet, is PadelTrainer.ai niet aansprakelijk voor indirecte, incidentele, speciale, gevolgschade of punitieve schade, inclusief verlies van winst, gegevens of andere immateriële verliezen, als gevolg van uw gebruik of onvermogen om het platform te gebruiken, enig gedrag van derden op het platform, of ongeautoriseerde toegang tot uw account."
       },
       "indemnification": {
-        "title": "13. Vrijwaring",
-        "content": "U stemt ermee in PadelTrainer.ai, haar functionarissen, directeuren, werknemers en agenten te vrijwaren van alle claims, schade, verliezen, aansprakelijkheden en kosten (inclusief juridische kosten) die voortvloeien uit uw gebruik van het Platform, schending van deze Voorwaarden, of inbreuk op rechten van derden."
+        "title": "13. vrijwaring",
+        "content": "U stemt ermee in PadelTrainer.ai, haar functionarissen, directeuren, werknemers en agenten te vrijwaren van alle claims, schade, verliezen, aansprakelijkheden en kosten (inclusief juridische kosten) die voortvloeien uit uw gebruik van het platform, schending van deze voorwaarden, of inbreuk op rechten van derden."
       },
       "disputes": {
-        "title": "14. Geschillenbeslechting",
+        "title": "14. geschillenbeslechting",
         "intro": "In geval van geschillen:",
         "items": {
-          "users": "Tussen Gebruikers: Wij moedigen Spelers en Trainers aan geschillen rechtstreeks op te lossen. Wij kunnen helpen bij bemiddeling, maar zijn daartoe niet verplicht.",
-          "platform": "Met PadelTrainer.ai: Geschillen met het Platform worden opgelost door bindende arbitrage in overeenstemming met Nederlands recht, of via de rechtbanken van Nederland."
+          "users": "Tussen gebruikers: wij moedigen spelers en trainers aan geschillen rechtstreeks op te lossen. wij kunnen helpen bij bemiddeling, maar zijn daartoe niet verplicht.",
+          "platform": "Met PadelTrainer.ai: geschillen met het platform worden opgelost door bindende arbitrage in overeenstemming met nederlands recht, of via de rechtbanken van Nederland."
         }
       },
       "termination": {
-        "title": "15. Beëindiging",
-        "content": "Wij kunnen uw account onmiddellijk beëindigen of opschorten, zonder voorafgaande kennisgeving, om welke reden dan ook, inclusief schending van deze Voorwaarden. Bij beëindiging eindigt uw recht om het Platform te gebruiken onmiddellijk. Alle bepalingen van de Voorwaarden die beëindiging moeten overleven, blijven van kracht, inclusief eigendomsbepalingen, garantiedisclaimers en beperkingen van aansprakelijkheid."
+        "title": "15. beëindiging",
+        "content": "Wij kunnen uw account onmiddellijk beëindigen of opschorten, zonder voorafgaande kennisgeving, om welke reden dan ook, inclusief schending van deze voorwaarden. bij beëindiging eindigt uw recht om het platform te gebruiken onmiddellijk. alle bepalingen van de voorwaarden die beëindiging moeten overleven, blijven van kracht, inclusief eigendomsbepalingen, garantiedisclaimers en beperkingen van aansprakelijkheid."
       },
       "changes": {
-        "title": "16. Wijzigingen in voorwaarden",
-        "content": "Wij behouden ons het recht voor deze Voorwaarden op elk moment te wijzigen of te vervangen. Als wijzigingen materieel zijn, zullen wij ten minste 30 dagen van tevoren kennisgeving geven voordat de nieuwe voorwaarden van kracht worden. Wat een materiële wijziging vormt, wordt naar eigen goeddunken bepaald. Voortgezet gebruik van het Platform na wijzigingen vormt aanvaarding van de nieuwe Voorwaarden."
+        "title": "16. wijzigingen in voorwaarden",
+        "content": "Wij behouden ons het recht voor deze voorwaarden op elk moment te wijzigen of te vervangen. als wijzigingen materieel zijn, zullen wij ten minste 30 dagen van tevoren kennisgeving geven voordat de nieuwe voorwaarden van kracht worden. wat een materiële wijziging vormt, wordt naar eigen goeddunken bepaald. voortgezet gebruik van het platform na wijzigingen vormt aanvaarding van de nieuwe voorwaarden."
       },
       "governing": {
-        "title": "17. Toepasselijk recht",
-        "content": "Deze Voorwaarden worden beheerst door en geïnterpreteerd in overeenstemming met de wetten van Nederland, zonder rekening te houden met conflicterende wettelijke bepalingen. Ons nalaten om enig recht of bepaling van deze Voorwaarden af te dwingen wordt niet beschouwd als een verklaring van afstand van die rechten."
+        "title": "17. toepasselijk recht",
+        "content": "Deze voorwaarden worden beheerst door en geïnterpreteerd in overeenstemming met de wetten van Nederland, zonder rekening te houden met conflicterende wettelijke bepalingen. ons nalaten om enig recht of bepaling van deze voorwaarden af te dwingen wordt niet beschouwd als een verklaring van afstand van die rechten."
       },
       "contact": {
-        "title": "18. Contact opnemen",
-        "content": "Als u vragen heeft over deze Voorwaarden, neem dan contact met ons op via:",
+        "title": "18. contact opnemen",
+        "content": "Als u vragen heeft over deze voorwaarden, neem dan contact met ons op via:",
         "company": "PadelTrainer.ai",
         "emailLegal": "E-mail: legal@padeltrainer.ai",
         "emailGeneral": "Algemene vragen: hello@padeltrainer.ai"
@@ -581,8 +581,8 @@
     }
   },
   "partner": {
-    "title": "Word Partner",
-    "subtitle": "Geïnteresseerd in een samenwerking met PadelTrainer.ai? Laten we bespreken hoe we samen kunnen werken om padel in Nederland te laten groeien.",
+    "title": "Word partner",
+    "subtitle": "Geïnteresseerd in een samenwerking met PadelTrainer.ai? laten we bespreken hoe we samen kunnen werken om padel in Nederland te laten groeien.",
     "thankYouTitle": "Bedankt voor je interesse!",
     "thankYouMessage": "We hebben je bericht ontvangen en nemen binnen 2 werkdagen contact met je op.",
     "successTitle": "Bericht verzonden!",
@@ -593,14 +593,14 @@
       "name": "Je naam",
       "namePlaceholder": "Jan Jansen",
       "companyName": "Bedrijfsnaam",
-      "companyNamePlaceholder": "Padelclub Amsterdam",
+      "companyNamePlaceholder": "Padelclub amsterdam",
       "email": "E-mailadres",
       "emailPlaceholder": "jan@voorbeeld.nl",
       "phone": "Telefoonnummer",
       "phonePlaceholder": "+31 6 12345678",
       "message": "Hoe kunnen we helpen?",
       "messagePlaceholder": "Vertel ons over je bedrijf en hoe je wilt samenwerken met PadelTrainer.ai...",
-      "submit": "Verstuur Bericht",
+      "submit": "Verstuur bericht",
       "sending": "Versturen..."
     }
   },
@@ -615,7 +615,7 @@
       "mock_booking_title": "Agenda vandaag",
       "mock_booking_slot": "Beschikbaar",
       "mock_booking_booked": "Geboekt",
-      "mock_booking_sync": "Gesynchroniseerd met Google Calendar",
+      "mock_booking_sync": "Gesynchroniseerd met Google calendar",
       "mock_reg_title": "Open inschrijving",
       "mock_reg_subtitle": "inschrijvingen deze week",
       "mock_reg_groups": "groepen ingepland",
@@ -630,27 +630,27 @@
     "cta": {
       "startTrial": "Start gratis proefperiode",
       "watchDemo": "Bekijk hoe het werkt",
-      "trustMicrocopy": "Spelers zijn altijd gratis. Trainers starten met een gratis proefperiode, daarna vanaf €9/maand."
+      "trustMicrocopy": "Spelers zijn altijd gratis. trainers starten met een gratis proefperiode, daarna vanaf €9/maand."
     },
     "socialProof": {
       "headline": "Gebruikt door trainers en academies wereldwijd",
-      "testimonial1": "Ik heb mijn avonden terug. Geen lesplanning meer via WhatsApp.",
-      "author1": "Bram Meijer",
-      "author1role": "Hoofdtrainer, Bramos Padel Academy",
-      "testimonial2": "Spelers boeken nu zelf. Ik hoef veel minder achter betalingen aan.",
-      "author2": "René Lindenbergh",
-      "author2role": "Oprichter, RL Padel Performance",
+      "testimonial1": "Ik heb mijn avonden terug. geen lesplanning meer via WhatsApp.",
+      "author1": "Bram meijer",
+      "author1role": "Hoofdtrainer, bramos Padel Academy",
+      "testimonial2": "Spelers boeken nu zelf. ik hoef veel minder achter betalingen aan.",
+      "author2": "René lindenbergh",
+      "author2role": "Oprichter, RL Padel performance",
       "metric_hours_value": "10u/maand",
       "metric_hours_label": "minder admin",
       "metric_slots_value": "5+ plekken",
       "metric_slots_label": "extra gevuld",
       "metric_noshows_value": "50%",
       "metric_noshows_label": "minder lege slots",
-      "disclaimer": "Gebaseerd op trainers die Padel Trainer gebruiken. Resultaten variëren."
+      "disclaimer": "Gebaseerd op trainers die Padel trainer gebruiken. resultaten variëren."
     },
     "chaos": {
       "headline": "De meeste padeltrainers runnen hun bedrijf in chaos",
-      "intro": "Je bent trainer geworden om op de baan te staan. Niet om een planningsassistent te zijn. Maar zonder een goed systeem ziet je dag er ongeveer zo uit:",
+      "intro": "Je bent trainer geworden om op de baan te staan. niet om een planningsassistent te zijn. maar zonder een goed systeem ziet je dag er ongeveer zo uit:",
       "item_whatsapp": "WhatsApp & spraakberichten om beschikbaarheid en bevestigingen te coördineren",
       "item_spreadsheet": "Spreadsheet of notitieboek om je schema bij te houden",
       "item_calendar": "Aparte agenda + apart betaalsysteem",
@@ -659,7 +659,7 @@
       "closing": "Het werkt… tot het niet meer werkt."
     },
     "impact": {
-      "headline": "Dit is niet alleen vervelend. Het kost je sessies.",
+      "headline": "Dit is niet alleen vervelend. het kost je sessies.",
       "item_revenue": "Onvervulde gaten na annuleringen = verloren inkomsten die je niet kunt terugwinnen.",
       "item_admin": "Administratie steelt uren die je aan coaching (of rust) zou kunnen besteden.",
       "item_noshows": "No-shows maken je inkomen onvoorspelbaar.",
@@ -667,40 +667,40 @@
     },
     "solution": {
       "headline": "Stop met vijf apps jongleren om je coaching te runnen.",
-      "category": "Gebouwd voor padelcoaching. Niet een generieke afsprakenapp met een padel-sausje. Handelt groepslessen, baantypes, annuleringen en alles daartussen.",
+      "category": "Gebouwd voor padelcoaching. niet een generieke afsprakenapp met een padel-sausje. handelt groepslessen, baantypes, annuleringen en alles daartussen.",
       "value_filled_title": "Vul annuleringen snel",
-      "value_filled_desc": "Open plekken gaan direct live. Spelers worden genotificeerd en boeken met een paar tikken.",
-      "value_admin_title": "Geen WhatsApp-planning meer",
-      "value_admin_desc": "Boekingen, bevestigingen, herinneringen. Allemaal automatisch.",
+      "value_filled_desc": "Open plekken gaan direct live. spelers worden genotificeerd en boeken met een paar tikken.",
+      "value_admin_title": "Geen whatsApp-planning meer",
+      "value_admin_desc": "Boekingen, bevestigingen, herinneringen. allemaal automatisch.",
       "value_noshows_title": "Betaald vóór de les",
-      "value_noshows_desc": "Online betalingen via iDEAL en kaart. Spelers die vooraf betalen komen ook echt opdagen.",
+      "value_noshows_desc": "Online betalingen via iDEAL en kaart. spelers die vooraf betalen komen ook echt opdagen.",
       "value_player_title": "Een boekingspagina die spelers fijn vinden",
-      "value_player_desc": "Simpel, snel, mobile-first. Spelers zien je beschikbaarheid en boeken in seconden."
+      "value_player_desc": "Simpel, snel, mobile-first. spelers zien je beschikbaarheid en boeken in seconden."
     },
     "whyPadelTrainer": {
-      "headline": "Waarom Padel Trainer wint voor padeltrainers",
+      "headline": "Waarom Padel trainer wint voor padeltrainers",
       "focus_title": "Alleen voor padel",
       "focus_desc": "Alles is ontworpen voor padelcoaches.",
       "paid_title": "Vooraf betaald",
       "paid_desc": "Online betalingen in EUR (iDEAL + kaarten) om no-shows te verminderen.",
       "visibility_title": "Openbaar profiel",
-      "visibility_desc": "Maak een openbaar profiel en deel je boekingslink. Zichtbaarheid in ons netwerk."
+      "visibility_desc": "Maak een openbaar profiel en deel je boekingslink. zichtbaarheid in ons netwerk."
     },
     "howItWorks": {
-      "headline": "Stel het één keer in. Daarna draait het.",
+      "headline": "Stel het één keer in. daarna draait het.",
       "step1_title": "Voeg je beschikbaarheid toe",
-      "step1_desc": "Stel je tijden, locaties, groepsgroottes en prijzen in. Duurt zo'n 10 minuten.",
+      "step1_desc": "Stel je tijden, locaties, groepsgroottes en prijzen in. duurt zo'n 10 minuten.",
       "step2_title": "Deel je link",
-      "step2_desc": "Zet hem in je WhatsApp bio, Instagram, of stuur hem direct. Spelers boeken zelf.",
-      "step3_title": "Coach. Wij regelen de rest.",
-      "step3_desc": "Agenda sync, betalingen, boekingsbevestigingen, herinneringen. Draait vanzelf."
+      "step2_desc": "Zet hem in je WhatsApp bio, Instagram, of stuur hem direct. spelers boeken zelf.",
+      "step3_title": "Coach. wij regelen de rest.",
+      "step3_desc": "Agenda sync, betalingen, boekingsbevestigingen, herinneringen. draait vanzelf."
     },
     "realities": {
       "headline": "Hoe het je dag echt verandert",
-      "intro": "Echte problemen waar padeltrainers tegenaan lopen. En hoe wij ze oplossen.",
+      "intro": "Echte problemen waar padeltrainers tegenaan lopen. en hoe wij ze oplossen.",
       "label_before": "Nu",
-      "label_after": "Met Padel Trainer",
-      "chat_current": "Boekingen verspreid over WhatsApp-gesprekken",
+      "label_after": "Met Padel trainer",
+      "chat_current": "Boekingen verspreid over whatsApp-gesprekken",
       "chat_with": "Alles in één dashboard",
       "oncourt_current": "Boekingsverzoeken missen terwijl je op de baan staat",
       "oncourt_with": "Spelers boeken zelf, op elk moment",
@@ -709,14 +709,14 @@
       "payments_current": "Tikkie-betalingen najagen na elke les",
       "payments_with": "Betaald vóór de les begint (iDEAL + kaart)",
       "calendar_current": "Handmatig je persoonlijke agenda bijwerken",
-      "calendar_with": "Synct automatisch met Google Calendar",
+      "calendar_with": "Synct automatisch met Google calendar",
       "scale_current": "Omboekingen worden een admin-nachtmerrie",
       "scale_with": "Spelers beheren hun eigen wijzigingen",
-      "result": "Minder tijd op je telefoon. Meer tijd op de baan."
+      "result": "Minder tijd op je telefoon. meer tijd op de baan."
     },
     "jtbd": {
       "headline": "Werkt voor jouw opzet",
-      "intro": "Zelfstandige trainer, academy of club. We hebben het gebouwd voor alle drie.",
+      "intro": "Zelfstandige trainer, academy of club. we hebben het gebouwd voor alle drie.",
       "cta": "Start gratis proefperiode",
       "academy_title": "Academy-eigenaren",
       "academy_subtitle": "Beheer meerdere trainers vanuit één plek.",
@@ -726,8 +726,8 @@
       "academy_b4": "Geef elke trainer een eigen boekingspagina",
       "trainer_title": "Zelfstandige trainers",
       "trainer_subtitle": "Run je eigen ding zonder admin-hoofdpijn.",
-      "trainer_b1": "Spelers boeken en betalen online. Klaar.",
-      "trainer_b2": "Je Google Calendar blijft up-to-date",
+      "trainer_b1": "Spelers boeken en betalen online. klaar.",
+      "trainer_b2": "Je Google calendar blijft up-to-date",
       "trainer_b3": "Herinneringen gaan automatisch uit",
       "trainer_b4": "Je eigen openbare profiel en boekingslink",
       "club_title": "Clubs",
@@ -738,11 +738,11 @@
       "club_b4": "Betalingen netjes afgehandeld"
     },
     "criticalEvents": {
-      "headline": "Wanneer trainers overstappen naar Padel Trainer",
+      "headline": "Wanneer trainers overstappen naar Padel trainer",
       "event_season": "Een nieuw seizoen of cyclus begint en je wilt structuur.",
       "event_independent": "Je wordt zelfstandig en hebt een echt boekingssysteem nodig.",
       "event_noshows": "Annuleringen en no-shows doden je bezetting.",
-      "event_volume": "Je groeit. Meer sessies, meer locaties.",
+      "event_volume": "Je groeit. meer sessies, meer locaties.",
       "event_fulltime": "Je wilt fulltime coachen zonder admin-overload.",
       "closing": "Als dit op jou van toepassing is, start vandaag je gratis proefperiode."
     },
@@ -751,39 +751,39 @@
       "players_title": "Spelers",
       "players_price": "Gratis",
       "players_desc": "Vind trainers, boek lessen en betaal online.",
-      "players_desc2": "Altijd gratis. Geen addertje.",
+      "players_desc2": "Altijd gratis. geen addertje.",
       "players_cta": "Gratis aanmelden",
       "trainers_title": "Trainers",
       "trainers_price": "Gratis proef → vanaf €9/mnd",
-      "trainers_desc": "Boekingen, betalingen, agenda sync en je eigen profielpagina. Alles wat je nodig hebt.",
+      "trainers_desc": "Boekingen, betalingen, agenda sync en je eigen profielpagina. alles wat je nodig hebt.",
       "no_cc": "Geen creditcard vereist.",
-      "trainers_microcopy": "Probeer het gratis. Upgrade vanaf €9/maand wanneer je klaar bent.",
+      "trainers_microcopy": "Probeer het gratis. upgrade vanaf €9/maand wanneer je klaar bent.",
       "seeAllPlans": "Bekijk alle plannen →"
     },
     "faq": {
       "headline": "Heb je vragen?",
       "onlyPadel_q": "Is dit alleen voor padel?",
-      "onlyPadel_a": "Ja. Vanaf dag één gebouwd voor padel. Groepslessen, baantypes, ratings, alles.",
+      "onlyPadel_a": "Ja. vanaf dag één gebouwd voor padel. groepslessen, baantypes, ratings, alles.",
       "playersFree_q": "Zijn spelers echt gratis?",
-      "playersFree_a": "Helemaal. Spelers betalen ons nooit iets.",
+      "playersFree_a": "Helemaal. spelers betalen ons nooit iets.",
       "trialHow_q": "Hoe werkt de gratis proefperiode?",
-      "trialHow_a": "Meld je aan, stel je profiel en sessies in. Je krijgt volledige toegang. Na de proefperiode beginnen plannen vanaf €9/maand.",
+      "trialHow_a": "Meld je aan, stel je profiel en sessies in. je krijgt volledige toegang. na de proefperiode beginnen plannen vanaf €9/maand.",
       "needWebsite_q": "Heb ik een eigen website nodig?",
-      "needWebsite_a": "Nee. Je krijgt een boekingspagina die je direct kunt delen.",
+      "needWebsite_a": "Nee. je krijgt een boekingspagina die je direct kunt delen.",
       "onlineBooking_q": "Kunnen spelers online boeken?",
-      "onlineBooking_a": "Ja, via je persoonlijke boekingspagina. Werkt op mobiel.",
+      "onlineBooking_a": "Ja, via je persoonlijke boekingspagina. werkt op mobiel.",
       "payments_q": "Hoe werken betalingen?",
-      "payments_a": "Spelers betalen via iDEAL of kaart bij het boeken. Het geld gaat naar jou via Mollie.",
-      "calendarSync_q": "Synct het met Google Calendar?",
-      "calendarSync_a": "Ja. Elke boeking verschijnt automatisch in je agenda.",
+      "payments_a": "Spelers betalen via iDEAL of kaart bij het boeken. het geld gaat naar jou via Mollie.",
+      "calendarSync_q": "Synct het met Google calendar?",
+      "calendarSync_a": "Ja. elke boeking verschijnt automatisch in je agenda.",
       "europe_q": "Is dit alleen voor Nederland?",
-      "europe_a": "Het begon in Nederland maar werkt door heel Europa. Betalingen in EUR.",
-      "gdpr_q": "Is het AVG-compliant?",
-      "gdpr_a": "Ja. Data wordt opgeslagen in de EU. Zie ons privacybeleid voor details."
+      "europe_a": "Het begon in Nederland maar werkt door heel europa. betalingen in EUR.",
+      "gdpr_q": "Is het aVG-compliant?",
+      "gdpr_a": "Ja. data wordt opgeslagen in de EU. zie ons privacybeleid voor details."
     },
     "finalCta": {
       "headline": "Klaar om te stoppen met admin tussen je lessen?",
-      "body": "Opzetten duurt 10 minuten. Je eerste boeking kan vandaag nog binnenkomen."
+      "body": "Opzetten duurt 10 minuten. je eerste boeking kan vandaag nog binnenkomen."
     },
     "playerBanner": {
       "headline": "Ben je een padelspeler?",
@@ -798,22 +798,22 @@
     },
     "dualCta": {
       "headline": "Het enige boekingsplatform gebouwd voor padel.",
-      "body": "Trainers krijgen een systeem dat sessies vult en betalingen afhandelt. Spelers vinden en boeken eenvoudig lessen.",
+      "body": "Trainers krijgen een systeem dat sessies vult en betalingen afhandelt. spelers vinden en boeken eenvoudig lessen.",
       "trainerCta": "Start gratis proefperiode",
       "playerCta": "Aanmelden als speler",
-      "microcopy": "Geen creditcard nodig. Spelers zijn altijd gratis."
+      "microcopy": "Geen creditcard nodig. spelers zijn altijd gratis."
     }
   },
   "cityPage": {
-    "title": "Padeltrainers in {{city}} | Vind & Boek Lessen",
+    "title": "Padeltrainers in {{city}} | vind & boek lessen",
     "heroTitle": "Padeltrainers in {{city}}",
-    "heroSubtitle": "Ontdek {{count}} gecertificeerde padeltrainer{{plural}} in {{city}}. Vergelijk tarieven, lees reviews en boek lessen die passen bij jouw niveau.",
-    "heroSubtitleEmpty": "Op zoek naar padeltrainers in {{city}}? Kom binnenkort terug of verken nabijgelegen steden.",
-    "description": "Vind {{count}} gecertificeerde padeltrainers in {{city}}. Vergelijk tarieven vanaf €{{minRate}}/uur, lees reviews en boek vandaag je eerste les.",
+    "heroSubtitle": "Ontdek {{count}} gecertificeerde padeltrainer{{plural}} in {{city}}. vergelijk tarieven, lees reviews en boek lessen die passen bij jouw niveau.",
+    "heroSubtitleEmpty": "Op zoek naar padeltrainers in {{city}}? kom binnenkort terug of verken nabijgelegen steden.",
+    "description": "Vind {{count}} gecertificeerde padeltrainers in {{city}}. vergelijk tarieven vanaf €{{minRate}}/uur, lees reviews en boek vandaag je eerste les.",
     "searchPlaceholder": "Zoek trainers op naam, specialisatie...",
     "sortTopRated": "Best beoordeeld",
-    "sortPriceLow": "Prijs: Laag naar Hoog",
-    "sortPriceHigh": "Prijs: Hoog naar Laag",
+    "sortPriceLow": "Prijs: laag naar hoog",
+    "sortPriceHigh": "Prijs: hoog naar laag",
     "sortExperience": "Meest ervaren",
     "trainersFound": "{{count}} trainer{{plural}} gevonden in {{city}}",
     "noTrainersFound": "Geen trainers gevonden in {{city}}",
@@ -827,7 +827,7 @@
     "clubsTitle": "Padelclubs in {{city}}",
     "clubsCount": "{{count}} padelclub{{plural}} in {{city}}",
     "aboutTitle": "Over padeltraining in {{city}}",
-    "aboutIntro": "Of je nu een beginner bent die de basis wil leren of een ervaren speler die zijn techniek wil verfijnen, het vinden van de juiste padeltrainer in {{city}} is essentieel voor je ontwikkeling. Onze gecertificeerde trainers bieden persoonlijke coaching afgestemd op jouw niveau en doelen.",
+    "aboutIntro": "Of je nu een beginner bent die de basis wil leren of een ervaren speler die zijn techniek wil verfijnen, het vinden van de juiste padeltrainer in {{city}} is essentieel voor je ontwikkeling. onze gecertificeerde trainers bieden persoonlijke coaching afgestemd op jouw niveau en doelen.",
     "expectTitle": "Wat kun je verwachten van padellessen",
     "expect1": "Technische training met services, volleys en verdedigend spel",
     "expect2": "Tactische strategieën voor enkel- en dubbelwedstrijden",
@@ -840,20 +840,20 @@
     "academiesOffer": "bieden gestructureerde trainingsprogramma's in {{city}}.",
     "faqTitle": "Veelgestelde vragen",
     "faq1q": "Hoeveel kosten padellessen in {{city}}?",
-    "faq1aWithData": "Padellessen in {{city}} variëren doorgaans van €{{min}} tot €{{max}} per uur. Prijzen variëren op basis van ervaring, certificeringen en lestype.",
-    "faq1aNoData": "Prijzen voor padellessen in {{city}} variëren op basis van ervaring en kwalificaties van de trainer. Neem direct contact op met trainers voor actuele tarieven.",
+    "faq1aWithData": "Padellessen in {{city}} variëren doorgaans van €{{min}} tot €{{max}} per uur. prijzen variëren op basis van ervaring, certificeringen en lestype.",
+    "faq1aNoData": "Prijzen voor padellessen in {{city}} variëren op basis van ervaring en kwalificaties van de trainer. neem direct contact op met trainers voor actuele tarieven.",
     "faq2q": "Welke padelclubs zijn er in {{city}}?",
-    "faq2aWithData": "Er zijn {{count}} padelclub{{plural}} in {{city}}, waaronder {{clubs}}. Elke club biedt banen waar je lessen kunt nemen met lokale trainers.",
-    "faq2aNoData": "We voegen nog steeds padelclubs in {{city}} toe aan onze directory. Kom binnenkort terug of verken nabijgelegen steden.",
+    "faq2aWithData": "Er zijn {{count}} padelclub{{plural}} in {{city}}, waaronder {{clubs}}. elke club biedt banen waar je lessen kunt nemen met lokale trainers.",
+    "faq2aNoData": "We voegen nog steeds padelclubs in {{city}} toe aan onze directory. kom binnenkort terug of verken nabijgelegen steden.",
     "faq3q": "Zijn er padelacademies in {{city}}?",
-    "faq3aWithData": "Ja! {{city}} heeft {{count}} padel{{academyWord}}: {{academies}}. Academies bieden gestructureerde trainingsprogramma's, groepslessen en coachingcycli voor alle niveaus.",
-    "faq3aNoData": "Er zijn momenteel geen geregistreerde padelacademies in {{city}}. Individuele trainers in {{city}} bieden echter professionele coaching en gestructureerde lessen.",
+    "faq3aWithData": "Ja! {{city}} heeft {{count}} padel{{academyWord}}: {{academies}}. academies bieden gestructureerde trainingsprogramma's, groepslessen en coachingcycli voor alle niveaus.",
+    "faq3aNoData": "Er zijn momenteel geen geregistreerde padelacademies in {{city}}. individuele trainers in {{city}} bieden echter professionele coaching en gestructureerde lessen.",
     "faq4q": "Hoe vind ik een padeltrainer bij mij in de buurt in {{city}}?",
-    "faq4a": "Blader door onze directory van {{count}} gecertificeerde padeltrainers in {{city}}. Vergelijk beoordelingen, lees reviews en boek lessen direct via PadelTrainer.ai.",
+    "faq4a": "Blader door onze directory van {{count}} gecertificeerde padeltrainers in {{city}}. vergelijk beoordelingen, lees reviews en boek lessen direct via PadelTrainer.ai.",
     "faq5q": "Welk niveau heb ik nodig voor padellessen in {{city}}?",
-    "faq5a": "Padellessen in {{city}} zijn beschikbaar voor alle niveaus, van complete beginners tot gevorderde wedstrijdspelers. De meeste trainers bieden aangepaste sessies op basis van je huidige niveau en doelen.",
+    "faq5a": "Padellessen in {{city}} zijn beschikbaar voor alle niveaus, van complete beginners tot gevorderde wedstrijdspelers. de meeste trainers bieden aangepaste sessies op basis van je huidige niveau en doelen.",
     "faq6q": "Hoe boek ik een padelles in {{city}}?",
-    "faq6a": "Blader door de trainers hierboven, bekijk hun profielen met beoordelingen en beschikbaarheid, en boek een les direct via PadelTrainer.ai. Je kunt filteren op prijs, ervaring en specialisatie.",
+    "faq6a": "Blader door de trainers hierboven, bekijk hun profielen met beoordelingen en beschikbaarheid, en boek een les direct via PadelTrainer.ai. je kunt filteren op prijs, ervaring en specialisatie.",
     "academy": "academie",
     "academies_word": "academies",
     "nearbyCitiesTitle": "Verken nabijgelegen steden",
@@ -866,17 +866,17 @@
     "exploreOtherRegions": "Verken andere regio's"
   },
   "provincePage": {
-    "title": "Padeltrainers in {{province}} | Vind & Boek Lessen",
-    "description": "Vind {{count}} padeltrainers in {{cities}} steden in {{province}}. Vergelijk tarieven, lees reviews en boek lessen.",
+    "title": "Padeltrainers in {{province}} | vind & boek lessen",
+    "description": "Vind {{count}} padeltrainers in {{cities}} steden in {{province}}. vergelijk tarieven, lees reviews en boek lessen.",
     "descriptionEmpty": "Verken padeltrainingsmogelijkheden in {{province}}.",
     "heading": "Padeltrainers in {{province}}",
-    "subtitle": "Ontdek {{count}} padeltrainers in {{cities}} steden in {{province}}. Vind de perfecte trainer bij jou in de buurt.",
+    "subtitle": "Ontdek {{count}} padeltrainers in {{cities}} steden in {{province}}. vind de perfecte trainer bij jou in de buurt.",
     "subtitleEmpty": "Verken padeltrainingsmogelijkheden in {{province}}."
   },
   "seo": {
     "home": {
-      "title": "Padel Trainer | Planning, Boekingen & Betalingen voor Padeltrainers",
-      "description": "Beheer je padelcoaching vanuit één plek. Online boeken, veilige betalingen, agendakoppeling en minder no-shows. Gratis proefperiode, daarna vanaf €9/maand."
+      "title": "Padel trainer | planning, boekingen & betalingen voor padeltrainers",
+      "description": "Beheer je padelcoaching vanuit één plek. online boeken, veilige betalingen, agendakoppeling en minder no-shows. gratis proefperiode, daarna vanaf €9/maand."
     },
     "location": {
       "title": "{{name}} - Padeltraining in {{city}}",
@@ -891,13 +891,13 @@
     }
   },
   "quiz": {
-    "title": "Vind Jouw Perfecte Padel Racket",
+    "title": "Vind jouw perfecte Padel racket",
     "subtitle": "Beantwoord 5 snelle vragen",
-    "intro": "Niet zeker welk padelracket je moet kopen? Onze racket finder quiz matcht je met het ideale racket op basis van je speelniveau, stijl, budget en fysieke behoeften. Of je nu een beginner bent die zijn eerste racket zoekt of een gevorderde speler die upgradet, wij wijzen je de juiste richting.",
-    "start": "Start Quiz",
-    "back": "← Terug",
+    "intro": "Niet zeker welk padelracket je moet kopen? onze racket finder quiz matcht je met het ideale racket op basis van je speelniveau, stijl, budget en fysieke behoeften. of je nu een beginner bent die zijn eerste racket zoekt of een gevorderde speler die upgradet, wij wijzen je de juiste richting.",
+    "start": "Start quiz",
+    "back": "← terug",
     "seo": {
-      "title": "Padel Racket Finder — Vind Jouw Perfecte Racket",
+      "title": "Padel racket finder — vind jouw perfecte racket",
       "description": "Beantwoord 5 snelle vragen en wij adviseren het perfecte padelracket voor jouw niveau, speelstijl en budget."
     },
     "q1": "Wat is je padel niveau?",
@@ -936,23 +936,23 @@
       "any": "Weet ik niet — adviseer mij"
     },
     "results": {
-      "title": "Jouw Perfecte Racket",
-      "noResults": "Geen exacte matches gevonden. Probeer je voorkeuren aan te passen.",
-      "topPick": "Beste Keuze Voor Jou",
-      "alternative": "Goed Alternatief",
+      "title": "Jouw perfecte racket",
+      "noResults": "Geen exacte matches gevonden. probeer je voorkeuren aan te passen.",
+      "topPick": "Beste keuze voor jou",
+      "alternative": "Goed alternatief",
       "budget": "Budget-Vriendelijk",
-      "checkPrice": "Bekijk Prijs",
-      "readReview": "Lees Review",
-      "retake": "Niet helemaal goed? Opnieuw proberen",
-      "viewAll": "Bekijk Volledige Racket Catalogus →"
+      "checkPrice": "Bekijk prijs",
+      "readReview": "Lees review",
+      "retake": "Niet helemaal goed? opnieuw proberen",
+      "viewAll": "Bekijk volledige racket catalogus →"
     },
     "share": "Deel je resultaat"
   },
   "gear": {
     "listing": {
-      "title": "Beste Padel Rackets 2026 — Vergelijk & Kies",
-      "description": "Bekijk en vergelijk alle padel rackets. Filter op niveau, speelstijl, vorm, gewicht en prijs.",
-      "h1": "Padel Rackets",
+      "title": "Beste Padel rackets 2026 — vergelijk & kies",
+      "description": "Bekijk en vergelijk alle padel rackets. filter op niveau, speelstijl, vorm, gewicht en prijs.",
+      "h1": "Padel rackets",
       "subtitle": "Vind en vergelijk de beste padel rackets voor elk niveau en speelstijl.",
       "noResults": "Geen rackets gevonden met deze filters."
     },
@@ -977,39 +977,39 @@
       "notFound": "Racket niet gevonden.",
       "buyAt": "Koop bij {{shop}}",
       "checkLocal": "Check beschikbaarheid bij je lokale padelshop",
-      "takeQuiz": "Doe de Quiz",
+      "takeQuiz": "Doe de quiz",
       "quickSpecs": "Specificaties",
-      "atAGlance": "In een Oogopslag",
+      "atAGlance": "In een oogopslag",
       "level": "Niveau",
       "style": "Stijl",
       "armFriendlyLabel": "Armvriendelijk",
       "priceLabel": "Prijs",
-      "fullDescription": "Volledige Review",
-      "similarRackets": "Vergelijkbare Rackets"
+      "fullDescription": "Volledige review",
+      "similarRackets": "Vergelijkbare rackets"
     }
   },
   "levelQuiz": {
     "title": "Wat is jouw padelniveau?",
     "subtitle": "Beantwoord 10 vragen over je vaardigheden en ontdek je speelsterkte",
     "selectCountry": "Selecteer je land voor een lokale classificatie",
-    "startQuiz": "Start Test",
+    "startQuiz": "Start test",
     "question": "Vraag",
     "of": "van",
     "back": "Terug",
     "next": "Volgende",
-    "seeResults": "Bekijk Mijn Resultaat",
-    "yourLevel": "Jouw Padelniveau",
+    "seeResults": "Bekijk mijn resultaat",
+    "yourLevel": "Jouw padelniveau",
     "equivalentIn": "In {{country}}",
-    "strengths": "Jouw Sterke Punten",
-    "focusAreas": "Aandachtspunten om Niveau {{nextLevel}} te Bereiken",
-    "recommendedReading": "Aanbevolen Artikelen",
-    "strokesToMaster": "Slagen om te Beheersen",
-    "fromBlog": "Van Onze Blog",
-    "findRacket": "Vind Jouw Perfecte Racket",
-    "takeRacketQuiz": "Doe de Racket Finder Quiz",
-    "shareResult": "Deel Mijn Resultaat",
-    "retakeQuiz": "Opnieuw Doen",
-    "shareText": "Ik ben niveau {{level}} in padel ({{title}})! 🎾 Wat is jouw niveau?",
+    "strengths": "Jouw sterke punten",
+    "focusAreas": "Aandachtspunten om niveau {{nextLevel}} te bereiken",
+    "recommendedReading": "Aanbevolen artikelen",
+    "strokesToMaster": "Slagen om te beheersen",
+    "fromBlog": "Van onze Blog",
+    "findRacket": "Vind jouw perfecte racket",
+    "takeRacketQuiz": "Doe de racket finder quiz",
+    "shareResult": "Deel mijn resultaat",
+    "retakeQuiz": "Opnieuw doen",
+    "shareText": "Ik ben niveau {{level}} in padel ({{title}})! 🎾 wat is jouw niveau?",
     "linkCopied": "Link gekopieerd!"
   }
 }
