@@ -103,6 +103,7 @@ export default function CycleApplicationForm({
   const hasDurationOptions = durationOptions.length > 0;
   const availableDurations = ((cycle.settings as any)?.available_duration_minutes as number[] | undefined) || [...DEFAULT_DURATIONS];
   const effectiveDurations = availableDurations.sort((a, b) => a - b);
+  const cyclAvailableDays = (cycle.settings as any)?.available_days as DayAvailability | undefined;
   
   // Load rating systems
   useEffect(() => {
