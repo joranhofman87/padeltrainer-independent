@@ -1,39 +1,43 @@
 
 
-# Translate Public Invoice Payment Status Screens
+# Fix: Mollie Webhook Can't Fetch Invoice Payments (404)
 
-## Problem
-The success/processing/error/paid screens on the public invoice page use hardcoded English strings. Since the URL already contains the language prefix (e.g. `/nl/`), these should use `useTranslation()` which is already imported.
+## Root Cause
+The webhook logs show exactly what's happening:
 
-## Changes
+```
+WARNING: Falling back to platform API key for payment lookup {"paymentId":"tr_uaPLtEcPU5woBBDN53sNJ"}
+ERROR: Failed to fetch payment: 404 Not Found - "No payment exists with token tr_uaPLtEcPU5woBBDN53sNJ"
+```
 
-### 1. Add translation keys to all 5 language files
-**Files: `src/i18n/locales/{en,nl,es,de,fr}/common.json`**
+**The payment was created using the academy's connected OAuth token**, so it lives on the academy's Mollie account. The webhook only looks up bookings (line 176) to find a trainer and resolve the correct token. For invoice-only payments there's no booking, so `trainerId` is null, no token is resolved, and it falls back to the **platform API key** — which can't see payments on connected accounts → 404.
 
-Add an `"invoice"` section with keys for:
-- `paymentProcessing` — "Payment Processing" / "Betaling wordt verwerkt"
-- `paymentProcessingDescription` — "Your payment is being processed..." / "Je betaling wordt verwerkt..."
-- `paymentReceived` — "Payment Received" / "Betaling ontvangen"
-- `paymentReceivedDescription` — "This invoice has been paid. Thank you!" / "Deze factuur is betaald. Bedankt!"
-- `invoiceNotFound` — "Invoice Not Found" / "Factuur niet gevonden"
-- `invoiceNotFoundDescription` — "This invoice link is invalid or has expired." / "Deze factuurlink is ongeldig of verlopen."
-- `createAccountToViewInvoices` — "Create account to view your invoices" / "Maak een account aan om je facturen te bekijken"
+The invoice never gets marked as paid because the webhook crashes before it can even read the payment status.
 
-### 2. Replace hardcoded strings in `PublicInvoicePay.tsx`
-**File: `src/pages/PublicInvoicePay.tsx`**
+## Fix
 
-Use `const { t } = useTranslation();` (already imported) to replace all hardcoded English strings in:
-- `PostPaymentCTA` component (line 77)
-- Paid state (lines 362-363)
-- Processing state (lines 378-379)
-- Error/not-found state (lines 394-395)
-- SEO title/description attributes in each state
+### `supabase/functions/mollie-webhook/index.ts`
+
+After the booking lookup fails to find a trainer (line 184), add a fallback that checks the `invoices` table for the same `mollie_payment_id`. From the invoice, get the `academy_profile_id` or `trainer_id` and resolve the access token from their Mollie account.
+
+```text
+Current flow:
+  1. Look up booking by payment ID → get trainer → resolve token
+  2. If no booking found → fall back to platform key → 404
+
+Fixed flow:
+  1. Look up booking by payment ID → get trainer → resolve token
+  2. If no booking → look up invoice by mollie_payment_id → get academy/trainer
+  3. Resolve token from academy_mollie_accounts or trainer_mollie_accounts
+  4. Only fall back to platform key if neither found
+```
+
+Specifically:
+- After line 184, if `trainerId` is null, query `invoices` table for `mollie_payment_id = paymentId`
+- If found, check `academy_profile_id` first → look up `academy_mollie_accounts` directly for the access token
+- If no academy, check `trainer_id` → resolve via existing `resolveAccessToken`
+- This ensures the webhook uses the correct connected-account token to fetch the payment from Mollie
 
 ### Files
-- `src/i18n/locales/en/common.json` — Add invoice translation keys
-- `src/i18n/locales/nl/common.json` — Add Dutch invoice translations
-- `src/i18n/locales/es/common.json` — Add Spanish invoice translations
-- `src/i18n/locales/de/common.json` — Add German invoice translations
-- `src/i18n/locales/fr/common.json` — Add French invoice translations
-- `src/pages/PublicInvoicePay.tsx` — Replace hardcoded strings with `t()` calls
+- `supabase/functions/mollie-webhook/index.ts` — Add invoice-based token resolution before platform key fallback
 
