@@ -374,6 +374,85 @@ export async function updateLocation(id: string, updates: Partial<Location>): Pr
   return data;
 }
 
+// Lightweight location type for paginated listing (only fields needed by LocationCard)
+export type LocationListItem = Pick<Location, 'id' | 'name' | 'slug' | 'city' | 'country' | 'street_address' | 'postal_code' | 'indoor_courts' | 'outdoor_courts' | 'logo_url' | 'latitude' | 'longitude'>;
+
+const LOCATION_LIST_COLUMNS = 'id, name, slug, city, country, street_address, postal_code, indoor_courts, outdoor_courts, logo_url, latitude, longitude';
+
+export interface SearchLocationsParams {
+  search?: string;
+  country?: string;
+  city?: string;
+  trainersAvailable?: boolean;
+  indoorOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface SearchLocationsResult {
+  data: LocationListItem[];
+  totalCount: number;
+}
+
+// Server-side paginated search for locations page
+export async function searchLocationsPage(params: SearchLocationsParams): Promise<SearchLocationsResult> {
+  const { search, country, city, trainersAvailable, indoorOnly, page = 1, pageSize = 48 } = params;
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  // If trainersAvailable filter is on, first get location IDs that have trainers
+  let trainerLocationIds: string[] | null = null;
+  if (trainersAvailable) {
+    const { data: trainerLocs } = await supabase
+      .from('trainer_locations')
+      .select('location_id');
+    trainerLocationIds = [...new Set(trainerLocs?.map(tl => tl.location_id) || [])];
+    if (trainerLocationIds.length === 0) {
+      return { data: [], totalCount: 0 };
+    }
+  }
+
+  let query = supabase
+    .from('locations')
+    .select(LOCATION_LIST_COLUMNS, { count: 'exact' })
+    .eq('is_active', true);
+
+  // Apply filters
+  if (country && country !== 'all') {
+    query = query.eq('country', country);
+  }
+  if (city && city !== 'all') {
+    query = query.eq('city', city);
+  }
+  if (indoorOnly) {
+    query = query.gt('indoor_courts', 0);
+  }
+  if (search && search.length >= 2) {
+    const pattern = `%${search}%`;
+    query = query.or(`name.ilike.${pattern},city.ilike.${pattern},street_address.ilike.${pattern}`);
+  }
+  if (trainerLocationIds) {
+    query = query.in('id', trainerLocationIds);
+  }
+
+  query = query
+    .order('city', { ascending: true })
+    .order('name', { ascending: true })
+    .range(from, to);
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    logger.error('Error searching locations page', undefined, { error });
+    throw error;
+  }
+
+  return {
+    data: (data || []) as LocationListItem[],
+    totalCount: count || 0,
+  };
+}
+
 // Search locations by name or city (server-side search for large datasets)
 export async function searchLocations(query: string, limit: number = 100): Promise<Location[]> {
   if (!query || query.length < 2) {
