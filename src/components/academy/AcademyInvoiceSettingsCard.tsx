@@ -161,7 +161,29 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     setSaving(false);
   };
 
-  if (loading) {
+  const handleBulkUpdateVat = async () => {
+    const resolvedVatRate = formData.default_vat_rate === -1
+      ? parseFloat(formData.custom_vat_rate) || 0
+      : formData.default_vat_rate;
+
+    setBulkUpdating(true);
+    try {
+      const { error: bulkError } = await supabase.functions.invoke('bulk-update-vat', {
+        body: { academyId, newVatRate: resolvedVatRate, pricesIncludeVat: true },
+      });
+      if (bulkError) {
+        logger.error('Bulk VAT update error', bulkError instanceof Error ? bulkError : new Error(String(bulkError)), { component: 'AcademyInvoiceSettingsCard' });
+        toast({ title: 'Openstaande facturen konden niet worden bijgewerkt', variant: 'destructive' });
+      } else {
+        toast({ title: `Openstaande facturen bijgewerkt naar ${resolvedVatRate}% BTW` });
+      }
+    } catch (err) {
+      logger.error('Bulk VAT update failed', err instanceof Error ? err : new Error(String(err)), { component: 'AcademyInvoiceSettingsCard' });
+      toast({ title: 'Er ging iets mis', variant: 'destructive' });
+    }
+    setBulkUpdating(false);
+  };
+
     return (
       <Card>
         <CardContent className="py-8 flex justify-center">
