@@ -2749,6 +2749,54 @@ export type Database = {
           },
         ]
       }
+      payment_audit_log: {
+        Row: {
+          amount: number | null
+          booking_id: string | null
+          created_at: string
+          currency: string | null
+          error_message: string | null
+          function_name: string
+          id: string
+          invoice_id: string | null
+          metadata: Json | null
+          mollie_org_id: string | null
+          mollie_payment_id: string | null
+          recipient_type: string | null
+          status: string
+        }
+        Insert: {
+          amount?: number | null
+          booking_id?: string | null
+          created_at?: string
+          currency?: string | null
+          error_message?: string | null
+          function_name: string
+          id?: string
+          invoice_id?: string | null
+          metadata?: Json | null
+          mollie_org_id?: string | null
+          mollie_payment_id?: string | null
+          recipient_type?: string | null
+          status: string
+        }
+        Update: {
+          amount?: number | null
+          booking_id?: string | null
+          created_at?: string
+          currency?: string | null
+          error_message?: string | null
+          function_name?: string
+          id?: string
+          invoice_id?: string | null
+          metadata?: Json | null
+          mollie_org_id?: string | null
+          mollie_payment_id?: string | null
+          recipient_type?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       player_locations: {
         Row: {
           created_at: string
