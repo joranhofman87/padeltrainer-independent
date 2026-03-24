@@ -37,6 +37,21 @@ serve(async (req) => {
       });
     }
 
+    // Look up guest player email if applicable
+    let playerEmail: string | null = null;
+    if (invoice.player_id === null && (invoice as any).guest_player_id) {
+      // guest_player_id not selected above, need separate query
+    }
+    // Fetch guest email from guest_players if no registered player
+    if (!invoice.player_id) {
+      const { data: guestData } = await supabase
+        .from("guest_players")
+        .select("email")
+        .eq("id", (invoice as any).guest_player_id || "")
+        .maybeSingle();
+      playerEmail = guestData?.email || null;
+    }
+
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       return new Response(JSON.stringify({
         error: invoice.status === "paid" ? "already_paid" : "cancelled",

@@ -370,7 +370,7 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentReceived")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentReceivedDescription")}</p>
-            <PostPaymentCTA />
+            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} />
           </CardContent>
         </Card>
       </div>
@@ -386,7 +386,7 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentProcessing")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentProcessingDescription")}</p>
-            <PostPaymentCTA />
+            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} />
           </CardContent>
         </Card>
       </div>
