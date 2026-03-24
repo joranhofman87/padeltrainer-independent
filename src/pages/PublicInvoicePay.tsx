@@ -322,12 +322,23 @@ export default function PublicInvoicePay() {
         throw new Error("No payment URL");
       }
     } catch (err: any) {
-      const errorData = err?.message ? JSON.parse(err.message).error : null;
-      if (errorData === "no_mollie_account") {
-        toast.error("Online payment is not available. Please use bank transfer.");
-      } else {
-        toast.error("Failed to create payment. Please try again.");
+      let errorCode: string | null = null;
+      try {
+        const parsed = typeof err?.message === "string" ? JSON.parse(err.message) : null;
+        errorCode = parsed?.error ?? null;
+      } catch {
+        // message is not JSON, check if result had error
+        errorCode = err?.error ?? null;
       }
+
+      if (errorCode === "no_mollie_account") {
+        toast.error("Online betaling is momenteel niet beschikbaar.");
+      } else if (errorCode === "missing_mollie_profile") {
+        toast.error("De betaalomgeving van deze aanbieder is nog niet volledig ingesteld.");
+      } else {
+        toast.error("Betaling aanmaken mislukt. Probeer het opnieuw.");
+      }
+    } finally {
       setPayLoading(false);
     }
   };

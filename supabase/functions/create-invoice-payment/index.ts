@@ -142,7 +142,33 @@ serve(async (req) => {
     }
 
     const isTestMode = mollieApiKey.startsWith("test_");
-    const authToken = accessToken;
+
+    // Fetch Mollie profile ID (required for OAuth payments)
+    let mollieProfileId: string | null = null;
+    try {
+      const profileResp = await fetch("https://api.mollie.com/v2/profiles", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (profileResp.ok) {
+        const profileData = await profileResp.json();
+        if (profileData._embedded?.profiles?.length > 0) {
+          mollieProfileId = profileData._embedded.profiles[0].id;
+          logStep("Mollie profile found", { profileId: mollieProfileId });
+        }
+      } else {
+        logStep("Could not fetch Mollie profiles", { status: profileResp.status });
+      }
+    } catch (err) {
+      logStep("Error fetching Mollie profiles", { error: String(err) });
+    }
+
+    if (!mollieProfileId) {
+      logStep("No Mollie profile found", { invoiceId });
+      return new Response(JSON.stringify({ error: "missing_mollie_profile", message: "Payment profile not configured." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Build redirect URL
     const appUrl = Deno.env.get("APP_URL") || `https://padeltrainer.ai`;
@@ -175,6 +201,7 @@ serve(async (req) => {
       description: `Factuur ${invoice.invoice_number}`,
       redirectUrl,
       webhookUrl,
+      profileId: mollieProfileId,
       metadata: {
         invoice_id: invoice.id,
       },
@@ -189,7 +216,7 @@ serve(async (req) => {
     const mollieRes = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${authToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(paymentBody),
