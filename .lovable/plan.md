@@ -1,33 +1,38 @@
 
 
-# Fix: Mollie Pay Button Not Showing on Public Invoice Page
+# Add "Update Details" Option on Public Invoice Page
 
-## Problem
-Two issues are preventing the Mollie payment button from appearing:
+## Current State
+The public invoice page shows `invoice.playerName` in the "To" section with no way to edit. Logged-in players can edit billing details (business name, address, BTW number) from their player dashboard, but there's no path from the public invoice page.
 
-1. **Data not fixed**: The previous migration updated the trigger function but the one-time data correction for RL Performance Academy (`org_19475084`) was not included. The flags `charges_enabled`, `payouts_enabled`, and `onboarding_complete` are still `false` in the database despite the academy being fully verified in Mollie.
+## Approach
+Add a subtle, non-intrusive link below the player name. Behavior depends on auth state:
+- **Logged in** (and invoice belongs to them): Show an inline edit dialog for business name, address, and BTW number — same fields as `PlayerInvoicesTab`
+- **Not logged in**: Show a small prompt encouraging sign-up/login to manage invoice details, with a link to auth page
 
-2. **Missing `trainer_id` in query**: The `get-public-invoice` edge function selects invoice fields on line 29 but does NOT include `trainer_id`, so the fallback trainer Mollie check on line 72 never works.
+The payment button remains the dominant CTA. The "update details" is secondary — just a small text link.
 
 ## Changes
 
-### 1. Database migration — Fix RL Performance Academy data
-Run a data update to set the correct flags:
-```sql
-UPDATE academy_mollie_accounts
-SET charges_enabled = true, payouts_enabled = true, onboarding_complete = true
-WHERE mollie_organization_id = 'org_19475084';
-```
+### 1. Update `PublicInvoicePay.tsx`
+- Import `useAuth` hook to check login state
+- Add the invoice's `player_id` and `player_business_name`, `player_address`, `player_btw_number` to the data returned from the edge function
+- In the "To" section, below the player name, show existing business details if present
+- Add a small "Update your details" text link:
+  - If logged in & user matches `player_id` → opens an edit dialog (reuse the same fields as PlayerInvoicesTab: business name, address, BTW)
+  - If not logged in → navigates to `/app/auth` with a return URL
+- After saving, refresh the invoice data so changes are visible immediately
 
-### 2. Fix `get-public-invoice` edge function
-**File: `supabase/functions/get-public-invoice/index.ts`**
+### 2. Update `get-public-invoice` edge function
+- Add `player_id`, `player_business_name`, `player_address`, `player_btw_number` to the select query
+- Include these in the response so the frontend can display them and check ownership
 
-Add `trainer_id` to the SELECT on line 29 so the trainer Mollie fallback actually works:
-```
-.select("id, invoice_number, ..., academy_profile_id, trainer_id, public_token")
-```
+### 3. Add edit dialog component (inline in PublicInvoicePay or extracted)
+- Simple dialog with 3 fields: business name, address, BTW number
+- On save: call supabase to update the invoice record directly (with auth check — player must be the invoice's `player_id`)
+- Show toast on success, refresh invoice data
 
 ### Files
-- Database migration (data fix)
-- `supabase/functions/get-public-invoice/index.ts` — add `trainer_id` to select
+- `supabase/functions/get-public-invoice/index.ts` — Add player billing fields to response
+- `src/pages/PublicInvoicePay.tsx` — Add auth check, "Update details" link, edit dialog
 
