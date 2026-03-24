@@ -37,7 +37,7 @@ interface AcademyPublicOpenSlotsProps {
   academySlug: string;
 }
 
-const DATE_LOCALES: Record<string, Locale> = { nl, en: enUS, es, de, fr };
+const DATE_LOCALES: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
 export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublicOpenSlotsProps) {
   const { t, i18n } = useTranslation(['trainer', 'common']);
