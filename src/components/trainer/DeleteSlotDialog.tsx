@@ -176,7 +176,7 @@ export function DeleteSlotDialog({
       const cyclusName = firstSlot.cyclus_name || "Training cyclus";
       const pricePerSession = remainingBookings[0].payment_amount || firstSlot.price_per_session || 0;
       lineItems = [{
-        description: cyclusName,
+        description: `${cyclusName} (${remainingBookings.length} weken)`,
         quantity: remainingBookings.length,
         unit_price: pricePerSession,
       }];
