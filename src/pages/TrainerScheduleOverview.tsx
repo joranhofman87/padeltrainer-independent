@@ -432,11 +432,11 @@ export default function TrainerScheduleOverview() {
             let newStart = new Date(oldStart);
             let newEnd = new Date(oldEnd);
 
-            // Apply date shift
+            // Apply date shift using calendar days (timezone-safe)
             if (dateChanged) {
-              const deltaMs = cycleEditData.startDate!.getTime() - cycleEditData.originalStartDate!.getTime();
-              newStart = new Date(newStart.getTime() + deltaMs);
-              newEnd = new Date(newEnd.getTime() + deltaMs);
+              const dayDelta = differenceInCalendarDays(cycleEditData.startDate!, cycleEditData.originalStartDate!);
+              newStart = addDays(newStart, dayDelta);
+              newEnd = addDays(newEnd, dayDelta);
             }
 
             // Apply time change (set new hours/minutes on each slot)
