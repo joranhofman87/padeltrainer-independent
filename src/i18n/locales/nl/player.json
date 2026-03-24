@@ -5,9 +5,9 @@
     "following": "Volgend",
     "account": "Account",
     "settings": "Instellingen",
-    "editProfile": "Profiel Bewerken",
+    "editProfile": "Profiel bewerken",
     "notifications": "Meldingen",
-    "calendarSync": "Kalender Sync",
+    "calendarSync": "Kalender sync",
     "levelTest": "Niveautest"
   },
   "settings": {
@@ -24,23 +24,23 @@
   "badge": "Speler",
   "birthDate": "Geboortedatum",
   "editProfile": {
-    "title": "Profiel Bewerken",
+    "title": "Profiel bewerken",
     "saving": "Opslaan...",
     "save": "Opslaan",
-    "saveChanges": "Wijzigingen Opslaan",
-    "yourName": "Je Naam",
+    "saveChanges": "Wijzigingen opslaan",
+    "yourName": "Je naam",
     "user": "Gebruiker",
     "uploading": "Uploaden...",
     "changePhoto": "Foto wijzigen",
     "basicInformation": "Basisinformatie",
-    "fullName": "Volledige Naam",
+    "fullName": "Volledige naam",
     "phone": "Telefoon",
     "location": "Locatie",
     "bio": "Bio",
     "bioPlaceholder": "Vertel iets over jezelf...",
-    "playerDetails": "Speler Details",
+    "playerDetails": "Speler details",
     "playerDetailsDescription": "Je padel vaardigheidsinformatie",
-    "padelRating": "Padel Rating",
+    "padelRating": "Padel rating",
     "lowerIsBetter": "(lager is beter)",
     "registrationNumber": "Je officiële {{system}} registratienummer",
     "avatarUpdated": "Avatar bijgewerkt",
@@ -62,7 +62,7 @@
     "range": "{{min}} - {{max}}"
   },
   "ratingHistory": {
-    "title": "Rating Voortgang",
+    "title": "Rating voortgang",
     "noData": "Nog geen rating geschiedenis",
     "noDataDescription": "Je rating geschiedenis verschijnt hier zodra je deze bijwerkt",
     "trackingDescription": "Volg je padel verbetering over tijd",
@@ -75,59 +75,59 @@
     "welcome": "Welkom terug, {{name}}! 👋",
     "subtitle": "Vind je volgende trainingssessie en verbeter je padelvaardigheden",
     "skillRating": {
-      "title": "Jouw Speelniveau",
+      "title": "Jouw speelniveau",
       "noRating": "Voeg je rating toe of vraag een trainer om je niveau in te stellen"
     },
     "stats": {
       "upcoming": "Aankomend",
       "completed": "Voltooid",
-      "totalBookings": "Totaal Boekingen",
+      "totalBookings": "Totaal boekingen",
       "following": "Volgend"
     },
     "nextUp": "Binnenkort",
-    "allBookings": "Alle Boekingen",
+    "allBookings": "Alle boekingen",
     "with": "met",
     "following": "Volgend",
     "manage": "Beheren",
     "quickActions": {
       "findTrainers": {
-        "title": "Vind Trainers",
+        "title": "Vind trainers",
         "description": "Bekijk alle beschikbare trainers en vind de perfecte match voor jouw niveau"
       },
       "myBookings": {
-        "title": "Mijn Boekingen",
+        "title": "Mijn boekingen",
         "description": "Bekijk en beheer je aankomende en eerdere trainingssessies"
       },
       "editProfile": {
-        "title": "Profiel Bewerken",
-        "description": "Werk je profiel, speelniveau en KNLTB-nummer bij"
+        "title": "Profiel bewerken",
+        "description": "Werk je profiel, speelniveau en kNLTB-nummer bij"
       }
     },
     "featuredTrainers": {
-      "title": "Uitgelichte Trainers",
-      "viewAll": "Bekijk Alle Trainers",
+      "title": "Uitgelichte trainers",
+      "viewAll": "Bekijk alle trainers",
       "book": "Boek"
     },
     "myProfile": {
-      "title": "Mijn Profiel",
+      "title": "Mijn profiel",
       "description": "Werk je gegevens bij"
     },
     "viewSchedule": "Bekijk je planning",
     "browseAvailableTrainers": "Bekijk beschikbare trainers",
-    "upcomingBookings": "Aankomende Boekingen",
+    "upcomingBookings": "Aankomende boekingen",
     "viewAll": "Alles bekijken",
     "noUpcomingBookings": "Geen aankomende boekingen",
-    "followedTrainers": "Gevolgde Trainers",
+    "followedTrainers": "Gevolgde trainers",
     "allTrainers": "Alle trainers",
     "notFollowingYet": "Je volgt nog geen trainers",
-    "openSlots": "Open Plekken",
+    "openSlots": "Open plekken",
     "browse": "Bekijken",
     "openSlotsDescription": "Beschikbare sessies van trainers die je volgt",
     "noOpenSlots": "Geen open plekken van gevolgde trainers",
-    "openSession": "Open Sessie",
+    "openSession": "Open sessie",
     "sessions": "sessies",
     "starting": "Start {{date}}",
-    "myClubs": "Mijn Clubs",
+    "myClubs": "Mijn clubs",
     "allClubs": "Alle clubs",
     "noClubsYet": "Nog geen lid van een club",
     "tableSession": "Sessie",
@@ -143,33 +143,33 @@
     }
   },
   "trainers": {
-    "title": "Vind Trainers",
+    "title": "Vind trainers",
     "searchPlaceholder": "Zoek trainers op naam, specialisatie...",
     "sort": {
       "label": "Sorteren op",
-      "topRated": "Hoogst Beoordeeld",
-      "priceLow": "Prijs: Laag naar Hoog",
-      "priceHigh": "Prijs: Hoog naar Laag",
-      "experience": "Meest Ervaren"
+      "topRated": "Hoogst beoordeeld",
+      "priceLow": "Prijs: laag naar hoog",
+      "priceHigh": "Prijs: hoog naar laag",
+      "experience": "Meest ervaren"
     },
     "filters": {
       "activeFilters": "Actieve filters:",
       "location": "Locatie",
-      "allLocations": "Alle Locaties",
+      "allLocations": "Alle locaties",
       "priceRange": "Prijsklasse",
-      "minRating": "Min Beoordeling",
+      "minRating": "Min beoordeling",
       "anyRating": "Elke beoordeling",
       "stars": "{{count}}+ sterren",
       "experience": "Ervaring",
       "anyExperience": "Alle ervaring",
       "yearsPlus": "{{count}}+ jaar",
       "specializations": "Specialisaties",
-      "knltbRating": "KNLTB Rating",
+      "knltbRating": "KNLTB rating",
       "anyKnltb": "Elke rating",
       "ratingPlus": "{{count}}+",
-      "verifiedOnly": "Alleen Geverifieerd",
-      "applyFilters": "Filters Toepassen",
-      "resetFilters": "Filters Resetten"
+      "verifiedOnly": "Alleen geverifieerd",
+      "applyFilters": "Filters toepassen",
+      "resetFilters": "Filters resetten"
     },
     "results": "{{count}} trainer gevonden",
     "results_plural": "{{count}} trainers gevonden",
@@ -182,10 +182,10 @@
     "yearsExperience": "{{count}} jaar ervaring",
     "certifications": "Certificeringen",
     "specializations": "Specialisaties",
-    "knltbRating": "KNLTB Rating",
-    "lessons": "Beschikbare Sessies",
+    "knltbRating": "KNLTB rating",
+    "lessons": "Beschikbare sessies",
     "noLessons": "Momenteel geen sessies beschikbaar",
-    "bookLesson": "Boek Sessie",
+    "bookLesson": "Boek sessie",
     "reviews": "Reviews",
     "noReviews": "Nog geen reviews",
     "follow": "Volgen",
@@ -193,8 +193,8 @@
     "followers": "{{count}} volgers"
   },
   "booking": {
-    "title": "Boek een Sessie",
-    "selectSlot": "Selecteer een Tijdslot",
+    "title": "Boek een sessie",
+    "selectSlot": "Selecteer een tijdslot",
     "noSlots": "Geen beschikbare slots voor deze sessie",
     "notes": "Notities voor de trainer (optioneel)",
     "notesPlaceholder": "Speciale verzoeken of informatie voor de trainer...",
@@ -205,19 +205,19 @@
     "time": "Tijd",
     "duration": "Duur",
     "price": "Prijs",
-    "confirmAndPay": "Bevestigen & Betalen",
+    "confirmAndPay": "Bevestigen & betalen",
     "processing": "Verwerken...",
     "success": {
-      "title": "Boeking Bevestigd!",
+      "title": "Boeking bevestigd!",
       "description": "Je sessie is succesvol geboekt."
     }
   },
   "bookings": {
-    "title": "Mijn Boekingen",
+    "title": "Mijn boekingen",
     "subtitle": "Bekijk en beheer je lesboekingen",
     "empty": "Nog geen boekingen",
     "emptyDescription": "Boek je eerste sessie om te beginnen!",
-    "findTrainer": "Vind een Trainer",
+    "findTrainer": "Vind een trainer",
     "tabs": {
       "upcoming": "Aankomend",
       "past": "Afgelopen"
@@ -225,12 +225,12 @@
     "invoices": "Facturen",
     "noUpcoming": "Geen aankomende boekingen",
     "findTrainerDescription": "Vind een trainer en boek je eerste les!",
-    "browseTrainers": "Bekijk Trainers",
+    "browseTrainers": "Bekijk trainers",
     "noPast": "Geen eerdere boekingen",
     "trainingSession": "Trainingssessie",
     "coach": "Coach",
     "reviewed": "Beoordeeld",
-    "leaveReview": "Review Schrijven",
+    "leaveReview": "Review schrijven",
     "confirmCancel": "Weet je zeker dat je deze boeking wilt annuleren?",
     "cancelSuccess": "Boeking geannuleerd",
     "cancelError": "Annuleren van boeking mislukt",
@@ -249,7 +249,7 @@
       "refunded": "Terugbetaald",
       "unpaid": "Onbetaald"
     },
-    "cancelBooking": "Boeking Annuleren"
+    "cancelBooking": "Boeking annuleren"
   },
   "bookingSuccess": {
     "verifying": "Betaling verifiëren",
@@ -261,41 +261,41 @@
     "whatsNext": "Wat nu?",
     "confirmationSent": "Bevestigingsmail verzonden",
     "addToCalendar": "Toevoegen aan je agenda",
-    "viewBookings": "Mijn Boekingen Bekijken",
-    "bookAnother": "Nog een Les Boeken",
+    "viewBookings": "Mijn boekingen bekijken",
+    "bookAnother": "Nog een les boeken",
     "noBookingId": "Geen boekings-ID opgegeven.",
-    "paymentNotCompleted": "Betaling is niet voltooid. Probeer het opnieuw of neem contact op met support.",
+    "paymentNotCompleted": "Betaling is niet voltooid. probeer het opnieuw of neem contact op met support.",
     "paymentSuccessToast": "Betaling geslaagd",
     "bookingConfirmedToast": "Je boeking is bevestigd!"
   },
   "bookingCancelled": {
     "title": "Betaling niet voltooid",
-    "description": "De betaling is geannuleerd of niet afgerond. Er is geen bedrag afgeschreven.",
+    "description": "De betaling is geannuleerd of niet afgerond. er is geen bedrag afgeschreven.",
     "tryAgain": "Opnieuw proberen",
     "viewBookings": "Mijn boekingen bekijken"
   },
   "bookLesson": {
-    "title": "Boek een Les",
+    "title": "Boek een les",
     "with": "met {{name}}",
     "trainerNotFound": "Trainer niet gevonden",
-    "browseTrainers": "Bekijk Trainers",
-    "requestSent": "Verzoek Verzonden!",
+    "browseTrainers": "Bekijk trainers",
+    "requestSent": "Verzoek verzonden!",
     "requestSentDescription": "De trainer zal je boekingsverzoek beoordelen.",
-    "termsRequired": "Voorwaarden Vereist",
+    "termsRequired": "Voorwaarden vereist",
     "termsRequiredDescription": "Accepteer de algemene voorwaarden voordat je boekt.",
-    "bookingFailed": "Boeking Mislukt",
-    "paymentNotAvailable": "Betaling Niet Beschikbaar"
+    "bookingFailed": "Boeking mislukt",
+    "paymentNotAvailable": "Betaling niet beschikbaar"
   },
   "followingList": {
-    "title": "Trainers die je Volgt",
+    "title": "Trainers die je volgt",
     "subtitle": "Beheer je gevolgde trainers en meldingsvoorkeuren.",
     "empty": "Je volgt nog geen trainers",
     "emptyDescription": "Volg trainers om meldingen te ontvangen wanneer ze nieuwe beschikbaarheid toevoegen.",
-    "browseTrainers": "Bekijk Trainers",
+    "browseTrainers": "Bekijk trainers",
     "notifyAvailability": "Meld mij bij nieuwe beschikbaarheid",
     "notFollowingYet": "Je volgt nog geen trainers",
     "followDescription": "Volg trainers om een melding te krijgen wanneer ze nieuwe beschikbaarheid toevoegen.",
-    "findMore": "Meer Trainers Vinden",
+    "findMore": "Meer trainers vinden",
     "notificationsEnabled": "Meldingen ingeschakeld",
     "notificationsDisabled": "Meldingen uitgeschakeld",
     "notificationsEnabledDescription": "Je ontvangt e-mails wanneer deze trainer beschikbaarheid toevoegt",
