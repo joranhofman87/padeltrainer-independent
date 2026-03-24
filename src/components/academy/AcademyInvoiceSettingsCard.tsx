@@ -20,6 +20,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const { t } = useTranslation('academy');
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [initialVatRate, setInitialVatRate] = useState<number>(21);
 
