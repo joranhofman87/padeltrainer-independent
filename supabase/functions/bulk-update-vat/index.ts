@@ -37,49 +37,72 @@ serve(async (req) => {
       });
     }
 
-    const { trainerId, pricesIncludeVat } = await req.json();
+    const { trainerId, academyId, pricesIncludeVat, newVatRate } = await req.json();
 
-    if (!trainerId || typeof pricesIncludeVat !== "boolean") {
-      return new Response(JSON.stringify({ error: "Missing trainerId or pricesIncludeVat" }), {
+    // Support both trainer and academy modes
+    const isAcademyMode = !!academyId;
+    const entityId = academyId || trainerId;
+
+    if (!entityId || (typeof pricesIncludeVat !== "boolean" && typeof newVatRate !== "number")) {
+      return new Response(JSON.stringify({ error: "Missing entityId or update parameters" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Verify the caller owns this trainer profile
-    const { data: trainerProfile } = await supabase
-      .from("trainer_profiles")
-      .select("id, user_id")
-      .eq("id", trainerId)
-      .single();
+    // Verify ownership
+    if (isAcademyMode) {
+      const { data: managers } = await supabase
+        .from("academy_managers")
+        .select("id")
+        .eq("academy_profile_id", academyId)
+        .eq("user_id", user.id)
+        .limit(1);
 
-    if (!trainerProfile || trainerProfile.user_id !== user.id) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (!managers || managers.length === 0) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      const { data: trainerProfile } = await supabase
+        .from("trainer_profiles")
+        .select("id, user_id")
+        .eq("id", trainerId)
+        .single();
+
+      if (!trainerProfile || trainerProfile.user_id !== user.id) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
-    // 1. Update all future slots
-    const { data: updatedSlots, error: slotsError } = await supabase
-      .from("availability_slots")
-      .update({ prices_include_vat: pricesIncludeVat })
-      .eq("trainer_id", trainerId)
-      .gt("start_time", new Date().toISOString())
-      .select("id");
+    let slotsUpdated = 0;
 
-    if (slotsError) {
-      console.error("Error updating slots:", slotsError);
+    // 1. Update future slots (only for trainer mode with pricesIncludeVat)
+    if (!isAcademyMode && typeof pricesIncludeVat === "boolean") {
+      const { data: updatedSlots, error: slotsError } = await supabase
+        .from("availability_slots")
+        .update({ prices_include_vat: pricesIncludeVat })
+        .eq("trainer_id", trainerId)
+        .gt("start_time", new Date().toISOString())
+        .select("id");
+
+      if (slotsError) {
+        console.error("Error updating slots:", slotsError);
+      }
+      slotsUpdated = updatedSlots?.length || 0;
     }
-
-    const slotsUpdated = updatedSlots?.length || 0;
 
     // 2. Recalculate unpaid invoices
-    const { data: invoices, error: invoicesError } = await supabase
-      .from("invoices")
-      .select("id, line_items, vat_rate, subtotal, vat_amount, total")
-      .eq("trainer_id", trainerId)
-      .in("status", ["draft", "sent"]);
+    const invoiceFilter = isAcademyMode
+      ? supabase.from("invoices").select("id, line_items, vat_rate, subtotal, vat_amount, total").eq("academy_profile_id", academyId).in("status", ["draft", "sent"])
+      : supabase.from("invoices").select("id, line_items, vat_rate, subtotal, vat_amount, total").eq("trainer_id", trainerId).in("status", ["draft", "sent"]);
+
+    const { data: invoices, error: invoicesError } = await invoiceFilter;
 
     if (invoicesError) {
       console.error("Error fetching invoices:", invoicesError);
@@ -93,23 +116,23 @@ serve(async (req) => {
         const lineItems = invoice.line_items as Array<{ quantity: number; unit_price: number }>;
         if (!lineItems || lineItems.length === 0) continue;
 
-        // Sum of line item totals (quantity * unit_price)
         const lineTotal = lineItems.reduce(
           (sum, item) => sum + item.quantity * item.unit_price, 0
         );
 
-        const vatRate = invoice.vat_rate || 21;
+        // Use newVatRate if provided, otherwise keep existing rate
+        const vatRate = typeof newVatRate === "number" ? newVatRate : (invoice.vat_rate || 21);
+        const usePricesIncludeVat = typeof pricesIncludeVat === "boolean" ? pricesIncludeVat : true;
+
         let subtotal: number;
         let vatAmount: number;
         let total: number;
 
-        if (pricesIncludeVat) {
-          // Prices include VAT: line total IS the total, back-calculate
+        if (usePricesIncludeVat) {
           total = Math.round(lineTotal * 100) / 100;
           subtotal = Math.round((lineTotal / (1 + vatRate / 100)) * 100) / 100;
           vatAmount = Math.round((total - subtotal) * 100) / 100;
         } else {
-          // Prices exclude VAT: line total is subtotal, add VAT on top
           subtotal = Math.round(lineTotal * 100) / 100;
           vatAmount = Math.round((subtotal * vatRate / 100) * 100) / 100;
           total = Math.round((subtotal + vatAmount) * 100) / 100;
@@ -117,7 +140,7 @@ serve(async (req) => {
 
         const { error: updateError } = await supabase
           .from("invoices")
-          .update({ subtotal, vat_amount: vatAmount, total })
+          .update({ subtotal, vat_amount: vatAmount, total, vat_rate: vatRate })
           .eq("id", invoice.id);
 
         if (!updateError) {

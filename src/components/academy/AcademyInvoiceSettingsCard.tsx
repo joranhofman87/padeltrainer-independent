@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye, Palette } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
 
 interface AcademyInvoiceSettingsCardProps {
@@ -20,6 +21,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [initialVatRate, setInitialVatRate] = useState<number>(21);
 
   const [formData, setFormData] = useState({
     business_name: '',
@@ -52,6 +54,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
 
       if (data) {
         const vatRate = (data as any).default_vat_rate ?? 21;
+        setInitialVatRate(vatRate);
         const isCustom = ![21, 9, 0].includes(vatRate);
         setFormData({
           business_name: (data as any).business_name || '',
@@ -135,6 +138,24 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
       toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
     } else {
       toast({ title: t('invoiceSettings.saved') });
+
+      // If VAT rate changed, bulk-update unpaid invoices
+      if (resolvedVatRate !== initialVatRate) {
+        try {
+          const { error: bulkError } = await supabase.functions.invoke('bulk-update-vat', {
+            body: { academyId, newVatRate: resolvedVatRate, pricesIncludeVat: true },
+          });
+          if (bulkError) {
+            logger.error('Bulk VAT update error', bulkError instanceof Error ? bulkError : new Error(String(bulkError)), { component: 'AcademyInvoiceSettingsCard' });
+            toast({ title: 'Openstaande facturen konden niet worden bijgewerkt', variant: 'destructive' });
+          } else {
+            toast({ title: 'Openstaande facturen bijgewerkt met nieuw BTW-tarief' });
+          }
+        } catch (err) {
+          logger.error('Bulk VAT update failed', err instanceof Error ? err : new Error(String(err)), { component: 'AcademyInvoiceSettingsCard' });
+        }
+        setInitialVatRate(resolvedVatRate);
+      }
     }
     setSaving(false);
   };
