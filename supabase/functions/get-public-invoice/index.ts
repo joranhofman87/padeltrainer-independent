@@ -26,7 +26,7 @@ serve(async (req) => {
 
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
-      .select("id, invoice_number, invoice_date, due_date, player_name, player_id, player_business_name, player_address, player_btw_number, total, subtotal, vat_amount, vat_rate, line_items, status, mollie_payment_url, academy_profile_id, trainer_id, public_token")
+      .select("id, invoice_number, invoice_date, due_date, player_name, player_id, player_business_name, player_address, player_btw_number, total, subtotal, vat_amount, vat_rate, line_items, status, mollie_payment_url, academy_profile_id, trainer_id, public_token, guest_player_id")
       .eq("public_token", publicToken)
       .single();
 
@@ -35,6 +35,17 @@ serve(async (req) => {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Look up guest player email if no registered player
+    let playerEmail: string | null = null;
+    if (!invoice.player_id && invoice.guest_player_id) {
+      const { data: guestData } = await supabase
+        .from("guest_players")
+        .select("email")
+        .eq("id", invoice.guest_player_id)
+        .maybeSingle();
+      playerEmail = guestData?.email || null;
     }
 
     if (invoice.status === "paid" || invoice.status === "cancelled") {
@@ -91,6 +102,7 @@ serve(async (req) => {
         dueDate: invoice.due_date,
         playerName: invoice.player_name,
         playerId: invoice.player_id,
+        playerEmail,
         playerBusinessName: invoice.player_business_name,
         playerAddress: invoice.player_address,
         playerBtwNumber: invoice.player_btw_number,

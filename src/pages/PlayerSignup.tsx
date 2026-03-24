@@ -39,6 +39,15 @@ export default function PlayerSignup() {
   const { t, i18n } = useTranslation('auth');
   const { honeypotRef, isSuspicious } = useHoneypot();
 
+  // Pre-fill form from URL params (e.g. from invoice payment CTA)
+  useEffect(() => {
+    const prefillEmail = searchParams.get('email');
+    const prefillName = searchParams.get('name');
+    if (prefillEmail && !email) setEmail(prefillEmail);
+    if (prefillName && !fullName) setFullName(prefillName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!loading && user && role) {
       navigate(role === 'trainer' ? '/app/trainer' : '/app/player');

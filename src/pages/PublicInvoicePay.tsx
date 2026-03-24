@@ -41,6 +41,7 @@ interface PublicInvoiceData {
     dueDate: string;
     playerName: string;
     playerId: string | null;
+    playerEmail: string | null;
     playerBusinessName: string | null;
     playerAddress: string | null;
     playerBtwNumber: string | null;
@@ -68,11 +69,17 @@ interface PublicInvoiceData {
   } | null;
 }
 
-function PostPaymentCTA() {
+function PostPaymentCTA({ playerName, playerEmail }: { playerName?: string; playerEmail?: string | null }) {
   const { t } = useTranslation();
+  const params = new URLSearchParams();
+  if (playerEmail) params.set('email', playerEmail);
+  if (playerName) params.set('name', playerName);
+  params.set('redirect', '/app/player');
+  const signupUrl = `/app/signup/player?${params.toString()}`;
+
   return (
     <div className="pt-4">
-      <Link to="/app/signup/player">
+      <Link to={signupUrl}>
         <Button variant="outline" className="gap-2">
           <UserPlus className="h-4 w-4" />
           {t("invoice.createAccountToViewInvoices")}
@@ -363,7 +370,7 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentReceived")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentReceivedDescription")}</p>
-            <PostPaymentCTA />
+            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} />
           </CardContent>
         </Card>
       </div>
@@ -379,7 +386,7 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentProcessing")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentProcessingDescription")}</p>
-            <PostPaymentCTA />
+            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} />
           </CardContent>
         </Card>
       </div>
