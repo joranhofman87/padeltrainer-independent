@@ -1,64 +1,32 @@
 
 
-# Bulletproof Payment Flows: Security Audit + Logging + E2E Tests
+# Switch Mollie from Test Mode to Production
 
-## Critical Security Issue Found
+## What's happening
+All 5 edge functions check if `MOLLIE_API_KEY` starts with `"test_"`. When it does, they add `testmode: true` to every payment request — which is why the Mollie checkout shows "Note: this is a testmode payment."
 
-**`create-mollie-payment` (booking payments) falls back to the platform API key when no connected Mollie account is found** (line 365):
-```
-const authToken = recipientAccessToken || mollieApiKey;
-```
+This is **not** about RL Performance Academy's account — it's your **platform-level** Mollie API key that's a test key.
 
-This means if a trainer/academy hasn't connected Mollie, the payment silently goes to **your platform account** instead of failing. This directly contradicts the isolation principle already enforced in `create-invoice-payment` (which correctly returns an error).
+## What you need to do
 
-`mollie-webhook` and `verify-mollie-payment` also fall back to the platform key for *reading* payment status — less dangerous but can cause lookup failures for connected-account payments.
+### Step 1: Get your live API key from Mollie
+1. Go to [Mollie Dashboard](https://my.mollie.com/dashboard) → **Developers** → **API keys**
+2. Copy your **Live API key** (starts with `live_`)
+3. Make sure your Mollie account is fully activated (identity verified, bank account confirmed)
 
-## Plan
+### Step 2: Update the secret
+I'll use the `add_secret` tool to update `MOLLIE_API_KEY` with your live key. No code changes needed — all 5 edge functions already use the same `MOLLIE_API_KEY` environment variable.
 
-### 1. Remove platform fallback from `create-mollie-payment`
-**File: `supabase/functions/create-mollie-payment/index.ts`**
+## No code changes required
+The logic `mollieApiKey.startsWith("test_")` will automatically detect the live key and stop adding `testmode: true`. All functions handle this correctly already:
+- `create-mollie-payment` — booking payments
+- `create-invoice-payment` — invoice payments  
+- `mollie-webhook` — payment status callbacks
+- `verify-mollie-payment` — payment verification
+- `mollie-callback` — OAuth token exchange (unaffected)
 
-Replace the fallback on line 365 with the same pattern used in `create-invoice-payment`: if no `recipientAccessToken`, return a `400` error with `"no_mollie_account"`. Never create a payment on the platform key for booking flows.
-
-Also add structured logging: log the `mollie_organization_id` and `recipientType` in the final payment creation step, and send a Slack notification on every successful payment (not just errors) so you have an audit trail.
-
-### 2. Add Slack audit logging to `create-invoice-payment`
-**File: `supabase/functions/create-invoice-payment/index.ts`**
-
-Add the same `notifySlackError` helper (already in other functions) and:
-- Send Slack notification on payment creation success (invoice number, amount, recipient type)
-- Send Slack notification on errors
-
-### 3. Add payment audit table
-**Database migration**
-
-Create a `payment_audit_log` table to record every payment attempt with: function name, invoice/booking ID, recipient type (academy/trainer), mollie org ID, amount, status (success/error), error message, timestamp. This gives you a queryable history beyond ephemeral edge function logs.
-
-Both `create-mollie-payment` and `create-invoice-payment` will write to this table on every attempt.
-
-### 4. Add E2E payment flow tests
-**File: `e2e/payments.spec.ts`**
-
-Playwright tests covering:
-- Public invoice page loads with Pay button when Mollie is connected
-- Public invoice page shows bank details when Mollie is NOT connected
-- Pay button click triggers loading state and handles errors gracefully (mock/intercept the edge function)
-- Booking payment page shows correct trainer/academy info
-- Success/cancelled redirect pages render correctly
-- Error states (no Mollie account, expired token) show user-friendly messages
-
-### 5. Fix webhook/verify fallback for read operations
-**Files: `supabase/functions/mollie-webhook/index.ts`, `supabase/functions/verify-mollie-payment/index.ts`**
-
-For the webhook, the fallback is needed because invoice-only payments (no booking/trainer) might use the platform key. Keep the fallback but add a log warning when it's used, so you can audit unexpected fallbacks.
-
-For `verify-mollie-payment`, same approach: log a warning when falling back to platform key.
-
-## Files
-- `supabase/functions/create-mollie-payment/index.ts` — Remove platform fallback, add audit logging
-- `supabase/functions/create-invoice-payment/index.ts` — Add Slack notifications and audit logging
-- `supabase/functions/mollie-webhook/index.ts` — Add warning log on platform key fallback
-- `supabase/functions/verify-mollie-payment/index.ts` — Add warning log on platform key fallback
-- Database migration — Create `payment_audit_log` table
-- `e2e/payments.spec.ts` — New E2E test file for payment flows
+## Important before switching
+- Confirm your Mollie account is **fully verified** and approved for live payments
+- The connected academy account (RL Performance) should also work in live mode automatically via OAuth
+- Once switched, all new payments will be **real charges** — there's no going back per-payment
 
