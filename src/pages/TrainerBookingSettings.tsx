@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, ShieldCheck, Zap, Loader2, MessageSquare, Euro } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
@@ -33,14 +34,20 @@ export default function TrainerBookingSettings() {
     }
   }, [user, role, loading]);
 
+  const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
+  const [showVatBulkDialog, setShowVatBulkDialog] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [pendingVatValue, setPendingVatValue] = useState<boolean | null>(null);
+
   const fetchSettings = async () => {
     const { data } = await supabase
       .from('trainer_profiles')
-      .select('require_booking_approval, use_manual_invoicing, welcome_message, prices_include_vat')
+      .select('id, require_booking_approval, use_manual_invoicing, welcome_message, prices_include_vat')
       .eq('user_id', user!.id)
       .single();
 
     if (data) {
+      setTrainerProfileId(data.id);
       setRequireApproval(data.require_booking_approval || false);
       setUseManualInvoicing(data.use_manual_invoicing || false);
       setWelcomeMessage(data.welcome_message || '');
@@ -101,8 +108,51 @@ export default function TrainerBookingSettings() {
     } else {
       setPricesIncludeVat(value);
       toast({ title: t('common:success'), description: t('bookingSettings.vatSaved') });
+      // Ask if they want to bulk update existing slots/invoices
+      setPendingVatValue(value);
+      setShowVatBulkDialog(true);
     }
     setSavingVat(false);
+  };
+
+  const handleBulkUpdateVat = async () => {
+    if (!trainerProfileId || pendingVatValue === null) return;
+    setBulkUpdating(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bulk-update-vat`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            trainerId: trainerProfileId,
+            pricesIncludeVat: pendingVatValue,
+          }),
+        }
+      );
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      toast({
+        title: t('common:success'),
+        description: t('bookingSettings.vatBulkUpdateSuccess', {
+          slots: result.slotsUpdated,
+          invoices: result.invoicesUpdated,
+        }),
+      });
+    } catch (err: any) {
+      toast({
+        title: t('common:error'),
+        description: t('bookingSettings.vatBulkUpdateError'),
+        variant: 'destructive',
+      });
+    }
+    setBulkUpdating(false);
+    setShowVatBulkDialog(false);
+    setPendingVatValue(null);
   };
 
   if (loading || loadingSettings) {
@@ -277,6 +327,32 @@ export default function TrainerBookingSettings() {
           </CardContent>
         </Card>
       </main>
+
+      <AlertDialog open={showVatBulkDialog} onOpenChange={setShowVatBulkDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('bookingSettings.vatBulkUpdateTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('bookingSettings.vatBulkUpdateDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setShowVatBulkDialog(false);
+                setPendingVatValue(null);
+              }}
+              disabled={bulkUpdating}
+            >
+              {t('bookingSettings.vatBulkUpdateCancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkUpdateVat} disabled={bulkUpdating}>
+              {bulkUpdating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t('bookingSettings.vatBulkUpdateConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

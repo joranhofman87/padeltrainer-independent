@@ -707,7 +707,13 @@
     "vatInclLabel": "Prices include VAT",
     "vatInclDescription": "When enabled, prices you enter already include VAT. When disabled, VAT will be added on top.",
     "vatWarning": "Changing this setting only affects new slots. Existing slots will keep their current VAT setting.",
-    "vatSaved": "VAT setting updated"
+    "vatSaved": "VAT setting updated",
+    "vatBulkUpdateTitle": "Update existing sessions & invoices?",
+    "vatBulkUpdateDescription": "Do you also want to update all future sessions and unpaid invoices to use this new VAT setting?",
+    "vatBulkUpdateConfirm": "Yes, update all",
+    "vatBulkUpdateCancel": "No, only new sessions",
+    "vatBulkUpdateSuccess": "Updated {{slots}} sessions and {{invoices}} invoices",
+    "vatBulkUpdateError": "Failed to update existing sessions and invoices"
   },
   "noTrainersYet": "No trainers available in this area yet. Check back soon!",
   "clearFilters": "Clear Filters",

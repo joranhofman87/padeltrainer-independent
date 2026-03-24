@@ -710,7 +710,13 @@
     "vatInclLabel": "Prijzen zijn inclusief BTW",
     "vatInclDescription": "Indien ingeschakeld, zijn de prijzen die je invoert inclusief BTW. indien uitgeschakeld, wordt BTW erbovenop berekend.",
     "vatWarning": "Deze wijziging geldt alleen voor nieuwe slots. bestaande slots behouden hun huidige bTW-instelling.",
-    "vatSaved": "BTW-instelling bijgewerkt"
+    "vatSaved": "BTW-instelling bijgewerkt",
+    "vatBulkUpdateTitle": "Bestaande sessies & facturen bijwerken?",
+    "vatBulkUpdateDescription": "Wil je ook alle toekomstige sessies en onbetaalde facturen bijwerken naar deze nieuwe BTW-instelling?",
+    "vatBulkUpdateConfirm": "Ja, alles bijwerken",
+    "vatBulkUpdateCancel": "Nee, alleen nieuwe sessies",
+    "vatBulkUpdateSuccess": "{{slots}} sessies en {{invoices}} facturen bijgewerkt",
+    "vatBulkUpdateError": "Fout bij het bijwerken van bestaande sessies en facturen"
   },
   "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. kom binnenkort terug!",
   "clearFilters": "Filters wissen",

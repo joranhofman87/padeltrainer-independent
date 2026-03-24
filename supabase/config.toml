@@ -180,3 +180,6 @@ verify_jwt = false
 
 [functions.import-pipeline-data]
 verify_jwt = false
+
+[functions.bulk-update-vat]
+verify_jwt = false
