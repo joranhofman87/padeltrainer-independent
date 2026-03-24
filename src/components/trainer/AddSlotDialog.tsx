@@ -113,6 +113,7 @@ export function AddSlotDialog({
   defaultWeeks,
   onSlotsCreated,
   availableLocations,
+  academyId,
 }: AddSlotDialogProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
