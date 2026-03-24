@@ -100,6 +100,7 @@ interface AddSlotDialogProps {
   defaultWeeks: number;
   onSlotsCreated: () => void;
   availableLocations?: SlotLocation[];
+  academyId?: string;
 }
 
 export function AddSlotDialog({
