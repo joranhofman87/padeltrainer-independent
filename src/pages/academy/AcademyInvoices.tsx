@@ -414,16 +414,6 @@ export default function AcademyInvoices() {
                                   >
                                     <Share2 className="h-4 w-4" />
                                   </Button>
-                                  {/* Generate Mollie payment link */}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => generateLinkMutation.mutate(inv.id)}
-                                    disabled={generateLinkMutation.isPending}
-                                    title={t("invoices.generateLink", "Payment link")}
-                                  >
-                                    <LinkIcon className="h-4 w-4" />
-                                  </Button>
                                   {!inv.sent_at && (
                                     <Button
                                       size="sm"
