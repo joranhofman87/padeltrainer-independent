@@ -1,22 +1,45 @@
 
 
-# Fix: Invoice PDF Missing Academy Business Details & Branding
+# Add "Learn to Play Padel" Content Section to Location Pages
 
 ## Problem
-The `generate-invoice` edge function (line 244-248) always fetches business details from `trainer_profiles` only. When an invoice belongs to an academy (`academy_profile_id` is set), the academy's business name, address, KvK, BTW, IBAN, logo, etc. should be used instead. Currently these fields are empty because the trainer may not have them filled in — the academy does.
+Location pages are thin on content, which hurts SEO. These pages are indexed by Google but lack substantive content. Meanwhile, Sanity CMS has rich learning articles, strokes, and video tips that could add value.
 
-## Fix
+## Solution
+Add a new full-width section below the "Similar Clubs" section that showcases curated Sanity content: top learning articles, strokes, and video tips. This gives users useful content and creates internal links for Google to crawl.
 
-### `supabase/functions/generate-invoice/index.ts`
+## Changes
 
-After fetching the invoice (line 230-241), add an academy lookup:
+### 1. New component: `src/components/locations/LocationLearnSection.tsx`
+A reusable section that fetches and displays content from Sanity:
 
-1. If `invoice.academy_profile_id` is set, fetch `academy_profiles` for: `name, business_name, business_address, kvk_number, btw_number, iban, bic, invoice_logo_url, payment_terms_days`
-2. Use academy details as the "trainer" data in the invoice template (the "Van" section), falling back to trainer profile only when no academy is present
-3. Also add academy manager authorization check — currently only trainer and player are checked, but academy managers should also be able to generate invoices for their academy's invoices
+- **Learning Articles**: Fetch top 6 hub/featured articles via `LEARNING_ARTICLES_LIST_QUERY` (limited, hubs first)
+- **Strokes**: Fetch all strokes via `STROKES_LIST_QUERY` and display top 6
+- **Video Tips**: Fetch top 4 featured videos via `VIDEO_TIPS_LIST_QUERY`
 
-Changes are confined to the data-fetching section (~lines 243-306). The HTML template itself doesn't need changes — it already renders whatever is in the `trainer` object.
+Layout:
+- Section heading: "Learn to Play Padel" (translated per language)
+- Three sub-sections with cards linking to `/learn/`, `/strokes/`, `/videos/`
+- Each card shows title + short description/excerpt
+- "View all" links at end of each sub-section
+- Uses existing `LocalizedLink` for all internal links
+- Data fetched via `useQuery` with 10-min staleTime (matches existing Sanity caching pattern)
 
-### Files
-- `supabase/functions/generate-invoice/index.ts` — Add academy profile lookup, use academy details when `academy_profile_id` is present, add academy manager auth check
+### 2. Wire into `src/pages/LocationDetail.tsx`
+- Import and render `<LocationLearnSection />` after the Similar Clubs section (after line 791)
+- Pass `currentLang` as prop
+
+### 3. Add translation keys to all 5 locale files (`common.json`)
+- `locations.learnPadel` — "Learn to Play Padel" / "Leer Padel Spelen" / etc.
+- `locations.topArticles` — "Popular Guides" / "Populaire Gidsen"
+- `locations.topStrokes` — "Essential Strokes" / "Essentiële Slagen"
+- `locations.topVideos` — "Video Tips" / "Video Tips"
+- `locations.viewAllArticles` — "View all guides" / "Bekijk alle gidsen"
+- `locations.viewAllStrokes` — "View all strokes" / "Bekijk alle slagen"
+- `locations.viewAllVideos` — "View all videos" / "Bekijk alle video's"
+
+## Files
+- `src/components/locations/LocationLearnSection.tsx` — New component
+- `src/pages/LocationDetail.tsx` — Add section after similar clubs
+- `src/i18n/locales/{en,nl,es,de,fr}/common.json` — Translation keys
 
