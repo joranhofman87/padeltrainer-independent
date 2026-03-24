@@ -400,7 +400,7 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentProcessing")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentProcessingDescription")}</p>
-            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} />
+            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} playerId={data?.invoice.playerId} />
           </CardContent>
         </Card>
       </div>

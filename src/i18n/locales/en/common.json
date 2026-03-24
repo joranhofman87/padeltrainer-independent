@@ -281,6 +281,7 @@
     "paymentReceivedDescription": "This invoice has been paid. Thank you!",
     "invoiceNotFound": "Invoice Not Found",
     "invoiceNotFoundDescription": "This invoice link is invalid or has expired.",
-    "createAccountToViewInvoices": "Create account to view your invoices"
+    "createAccountToViewInvoices": "Create account to view your invoices",
+    "goToMyAccount": "Go to my account"
   }
 }
