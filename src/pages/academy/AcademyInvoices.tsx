@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
-import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
 import { nl, enUS } from "date-fns/locale";
 
 interface Invoice {
@@ -46,6 +47,7 @@ export default function AcademyInvoices() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingAll, setSendingAll] = useState(false);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
   const formatEuro = (amount: number) =>
@@ -424,7 +426,7 @@ export default function AcademyInvoices() {
                                       <Send className="h-4 w-4" />
                                     </Button>
                                   )}
-                                  <Button
+                                   <Button
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => markPaidMutation.mutate(inv.id)}
@@ -432,6 +434,14 @@ export default function AcademyInvoices() {
                                     title={t("invoices.markPaid", "Mark paid")}
                                   >
                                     <CheckCircle className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setEditInvoice(inv)}
+                                    title={t("invoices.edit", "Edit")}
+                                  >
+                                    <Pencil className="h-4 w-4" />
                                   </Button>
                                 </>
                               )}
@@ -490,6 +500,9 @@ export default function AcademyInvoices() {
                             <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
                               <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
                             </Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditInvoice(inv)}>
+                              <Pencil className="h-4 w-4 mr-1" />{t("invoices.edit", "Edit")}
+                            </Button>
                           </>
                         )}
                         {inv.pdf_url && (
@@ -512,6 +525,13 @@ export default function AcademyInvoices() {
         onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null })}
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
+      />
+
+      <EditInvoiceDialog
+        open={!!editInvoice}
+        onClose={() => setEditInvoice(null)}
+        invoice={editInvoice}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
       />
     </div>
   );

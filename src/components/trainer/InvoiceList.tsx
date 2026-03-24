@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { InvoiceEmailDialog } from './InvoiceEmailDialog';
+import { EditInvoiceDialog } from '@/components/invoices/EditInvoiceDialog';
 import { 
   FileText, 
   Download, 
@@ -19,7 +20,8 @@ import {
   Euro,
   Trash2,
   Eye,
-  Mail
+  Mail,
+  Pencil
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import { nl } from 'date-fns/locale';
@@ -39,6 +41,9 @@ interface Invoice {
   pdf_url: string | null;
   sent_at: string | null;
   paid_at: string | null;
+  line_items: any;
+  booking_ids: string[] | null;
+  notes: string | null;
 }
 
 interface InvoiceListProps {
@@ -65,6 +70,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
     fetchInvoices();
@@ -388,19 +394,29 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
                     )}
                     
                     {invoice.status !== 'paid' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleMarkPaid(invoice.id)}
-                        disabled={actionLoading === invoice.id}
-                        title="Markeer als betaald"
-                      >
-                        {actionLoading === invoice.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        )}
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleMarkPaid(invoice.id)}
+                          disabled={actionLoading === invoice.id}
+                          title="Markeer als betaald"
+                        >
+                          {actionLoading === invoice.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditInvoice(invoice)}
+                          title="Bewerken"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </>
                     )}
 
                     {invoice.status === 'paid' && forwardEmails.length > 0 && (
@@ -445,6 +461,13 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
         onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null })}
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
+      />
+
+      <EditInvoiceDialog
+        open={!!editInvoice}
+        onClose={() => setEditInvoice(null)}
+        invoice={editInvoice}
+        onSaved={() => fetchInvoices()}
       />
     </div>
   );
