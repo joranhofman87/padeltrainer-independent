@@ -188,6 +188,43 @@ serve(async (req) => {
       recipientAccessToken = await resolveAccessToken(supabase, trainerId);
     }
 
+    // If no token from booking, try resolving via invoice
+    if (!recipientAccessToken) {
+      const { data: invoiceForToken } = await supabase
+        .from("invoices")
+        .select("academy_profile_id, trainer_id")
+        .eq("mollie_payment_id", paymentId)
+        .maybeSingle();
+
+      if (invoiceForToken) {
+        if (invoiceForToken.academy_profile_id) {
+          // Resolve directly from academy mollie account
+          const { data: academyMollie } = await supabase
+            .from("academy_mollie_accounts")
+            .select("access_token, refresh_token, token_expires_at, charges_enabled")
+            .eq("academy_profile_id", invoiceForToken.academy_profile_id)
+            .eq("onboarding_complete", true)
+            .single();
+
+          if (academyMollie?.access_token && academyMollie?.charges_enabled) {
+            const token = await refreshTokenIfNeeded(supabase, academyMollie, 'academy', invoiceForToken.academy_profile_id);
+            if (token) {
+              logStep("Using academy token from invoice lookup", { academyId: invoiceForToken.academy_profile_id });
+              recipientAccessToken = token;
+            }
+          }
+        }
+
+        if (!recipientAccessToken && invoiceForToken.trainer_id) {
+          // trainer_id on invoices is the trainer_profile_id
+          recipientAccessToken = await resolveAccessToken(supabase, invoiceForToken.trainer_id);
+          if (recipientAccessToken) {
+            logStep("Using trainer token from invoice lookup", { trainerId: invoiceForToken.trainer_id });
+          }
+        }
+      }
+    }
+
     // Build fetch URL with testmode if needed
     const isTestMode = mollieApiKey.startsWith("test_");
     const authToken = recipientAccessToken || mollieApiKey;
