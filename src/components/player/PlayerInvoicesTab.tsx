@@ -213,9 +213,11 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                     <span>
                       Datum: {format(parseISO(invoice.invoice_date), 'd MMM yyyy', { locale: nl })}
                     </span>
-                    <span className={invoice.status === 'overdue' ? 'text-destructive' : ''}>
-                      Vervalt: {format(parseISO(invoice.due_date), 'd MMM yyyy', { locale: nl })}
-                    </span>
+                    {invoice.status !== 'paid' && (
+                      <span className={invoice.status === 'overdue' ? 'text-destructive' : ''}>
+                        Vervalt: {format(parseISO(invoice.due_date), 'd MMM yyyy', { locale: nl })}
+                      </span>
+                    )}
                     {invoice.paid_at && (
                       <span className="text-green-600">
                         Betaald: {format(parseISO(invoice.paid_at), 'd MMM yyyy', { locale: nl })}
