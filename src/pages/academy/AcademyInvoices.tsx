@@ -424,17 +424,15 @@ export default function AcademyInvoices() {
                                       <Send className="h-4 w-4" />
                                     </Button>
                                   )}
-                                  {inv.sent_at && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => markPaidMutation.mutate(inv.id)}
-                                      disabled={markPaidMutation.isPending}
-                                      title={t("invoices.markPaid", "Mark paid")}
-                                    >
-                                      <CheckCircle className="h-4 w-4" />
-                                    </Button>
-                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => markPaidMutation.mutate(inv.id)}
+                                    disabled={markPaidMutation.isPending}
+                                    title={t("invoices.markPaid", "Mark paid")}
+                                  >
+                                    <CheckCircle className="h-4 w-4" />
+                                  </Button>
                                 </>
                               )}
                               {inv.pdf_url && (
@@ -489,11 +487,9 @@ export default function AcademyInvoices() {
                                 <Send className="h-4 w-4 mr-1" />{t("invoices.send", "Send")}
                               </Button>
                             )}
-                            {inv.sent_at && (
-                              <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
-                                <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
-                              </Button>
-                            )}
+                            <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
+                              <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
+                            </Button>
                           </>
                         )}
                         {inv.pdf_url && (
