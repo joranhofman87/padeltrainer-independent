@@ -37,17 +37,13 @@ serve(async (req) => {
       });
     }
 
-    // Look up guest player email if applicable
+    // Look up guest player email if no registered player
     let playerEmail: string | null = null;
-    if (invoice.player_id === null && (invoice as any).guest_player_id) {
-      // guest_player_id not selected above, need separate query
-    }
-    // Fetch guest email from guest_players if no registered player
-    if (!invoice.player_id) {
+    if (!invoice.player_id && invoice.guest_player_id) {
       const { data: guestData } = await supabase
         .from("guest_players")
         .select("email")
-        .eq("id", (invoice as any).guest_player_id || "")
+        .eq("id", invoice.guest_player_id)
         .maybeSingle();
       playerEmail = guestData?.email || null;
     }
