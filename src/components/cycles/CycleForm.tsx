@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow, type CyclusOption } from '@/lib/cycles';
+import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
