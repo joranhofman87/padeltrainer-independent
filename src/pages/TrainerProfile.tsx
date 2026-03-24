@@ -458,62 +458,56 @@ export default function TrainerProfile() {
           </Alert>
         )}
 
-        {/* Hero Card */}
-        <ProfileHeroCard
-          name={profile.full_name || 'Trainer'}
-          avatarUrl={profile.avatar_url}
-          location={profile.location}
-          averageRating={averageRating}
-          reviewCount={reviewCount}
-          quote={trainer.favourite_quote}
-          videoUrl={trainer.video_url}
-          onVideoPlay={() => setShowVideo(true)}
-          badgeSlot={
-            trainer.preferred_min_rating !== null && trainer.preferred_max_rating !== null && (
-              <Badge variant="outline" className="w-fit">
-                <Target className="h-3 w-3 mr-1" />
-                {t('trainer:profile.bestFor', 'Best for')}: {trainer.preferred_min_rating} - {trainer.preferred_max_rating} {preferredRatingSystemName}
-              </Badge>
-            )
-          }
-        >
-          {canFollow && (
-            <Button
-              variant={isFollowing ? 'secondary' : 'outline'}
-              size="lg"
-              className="w-full"
-              onClick={toggleFollow}
-              disabled={followLoading}
+        {/* Hero Card + Coaching Style side by side */}
+        <div className="flex flex-col lg:flex-row gap-4 mb-8">
+          <div className={trainer.coaching_method ? "lg:flex-1" : "w-full"}>
+            <ProfileHeroCard
+              name={profile.full_name || 'Trainer'}
+              avatarUrl={profile.avatar_url}
+              location={profile.location}
+              averageRating={averageRating}
+              reviewCount={reviewCount}
+              quote={trainer.favourite_quote}
+              videoUrl={trainer.video_url}
+              onVideoPlay={() => setShowVideo(true)}
             >
-              {isFollowing ? (
-                <>
-                  <UserCheck className="h-4 w-4 mr-2" />
-                  {t('common:following', 'Following')}
-                </>
-              ) : (
-                <>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  {t('common:follow', 'Follow')}
-                </>
+              {canFollow && (
+                <Button
+                  variant={isFollowing ? 'secondary' : 'outline'}
+                  size="lg"
+                  className="w-full"
+                  onClick={toggleFollow}
+                  disabled={followLoading}
+                >
+                  {isFollowing ? (
+                    <>
+                      <UserCheck className="h-4 w-4 mr-2" />
+                      {t('common:following', 'Following')}
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      {t('common:follow', 'Follow')}
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
+            </ProfileHeroCard>
+          </div>
+          {trainer.coaching_method && (
+            <Card className="lg:w-[320px] flex-shrink-0">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  {t('trainer:profile.coachingMethod', 'My Coaching Style')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground whitespace-pre-line">{trainer.coaching_method}</p>
+              </CardContent>
+            </Card>
           )}
-        </ProfileHeroCard>
-
-        {/* Coaching Style - inline below hero, before slots */}
-        {trainer.coaching_method && (
-          <Card className="mb-6">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="h-5 w-5 text-primary" />
-                {t('trainer:profile.coachingMethod', 'My Coaching Style')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground whitespace-pre-line">{trainer.coaching_method}</p>
-            </CardContent>
-          </Card>
-        )}
+        </div>
 
         {/* Video Modal */}
         {showVideo && videoInfo && (
