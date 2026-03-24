@@ -1,41 +1,21 @@
 
 
-# Bulk Update VAT Setting on Unpaid Invoices & Slots
+# Show "Go to account" for existing players instead of "Create account"
 
-## What happens today
-When a trainer toggles the VAT setting (inclusive ↔ exclusive), it only affects **new** slots. Existing slots and their invoices keep the old setting. If the trainer made a mistake, they have to manually fix everything.
+## Problem
+The `PostPaymentCTA` component always shows "Create account" regardless of whether the invoice belongs to a registered player (`player_id` is set) or a guest. The `get-public-invoice` response already returns `playerId` — it's just not used.
 
-## Plan
+## Changes
 
-### 1. Add confirmation dialog after VAT toggle
-**File: `src/pages/TrainerBookingSettings.tsx`**
+### `src/pages/PublicInvoicePay.tsx`
+- Pass `playerId` into `PostPaymentCTA` (it's already in `data.invoice.playerId`)
+- If `playerId` exists: show a "Go to my account" button linking to `/app/player` (with `LogIn` icon)
+- If no `playerId`: show the existing "Create account" button with signup URL (current behavior)
 
-After successfully saving the new `prices_include_vat` value, show a confirmation dialog:
-- "Do you also want to update all unpaid invoices and future sessions to use this new VAT setting?"
-- Two buttons: **Yes, update all** / **No, only new sessions**
-
-### 2. Create edge function to bulk recalculate
-**File: `supabase/functions/bulk-update-vat/index.ts`**
-
-Accepts `{ trainerId, pricesIncludeVat }`. Does three things:
-
-1. **Update all future slots** — set `prices_include_vat` on all `availability_slots` where `trainer_id` matches and `start_time > now()`
-2. **Recalculate unpaid invoices** — for all invoices with `status` in (`draft`, `sent`) belonging to this trainer:
-   - Recalculate `subtotal`, `vat_amount`, `total` based on the new VAT direction (same line item unit prices, different math)
-   - Update the invoice record
-3. **Regenerate PDFs** — call `generate-invoice` for each updated invoice so the HTML/PDF reflects correct totals
-
-Returns a summary: `{ slotsUpdated, invoicesUpdated }`.
-
-### 3. Wire dialog to edge function
-**File: `src/pages/TrainerBookingSettings.tsx`**
-
-When user clicks "Yes, update all":
-- Call `bulk-update-vat` edge function
-- Show toast with result: "Updated X sessions and Y invoices"
-- On error, show error toast
+### Translation keys (`en/common.json`, `nl/common.json`, + `es`, `de`, `fr`)
+- Add `invoice.goToMyAccount` — "Go to my account" / "Ga naar mijn account"
 
 ### Files
-- `src/pages/TrainerBookingSettings.tsx` — Add confirmation dialog after VAT toggle, call edge function
-- `supabase/functions/bulk-update-vat/index.ts` — New edge function for bulk slot + invoice recalculation
+- `src/pages/PublicInvoicePay.tsx` — Conditional CTA based on `playerId`
+- `src/i18n/locales/{en,nl,es,de,fr}/common.json` — Add translation key
 
