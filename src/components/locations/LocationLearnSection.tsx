@@ -84,7 +84,7 @@ export function LocationLearnSection({ lang }: LocationLearnSectionProps) {
                   <Card className="h-full hover:shadow-md transition-shadow hover:border-primary/20">
                     <CardContent className="p-4 space-y-2">
                       <div className="flex items-center gap-2">
-                        {article.pageType === 'CollectionPage' && (
+                        {article.pageType === 'hub' && (
                           <Badge variant="secondary" className="text-xs">Hub</Badge>
                         )}
                         {article.skillLevel && (
