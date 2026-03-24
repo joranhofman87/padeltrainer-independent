@@ -327,6 +327,32 @@ export default function TrainerBookingSettings() {
           </CardContent>
         </Card>
       </main>
+
+      <AlertDialog open={showVatBulkDialog} onOpenChange={setShowVatBulkDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('bookingSettings.vatBulkUpdateTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('bookingSettings.vatBulkUpdateDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setShowVatBulkDialog(false);
+                setPendingVatValue(null);
+              }}
+              disabled={bulkUpdating}
+            >
+              {t('bookingSettings.vatBulkUpdateCancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkUpdateVat} disabled={bulkUpdating}>
+              {bulkUpdating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t('bookingSettings.vatBulkUpdateConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
