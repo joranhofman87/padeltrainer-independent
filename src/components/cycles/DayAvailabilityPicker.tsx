@@ -43,6 +43,7 @@ export default function DayAvailabilityPicker({
   value,
   onChange,
   disabled = false,
+  allowedDays,
 }: DayAvailabilityPickerProps) {
   const { t } = useTranslation('cycles');
 
