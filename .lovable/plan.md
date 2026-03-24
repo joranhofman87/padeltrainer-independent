@@ -1,54 +1,33 @@
 
 
-# Fix: Mollie Verification Fields Blocked by Database Trigger
+# Fix: Mollie Pay Button Not Showing on Public Invoice Page
 
 ## Problem
-The `protect_mollie_verification_fields` trigger fires on **all** updates to the Mollie account tables, silently reverting `charges_enabled`, `payouts_enabled`, and `onboarding_complete` back to their old values. This happens even when the `mollie-callback` edge function uses the service role key, because triggers fire regardless of role — only RLS is bypassed by service role.
+Two issues are preventing the Mollie payment button from appearing:
 
-**Result**: The OAuth callback saves tokens successfully but the verification flags stay `false`, making it look like the account isn't ready for payments — even though Mollie shows it as fully active and verified.
+1. **Data not fixed**: The previous migration updated the trigger function but the one-time data correction for RL Performance Academy (`org_19475084`) was not included. The flags `charges_enabled`, `payouts_enabled`, and `onboarding_complete` are still `false` in the database despite the academy being fully verified in Mollie.
 
-## Solution
+2. **Missing `trainer_id` in query**: The `get-public-invoice` edge function selects invoice fields on line 29 but does NOT include `trainer_id`, so the fallback trainer Mollie check on line 72 never works.
 
-### 1. Fix the trigger to allow service-role updates
-**Database migration**
+## Changes
 
-Update `protect_mollie_verification_fields()` to check `current_setting('role')`. When the caller is `service_role`, allow the update. Only block changes for `authenticated` or `anon` roles.
-
-```sql
-CREATE OR REPLACE FUNCTION public.protect_mollie_verification_fields()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path TO 'public'
-AS $$
-BEGIN
-  -- Service role (used by edge functions) is allowed to update these fields
-  IF current_setting('request.jwt.claim.role', true) = 'service_role' THEN
-    RETURN NEW;
-  END IF;
-
-  -- Block regular users from changing verification fields
-  IF (OLD.charges_enabled IS DISTINCT FROM NEW.charges_enabled)
-     OR (OLD.payouts_enabled IS DISTINCT FROM NEW.payouts_enabled)
-     OR (OLD.onboarding_complete IS DISTINCT FROM NEW.onboarding_complete)
-  THEN
-    NEW.charges_enabled := OLD.charges_enabled;
-    NEW.payouts_enabled := OLD.payouts_enabled;
-    NEW.onboarding_complete := OLD.onboarding_complete;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-```
-
-### 2. Fix RL Performance Academy's current data
-**Database migration** — one-time update to set the correct flags for the already-verified account:
-
+### 1. Database migration — Fix RL Performance Academy data
+Run a data update to set the correct flags:
 ```sql
 UPDATE academy_mollie_accounts
 SET charges_enabled = true, payouts_enabled = true, onboarding_complete = true
 WHERE mollie_organization_id = 'org_19475084';
 ```
 
-## Files
-- Database migration only — no code file changes needed
+### 2. Fix `get-public-invoice` edge function
+**File: `supabase/functions/get-public-invoice/index.ts`**
+
+Add `trainer_id` to the SELECT on line 29 so the trainer Mollie fallback actually works:
+```
+.select("id, invoice_number, ..., academy_profile_id, trainer_id, public_token")
+```
+
+### Files
+- Database migration (data fix)
+- `supabase/functions/get-public-invoice/index.ts` — add `trainer_id` to select
 
