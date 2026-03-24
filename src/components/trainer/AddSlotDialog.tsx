@@ -370,6 +370,7 @@ interface BulkCreateSheetProps {
   availableLocations?: SlotLocation[];
   availableTrainers?: TrainerOption[];
   prefillFromCyclusId?: string | null;
+  academyId?: string;
 }
 
 export function BulkCreateSheet({

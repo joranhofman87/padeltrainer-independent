@@ -515,6 +515,7 @@ export default function AcademyCalendar() {
             defaultWeeks={8}
             onSlotsCreated={() => fetchSlots()}
             availableLocations={locations}
+            academyId={activeAcademy?.id}
           />
 
           <BulkCreateSheet
@@ -528,6 +529,7 @@ export default function AcademyCalendar() {
             onSlotsCreated={() => fetchSlots()}
             availableLocations={locations}
             availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+            academyId={activeAcademy?.id}
           />
 
 
