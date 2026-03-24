@@ -53,9 +53,10 @@ interface SocialLink {
 interface ProfileSocialCardProps {
   socialLinks: SocialLink[];
   title?: string;
+  children?: React.ReactNode;
 }
 
-export function ProfileSocialCard({ socialLinks, title }: ProfileSocialCardProps) {
+export function ProfileSocialCard({ socialLinks, title, children }: ProfileSocialCardProps) {
   const { t } = useTranslation('common');
 
   const getSocialUrl = (platform: string, value: string | null) => {
@@ -119,6 +120,7 @@ export function ProfileSocialCard({ socialLinks, title }: ProfileSocialCardProps
             </a>
           ))}
         </div>
+        {children}
       </CardContent>
     </Card>
   );
