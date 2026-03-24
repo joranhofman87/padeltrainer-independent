@@ -681,12 +681,6 @@ export default function TrainerProfile() {
 
           {/* Sidebar */}
           <ProfileSidebarColumn>
-            <ProfileQuickStatsCard
-              title={t('common:quickStats', 'Quick Stats')}
-              stats={quickStats}
-            />
-
-
             {/* About */}
             {profile.bio && (
               <Card>
@@ -698,6 +692,11 @@ export default function TrainerProfile() {
                 </CardContent>
               </Card>
             )}
+
+            <ProfileQuickStatsCard
+              title={t('common:quickStats', 'Quick Stats')}
+              stats={quickStats}
+            />
 
             {/* Specializations */}
             {trainer.specializations && trainer.specializations.length > 0 && (
