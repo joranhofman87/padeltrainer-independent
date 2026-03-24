@@ -10,24 +10,35 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CREATE-MOLLIE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
 };
 
-async function notifySlackError(functionName: string, errorMessage: string, context?: Record<string, unknown>) {
+async function notifySlack(supabase: any, event: string, data: Record<string, unknown>) {
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !supabaseKey) return;
-    const supabase = createClient(supabaseUrl, supabaseKey);
     await supabase.functions.invoke("slack-notify", {
-      body: {
-        event: "edge_function_error",
-        data: {
-          function: functionName,
-          error: errorMessage.slice(0, 500),
-          ...context,
-        },
-      },
+      body: { event, data },
     });
   } catch (_) {
     // Silent
+  }
+}
+
+async function writeAuditLog(
+  supabase: any,
+  log: {
+    function_name: string;
+    booking_id?: string;
+    invoice_id?: string;
+    recipient_type?: string;
+    mollie_org_id?: string;
+    amount?: number;
+    status: string;
+    error_message?: string;
+    mollie_payment_id?: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  try {
+    await supabase.from("payment_audit_log").insert(log);
+  } catch (_) {
+    logStep("Failed to write audit log", { error: String(_) });
   }
 }
 
@@ -158,6 +169,7 @@ serve(async (req) => {
     // Check if trainer is part of an active academy
     let recipientAccessToken: string | null = null;
     let recipientType: 'trainer' | 'academy' | null = null;
+    let mollieOrgId: string | null = null;
     let platformFee = 1.00; // Default to starter fee (€1.00)
 
     if (trainerProfileId) {
@@ -187,6 +199,7 @@ serve(async (req) => {
         if (academyMollie?.access_token && academyMollie?.charges_enabled) {
           recipientAccessToken = await refreshTokenIfNeeded(supabase, academyMollie, 'academy', academyTrainer.academy_profile_id);
           recipientType = 'academy';
+          mollieOrgId = academyMollie.mollie_organization_id;
           logStep("Using academy Mollie account", { organizationId: academyMollie.mollie_organization_id });
 
           // Check academy's platform fee override
@@ -225,6 +238,7 @@ serve(async (req) => {
       if (trainerMollie?.access_token) {
         recipientAccessToken = await refreshTokenIfNeeded(supabase, trainerMollie, 'trainer', trainerProfileId);
         recipientType = 'trainer';
+        mollieOrgId = trainerMollie.mollie_organization_id;
         logStep("Using trainer Mollie account", { organizationId: trainerMollie.mollie_organization_id });
 
         // Get trainer's fee override or tier-based default
@@ -257,6 +271,33 @@ serve(async (req) => {
           logStep("Using tier-based fee", { tier, platformFee });
         }
       }
+    }
+
+    // CRITICAL: If no connected Mollie account found, refuse to create payment
+    // This prevents funds from accidentally going to the platform account
+    if (!recipientAccessToken) {
+      const errorMsg = "No connected payment account found for this trainer/academy. Payment cannot be processed.";
+      logStep("BLOCKED: No Mollie account", { trainerId, trainerProfileId });
+      
+      await writeAuditLog(supabase, {
+        function_name: "create-mollie-payment",
+        recipient_type: null,
+        amount,
+        status: "blocked_no_account",
+        error_message: errorMsg,
+        metadata: { trainerId, trainerProfileId, slotId },
+      });
+
+      await notifySlack(supabase, "edge_function_error", {
+        function: "create-mollie-payment",
+        error: errorMsg,
+        trainerId,
+      });
+
+      return new Response(
+        JSON.stringify({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar. De trainer heeft nog geen betaalaccount gekoppeld." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Use existing booking IDs (cyclus flow) or create a new booking
@@ -308,67 +349,74 @@ serve(async (req) => {
       },
     };
 
-    if (recipientAccessToken) {
-      // Fetch the connected account's profile ID (required by Mollie for OAuth payments)
-      // Note: /v2/profiles/me only works with API keys, so we use /v2/profiles (list) instead
-      let mollieProfileId: string | null = null;
-      try {
-        const profileResp = await fetch('https://api.mollie.com/v2/profiles', {
-          headers: { 'Authorization': `Bearer ${recipientAccessToken}` },
-        });
-        if (profileResp.ok) {
-          const profileData = await profileResp.json();
-          if (profileData._embedded?.profiles?.length > 0) {
-            mollieProfileId = profileData._embedded.profiles[0].id;
-            logStep("Mollie profile found via list", { profileId: mollieProfileId });
-          }
-        } else {
-          const profileError = await profileResp.text();
-          logStep("Could not fetch Mollie profiles", { status: profileResp.status, error: profileError });
+    // Fetch the connected account's profile ID (required by Mollie for OAuth payments)
+    let mollieProfileId: string | null = null;
+    try {
+      const profileResp = await fetch('https://api.mollie.com/v2/profiles', {
+        headers: { 'Authorization': `Bearer ${recipientAccessToken}` },
+      });
+      if (profileResp.ok) {
+        const profileData = await profileResp.json();
+        if (profileData._embedded?.profiles?.length > 0) {
+          mollieProfileId = profileData._embedded.profiles[0].id;
+          logStep("Mollie profile found via list", { profileId: mollieProfileId });
         }
-      } catch (err) {
-        logStep("Error fetching Mollie profiles", { error: String(err) });
-      }
-
-      if (mollieProfileId) {
-        // Cap fee: must be strictly less than amount minus Mollie's transaction costs
-        const maxFee = Math.max(0, amount - 0.30);
-        const effectiveFee = Math.min(platformFee, maxFee);
-
-        paymentData.profileId = mollieProfileId;
-        if (effectiveFee > 0) {
-          paymentData.applicationFee = {
-            amount: {
-              currency: "EUR",
-              value: effectiveFee.toFixed(2),
-            },
-            description: "Platform fee",
-          };
-        }
-        logStep("Application fee configured", { recipientType, effectiveFee, profileId: mollieProfileId });
       } else {
-        logStep("No Mollie profile found, falling back to platform");
-        recipientAccessToken = null;
+        const profileErrorText = await profileResp.text();
+        logStep("Could not fetch Mollie profiles", { status: profileResp.status, error: profileErrorText });
       }
-    } else {
-      logStep("No Mollie account found, payment goes to platform");
+    } catch (err) {
+      logStep("Error fetching Mollie profiles", { error: String(err) });
     }
+
+    if (!mollieProfileId) {
+      const errorMsg = "No Mollie profile found for connected account. Payment cannot be processed.";
+      logStep("BLOCKED: No Mollie profile", { recipientType, mollieOrgId });
+
+      await writeAuditLog(supabase, {
+        function_name: "create-mollie-payment",
+        booking_id: bookingId,
+        recipient_type: recipientType,
+        mollie_org_id: mollieOrgId,
+        amount,
+        status: "blocked_no_profile",
+        error_message: errorMsg,
+      });
+
+      return new Response(
+        JSON.stringify({ error: "missing_mollie_profile", message: "Betaalprofiel niet geconfigureerd." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Cap fee: must be strictly less than amount minus Mollie's transaction costs
+    const maxFee = Math.max(0, amount - 0.30);
+    const effectiveFee = Math.min(platformFee, maxFee);
+
+    paymentData.profileId = mollieProfileId;
+    if (effectiveFee > 0) {
+      paymentData.applicationFee = {
+        amount: {
+          currency: "EUR",
+          value: effectiveFee.toFixed(2),
+        },
+        description: "Platform fee",
+      };
+    }
+    logStep("Application fee configured", { recipientType, effectiveFee, profileId: mollieProfileId, mollieOrgId });
 
     // Detect test mode and add testmode flag for OAuth tokens
     const isTestMode = mollieApiKey.startsWith("test_");
-    if (recipientAccessToken && isTestMode) {
+    if (isTestMode) {
       paymentData.testmode = true;
       logStep("Test mode enabled for OAuth payment");
     }
 
-    // Use connected account's access token if available, otherwise platform key
-    const authToken = recipientAccessToken || mollieApiKey;
-
-    // Create payment via Mollie API
+    // Create payment via Mollie API using connected account's token
     const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${authToken}`,
+        "Authorization": `Bearer ${recipientAccessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(paymentData),
@@ -376,17 +424,51 @@ serve(async (req) => {
 
     if (!mollieResponse.ok) {
       const errorText = await mollieResponse.text();
+      
+      await writeAuditLog(supabase, {
+        function_name: "create-mollie-payment",
+        booking_id: bookingId,
+        recipient_type: recipientType,
+        mollie_org_id: mollieOrgId,
+        amount,
+        status: "error",
+        error_message: errorText.slice(0, 500),
+      });
+
       throw new Error(`Mollie API error: ${errorText}`);
     }
 
     const payment = await mollieResponse.json();
-    logStep("Mollie payment created", { paymentId: payment.id });
+    logStep("Mollie payment created", { paymentId: payment.id, recipientType, mollieOrgId });
 
     // Update booking(s) with Mollie payment ID
     await supabase
       .from("bookings")
       .update({ mollie_payment_id: payment.id })
       .in("id", allBookingIds);
+
+    // Write success audit log
+    await writeAuditLog(supabase, {
+      function_name: "create-mollie-payment",
+      booking_id: bookingId,
+      recipient_type: recipientType,
+      mollie_org_id: mollieOrgId,
+      amount,
+      status: "success",
+      mollie_payment_id: payment.id,
+      metadata: { bookingIds: allBookingIds, profileId: mollieProfileId, fee: effectiveFee },
+    });
+
+    // Slack notification for successful payment creation
+    await notifySlack(supabase, "payment_created", {
+      type: "booking",
+      recipientType,
+      mollieOrgId,
+      amount: `€${amount.toFixed(2)}`,
+      fee: `€${effectiveFee.toFixed(2)}`,
+      bookings: allBookingIds.length,
+      paymentId: payment.id,
+    });
 
     return new Response(
       JSON.stringify({
@@ -399,7 +481,11 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
-    await notifySlackError("create-mollie-payment", message);
+    await notifySlack(
+      createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!),
+      "edge_function_error",
+      { function: "create-mollie-payment", error: message.slice(0, 500) }
+    );
     return new Response(
       JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

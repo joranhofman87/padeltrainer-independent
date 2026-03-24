@@ -211,6 +211,9 @@ serve(async (req) => {
 
     const isTestMode = mollieApiKey.startsWith("test_");
     const authToken = recipientAccessToken || mollieApiKey;
+    if (!recipientAccessToken) {
+      logStep("⚠️ WARNING: Falling back to platform API key for payment verification", { molliePaymentId, trainerId });
+    }
     let fetchUrl = `https://api.mollie.com/v2/payments/${molliePaymentId}`;
     if (isTestMode && recipientAccessToken) {
       fetchUrl += "?testmode=true";

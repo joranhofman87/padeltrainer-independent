@@ -10,6 +10,37 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CREATE-INVOICE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
 };
 
+async function notifySlack(supabase: any, event: string, data: Record<string, unknown>) {
+  try {
+    await supabase.functions.invoke("slack-notify", {
+      body: { event, data },
+    });
+  } catch (_) {
+    // Silent
+  }
+}
+
+async function writeAuditLog(
+  supabase: any,
+  log: {
+    function_name: string;
+    invoice_id?: string;
+    recipient_type?: string;
+    mollie_org_id?: string;
+    amount?: number;
+    status: string;
+    error_message?: string;
+    mollie_payment_id?: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  try {
+    await supabase.from("payment_audit_log").insert(log);
+  } catch (_) {
+    logStep("Failed to write audit log", { error: String(_) });
+  }
+}
+
 async function refreshTokenIfNeeded(
   supabaseClient: any,
   accountData: any,
@@ -106,35 +137,51 @@ serve(async (req) => {
 
     // Resolve Mollie access token — prefer academy, fall back to trainer
     let accessToken: string | null = null;
+    let recipientType: string | null = null;
+    let mollieOrgId: string | null = null;
 
     if (invoice.academy_profile_id) {
       const { data: academyMollie } = await supabase
         .from("academy_mollie_accounts")
-        .select("access_token, refresh_token, token_expires_at, charges_enabled")
+        .select("access_token, refresh_token, token_expires_at, charges_enabled, mollie_organization_id")
         .eq("academy_profile_id", invoice.academy_profile_id)
         .eq("onboarding_complete", true)
         .single();
 
       if (academyMollie?.access_token && academyMollie?.charges_enabled) {
         accessToken = await refreshTokenIfNeeded(supabase, academyMollie, "academy", invoice.academy_profile_id);
+        recipientType = "academy";
+        mollieOrgId = academyMollie.mollie_organization_id;
       }
     }
 
     if (!accessToken && invoice.trainer_id) {
       const { data: trainerMollie } = await supabase
         .from("trainer_mollie_accounts")
-        .select("access_token, refresh_token, token_expires_at")
+        .select("access_token, refresh_token, token_expires_at, mollie_organization_id")
         .eq("trainer_id", invoice.trainer_id)
         .eq("onboarding_complete", true)
         .single();
 
       if (trainerMollie?.access_token) {
         accessToken = await refreshTokenIfNeeded(supabase, trainerMollie, "trainer", invoice.trainer_id);
+        recipientType = "trainer";
+        mollieOrgId = trainerMollie.mollie_organization_id;
       }
     }
 
     if (!accessToken) {
       logStep("No connected Mollie account found", { invoiceId });
+
+      await writeAuditLog(supabase, {
+        function_name: "create-invoice-payment",
+        invoice_id: invoiceId,
+        amount: invoice.total,
+        status: "blocked_no_account",
+        error_message: "No connected Mollie account",
+        metadata: { invoiceNumber: invoice.invoice_number },
+      });
+
       return new Response(JSON.stringify({ error: "no_mollie_account", message: "Payment account not connected." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -164,6 +211,17 @@ serve(async (req) => {
 
     if (!mollieProfileId) {
       logStep("No Mollie profile found", { invoiceId });
+
+      await writeAuditLog(supabase, {
+        function_name: "create-invoice-payment",
+        invoice_id: invoiceId,
+        recipient_type: recipientType,
+        mollie_org_id: mollieOrgId,
+        amount: invoice.total,
+        status: "blocked_no_profile",
+        error_message: "No Mollie profile found",
+      });
+
       return new Response(JSON.stringify({ error: "missing_mollie_profile", message: "Payment profile not configured." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -211,7 +269,7 @@ serve(async (req) => {
       paymentBody.testmode = true;
     }
 
-    logStep("Creating Mollie payment", { invoiceNumber: invoice.invoice_number, amount: invoice.total });
+    logStep("Creating Mollie payment", { invoiceNumber: invoice.invoice_number, amount: invoice.total, recipientType, mollieOrgId });
 
     const mollieRes = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
@@ -225,6 +283,23 @@ serve(async (req) => {
     if (!mollieRes.ok) {
       const errText = await mollieRes.text();
       logStep("Mollie payment creation failed", { error: errText });
+
+      await writeAuditLog(supabase, {
+        function_name: "create-invoice-payment",
+        invoice_id: invoiceId,
+        recipient_type: recipientType,
+        mollie_org_id: mollieOrgId,
+        amount: invoice.total,
+        status: "error",
+        error_message: errText.slice(0, 500),
+      });
+
+      await notifySlack(supabase, "edge_function_error", {
+        function: "create-invoice-payment",
+        error: errText.slice(0, 300),
+        invoiceNumber: invoice.invoice_number,
+      });
+
       throw new Error(`Mollie error: ${errText}`);
     }
 
@@ -240,7 +315,29 @@ serve(async (req) => {
       })
       .eq("id", invoice.id);
 
-    logStep("Payment created", { paymentId: molliePayment.id, checkoutUrl });
+    logStep("Payment created", { paymentId: molliePayment.id, checkoutUrl, recipientType, mollieOrgId });
+
+    // Write success audit log
+    await writeAuditLog(supabase, {
+      function_name: "create-invoice-payment",
+      invoice_id: invoiceId,
+      recipient_type: recipientType,
+      mollie_org_id: mollieOrgId,
+      amount: invoice.total,
+      status: "success",
+      mollie_payment_id: molliePayment.id,
+      metadata: { invoiceNumber: invoice.invoice_number, profileId: mollieProfileId },
+    });
+
+    // Slack notification for successful payment creation
+    await notifySlack(supabase, "payment_created", {
+      type: "invoice",
+      invoiceNumber: invoice.invoice_number,
+      recipientType,
+      mollieOrgId,
+      amount: `€${invoice.total.toFixed(2)}`,
+      paymentId: molliePayment.id,
+    });
 
     return new Response(JSON.stringify({ paymentUrl: checkoutUrl, paymentId: molliePayment.id }), {
       status: 200,
