@@ -510,7 +510,7 @@ export default function PublicInvoicePay() {
           ) : null}
 
           {/* Bank details — prominent when no online payment available */}
-          {academy?.iban && (
+          {academy?.iban && !invoice.hasMollieAccount && (
             <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
               {!invoice.hasMollieAccount && (
                 <p className="font-medium text-foreground mb-2">
