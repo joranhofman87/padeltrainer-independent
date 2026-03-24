@@ -500,47 +500,20 @@ export default function TrainerProfile() {
           )}
         </ProfileHeroCard>
 
-        {/* Video Modal */}
-        {showVideo && videoInfo && (
-          <div 
-            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-            onClick={() => setShowVideo(false)}
-          >
-            <div className="relative w-full max-w-4xl aspect-video">
-              <button 
-                onClick={() => setShowVideo(false)}
-                className="absolute -top-10 right-0 text-white hover:text-gray-300"
-              >
-                ✕ {t('common:close', 'Close')}
-              </button>
-              <iframe
-                src={`${videoInfo.embedUrl}?autoplay=1`}
-                className="w-full h-full rounded-lg"
-                allow="autoplay; fullscreen"
-                allowFullScreen
-              />
-            </div>
-          </div>
+        {/* Coaching Style - inline below hero, before slots */}
+        {trainer.coaching_method && (
+          <Card className="mb-6">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="h-5 w-5 text-primary" />
+                {t('trainer:profile.coachingMethod', 'My Coaching Style')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground whitespace-pre-line">{trainer.coaching_method}</p>
+            </CardContent>
+          </Card>
         )}
-
-        {/* Content Grid */}
-        <ProfileContentGrid>
-          {/* Main Content */}
-          <ProfileMainColumn>
-            {/* Coaching Style Card */}
-            {trainer.coaching_method && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    {t('trainer:profile.coachingMethod', 'My Coaching Style')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground whitespace-pre-line">{trainer.coaching_method}</p>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Open Slots */}
             {trainer && <TrainerOpenSlots trainerId={trainer.id} trainerSlug={trainerSlug} />}

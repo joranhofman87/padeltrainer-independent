@@ -102,7 +102,7 @@ export function ProfileHeroCard({
           <div className="flex flex-col lg:flex-row gap-6">
             {/* Avatar with video play button */}
             <div className="relative mx-auto lg:mx-0">
-              <Avatar className="h-36 w-36 ring-4 ring-background shadow-xl bg-muted">
+              <Avatar className="h-24 w-24 ring-4 ring-background shadow-xl bg-muted">
                 <AvatarImage 
                   src={avatarUrl || undefined} 
                   alt={avatarAlt || `${name} profile photo`}
