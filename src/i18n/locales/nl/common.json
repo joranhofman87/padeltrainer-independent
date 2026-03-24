@@ -175,7 +175,14 @@
     "club": "Club",
     "clubs": "Clubs",
     "followClub": "Volg club",
-    "followingClub": "Volgend"
+    "followingClub": "Volgend",
+    "learnPadel": "Leer Padel Spelen",
+    "topArticles": "Populaire Gidsen",
+    "topStrokes": "Essentiële Slagen",
+    "topVideos": "Video Tips",
+    "viewAllArticles": "Bekijk alle gidsen",
+    "viewAllStrokes": "Bekijk alle slagen",
+    "viewAllVideos": "Bekijk alle video's"
   },
   "profile": {
     "preferredClubs": "Favoriete padelclubs",

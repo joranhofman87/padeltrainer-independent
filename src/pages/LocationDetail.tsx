@@ -27,6 +27,7 @@ import { getAcademiesAtLocation } from '@/lib/academy';
 import { recordClubProfileView } from '@/lib/clubProfileViews';
 import { ClaimClubDialog } from '@/components/club/ClaimClubDialog';
 import { ClubFollowButton } from '@/components/club/ClubFollowButton';
+import { LocationLearnSection } from '@/components/locations/LocationLearnSection';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
@@ -790,6 +791,9 @@ export default function LocationDetail() {
             </div>
           </ProfileFullWidthSection>
         )}
+
+        {/* Learn to Play Padel Section */}
+        <LocationLearnSection lang={currentLang} />
 
         {location && user && (
           <ClaimClubDialog

@@ -175,7 +175,14 @@
     "club": "Club",
     "clubs": "Clubs",
     "followClub": "Follow Club",
-    "followingClub": "Following"
+    "followingClub": "Following",
+    "learnPadel": "Learn to Play Padel",
+    "topArticles": "Popular Guides",
+    "topStrokes": "Essential Strokes",
+    "topVideos": "Video Tips",
+    "viewAllArticles": "View all guides",
+    "viewAllStrokes": "View all strokes",
+    "viewAllVideos": "View all videos"
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",

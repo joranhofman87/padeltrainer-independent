@@ -175,7 +175,14 @@
     "club": "Club",
     "clubs": "Clubes",
     "followClub": "Seguir club",
-    "followingClub": "Siguiendo"
+    "followingClub": "Siguiendo",
+    "learnPadel": "Aprende a Jugar al Pádel",
+    "topArticles": "Guías Populares",
+    "topStrokes": "Golpes Esenciales",
+    "topVideos": "Consejos en Vídeo",
+    "viewAllArticles": "Ver todas las guías",
+    "viewAllStrokes": "Ver todos los golpes",
+    "viewAllVideos": "Ver todos los vídeos"
   },
   "profile": {
     "preferredClubs": "Clubes de pádel preferidos",
