@@ -184,7 +184,7 @@ export default function CycleApplicationForm({
       lesson_types: ['group3'] as string[],
       preferred_duration_minutes: availableDurations.length === 1 ? availableDurations[0] : (cycle.settings.default_duration_minutes || 60),
       sessions_per_week: 1,
-      availability: {},
+      availability: cyclAvailableDays && Object.keys(cyclAvailableDays).length > 0 ? cyclAvailableDays : {},
       preferred_trainer_id: '',
       location_id: '',
       notes: '',
