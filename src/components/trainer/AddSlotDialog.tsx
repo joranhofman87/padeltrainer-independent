@@ -1669,7 +1669,8 @@ export function BulkCreateSheet({
             setAddPlayerDialogOpen(open);
             if (!open) setAddPlayerContext(null);
           }}
-          trainerId={trainerId}
+          trainerId={trainerId || undefined}
+          academyId={academyId}
           onPlayerCreated={(player) => {
             setPlayers((prev) => [...prev, player].sort((a, b) => 
               a.full_name.localeCompare(b.full_name)
