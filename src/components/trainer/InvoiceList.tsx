@@ -391,19 +391,29 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
                     )}
                     
                     {invoice.status !== 'paid' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleMarkPaid(invoice.id)}
-                        disabled={actionLoading === invoice.id}
-                        title="Markeer als betaald"
-                      >
-                        {actionLoading === invoice.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        )}
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleMarkPaid(invoice.id)}
+                          disabled={actionLoading === invoice.id}
+                          title="Markeer als betaald"
+                        >
+                          {actionLoading === invoice.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditInvoice(invoice)}
+                          title="Bewerken"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </>
                     )}
 
                     {invoice.status === 'paid' && forwardEmails.length > 0 && (
