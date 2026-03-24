@@ -422,10 +422,16 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
           </div>
         </div>
 
-        <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
-          {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          {t('common.save')}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
+            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+            {t('common.save')}
+          </Button>
+          <Button variant="outline" onClick={handleBulkUpdateVat} disabled={bulkUpdating} className="w-full sm:w-auto">
+            {bulkUpdating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            BTW bijwerken op openstaande facturen
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
