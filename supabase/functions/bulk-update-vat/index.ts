@@ -99,8 +99,8 @@ serve(async (req) => {
 
     // 2. Recalculate unpaid invoices
     const invoiceFilter = isAcademyMode
-      ? supabase.from("invoices").select("id, line_items, vat_rate, subtotal, vat_amount, total").eq("academy_profile_id", academyId).in("status", ["draft", "sent"])
-      : supabase.from("invoices").select("id, line_items, vat_rate, subtotal, vat_amount, total").eq("trainer_id", trainerId).in("status", ["draft", "sent"]);
+      ? supabase.from("invoices").select("id, line_items, vat_rate, subtotal, vat_amount, total").eq("academy_profile_id", academyId).in("status", ["draft", "sent", "pending"])
+      : supabase.from("invoices").select("id, line_items, vat_rate, subtotal, vat_amount, total").eq("trainer_id", trainerId).in("status", ["draft", "sent", "pending"]);
 
     const { data: invoices, error: invoicesError } = await invoiceFilter;
 
