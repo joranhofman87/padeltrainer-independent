@@ -100,6 +100,7 @@ interface AddSlotDialogProps {
   defaultWeeks: number;
   onSlotsCreated: () => void;
   availableLocations?: SlotLocation[];
+  academyId?: string;
 }
 
 export function AddSlotDialog({
@@ -112,6 +113,7 @@ export function AddSlotDialog({
   defaultWeeks,
   onSlotsCreated,
   availableLocations,
+  academyId,
 }: AddSlotDialogProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
@@ -369,6 +371,7 @@ interface BulkCreateSheetProps {
   availableLocations?: SlotLocation[];
   availableTrainers?: TrainerOption[];
   prefillFromCyclusId?: string | null;
+  academyId?: string;
 }
 
 export function BulkCreateSheet({
@@ -383,6 +386,7 @@ export function BulkCreateSheet({
   availableLocations,
   availableTrainers,
   prefillFromCyclusId,
+  academyId,
 }: BulkCreateSheetProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
@@ -1665,7 +1669,8 @@ export function BulkCreateSheet({
             setAddPlayerDialogOpen(open);
             if (!open) setAddPlayerContext(null);
           }}
-          trainerId={trainerId}
+          trainerId={trainerId || undefined}
+          academyId={academyId}
           onPlayerCreated={(player) => {
             setPlayers((prev) => [...prev, player].sort((a, b) => 
               a.full_name.localeCompare(b.full_name)
