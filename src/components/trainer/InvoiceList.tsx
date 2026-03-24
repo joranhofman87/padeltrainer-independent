@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { InvoiceEmailDialog } from './InvoiceEmailDialog';
+import { EditInvoiceDialog } from '@/components/invoices/EditInvoiceDialog';
 import { 
   FileText, 
   Download, 
@@ -19,7 +20,8 @@ import {
   Euro,
   Trash2,
   Eye,
-  Mail
+  Mail,
+  Pencil
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import { nl } from 'date-fns/locale';
