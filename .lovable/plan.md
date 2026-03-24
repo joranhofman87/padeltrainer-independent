@@ -1,55 +1,42 @@
 
 
-# Slim Down Trainer Profile Hero & Reorganize Actions
+# Fix Invoice Line Items: Proper Pricing Breakdown & Extra Costs
 
 ## Problem
-The trainer hero banner is too noisy with experience years, verified badge, social links, book lesson button, contact, and share profile all crammed in. This pushes the important open slots content below the fold.
+Invoices don't clearly break down the pricing structure. The current logic:
+- Shows cyclus name × number of sessions, but doesn't indicate weeks
+- Extra costs (recurring) multiply by number of sessions — user expects "× number of weeks"
+- Extra costs stored on `availability_slots.extra_costs` are ignored when no `cycles` record exists
+- The invoice doesn't visually distinguish between session costs, one-time extras, and recurring extras
 
 ## Changes
 
-### 1. `src/pages/TrainerProfile.tsx` — Hero card cleanup
+### 1. `supabase/functions/auto-create-invoice/index.ts` — Fix line item generation
 
-**Remove from ProfileHeroCard props:**
-- `experienceYears` — stop passing it (already in quick stats)
-- `isVerified` — stop passing it
-- `socialLinks` — stop passing it
+**Session line item**: Keep as-is (`cyclusName`, qty = bookings.length, unit_price = price_per_session). Add "(x weken)" to description for clarity, e.g. `"Masterclass René (10 weken)"`.
 
-**Remove from children (lines 484-551):**
-- Book Lesson button (line 485-488)
-- Contact button (line 512-515)
-- Share Profile dropdown (line 516-550)
+**Extra costs source**: First try `cycles.settings.extra_costs`, then fall back to `availability_slots.extra_costs` from the first slot. This ensures standalone slots with extra costs are also invoiced.
 
-**Keep in hero children:**
-- Follow button only
+**Extra cost types**:
+- `one_time`: quantity = 1, description as-is → e.g. "Ball costs"
+- `per_session` (recurring): quantity = bookings.length (number of weeks/sessions), description with "(per sessie)" suffix → e.g. "Court rental (per sessie)"
 
-**Add to ProfileSocialCard in sidebar (line 819-824):**
-- Share Profile dropdown and Contact button — add these inside or right after the "Follow Me" card
+### 2. `src/components/trainer/DeleteSlotDialog.tsx` — Mirror the same fix
 
-**Add to quickStats array (line 331-335):**
-- Add verified status as a stat entry (it's already there at line 333 — keep it)
+Apply identical extra cost sourcing logic (slots fallback) and description formatting for invoice recalculation on slot deletion.
 
-### 2. `src/components/profiles/ProfileSidebar.tsx` — Enhance ProfileSocialCard
+### 3. `supabase/functions/generate-invoice/index.ts` — No changes needed
 
-Add optional props for:
-- `shareActions` — render share/contact buttons within the Follow Me card
-- Or: add `children` slot to ProfileSocialCard so TrainerProfile can inject the share dropdown and contact button
+The PDF/HTML renderer already correctly handles line items with description, quantity, unit_price, and amount columns. The improved descriptions will automatically show correctly.
 
-### 3. `src/pages/TrainerProfile.tsx` — Wire share & contact into sidebar
-
-Pass the share dropdown and contact button as children to ProfileSocialCard in the sidebar.
-
-## Summary of moves
-| Element | From | To |
-|---------|------|----|
-| Experience years | Hero banner | Already in Quick Stats (remove from hero) |
-| Verified badge | Hero banner | Already in Quick Stats (remove from hero) |
-| Social links | Hero banner | Already in sidebar Follow Me card (remove from hero) |
-| Book Lesson button | Hero banner | Remove entirely (open slots serve this purpose) |
-| Contact button | Hero banner | Sidebar Follow Me card |
-| Share Profile | Hero banner | Sidebar Follow Me card |
-| Follow button | Hero banner | Keep in hero |
+## Summary
+The fix ensures:
+- Cyclus sessions show the week count in the description
+- One-time extra costs show with qty=1
+- Recurring extra costs show with qty=number of sessions and "(per sessie)" label
+- Extra costs are sourced from slots when no cycle record exists
 
 ## Files
-- `src/pages/TrainerProfile.tsx` — Remove props & children from hero, move share/contact to sidebar
-- `src/components/profiles/ProfileSidebar.tsx` — Add children slot to ProfileSocialCard
+- `supabase/functions/auto-create-invoice/index.ts` — Better descriptions + slot fallback for extra costs
+- `src/components/trainer/DeleteSlotDialog.tsx` — Same fix for recalculation
 
