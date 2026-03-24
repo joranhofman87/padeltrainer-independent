@@ -1,45 +1,43 @@
 
 
-# Add "Learn to Play Padel" Content Section to Location Pages
+# Server-Side Pagination & Search for Locations Page
 
 ## Problem
-Location pages are thin on content, which hurts SEO. These pages are indexed by Google but lack substantive content. Meanwhile, Sanity CMS has rich learning articles, strokes, and video tips that could add value.
+The page loads all 13,000+ locations in 13 sequential API calls, then renders them all at once. This causes multi-second load times and UI freezing.
 
 ## Solution
-Add a new full-width section below the "Similar Clubs" section that showcases curated Sanity content: top learning articles, strokes, and video tips. This gives users useful content and creates internal links for Google to crawl.
+Move filtering and pagination to the database. Load 48 locations per page. Search queries the full database server-side.
 
 ## Changes
 
-### 1. New component: `src/components/locations/LocationLearnSection.tsx`
-A reusable section that fetches and displays content from Sanity:
+### 1. Add `searchLocationsPage()` to `src/lib/locations.ts`
+New function that accepts `{ search, country, city, trainersAvailable, indoorOnly, page, pageSize }`:
+- Uses Supabase `.select()` with only the columns needed for `LocationCard` (no `description`, `opening_hours`, etc.)
+- Applies `.ilike()` for search (name + city), `.eq()` for country/city filters
+- For `trainersAvailable` filter: use an `.in()` subquery against `trainer_locations` location IDs
+- For `indoorOnly`: `.gt('indoor_courts', 0)`
+- Uses `.range()` for pagination (48 per page)
+- Requests `{ count: 'exact' }` to get total for pagination UI
+- Returns `{ data: Location[], totalCount: number }`
 
-- **Learning Articles**: Fetch top 6 hub/featured articles via `LEARNING_ARTICLES_LIST_QUERY` (limited, hubs first)
-- **Strokes**: Fetch all strokes via `STROKES_LIST_QUERY` and display top 6
-- **Video Tips**: Fetch top 4 featured videos via `VIDEO_TIPS_LIST_QUERY`
+### 2. Refactor `src/pages/Locations.tsx`
+- Replace `getActiveLocations()` with `searchLocationsPage()` — call it reactively when filters or page change
+- Debounce search input (300ms) before triggering query
+- Remove client-side `filteredLocations` useMemo — server handles filtering now
+- Add page state and pagination controls at bottom (using existing `Pagination` components)
+- Keep `getUniqueCities()`, `getUniqueCountries()`, `getClaimedLocationIds()`, `getLocationTrainerCounts()` as-is for filter dropdowns and card badges (these are lightweight)
+- Featured locations: fetch separately with a small dedicated query filtered by `subscription_status = 'active'` (max ~10 rows)
+- Map view: pass only the current page's locations (not all 13K)
 
-Layout:
-- Section heading: "Learn to Play Padel" (translated per language)
-- Three sub-sections with cards linking to `/learn/`, `/strokes/`, `/videos/`
-- Each card shows title + short description/excerpt
-- "View all" links at end of each sub-section
-- Uses existing `LocalizedLink` for all internal links
-- Data fetched via `useQuery` with 10-min staleTime (matches existing Sanity caching pattern)
+### 3. Translation keys
+Add `locations.page` / `locations.of` or similar for pagination labels (likely already covered by existing `pagination.previous` / `pagination.next` keys).
 
-### 2. Wire into `src/pages/LocationDetail.tsx`
-- Import and render `<LocationLearnSection />` after the Similar Clubs section (after line 791)
-- Pass `currentLang` as prop
-
-### 3. Add translation keys to all 5 locale files (`common.json`)
-- `locations.learnPadel` — "Learn to Play Padel" / "Leer Padel Spelen" / etc.
-- `locations.topArticles` — "Popular Guides" / "Populaire Gidsen"
-- `locations.topStrokes` — "Essential Strokes" / "Essentiële Slagen"
-- `locations.topVideos` — "Video Tips" / "Video Tips"
-- `locations.viewAllArticles` — "View all guides" / "Bekijk alle gidsen"
-- `locations.viewAllStrokes` — "View all strokes" / "Bekijk alle slagen"
-- `locations.viewAllVideos` — "View all videos" / "Bekijk alle video's"
+## Performance impact
+- **Before**: 13 sequential queries → 13,000 rows → 13,000 DOM cards
+- **After**: 1 query → 48 rows → 48 DOM cards
+- Load time drops from 5-10s to <500ms
 
 ## Files
-- `src/components/locations/LocationLearnSection.tsx` — New component
-- `src/pages/LocationDetail.tsx` — Add section after similar clubs
-- `src/i18n/locales/{en,nl,es,de,fr}/common.json` — Translation keys
+- `src/lib/locations.ts` — Add `searchLocationsPage()`
+- `src/pages/Locations.tsx` — Server-side search, pagination, debounced input
 
