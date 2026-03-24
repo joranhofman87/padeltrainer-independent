@@ -190,7 +190,7 @@ serve(async (req) => {
       const pricePerSession = bookings[0].payment_amount || firstSlot.price_per_session || 0;
 
       lineItems = [{
-        description: cyclusName,
+        description: `${cyclusName} (${bookings.length} weken)`,
         quantity: bookings.length,
         unit_price: pricePerSession,
       }];
