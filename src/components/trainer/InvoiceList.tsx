@@ -41,6 +41,9 @@ interface Invoice {
   pdf_url: string | null;
   sent_at: string | null;
   paid_at: string | null;
+  line_items: any;
+  booking_ids: string[] | null;
+  notes: string | null;
 }
 
 interface InvoiceListProps {
