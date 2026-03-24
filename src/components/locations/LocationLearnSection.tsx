@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { ProfileFullWidthSection } from '@/components/profiles';
+import { Separator } from '@/components/ui/separator';
 import { sanityClient, STROKES_LIST_QUERY, VIDEO_TIPS_LIST_QUERY } from '@/lib/sanity';
 import { LEARNING_ARTICLES_LIST_QUERY } from '@/lib/learningArticles';
 import type { LearningArticleSummary } from '@/lib/learningArticles';
