@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Locale } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { format, isPast, isFuture, parseISO } from "date-fns";
+import { format, isPast, isFuture, parseISO, differenceInCalendarDays, addDays } from "date-fns";
 import { nl, enUS, de, fr, es } from "date-fns/locale";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -432,11 +432,11 @@ export default function TrainerScheduleOverview() {
             let newStart = new Date(oldStart);
             let newEnd = new Date(oldEnd);
 
-            // Apply date shift
+            // Apply date shift using calendar days (timezone-safe)
             if (dateChanged) {
-              const deltaMs = cycleEditData.startDate!.getTime() - cycleEditData.originalStartDate!.getTime();
-              newStart = new Date(newStart.getTime() + deltaMs);
-              newEnd = new Date(newEnd.getTime() + deltaMs);
+              const dayDelta = differenceInCalendarDays(cycleEditData.startDate!, cycleEditData.originalStartDate!);
+              newStart = addDays(newStart, dayDelta);
+              newEnd = addDays(newEnd, dayDelta);
             }
 
             // Apply time change (set new hours/minutes on each slot)
