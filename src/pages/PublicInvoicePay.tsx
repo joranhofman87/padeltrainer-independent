@@ -69,8 +69,22 @@ interface PublicInvoiceData {
   } | null;
 }
 
-function PostPaymentCTA({ playerName, playerEmail }: { playerName?: string; playerEmail?: string | null }) {
+function PostPaymentCTA({ playerName, playerEmail, playerId }: { playerName?: string; playerEmail?: string | null; playerId?: string | null }) {
   const { t } = useTranslation();
+
+  if (playerId) {
+    return (
+      <div className="pt-4">
+        <Link to="/app/player">
+          <Button variant="outline" className="gap-2">
+            <LogIn className="h-4 w-4" />
+            {t("invoice.goToMyAccount")}
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
   const params = new URLSearchParams();
   if (playerEmail) params.set('email', playerEmail);
   if (playerName) params.set('name', playerName);
