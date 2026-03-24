@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } from "@/hooks/useAdminData";
 import { logger } from '@/lib/logger';
 import { Button } from "@/components/ui/button";
@@ -75,10 +75,29 @@ export default function AdminAcademies() {
   const { toast } = useToast();
   const { invalidateAcademies } = useInvalidateAdminData();
 
-  const { data: academies = [], isLoading: academiesLoading } = useAdminAcademies();
-
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [page, setPage] = useState(0);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(0); // Reset to first page on new search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter]);
+
+  const { data, isLoading: academiesLoading } = useAdminAcademies(debouncedSearch, statusFilter, page);
+  const academies = data?.academies ?? [];
+  const totalCount = data?.totalCount ?? 0;
+  const totalPages = Math.ceil(totalCount / 100);
   const [editingAcademy, setEditingAcademy] = useState<AcademyProfileAdmin | null>(null);
   const [impersonatingAcademy, setImpersonatingAcademy] = useState<AcademyProfileAdmin | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -95,35 +114,12 @@ export default function AdminAcademies() {
     return academy.subscription_status || "inactive";
   };
 
-  // Prepare data with computed fields for sorting
-  const academiesWithComputed = useMemo(() => {
-    return academies.map((a) => ({
+  // Use server-side data directly with client-side sorting
+  const { sortedData, sortConfig, handleSort } = useTableSort<AcademyWithComputedFields>(
+    academies.map((a) => ({
       ...a,
       _subscriptionStatus: getSubscriptionStatus(a),
-    }));
-  }, [academies]);
-
-  const filteredAcademies = academiesWithComputed.filter((a) => {
-    const matchesSearch =
-      !searchQuery ||
-      a.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.contact_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.slug?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const status = a._subscriptionStatus;
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "verified" && a.is_verified) ||
-      (statusFilter === "unverified" && !a.is_verified) ||
-      (statusFilter === "public" && a.is_public) ||
-      (statusFilter === "private" && !a.is_public) ||
-      status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const { sortedData, sortConfig, handleSort } = useTableSort<AcademyWithComputedFields>(
-    filteredAcademies,
+    })),
     "created_at",
     "desc"
   );
@@ -374,7 +370,7 @@ export default function AdminAcademies() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredAcademies.length === 0 ? (
+            {sortedData.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={5}
@@ -505,10 +501,30 @@ export default function AdminAcademies() {
         </Table>
       </div>
 
-      {/* Footer */}
-      <p className="text-sm text-muted-foreground">
-        Showing {filteredAcademies.length} of {academies.length} academies
-      </p>
+      {/* Pagination */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Showing {page * 100 + 1}–{Math.min((page + 1) * 100, totalCount)} of {totalCount} academies
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page + 1 >= totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
 
       {editingAcademy && (
         <AcademyEditDialog
