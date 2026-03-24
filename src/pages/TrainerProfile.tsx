@@ -500,6 +500,21 @@ export default function TrainerProfile() {
           )}
         </ProfileHeroCard>
 
+        {/* Coaching Style - inline below hero, before slots */}
+        {trainer.coaching_method && (
+          <Card className="mb-6">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="h-5 w-5 text-primary" />
+                {t('trainer:profile.coachingMethod', 'My Coaching Style')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground whitespace-pre-line">{trainer.coaching_method}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Video Modal */}
         {showVideo && videoInfo && (
           <div 
@@ -508,40 +523,23 @@ export default function TrainerProfile() {
           >
             <div className="relative w-full max-w-4xl aspect-video">
               <button 
+                className="absolute -top-10 right-0 text-white hover:text-white/80"
                 onClick={() => setShowVideo(false)}
-                className="absolute -top-10 right-0 text-white hover:text-gray-300"
               >
-                ✕ {t('common:close', 'Close')}
+                ✕
               </button>
               <iframe
-                src={`${videoInfo.embedUrl}?autoplay=1`}
+                src={videoInfo.embedUrl}
                 className="w-full h-full rounded-lg"
-                allow="autoplay; fullscreen"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
             </div>
           </div>
         )}
 
-        {/* Content Grid */}
         <ProfileContentGrid>
-          {/* Main Content */}
           <ProfileMainColumn>
-            {/* Coaching Style Card */}
-            {trainer.coaching_method && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    {t('trainer:profile.coachingMethod', 'My Coaching Style')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground whitespace-pre-line">{trainer.coaching_method}</p>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Open Slots */}
             {trainer && <TrainerOpenSlots trainerId={trainer.id} trainerSlug={trainerSlug} />}
 
@@ -694,21 +692,6 @@ export default function TrainerProfile() {
               stats={quickStats}
             />
 
-            <ProfileContactCard
-              title={t('common:contactInfo', 'Contact Info')}
-              description={t('common:contactSharedAfterBooking', 'Contact details are shared after booking a lesson.')}
-              action={
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full"
-                  onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}
-                >
-                  <Calendar className="h-4 w-4 mr-2" />
-                  {t('common:bookToConnect', 'Book to Connect')}
-                </Button>
-              }
-            />
 
             {/* About */}
             {profile.bio && (
