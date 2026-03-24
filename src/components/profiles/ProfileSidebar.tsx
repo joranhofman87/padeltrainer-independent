@@ -121,6 +121,7 @@ export function ProfileSocialCard({ socialLinks, title, children }: ProfileSocia
           ))}
         </div>
         {children}
+      </CardContent>
     </Card>
   );
 }
