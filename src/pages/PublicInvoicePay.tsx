@@ -69,12 +69,13 @@ interface PublicInvoiceData {
 }
 
 function PostPaymentCTA() {
+  const { t } = useTranslation();
   return (
     <div className="pt-4">
       <Link to="/app/signup/player">
         <Button variant="outline" className="gap-2">
           <UserPlus className="h-4 w-4" />
-          Create account to view your invoices
+          {t("invoice.createAccountToViewInvoices")}
         </Button>
       </Link>
     </div>
