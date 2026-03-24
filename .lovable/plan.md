@@ -1,32 +1,25 @@
 
 
-# Switch Mollie from Test Mode to Production
+# Fix: Stale Test-Mode Payment URL Being Reused
 
-## What's happening
-All 5 edge functions check if `MOLLIE_API_KEY` starts with `"test_"`. When it does, they add `testmode: true` to every payment request — which is why the Mollie checkout shows "Note: this is a testmode payment."
+## Problem
+The invoice `INV-2026-0048` already has a `mollie_payment_url` saved from when the platform key was still `test_`. The `create-invoice-payment` function (line 129-132) checks: "if already has a payment URL and not paid, return it." So it keeps returning the old test-mode checkout URL instead of creating a fresh live payment.
 
-This is **not** about RL Performance Academy's account — it's your **platform-level** Mollie API key that's a test key.
+## Solution
 
-## What you need to do
+### 1. Database migration — Clear stale test-mode payment data
+Null out the old test payment references for all unpaid invoices so fresh live payments get created on next click:
 
-### Step 1: Get your live API key from Mollie
-1. Go to [Mollie Dashboard](https://my.mollie.com/dashboard) → **Developers** → **API keys**
-2. Copy your **Live API key** (starts with `live_`)
-3. Make sure your Mollie account is fully activated (identity verified, bank account confirmed)
+```sql
+UPDATE invoices
+SET mollie_payment_id = NULL, mollie_payment_url = NULL
+WHERE status != 'paid'
+  AND mollie_payment_id IS NOT NULL;
+```
 
-### Step 2: Update the secret
-I'll use the `add_secret` tool to update `MOLLIE_API_KEY` with your live key. No code changes needed — all 5 edge functions already use the same `MOLLIE_API_KEY` environment variable.
+### 2. No code changes needed
+Once the stale URLs are cleared, clicking Pay will create a new payment using the now-live `MOLLIE_API_KEY`. The `isTestMode` check will correctly evaluate to `false` and no `testmode: true` flag will be sent.
 
-## No code changes required
-The logic `mollieApiKey.startsWith("test_")` will automatically detect the live key and stop adding `testmode: true`. All functions handle this correctly already:
-- `create-mollie-payment` — booking payments
-- `create-invoice-payment` — invoice payments  
-- `mollie-webhook` — payment status callbacks
-- `verify-mollie-payment` — payment verification
-- `mollie-callback` — OAuth token exchange (unaffected)
-
-## Important before switching
-- Confirm your Mollie account is **fully verified** and approved for live payments
-- The connected academy account (RL Performance) should also work in live mode automatically via OAuth
-- Once switched, all new payments will be **real charges** — there's no going back per-payment
+## Files
+- Database migration only (data cleanup)
 
