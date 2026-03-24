@@ -98,8 +98,8 @@ export function ProfileHeroCard({
   return (
     <Card className="mb-8 overflow-hidden">
       <CardContent className="p-0">
-        <div className="relative bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 md:p-10">
-          <div className="flex flex-col lg:flex-row gap-8">
+        <div className="relative bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4 md:p-6">
+          <div className="flex flex-col lg:flex-row gap-6">
             {/* Avatar with video play button */}
             <div className="relative mx-auto lg:mx-0">
               <Avatar className="h-36 w-36 ring-4 ring-background shadow-xl bg-muted">
