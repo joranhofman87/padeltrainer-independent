@@ -105,7 +105,9 @@
     "registrationApplicableTrainersHelp": "Welche Trainer dieser Anmeldung zugewiesen werden können",
     "pricesIncludeVat": "Preise verstehen sich inkl. MwSt.",
     "pricesIncludeVatHint": "Spieler sehen: \"Alle Preise verstehen sich inkl. MwSt.\"",
-    "pricesExcludeVatHint": "Spieler sehen: \"Alle Preise verstehen sich zzgl. MwSt.\""
+    "pricesExcludeVatHint": "Spieler sehen: \"Alle Preise verstehen sich zzgl. MwSt.\"",
+    "availableDays": "Verfügbare Tage & Zeiten",
+    "availableDaysHelp": "Wähle aus, an welchen Tagen und zu welchen Zeiten trainiert werden kann. Spieler sehen nur diese Optionen."
   },
 
   "detail": {

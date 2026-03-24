@@ -125,7 +125,9 @@
     "weeksOption": "{{count}} weken",
     "pricesIncludeVat": "Prijzen zijn inclusief BTW",
     "pricesIncludeVatHint": "Spelers zien: \"Alle prijzen zijn inclusief BTW\"",
-    "pricesExcludeVatHint": "Spelers zien: \"Alle prijzen zijn exclusief BTW\""
+    "pricesExcludeVatHint": "Spelers zien: \"Alle prijzen zijn exclusief BTW\"",
+    "availableDays": "Beschikbare dagen & tijden",
+    "availableDaysHelp": "Selecteer op welke dagen en tijden er getraind kan worden. Spelers zien alleen deze opties."
   },
 
   "detail": {

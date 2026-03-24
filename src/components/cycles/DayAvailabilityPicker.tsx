@@ -122,9 +122,14 @@ export default function DayAvailabilityPicker({
     return time;
   };
 
+  // When allowedDays is set, only show those days
+  const visibleDays = allowedDays
+    ? DAYS.filter(day => allowedDays[day] && allowedDays[day].length > 0)
+    : DAYS;
+
   return (
     <div className="space-y-3">
-      {DAYS.map((day) => {
+      {visibleDays.map((day) => {
         const dayEnabled = isDayEnabled(day);
         const blocks = value[day] || [];
 

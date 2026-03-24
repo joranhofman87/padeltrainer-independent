@@ -904,6 +904,7 @@ export default function CycleApplicationForm({
                     <DayAvailabilityPicker
                       value={field.value as DayAvailability}
                       onChange={field.onChange}
+                      allowedDays={cyclAvailableDays}
                     />
                   </FormControl>
                   <FormMessage />

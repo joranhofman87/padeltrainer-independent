@@ -934,6 +934,20 @@ export default function CycleForm({
               </FormDescription>
               </div>
 
+            {/* Available Days & Times — for registrations */}
+            {isRegistration && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.availableDays', 'Available Days & Times')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('form.availableDaysHelp', 'Select which days and time frames are available for training. Players will only see these options.')}
+                </p>
+                <DayAvailabilityPicker
+                  value={availableDays}
+                  onChange={setAvailableDays}
+                />
+              </div>
+            )}
+
             {/* Terms / Voorwaarden — for registrations and events */}
             {(isRegistration || isEvent) && (
               <div className="space-y-2">
