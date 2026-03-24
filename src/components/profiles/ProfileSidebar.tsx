@@ -53,6 +53,7 @@ interface SocialLink {
 interface ProfileSocialCardProps {
   socialLinks: SocialLink[];
   title?: string;
+  children?: React.ReactNode;
 }
 
 export function ProfileSocialCard({ socialLinks, title }: ProfileSocialCardProps) {
