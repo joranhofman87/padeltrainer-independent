@@ -262,5 +262,16 @@
   "videoAdded": "Video toegevoegd",
   "videoRemoved": "Video verwijderd",
   "validVideoUrl": "Geldige {{platform}} URL",
-  "invalidVideoUrl": "Voer een geldige YouTube, Vimeo, TikTok of Instagram URL in."
+  "invalidVideoUrl": "Voer een geldige YouTube, Vimeo, TikTok of Instagram URL in.",
+  "updateBillingDetails": "Facturatiegegevens aanpassen",
+  "updateBillingDetailsDesc": "Voeg je bedrijfsgegevens toe of wijzig ze op deze factuur.",
+  "businessName": "Bedrijfsnaam",
+  "businessNamePlaceholder": "Je bedrijfsnaam (optioneel)",
+  "address": "Adres",
+  "addressPlaceholder": "Straat, stad, postcode",
+  "btwNumber": "BTW-nummer",
+  "changesSaved": "Wijzigingen opgeslagen",
+  "errorSaving": "Opslaan mislukt",
+  "loginToEditDetails": "Log in om je gegevens aan te passen",
+  "to": "Aan"
 }

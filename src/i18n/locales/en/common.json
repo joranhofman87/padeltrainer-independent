@@ -262,5 +262,16 @@
   "videoAdded": "Video added",
   "videoRemoved": "Video removed",
   "validVideoUrl": "Valid {{platform}} URL",
-  "invalidVideoUrl": "Please enter a valid YouTube, Vimeo, TikTok, or Instagram URL."
+  "invalidVideoUrl": "Please enter a valid YouTube, Vimeo, TikTok, or Instagram URL.",
+  "updateBillingDetails": "Update billing details",
+  "updateBillingDetailsDesc": "Add or change your business details on this invoice.",
+  "businessName": "Business name",
+  "businessNamePlaceholder": "Your company name (optional)",
+  "address": "Address",
+  "addressPlaceholder": "Street, city, postal code",
+  "btwNumber": "BTW number",
+  "changesSaved": "Changes saved",
+  "errorSaving": "Failed to save changes",
+  "loginToEditDetails": "Log in to update your details",
+  "to": "To"
 }
