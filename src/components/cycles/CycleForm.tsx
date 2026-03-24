@@ -259,6 +259,7 @@ export default function CycleForm({
       setPricingNote((cycle?.settings as any)?.pricing_note ?? '');
       setAvailableDurations((cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
       setCustomDurationInput('');
+      setAvailableDays((cycle?.settings as any)?.available_days ?? {});
     }
   }, [cycle, open]);
 
