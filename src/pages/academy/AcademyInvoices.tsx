@@ -500,6 +500,9 @@ export default function AcademyInvoices() {
                             <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
                               <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
                             </Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditInvoice(inv)}>
+                              <Pencil className="h-4 w-4 mr-1" />{t("invoices.edit", "Edit")}
+                            </Button>
                           </>
                         )}
                         {inv.pdf_url && (
