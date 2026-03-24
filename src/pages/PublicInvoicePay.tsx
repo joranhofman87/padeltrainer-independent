@@ -1,14 +1,27 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { SEO } from "@/components/SEO";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 const formatEuro = (amount: number | null | undefined) =>
   (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,6 +40,10 @@ interface PublicInvoiceData {
     invoiceDate: string;
     dueDate: string;
     playerName: string;
+    playerId: string | null;
+    playerBusinessName: string | null;
+    playerAddress: string | null;
+    playerBtwNumber: string | null;
     total: number;
     subtotal: number;
     vatAmount: number;
@@ -101,23 +118,156 @@ function BusinessDetails({ academy }: { academy: PublicInvoiceData["academy"] })
   );
 }
 
-function PaymentBankDetails({ academy }: { academy: PublicInvoiceData["academy"] }) {
-  if (!academy?.iban) return null;
+function EditDetailsDialog({
+  open,
+  onOpenChange,
+  invoice,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  invoice: PublicInvoiceData["invoice"];
+  onSaved: () => void;
+}) {
+  const { t } = useTranslation("common");
+  const [businessName, setBusinessName] = useState(invoice.playerBusinessName || "");
+  const [address, setAddress] = useState(invoice.playerAddress || "");
+  const [btwNumber, setBtwNumber] = useState(invoice.playerBtwNumber || "");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("invoices")
+        .update({
+          player_business_name: businessName || null,
+          player_address: address || null,
+          player_btw_number: btwNumber || null,
+        })
+        .eq("id", invoice.id);
+
+      if (error) throw error;
+      toast.success(t("changesSaved", "Changes saved"));
+      onOpenChange(false);
+      onSaved();
+    } catch {
+      toast.error(t("errorSaving", "Failed to save changes"));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
-      <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Bank details for manual payment</p>
-      <p><span className="text-muted-foreground">IBAN:</span> {academy.iban}</p>
-      {academy.bic && <p><span className="text-muted-foreground">BIC:</span> {academy.bic}</p>}
-      {(academy.businessName || academy.name) && (
-        <p><span className="text-muted-foreground">Name:</span> {academy.businessName || academy.name}</p>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("updateBillingDetails", "Update billing details")}</DialogTitle>
+          <DialogDescription>
+            {t("updateBillingDetailsDesc", "Add or change your business details on this invoice.")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>{t("businessName", "Business name")}</Label>
+            <Input
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              placeholder={t("businessNamePlaceholder", "Your company name (optional)")}
+            />
+          </div>
+          <div>
+            <Label>{t("address", "Address")}</Label>
+            <Textarea
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder={t("addressPlaceholder", "Street, city, postal code")}
+              rows={3}
+            />
+          </div>
+          <div>
+            <Label>{t("btwNumber", "BTW number")}</Label>
+            <Input
+              value={btwNumber}
+              onChange={(e) => setBtwNumber(e.target.value)}
+              placeholder="NL123456789B01"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t("cancel", "Cancel")}
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {t("save", "Save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PlayerDetails({
+  invoice,
+  currentUserId,
+  onRefresh,
+}: {
+  invoice: PublicInvoiceData["invoice"];
+  currentUserId: string | null;
+  onRefresh: () => void;
+}) {
+  const { t } = useTranslation("common");
+  const [editOpen, setEditOpen] = useState(false);
+  const isOwner = currentUserId && invoice.playerId && currentUserId === invoice.playerId;
+
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">{t("to", "To")}</p>
+      {invoice.playerBusinessName && (
+        <p className="text-sm font-medium">{invoice.playerBusinessName}</p>
       )}
+      <p className={`text-sm ${invoice.playerBusinessName ? "text-muted-foreground" : "font-medium"}`}>
+        {invoice.playerName}
+      </p>
+      {invoice.playerAddress && (
+        <p className="text-sm text-muted-foreground whitespace-pre-line">{invoice.playerAddress}</p>
+      )}
+      {invoice.playerBtwNumber && (
+        <p className="text-sm text-muted-foreground">BTW: {invoice.playerBtwNumber}</p>
+      )}
+
+      {isOwner ? (
+        <>
+          <button
+            onClick={() => setEditOpen(true)}
+            className="text-xs text-primary hover:underline mt-1.5 inline-flex items-center gap-1"
+          >
+            <Pencil className="h-3 w-3" />
+            {t("updateBillingDetails", "Update billing details")}
+          </button>
+          <EditDetailsDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            invoice={invoice}
+            onSaved={onRefresh}
+          />
+        </>
+      ) : !currentUserId ? (
+        <Link
+          to={`/app/auth?redirect=${encodeURIComponent(window.location.pathname)}`}
+          className="text-xs text-muted-foreground hover:text-primary hover:underline mt-1.5 inline-block"
+        >
+          {t("loginToEditDetails", "Log in to update your details")}
+        </Link>
+      ) : null}
     </div>
   );
 }
 
 export default function PublicInvoicePay() {
   const { token } = useParams<{ token: string }>();
+  const { user } = useAuth();
   const [data, setData] = useState<PublicInvoiceData | null>(null);
   const [searchParams] = useSearchParams();
   const isSuccessRedirect = searchParams.get("status") === "success";
@@ -277,10 +427,11 @@ export default function PublicInvoicePay() {
                 <p className="text-sm font-medium">{academy.name}</p>
               )}
             </div>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">To</p>
-              <p className="text-sm font-medium">{invoice.playerName}</p>
-            </div>
+            <PlayerDetails
+              invoice={invoice}
+              currentUserId={user?.id ?? null}
+              onRefresh={fetchInvoice}
+            />
           </div>
 
           {/* Dates */}
