@@ -184,6 +184,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     setBulkUpdating(false);
   };
 
+  if (loading) {
     return (
       <Card>
         <CardContent className="py-8 flex justify-center">
