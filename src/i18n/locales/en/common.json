@@ -273,5 +273,14 @@
   "changesSaved": "Changes saved",
   "errorSaving": "Failed to save changes",
   "loginToEditDetails": "Log in to update your details",
-  "to": "To"
+  "to": "To",
+  "invoice": {
+    "paymentProcessing": "Payment Processing",
+    "paymentProcessingDescription": "Your payment is being processed. You'll receive a confirmation shortly.",
+    "paymentReceived": "Payment Received",
+    "paymentReceivedDescription": "This invoice has been paid. Thank you!",
+    "invoiceNotFound": "Invoice Not Found",
+    "invoiceNotFoundDescription": "This invoice link is invalid or has expired.",
+    "createAccountToViewInvoices": "Create account to view your invoices"
+  }
 }

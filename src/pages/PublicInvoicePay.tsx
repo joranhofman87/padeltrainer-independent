@@ -388,12 +388,12 @@ export default function PublicInvoicePay() {
   if (error || !data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-        <SEO title="Invoice Not Found" description="Invoice not found." noIndex={true} />
+        <SEO title={t("invoice.invoiceNotFound")} description={t("invoice.invoiceNotFoundDescription")} noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto" />
-            <h1 className="text-2xl font-bold">Invoice Not Found</h1>
-            <p className="text-muted-foreground">This invoice link is invalid or has expired.</p>
+            <h1 className="text-2xl font-bold">{t("invoice.invoiceNotFound")}</h1>
+            <p className="text-muted-foreground">{t("invoice.invoiceNotFoundDescription")}</p>
           </CardContent>
         </Card>
       </div>

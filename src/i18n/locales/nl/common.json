@@ -273,5 +273,14 @@
   "changesSaved": "Wijzigingen opgeslagen",
   "errorSaving": "Opslaan mislukt",
   "loginToEditDetails": "Log in om je gegevens aan te passen",
-  "to": "Aan"
+  "to": "Aan",
+  "invoice": {
+    "paymentProcessing": "Betaling wordt verwerkt",
+    "paymentProcessingDescription": "Je betaling wordt verwerkt. Je ontvangt binnenkort een bevestiging.",
+    "paymentReceived": "Betaling ontvangen",
+    "paymentReceivedDescription": "Deze factuur is betaald. Bedankt!",
+    "invoiceNotFound": "Factuur niet gevonden",
+    "invoiceNotFoundDescription": "Deze factuurlink is ongeldig of verlopen.",
+    "createAccountToViewInvoices": "Maak een account aan om je facturen te bekijken"
+  }
 }

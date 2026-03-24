@@ -262,5 +262,14 @@
   "videoAdded": "Vídeo añadido",
   "videoRemoved": "Vídeo eliminado",
   "validVideoUrl": "URL de {{platform}} válida",
-  "invalidVideoUrl": "Introduce una URL válida de YouTube, Vimeo, TikTok o Instagram."
+  "invalidVideoUrl": "Introduce una URL válida de YouTube, Vimeo, TikTok o Instagram.",
+  "invoice": {
+    "paymentProcessing": "Procesando pago",
+    "paymentProcessingDescription": "Tu pago se está procesando. Recibirás una confirmación en breve.",
+    "paymentReceived": "Pago recibido",
+    "paymentReceivedDescription": "Esta factura ha sido pagada. ¡Gracias!",
+    "invoiceNotFound": "Factura no encontrada",
+    "invoiceNotFoundDescription": "Este enlace de factura es inválido o ha expirado.",
+    "createAccountToViewInvoices": "Crea una cuenta para ver tus facturas"
+  }
 }
