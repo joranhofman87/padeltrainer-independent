@@ -459,6 +459,13 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
       />
+
+      <EditInvoiceDialog
+        open={!!editInvoice}
+        onClose={() => setEditInvoice(null)}
+        invoice={editInvoice}
+        onSaved={() => fetchInvoices()}
+      />
     </div>
   );
 }

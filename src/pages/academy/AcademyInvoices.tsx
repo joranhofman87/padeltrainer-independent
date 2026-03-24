@@ -526,6 +526,13 @@ export default function AcademyInvoices() {
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
       />
+
+      <EditInvoiceDialog
+        open={!!editInvoice}
+        onClose={() => setEditInvoice(null)}
+        invoice={editInvoice}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
+      />
     </div>
   );
 }
