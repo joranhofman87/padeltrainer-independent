@@ -39,6 +39,19 @@ interface DayAvailabilityPickerProps {
   allowedDays?: DayAvailability;
 }
 
+// Get the overall allowed time range for a day (earliest start, latest end)
+function getTimeRange(day: string, allowedDays?: DayAvailability): { start: string; end: string } | null {
+  if (!allowedDays || !allowedDays[day] || allowedDays[day].length === 0) return null;
+  const blocks = allowedDays[day];
+  let earliest = blocks[0].start;
+  let latest = blocks[0].end;
+  for (const b of blocks) {
+    if (TIME_OPTIONS.indexOf(b.start) < TIME_OPTIONS.indexOf(earliest)) earliest = b.start;
+    if (TIME_OPTIONS.indexOf(b.end) > TIME_OPTIONS.indexOf(latest)) latest = b.end;
+  }
+  return { start: earliest, end: latest };
+}
+
 export default function DayAvailabilityPicker({
   value,
   onChange,
@@ -53,35 +66,31 @@ export default function DayAvailabilityPicker({
 
   const toggleDay = (day: string) => {
     if (isDayEnabled(day)) {
-      // Remove day
       const newValue = { ...value };
       delete newValue[day];
       onChange(newValue);
     } else {
-      // Add day with default time block
-      onChange({
-        ...value,
-        [day]: [{ start: '09:00', end: '17:00' }],
-      });
+      // Use allowed blocks if available, otherwise default
+      const defaultBlocks = allowedDays?.[day]
+        ? allowedDays[day].map(b => ({ ...b }))
+        : [{ start: '09:00', end: '17:00' }];
+      onChange({ ...value, [day]: defaultBlocks });
     }
   };
 
   const updateTimeBlock = (day: string, index: number, field: 'start' | 'end', newTime: string) => {
     const dayBlocks = [...(value[day] || [])];
     dayBlocks[index] = { ...dayBlocks[index], [field]: newTime };
-    onChange({
-      ...value,
-      [day]: dayBlocks,
-    });
+    onChange({ ...value, [day]: dayBlocks });
   };
 
   const addTimeBlock = (day: string) => {
     const dayBlocks = [...(value[day] || [])];
-    // Find a reasonable default: after the last block's end time
+    const range = getTimeRange(day, allowedDays);
     const lastBlock = dayBlocks[dayBlocks.length - 1];
     let defaultStart = '18:00';
     let defaultEnd = '21:00';
-    
+
     if (lastBlock) {
       const lastEndIndex = TIME_OPTIONS.indexOf(lastBlock.end);
       if (lastEndIndex >= 0 && lastEndIndex < TIME_OPTIONS.length - 2) {
@@ -89,28 +98,32 @@ export default function DayAvailabilityPicker({
         defaultEnd = TIME_OPTIONS[Math.min(lastEndIndex + 4, TIME_OPTIONS.length - 1)];
       }
     }
-    
+
+    // Clamp to allowed range
+    if (range) {
+      const ri = TIME_OPTIONS.indexOf(range.start);
+      const re = TIME_OPTIONS.indexOf(range.end);
+      if (TIME_OPTIONS.indexOf(defaultStart) < ri) defaultStart = range.start;
+      if (TIME_OPTIONS.indexOf(defaultEnd) > re) defaultEnd = range.end;
+      if (TIME_OPTIONS.indexOf(defaultStart) >= re) return; // no room
+      if (TIME_OPTIONS.indexOf(defaultEnd) <= TIME_OPTIONS.indexOf(defaultStart)) {
+        defaultEnd = TIME_OPTIONS[Math.min(TIME_OPTIONS.indexOf(defaultStart) + 2, re)];
+      }
+    }
+
     dayBlocks.push({ start: defaultStart, end: defaultEnd });
-    onChange({
-      ...value,
-      [day]: dayBlocks,
-    });
+    onChange({ ...value, [day]: dayBlocks });
   };
 
   const removeTimeBlock = (day: string, index: number) => {
     const dayBlocks = [...(value[day] || [])];
     dayBlocks.splice(index, 1);
-    
     if (dayBlocks.length === 0) {
-      // If no blocks left, remove the day entirely
       const newValue = { ...value };
       delete newValue[day];
       onChange(newValue);
     } else {
-      onChange({
-        ...value,
-        [day]: dayBlocks,
-      });
+      onChange({ ...value, [day]: dayBlocks });
     }
   };
 
@@ -118,20 +131,37 @@ export default function DayAvailabilityPicker({
     return TIME_OPTIONS.indexOf(end) > TIME_OPTIONS.indexOf(start);
   };
 
-  const formatTime = (time: string): string => {
-    return time;
-  };
+  const formatTime = (time: string): string => time;
 
-  // When allowedDays is set, only show those days
   const visibleDays = allowedDays
     ? DAYS.filter(day => allowedDays[day] && allowedDays[day].length > 0)
     : DAYS;
+
+  // Get filtered time options for a day based on allowedDays
+  const getStartOptions = (day: string) => {
+    const range = getTimeRange(day, allowedDays);
+    if (!range) return TIME_OPTIONS.slice(0, -1); // all except midnight
+    return TIME_OPTIONS.filter(t => {
+      const i = TIME_OPTIONS.indexOf(t);
+      return i >= TIME_OPTIONS.indexOf(range.start) && i < TIME_OPTIONS.indexOf(range.end);
+    });
+  };
+
+  const getEndOptions = (day: string, currentStart: string) => {
+    const range = getTimeRange(day, allowedDays);
+    if (!range) return TIME_OPTIONS;
+    return TIME_OPTIONS.filter(t => {
+      const i = TIME_OPTIONS.indexOf(t);
+      return i > TIME_OPTIONS.indexOf(currentStart) && i <= TIME_OPTIONS.indexOf(range.end);
+    });
+  };
 
   return (
     <div className="space-y-3">
       {visibleDays.map((day) => {
         const dayEnabled = isDayEnabled(day);
         const blocks = value[day] || [];
+        const range = getTimeRange(day, allowedDays);
 
         return (
           <div
@@ -147,21 +177,30 @@ export default function DayAvailabilityPicker({
                 onCheckedChange={() => toggleDay(day)}
                 disabled={disabled}
               />
-              <Label
-                htmlFor={`day-${day}`}
-                className={`font-medium cursor-pointer select-none ${
-                  dayEnabled ? 'text-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                {t(`application.form.days.${day}`)}
-              </Label>
+              <div className="flex flex-col">
+                <Label
+                  htmlFor={`day-${day}`}
+                  className={`font-medium cursor-pointer select-none ${
+                    dayEnabled ? 'text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  {t(`application.form.days.${day}`)}
+                </Label>
+                {range && (
+                  <span className="text-xs text-muted-foreground">
+                    {t('application.form.availableRange', 'Available')}: {range.start} — {range.end}
+                  </span>
+                )}
+              </div>
             </div>
 
             {dayEnabled && (
               <div className="mt-3 ml-0 sm:ml-7 space-y-2">
                 {blocks.map((block, index) => {
                   const isValid = isValidTimeRange(block.start, block.end);
-                  
+                  const startOpts = getStartOptions(day);
+                  const endOpts = getEndOptions(day, block.start);
+
                   return (
                     <div key={index} className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                       <span className="hidden sm:inline text-sm text-muted-foreground w-10">
@@ -176,16 +215,16 @@ export default function DayAvailabilityPicker({
                           <SelectValue>{formatTime(block.start)}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {TIME_OPTIONS.slice(0, -1).map((time) => (
+                          {startOpts.map((time) => (
                             <SelectItem key={time} value={time}>
                               {formatTime(time)}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      
+
                       <span className="text-sm text-muted-foreground">—</span>
-                      
+
                       <span className="hidden sm:inline text-sm text-muted-foreground w-8">
                         {t('application.form.endTime')}
                       </span>
@@ -198,7 +237,7 @@ export default function DayAvailabilityPicker({
                           <SelectValue>{formatTime(block.end)}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {TIME_OPTIONS.map((time) => (
+                          {endOpts.map((time) => (
                             <SelectItem key={time} value={time}>
                               {formatTime(time)}
                             </SelectItem>
