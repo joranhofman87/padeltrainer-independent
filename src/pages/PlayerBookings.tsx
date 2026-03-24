@@ -117,12 +117,31 @@ export default function PlayerBookings() {
         }
       }
 
+      // Cross-reference invoices to get accurate payment status for bookings
+      const bookingIds = rawBookings.map(b => b.id);
+      const { data: paidInvoices } = await supabase
+        .from('invoices')
+        .select('booking_ids, status, paid_at')
+        .eq('player_id', profile!.id)
+        .eq('status', 'paid');
+
+      const paidBookingIds = new Set<string>();
+      paidInvoices?.forEach(inv => {
+        inv.booking_ids?.forEach((id: string) => paidBookingIds.add(id));
+      });
+
       const bookingsWithDetails = await Promise.all(
         rawBookings.map(async (booking) => {
           const { data: review } = await getPlayerReview(booking.id);
           const trainerInfo = trainerInfoMap.get(booking.availability_slots?.trainer_id) || { name: 'Trainer', email: null, profileId: '' };
+          // If invoice is paid but booking payment_status is still pending, override
+          const effectivePaymentStatus = paidBookingIds.has(booking.id) && booking.payment_status !== 'paid'
+            ? 'paid'
+            : booking.payment_status;
           return {
             ...booking,
+            payment_status: effectivePaymentStatus,
+            status: effectivePaymentStatus === 'paid' && booking.status === 'pending' ? 'confirmed' : booking.status,
             hasReview: !!review,
             trainerName: trainerInfo.name,
             trainerEmail: trainerInfo.email,
