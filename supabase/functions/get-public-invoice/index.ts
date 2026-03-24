@@ -26,7 +26,7 @@ serve(async (req) => {
 
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
-      .select("id, invoice_number, invoice_date, due_date, player_name, total, subtotal, vat_amount, vat_rate, line_items, status, mollie_payment_url, academy_profile_id, trainer_id, public_token")
+      .select("id, invoice_number, invoice_date, due_date, player_name, player_id, player_business_name, player_address, player_btw_number, total, subtotal, vat_amount, vat_rate, line_items, status, mollie_payment_url, academy_profile_id, trainer_id, public_token")
       .eq("public_token", publicToken)
       .single();
 
