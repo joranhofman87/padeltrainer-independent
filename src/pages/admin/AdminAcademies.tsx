@@ -75,10 +75,29 @@ export default function AdminAcademies() {
   const { toast } = useToast();
   const { invalidateAcademies } = useInvalidateAdminData();
 
-  const { data: academies = [], isLoading: academiesLoading } = useAdminAcademies();
-
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [page, setPage] = useState(0);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(0); // Reset to first page on new search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter]);
+
+  const { data, isLoading: academiesLoading } = useAdminAcademies(debouncedSearch, statusFilter, page);
+  const academies = data?.academies ?? [];
+  const totalCount = data?.totalCount ?? 0;
+  const totalPages = Math.ceil(totalCount / 100);
   const [editingAcademy, setEditingAcademy] = useState<AcademyProfileAdmin | null>(null);
   const [impersonatingAcademy, setImpersonatingAcademy] = useState<AcademyProfileAdmin | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);

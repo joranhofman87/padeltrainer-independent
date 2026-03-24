@@ -270,13 +270,22 @@ export interface AcademyProfileAdmin {
   owner_user_id: string | null;
 }
 
-export function useAdminAcademies() {
+const PAGE_SIZE = 100;
+
+export function useAdminAcademies(
+  searchQuery: string = "",
+  statusFilter: string = "all",
+  page: number = 0
+) {
   const { data: isAdmin } = useIsAdmin();
 
   return useQuery({
-    queryKey: ["admin", "academies"],
-    queryFn: async (): Promise<AcademyProfileAdmin[]> => {
-      const { data, error } = await supabase
+    queryKey: ["admin", "academies", searchQuery, statusFilter, page],
+    queryFn: async (): Promise<{ academies: AcademyProfileAdmin[]; totalCount: number }> => {
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let query = supabase
         .from("academy_profiles")
         .select(
           `
@@ -301,14 +310,42 @@ export function useAdminAcademies() {
           social_youtube,
           social_linkedin,
           managers:academy_managers(user_id, role)
-        `
+        `,
+          { count: "exact" }
         )
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      // Server-side search
+      if (searchQuery.trim()) {
+        const q = `%${searchQuery.trim()}%`;
+        query = query.or(`name.ilike.${q},slug.ilike.${q},contact_email.ilike.${q}`);
+      }
+
+      // Server-side status filters
+      if (statusFilter === "verified") {
+        query = query.eq("is_verified", true);
+      } else if (statusFilter === "unverified") {
+        query = query.eq("is_verified", false);
+      } else if (statusFilter === "public") {
+        query = query.eq("is_public", true);
+      } else if (statusFilter === "private") {
+        query = query.eq("is_public", false);
+      } else if (statusFilter === "active") {
+        query = query.eq("subscription_status", "active");
+      } else if (statusFilter === "trial") {
+        query = query.eq("subscription_status", "trial");
+      } else if (statusFilter === "expired") {
+        // Expired = trial status with trial_ends_at in the past
+        query = query.eq("subscription_status", "trial").lt("trial_ends_at", new Date().toISOString());
+      }
+
+      const { data, error, count } = await query;
 
       if (error) throw error;
       
       // Transform managers array to get owner user_id
-      return (data as AcademyProfileRow[] || []).map((a) => {
+      const academies = (data as AcademyProfileRow[] || []).map((a) => {
         const owner = a.managers?.find((m) => m.role === "owner") || a.managers?.[0];
         return {
           ...a,
@@ -316,6 +353,8 @@ export function useAdminAcademies() {
           owner_user_id: owner?.user_id || null,
         };
       });
+
+      return { academies, totalCount: count || 0 };
     },
     enabled: isAdmin === true,
     staleTime: STALE_TIME,
