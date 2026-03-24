@@ -792,6 +792,9 @@ export default function LocationDetail() {
           </ProfileFullWidthSection>
         )}
 
+        {/* Learn to Play Padel Section */}
+        <LocationLearnSection lang={currentLang} />
+
         {location && user && (
           <ClaimClubDialog
             open={showClaimDialog}
