@@ -1,47 +1,64 @@
 
-# Fix stuck “Redirecting…” on invoice pay
 
-## Diagnosis
-- Clicking **Pay** calls `create-invoice-payment`.
-- That function currently fails with Mollie `422`:
-  - `"A website profile is required for payments"`
-  - field: `profileId`
-- After that backend failure, the frontend catch block in `PublicInvoicePay.tsx` runs `JSON.parse(err.message)`, which throws a second error (`Unexpected token 'E'...`), so loading state never resets.
-- Result: button stays in **“Redirecting…”** even though checkout was never opened.
-- The CORS warning for `/app/analytics` is unrelated to this payment failure.
+# Bulletproof Payment Flows: Security Audit + Logging + E2E Tests
 
-Do I know what the issue is? Yes.
+## Critical Security Issue Found
 
-## Files to update
-- `supabase/functions/create-invoice-payment/index.ts`
-- `src/pages/PublicInvoicePay.tsx`
+**`create-mollie-payment` (booking payments) falls back to the platform API key when no connected Mollie account is found** (line 365):
+```
+const authToken = recipientAccessToken || mollieApiKey;
+```
 
-## Implementation plan
+This means if a trainer/academy hasn't connected Mollie, the payment silently goes to **your platform account** instead of failing. This directly contradicts the isolation principle already enforced in `create-invoice-payment` (which correctly returns an error).
 
-1. **Fix Mollie payment creation in edge function**
-   - In `create-invoice-payment`, when using connected-account OAuth token:
-     - Fetch merchant profiles via `GET /v2/profiles`.
-     - Select a usable profile and pass `paymentBody.profileId`.
-   - If no profile is available, return a structured `400` error (e.g. `missing_mollie_profile`) with clear message.
-   - Keep current payment isolation model (no fallback to platform recipient).
+`mollie-webhook` and `verify-mollie-payment` also fall back to the platform key for *reading* payment status — less dangerous but can cause lookup failures for connected-account payments.
 
-2. **Fix frontend error handling so loader never gets stuck**
-   - In `handlePay`:
-     - Remove direct `JSON.parse(err.message)`.
-     - Safely read edge-function error payload (or fallback to generic).
-     - Move `setPayLoading(false)` into `finally` so it always resets after failures.
-   - Keep redirect behavior only when `result.paymentUrl` is valid.
+## Plan
 
-3. **Improve user feedback**
-   - Map backend error codes to clear toasts:
-     - `missing_mollie_profile` → merchant account setup incomplete.
-     - `no_mollie_account` → online payment unavailable.
-     - fallback → generic payment creation error.
+### 1. Remove platform fallback from `create-mollie-payment`
+**File: `supabase/functions/create-mollie-payment/index.ts`**
 
-4. **Add robust logging for this critical flow**
-   - Log payment creation failures with `logger.error` (include invoice id and token context) in `PublicInvoicePay.tsx`.
+Replace the fallback on line 365 with the same pattern used in `create-invoice-payment`: if no `recipientAccessToken`, return a `400` error with `"no_mollie_account"`. Never create a payment on the platform key for booking flows.
 
-5. **Verification after implementation**
-   - Call `create-invoice-payment` with invoice `3f39a319-8ab2-4986-8c10-84456a492678` and confirm it returns `paymentUrl` (no 422).
-   - Confirm clicking Pay redirects to Mollie.
-   - Confirm on simulated failure the button exits “Redirecting…” and shows a toast.
+Also add structured logging: log the `mollie_organization_id` and `recipientType` in the final payment creation step, and send a Slack notification on every successful payment (not just errors) so you have an audit trail.
+
+### 2. Add Slack audit logging to `create-invoice-payment`
+**File: `supabase/functions/create-invoice-payment/index.ts`**
+
+Add the same `notifySlackError` helper (already in other functions) and:
+- Send Slack notification on payment creation success (invoice number, amount, recipient type)
+- Send Slack notification on errors
+
+### 3. Add payment audit table
+**Database migration**
+
+Create a `payment_audit_log` table to record every payment attempt with: function name, invoice/booking ID, recipient type (academy/trainer), mollie org ID, amount, status (success/error), error message, timestamp. This gives you a queryable history beyond ephemeral edge function logs.
+
+Both `create-mollie-payment` and `create-invoice-payment` will write to this table on every attempt.
+
+### 4. Add E2E payment flow tests
+**File: `e2e/payments.spec.ts`**
+
+Playwright tests covering:
+- Public invoice page loads with Pay button when Mollie is connected
+- Public invoice page shows bank details when Mollie is NOT connected
+- Pay button click triggers loading state and handles errors gracefully (mock/intercept the edge function)
+- Booking payment page shows correct trainer/academy info
+- Success/cancelled redirect pages render correctly
+- Error states (no Mollie account, expired token) show user-friendly messages
+
+### 5. Fix webhook/verify fallback for read operations
+**Files: `supabase/functions/mollie-webhook/index.ts`, `supabase/functions/verify-mollie-payment/index.ts`**
+
+For the webhook, the fallback is needed because invoice-only payments (no booking/trainer) might use the platform key. Keep the fallback but add a log warning when it's used, so you can audit unexpected fallbacks.
+
+For `verify-mollie-payment`, same approach: log a warning when falling back to platform key.
+
+## Files
+- `supabase/functions/create-mollie-payment/index.ts` — Remove platform fallback, add audit logging
+- `supabase/functions/create-invoice-payment/index.ts` — Add Slack notifications and audit logging
+- `supabase/functions/mollie-webhook/index.ts` — Add warning log on platform key fallback
+- `supabase/functions/verify-mollie-payment/index.ts` — Add warning log on platform key fallback
+- Database migration — Create `payment_audit_log` table
+- `e2e/payments.spec.ts` — New E2E test file for payment flows
+
