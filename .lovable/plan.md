@@ -1,43 +1,28 @@
 
 
-# Server-Side Pagination & Search for Locations Page
+# Visually Separate Club Content from Learning Content
 
 ## Problem
-The page loads all 13,000+ locations in 13 sequential API calls, then renders them all at once. This causes multi-second load times and UI freezing.
+The "Learn to Play Padel" section flows directly after the club-specific sections (trainers, academies, similar clubs), making it feel like one continuous block rather than a distinct content area.
 
 ## Solution
-Move filtering and pagination to the database. Load 48 locations per page. Search queries the full database server-side.
+Add a visual separator between the club content and the learning section using a distinct background color, a decorative divider, and slightly different styling to create a clear "you're now in a different section" feel.
 
-## Changes
+### `src/components/locations/LocationLearnSection.tsx`
+- Wrap the entire section in a distinct background container (e.g., `bg-muted/30` or a subtle gradient like `bg-gradient-to-b from-muted/40 to-background`) with rounded corners and padding
+- Add a top border or decorative separator line above the section
+- Add a small intro line under the heading like "Improve your game with guides, techniques, and video tips" to reinforce this is educational content, not club info
+- Replace `ProfileFullWidthSection` wrapper with a custom styled `div` that has the background treatment, or add the background inside the existing wrapper
 
-### 1. Add `searchLocationsPage()` to `src/lib/locations.ts`
-New function that accepts `{ search, country, city, trainersAvailable, indoorOnly, page, pageSize }`:
-- Uses Supabase `.select()` with only the columns needed for `LocationCard` (no `description`, `opening_hours`, etc.)
-- Applies `.ilike()` for search (name + city), `.eq()` for country/city filters
-- For `trainersAvailable` filter: use an `.in()` subquery against `trainer_locations` location IDs
-- For `indoorOnly`: `.gt('indoor_courts', 0)`
-- Uses `.range()` for pagination (48 per page)
-- Requests `{ count: 'exact' }` to get total for pagination UI
-- Returns `{ data: Location[], totalCount: number }`
+The key visual changes:
+1. A horizontal rule / separator with some vertical spacing before the section
+2. A subtle background tint (`bg-muted/30 rounded-xl p-6`) on the learn section content
+3. A subtitle under "Learn to Play Padel" to set context
 
-### 2. Refactor `src/pages/Locations.tsx`
-- Replace `getActiveLocations()` with `searchLocationsPage()` — call it reactively when filters or page change
-- Debounce search input (300ms) before triggering query
-- Remove client-side `filteredLocations` useMemo — server handles filtering now
-- Add page state and pagination controls at bottom (using existing `Pagination` components)
-- Keep `getUniqueCities()`, `getUniqueCountries()`, `getClaimedLocationIds()`, `getLocationTrainerCounts()` as-is for filter dropdowns and card badges (these are lightweight)
-- Featured locations: fetch separately with a small dedicated query filtered by `subscription_status = 'active'` (max ~10 rows)
-- Map view: pass only the current page's locations (not all 13K)
+### Translation keys (`common.json` x5)
+- Add `locations.learnPadelSubtitle` — "Improve your game with guides, techniques and video tips"
 
-### 3. Translation keys
-Add `locations.page` / `locations.of` or similar for pagination labels (likely already covered by existing `pagination.previous` / `pagination.next` keys).
-
-## Performance impact
-- **Before**: 13 sequential queries → 13,000 rows → 13,000 DOM cards
-- **After**: 1 query → 48 rows → 48 DOM cards
-- Load time drops from 5-10s to <500ms
-
-## Files
-- `src/lib/locations.ts` — Add `searchLocationsPage()`
-- `src/pages/Locations.tsx` — Server-side search, pagination, debounced input
+### Files
+- `src/components/locations/LocationLearnSection.tsx`
+- `src/i18n/locales/{en,nl,es,de,fr}/common.json`
 
