@@ -34,14 +34,20 @@ export default function TrainerBookingSettings() {
     }
   }, [user, role, loading]);
 
+  const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
+  const [showVatBulkDialog, setShowVatBulkDialog] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [pendingVatValue, setPendingVatValue] = useState<boolean | null>(null);
+
   const fetchSettings = async () => {
     const { data } = await supabase
       .from('trainer_profiles')
-      .select('require_booking_approval, use_manual_invoicing, welcome_message, prices_include_vat')
+      .select('id, require_booking_approval, use_manual_invoicing, welcome_message, prices_include_vat')
       .eq('user_id', user!.id)
       .single();
 
     if (data) {
+      setTrainerProfileId(data.id);
       setRequireApproval(data.require_booking_approval || false);
       setUseManualInvoicing(data.use_manual_invoicing || false);
       setWelcomeMessage(data.welcome_message || '');
