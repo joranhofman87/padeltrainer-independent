@@ -63,10 +63,14 @@ export function LocationLearnSection({ lang }: LocationLearnSectionProps) {
 
   return (
     <ProfileFullWidthSection>
-      <div className="space-y-8">
-        <div className="flex items-center gap-2">
-          <BookOpen className="h-6 w-6 text-primary" />
-          <h2 className="text-2xl font-semibold">{t('locations.learnPadel')}</h2>
+      <Separator className="mb-8" />
+      <div className="bg-muted/30 rounded-xl p-6 md:p-8 space-y-8 border border-border/50">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <BookOpen className="h-6 w-6 text-primary" />
+            <h2 className="text-2xl font-semibold">{t('locations.learnPadel')}</h2>
+          </div>
+          <p className="text-sm text-muted-foreground ml-8">{t('locations.learnPadelSubtitle')}</p>
         </div>
 
         {/* Learning Articles */}
