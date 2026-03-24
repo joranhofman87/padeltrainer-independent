@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
-import { Settings, FileText, Send, CheckCircle, Link as LinkIcon, Download, Copy, Loader2, AlertCircle, Share2, Search } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl, enUS } from "date-fns/locale";
@@ -230,26 +230,6 @@ export default function AcademyInvoices() {
     },
   });
 
-  // Generate payment link
-  const generateLinkMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      const { data, error } = await supabase.functions.invoke("create-invoice-payment", {
-        body: { invoiceId },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-      if (data?.paymentUrl) {
-        navigator.clipboard.writeText(data.paymentUrl);
-        toast.success(t("invoices.linkCopied", "Payment link copied to clipboard"));
-      }
-    },
-    onError: () => {
-      toast.error(t("invoices.linkError", "Failed to generate payment link"));
-    },
-  });
 
   const handleDownloadPdf = async (invoice: Invoice) => {
     if (!invoice.pdf_url) {
@@ -434,16 +414,6 @@ export default function AcademyInvoices() {
                                   >
                                     <Share2 className="h-4 w-4" />
                                   </Button>
-                                  {/* Generate Mollie payment link */}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => generateLinkMutation.mutate(inv.id)}
-                                    disabled={generateLinkMutation.isPending}
-                                    title={t("invoices.generateLink", "Payment link")}
-                                  >
-                                    <LinkIcon className="h-4 w-4" />
-                                  </Button>
                                   {!inv.sent_at && (
                                     <Button
                                       size="sm"
@@ -513,9 +483,6 @@ export default function AcademyInvoices() {
                               toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
                             }}>
                               <Share2 className="h-4 w-4 mr-1" />{t("invoices.shareLink", "Share")}
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => generateLinkMutation.mutate(inv.id)} disabled={generateLinkMutation.isPending}>
-                              <LinkIcon className="h-4 w-4 mr-1" />{t("invoices.paymentLink", "Payment link")}
                             </Button>
                             {!inv.sent_at && (
                               <Button size="sm" variant="outline" onClick={() => sendInvoiceMutation.mutate(inv)}>
