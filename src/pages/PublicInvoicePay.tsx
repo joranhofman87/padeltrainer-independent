@@ -69,12 +69,13 @@ interface PublicInvoiceData {
 }
 
 function PostPaymentCTA() {
+  const { t } = useTranslation();
   return (
     <div className="pt-4">
       <Link to="/app/signup/player">
         <Button variant="outline" className="gap-2">
           <UserPlus className="h-4 w-4" />
-          Create account to view your invoices
+          {t("invoice.createAccountToViewInvoices")}
         </Button>
       </Link>
     </div>
@@ -266,6 +267,7 @@ function PlayerDetails({
 }
 
 export default function PublicInvoicePay() {
+  const { t } = useTranslation("common");
   const { token } = useParams<{ token: string }>();
   const { user } = useAuth();
   const [data, setData] = useState<PublicInvoiceData | null>(null);
@@ -355,12 +357,12 @@ export default function PublicInvoicePay() {
   if (isPaid) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-        <SEO title="Invoice Paid" description="This invoice has been paid." noIndex={true} />
+        <SEO title={t("invoice.paymentReceived")} description={t("invoice.paymentReceivedDescription")} noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
-            <h1 className="text-2xl font-bold">Payment Received</h1>
-            <p className="text-muted-foreground">This invoice has been paid. Thank you!</p>
+            <h1 className="text-2xl font-bold">{t("invoice.paymentReceived")}</h1>
+            <p className="text-muted-foreground">{t("invoice.paymentReceivedDescription")}</p>
             <PostPaymentCTA />
           </CardContent>
         </Card>
@@ -371,12 +373,12 @@ export default function PublicInvoicePay() {
   if (isSuccessRedirect && data && data.invoice.status !== "paid") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-        <SEO title="Payment Processing" description="Your payment is being processed." noIndex={true} />
+        <SEO title={t("invoice.paymentProcessing")} description={t("invoice.paymentProcessingDescription")} noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
-            <h1 className="text-2xl font-bold">Payment Processing</h1>
-            <p className="text-muted-foreground">Your payment is being processed. You'll receive a confirmation shortly.</p>
+            <h1 className="text-2xl font-bold">{t("invoice.paymentProcessing")}</h1>
+            <p className="text-muted-foreground">{t("invoice.paymentProcessingDescription")}</p>
             <PostPaymentCTA />
           </CardContent>
         </Card>
@@ -387,12 +389,12 @@ export default function PublicInvoicePay() {
   if (error || !data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-        <SEO title="Invoice Not Found" description="Invoice not found." noIndex={true} />
+        <SEO title={t("invoice.invoiceNotFound")} description={t("invoice.invoiceNotFoundDescription")} noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto" />
-            <h1 className="text-2xl font-bold">Invoice Not Found</h1>
-            <p className="text-muted-foreground">This invoice link is invalid or has expired.</p>
+            <h1 className="text-2xl font-bold">{t("invoice.invoiceNotFound")}</h1>
+            <p className="text-muted-foreground">{t("invoice.invoiceNotFoundDescription")}</p>
           </CardContent>
         </Card>
       </div>
