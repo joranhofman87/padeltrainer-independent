@@ -1,38 +1,29 @@
 
 
-# Add "Update Details" Option on Public Invoice Page
+# Fix: Mollie Payment Not Working + Remove Manual Payment Link Button
 
-## Current State
-The public invoice page shows `invoice.playerName` in the "To" section with no way to edit. Logged-in players can edit billing details (business name, address, BTW number) from their player dashboard, but there's no path from the public invoice page.
+## Problem
+1. **Data migration not applied**: The flags `charges_enabled`, `payouts_enabled`, and `onboarding_complete` are still `false` for RL Performance Academy (`org_19475084`). The previous migration file exists but was never executed against the database. This causes both the public invoice page (no Pay button shown) and the `create-invoice-payment` function (returns "No connected Mollie account found") to fail.
 
-## Approach
-Add a subtle, non-intrusive link below the player name. Behavior depends on auth state:
-- **Logged in** (and invoice belongs to them): Show an inline edit dialog for business name, address, and BTW number — same fields as `PlayerInvoicesTab`
-- **Not logged in**: Show a small prompt encouraging sign-up/login to manage invoice details, with a link to auth page
-
-The payment button remains the dominant CTA. The "update details" is secondary — just a small text link.
+2. **Manual "Payment link" button on academy invoices page**: This button calls `create-invoice-payment` from the dashboard, which is redundant — the payment is created automatically when the player clicks "Pay" on the public invoice page. The button causes confusion and errors.
 
 ## Changes
 
-### 1. Update `PublicInvoicePay.tsx`
-- Import `useAuth` hook to check login state
-- Add the invoice's `player_id` and `player_business_name`, `player_address`, `player_btw_number` to the data returned from the edge function
-- In the "To" section, below the player name, show existing business details if present
-- Add a small "Update your details" text link:
-  - If logged in & user matches `player_id` → opens an edit dialog (reuse the same fields as PlayerInvoicesTab: business name, address, BTW)
-  - If not logged in → navigates to `/app/auth` with a return URL
-- After saving, refresh the invoice data so changes are visible immediately
+### 1. Re-apply data fix via new migration
+Run a new database migration to set the correct flags:
+```sql
+UPDATE academy_mollie_accounts
+SET charges_enabled = true, payouts_enabled = true, onboarding_complete = true
+WHERE mollie_organization_id = 'org_19475084';
+```
 
-### 2. Update `get-public-invoice` edge function
-- Add `player_id`, `player_business_name`, `player_address`, `player_btw_number` to the select query
-- Include these in the response so the frontend can display them and check ownership
+### 2. Remove the manual "Payment link" button from AcademyInvoices
+**File: `src/pages/academy/AcademyInvoices.tsx`**
+- Remove the `generateLinkMutation` and the payment link button (chain icon) from invoice rows
+- Keep the "Share" button (which shares the public invoice URL) — that's the correct flow
+- The player visits the public URL and clicks Pay there, which triggers `create-invoice-payment` automatically
 
-### 3. Add edit dialog component (inline in PublicInvoicePay or extracted)
-- Simple dialog with 3 fields: business name, address, BTW number
-- On save: call supabase to update the invoice record directly (with auth check — player must be the invoice's `player_id`)
-- Show toast on success, refresh invoice data
-
-### Files
-- `supabase/functions/get-public-invoice/index.ts` — Add player billing fields to response
-- `src/pages/PublicInvoicePay.tsx` — Add auth check, "Update details" link, edit dialog
+## Files
+- Database migration (data fix)
+- `src/pages/academy/AcademyInvoices.tsx` — Remove payment link button and mutation
 
