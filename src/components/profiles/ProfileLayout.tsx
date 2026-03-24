@@ -41,11 +41,11 @@ export function ProfileLayout({
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
       {/* Banner */}
       {bannerUrl && (
-        <div className="w-full bg-muted">
+        <div className="w-full h-32 sm:h-48 md:h-64 overflow-hidden">
           <img
             src={bannerUrl}
             alt="Profile banner"
-            className="w-full h-auto max-h-64 object-contain"
+            className="w-full h-full object-cover"
             loading="lazy"
           />
         </div>
