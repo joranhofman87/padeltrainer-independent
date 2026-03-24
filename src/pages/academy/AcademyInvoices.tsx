@@ -484,9 +484,6 @@ export default function AcademyInvoices() {
                             }}>
                               <Share2 className="h-4 w-4 mr-1" />{t("invoices.shareLink", "Share")}
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => generateLinkMutation.mutate(inv.id)} disabled={generateLinkMutation.isPending}>
-                              <LinkIcon className="h-4 w-4 mr-1" />{t("invoices.paymentLink", "Payment link")}
-                            </Button>
                             {!inv.sent_at && (
                               <Button size="sm" variant="outline" onClick={() => sendInvoiceMutation.mutate(inv)}>
                                 <Send className="h-4 w-4 mr-1" />{t("invoices.send", "Send")}
