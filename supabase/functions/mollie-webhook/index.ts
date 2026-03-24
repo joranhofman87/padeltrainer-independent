@@ -280,6 +280,30 @@ serve(async (req) => {
         } else {
           logStep("Invoice marked as paid via payment link", { invoiceId: invoiceIdFromMetadata });
         }
+
+        // Also sync linked bookings so dashboard shows correct payment status
+        const { data: invoiceData } = await supabase
+          .from("invoices")
+          .select("booking_ids")
+          .eq("id", invoiceIdFromMetadata)
+          .single();
+
+        if (invoiceData?.booking_ids && invoiceData.booking_ids.length > 0) {
+          const { error: bookingUpdateError } = await supabase
+            .from("bookings")
+            .update({
+              payment_status: "paid",
+              status: "confirmed",
+              paid_at: new Date().toISOString(),
+            })
+            .in("id", invoiceData.booking_ids);
+
+          if (bookingUpdateError) {
+            logStep("Failed to update linked bookings", { error: bookingUpdateError.message });
+          } else {
+            logStep("Linked bookings updated to paid", { count: invoiceData.booking_ids.length });
+          }
+        }
       }
       return new Response("OK", { status: 200 });
     }
