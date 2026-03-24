@@ -1,27 +1,53 @@
 
 
-# Constrain Player Time Selection to Trainer-Defined Windows
+# Investigation: Marieke Cycle "Disappeared" After Edit
 
-## Problem
-When `allowedDays` is set, players can still select any time from 06:00–00:00. If the trainer says training is available 14:00–22:00, the player should only be able to pick times **within** that range (e.g. 18:00–21:00), not outside it (e.g. 23:00).
+## What happened
+The cycle "Maandag 18:00 - Marieke Zuidema" (cyclus_id `55e5a69e...`) **still exists** in the database with 4 slots. It is not deleted. However:
 
-Additionally, re-toggling a day resets to hardcoded 09:00–17:00 instead of the trainer's defined window.
+1. **All 4 slots are in the past** (Feb 16 – Mar 9). The schedule overview defaults to the "future" tab, so they are hidden. The date shift during the edit likely moved dates backward or failed to shift them forward as intended.
 
-## Changes
+2. **Times are corrupted**: The slots show `00:00 UTC` (= 01:00 CET) instead of the expected `17:00 UTC` (= 18:00 CET). This is a timezone bug in the `setHours` logic.
 
-### File: `src/components/cycles/DayAvailabilityPicker.tsx`
+## Root cause: timezone bug in date/time shift logic
+In `handleSaveCycleEdit` (TrainerScheduleOverview.tsx, lines 430-452):
 
-1. **Fix `toggleDay`**: When `allowedDays` is provided, re-enabling a day uses `allowedDays[day]` blocks instead of `09:00–17:00`.
+```typescript
+const oldStart = new Date(cs.start_time);  // parses UTC ISO string
+// ... apply delta ...
+newStart.setHours(startH, startM, 0, 0);   // sets LOCAL time — correct
+```
 
-2. **Constrain time dropdowns**: When `allowedDays` is set, compute the min/max allowed times for each day from the `allowedDays` blocks. Filter `TIME_OPTIONS` in the start/end `<Select>` to only show times within the allowed window (e.g. if allowed is 14:00–22:00, start dropdown shows 14:00–21:30, end dropdown shows 14:30–22:00).
+The `setHours` approach works for the **time** part, but the **date shift** (`deltaMs`) can interact badly when DST transitions occur between the original and new dates, causing off-by-one-hour errors. More critically, if the user's browser timezone offset differs from what's expected, the delta calculation produces wrong results.
 
-3. **Constrain "Add time block"**: New blocks default to times within the allowed range. Hide the add button if the player already covers the full allowed range or there's no room for another block.
+The likely scenario: the date picker returned a date at midnight local time, and the delta between the original start (which was at 18:00 CET = 17:00 UTC) and the new start (midnight CET) was a large negative offset, shifting all slots backward.
 
-4. **Show allowed range hint**: Display a small text under each day like "Available: 14:00 – 22:00" so the player knows the window.
+## Fix plan
 
-### Technical detail
-- Helper function: `getTimeRange(day, allowedDays)` returns the earliest start and latest end from `allowedDays[day]` blocks
-- Filter start options: times >= range start and < range end
-- Filter end options: times > selected start and <= range end
-- `toggleDay` default: use `allowedDays[day]` when available
+### 1. Fix date shift to be day-based, not millisecond-based
+**File: `src/pages/TrainerScheduleOverview.tsx`** (~lines 430-458)
+
+Instead of computing `deltaMs` between two Date objects (which is timezone-fragile), compute the **day difference** and shift each slot by that many days. Then apply the time separately.
+
+**Before:**
+```typescript
+const deltaMs = cycleEditData.startDate!.getTime() - cycleEditData.originalStartDate!.getTime();
+newStart = new Date(newStart.getTime() + deltaMs);
+```
+
+**After:**
+```typescript
+// Use date-fns differenceInCalendarDays for timezone-safe day delta
+const dayDelta = differenceInCalendarDays(cycleEditData.startDate!, cycleEditData.originalStartDate!);
+newStart = addDays(newStart, dayDelta);
+newEnd = addDays(newEnd, dayDelta);
+```
+
+Then apply `setHours` for time changes as before. This avoids DST/timezone issues in the delta.
+
+### 2. Immediate data fix for the Marieke cycle
+The 4 slots need their dates corrected. This would require knowing what the intended new start date and week count were. You may want to re-edit the cycle from the "past" tab to fix the dates.
+
+## Files
+- `src/pages/TrainerScheduleOverview.tsx` — Fix date shift logic to use calendar day delta instead of millisecond delta
 
