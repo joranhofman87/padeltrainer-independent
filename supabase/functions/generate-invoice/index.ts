@@ -254,9 +254,21 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Allow both the trainer AND the player to access the invoice
+    // Fetch academy profile if invoice belongs to an academy
+    let academyProfile: any = null;
+    if (invoice.academy_profile_id) {
+      const { data: ap } = await supabase
+        .from('academy_profiles')
+        .select('name, business_name, business_address, kvk_number, btw_number, iban, bic, invoice_logo_url, payment_terms_days')
+        .eq('id', invoice.academy_profile_id)
+        .single();
+      academyProfile = ap;
+    }
+
+    // Allow the trainer, the player, AND academy managers to access the invoice
     const isTrainer = trainerProfile.user_id === user.id;
     let isPlayer = invoice.player_id === user.id;
+    let isAcademyManager = false;
 
     // player_id may reference profiles.id rather than auth user id, so check via profiles table
     if (!isPlayer && invoice.player_id) {
@@ -270,12 +282,31 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    if (!isTrainer && !isPlayer) {
+    // Check if user is an academy manager for this invoice's academy
+    if (!isTrainer && !isPlayer && invoice.academy_profile_id) {
+      const { data: managerCheck } = await supabase
+        .from('academy_managers')
+        .select('id')
+        .eq('academy_profile_id', invoice.academy_profile_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (managerCheck) {
+        isAcademyManager = true;
+      }
+    }
+
+    if (!isTrainer && !isPlayer && !isAcademyManager) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
+
+    // Use academy details when available, fall back to trainer profile
+    const businessSource = academyProfile || trainerProfile;
+    const businessName = academyProfile
+      ? (academyProfile.business_name || academyProfile.name || '')
+      : (trainerProfile.business_name || '');
 
     // Generate HTML invoice
     const invoiceData: InvoiceData = {
@@ -293,15 +324,15 @@ const handler = async (req: Request): Promise<Response> => {
       vat_amount: invoice.vat_amount,
       total: invoice.total,
       notes: invoice.notes,
-      logo_url: trainerProfile.invoice_logo_url || null,
+      logo_url: businessSource.invoice_logo_url || null,
       trainer: {
-        business_name: trainerProfile.business_name || '',
-        business_address: trainerProfile.business_address || '',
-        kvk_number: trainerProfile.kvk_number || '',
-        btw_number: trainerProfile.btw_number,
-        iban: trainerProfile.iban || '',
-        bic: trainerProfile.bic,
-        payment_terms_days: trainerProfile.payment_terms_days || 14,
+        business_name: businessName,
+        business_address: businessSource.business_address || '',
+        kvk_number: businessSource.kvk_number || '',
+        btw_number: businessSource.btw_number,
+        iban: businessSource.iban || '',
+        bic: businessSource.bic,
+        payment_terms_days: businessSource.payment_terms_days || 14,
       },
     };
 
