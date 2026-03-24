@@ -515,6 +515,31 @@ export default function TrainerProfile() {
           </Card>
         )}
 
+        {/* Video Modal */}
+        {showVideo && videoInfo && (
+          <div 
+            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+            onClick={() => setShowVideo(false)}
+          >
+            <div className="relative w-full max-w-4xl aspect-video">
+              <button 
+                className="absolute -top-10 right-0 text-white hover:text-white/80"
+                onClick={() => setShowVideo(false)}
+              >
+                ✕
+              </button>
+              <iframe
+                src={videoInfo.embedUrl}
+                className="w-full h-full rounded-lg"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        )}
+
+        <ProfileContentGrid>
+          <ProfileMainColumn>
             {/* Open Slots */}
             {trainer && <TrainerOpenSlots trainerId={trainer.id} trainerSlug={trainerSlug} />}
 
