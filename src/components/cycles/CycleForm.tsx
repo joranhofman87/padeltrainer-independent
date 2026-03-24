@@ -350,6 +350,7 @@ export default function CycleForm({
         price_columns: priceColumns.length > 0 ? priceColumns : undefined,
         prices_include_vat: pricesIncludeVat,
         pricing_note: pricingNote && pricingNote !== '<p></p>' ? pricingNote : undefined,
+        available_days: isRegistration && Object.keys(availableDays).length > 0 ? availableDays : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
