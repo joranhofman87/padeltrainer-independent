@@ -54,6 +54,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
 
       if (data) {
         const vatRate = (data as any).default_vat_rate ?? 21;
+        setInitialVatRate(vatRate);
         const isCustom = ![21, 9, 0].includes(vatRate);
         setFormData({
           business_name: (data as any).business_name || '',
