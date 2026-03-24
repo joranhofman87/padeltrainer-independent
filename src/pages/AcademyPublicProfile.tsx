@@ -37,6 +37,7 @@ import {
   type AcademyProfile 
 } from '@/lib/academy';
 import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
+import { AcademyPublicOpenSlots } from '@/components/academy/AcademyPublicOpenSlots';
 import { WaitingListCard } from '@/components/waitingList';
 import { AcademyReviews } from '@/components/reviews/AcademyReviews';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
@@ -358,21 +359,29 @@ export default function AcademyPublicProfile() {
 
         {/* Content Grid */}
         <ProfileContentGrid>
-          {/* Main Content */}
+          {/* Main Content - Open Registrations & Open Slots */}
           <ProfileMainColumn>
-            {/* About Card */}
-            <Card>
-              <CardHeader>
-                <h2 className="text-2xl font-semibold leading-none tracking-tight">{t('profile.about')}</h2>
-              </CardHeader>
-              <CardContent>
-                {academy.description ? (
-                  <p className="text-muted-foreground whitespace-pre-wrap">{academy.description}</p>
-                ) : (
-                  <p className="text-muted-foreground italic">{t('common:noDescription', 'No description available.')}</p>
-                )}
-              </CardContent>
-            </Card>
+            {/* Open Registrations */}
+            <AcademyOpenCycles 
+              academyId={academy.id!}
+              academyName={academy.name || 'Academy'}
+              academySlug={academy.slug || ''}
+            />
+
+            {/* Open Slots */}
+            <AcademyPublicOpenSlots
+              academyId={academy.id!}
+              academySlug={academy.slug || ''}
+            />
+
+            {/* Waiting List Card - only when enabled */}
+            {(academy as any).waiting_list_enabled && (
+              <WaitingListCard
+                ownerType="academy"
+                ownerId={academy.id!}
+                ownerName={academy.name || 'Academy'}
+              />
+            )}
           </ProfileMainColumn>
 
           {/* Sidebar */}
@@ -381,27 +390,22 @@ export default function AcademyPublicProfile() {
               title={t('common:quickStats', 'Quick Stats')}
               stats={quickStats}
             />
+
+            {/* About Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">{t('profile.about')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {academy.description ? (
+                  <p className="text-muted-foreground whitespace-pre-wrap text-sm">{academy.description}</p>
+                ) : (
+                  <p className="text-muted-foreground italic text-sm">{t('common:noDescription', 'No description available.')}</p>
+                )}
+              </CardContent>
+            </Card>
           </ProfileSidebarColumn>
         </ProfileContentGrid>
-
-        {/* Full Width - Open Registrations */}
-        <ProfileFullWidthSection>
-          <AcademyOpenCycles 
-            academyId={academy.id!}
-            academyName={academy.name || 'Academy'}
-            academySlug={academy.slug || ''}
-          />
-          {/* Waiting List Card - only when enabled */}
-          {(academy as any).waiting_list_enabled && (
-            <div className="mt-6">
-              <WaitingListCard
-                ownerType="academy"
-                ownerId={academy.id!}
-                ownerName={academy.name || 'Academy'}
-              />
-            </div>
-          )}
-        </ProfileFullWidthSection>
 
         {/* Full Width - Locations Section */}
         {locations.length > 0 && (
