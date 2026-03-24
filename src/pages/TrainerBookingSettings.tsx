@@ -108,8 +108,51 @@ export default function TrainerBookingSettings() {
     } else {
       setPricesIncludeVat(value);
       toast({ title: t('common:success'), description: t('bookingSettings.vatSaved') });
+      // Ask if they want to bulk update existing slots/invoices
+      setPendingVatValue(value);
+      setShowVatBulkDialog(true);
     }
     setSavingVat(false);
+  };
+
+  const handleBulkUpdateVat = async () => {
+    if (!trainerProfileId || pendingVatValue === null) return;
+    setBulkUpdating(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bulk-update-vat`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            trainerId: trainerProfileId,
+            pricesIncludeVat: pendingVatValue,
+          }),
+        }
+      );
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      toast({
+        title: t('common:success'),
+        description: t('bookingSettings.vatBulkUpdateSuccess', {
+          slots: result.slotsUpdated,
+          invoices: result.invoicesUpdated,
+        }),
+      });
+    } catch (err: any) {
+      toast({
+        title: t('common:error'),
+        description: t('bookingSettings.vatBulkUpdateError'),
+        variant: 'destructive',
+      });
+    }
+    setBulkUpdating(false);
+    setShowVatBulkDialog(false);
+    setPendingVatValue(null);
   };
 
   if (loading || loadingSettings) {
