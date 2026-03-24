@@ -370,7 +370,7 @@ export default function AdminAcademies() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredAcademies.length === 0 ? (
+            {sortedData.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={5}
