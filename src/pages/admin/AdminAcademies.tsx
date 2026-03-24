@@ -501,10 +501,30 @@ export default function AdminAcademies() {
         </Table>
       </div>
 
-      {/* Footer */}
-      <p className="text-sm text-muted-foreground">
-        Showing {filteredAcademies.length} of {academies.length} academies
-      </p>
+      {/* Pagination */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Showing {page * 100 + 1}–{Math.min((page + 1) * 100, totalCount)} of {totalCount} academies
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page + 1 >= totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
 
       {editingAcademy && (
         <AcademyEditDialog
