@@ -286,7 +286,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
               ) : (
                 <MapPin className="h-5 w-5 text-primary shrink-0" />
               )}
-              <span className="font-semibold text-base">{cycleLocation.name}, {cycleLocation.city}</span>
+              <span className="font-semibold text-base">{cycleLocation.name}</span>
             </div>
           )}
 
