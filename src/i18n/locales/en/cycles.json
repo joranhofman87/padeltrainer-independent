@@ -212,6 +212,7 @@
       "addTimeBlock": "Add another time",
       "noAvailability": "Please select at least one day with available times",
       "invalidTimeRange": "End time must be after start time",
+      "availableRange": "Available",
       "timeWindows": "Preferred Times",
       "timePresets": {
         "morning": "Mornings (8:00-12:00)",

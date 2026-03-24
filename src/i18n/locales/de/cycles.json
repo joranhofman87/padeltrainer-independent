@@ -197,6 +197,7 @@
       "addTimeBlock": "Weitere Zeit hinzufügen",
       "noAvailability": "Bitte wähle mindestens einen Tag mit verfügbaren Zeiten",
       "invalidTimeRange": "Endzeit muss nach der Startzeit liegen",
+      "availableRange": "Verfügbar",
       "timeWindows": "Bevorzugte Zeiten",
       "timePresets": {
         "morning": "Morgens (8:00-12:00)",
