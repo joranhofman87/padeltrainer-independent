@@ -190,7 +190,7 @@ serve(async (req) => {
       const pricePerSession = bookings[0].payment_amount || firstSlot.price_per_session || 0;
 
       lineItems = [{
-        description: cyclusName,
+        description: `${cyclusName} (${bookings.length} weken)`,
         quantity: bookings.length,
         unit_price: pricePerSession,
       }];
@@ -214,7 +214,9 @@ serve(async (req) => {
       });
     }
 
-    // Check for extra costs from the cycle settings
+    // Check for extra costs from cycle settings, fall back to slot extra_costs
+    let extraCosts: any[] | null = null;
+
     if (sharedCyclusId) {
       const { data: cycleData } = await supabase
         .from("cycles")
@@ -222,17 +224,26 @@ serve(async (req) => {
         .eq("id", sharedCyclusId)
         .maybeSingle();
 
-      const extraCosts = (cycleData?.settings as any)?.extra_costs;
-      if (extraCosts && Array.isArray(extraCosts)) {
-        for (const ec of extraCosts) {
-          if (ec.description && ec.price > 0) {
-            const isOneTime = ec.type === 'one_time';
-            lineItems.push({
-              description: ec.description,
-              quantity: isOneTime ? 1 : bookings.length,
-              unit_price: ec.price,
-            });
-          }
+      extraCosts = (cycleData?.settings as any)?.extra_costs || null;
+    }
+
+    // Fallback: use extra_costs from the first slot if no cycle-level costs
+    if (!extraCosts || !Array.isArray(extraCosts) || extraCosts.length === 0) {
+      const slotExtraCosts = (bookings[0].availability_slots as any).extra_costs;
+      if (slotExtraCosts && Array.isArray(slotExtraCosts)) {
+        extraCosts = slotExtraCosts;
+      }
+    }
+
+    if (extraCosts && Array.isArray(extraCosts)) {
+      for (const ec of extraCosts) {
+        if (ec.description && ec.price > 0) {
+          const isOneTime = ec.type === 'one_time';
+          lineItems.push({
+            description: isOneTime ? ec.description : `${ec.description} (per sessie)`,
+            quantity: isOneTime ? 1 : bookings.length,
+            unit_price: ec.price,
+          });
         }
       }
     }
