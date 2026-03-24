@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
-import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye, Palette } from 'lucide-react';
+import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye, Palette, RefreshCw } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
 
@@ -20,6 +20,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const { t } = useTranslation('academy');
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [initialVatRate, setInitialVatRate] = useState<number>(21);
 
@@ -158,6 +159,29 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
       }
     }
     setSaving(false);
+  };
+
+  const handleBulkUpdateVat = async () => {
+    const resolvedVatRate = formData.default_vat_rate === -1
+      ? parseFloat(formData.custom_vat_rate) || 0
+      : formData.default_vat_rate;
+
+    setBulkUpdating(true);
+    try {
+      const { error: bulkError } = await supabase.functions.invoke('bulk-update-vat', {
+        body: { academyId, newVatRate: resolvedVatRate, pricesIncludeVat: true },
+      });
+      if (bulkError) {
+        logger.error('Bulk VAT update error', bulkError instanceof Error ? bulkError : new Error(String(bulkError)), { component: 'AcademyInvoiceSettingsCard' });
+        toast({ title: 'Openstaande facturen konden niet worden bijgewerkt', variant: 'destructive' });
+      } else {
+        toast({ title: `Openstaande facturen bijgewerkt naar ${resolvedVatRate}% BTW` });
+      }
+    } catch (err) {
+      logger.error('Bulk VAT update failed', err instanceof Error ? err : new Error(String(err)), { component: 'AcademyInvoiceSettingsCard' });
+      toast({ title: 'Er ging iets mis', variant: 'destructive' });
+    }
+    setBulkUpdating(false);
   };
 
   if (loading) {
@@ -398,10 +422,16 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
           </div>
         </div>
 
-        <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
-          {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          {t('common.save')}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
+            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+            {t('common.save')}
+          </Button>
+          <Button variant="outline" onClick={handleBulkUpdateVat} disabled={bulkUpdating} className="w-full sm:w-auto">
+            {bulkUpdating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            BTW bijwerken op openstaande facturen
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
