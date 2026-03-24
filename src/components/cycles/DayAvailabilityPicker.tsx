@@ -35,6 +35,8 @@ interface DayAvailabilityPickerProps {
   value: DayAvailability;
   onChange: (value: DayAvailability) => void;
   disabled?: boolean;
+  /** When provided, only show these days and constrain time ranges */
+  allowedDays?: DayAvailability;
 }
 
 export default function DayAvailabilityPicker({
