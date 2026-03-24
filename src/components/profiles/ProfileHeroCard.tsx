@@ -96,7 +96,7 @@ export function ProfileHeroCard({
   };
 
   return (
-    <Card className="mb-8 overflow-hidden">
+    <Card className="overflow-hidden">
       <CardContent className="p-0">
         <div className="relative bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4 md:p-6">
           <div className="flex flex-col lg:flex-row gap-6">
