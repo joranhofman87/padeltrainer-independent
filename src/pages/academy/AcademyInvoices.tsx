@@ -230,26 +230,6 @@ export default function AcademyInvoices() {
     },
   });
 
-  // Generate payment link
-  const generateLinkMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      const { data, error } = await supabase.functions.invoke("create-invoice-payment", {
-        body: { invoiceId },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-      if (data?.paymentUrl) {
-        navigator.clipboard.writeText(data.paymentUrl);
-        toast.success(t("invoices.linkCopied", "Payment link copied to clipboard"));
-      }
-    },
-    onError: () => {
-      toast.error(t("invoices.linkError", "Failed to generate payment link"));
-    },
-  });
 
   const handleDownloadPdf = async (invoice: Invoice) => {
     if (!invoice.pdf_url) {
