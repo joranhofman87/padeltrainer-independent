@@ -102,6 +102,7 @@ serve(async (req) => {
         dueDate: invoice.due_date,
         playerName: invoice.player_name,
         playerId: invoice.player_id,
+        playerEmail,
         playerBusinessName: invoice.player_business_name,
         playerAddress: invoice.player_address,
         playerBtwNumber: invoice.player_btw_number,
