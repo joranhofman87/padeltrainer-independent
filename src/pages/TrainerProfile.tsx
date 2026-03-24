@@ -685,7 +685,7 @@ export default function TrainerProfile() {
             {profile.bio && (
               <Card>
                 <CardHeader>
-                  <CardTitle>{t('common:about', 'About')}</CardTitle>
+                  <CardTitle>{t('common:aboutName', { name: profile.full_name?.split(' ')[0] || '' })}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground whitespace-pre-line">{profile.bio}</p>
