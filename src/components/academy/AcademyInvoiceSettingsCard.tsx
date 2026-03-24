@@ -21,6 +21,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [initialVatRate, setInitialVatRate] = useState<number>(21);
 
   const [formData, setFormData] = useState({
     business_name: '',
