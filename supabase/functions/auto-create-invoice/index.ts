@@ -262,8 +262,12 @@ serve(async (req) => {
     }
 
     // Apply split payment: divide each line item's unit_price among players
+    // Calculate unsplit total first, then use floor division for consistency
+    let unsplitTotal: number | null = null;
     if (splitAmongPlayers && splitAmongPlayers > 1) {
       logStep("Applying split payment", { splitAmongPlayers });
+      // Calculate the unsplit total before modifying line items
+      unsplitTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
       for (const item of lineItems) {
         item.unit_price = Math.round((item.unit_price / splitAmongPlayers) * 100) / 100;
         item.description = `${item.description} (1/${splitAmongPlayers})`;
@@ -333,6 +337,24 @@ serve(async (req) => {
         vatAmount = subtotal * (vatRate / 100);
         totalInclusive = subtotal + vatAmount;
       }
+    }
+
+    // For split payments, use floor(unsplitTotal/N) to ensure all shares sum to original
+    // The split-invoice function handles giving the remainder to the first player
+    if (unsplitTotal !== null && splitAmongPlayers && splitAmongPlayers > 1) {
+      const splitShare = Math.floor((unsplitTotal / splitAmongPlayers) * 100) / 100;
+      logStep("Correcting split total", { unsplitTotal, splitShare, calculatedTotal: totalInclusive });
+      totalInclusive = splitShare;
+      // Recalculate VAT from corrected total
+      if (slotPricesIncludeVat) {
+        subtotal = totalInclusive / (1 + vatRate / 100);
+        vatAmount = totalInclusive - subtotal;
+      } else {
+        subtotal = totalInclusive / (1 + vatRate / 100);
+        vatAmount = totalInclusive - subtotal;
+      }
+      subtotal = Math.round(subtotal * 100) / 100;
+      vatAmount = Math.round(vatAmount * 100) / 100;
     }
 
     // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings

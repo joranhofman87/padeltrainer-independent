@@ -152,7 +152,9 @@ serve(async (req) => {
     // 5. Update the existing invoice: divide line items by N
     const originalLineItems = invoice.line_items as any[];
     const vatRate = invoice.vat_rate || 21;
+    const originalTotal = invoice.total as number;
 
+    // Divide line items for display purposes
     const updatedLineItems = originalLineItems.map((item: any) => ({
       ...item,
       unit_price:
@@ -160,29 +162,36 @@ serve(async (req) => {
       description: `${item.description} (1/${totalPlayers})`,
     }));
 
-    // Recalculate totals for the updated invoice
-    const newLineItemTotal = updatedLineItems.reduce(
-      (sum: number, item: any) => sum + item.quantity * item.unit_price,
-      0
-    );
+    // Use total-level division to avoid compounding rounding errors
+    // N-1 players get floor(total/N), first player absorbs remainder
+    const splitShare = Math.floor((originalTotal / totalPlayers) * 100) / 100;
+    const remainder = Math.round((originalTotal - splitShare * totalPlayers) * 100) / 100;
+    // The original invoice (first player) gets splitShare + remainder
+    const firstPlayerTotal = Math.round((splitShare + remainder) * 100) / 100;
 
-    // Check for multi-rate VAT
+    logStep("Split calculation", { originalTotal, splitShare, remainder, firstPlayerTotal });
+
+    // Recalculate VAT based on the corrected total
     const hasMultipleVatRates = updatedLineItems.some(
       (item: any) => (item.vat_rate ?? vatRate) !== vatRate
     );
 
     let newSubtotal: number;
     let newVatAmount: number;
-    let newTotal: number;
+    let newTotal: number = firstPlayerTotal;
     let newVatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
 
     if (hasMultipleVatRates) {
+      // For multi-rate, calculate proportional VAT based on corrected total
+      const lineItemTotal = updatedLineItems.reduce(
+        (sum: number, item: any) => sum + item.quantity * item.unit_price, 0
+      );
+      const adjustmentRatio = lineItemTotal > 0 ? firstPlayerTotal / lineItemTotal : 1;
       let totalSub = 0;
       let totalVat = 0;
       for (const item of updatedLineItems) {
-        const lineTotal = item.quantity * item.unit_price;
+        const lineTotal = item.quantity * item.unit_price * adjustmentRatio;
         const lineVatRate = item.vat_rate ?? vatRate;
-        // Assume prices include VAT (consistent with original invoice)
         const lineSub = lineTotal / (1 + lineVatRate / 100);
         const lineVat = lineTotal - lineSub;
         totalSub += lineSub;
@@ -195,13 +204,11 @@ serve(async (req) => {
       }
       newSubtotal = Math.round(totalSub * 100) / 100;
       newVatAmount = Math.round(totalVat * 100) / 100;
-      newTotal = newLineItemTotal;
       for (const rate in newVatBreakdown) {
         newVatBreakdown[rate].subtotal = Math.round(newVatBreakdown[rate].subtotal * 100) / 100;
         newVatBreakdown[rate].vat = Math.round(newVatBreakdown[rate].vat * 100) / 100;
       }
     } else {
-      newTotal = newLineItemTotal;
       newSubtotal = newTotal / (1 + vatRate / 100);
       newVatAmount = newTotal - newSubtotal;
     }
