@@ -180,7 +180,7 @@ export default function CycleApplicationForm({
       birth_date: playerBirthDate || '',
       
       rating: playerRating || undefined,
-      rating_system: playerRatingSystem,
+      rating_system: (cycle.settings as any)?.rating_system || playerRatingSystem,
       lesson_types: ['group4'] as string[],
       preferred_duration_minutes: availableDurations.length === 1 ? availableDurations[0] : (cycle.settings.default_duration_minutes || 60),
       sessions_per_week: 1,
@@ -557,30 +557,12 @@ export default function CycleApplicationForm({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="rating_system"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('application.form.ratingSystem')}</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {ratingSystems.map(rs => (
-                          <SelectItem key={rs.code} value={rs.code}>
-                            {rs.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <FormItem>
+                <FormLabel>{t('application.form.ratingSystem')}</FormLabel>
+                <p className="text-sm text-muted-foreground py-2 px-3 bg-muted rounded-md">
+                  {ratingSystems.find(rs => rs.code === form.getValues('rating_system'))?.name || form.getValues('rating_system')?.toUpperCase() || 'KNLTB'}
+                </p>
+              </FormItem>
             </div>
 
             <FormField
