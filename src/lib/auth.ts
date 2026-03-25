@@ -35,7 +35,7 @@ export interface TrainerProfile {
   updated_at: string;
 }
 
-export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string, language?: string) {
+export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string, language?: string, role?: string) {
   // Use custom edge function to create user with Admin API
   // This bypasses Supabase's automatic email and sends our branded email instead
   try {
@@ -46,6 +46,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
         fullName,
         phone,
         language,
+        role,
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },
     });

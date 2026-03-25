@@ -156,7 +156,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const { email, password, fullName, phone, redirectTo, language }: SignupRequest & { language?: string } = await req.json();
+    const { email, password, fullName, phone, redirectTo, language, role: signupRole }: SignupRequest & { language?: string; role?: string } = await req.json();
 
     if (!email || !password || !fullName) {
       throw new Error("Missing required fields: email, password, fullName");
@@ -252,7 +252,7 @@ const handler = async (req: Request): Promise<Response> => {
       await supabaseAdmin.functions.invoke('slack-notify', {
         body: {
           event: 'new_signup',
-          data: { name: fullName, email, role: 'Trainer' },
+          data: { name: fullName, email, role: signupRole || 'Unknown' },
         },
       });
     } catch (slackErr) {

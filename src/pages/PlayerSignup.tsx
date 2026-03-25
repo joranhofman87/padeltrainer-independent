@@ -82,7 +82,7 @@ export default function PlayerSignup() {
     trackEvent('signup_started', { role: 'player', method: 'email', ...getUtmParams() });
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName);
+    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Player');
 
     if (error) {
       logger.error('Player signup failed', error, { component: 'PlayerSignup', action: 'signUp' });
@@ -98,10 +98,7 @@ export default function PlayerSignup() {
       if (data.user?.id) {
         supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
       }
-      // Slack notification (non-blocking)
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Player' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
       if (redirectUrl) {
@@ -115,10 +112,7 @@ export default function PlayerSignup() {
     } else {
       trackEvent('signup_completed', { role: 'player', method: 'email' });
       localStorage.setItem('pendingRole', 'player');
-      // Slack notification (non-blocking)
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Player' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
       if (redirectUrl) {

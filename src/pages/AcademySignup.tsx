@@ -72,7 +72,7 @@ export default function AcademySignup() {
     trackEvent('signup_started', { role: 'academy', method: 'email', ...getUtmParams() });
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName);
+    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Academy');
 
     if (error) {
       logger.error('Academy signup failed', error, { component: 'AcademySignup', action: 'signUp' });
@@ -88,9 +88,7 @@ export default function AcademySignup() {
       if (data.user?.id) {
         supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
       }
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Academy' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
@@ -99,9 +97,7 @@ export default function AcademySignup() {
     } else {
       trackEvent('signup_completed', { role: 'academy', method: 'email' });
       localStorage.setItem('pendingRole', 'academy');
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Academy' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       setShowVerification(true);
     }
 
