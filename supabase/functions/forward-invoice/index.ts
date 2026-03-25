@@ -129,12 +129,25 @@ const handler = async (req: Request): Promise<Response> => {
 
     const pdfLink = signedUrl?.signedUrl || invoice.pdf_url || "";
 
-    const formatCurrency = (amount: number) =>
-      new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(amount);
+    // Download invoice file for attachment
+    let attachments: { filename: string; content: string }[] = [];
+    const { data: fileData } = await supabase.storage
+      .from("invoices")
+      .download(fileName);
 
-    const resend = new Resend(resendApiKey);
-
-    const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
+    if (fileData) {
+      const buffer = await fileData.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64 = btoa(binary);
+      attachments = [{ filename: `${invoice.invoice_number}.html`, content: base64 }];
+      console.log(`Attached invoice file: ${invoice.invoice_number}.html (${bytes.length} bytes)`);
+    } else {
+      console.log("Could not download invoice file for attachment, sending without attachment");
+    }
 
     const emailPromises = emails.map((email: string) =>
       resend.emails.send({
@@ -155,6 +168,7 @@ const handler = async (req: Request): Promise<Response> => {
           <p style="margin-top:24px;font-size:12px;color:#9ca3af;">Verzonden via PadelTrainer.ai namens ${businessName || "je trainer"}</p>
           </div>
         `,
+        attachments: attachments.length > 0 ? attachments : undefined,
       })
     );
 
