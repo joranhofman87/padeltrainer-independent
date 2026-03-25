@@ -301,8 +301,19 @@ serve(async (req) => {
           if (bookingUpdateError) {
             logStep("Failed to update linked bookings", { error: bookingUpdateError.message });
           } else {
-            logStep("Linked bookings updated to paid", { count: invoiceData.booking_ids.length });
+          logStep("Linked bookings updated to paid", { count: invoiceData.booking_ids.length });
           }
+        }
+
+        // Forward invoice to bookkeeping emails
+        try {
+          await supabase.functions.invoke("forward-invoice", {
+            body: { invoiceId: invoiceIdFromMetadata },
+            headers: { Authorization: `Bearer ${supabaseServiceKey}` },
+          });
+          logStep("Invoice forwarded to bookkeeping");
+        } catch (fwdErr) {
+          logStep("Invoice forwarding failed (non-fatal)", { error: String(fwdErr) });
         }
       }
       return new Response("OK", { status: 200 });
