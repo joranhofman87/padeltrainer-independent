@@ -1,31 +1,39 @@
 
 
-# Fix VAT Calculation on Joran & Nick Invoices
+# Fix: Guest-to-Player Linking on Signup
 
-## Root Cause
+## Root Causes
 
-The trainer has `prices_include_vat = false`, meaning €46.25 is the **net** price (VAT gets added on top). But the invoices were manually patched using the **inclusive** formula (`740 / 1.09 = 678.90`, VAT = `61.10`), which is wrong.
+### 1. Wrong ID used in trigger (invoices)
+The `link_guest_invoices_on_signup` trigger sets `invoices.player_id = NEW.user_id`, but `invoices.player_id` references `profiles(id)` (the profiles table primary key), NOT `auth.users(id)`. These are different UUIDs. The trigger should use `NEW.id` (the profiles row PK) instead of `NEW.user_id`.
 
-Correct calculation (VAT-exclusive):
-- Sessions: 16 × €46.25 = **€740.00** net, VAT 9% = **€66.60**
-- Extra costs: 16 × €19.00 = **€304.00** net, VAT 0% = €0.00
-- **Subtotal: €1,044.00 | VAT: €66.60 | Total: €1,110.60**
-
-The `auto-create-invoice` edge function code actually handles this correctly (lines 298-300), so the bug is only in the manually patched data from earlier. Future auto-created invoices will be correct.
+### 2. Bookings are never linked
+The trigger only links invoices and guest_players, but **bookings still have `guest_player_id` set and `player_id = NULL`**. The player dashboard queries `.eq('player_id', profile.id)`, so guest bookings remain invisible after signup.
 
 ## Changes
 
-**Data patch only** — update both invoices:
+### 1. Update the `link_guest_invoices_on_signup` trigger function
 
-| Field | Wrong (current) | Correct |
-|-------|-----------------|---------|
-| subtotal | €982.90 | €1,044.00 |
-| vat_amount | €61.10 | €66.60 |
-| total | €1,044.00 | €1,110.60 |
-| vat_breakdown 9% | subtotal: 678.90, vat: 61.10 | subtotal: 740.00, vat: 66.60 |
-| vat_breakdown 0% | subtotal: 304, vat: 0 | unchanged |
+Replace `NEW.user_id` with `NEW.id` for the invoice update (since `invoices.player_id` references `profiles.id`).
 
-Both INV-2026-0001 and INV-2026-0002 get the same correction. PDF URLs reset to null for regeneration.
+Add a third UPDATE to also link bookings:
+```sql
+UPDATE bookings b
+SET player_id = NEW.id
+FROM guest_players gp
+WHERE b.guest_player_id = gp.id
+  AND lower(gp.email) = lower(NEW.email)
+  AND b.player_id IS NULL;
+```
 
-Also check and fix INV-2026-0003 (Maarten) if it has the same issue.
+### 2. Data patch for current situation
+Manually link Joran's (the player who just signed up) bookings and invoice to their profile. Need to:
+- Find the profile ID for the newly signed-up player
+- Update `invoices.player_id` to the correct `profiles.id`
+- Update `bookings.player_id` for all bookings with matching `guest_player_id`
+
+| File | Change |
+|------|--------|
+| Migration SQL | Fix `link_guest_invoices_on_signup`: use `NEW.id` instead of `NEW.user_id`, add bookings linking |
+| Database (data patch) | Link existing bookings + fix invoice player_id for the signed-up player |
 
