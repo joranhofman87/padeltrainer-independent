@@ -152,7 +152,7 @@ const AcademyCalendar = lazy(() => import('@/pages/academy/AcademyCalendar'));
 const AcademyIntakeRequests = lazy(() => import('@/pages/academy/AcademyIntakeRequests'));
 const AcademySubscription = lazy(() => import('@/pages/academy/AcademySubscription'));
 const AcademyTrainerInvitation = lazy(() => import('@/pages/academy/AcademyTrainerInvitation'));
-const AcademyEarnings = lazy(() => import('@/pages/academy/AcademyEarnings'));
+
 const AcademyWaitingList = lazy(() => import('@/pages/academy/AcademyWaitingList'));
 const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
 const AcademyOpenSlots = lazy(() => import('@/pages/academy/AcademyOpenSlots'));
