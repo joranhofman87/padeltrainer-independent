@@ -63,7 +63,7 @@ export default function MollieCallback() {
   const handleRetry = () => {
     const entity = searchParams.get('entity') || searchParams.get('state')?.split('_')[0];
     if (entity === 'academy') {
-      navigate('/academy/earnings');
+      navigate('/academy/settings');
     } else {
       navigate('/trainer/earnings');
     }

@@ -301,7 +301,7 @@ export function DomainRouter() {
           <Route path="settings" element={<AcademySettings />} />
           <Route path="settings/notifications" element={<NotificationSettings />} />
           <Route path="subscription" element={<AcademySubscription />} />
-          <Route path="earnings" element={<AcademyEarnings />} />
+          
           <Route path="invoices" element={<AcademyInvoices />} />
         </Route>
         <Route path="/app/academy/invitation/:token" element={<AcademyTrainerInvitation />} />

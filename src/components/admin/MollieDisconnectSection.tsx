@@ -169,7 +169,7 @@ export function MollieDisconnectSection({
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No Mollie account connected. The {entityType} can connect from their earnings page.
+          No Mollie account connected. The {entityType} can connect from their settings page.
         </p>
       )}
     </div>

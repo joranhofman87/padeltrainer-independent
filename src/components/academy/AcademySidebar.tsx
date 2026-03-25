@@ -435,17 +435,6 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/app/academy/earnings"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.earnings")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
                             to="/app/academy/invoices"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
