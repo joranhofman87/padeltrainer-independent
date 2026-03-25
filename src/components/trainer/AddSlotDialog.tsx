@@ -1426,6 +1426,25 @@ export function BulkCreateSheet({
                     </div>
                   </div>
 
+                  {/* Split Payment */}
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`split-payment-${index}`}
+                      checked={slot.splitPayment}
+                      onCheckedChange={(checked) =>
+                        updateBulkSlot(index, { splitPayment: !!checked })
+                      }
+                    />
+                    <div>
+                      <Label htmlFor={`split-payment-${index}`} className="text-sm cursor-pointer">
+                        {t("calendar.splitPayment", "Split payment among participants")}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        {t("calendar.splitPaymentHint", "Total price will be divided equally among all booked players")}
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Location */}
                   <div className="space-y-1">
                     <Label className="text-xs">{t("calendar.location", "Location")}</Label>
