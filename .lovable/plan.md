@@ -1,49 +1,35 @@
 
 
-# Simplify Calendar Grid: Absolute Positioning + Compact Cards
+# Reorder Extra Costs: Presets First, Manual Second + Fix Hover Styling
 
 ## Problem
-The half-hour row grid (40px per row) causes:
-- Text overflowing out of slot boxes (visible in screenshot)
-- Large empty gaps between slots
-- Complex row-spanning logic that's fragile
+1. **Hover readability** — preset items in the popover have poor contrast on hover (text becomes unreadable against accent background)
+2. **Wrong order** — currently shows manual input fields first, then "Kies uit presets" button. Should be presets first, then manual add option
+3. **No link to preset settings** — user can't navigate to settings to create presets from this UI
 
-## Solution
-Replace the row-based CSS grid with **absolute positioning** inside each day column — like Google Calendar. Each slot is placed at a pixel offset based on its start time and sized based on duration. No more row spanning, no occupied-cell tracking.
+## Changes
 
-### Desktop Week View (`TrainerCalendarGrid.tsx`)
+### 1. `ExtraCostPresetPicker.tsx` — Fix hover contrast
+- Change hover class from `hover:bg-accent` to `hover:bg-accent hover:text-accent-foreground` so text stays readable
+- When no presets exist, add a link to settings (e.g. "Beheer presets in instellingen →")
 
-**Replace the half-hour grid approach with:**
-- Keep the 8-column header (time label + 7 days)
-- Each day column becomes a `relative` container with a fixed height (e.g., 15 hours × 60px = 900px)
-- Hour lines drawn as horizontal borders at 60px intervals
-- Each slot is `absolute`, positioned: `top = (startHour - 8) * 60px`, `height = durationMinutes * 1px`
-- Remove `HALF_HOURS`, `occupiedCells`, `slotsByDayAndHalfHour`, `getSlotRowSpan` — all unnecessary
-- Keep `slotsByDayAndHour` only for mobile view
+### 2. `AddSlotDialog.tsx` (lines ~1334-1363) — Reorder buttons & layout
+**Current order inside `hasExtraCosts` block:**
+1. Manual cost input fields (description, price, VAT, type)
+2. "+ Add cost" button + "Kies uit presets" button
 
-**Benefits:** Slots render at exact pixel positions matching their time, no gaps, no overflow, no row-span math.
+**New order:**
+1. `ExtraCostPresetPicker` button — shown first, prominently
+2. "+ Handmatig toevoegen" button — secondary, below presets
+3. Already-added cost items (manual fields) shown below the buttons
+4. Small link: "Presets beheren →" pointing to `/app/settings` (or trainer settings section)
 
-### Compact Card Content (`CalendarSlotCard.tsx`)
-
-Simplify the inline card to show only essentials (details on click via popover):
-- Line 1: `10:00 - 11:00` + lock icon if marked full
-- Line 2: Cyclus name (truncated)
-- Line 3: `👤 2/4` + trainer name (if `showTrainerInfo`)
-- Line 4: Rating badge (only if fits, i.e. slot is ≥60min)
-- Remove the `rowSpan` prop — no longer needed
-
-### Mobile View
-Keep as-is (flat sorted list) — it already works well.
-
-### Click behavior
-No changes needed — popover already opens on click with full details and actions.
-
-## Files changed
+### 3. Preset picker improvements
+- In the empty state, include a link to settings page to manage presets
+- Add the same "Presets beheren →" link at the bottom of the popover when presets exist
 
 | File | Change |
 |------|--------|
-| `src/components/trainer/TrainerCalendarGrid.tsx` | Replace half-hour grid with absolute-positioned day columns |
-| `src/components/trainer/CalendarSlotCard.tsx` | Remove `rowSpan` prop, keep card content compact |
-
-~150 lines simplified in the grid, ~5 lines in the card.
+| `src/components/settings/ExtraCostPresetPicker.tsx` | Fix hover contrast, add settings link |
+| `src/components/trainer/AddSlotDialog.tsx` | Reorder: presets first, manual add second |
 
