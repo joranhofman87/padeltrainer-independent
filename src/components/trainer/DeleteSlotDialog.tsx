@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { sendBookingCancellation } from "@/lib/email";
 import { logger } from "@/lib/logger";
+import { recalculateInvoiceAfterRemoval } from "@/lib/invoiceSync";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -136,135 +137,7 @@ export function DeleteSlotDialog({
   };
 
   const recalculateInvoice = async (invoice: InvoiceInfo, removedBookingIds: string[]) => {
-    const remainingBookingIds = invoice.booking_ids.filter(id => !removedBookingIds.includes(id));
-    
-    if (remainingBookingIds.length === 0) {
-      // All bookings removed — mark invoice as credited/cancelled
-      await supabase
-        .from("invoices")
-        .update({ 
-          status: "credited",
-          booking_ids: [],
-          line_items: [],
-          subtotal: 0,
-          vat_amount: 0,
-          total: 0,
-          notes: t("calendar.invoiceCreditedNote", "Invoice credited — all sessions were cancelled"),
-        })
-        .eq("id", invoice.id);
-      return;
-    }
-
-    // Fetch remaining bookings to recalculate
-    const { data: remainingBookings } = await supabase
-      .from("bookings")
-      .select(`
-        id, payment_amount,
-        availability_slots!inner(price_per_session, cyclus_id, cyclus_name, start_time, locations(name), prices_include_vat, extra_costs)
-      `)
-      .in("id", remainingBookingIds);
-
-    if (!remainingBookings || remainingBookings.length === 0) return;
-
-    const firstSlot = remainingBookings[0].availability_slots as any;
-    const sharedCyclusId = firstSlot.cyclus_id;
-    const allSameCyclus = sharedCyclusId && remainingBookings.every(b => (b.availability_slots as any).cyclus_id === sharedCyclusId);
-
-    let lineItems: { description: string; quantity: number; unit_price: number; date?: string }[];
-
-    if (allSameCyclus) {
-      const cyclusName = firstSlot.cyclus_name || "Training cyclus";
-      const pricePerSession = remainingBookings[0].payment_amount || firstSlot.price_per_session || 0;
-      lineItems = [{
-        description: `${cyclusName} (${remainingBookings.length} weken)`,
-        quantity: remainingBookings.length,
-        unit_price: pricePerSession,
-      }];
-    } else {
-      lineItems = remainingBookings.map(b => {
-        const bSlot = b.availability_slots as any;
-        const startTime = new Date(bSlot.start_time);
-        const locationName = bSlot.locations?.name || "";
-        const description = bSlot.cyclus_name
-          ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
-          : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
-        return {
-          description,
-          quantity: 1,
-          unit_price: b.payment_amount || bSlot.price_per_session || 0,
-          date: startTime.toISOString().split("T")[0],
-        };
-      });
-    }
-
-    // Add extra costs from cycle settings, fall back to slot extra_costs
-    let extraCosts: any[] | null = null;
-
-    if (sharedCyclusId) {
-      const { data: cycleData } = await supabase
-        .from("cycles")
-        .select("settings")
-        .eq("id", sharedCyclusId)
-        .maybeSingle();
-
-      extraCosts = (cycleData?.settings as any)?.extra_costs || null;
-    }
-
-    // Fallback: use extra_costs from the first slot if no cycle-level costs
-    if (!extraCosts || !Array.isArray(extraCosts) || extraCosts.length === 0) {
-      const slotExtraCosts = (remainingBookings[0].availability_slots as any).extra_costs;
-      if (slotExtraCosts && Array.isArray(slotExtraCosts)) {
-        extraCosts = slotExtraCosts;
-      }
-    }
-
-    if (extraCosts && Array.isArray(extraCosts)) {
-      for (const ec of extraCosts) {
-        if (ec.description && ec.price > 0) {
-          const isOneTime = ec.type === 'one_time';
-          lineItems.push({
-            description: isOneTime ? ec.description : `${ec.description} (per sessie)`,
-            quantity: isOneTime ? 1 : remainingBookings.length,
-            unit_price: ec.price,
-          });
-        }
-      }
-    }
-
-    const vatRate = invoice.vat_rate || 21;
-    const slotPricesIncludeVat = (remainingBookings[0].availability_slots as any).prices_include_vat ?? true;
-    const lineItemTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-
-    let subtotal: number, vatAmount: number, totalInclusive: number;
-    if (slotPricesIncludeVat) {
-      totalInclusive = lineItemTotal;
-      subtotal = totalInclusive / (1 + vatRate / 100);
-      vatAmount = totalInclusive - subtotal;
-    } else {
-      subtotal = lineItemTotal;
-      vatAmount = subtotal * (vatRate / 100);
-      totalInclusive = subtotal + vatAmount;
-    }
-
-    await supabase
-      .from("invoices")
-      .update({
-        booking_ids: remainingBookingIds,
-        line_items: lineItems,
-        subtotal: Math.round(subtotal * 100) / 100,
-        vat_amount: Math.round(vatAmount * 100) / 100,
-        total: Math.round(totalInclusive * 100) / 100,
-      })
-      .eq("id", invoice.id);
-
-    // Regenerate PDF
-    try {
-      await supabase.functions.invoke("generate-invoice", {
-        body: { invoiceId: invoice.id },
-      });
-    } catch (err) {
-      logger.error("Failed to regenerate invoice PDF", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' });
-    }
+    await recalculateInvoiceAfterRemoval(invoice, removedBookingIds);
   };
 
   const handleInvoiceUpdates = async (cancelledBookingIds: string[]) => {
