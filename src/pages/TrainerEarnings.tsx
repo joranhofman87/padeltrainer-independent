@@ -809,6 +809,7 @@ export default function TrainerEarnings() {
                 trainerId={trainerInfo.id} 
                 refreshTrigger={invoiceRefreshTrigger}
                 forwardEmails={trainerInfo.invoice_forward_emails || []}
+                isAdmin={isAdmin === true}
               />
             </TabsContent>
           )}
