@@ -511,6 +511,18 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                       </Button>
                     )}
                     
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setVoidConfirm({ open: true, invoice })}
+                        disabled={actionLoading === invoice.id}
+                        title={invoice.status === 'draft' ? 'Verwijderen (admin)' : 'Annuleren (admin)'}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                    
                     <Button
                       variant="ghost"
                       size="icon"
