@@ -24,6 +24,7 @@ interface SlotData {
   trainer_slug: string | null;
   price_per_session: number | null;
   total_price: number | null;
+  extra_costs: { description: string; price: number }[];
   max_participants: number;
   allow_single_booking: boolean;
   spots_left: number;
