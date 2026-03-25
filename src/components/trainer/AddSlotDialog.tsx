@@ -1264,6 +1264,22 @@ export function BulkCreateSheet({
                                   className="h-8 w-24"
                                 />
                               </div>
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  value={cost.vat_rate ?? 21}
+                                  onChange={(e) => {
+                                    const newCosts = [...slot.extraCosts];
+                                    newCosts[costIndex] = { ...newCosts[costIndex], vat_rate: Number(e.target.value) || 0 };
+                                    updateBulkSlot(index, { extraCosts: newCosts });
+                                  }}
+                                  className="h-8 w-16"
+                                />
+                                <span className="text-xs text-muted-foreground">%</span>
+                              </div>
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -1315,18 +1331,27 @@ export function BulkCreateSheet({
                             </div>
                           </div>
                         ))}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            updateBulkSlot(index, { extraCosts: [...slot.extraCosts, { description: '', price: 0, type: 'per_session' }] });
-                          }}
-                          className="gap-1"
-                        >
-                          <Plus className="h-3 w-3" />
-                          {t("calendar.addCostLine", "Add cost")}
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              updateBulkSlot(index, { extraCosts: [...slot.extraCosts, { description: '', price: 0, type: 'per_session', vat_rate: 21 }] });
+                            }}
+                            className="gap-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            {t("calendar.addCostLine", "Add cost")}
+                          </Button>
+                          <ExtraCostPresetPicker
+                            trainerId={slot.trainerId}
+                            academyProfileId={slot.academyProfileId}
+                            onSelect={(cost) => {
+                              updateBulkSlot(index, { extraCosts: [...slot.extraCosts, cost] });
+                            }}
+                          />
+                        </div>
                         {slot.extraCosts.length > 0 && slot.extraCosts.some(c => c.price > 0) && (
                           <p className="text-xs text-muted-foreground">
                             {t("calendar.extraCostsPerSession", "Extra costs per session")}: {formatPrice(slot.extraCosts.filter(c => (c.type || 'per_session') === 'per_session').reduce((sum, c) => sum + (c.price || 0), 0))}
