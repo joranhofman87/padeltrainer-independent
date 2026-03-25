@@ -336,6 +336,7 @@ const handler = async (req: Request): Promise<Response> => {
       vat_amount: invoice.vat_amount,
       total: invoice.total,
       notes: invoice.notes,
+      vat_breakdown: invoice.vat_breakdown || null,
       logo_url: businessSource.invoice_logo_url || null,
       trainer: {
         business_name: businessName,
