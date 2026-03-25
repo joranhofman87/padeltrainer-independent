@@ -89,7 +89,7 @@
     "paymentInvoiceAfter": "Invoice after",
     "paymentInvoiceAfterHelp": "An invoice is automatically sent after a configurable number of weeks",
     "paymentManual": "Manual (no invoicing)",
-    "paymentManualHelp": "You handle payment collection yourself (cash, bank transfer, etc.)",
+    "paymentManualHelp": "You handle payment collection yourself (cash, bank transfer, etc.). No invoice will be generated.",
     "invoiceDelayWeeks": "weeks after start",
     "weeksLabel": "{{count}} week",
     "weeksLabel_other": "{{count}} weeks",

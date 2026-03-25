@@ -306,10 +306,6 @@ export default function BookLesson() {
           });
         } catch { logger.warn('Slack notification failed (non-fatal)', { component: 'BookLesson' }); }
 
-        if (paymentTiming === 'manual' && insertedBookings?.length) {
-          try { await supabase.functions.invoke('auto-create-invoice', { body: { bookingIds: insertedBookings.map(b => b.id) } }); }
-          catch (invoiceErr) { logger.error('Auto-create invoice failed (non-fatal)', invoiceErr as Error, { component: 'BookLesson', action: 'auto-invoice-cyclus' }); }
-        }
 
         const firstSlot = selectedCyclus.slots[0];
         const firstDate = format(parseISO(firstSlot.start_time), 'EEE, MMM d, yyyy');
