@@ -1,44 +1,53 @@
 
 
-# Add Split Payment Toggle to Cyclus Creation Form
+# Fix Split Payment Rounding: Totals Don't Add Up
 
 ## Problem
-The `BulkCreateSheet` (cyclus creation form) stores `splitPayment` in the slot data model and uses it when creating invoices, but there is **no UI toggle** in the form for the trainer/academy to enable it. The checkbox/switch is simply missing from the form UI.
 
-## Fix
+When splitting an invoice among N players, the code divides each line item's `unit_price` by N and rounds individually. This causes rounding errors that compound across line items:
 
-Add a split payment toggle in the cyclus creation form, placed after the "Allow Single Booking" checkbox (around line 1427 in `AddSlotDialog.tsx`). It should be a checkbox with a label explaining that costs will be divided among participants.
-
-| File | Change |
-|------|--------|
-| `src/components/trainer/AddSlotDialog.tsx` | Add a split payment checkbox after the "Allow Single Booking" section (~line 1427), toggling `slot.splitPayment` via `updateBulkSlot` |
-
-### UI Addition (after line 1427)
-```tsx
-{/* Split Payment */}
-<div className="flex items-center space-x-2">
-  <Checkbox
-    id={`split-payment-${index}`}
-    checked={slot.splitPayment}
-    onCheckedChange={(checked) =>
-      updateBulkSlot(index, { splitPayment: !!checked })
-    }
-  />
-  <div>
-    <Label htmlFor={`split-payment-${index}`} className="text-sm cursor-pointer">
-      {t("calendar.splitPayment", "Split payment among participants")}
-    </Label>
-    <p className="text-xs text-muted-foreground">
-      {t("calendar.splitPaymentHint", "Total price will be divided equally among all booked players")}
-    </p>
-  </div>
-</div>
+```text
+Example: €92.50 / 4 = €23.125 → rounded to €23.13
+4 × €23.13 = €92.52 (not €92.50)
+Over 16 sessions: €0.32 overpaid across all 4 players
 ```
 
-Also add the translation keys to the trainer translation files (en/nl).
+The split totals don't sum back to the original invoice total. This happens in **two places**: the `split-invoice` edge function (retroactive split) and `auto-create-invoice` (split at creation time).
+
+## Fix: Use Total-Level Division Instead of Per-Line Rounding
+
+Instead of dividing each `unit_price` by N (which compounds rounding), calculate the **original total first**, then divide the total by N. Give N-1 players `floor(total/N)` and give the first player the remainder to absorb rounding.
+
+### Changes
+
+#### 1. `supabase/functions/split-invoice/index.ts` (lines 152-161)
+
+**Before**: Divides each line item's `unit_price` by `totalPlayers`, rounding each independently.
+
+**After**: Still divide unit_price per line item (needed for display), but after calculating totals, adjust the original invoice's total to absorb the rounding difference:
+
+```typescript
+// Calculate what the original total was
+const originalTotal = invoice.total;
+// Each split share (floor)
+const splitShare = Math.floor((originalTotal / totalPlayers) * 100) / 100;
+// Remainder goes to the first invoice
+const remainder = Math.round((originalTotal - splitShare * totalPlayers) * 100) / 100;
+// First invoice gets splitShare + remainder
+```
+
+#### 2. `supabase/functions/auto-create-invoice/index.ts` (lines 264-271)
+
+Same approach: after splitting line items for display, recalculate the final total as `floor(originalTotal / N)` to ensure consistency. The calling function (`split-invoice`) handles the remainder adjustment on the first invoice.
+
+### Technical Detail
+
+- Line items still show `(1/N)` with divided prices for transparency
+- The `total` field is adjusted so that `N × splitShare = originalTotal` (±1 cent on one invoice)
+- This ensures the sum of all split invoices exactly equals the original unsplit amount
 
 | File | Change |
 |------|--------|
-| `src/i18n/locales/en/trainer.json` | Add `calendar.splitPayment` and `calendar.splitPaymentHint` |
-| `src/i18n/locales/nl/trainer.json` | Add Dutch translations for the same keys |
+| `supabase/functions/split-invoice/index.ts` | Adjust total after line-item division to absorb rounding remainder |
+| `supabase/functions/auto-create-invoice/index.ts` | Same rounding correction when `splitAmongPlayers` is used |
 
