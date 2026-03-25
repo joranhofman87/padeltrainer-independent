@@ -61,6 +61,7 @@ interface InvoiceListProps {
   trainerId: string;
   refreshTrigger?: number;
   forwardEmails?: string[];
+  isAdmin?: boolean;
 }
 
 type StatusFilter = 'all' | 'draft' | 'sent' | 'paid' | 'overdue';
@@ -73,7 +74,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
   cancelled: { label: 'Geannuleerd', variant: 'secondary', icon: AlertCircle },
 };
 
-export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: InvoiceListProps) {
+export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isAdmin = false }: InvoiceListProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -83,6 +84,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [splitConfirm, setSplitConfirm] = useState<{ open: boolean; invoiceId: string }>({ open: false, invoiceId: '' });
+  const [voidConfirm, setVoidConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
 
   useEffect(() => {
     fetchInvoices();
@@ -287,6 +289,32 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
     setActionLoading(null);
   };
 
+  const handleVoidInvoice = async (invoice: Invoice) => {
+    setVoidConfirm({ open: false, invoice: null });
+    setActionLoading(invoice.id);
+
+    if (invoice.status === 'draft') {
+      // Hard-delete drafts
+      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
+      if (error) {
+        toast({ title: 'Fout', description: 'Kon factuur niet verwijderen', variant: 'destructive' });
+      } else {
+        toast({ title: 'Factuur verwijderd' });
+        fetchInvoices();
+      }
+    } else {
+      // Cancel sent/overdue/paid invoices for audit trail
+      const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
+      if (error) {
+        toast({ title: 'Fout', description: 'Kon factuur niet annuleren', variant: 'destructive' });
+      } else {
+        toast({ title: 'Factuur geannuleerd' });
+        fetchInvoices();
+      }
+    }
+    setActionLoading(null);
+  };
+
   const handleSplitInvoice = async (invoiceId: string) => {
     setSplitConfirm({ open: false, invoiceId: '' });
     setActionLoading(invoiceId);
@@ -483,6 +511,18 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
                       </Button>
                     )}
                     
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setVoidConfirm({ open: true, invoice })}
+                        disabled={actionLoading === invoice.id}
+                        title={invoice.status === 'draft' ? 'Verwijderen (admin)' : 'Annuleren (admin)'}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                    
                     <Button
                       variant="ghost"
                       size="icon"
@@ -531,6 +571,30 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
             <AlertDialogCancel>Annuleren</AlertDialogCancel>
             <AlertDialogAction onClick={() => handleSplitInvoice(splitConfirm.invoiceId)}>
               Splitsen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={voidConfirm.open} onOpenChange={(open) => !open && setVoidConfirm({ open: false, invoice: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {voidConfirm.invoice?.status === 'draft' ? 'Factuur verwijderen' : 'Factuur annuleren'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {voidConfirm.invoice?.status === 'draft'
+                ? `Weet je zeker dat je factuur ${voidConfirm.invoice?.invoice_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
+                : `Weet je zeker dat je factuur ${voidConfirm.invoice?.invoice_number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => voidConfirm.invoice && handleVoidInvoice(voidConfirm.invoice)}
+            >
+              {voidConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

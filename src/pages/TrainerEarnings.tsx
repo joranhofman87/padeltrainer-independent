@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsAdmin } from '@/hooks/useAdminData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -88,6 +89,7 @@ export default function TrainerEarnings() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, role, loading } = useAuth();
+  const { data: isAdmin } = useIsAdmin();
   const { toast } = useToast();
   
   const [bookings, setBookings] = useState<EarningsBooking[]>([]);
@@ -807,6 +809,7 @@ export default function TrainerEarnings() {
                 trainerId={trainerInfo.id} 
                 refreshTrigger={invoiceRefreshTrigger}
                 forwardEmails={trainerInfo.invoice_forward_emails || []}
+                isAdmin={isAdmin === true}
               />
             </TabsContent>
           )}
