@@ -91,12 +91,17 @@ serve(async (req) => {
       }
 
       // Create invoices per player
+      const totalUniquePlayers = playerBookings.size;
       for (const [playerId, bookingIds] of playerBookings) {
-        logStep("Creating invoice for player", { playerId, bookingIds, cycleId: cycle.id });
+        logStep("Creating invoice for player", { playerId, bookingIds, cycleId: cycle.id, splitPayment: isSplitPayment, totalUniquePlayers });
 
         try {
+          const invoiceBody: Record<string, unknown> = { bookingIds };
+          if (isSplitPayment && totalUniquePlayers > 1) {
+            invoiceBody.splitAmongPlayers = totalUniquePlayers;
+          }
           const invoiceRes = await supabase.functions.invoke("auto-create-invoice", {
-            body: { bookingIds },
+            body: invoiceBody,
           });
 
           if (invoiceRes.error) {
