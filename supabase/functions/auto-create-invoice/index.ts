@@ -23,6 +23,7 @@ serve(async (req) => {
     const body = await req.json();
     const bookingIds: string[] = body.bookingIds || (body.bookingId ? [body.bookingId] : []);
     const asDraft: boolean = body.asDraft === true;
+    const splitAmongPlayers: number | null = body.splitAmongPlayers || null;
 
     if (bookingIds.length === 0) {
       logStep("No booking IDs provided");
