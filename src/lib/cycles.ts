@@ -89,6 +89,7 @@ export interface CycleSettings {
   mark_as_paid?: boolean;
   payment_timing?: 'upfront' | 'invoice_after_weeks' | 'manual';
   invoice_delay_weeks?: number;
+  split_payment?: boolean;
   // Event-specific settings
   payment_methods?: EventPaymentMethod;
   event_dates?: string[];
