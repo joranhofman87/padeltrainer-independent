@@ -88,6 +88,7 @@ interface BulkSlotConfig {
   markAsPaid: boolean;
   extraCosts: ExtraCost[];
   hasExtraCosts: boolean;
+  splitPayment: boolean;
 }
 
 interface AddSlotDialogProps {
