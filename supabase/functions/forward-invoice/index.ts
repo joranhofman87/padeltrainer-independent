@@ -122,7 +122,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Generate a fresh signed URL for the invoice
-    const fileName = `${trainerProfile!.user_id}/${invoice.invoice_number}.html`;
+    const fileName = `${trainerProfile?.user_id || 'academy'}/${invoice.invoice_number}.html`;
     const { data: signedUrl } = await supabase.storage
       .from("invoices")
       .createSignedUrl(fileName, 604800); // 7 days
