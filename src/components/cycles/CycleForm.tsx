@@ -1688,6 +1688,22 @@ export default function CycleForm({
                 </div>
               )}
 
+              {/* Split payment toggle */}
+              {!isRegistration && !isEvent && (
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">{t('form.splitPayment', 'Split betaling over spelers')}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t('form.splitPaymentHelp', 'De totaalprijs (inclusief extra kosten) wordt gelijk verdeeld over alle ingeschreven spelers. Elke speler ontvangt een eigen factuur.')}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={splitPayment}
+                    onCheckedChange={setSplitPayment}
+                  />
+                </div>
+              )}
+
               {/* Extra recurring costs */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">{t('form.extraCosts')}</Label>
