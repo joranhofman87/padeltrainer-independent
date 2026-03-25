@@ -1,87 +1,61 @@
 
 
-# Slack Notifications for Registration + Error Monitoring
+# E2E Tests & Error Logging: Go-Live Audit
 
-## Current State
-- Slack notifications exist for signups, bookings, payments, profile publish, etc. — but **not** for cycle registration form submissions.
-- The registration form has two flows: **guest** (via `submit-guest-intake` edge function) and **logged-in** (via `submitIntakeRequest` in `CycleApplicationForm.tsx`).
-- E2E tests for cycle registration exist but are minimal (just navigation check, no form submission test).
-- Error logging uses `logger.error()` in the catch block but no Slack alert on failure.
+## Current State Assessment
 
-## Changes
+### What's already good
+- **Error logging**: `logger.error()` is used across 153 files, sending errors to PostHog as `$exception` events
+- **Error boundaries**: `FeatureErrorBoundary` wraps all critical pages (Auth, all Signups, BookLesson, CycleRegistration, BrandedCycleRegistration)
+- **Slack notifications**: Covering signups, bookings, payments, profile publish, registration success/errors
+- **E2E tests**: 12 spec files covering auth, booking, payments, error handling, navigation, i18n, roles, accessibility, performance
 
-### 1. Slack notification on successful registration (`CycleApplicationForm.tsx`)
+### Gaps Found
 
-After `setIsSuccess(true)` (line 384), add a non-blocking Slack notification for the **logged-in** flow:
-```typescript
-supabase.functions.invoke('slack-notify', {
-  body: {
-    event: 'new_registration',
-    data: {
-      name: values.full_name,
-      email: values.email,
-      cycle: cycle.name,
-      lesson_types: values.lesson_types.join(', '),
-      flow: 'logged_in',
-    },
-  },
-}).catch(() => {});
-```
+**1. No E2E test for the registration form (your most critical go-live flow)**
+- `booking.spec.ts` only tests navigation to cycle pages, never fills/submits the form
+- No test for the branded registration URL pattern (`/nl/academies/:slug/register/:cycleId`)
+- No test for guest vs logged-in form variants
 
-### 2. Slack notification on successful guest registration (`submit-guest-intake/index.ts`)
+**2. Registration form error handling has no client-side validation test**
+- `error-handling.spec.ts` tests login/signup validation but not the registration form
 
-Before the success response (line ~422), add:
-```typescript
-await supabaseAdmin.functions.invoke('slack-notify', {
-  body: {
-    event: 'new_registration',
-    data: { name: fullName, email, cycle: cycleName, flow: 'guest' },
-  },
-}).catch(() => {});
-```
-This requires fetching the cycle name (already available in the function context — need to verify).
+**3. Edge function errors are logged but not all alert to Slack**
+- `submit-guest-intake` has Slack alerts (added recently)
+- `send-email` failures log to console but don't trigger Slack
+- `generate-invoice-pdf` errors don't alert to Slack
 
-### 3. Slack notification on form errors (`CycleApplicationForm.tsx`)
+**4. No console error monitoring on the registration page**
+- `error-handling.spec.ts` checks console errors on home and auth pages only
 
-In the catch block (line 387-389), add a non-blocking Slack alert:
-```typescript
-supabase.functions.invoke('slack-notify', {
-  body: {
-    event: 'registration_error',
-    data: {
-      cycle: cycle.name,
-      error: error?.message || 'Unknown error',
-      flow: isGuest ? 'guest' : 'logged_in',
-    },
-  },
-}).catch(() => {});
-```
+## Plan
 
-### 4. Add event types to `slack-notify/index.ts`
+### 1. New E2E test: `e2e/registration.spec.ts`
 
-Add to `EVENT_CONFIG`:
-```typescript
-new_registration: { emoji: "📝", title: "New Cycle Registration" },
-registration_error: { emoji: "⚠️", title: "Registration Form Error" },
-```
+Test the branded registration flow end-to-end:
+- Navigate to a real academy registration URL (`/nl/academies/rl-padel-performance/register/:cycleId`)
+- Verify the form loads (cycle name, lesson type options, price visible)
+- Verify group4 is pre-selected by default
+- Fill the guest form fields (name, email, phone, rating)
+- Submit and verify success state appears
+- Test validation: submit without required fields, verify error messages
+- Test console errors: no JS errors during the flow
 
-### 5. Slack notification when guest signs up after registration
+### 2. Add console error check for registration page in `e2e/error-handling.spec.ts`
 
-Already covered — the existing `new_signup` Slack notification in `submit-guest-intake/index.ts` (line ~252) fires when a new account is created during guest intake. No changes needed here.
+Add a test that navigates to the registration page and checks for zero console errors (same pattern as the existing home/auth page tests).
 
-## E2E Tests & Error Logging Status
+### 3. Add Slack alerts for `send-email` failures in `supabase/functions/send-email/index.ts`
 
-**Current coverage:**
-- E2E test exists in `e2e/booking.spec.ts` but only tests navigation to the registration page, not form submission
-- `logger.error()` is used in the catch block of `CycleApplicationForm`
-- `FeatureErrorBoundary` wraps the registration page
+When the email sending fails (Resend API error), fire a non-blocking Slack notification via `slack-notify` with event `edge_function_error` including the recipient, email type, and error message. This way you get alerted when confirmation emails fail.
 
-**Recommended additions (optional, can be a follow-up):**
-- Add an E2E test that fills and submits the registration form on a test cycle
-- Add edge function error logging in `submit-guest-intake` catch block via Slack (registration_error event)
+### 4. Add test route to `e2e/fixtures/test-data.ts`
+
+Add a `registration` route constant for the RL Performance registration page.
 
 ## Files
-- `src/components/cycles/CycleApplicationForm.tsx` — Add Slack notifications on success + error
-- `supabase/functions/submit-guest-intake/index.ts` — Add Slack notification on guest registration success + error
-- `supabase/functions/slack-notify/index.ts` — Add new event types
+- `e2e/registration.spec.ts` — New: full registration form E2E test
+- `e2e/error-handling.spec.ts` — Add console error check for registration page
+- `e2e/fixtures/test-data.ts` — Add registration route
+- `supabase/functions/send-email/index.ts` — Add Slack alert on email send failure
 
