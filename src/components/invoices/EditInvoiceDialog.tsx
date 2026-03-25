@@ -261,22 +261,33 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved }: EditInvoi
               <span className="text-muted-foreground">Subtotaal</span>
               <span>€{subtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between items-center gap-2">
-              <span className="text-muted-foreground flex items-center gap-2">
-                BTW
-                <Input
-                  type="number"
-                  value={vatRate}
-                  onChange={(e) => setVatRate(Number(e.target.value) || 0)}
-                  className="w-16 h-7 text-sm inline"
-                  min={0}
-                  max={100}
-                  step={1}
-                />
-                %
-              </span>
-              <span>€{vatAmount.toFixed(2)}</span>
-            </div>
+            {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
+              Object.entries(vatBreakdown)
+                .sort(([a], [b]) => Number(a) - Number(b))
+                .map(([rate, data]) => (
+                  <div key={rate} className="flex justify-between">
+                    <span className="text-muted-foreground">BTW {rate}%</span>
+                    <span>€{data.vat.toFixed(2)}</span>
+                  </div>
+                ))
+            ) : (
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-muted-foreground flex items-center gap-2">
+                  BTW
+                  <Input
+                    type="number"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value) || 0)}
+                    className="w-16 h-7 text-sm inline"
+                    min={0}
+                    max={100}
+                    step={1}
+                  />
+                  %
+                </span>
+                <span>€{vatAmount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-bold text-base border-t pt-2">
               <span>Totaal</span>
               <span>€{total.toFixed(2)}</span>
