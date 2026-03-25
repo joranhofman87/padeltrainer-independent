@@ -112,6 +112,36 @@ test.describe('Error Handling', () => {
     });
   });
 
+  test.describe('Registration Form Errors', () => {
+    test('should handle registration form gracefully', async ({ page }) => {
+      const errors: string[] = [];
+      
+      page.on('console', msg => {
+        if (msg.type() === 'error') {
+          errors.push(msg.text());
+        }
+      });
+      
+      await page.goto(ROUTES.registrationForm);
+      await waitForNavigation(page);
+      
+      // Page should load without crashing
+      await expect(page.locator('body')).toBeVisible();
+      
+      const criticalErrors = errors.filter(e => 
+        !e.includes('favicon') && 
+        !e.includes('third-party') &&
+        !e.includes('ERR_BLOCKED_BY_CLIENT') &&
+        !e.includes('PostHog') &&
+        !e.includes('posthog')
+      );
+      
+      if (criticalErrors.length > 0) {
+        console.warn('Console errors on registration page:', criticalErrors);
+      }
+    });
+  });
+
   test.describe('JavaScript Errors', () => {
     test('should not have console errors on home page', async ({ page }) => {
       const errors: string[] = [];
