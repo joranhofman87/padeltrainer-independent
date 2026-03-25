@@ -39,6 +39,7 @@ serve(async (req) => {
     for (const cycle of cycles || []) {
       const settings = cycle.settings as Record<string, unknown> | null;
       if (!settings || settings.payment_timing !== "invoice_after_weeks") continue;
+      const isSplitPayment = settings.split_payment === true;
 
       const delayWeeks = (settings.invoice_delay_weeks as number) || 2;
       const startDate = new Date(cycle.start_date);
