@@ -159,6 +159,9 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           const booked = bookingCounts[s.id] || 0;
           const trainer = trainerMap[s.trainer_id] || { slug: null, user_id: null };
           const trainerName = trainer.user_id ? nameMap[trainer.user_id] || null : null;
+          const parsedExtras: { description: string; price: number }[] = Array.isArray(s.extra_costs)
+            ? (s.extra_costs as any[]).filter(e => e && typeof e.price === 'number')
+            : [];
           return {
             id: s.id,
             start_time: s.start_time,
@@ -171,6 +174,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
             trainer_slug: trainer.slug,
             price_per_session: s.price_per_session || null,
             total_price: s.total_price || null,
+            extra_costs: parsedExtras,
             max_participants: maxP,
             allow_single_booking: s.allow_single_booking || false,
             spots_left: maxP - booked,
