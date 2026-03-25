@@ -203,8 +203,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
               {group.slots.map(slot => (
                 <div
                   key={slot.id}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:border-primary/50 transition-colors cursor-pointer"
-                  onClick={() => navigate(localizePath(`/academies/${academySlug}`))}
+                  className="flex items-center justify-between p-3 border rounded-lg transition-colors"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="text-center min-w-[60px]">
@@ -220,6 +219,17 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
                         <p className="text-sm font-medium truncate">{slot.trainer_name}</p>
                       )}
                       <div className="flex flex-wrap gap-2 mt-1">
+                        <Badge variant={slot.cyclus_id ? 'default' : 'outline'} className="text-xs">
+                          {slot.cyclus_name || t('common:singleSession', 'Single session')}
+                        </Badge>
+                        {slot.court_type && (
+                          <Badge variant="outline" className="text-xs">
+                            {slot.court_type === 'indoor' ? '🏠' : '☀️'}{' '}
+                            {slot.court_type === 'indoor' ? 'Indoor' : 'Outdoor'}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-1">
                         {slot.location_name && (
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <MapPin className="h-3 w-3" />
@@ -233,13 +243,27 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    {slot.price_per_session != null && slot.price_per_session > 0 && (
-                      <Badge variant="secondary" className="font-semibold">
-                        {formatPrice(slot.price_per_session)}
-                      </Badge>
-                    )}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 ml-2">
+                    <div className="text-right">
+                      {slot.price_per_session != null && slot.price_per_session > 0 && (
+                        <p className="text-sm font-semibold">{formatPrice(slot.price_per_session)}<span className="text-xs font-normal text-muted-foreground">/{t('common:session', 'session')}</span></p>
+                      )}
+                      {slot.cyclus_id && slot.total_price != null && slot.total_price > 0 && (
+                        <p className="text-xs text-muted-foreground">{t('common:total', 'Total')}: {formatPrice(slot.total_price)}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (slot.cyclus_id) {
+                          navigate(localizePath(`/academies/${academySlug}/register/${slot.cyclus_id}`));
+                        } else if (slot.trainer_slug) {
+                          navigate(localizePath(`/book/${slot.trainer_slug}`));
+                        }
+                      }}
+                    >
+                      {t('common:book', 'Book')}
+                    </Button>
                   </div>
                 </div>
               ))}
