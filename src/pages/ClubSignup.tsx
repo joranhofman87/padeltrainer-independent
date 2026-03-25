@@ -94,9 +94,7 @@ export default function ClubSignup() {
       if (data.user?.id) {
         supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
       }
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Club' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
