@@ -83,6 +83,7 @@ type SlotWithBookings = {
   price_per_session: number | null;
   prices_include_vat: boolean;
   extra_costs: ExtraCost[] | null;
+  split_payment: boolean | null;
   locations?: { name: string; city: string } | null;
   bookings: {
     id: string;
@@ -113,6 +114,7 @@ type CycleEditData = {
   repeatCount: string;
   originalRepeatCount: number;
   pricesIncludeVat: boolean;
+  splitPayment: boolean;
 };
 
 type TrainerLocationOption = {
@@ -155,6 +157,7 @@ export default function TrainerScheduleOverview() {
     repeatCount: "0",
     originalRepeatCount: 0,
     pricesIncludeVat: true,
+    splitPayment: false,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -187,7 +190,7 @@ export default function TrainerScheduleOverview() {
       const { data, error } = await supabase
         .from("availability_slots")
         .select(`
-          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, is_marked_full, location_id, price_per_session, prices_include_vat, extra_costs,
+          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, is_marked_full, location_id, price_per_session, prices_include_vat, extra_costs, split_payment,
           locations:location_id (name, city),
           bookings (id, status, payment_status, player_id, guest_player_id,
             profiles:player_id (full_name),
@@ -374,6 +377,7 @@ export default function TrainerScheduleOverview() {
       repeatCount: String(group.slots.length),
       originalRepeatCount: group.slots.length,
       pricesIncludeVat: firstSlot?.prices_include_vat ?? true,
+      splitPayment: firstSlot?.split_payment ?? false,
     });
 
     // Collect unique players from all bookings across cycle slots
@@ -425,6 +429,7 @@ export default function TrainerScheduleOverview() {
         is_marked_full: cycleEditData.isPrivate,
         extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : null,
         prices_include_vat: cycleEditData.pricesIncludeVat,
+        split_payment: cycleEditData.splitPayment,
       };
       if (cycleEditData.pricePerSession !== "") {
         updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
@@ -1177,7 +1182,17 @@ export default function TrainerScheduleOverview() {
               />
             </div>
 
-            {/* Extra costs */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="edit-split-toggle" className="text-sm">
+                {t("scheduleOverview.splitPayment", "Split payment over players")}
+              </Label>
+              <Switch
+                id="edit-split-toggle"
+                checked={cycleEditData.splitPayment}
+                onCheckedChange={(checked) => setCycleEditData((prev) => ({ ...prev, splitPayment: checked }))}
+              />
+            </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>{t("scheduleOverview.extraCosts", "Extra costs")}</Label>
