@@ -148,7 +148,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchSubscription]);
 
   useEffect(() => {
+    let isActive = true;
     const welcomeEmailsKey = 'hasTriggeredWelcomeEmails';
+
+    const applySessionState = async (
+      nextSession: Session | null,
+      source: 'bootstrap' | 'listener',
+      event?: string,
+    ) => {
+      if (!isActive) return;
+
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (nextSession?.user && lastFetchedRef.current !== nextSession.user.id) {
+        lastFetchedRef.current = nextSession.user.id;
+
+        await Promise.race([
+          fetchUserData(nextSession.user.id),
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]);
+
+        if (
+          source === 'listener' &&
+          !sessionStorage.getItem(welcomeEmailsKey) &&
+          nextSession.user.email_confirmed_at &&
+          (event === 'SIGNED_IN' || event === 'USER_UPDATED')
+        ) {
+          sessionStorage.setItem(welcomeEmailsKey, '1');
+          requestIdleCallback(() => {
+            supabase.functions.invoke('trigger-welcome-emails', {
+              headers: { Authorization: `Bearer ${nextSession.access_token}` },
+            }).then(({ error }) => {
+              if (error) {
+                logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error });
+              }
+            });
+          });
+        }
+      } else if (!nextSession?.user) {
+        lastFetchedRef.current = null;
+        setProfile(null);
+        setRole(null);
+        setRoles([]);
+        setIsClubManager(false);
+        setIsAcademyManager(false);
+        setSubscription(null);
+        resetUser();
+      }
+
+      if (isActive) {
+        setLoading(false);
+      }
+    };
 
     const safetyTimeout = setTimeout(() => {
       setLoading((current) => {
@@ -159,60 +211,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     }, 5_000);
 
+    const bootstrapAuth = async () => {
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        await applySessionState(initialSession, 'bootstrap');
+      } catch (err) {
+        logger.warn('Failed to bootstrap auth session', { component: 'useAuth', err });
+        if (isActive) setLoading(false);
+      }
+    };
+
+    void bootstrapAuth();
+
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'TOKEN_REFRESHED' && !session) {
+      (event, nextSession) => {
+        if (event === 'TOKEN_REFRESHED' && !nextSession) {
           logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
           setLoading(false);
-          await supabase.auth.signOut();
+          void supabase.auth.signOut();
           return;
         }
 
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user && lastFetchedRef.current !== session.user.id) {
-          lastFetchedRef.current = session.user.id;
-          // Only fetch user data (roles + profile) — subscription is deferred
-          await Promise.race([
-            fetchUserData(session.user.id),
-            new Promise((resolve) => setTimeout(resolve, 5000)),
-          ]);
-
-          // Trigger welcome emails only once per browser session
-          if (
-            !sessionStorage.getItem(welcomeEmailsKey) &&
-            session.user.email_confirmed_at &&
-            (event === 'SIGNED_IN' || event === 'USER_UPDATED')
-          ) {
-            sessionStorage.setItem(welcomeEmailsKey, '1');
-            requestIdleCallback(() => {
-              supabase.functions.invoke('trigger-welcome-emails', {
-                headers: { Authorization: `Bearer ${session.access_token}` },
-              }).then(({ error }) => {
-                if (error) {
-                  logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error });
-                }
-              });
-            });
-          }
-        } else if (!session?.user) {
-          // Anonymous user — reset immediately, no DB calls
-          lastFetchedRef.current = null;
-          setProfile(null);
-          setRole(null);
-          setRoles([]);
-          setIsClubManager(false);
-          setIsAcademyManager(false);
-          setSubscription(null);
-          resetUser();
-        }
-        // Set loading=false immediately — subscription loads in background
-        setLoading(false);
+        void applySessionState(nextSession, 'listener', event);
       }
     );
 
     return () => {
+      isActive = false;
       clearTimeout(safetyTimeout);
       authSubscription.unsubscribe();
     };
