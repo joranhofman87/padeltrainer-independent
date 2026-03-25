@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO, isSameDay } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
-import { Calendar, Clock, MapPin, Users, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, MapPin, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
