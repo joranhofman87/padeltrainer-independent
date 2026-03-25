@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar, Clock, PartyPopper, CreditCard, Banknote, ExternalLink, Info } from 'lucide-react';
+import { Calendar, Clock, PartyPopper, CreditCard, Banknote, ExternalLink, Info, MapPin } from 'lucide-react';
 import { getMarketingPath } from '@/lib/domains';
 import { logger } from '@/lib/logger';
 import { format } from 'date-fns';
