@@ -733,6 +733,7 @@ export type Database = {
           prices_include_vat: boolean
           rating_system: string | null
           recurrence_rule: string | null
+          split_payment: boolean | null
           start_time: string
           total_price: number | null
           trainer_id: string
@@ -760,6 +761,7 @@ export type Database = {
           prices_include_vat?: boolean
           rating_system?: string | null
           recurrence_rule?: string | null
+          split_payment?: boolean | null
           start_time: string
           total_price?: number | null
           trainer_id: string
@@ -787,6 +789,7 @@ export type Database = {
           prices_include_vat?: boolean
           rating_system?: string | null
           recurrence_rule?: string | null
+          split_payment?: boolean | null
           start_time?: string
           total_price?: number | null
           trainer_id?: string
