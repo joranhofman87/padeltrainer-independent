@@ -222,7 +222,42 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
           {/* Line items */}
           <div>
-            <Label className="text-sm font-medium mb-2 block">Regelitems</Label>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm font-medium">Regelitems</Label>
+              <div className="flex items-center gap-1">
+                <ExtraCostPresetPicker
+                  trainerId={trainerId}
+                  academyProfileId={academyProfileId}
+                  onSelect={(cost) => {
+                    setLineItems(prev => [...prev, {
+                      description: cost.description,
+                      quantity: 1,
+                      unit_price: cost.price,
+                      amount: cost.price,
+                      vat_rate: cost.vat_rate,
+                    }]);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setLineItems(prev => [...prev, {
+                      description: '',
+                      quantity: 1,
+                      unit_price: 0,
+                      amount: 0,
+                      vat_rate: vatRate,
+                    }]);
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Regel toevoegen
+                </Button>
+              </div>
+            </div>
             <div className="space-y-2">
               {lineItems.map((li, i) => (
                 <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem] gap-2 items-center">
