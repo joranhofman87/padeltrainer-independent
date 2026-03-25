@@ -79,14 +79,41 @@ const handler = async (req: Request): Promise<Response> => {
       .eq("id", invoice.trainer_id)
       .single();
 
-    if (!isServiceRole && (!trainerProfile || trainerProfile.user_id !== authenticatedUserId)) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+    // Check authorization
+    if (!isServiceRole) {
+      let authorized = trainerProfile?.user_id === authenticatedUserId;
+      
+      // Also allow academy managers
+      if (!authorized && invoice.academy_profile_id) {
+        const { data: isManager } = await supabase
+          .rpc("is_academy_manager", { _user_id: authenticatedUserId, _academy_profile_id: invoice.academy_profile_id });
+        authorized = !!isManager;
+      }
+
+      if (!authorized) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
     }
 
-    const emails = trainerProfile?.invoice_forward_emails;
+    // Resolve forwarding emails: try trainer first, then academy fallback
+    let emails = trainerProfile?.invoice_forward_emails;
+    let businessName = trainerProfile?.business_name;
+
+    if ((!emails || emails.length === 0) && invoice.academy_profile_id) {
+      const { data: academy } = await supabase
+        .from("academy_profiles")
+        .select("invoice_forward_emails, business_name")
+        .eq("id", invoice.academy_profile_id)
+        .single();
+      if (academy?.invoice_forward_emails?.length) {
+        emails = academy.invoice_forward_emails;
+        businessName = academy.business_name || businessName;
+      }
+    }
+
     if (!emails || emails.length === 0) {
       return new Response(
         JSON.stringify({ success: true, message: "No forwarding emails configured" }),
