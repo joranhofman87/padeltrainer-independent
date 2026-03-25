@@ -114,6 +114,7 @@ type CycleEditData = {
   repeatCount: string;
   originalRepeatCount: number;
   pricesIncludeVat: boolean;
+  splitPayment: boolean;
 };
 
 type TrainerLocationOption = {
