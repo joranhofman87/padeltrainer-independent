@@ -1,43 +1,41 @@
 
 
-# Fix Split Invoice Calculation for Multi-Rate VAT
+# Fix Incorrect Split Invoice Totals and Recalculate All Unpaid Invoices
 
-## Root Cause
+## Problem
 
-The split payment correction in `auto-create-invoice` (lines 344-358) is broken for invoices with **multiple VAT rates**:
+Invoices 0059 (Rob, €1,044) and 0060 (Sander, €1,044) were created **before** the multi-rate VAT fix was deployed. The old code dropped VAT when splitting, so these show the excl-VAT subtotal as the total instead of adding 9% VAT on the training portion. Each should be ~€1,110.60 (or whatever €2,221.20 ÷ N works out to).
 
-1. `unsplitTotal` captures the sum of **excl-VAT** line items = €2,088
-2. The correction sets `totalInclusive = floor(2088/4) = €522.00` — treating this as the final total
-3. It then recalculates VAT using a **single** `vatRate` (9%), ignoring that baanhuur is 0%
+The code fix is already in place for new invoices — we just need to recalculate the existing broken ones.
 
-**Result**: each invoice = €522.08 instead of the correct €555.30 (= €2,221.20 ÷ 4). The VAT on training sessions (€33.30 per person) is effectively lost.
+## Approach
 
-Maarten's unsplit invoice (INV-2026-0003) is correct at €2,221.20, confirming the expected total.
+### 1. Create `recalculate-invoices` edge function
 
-## Fix
+A one-off (but reusable) function that:
+- Fetches all unpaid invoices (status in `draft`, `sent`, `pending`)
+- For each invoice, recalculates `subtotal`, `vat_amount`, and `total` from the stored `line_items`, using the invoice's `prices_include_vat` flag and per-line `vat_rate`
+- Updates the invoice record and clears `pdf_url` for regeneration
+- Returns a summary of what was updated
 
-### 1. Code fix in `auto-create-invoice/index.ts` (lines 342-358)
+This ensures every unpaid invoice's totals are mathematically consistent with its line items — regardless of when it was created.
 
-Skip the split total correction when `hasMultipleVatRates` is true. The per-line VAT calculation (lines 288-327) already handles split prices correctly — each line item was divided by N and VAT calculated individually. The single-rate override destroys this.
+### 2. Call it from the frontend or directly
 
-```typescript
-// Only apply split correction for single-rate VAT
-if (unsplitTotal !== null && splitAmongPlayers && splitAmongPlayers > 1 && !hasMultipleVatRates) {
-  // ... existing correction logic
-}
-```
+Add a simple trigger (e.g. admin button or direct invocation) to run the recalculation. Can also be called via curl for a one-time fix.
 
-### 2. Fix the 4 existing invoices via migration
+### 3. Verify the `auto-create-invoice` multi-rate split path
 
-Update INV-2026-0062 through 0065 with correct values:
-- **subtotal**: €522.00 (370 training + 152 baanhuur)
-- **vat_amount**: €33.30 (370 × 9%)
-- **total**: €555.30
-- **vat_breakdown**: `{0: {subtotal: 152, vat: 0}, 9: {subtotal: 370, vat: 33.30}}`
-- Clear `pdf_url` to force regeneration
+Double-check one edge case: when `prices_include_vat = false` and `hasMultipleVatRates = true` and `splitAmongPlayers > 1`, the current code at lines 288-327 calculates correctly because:
+- Line items are already divided by N (line 271-274)
+- Per-line VAT is added on top of the divided excl-VAT prices
+- The `!hasMultipleVatRates` guard correctly skips the broken single-rate override
+
+This path is correct — no additional code changes needed in `auto-create-invoice`.
 
 | File | Change |
 |------|--------|
-| `supabase/functions/auto-create-invoice/index.ts` | Add `&& !hasMultipleVatRates` guard to split correction block (line 344) |
-| Migration SQL | Update totals on the 4 draft invoices to €555.30 each |
+| `supabase/functions/recalculate-invoices/index.ts` | New edge function: recalculates totals from line items for all unpaid invoices |
+
+The function will be invoked once to fix 0059, 0060, and any other affected invoices, and can be kept as a safety tool for future use.
 
