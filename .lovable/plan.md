@@ -1,70 +1,21 @@
 
 
-# Auto-Follow Trainer on First Booking
-
-## Approach
-
-Create a database trigger on `bookings` table that automatically inserts a `trainer_followers` row when a booking is created with a `player_id`. This covers all booking paths (player self-booking, trainer booking for player, cycle registration, webhook-created bookings) without modifying any frontend code.
+# Skip Invoice Generation for Manual Payment Cycles
 
 ## Changes
 
-### Migration SQL — Create trigger function + trigger
+### 1. Remove auto-invoice call for manual payment
+In `src/pages/BookLesson.tsx` (lines 309-312), remove the block that calls `auto-create-invoice` when `paymentTiming === 'manual'`. This ensures no invoice is generated when a cycle is marked as manually paid.
 
-```sql
-CREATE OR REPLACE FUNCTION public.auto_follow_trainer_on_booking()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  v_trainer_id uuid;
-BEGIN
-  -- Only for bookings with a player_id
-  IF NEW.player_id IS NULL THEN
-    RETURN NEW;
-  END IF;
+### 2. Update help text to mention "no invoice"
+In `src/i18n/locales/en/cycles.json`, update `form.paymentManualHelp` from:
+> "You handle payment collection yourself (cash, bank transfer, etc.)"
 
-  -- Get trainer_id from the slot
-  SELECT trainer_id INTO v_trainer_id
-  FROM availability_slots
-  WHERE id = NEW.slot_id;
-
-  IF v_trainer_id IS NOT NULL THEN
-    INSERT INTO trainer_followers (player_id, trainer_id, notify_new_availability)
-    VALUES (NEW.player_id, v_trainer_id, true)
-    ON CONFLICT (player_id, trainer_id) DO NOTHING;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER trg_auto_follow_trainer_on_booking
-  AFTER INSERT ON public.bookings
-  FOR EACH ROW
-  EXECUTE FUNCTION public.auto_follow_trainer_on_booking();
-```
-
-### Data patch — Link Joran to Rene
-
-In the same migration, upsert the follow for existing booked players who aren't yet following their trainers:
-
-```sql
-INSERT INTO trainer_followers (player_id, trainer_id, notify_new_availability)
-SELECT DISTINCT b.player_id, s.trainer_id, true
-FROM bookings b
-JOIN availability_slots s ON s.id = b.slot_id
-WHERE b.player_id IS NOT NULL
-  AND s.trainer_id IS NOT NULL
-ON CONFLICT (player_id, trainer_id) DO NOTHING;
-```
-
-This catches Joran + any other existing players with bookings who aren't following yet.
+to:
+> "You handle payment collection yourself (cash, bank transfer, etc.). No invoice will be generated."
 
 | File | Change |
 |------|--------|
-| Migration SQL | Create `auto_follow_trainer_on_booking` trigger + backfill existing booking relationships |
-
-No frontend code changes needed.
+| `src/pages/BookLesson.tsx` | Remove lines 309-312 (auto-create-invoice call for manual payment) |
+| `src/i18n/locales/en/cycles.json` | Update `paymentManualHelp` to mention no invoice is generated |
 
