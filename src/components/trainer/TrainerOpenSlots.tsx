@@ -81,6 +81,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           is_marked_full,
           is_public,
           price_per_session,
+          split_payment,
           max_participants,
           allow_single_booking,
           location_id,
