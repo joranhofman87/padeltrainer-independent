@@ -572,6 +572,121 @@ export default function TrainerScheduleOverview() {
         }
       }
 
+      // 3b. Sync extra costs to existing unpaid invoices
+      {
+        const { data: syncSlotIds } = await supabase
+          .from("availability_slots")
+          .select("id")
+          .eq("cyclus_id", editCycleId);
+
+        if (syncSlotIds && syncSlotIds.length > 0) {
+          const syncSlotIdList = syncSlotIds.map((s) => s.id);
+          const { data: syncBookings } = await supabase
+            .from("bookings")
+            .select("id")
+            .in("slot_id", syncSlotIdList)
+            .in("status", ["confirmed", "attended"]);
+
+          if (syncBookings && syncBookings.length > 0) {
+            const syncBookingIdList = syncBookings.map((b) => b.id);
+
+            const { data: allInvoices } = await supabase
+              .from("invoices")
+              .select("id, booking_ids, line_items, vat_rate, status")
+              .neq("status", "paid");
+
+            if (allInvoices && allInvoices.length > 0) {
+              const matchingUnpaidInvoices = allInvoices.filter((inv) => {
+                const ids = (inv.booking_ids as string[]) || [];
+                return ids.some((bid) => syncBookingIdList.includes(bid));
+              });
+
+              for (const inv of matchingUnpaidInvoices) {
+                const existingItems = (inv.line_items as any[]) || [];
+                // Keep only session line items (first item / items without extra cost markers)
+                // Session items typically have quantity > 1 or are the first item
+                const sessionItems = existingItems.filter(
+                  (_item: any, idx: number) => idx === 0
+                );
+
+                // Build extra cost line items from current cycle settings
+                const extraCostItems = cycleEditData.extraCosts.map((ec: any) => {
+                  const isPerSession = ec.type === "per_session";
+                  const bookingCount = (inv.booking_ids as string[])?.length || 1;
+                  return {
+                    description: `${ec.description}${isPerSession ? " (per sessie)" : ""}`,
+                    quantity: isPerSession ? bookingCount : 1,
+                    unit_price: ec.price,
+                    amount: ec.price * (isPerSession ? bookingCount : 1),
+                    vat_rate: ec.vat_rate ?? inv.vat_rate ?? 21,
+                  };
+                });
+
+                const updatedItems = [...sessionItems, ...extraCostItems];
+
+                // Recalculate totals
+                const vatRate = inv.vat_rate || 21;
+                const pricesIncVat = cycleEditData.pricesIncludeVat;
+
+                // Check for multi-rate VAT
+                const rates = updatedItems.map((it: any) => it.vat_rate ?? vatRate);
+                const hasMultiRate = new Set(rates).size > 1;
+
+                let subtotal = 0;
+                let vatAmount = 0;
+                let total = 0;
+                let vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
+
+                for (const item of updatedItems) {
+                  const lineTotal = item.quantity * item.unit_price;
+                  const lineVatRate = item.vat_rate ?? vatRate;
+
+                  let lineSub: number;
+                  let lineVat: number;
+                  if (pricesIncVat) {
+                    lineSub = lineTotal / (1 + lineVatRate / 100);
+                    lineVat = lineTotal - lineSub;
+                  } else {
+                    lineSub = lineTotal;
+                    lineVat = lineTotal * (lineVatRate / 100);
+                  }
+
+                  subtotal += lineSub;
+                  vatAmount += lineVat;
+                  total += pricesIncVat ? lineTotal : lineTotal + lineVat;
+
+                  if (hasMultiRate) {
+                    if (!vatBreakdown[lineVatRate]) {
+                      vatBreakdown[lineVatRate] = { subtotal: 0, vat: 0 };
+                    }
+                    vatBreakdown[lineVatRate].subtotal += lineSub;
+                    vatBreakdown[lineVatRate].vat += lineVat;
+                  }
+                }
+
+                // Round breakdown values
+                for (const rate in vatBreakdown) {
+                  vatBreakdown[rate].subtotal = Math.round(vatBreakdown[rate].subtotal * 100) / 100;
+                  vatBreakdown[rate].vat = Math.round(vatBreakdown[rate].vat * 100) / 100;
+                }
+
+                await supabase
+                  .from("invoices")
+                  .update({
+                    line_items: updatedItems,
+                    subtotal: Math.round(subtotal * 100) / 100,
+                    vat_amount: Math.round(vatAmount * 100) / 100,
+                    total: Math.round(total * 100) / 100,
+                    ...(Object.keys(vatBreakdown).length > 0 ? { vat_breakdown: vatBreakdown } : {}),
+                    pdf_url: null,
+                  })
+                  .eq("id", inv.id);
+              }
+            }
+          }
+        }
+      }
+
       // 4. If splitPayment toggled ON, update cycle settings and split existing invoices
       if (cycleEditData.splitPayment) {
         // Update cycles table settings
