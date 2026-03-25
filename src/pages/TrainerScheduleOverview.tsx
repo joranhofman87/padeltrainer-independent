@@ -790,14 +790,21 @@ export default function TrainerScheduleOverview() {
       .from("bookings")
       .update({ status: "cancelled" })
       .eq("id", removeBookingId);
-    setRemovingBooking(false);
     if (error) {
+      setRemovingBooking(false);
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: t("scheduleOverview.playerRemoved", "Player removed from session") });
-      setRemoveBookingId(null);
-      invalidate();
+      return;
     }
+    // Sync affected invoices
+    try {
+      await syncInvoicesAfterBookingRemoval([removeBookingId]);
+    } catch (err) {
+      logger.error("Invoice sync failed after player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
+    }
+    setRemovingBooking(false);
+    toast({ title: t("scheduleOverview.playerRemoved", "Player removed from session") });
+    setRemoveBookingId(null);
+    invalidate();
   };
 
   // Toggle slot privacy
