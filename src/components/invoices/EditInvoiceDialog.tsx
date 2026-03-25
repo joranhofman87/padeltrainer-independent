@@ -79,16 +79,62 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved }: EditInvoi
 
   const pricesIncludeVat = invoice?.prices_include_vat ?? true;
 
-  const { subtotal, vatAmount, total } = useMemo(() => {
+  const { subtotal, vatAmount, total, vatBreakdown } = useMemo(() => {
+    // Check if line items have per-item vat rates
+    const hasPerItemVat = lineItems.some(li => li.vat_rate !== undefined && li.vat_rate !== vatRate);
+    
+    if (hasPerItemVat) {
+      let totalSub = 0;
+      let totalVatAmt = 0;
+      const breakdown: Record<number, { subtotal: number; vat: number }> = {};
+
+      for (const li of lineItems) {
+        const lineTotal = li.quantity * li.unit_price;
+        const lineVatRate = li.vat_rate ?? vatRate;
+        let lineSub: number;
+        let lineVat: number;
+
+        if (pricesIncludeVat) {
+          lineSub = lineTotal / (1 + lineVatRate / 100);
+          lineVat = lineTotal - lineSub;
+        } else {
+          lineSub = lineTotal;
+          lineVat = lineSub * (lineVatRate / 100);
+        }
+
+        totalSub += lineSub;
+        totalVatAmt += lineVat;
+
+        if (!breakdown[lineVatRate]) breakdown[lineVatRate] = { subtotal: 0, vat: 0 };
+        breakdown[lineVatRate].subtotal += lineSub;
+        breakdown[lineVatRate].vat += lineVat;
+      }
+
+      // Round
+      for (const rate in breakdown) {
+        breakdown[rate].subtotal = Math.round(breakdown[rate].subtotal * 100) / 100;
+        breakdown[rate].vat = Math.round(breakdown[rate].vat * 100) / 100;
+      }
+
+      const sub = Math.round(totalSub * 100) / 100;
+      const vat = Math.round(totalVatAmt * 100) / 100;
+      const t = pricesIncludeVat
+        ? Math.round(lineItems.reduce((s, li) => s + li.quantity * li.unit_price, 0) * 100) / 100
+        : Math.round((sub + vat) * 100) / 100;
+
+      return { subtotal: sub, vatAmount: vat, total: t, vatBreakdown: breakdown };
+    }
+
+    // Single VAT rate (original logic)
     const lineTotal = lineItems.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
     if (pricesIncludeVat) {
       const t = Math.round(lineTotal * 100) / 100;
       const sub = Math.round((t / (1 + vatRate / 100)) * 100) / 100;
-      return { subtotal: sub, vatAmount: Math.round((t - sub) * 100) / 100, total: t };
+      return { subtotal: sub, vatAmount: Math.round((t - sub) * 100) / 100, total: t, vatBreakdown: null };
     } else {
       const sub = Math.round(lineTotal * 100) / 100;
       const vat = Math.round(sub * (vatRate / 100) * 100) / 100;
-      return { subtotal: sub, vatAmount: vat, total: Math.round((sub + vat) * 100) / 100 };
+      return { subtotal: sub, vatAmount: vat, total: Math.round((sub + vat) * 100) / 100, vatBreakdown: null };
     }
   }, [lineItems, vatRate, pricesIncludeVat]);
 
