@@ -46,6 +46,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
         fullName,
         phone,
         language,
+        role,
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },
     });

@@ -252,7 +252,7 @@ const handler = async (req: Request): Promise<Response> => {
       await supabaseAdmin.functions.invoke('slack-notify', {
         body: {
           event: 'new_signup',
-          data: { name: fullName, email, role: 'Trainer' },
+          data: { name: fullName, email, role: signupRole || 'Unknown' },
         },
       });
     } catch (slackErr) {
