@@ -1,41 +1,25 @@
 
 
-# Fix: Invoice Forwarding Not Triggered on Payment
+# Add Manual Forward-to-Bookkeeper Button on Paid Invoices
 
-## Root Cause
+## Problem
+The trainer invoice list (`InvoiceList.tsx`) already has a forward button for paid invoices, but the academy invoice page (`AcademyInvoices.tsx`) — which RL Performance Academy uses — has no such button. Also, if the automatic forwarding via the webhook fails, there's no manual retry option visible.
 
-The `mollie-webhook` has two payment paths:
+## Changes
 
-1. **Invoice-only payments** (lines 272-308) — when a player pays via an invoice payment link (`create-invoice-payment`). This path marks the invoice as paid and syncs bookings, but **never calls `forward-invoice`**. It returns at line 308 without forwarding.
+### `src/pages/academy/AcademyInvoices.tsx`
 
-2. **Booking-based payments** (lines 362-375) — calls `auto-create-invoice`, which internally forwards if all bookings are paid. But this path is only for direct booking payments, not invoice payments.
+1. **Import `Mail` icon** from lucide-react
+2. **Fetch forward emails** from `trainer_profiles.invoice_forward_emails` for the academy's trainers (or from the academy profile if stored there) — need to check where RL Performance Academy stores this setting
+3. **Add a forward button** on paid invoices (both desktop table and mobile cards) that calls `supabase.functions.invoke('forward-invoice', { body: { invoiceId } })` with a toast on success/failure
+4. Show the button on all paid invoices (not gated by `forwardEmails.length > 0` — the edge function already handles the "no emails configured" case gracefully)
 
-Since RL Performance Academy uses invoice payment links, the invoice-only path is hit — and forwarding is completely skipped.
+### `src/components/trainer/InvoiceList.tsx`
 
-## Fix
-
-### `supabase/functions/mollie-webhook/index.ts`
-
-After the invoice is marked as paid (line 281) and bookings are synced (line 304), add a call to `forward-invoice` before the `return` on line 308:
-
-```typescript
-// Forward invoice to bookkeeping emails
-try {
-  await supabase.functions.invoke("forward-invoice", {
-    body: { invoiceId: invoiceIdFromMetadata },
-    headers: { Authorization: `Bearer ${supabaseServiceKey}` },
-  });
-  logStep("Invoice forwarded to bookkeeping");
-} catch (fwdErr) {
-  logStep("Invoice forwarding failed (non-fatal)", { error: String(fwdErr) });
-}
-```
-
-This is ~8 lines added inside the `if (payment.status === "paid")` block, before `return new Response("OK", ...)`.
-
-No other files need changes — the `forward-invoice` function already handles fetching the trainer's forwarding emails and sending via Resend.
+5. **Remove the `forwardEmails.length > 0` gate** on the existing forward button (line 498) — show it on all paid invoices so trainers can always manually retry. The edge function returns a harmless "no forwarding emails configured" message if none are set.
 
 | File | Change |
 |------|--------|
-| `supabase/functions/mollie-webhook/index.ts` | Add `forward-invoice` call in invoice-only payment path |
+| `src/pages/academy/AcademyInvoices.tsx` | Add Mail icon import, add forward button on paid invoices (desktop + mobile) |
+| `src/components/trainer/InvoiceList.tsx` | Show forward button on all paid invoices regardless of forwardEmails config |
 
