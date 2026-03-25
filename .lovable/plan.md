@@ -1,15 +1,19 @@
 
 
-# Remove Quick Stats Card & Location from Academy Profile
+# Show Trainer Open Slots on Academy Public Page
 
-## Changes in `src/pages/AcademyPublicProfile.tsx`
+## Problem
+Currently `AcademyPublicOpenSlots` only shows slots where `academy_profile_id` matches the academy. It misses public open slots from individual trainers linked to the academy via `academy_trainers`.
 
-1. **Remove the stats card** (lines 299-313) — the `lg:w-[260px]` Card with verified/trainers/locations stats. Also remove the flex wrapper (`flex-col lg:flex-row`) since there's only one child left.
+The internal management page (`AcademyOpenSlots`) already handles this correctly by first fetching trainer IDs from `academy_trainers`, then querying slots by `trainer_id`.
 
-2. **Remove location prop** from `ProfileHeroCard` (line 283) — remove `location={locations[0]?.location?.city}` so "Udenhout" no longer shows.
+## Changes in `src/components/academy/AcademyPublicOpenSlots.tsx`
 
-3. **Clean up unused code** — remove `quickStats` array (lines 145-158), the `ProfileQuickStatsCard` import (unused already), and the `CheckCircle` / `Award` imports if no longer needed elsewhere.
+Update `fetchOpenSlots` to:
 
-## Result
-The hero card renders full-width without the side stats card, and no city name appears under the academy name.
+1. **Fetch academy trainer IDs** from `academy_trainers` where `status = 'active'`
+2. **Query slots using an OR condition**: slots where `academy_profile_id = academyId` OR `trainer_id` is in the list of academy trainer IDs
+3. Keep all existing filters (`is_public`, `is_marked_full`, `cyclus_id is null`, future dates)
+
+This mirrors the pattern already used in the internal `AcademyOpenSlots` page. No other files need changes.
 
