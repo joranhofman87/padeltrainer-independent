@@ -1,44 +1,38 @@
 
 
-# Show Player Names & Actions on Academy Calendar
+# Fix: Draft Invoices Not Updated on Slot Deletion
 
-## Problem
-The academy calendar shows booking **counts** (e.g. "2/4 geboekt") but always shows "Empty slot" for all player positions because:
+## Root Cause
+`DeleteSlotDialog.checkAffectedInvoices` (line 124) queries invoices with status filter `["sent", "paid", "pending"]` — but **"draft" is missing**. Both Nick's and Joran's invoices (INV-2026-0054 and INV-2026-0055) have status "draft", so the dialog never finds them and never triggers recalculation.
 
-1. **No player data fetched** — `AcademyCalendar.tsx` only queries `bookings` with `slot_id, status` (no player/guest_player joins)
-2. **`booked_players: []` hardcoded** — line 290 always sets an empty array
-3. **Missing RLS policy** — no policy allows academy managers to SELECT from `bookings` for their trainers' slots
+The shared utility `invoiceSync.ts` (line 247) already includes "draft" correctly — the bug is only in the dialog's preview/check query.
 
 ## Plan
 
-### 1. Add RLS policy for academy managers on bookings (migration)
-Allow academy managers to SELECT bookings where the slot belongs to one of their academy's trainers:
-```sql
-CREATE POLICY "Academy managers can view bookings for their trainers slots"
-ON public.bookings FOR SELECT
-USING (
-  slot_id IN (
-    SELECT s.id FROM availability_slots s
-    WHERE s.trainer_id IN (
-      SELECT at.trainer_profile_id FROM academy_trainers at
-      WHERE at.status = 'active'
-      AND at.academy_profile_id IN (SELECT get_user_academy_ids(auth.uid()))
-    )
-  )
-);
+### 1. Fix status filter in DeleteSlotDialog (1 line)
+**File:** `src/components/trainer/DeleteSlotDialog.tsx`, line 124
+
+Change:
+```typescript
+.in("status", ["sent", "paid", "pending"])
+```
+To:
+```typescript
+.in("status", ["draft", "sent", "paid", "pending"])
 ```
 
-### 2. Update `AcademyCalendar.tsx` fetch to include player data
-In `fetchSlots`, expand the bookings query to include player info (same pattern as `TrainerCalendar.tsx`):
-- Join `profiles:player_id` and `guest_players:guest_player_id` with names and ratings
-- Build `BookedPlayer[]` arrays per slot
-- Pass them into the mapped `SlotWithBookings` instead of `booked_players: []`
+### 2. Manually fix INV-2026-0054 and INV-2026-0055 (data patch)
+Remove the deleted booking IDs and recalculate for 16 sessions:
 
-### 3. Wire up booking action callbacks
-Pass `onBookForPlayer`, `onDeleteSlot`, `onEditBooking`, `onToggleMarkedFull`, and `onDuplicateCyclus` callbacks from `AcademyCalendar` to `TrainerCalendarGrid`, same as the trainer calendar does. Add the corresponding dialog components (`BookForPlayerDialog`, `DeleteSlotDialog`, `EditBookingDialog`).
+- **INV-0054**: Remove `716961ff-0d06-43c6-89e4-0d1b11933444` from booking_ids
+- **INV-0055**: Remove `476c63f2-6d87-4f5c-96dc-0b3994ab1172` from booking_ids
+- Update line items to 16 weken, recalculate totals:
+  - Sessions: 16 × €46.25 = €740.00 (9% VAT inclusive)
+  - Extra costs: 16 × €18.00 = €288.00 (0% VAT)
+  - Subtotal: €966.97, VAT: €61.03, Total: €1,028.00
 
 | File | Change |
 |------|--------|
-| Migration SQL | Add academy manager SELECT policy on bookings |
-| `src/pages/academy/AcademyCalendar.tsx` | Fetch player data in bookings query, build `booked_players`, add action callbacks + dialogs |
+| `src/components/trainer/DeleteSlotDialog.tsx` | Add "draft" to invoice status filter |
+| Database (insert tool) | Patch both invoices to 16 sessions |
 
