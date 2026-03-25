@@ -57,13 +57,11 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
   const fetchOpenSlots = async () => {
     try {
       // Fetch active trainer IDs for this academy
-      const { data: trainerRows, error: trainerError } = await supabase
+      const { data: trainerRows } = await supabase
         .from('academy_trainers')
         .select('trainer_profile_id')
         .eq('academy_profile_id', academyId)
         .eq('status', 'active');
-
-      console.log('[OpenSlots] trainerRows:', trainerRows?.length, 'error:', trainerError);
 
       const trainerIds = (trainerRows || []).map(t => t.trainer_profile_id);
 
@@ -72,9 +70,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         ? `academy_profile_id.eq.${academyId},trainer_id.in.(${trainerIds.join(',')})`
         : `academy_profile_id.eq.${academyId}`;
 
-      console.log('[OpenSlots] orFilter:', orFilter);
-
-      const { data: slotsData, error: slotsError } = await supabase
+      const { data: slotsData } = await supabase
         .from('availability_slots')
         .select(`
           id,
@@ -91,13 +87,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           allow_single_booking,
           location_id,
           trainer_id,
-          locations:location_id(name),
-          trainer_profiles:trainer_id(
-            id,
-            slug,
-            user_id,
-            profiles:user_id(full_name)
-          )
+          locations:location_id(name)
         `)
         .or(orFilter)
         .eq('is_marked_full', false)
@@ -106,12 +96,38 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         .order('start_time', { ascending: true })
         .limit(50);
 
-      console.log('[OpenSlots] slotsData:', slotsData?.length, 'error:', slotsError);
-
       if (!slotsData || slotsData.length === 0) {
         setDayGroups([]);
         setLoading(false);
         return;
+      }
+
+      // Collect unique trainer IDs from slots
+      const slotTrainerIds = [...new Set(slotsData.map(s => s.trainer_id).filter(Boolean))];
+
+      // Fetch trainer slugs + user_ids
+      let trainerMap: Record<string, { slug: string | null; user_id: string | null }> = {};
+      if (slotTrainerIds.length > 0) {
+        const { data: trainerProfiles } = await supabase
+          .from('trainer_profiles' as any)
+          .select('id, slug, user_id')
+          .in('id', slotTrainerIds);
+        (trainerProfiles || []).forEach((tp: any) => {
+          trainerMap[tp.id] = { slug: tp.slug, user_id: tp.user_id };
+        });
+      }
+
+      // Fetch trainer names from profiles
+      const userIds = [...new Set(Object.values(trainerMap).map(t => t.user_id).filter(Boolean))] as string[];
+      let nameMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles' as any)
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+        (profiles || []).forEach((p: any) => {
+          if (p.full_name) nameMap[p.user_id] = p.full_name;
+        });
       }
 
       // Fetch booking counts
@@ -127,17 +143,20 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
       });
 
+      // Dedupe by slot id
+      const seen = new Set<string>();
       const availableSlots: SlotData[] = slotsData
         .filter(s => {
-          const maxP = (s as any).max_participants || 4;
+          if (seen.has(s.id)) return false;
+          seen.add(s.id);
+          const maxP = s.max_participants || 4;
           return (bookingCounts[s.id] || 0) < maxP;
         })
         .map(s => {
-          const maxP = (s as any).max_participants || 4;
+          const maxP = s.max_participants || 4;
           const booked = bookingCounts[s.id] || 0;
-          const trainerProfile = s.trainer_profiles as any;
-          const trainerName = trainerProfile?.profiles?.full_name || null;
-          const trainerSlug = trainerProfile?.slug || null;
+          const trainer = trainerMap[s.trainer_id] || { slug: null, user_id: null };
+          const trainerName = trainer.user_id ? nameMap[trainer.user_id] || null : null;
           return {
             id: s.id,
             start_time: s.start_time,
@@ -147,11 +166,11 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
             court_type: s.court_type,
             location_name: (s.locations as any)?.name || null,
             trainer_name: trainerName,
-            trainer_slug: trainerSlug,
-            price_per_session: (s as any).price_per_session || null,
-            total_price: (s as any).total_price || null,
+            trainer_slug: trainer.slug,
+            price_per_session: s.price_per_session || null,
+            total_price: s.total_price || null,
             max_participants: maxP,
-            allow_single_booking: (s as any).allow_single_booking || false,
+            allow_single_booking: s.allow_single_booking || false,
             spots_left: maxP - booked,
           };
         });
