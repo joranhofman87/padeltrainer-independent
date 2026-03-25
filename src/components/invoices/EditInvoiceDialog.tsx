@@ -9,11 +9,12 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { Loader2, CalendarIcon } from 'lucide-react';
+import { Loader2, CalendarIcon, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 
 interface LineItem {
   description: string;
@@ -38,9 +39,11 @@ interface EditInvoiceDialogProps {
   onClose: () => void;
   invoice: EditInvoiceData | null;
   onSaved: () => void;
+  trainerId?: string | null;
+  academyProfileId?: string | null;
 }
 
-export function EditInvoiceDialog({ open, onClose, invoice, onSaved }: EditInvoiceDialogProps) {
+export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId }: EditInvoiceDialogProps) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [vatRate, setVatRate] = useState(21);
   const [dueDate, setDueDate] = useState<Date | undefined>();
@@ -209,7 +212,42 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved }: EditInvoi
         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
           {/* Line items */}
           <div>
-            <Label className="text-sm font-medium mb-2 block">Regelitems</Label>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm font-medium">Regelitems</Label>
+              <div className="flex items-center gap-1">
+                <ExtraCostPresetPicker
+                  trainerId={trainerId}
+                  academyProfileId={academyProfileId}
+                  onSelect={(cost) => {
+                    setLineItems(prev => [...prev, {
+                      description: cost.description,
+                      quantity: 1,
+                      unit_price: cost.price,
+                      amount: cost.price,
+                      vat_rate: cost.vat_rate,
+                    }]);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setLineItems(prev => [...prev, {
+                      description: '',
+                      quantity: 1,
+                      unit_price: 0,
+                      amount: 0,
+                      vat_rate: vatRate,
+                    }]);
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Regel toevoegen
+                </Button>
+              </div>
+            </div>
             <div className="space-y-2">
               {lineItems.map((li, i) => (
                 <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem] gap-2 items-center">

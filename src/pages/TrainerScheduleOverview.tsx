@@ -64,10 +64,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 
 const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es };
 
-type ExtraCost = { description: string; price: number; type?: 'per_session' | 'one_time' };
+type ExtraCost = { description: string; price: number; type?: 'per_session' | 'one_time'; vat_rate?: number };
 
 type SlotWithBookings = {
   id: string;
@@ -198,6 +199,17 @@ export default function TrainerScheduleOverview() {
 
       if (error) throw error;
       return (data || []) as unknown as SlotWithBookings[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch trainer profile ID for preset picker
+  const { data: trainerProfileId } = useQuery({
+    queryKey: ["trainer-profile-id-for-overview", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const tp = await getTrainerProfile(user.id);
+      return tp?.id || null;
     },
     enabled: !!user,
   });
@@ -1157,21 +1169,32 @@ export default function TrainerScheduleOverview() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>{t("scheduleOverview.extraCosts", "Extra costs")}</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() =>
-                    setCycleEditData((prev) => ({
-                      ...prev,
-                      extraCosts: [...prev.extraCosts, { description: "", price: 0, type: 'per_session' as const }],
-                    }))
-                  }
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  {t("scheduleOverview.addCost", "Add cost")}
-                </Button>
+                <div className="flex items-center gap-1">
+                  <ExtraCostPresetPicker
+                    trainerId={trainerProfileId}
+                    onSelect={(cost) =>
+                      setCycleEditData((prev) => ({
+                        ...prev,
+                        extraCosts: [...prev.extraCosts, { description: cost.description, price: cost.price, type: cost.type, vat_rate: cost.vat_rate }],
+                      }))
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() =>
+                      setCycleEditData((prev) => ({
+                        ...prev,
+                        extraCosts: [...prev.extraCosts, { description: "", price: 0, type: 'per_session' as const }],
+                      }))
+                    }
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    {t("scheduleOverview.addCost", "Add cost")}
+                  </Button>
+                </div>
               </div>
               {cycleEditData.extraCosts.map((cost, idx) => (
                 <div key={idx} className="space-y-1.5">
@@ -1215,7 +1238,23 @@ export default function TrainerScheduleOverview() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  <div className="flex gap-2 pl-1">
+                  <div className="flex gap-2 pl-1 items-center">
+                    <div className="relative w-20">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        className="pr-5 h-7 text-xs"
+                        value={cost.vat_rate ?? 21}
+                        onChange={(e) => {
+                          const updated = [...cycleEditData.extraCosts];
+                          updated[idx] = { ...updated[idx], vat_rate: parseFloat(e.target.value) || 0 };
+                          setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                        }}
+                      />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                    </div>
                     <label className={cn(
                       "flex items-center gap-1 text-xs cursor-pointer px-2 py-0.5 rounded-md border transition-colors",
                       (cost.type || 'per_session') === 'per_session' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
