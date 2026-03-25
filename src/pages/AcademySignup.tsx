@@ -97,9 +97,7 @@ export default function AcademySignup() {
     } else {
       trackEvent('signup_completed', { role: 'academy', method: 'email' });
       localStorage.setItem('pendingRole', 'academy');
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Academy' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       setShowVerification(true);
     }
 

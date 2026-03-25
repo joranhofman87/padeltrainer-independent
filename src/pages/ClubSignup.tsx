@@ -103,9 +103,7 @@ export default function ClubSignup() {
     } else {
       trackEvent('signup_completed', { role: 'club', method: 'email' });
       localStorage.setItem('pendingRole', 'club');
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Club' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       setShowVerification(true);
     }
 

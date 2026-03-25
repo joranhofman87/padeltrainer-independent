@@ -112,10 +112,7 @@ export default function PlayerSignup() {
     } else {
       trackEvent('signup_completed', { role: 'player', method: 'email' });
       localStorage.setItem('pendingRole', 'player');
-      // Slack notification (non-blocking)
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Player' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
       if (redirectUrl) {
