@@ -1,0 +1,1 @@
+ALTER TABLE public.availability_slots ADD COLUMN split_payment boolean DEFAULT false;

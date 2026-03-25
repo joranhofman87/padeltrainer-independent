@@ -23,6 +23,7 @@ serve(async (req) => {
     const body = await req.json();
     const bookingIds: string[] = body.bookingIds || (body.bookingId ? [body.bookingId] : []);
     const asDraft: boolean = body.asDraft === true;
+    const splitAmongPlayers: number | null = body.splitAmongPlayers || null;
 
     if (bookingIds.length === 0) {
       logStep("No booking IDs provided");
@@ -32,7 +33,7 @@ serve(async (req) => {
       });
     }
 
-    logStep("Processing bookings", { bookingIds, asDraft });
+    logStep("Processing bookings", { bookingIds, asDraft, splitAmongPlayers });
 
     // Fetch all bookings with details
     const { data: bookings, error: bookingsError } = await supabase
@@ -245,6 +246,15 @@ serve(async (req) => {
             unit_price: ec.price,
           });
         }
+      }
+    }
+
+    // Apply split payment: divide each line item's unit_price among players
+    if (splitAmongPlayers && splitAmongPlayers > 1) {
+      logStep("Applying split payment", { splitAmongPlayers });
+      for (const item of lineItems) {
+        item.unit_price = Math.round((item.unit_price / splitAmongPlayers) * 100) / 100;
+        item.description = `${item.description} (1/${splitAmongPlayers})`;
       }
     }
 

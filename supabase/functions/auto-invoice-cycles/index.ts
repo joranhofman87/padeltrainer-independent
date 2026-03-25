@@ -39,6 +39,7 @@ serve(async (req) => {
     for (const cycle of cycles || []) {
       const settings = cycle.settings as Record<string, unknown> | null;
       if (!settings || settings.payment_timing !== "invoice_after_weeks") continue;
+      const isSplitPayment = settings.split_payment === true;
 
       const delayWeeks = (settings.invoice_delay_weeks as number) || 2;
       const startDate = new Date(cycle.start_date);
@@ -90,12 +91,17 @@ serve(async (req) => {
       }
 
       // Create invoices per player
+      const totalUniquePlayers = playerBookings.size;
       for (const [playerId, bookingIds] of playerBookings) {
-        logStep("Creating invoice for player", { playerId, bookingIds, cycleId: cycle.id });
+        logStep("Creating invoice for player", { playerId, bookingIds, cycleId: cycle.id, splitPayment: isSplitPayment, totalUniquePlayers });
 
         try {
+          const invoiceBody: Record<string, unknown> = { bookingIds };
+          if (isSplitPayment && totalUniquePlayers > 1) {
+            invoiceBody.splitAmongPlayers = totalUniquePlayers;
+          }
           const invoiceRes = await supabase.functions.invoke("auto-create-invoice", {
-            body: { bookingIds },
+            body: invoiceBody,
           });
 
           if (invoiceRes.error) {

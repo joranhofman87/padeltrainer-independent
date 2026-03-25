@@ -93,6 +93,9 @@ export default function CycleForm({
   const [invoiceDelayWeeks, setInvoiceDelayWeeks] = useState<number>(
     (cycle?.settings as any)?.invoice_delay_weeks ?? 2
   );
+  const [splitPayment, setSplitPayment] = useState<boolean>(
+    (cycle?.settings as any)?.split_payment ?? false
+  );
   const [extraCosts, setExtraCosts] = useState<ExtraCost[]>(
     (cycle?.settings as any)?.extra_costs ?? []
   );
@@ -238,6 +241,7 @@ export default function CycleForm({
         confirmation_email_text: (cycle?.settings as any)?.confirmation_email_text || '',
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
+      setSplitPayment((cycle?.settings as any)?.split_payment ?? false);
       const settings = cycle?.settings as any;
       if (settings?.payment_timing) {
         setPaymentTiming(settings.payment_timing);
@@ -337,6 +341,7 @@ export default function CycleForm({
         mark_as_paid: isEvent ? (eventPaymentMethod === 'cash') : paymentTiming === 'manual',
         payment_timing: isEvent ? undefined : paymentTiming,
         invoice_delay_weeks: paymentTiming === 'invoice_after_weeks' ? invoiceDelayWeeks : undefined,
+        split_payment: isEvent ? undefined : splitPayment,
         extra_costs: isEvent ? undefined : extraCosts.filter(ec => ec.description && ec.price > 0),
         // Event-specific
         payment_methods: isEvent ? eventPaymentMethod : undefined,
@@ -1680,6 +1685,22 @@ export default function CycleForm({
                       </div>
                     </label>
                   </div>
+                </div>
+              )}
+
+              {/* Split payment toggle */}
+              {!isRegistration && !isEvent && (
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">{t('form.splitPayment', 'Split betaling over spelers')}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t('form.splitPaymentHelp', 'De totaalprijs (inclusief extra kosten) wordt gelijk verdeeld over alle ingeschreven spelers. Elke speler ontvangt een eigen factuur.')}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={splitPayment}
+                    onCheckedChange={setSplitPayment}
+                  />
                 </div>
               )}
 

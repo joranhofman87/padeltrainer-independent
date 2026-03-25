@@ -28,6 +28,7 @@ interface SlotData {
   max_participants: number;
   allow_single_booking: boolean;
   spots_left: number;
+  split_payment: boolean;
 }
 
 interface DayGroup {
@@ -87,6 +88,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           max_participants,
           allow_single_booking,
           extra_costs,
+          split_payment,
           location_id,
           trainer_id,
           locations:location_id(name)
@@ -178,6 +180,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
             max_participants: maxP,
             allow_single_booking: s.allow_single_booking || false,
             spots_left: maxP - booked,
+            split_payment: (s as any).split_payment || false,
           };
         });
 
@@ -290,6 +293,9 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
                       )}
                       {slot.cyclus_id && slot.total_price != null && slot.total_price > 0 && (
                         <p className="text-xs text-muted-foreground">{t('common:total', 'Total')}: {formatPrice(slot.total_price)}</p>
+                      )}
+                      {slot.split_payment && (
+                        <p className="text-[10px] text-muted-foreground">{t('common:splitAmongPlayers', 'Verdeeld over spelers')}</p>
                       )}
                     </div>
                     <Button

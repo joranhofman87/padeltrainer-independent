@@ -24,6 +24,7 @@ interface SlotData {
   max_participants: number;
   allow_single_booking: boolean;
   spots_left: number;
+  split_payment: boolean;
 }
 
 interface CycleGroup {
@@ -80,6 +81,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           is_marked_full,
           is_public,
           price_per_session,
+          split_payment,
           max_participants,
           allow_single_booking,
           location_id,
@@ -134,6 +136,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
             max_participants: maxParticipants,
             allow_single_booking: (s as any).allow_single_booking || false,
             spots_left: maxParticipants - booked,
+            split_payment: (s as any).split_payment || false,
           };
         });
 
@@ -311,11 +314,18 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
                   </div>
                   <div className="flex items-center gap-2 ml-2">
                     {slot.price_per_session != null && slot.price_per_session > 0 && (
-                      <Badge variant="secondary" className="font-semibold">
-                        {slot.allow_single_booking && slot.max_participants > 1
-                          ? `${formatPrice(slot.price_per_session / slot.max_participants)}/spot`
-                          : formatPrice(slot.price_per_session)}
-                      </Badge>
+                      <div className="text-right">
+                        <Badge variant="secondary" className="font-semibold">
+                          {slot.split_payment
+                            ? `${formatPrice(slot.price_per_session)} ${t('common:total', 'total')}`
+                            : slot.allow_single_booking && slot.max_participants > 1
+                              ? `${formatPrice(slot.price_per_session / slot.max_participants)}/spot`
+                              : formatPrice(slot.price_per_session)}
+                        </Badge>
+                        {slot.split_payment && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{t('common:splitAmongPlayers', 'Verdeeld over spelers')}</p>
+                        )}
+                      </div>
                     )}
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>

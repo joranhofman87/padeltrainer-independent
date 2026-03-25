@@ -99,7 +99,7 @@ export default function BookLesson() {
   const [applicableTerms, setApplicableTerms] = useState<string | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean }>>({});
+  const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean }>>({});
 
   useEffect(() => {
     if (!loading && user && role !== 'player') {
@@ -204,7 +204,7 @@ export default function BookLesson() {
         }
       });
 
-      let newCycleSettingsMap: Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean }> = {};
+      let newCycleSettingsMap: Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean }> = {};
       if (cyclusIds.length > 0) {
         const { data: cyclesData } = await supabase.from('cycles').select('id, settings').in('id', cyclusIds);
         if (cyclesData) {
@@ -215,6 +215,7 @@ export default function BookLesson() {
               payment_timing: (settings?.payment_timing as string) || undefined,
               invoice_delay_weeks: (settings?.invoice_delay_weeks as number) || undefined,
               mark_as_paid: (settings?.mark_as_paid as boolean) || undefined,
+              split_payment: (settings?.split_payment as boolean) || undefined,
             };
           }
         }
@@ -348,8 +349,20 @@ export default function BookLesson() {
             .eq('player_id', profile.id).in('slot_id', selectedCyclus.slots.map(s => s.id))
             .eq('status', 'pending').order('created_at', { ascending: false });
           const bookingIds = createdBookings?.map(b => b.id) || [];
+          // Calculate payment amount: if split_payment, divide by number of confirmed players + this player
+          let paymentAmount = selectedCyclus.totalPrice;
+          if (cycleSettings?.split_payment) {
+            // Count existing confirmed players for this cycle
+            const { count: existingPlayers } = await supabase
+              .from('bookings')
+              .select('player_id', { count: 'exact', head: true })
+              .in('slot_id', selectedCyclus.slots.map(s => s.id))
+              .in('status', ['pending', 'confirmed']);
+            const totalPlayers = Math.max(existingPlayers || 1, 1);
+            paymentAmount = Math.round((selectedCyclus.totalPrice / totalPlayers) * 100) / 100;
+          }
           const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
-            body: { slotId: selectedCyclus.slots[0].id, amount: selectedCyclus.totalPrice, description: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`, trainerId: trainer.id, bookingIds },
+            body: { slotId: selectedCyclus.slots[0].id, amount: paymentAmount, description: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`, trainerId: trainer.id, bookingIds },
           });
           if (paymentError) throw paymentError;
           if (paymentData?.checkoutUrl) { window.location.href = paymentData.checkoutUrl; } else { throw new Error('No checkout URL received'); }

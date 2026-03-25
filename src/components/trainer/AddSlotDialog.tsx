@@ -88,6 +88,7 @@ interface BulkSlotConfig {
   markAsPaid: boolean;
   extraCosts: ExtraCost[];
   hasExtraCosts: boolean;
+  splitPayment: boolean;
 }
 
 interface AddSlotDialogProps {
@@ -517,6 +518,7 @@ export function BulkCreateSheet({
       markAsPaid: false,
       extraCosts: [],
       hasExtraCosts: false,
+      splitPayment: false,
     };
   };
 
@@ -611,6 +613,7 @@ export function BulkCreateSheet({
           markAsPaid: false,
           extraCosts,
           hasExtraCosts: extraCosts.length > 0,
+          splitPayment: firstSlot.split_payment ?? false,
         };
 
         setBulkSlots([prefilled]);
@@ -668,6 +671,7 @@ export function BulkCreateSheet({
           markAsPaid: false,
           extraCosts: lastSlot.extraCosts,
           hasExtraCosts: lastSlot.hasExtraCosts,
+          splitPayment: lastSlot.splitPayment,
         },
       ]);
     } else {
@@ -820,6 +824,7 @@ export function BulkCreateSheet({
               ? config.extraCosts.filter(c => c.description || c.price > 0) 
               : []) as unknown as Json,
             prices_include_vat: pricesIncludeVat,
+            split_payment: config.splitPayment,
           } as any);
 
           // Add to existing times to prevent duplicates within same batch
