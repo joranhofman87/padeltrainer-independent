@@ -57,107 +57,98 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
     }
   }, [cycleId, ownerType, slug]);
 
+  // Public data fetch — runs immediately, no auth dependency
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchPublicData = async () => {
       if (!cycleId || !slug) return;
       setIsLoading(true);
 
       try {
-        // Fetch owner branding
-        if (ownerType === 'academy') {
-          const { data: academy } = await supabase
-            .from('academy_profiles')
-            .select('id, name, slug, logo_url, banner_url, welcome_message')
-            .eq('slug', slug)
-            .maybeSingle();
-          if (academy) setOwner(academy);
-        } else {
-          // Club: fetch via location join
-          const { data: club } = await supabase
-            .from('club_profiles')
-            .select('id, logo_url, banner_url, welcome_message, location_id')
-            .eq('id', slug) // clubs use id in URL for now
-            .maybeSingle();
-          if (club) {
-            const { data: loc } = await supabase
-              .from('locations')
-              .select('name')
-              .eq('id', club.location_id)
-              .maybeSingle();
-            setOwner({
-              name: loc?.name || 'Club',
-              slug: slug!,
-              logo_url: club.logo_url,
-              banner_url: club.banner_url,
-              welcome_message: club.welcome_message,
-            });
-          }
-        }
+        // Parallel: fetch owner branding + cycle data
+        const ownerPromise = ownerType === 'academy'
+          ? supabase
+              .from('academy_profiles')
+              .select('id, name, slug, logo_url, banner_url, welcome_message')
+              .eq('slug', slug)
+              .maybeSingle()
+              .then(({ data }) => data)
+          : supabase
+              .from('club_profiles')
+              .select('id, logo_url, banner_url, welcome_message, location_id')
+              .eq('id', slug)
+              .maybeSingle()
+              .then(async ({ data: club }) => {
+                if (!club) return null;
+                const { data: loc } = await supabase
+                  .from('locations')
+                  .select('name')
+                  .eq('id', club.location_id)
+                  .maybeSingle();
+                return {
+                  name: loc?.name || 'Club',
+                  slug: slug!,
+                  logo_url: club.logo_url,
+                  banner_url: club.banner_url,
+                  welcome_message: club.welcome_message,
+                } as OwnerBranding;
+              });
 
-        // Fetch cycle
-        const cycleData = await getCycle(cycleId);
-        if (!cycleData) { setCycle(null); return; }
+        const cyclePromise = getCycle(cycleId);
+
+        const [ownerData, cycleData] = await Promise.all([ownerPromise, cyclePromise]);
+
+        if (ownerData) setOwner(ownerData as OwnerBranding);
+        if (!cycleData) { setCycle(null); setIsLoading(false); return; }
         setCycle(cycleData);
 
-        // Fetch cycle location
-        if (cycleData.location_id) {
-          const { data: locData } = await supabase
-            .from('locations')
-            .select('name, city, logo_url')
-            .eq('id', cycleData.location_id)
-            .maybeSingle();
-          if (locData) setCycleLocation(locData);
-        }
+        // Parallel: fetch location + trainers + all locations
+        const locationPromise = cycleData.location_id
+          ? supabase
+              .from('locations')
+              .select('name, city, logo_url')
+              .eq('id', cycleData.location_id)
+              .maybeSingle()
+              .then(({ data }) => data)
+          : Promise.resolve(null);
 
-        // Fetch trainers for the owner
-        if (ownerType === 'academy') {
-          const { data: academyTrainers } = await supabase
-            .from('academy_trainers')
-            .select('trainer_profile_id')
-            .eq('academy_profile_id', cycleData.owner_id)
-            .eq('status', 'active');
-
-          if (academyTrainers && academyTrainers.length > 0) {
-            const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
-            const { data: trainerProfiles } = await supabase
-              .from('trainer_profiles')
-              .select('id, user_id')
-              .in('id', trainerIds);
-
-            if (trainerProfiles) {
+        const trainersPromise = ownerType === 'academy'
+          ? (async () => {
+              const { data: academyTrainers } = await supabase
+                .from('academy_trainers')
+                .select('trainer_profile_id')
+                .eq('academy_profile_id', cycleData.owner_id)
+                .eq('status', 'active');
+              if (!academyTrainers?.length) return [];
+              const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
+              const { data: trainerProfiles } = await supabase
+                .from('trainer_profiles')
+                .select('id, user_id')
+                .in('id', trainerIds);
+              if (!trainerProfiles) return [];
               const userIds = trainerProfiles.map(tp => tp.user_id);
               const { data: profiles } = await supabase
                 .from('profiles')
                 .select('user_id, full_name')
                 .in('user_id', userIds);
+              if (!profiles) return [];
+              return trainerProfiles.map(tp => {
+                const prof = profiles.find(p => p.user_id === tp.user_id);
+                return { id: tp.id, name: prof?.full_name || 'Trainer' };
+              });
+            })()
+          : Promise.resolve([]);
 
-              if (profiles) {
-                setTrainers(trainerProfiles.map(tp => {
-                  const prof = profiles.find(p => p.user_id === tp.user_id);
-                  return { id: tp.id, name: prof?.full_name || 'Trainer' };
-                }));
-              }
-            }
-          }
-        }
+        const locationsPromise = getActiveLocations();
 
-        // Fetch locations
-        const locationsData = await getActiveLocations();
+        const [locData, trainersData, locationsData] = await Promise.all([
+          locationPromise,
+          trainersPromise,
+          locationsPromise,
+        ]);
+
+        if (locData) setCycleLocation(locData);
+        setTrainers(trainersData);
         setLocations(locationsData);
-
-        // Check if user has already applied
-        if (user) {
-          const { data: playerProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('user_id', user.id)
-            .maybeSingle();
-
-          if (playerProfile) {
-            const applied = await hasPlayerApplied(cycleId, playerProfile.id);
-            setHasApplied(applied);
-          }
-        }
       } catch (error) {
         logger.error('Error fetching branded cycle data', error as Error, { component: 'BrandedCycleRegistration', cycleId });
       } finally {
@@ -165,8 +156,29 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
       }
     };
 
-    fetchData();
-  }, [cycleId, slug, ownerType, user]);
+    fetchPublicData();
+  }, [cycleId, slug, ownerType]);
+
+  // Auth-dependent check — runs separately when user changes
+  useEffect(() => {
+    const checkApplied = async () => {
+      if (!user || !cycleId) return;
+      try {
+        const { data: playerProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (playerProfile) {
+          const applied = await hasPlayerApplied(cycleId, playerProfile.id);
+          setHasApplied(applied);
+        }
+      } catch (error) {
+        logger.warn('Error checking application status', { error });
+      }
+    };
+    checkApplied();
+  }, [user, cycleId]);
 
   const handleSuccess = () => setIsSuccess(true);
 
