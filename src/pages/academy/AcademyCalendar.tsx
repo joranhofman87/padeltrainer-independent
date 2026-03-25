@@ -32,8 +32,7 @@ import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/acade
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
-import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
-import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
+import { BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
@@ -105,8 +104,6 @@ export default function AcademyCalendar() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
   
   // Slot creation dialog state
-  const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
-  const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
@@ -127,7 +124,7 @@ export default function AcademyCalendar() {
     setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
     const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
     setSelectedSlotTrainerId(trainerToUse);
-    setSlotTypeChoiceOpen(true);
+    setBulkCreateOpen(true);
   };
 
   useEffect(() => {
@@ -526,7 +523,7 @@ export default function AcademyCalendar() {
                 setDefaultSlotTime(undefined);
                 const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
                 setSelectedSlotTrainerId(trainerToUse);
-                setSlotTypeChoiceOpen(true);
+                setBulkCreateOpen(true);
               }}
               className="gap-2"
             >
@@ -667,26 +664,6 @@ export default function AcademyCalendar() {
       {/* Slot Creation Dialogs */}
       {activeAcademy && (
         <>
-          <SlotTypeChoiceDialog
-            open={slotTypeChoiceOpen}
-            onOpenChange={setSlotTypeChoiceOpen}
-            onChooseSingleSlot={() => setAddSlotOpen(true)}
-            onChooseCyclus={() => setBulkCreateOpen(true)}
-          />
-
-          <AddSlotDialog
-            open={addSlotOpen}
-            onOpenChange={setAddSlotOpen}
-            trainerId={selectedSlotTrainerId}
-            defaultDate={defaultSlotDate}
-            defaultTime={defaultSlotTime}
-            defaultDuration={60}
-            defaultWeeks={8}
-            onSlotsCreated={handleSlotsCreated}
-            availableLocations={locations}
-            academyId={activeAcademy?.id}
-          />
-
           <BulkCreateSheet
             open={bulkCreateOpen}
             onOpenChange={(open) => {

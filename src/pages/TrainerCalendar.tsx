@@ -23,15 +23,13 @@ import {
   LayoutGrid,
   ArrowLeft,
   Plus,
-  Repeat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
-import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
-import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
+import { BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
@@ -65,8 +63,6 @@ export default function TrainerCalendar() {
   });
 
   // Dialog states
-  const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
-  const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   
@@ -325,14 +321,6 @@ export default function TrainerCalendar() {
   const handleCellClick = (date: Date, hour: number) => {
     setDefaultSlotDate(date);
     setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
-    setSlotTypeChoiceOpen(true);
-  };
-
-  const handleChooseSingleSlot = () => {
-    setAddSlotOpen(true);
-  };
-
-  const handleChooseCyclus = () => {
     setBulkCreateOpen(true);
   };
 
@@ -444,26 +432,16 @@ export default function TrainerCalendar() {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
               size="sm"
               onClick={() => {
                 setDefaultSlotDate(undefined);
                 setDefaultSlotTime(undefined);
-                setAddSlotOpen(true);
+                setBulkCreateOpen(true);
               }}
               className="gap-2"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
-            </Button>
-            
-            <Button
-              size="sm"
-              onClick={() => setBulkCreateOpen(true)}
-              className="gap-2"
-            >
-              <Repeat className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.createCyclus")}</span>
             </Button>
           </div>
         </div>
@@ -569,26 +547,6 @@ export default function TrainerCalendar() {
           </CardContent>
         </Card>
       </main>
-
-      {/* Slot Type Choice Dialog */}
-      <SlotTypeChoiceDialog
-        open={slotTypeChoiceOpen}
-        onOpenChange={setSlotTypeChoiceOpen}
-        onChooseSingleSlot={handleChooseSingleSlot}
-        onChooseCyclus={handleChooseCyclus}
-      />
-
-      {/* Add Slot Dialog */}
-      <AddSlotDialog
-        open={addSlotOpen}
-        onOpenChange={setAddSlotOpen}
-        trainerId={trainerId}
-        defaultDate={defaultSlotDate}
-        defaultTime={defaultSlotTime}
-        defaultDuration={settings.slot_duration_minutes}
-        defaultWeeks={settings.schedule_weeks_ahead}
-        onSlotsCreated={handleSlotsCreated}
-      />
 
       {/* Bulk Create Sheet */}
       <BulkCreateSheet
