@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO, isSameDay } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
-import { Calendar, Clock, MapPin, Users, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, MapPin, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,9 @@ interface SlotData {
   court_type: string | null;
   location_name: string | null;
   trainer_name: string | null;
+  trainer_slug: string | null;
   price_per_session: number | null;
+  total_price: number | null;
   max_participants: number;
   allow_single_booking: boolean;
   spots_left: number;
@@ -80,6 +82,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           is_marked_full,
           is_public,
           price_per_session,
+          total_price,
           max_participants,
           allow_single_booking,
           location_id,
@@ -87,6 +90,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           locations:location_id(name),
           trainer_profiles:trainer_id(
             id,
+            slug,
             user_id,
             profiles:user_id(full_name)
           )
@@ -94,7 +98,6 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         .or(orFilter)
         .eq('is_marked_full', false)
         .eq('is_public', true)
-        .is('cyclus_id', null)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })
         .limit(50);
@@ -128,6 +131,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           const booked = bookingCounts[s.id] || 0;
           const trainerProfile = s.trainer_profiles as any;
           const trainerName = trainerProfile?.profiles?.full_name || null;
+          const trainerSlug = trainerProfile?.slug || null;
           return {
             id: s.id,
             start_time: s.start_time,
@@ -137,7 +141,9 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
             court_type: s.court_type,
             location_name: (s.locations as any)?.name || null,
             trainer_name: trainerName,
+            trainer_slug: trainerSlug,
             price_per_session: (s as any).price_per_session || null,
+            total_price: (s as any).total_price || null,
             max_participants: maxP,
             allow_single_booking: (s as any).allow_single_booking || false,
             spots_left: maxP - booked,
@@ -197,8 +203,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
               {group.slots.map(slot => (
                 <div
                   key={slot.id}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:border-primary/50 transition-colors cursor-pointer"
-                  onClick={() => navigate(localizePath(`/academies/${academySlug}`))}
+                  className="flex items-center justify-between p-3 border rounded-lg transition-colors"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="text-center min-w-[60px]">
@@ -214,6 +219,17 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
                         <p className="text-sm font-medium truncate">{slot.trainer_name}</p>
                       )}
                       <div className="flex flex-wrap gap-2 mt-1">
+                        <Badge variant={slot.cyclus_id ? 'default' : 'outline'} className="text-xs">
+                          {slot.cyclus_name || t('common:singleSession', 'Single session')}
+                        </Badge>
+                        {slot.court_type && (
+                          <Badge variant="outline" className="text-xs">
+                            {slot.court_type === 'indoor' ? '🏠' : '☀️'}{' '}
+                            {slot.court_type === 'indoor' ? 'Indoor' : 'Outdoor'}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-1">
                         {slot.location_name && (
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <MapPin className="h-3 w-3" />
@@ -227,13 +243,27 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    {slot.price_per_session != null && slot.price_per_session > 0 && (
-                      <Badge variant="secondary" className="font-semibold">
-                        {formatPrice(slot.price_per_session)}
-                      </Badge>
-                    )}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 ml-2">
+                    <div className="text-right">
+                      {slot.price_per_session != null && slot.price_per_session > 0 && (
+                        <p className="text-sm font-semibold">{formatPrice(slot.price_per_session)}<span className="text-xs font-normal text-muted-foreground">/{t('common:session', 'session')}</span></p>
+                      )}
+                      {slot.cyclus_id && slot.total_price != null && slot.total_price > 0 && (
+                        <p className="text-xs text-muted-foreground">{t('common:total', 'Total')}: {formatPrice(slot.total_price)}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (slot.cyclus_id) {
+                          navigate(localizePath(`/academies/${academySlug}/register/${slot.cyclus_id}`));
+                        } else if (slot.trainer_slug) {
+                          navigate(localizePath(`/book/${slot.trainer_slug}`));
+                        }
+                      }}
+                    >
+                      {t('common:book', 'Book')}
+                    </Button>
                   </div>
                 </div>
               ))}
