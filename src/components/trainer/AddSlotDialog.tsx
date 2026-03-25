@@ -14,6 +14,7 @@ import {
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { type ExtraCost } from "@/lib/cycles";
+import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 import type { Json } from "@/integrations/supabase/types";
 import { Input } from "@/components/ui/input";
 import {
