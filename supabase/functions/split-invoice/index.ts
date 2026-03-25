@@ -48,12 +48,26 @@ serve(async (req) => {
       });
     }
 
-    // Must be unpaid
-    if (invoice.status === "paid") {
+    // Must be active and unpaid
+    if (invoice.status === "paid" || invoice.status === "cancelled") {
       return new Response(
-        JSON.stringify({ error: "Cannot split a paid invoice" }),
+        JSON.stringify({ error: `Cannot split a ${invoice.status} invoice` }),
         {
           status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Already split? Skip (detect "(1/N)" in line items)
+    const existingLineItems = (invoice.line_items as any[]) || [];
+    const alreadySplit = existingLineItems.some((li: any) => /\(1\/\d+\)/.test(li.description || ""));
+    if (alreadySplit) {
+      logStep("Invoice already split, skipping", { invoiceId });
+      return new Response(
+        JSON.stringify({ success: true, alreadySplit: true, message: "Invoice is already split" }),
+        {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
