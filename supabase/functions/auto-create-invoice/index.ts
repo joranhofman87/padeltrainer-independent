@@ -249,6 +249,15 @@ serve(async (req) => {
       }
     }
 
+    // Apply split payment: divide each line item's unit_price among players
+    if (splitAmongPlayers && splitAmongPlayers > 1) {
+      logStep("Applying split payment", { splitAmongPlayers });
+      for (const item of lineItems) {
+        item.unit_price = Math.round((item.unit_price / splitAmongPlayers) * 100) / 100;
+        item.description = `${item.description} (1/${splitAmongPlayers})`;
+      }
+    }
+
     // Determine if prices include VAT
     const slotPricesIncludeVat = (bookings[0].availability_slots as any).prices_include_vat ?? true;
 
