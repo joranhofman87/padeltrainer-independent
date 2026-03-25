@@ -101,7 +101,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
         if (!cycleData) { setCycle(null); setIsLoading(false); return; }
         setCycle(cycleData);
 
-        // Parallel: fetch location + trainers + all locations
+        // Fetch cycle location first (critical for above-the-fold UI)
         const locationPromise = cycleData.location_id
           ? supabase
               .from('locations')
@@ -110,6 +110,12 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
               .maybeSingle()
               .then(({ data }) => data)
           : Promise.resolve(null);
+
+        const locData = await locationPromise;
+        if (locData) setCycleLocation(locData);
+
+        // Render now; fetch heavier form helpers in background
+        setIsLoading(false);
 
         const trainersPromise = ownerType === 'academy'
           ? (async () => {
@@ -139,14 +145,8 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
           : Promise.resolve([]);
 
         const locationsPromise = getActiveLocations();
+        const [trainersData, locationsData] = await Promise.all([trainersPromise, locationsPromise]);
 
-        const [locData, trainersData, locationsData] = await Promise.all([
-          locationPromise,
-          trainersPromise,
-          locationsPromise,
-        ]);
-
-        if (locData) setCycleLocation(locData);
         setTrainers(trainersData);
         setLocations(locationsData);
       } catch (error) {
