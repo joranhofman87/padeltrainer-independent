@@ -1,40 +1,31 @@
 
 
-# Add Extra Cost Preset Picker to Schedule Overview & Invoice Editor
+# Fix Schedule Overview Tabs: Classify Cycles, Not Sessions
 
 ## Problem
-The `ExtraCostPresetPicker` component exists and works in `CycleForm` and `AddSlotDialog`, but is missing from:
-1. **Schedule Overview cycle edit dialog** (`TrainerScheduleOverview.tsx`) — no preset picker, and the local `ExtraCost` type is missing `vat_rate`
-2. **Edit Invoice dialog** (`EditInvoiceDialog.tsx`) — no way to add extra cost presets as new line items
+The current tab filter applies per-slot, splitting a single cycle across tabs. A 10-session cycle might show 6 sessions under "Current" and 4 under "Future", making session counts and details confusing.
+
+## New behavior
+Tabs classify **entire cycles** based on first/last session dates:
+- **Current** — first session has started AND last session hasn't ended yet
+- **Past** — last session is in the past (cycle fully completed)
+- **Future** — first session is still in the future (hasn't started yet)
+
+All tabs always show the **full cycle details** (total sessions, all players, total price, etc.).
 
 ## Changes
 
-### 1. `TrainerScheduleOverview.tsx` — Add preset picker + vat_rate support
+### `src/pages/TrainerScheduleOverview.tsx`
 
-- Update local `ExtraCost` type (line 70) to include `vat_rate?: number`
-- Add a separate query to fetch and store the trainer profile ID (needed for the preset picker)
-- Import `ExtraCostPresetPicker`
-- Add the preset picker button next to the "Add cost" button in the extra costs section (~line 1158-1174)
-- Add a VAT rate input field per extra cost row (similar to how CycleForm does it)
+**Tab filtering logic (~lines 254-307)**:
+- Move the tab filter from per-slot to per-group level
+- For each cycle group, determine `firstStart` (earliest slot) and `lastEnd` (latest slot)
+- Classify:
+  - `past`: `lastEnd` is in the past
+  - `future`: `firstStart` is in the future  
+  - `current`: everything else (started but not finished)
+- Keep day/location/time/search filters working per-slot within the group, but always include **all slots** from matching cycles in the display
+- The per-slot filters (day, location, time) narrow which cycles appear (if any slot matches, show the full cycle), but don't hide individual sessions within a cycle
 
-### 2. `EditInvoiceDialog.tsx` — Add preset picker for adding line items
-
-- Accept optional `trainerId` and `academyProfileId` props
-- Import `ExtraCostPresetPicker`
-- Add a "Add from presets" button next to the line items section
-- When a preset is selected, append it as a new line item with `quantity: 1`, `unit_price: preset.price`, `vat_rate: preset.vat_rate`
-- Add a manual "Add line" button as well (if not already present)
-
-### 3. Update `InvoiceList.tsx` and `AcademyInvoices.tsx` — Pass owner IDs to EditInvoiceDialog
-
-- Pass the trainer profile ID / academy profile ID to `EditInvoiceDialog` so the preset picker knows which presets to load
-
-## Technical Details
-
-| File | Change |
-|------|--------|
-| `src/pages/TrainerScheduleOverview.tsx` | Add `vat_rate` to local ExtraCost type, add trainer profile ID query, import and render `ExtraCostPresetPicker`, add VAT input per cost row |
-| `src/components/invoices/EditInvoiceDialog.tsx` | Add `trainerId`/`academyProfileId` props, import and render `ExtraCostPresetPicker`, add "Add line" button |
-| `src/components/trainer/InvoiceList.tsx` | Pass `trainerId` to `EditInvoiceDialog` |
-| `src/pages/academy/AcademyInvoices.tsx` | Pass `academyProfileId` to `EditInvoiceDialog` |
+**Display**: No changes needed to the cycle cards themselves — they already show totals when all slots are included.
 
