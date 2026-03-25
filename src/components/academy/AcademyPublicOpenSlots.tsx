@@ -275,9 +275,18 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
                     </div>
                   </div>
                   <div className="flex items-center gap-3 ml-2">
-                    <div className="text-right">
+                    <div className="text-right space-y-0.5">
                       {slot.price_per_session != null && slot.price_per_session > 0 && (
                         <p className="text-sm font-semibold">{formatPrice(slot.price_per_session)}<span className="text-xs font-normal text-muted-foreground">/{t('common:session', 'session')}</span></p>
+                      )}
+                      {slot.extra_costs.length > 0 && slot.extra_costs.map((ec, i) => (
+                        <p key={i} className="text-xs text-muted-foreground">+ {formatPrice(ec.price)} {ec.description}</p>
+                      ))}
+                      {slot.extra_costs.length > 0 && slot.price_per_session != null && slot.price_per_session > 0 && (
+                        <p className="text-xs font-semibold border-t border-border pt-0.5">
+                          {formatPrice(slot.price_per_session + slot.extra_costs.reduce((sum, ec) => sum + ec.price, 0))}
+                          <span className="font-normal text-muted-foreground">/{t('common:session', 'session')}</span>
+                        </p>
                       )}
                       {slot.cyclus_id && slot.total_price != null && slot.total_price > 0 && (
                         <p className="text-xs text-muted-foreground">{t('common:total', 'Total')}: {formatPrice(slot.total_price)}</p>
