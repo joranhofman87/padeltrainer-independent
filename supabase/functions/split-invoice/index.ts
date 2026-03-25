@@ -224,6 +224,22 @@ serve(async (req) => {
     for (const [playerKey, data] of Object.entries(playerBookings)) {
       if (playerKey === originalPlayerKey) continue;
 
+      // Duplicate guard: check if an invoice already exists for this player with overlapping booking_ids
+      const { data: existingInvoices } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("trainer_id", invoice.trainer_id)
+        .overlaps("booking_ids", data.bookingIds)
+        .not("status", "eq", "cancelled");
+
+      if (existingInvoices && existingInvoices.length > 0) {
+        logStep("Skipping player - invoice already exists", {
+          playerKey,
+          existingInvoiceIds: existingInvoices.map((i: any) => i.id),
+        });
+        continue;
+      }
+
       logStep("Creating invoice for player", {
         playerKey,
         bookingIds: data.bookingIds,
