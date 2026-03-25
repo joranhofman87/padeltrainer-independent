@@ -575,6 +575,30 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AlertDialog open={voidConfirm.open} onOpenChange={(open) => !open && setVoidConfirm({ open: false, invoice: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {voidConfirm.invoice?.status === 'draft' ? 'Factuur verwijderen' : 'Factuur annuleren'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {voidConfirm.invoice?.status === 'draft'
+                ? `Weet je zeker dat je factuur ${voidConfirm.invoice?.invoice_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
+                : `Weet je zeker dat je factuur ${voidConfirm.invoice?.invoice_number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => voidConfirm.invoice && handleVoidInvoice(voidConfirm.invoice)}
+            >
+              {voidConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
