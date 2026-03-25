@@ -206,90 +206,92 @@ export function TrainerCalendarGrid({
             ))}
           </div>
 
-          {/* Time Grid - Half-hour rows */}
-          <div className="relative">
-            {HALF_HOURS.map((hh) => {
-              const isFullHour = hh % 1 === 0;
-              const hourLabel = isFullHour ? `${String(hh).padStart(2, "0")}:00` : null;
-              
+          {/* Time Grid - Absolute positioned slots */}
+          <div className="grid grid-cols-8" style={{ height: GRID_TOTAL_HEIGHT }}>
+            {/* Time labels column */}
+            <div className="relative">
+              {FULL_HOURS.map((hour) => (
+                <div
+                  key={hour}
+                  className="absolute right-0 pr-3 text-xs text-muted-foreground"
+                  style={{ top: (hour - GRID_START_HOUR) * HOUR_HEIGHT - 6 }}
+                >
+                  {String(hour).padStart(2, "0")}:00
+                </div>
+              ))}
+            </div>
+
+            {/* Day columns */}
+            {weekDays.map((day) => {
+              const dayKey = format(day, "yyyy-MM-dd");
+              const daySlots = slotsByDay[dayKey] || [];
+
               return (
-                <div key={hh} className={cn("grid grid-cols-8 min-h-[40px]", isFullHour && "border-b")}>
-                  <div className="p-1 text-xs text-muted-foreground text-right pr-3 pt-0.5">
-                    {hourLabel}
-                  </div>
-                  {weekDays.map((day) => {
-                    const dayKey = format(day, "yyyy-MM-dd");
-                    const slotsInCell = slotsByDayAndHalfHour[dayKey]?.[hh] || [];
-                    const cellKey = `${dayKey}-${hh}`;
-                    const isCellOccupied = occupiedCells.has(cellKey);
+                <div
+                  key={dayKey}
+                  className={cn(
+                    "relative border-l",
+                    isToday(day) && "bg-primary/5"
+                  )}
+                  onClick={(e) => {
+                    if (onCellClick && e.target === e.currentTarget) {
+                      // Calculate hour from click position
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const y = e.clientY - rect.top;
+                      const hour = Math.floor(y / HOUR_HEIGHT) + GRID_START_HOUR;
+                      if (hour >= GRID_START_HOUR && hour <= GRID_END_HOUR) {
+                        const clickTime = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour);
+                        if (!isBefore(clickTime, new Date())) {
+                          onCellClick(day, hour);
+                        }
+                      }
+                    }
+                  }}
+                >
+                  {/* Hour grid lines */}
+                  {FULL_HOURS.map((hour) => (
+                    <div
+                      key={hour}
+                      className="absolute w-full border-b border-border/50"
+                      style={{ top: (hour - GRID_START_HOUR) * HOUR_HEIGHT }}
+                    />
+                  ))}
 
-                    const cellHour = Math.floor(hh);
-                    const cellMinutes = (hh % 1) * 60;
-                    const isPastCell = isBefore(
-                      new Date(day.getFullYear(), day.getMonth(), day.getDate(), cellHour, cellMinutes),
-                      new Date()
-                    );
-
+                  {/* Slots */}
+                  {daySlots.map((slot) => {
+                    const pos = getSlotPosition(slot);
                     return (
                       <div
-                        key={cellKey}
-                        className={cn(
-                          "border-l p-0.5 min-h-[40px] group relative",
-                          isToday(day) && "bg-primary/5",
-                          isFullHour && "border-b",
-                          !isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && "cursor-pointer hover:bg-muted/50"
-                        )}
-                        onClick={() => {
-                          if (!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick) {
-                            onCellClick(day, cellHour);
-                          }
-                        }}
+                        key={slot.id}
+                        className="absolute left-0.5 right-0.5 z-10"
+                        style={{ top: pos.top, height: pos.height }}
                       >
-                        {slotsInCell.map((slot) => {
-                          const span = getSlotRowSpan(slot);
-                          return (
-                            <div
-                              key={slot.id}
-                              className="relative z-10"
-                              style={span > 1 ? { height: `${span * 40 - 4}px` } : undefined}
-                            >
-                              <CalendarSlotCard 
-                                slot={slot} 
-                                rowSpan={span}
-                                showTrainerInfo={showTrainerInfo}
-                                onSlotClick={onSlotClick}
-                                onBookForPlayer={onBookForPlayer}
-                                onDuplicateCyclus={onDuplicateCyclus}
-                                onDeleteSlot={onDeleteSlot}
-                                onEditBooking={onEditBooking}
-                                onToggleMarkedFull={onToggleMarkedFull}
-                              />
-                            </div>
-                          );
-                        })}
-                        {!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && isFullHour && (
-                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <div className="bg-primary/10 rounded-md p-1.5">
-                              <Plus className="h-3 w-3 text-primary" />
-                            </div>
-                          </div>
-                        )}
+                        <CalendarSlotCard
+                          slot={slot}
+                          showTrainerInfo={showTrainerInfo}
+                          onSlotClick={onSlotClick}
+                          onBookForPlayer={onBookForPlayer}
+                          onDuplicateCyclus={onDuplicateCyclus}
+                          onDeleteSlot={onDeleteSlot}
+                          onEditBooking={onEditBooking}
+                          onToggleMarkedFull={onToggleMarkedFull}
+                        />
                       </div>
                     );
                   })}
                 </div>
               );
             })}
-
-            {/* Empty State */}
-            {slots.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="text-center text-muted-foreground p-8 bg-background/80 rounded-lg">
-                  {t("calendar.noSlotsThisWeek")}
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* Empty State */}
+          {slots.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="text-center text-muted-foreground p-8 bg-background/80 rounded-lg">
+                {t("calendar.noSlotsThisWeek")}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

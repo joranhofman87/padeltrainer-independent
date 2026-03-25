@@ -137,10 +137,9 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
   const cardContent = (
     <div
       className={cn(
-        "rounded-md border p-2 cursor-pointer transition-colors text-xs",
+        "rounded-md border p-2 cursor-pointer transition-colors text-xs h-full overflow-hidden",
         statusColors[status],
         compact && "p-1",
-        rowSpan && rowSpan > 1 && "h-full"
       )}
     >
       <div className={cn("font-medium flex items-center gap-1", statusTextColors[status])}>
