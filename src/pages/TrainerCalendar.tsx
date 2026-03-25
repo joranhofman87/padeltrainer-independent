@@ -64,8 +64,6 @@ export default function TrainerCalendar() {
   });
 
   // Dialog states
-  const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
-  const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   
