@@ -27,7 +27,6 @@ import {
   ProfileSidebarColumn,
   ProfileFullWidthSection,
   ProfileHeroCard,
-  ProfileQuickStatsCard,
   VideoGallery,
 } from '@/components/profiles';
 import { 
@@ -162,22 +161,6 @@ export default function AcademyPublicProfile() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  // Quick stats
-  const quickStats: Array<{ icon: React.ReactNode; label: string; value: string | number }> = [];
-  
-  if (academy?.is_verified) {
-    quickStats.push({ icon: <CheckCircle className="h-4 w-4 text-green-500" />, label: t('common:verified', 'Verified'), value: '✓' });
-  }
-  
-  quickStats.push(
-    { icon: <Users className="h-4 w-4" />, label: t('stats.trainers'), value: trainers.length },
-    { icon: <MapPin className="h-4 w-4" />, label: t('stats.locations'), value: locations.length },
-  );
-
-  const avgRating = trainers.filter(t => t.avgRating).reduce((sum, t) => sum + (t.avgRating || 0), 0) / (trainers.filter(t => t.avgRating).length || 1);
-  if (trainers.some(t => t.avgRating)) {
-    quickStats.push({ icon: <Star className="h-4 w-4" />, label: t('common:avgRating', 'Avg Rating'), value: avgRating.toFixed(1) });
-  }
 
   const breadcrumbs = [
     { label: t('common:navigation.home'), path: '/' },
@@ -273,45 +256,23 @@ export default function AcademyPublicProfile() {
           ) : null
         }
       >
-        {/* Hero + Stats side-by-side like trainer profile */}
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="lg:flex-1 min-w-0">
-            <ProfileHeroCard
-              name={academy.name}
-              avatarUrl={academy.logo_url}
-              avatarAlt={`${academy.name} logo`}
-              location={locations[0]?.location?.city}
-              statsSlot={
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Users className="h-4 w-4" />
-                    {trainers.length} {t('stats.trainers')}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {locations.length} {t('stats.locations')}
-                  </span>
-                </div>
-              }
-              
-            />
-          </div>
-          <div className="lg:w-[260px] flex-shrink-0">
-            <Card className="h-full">
-              <CardContent className="p-4 space-y-3">
-                {quickStats.map((stat, index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground flex items-center gap-2">
-                      {stat.icon}
-                      {stat.label}
-                    </span>
-                    <span className="font-semibold">{stat.value}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+        <ProfileHeroCard
+          name={academy.name}
+          avatarUrl={academy.logo_url}
+          avatarAlt={`${academy.name} logo`}
+          statsSlot={
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Users className="h-4 w-4" />
+                {trainers.length} {t('stats.trainers')}
+              </span>
+              <span className="flex items-center gap-1">
+                <MapPin className="h-4 w-4" />
+                {locations.length} {t('stats.locations')}
+              </span>
+            </div>
+          }
+        />
 
         {/* Open Registrations & Slots */}
         <div className="space-y-4 mt-4">
