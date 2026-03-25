@@ -251,55 +251,67 @@ export default function TrainerScheduleOverview() {
 
   const hasActiveFilters = filterDay !== "all" || filterLocation !== "all" || filterTime !== "all";
 
-  // Filter by tab + day/location/time
+  // Filter by tab (per-cycle-group) + day/location/time (per-slot, but if any slot matches, show ALL slots)
   const filtered = useMemo(() => {
+    const now = new Date();
     const result = new Map<string, { name: string; slots: SlotWithBookings[] }>();
 
     grouped.forEach((group, key) => {
-      const filteredSlots = group.slots.filter((s) => {
-        const end = parseISO(s.end_time);
+      // Classify the entire cycle based on first/last session dates
+      const allStarts = group.slots.map((s) => parseISO(s.start_time).getTime());
+      const allEnds = group.slots.map((s) => parseISO(s.end_time).getTime());
+      const firstStart = Math.min(...allStarts);
+      const lastEnd = Math.max(...allEnds);
+      const nowMs = now.getTime();
+
+      let cycleStatus: "past" | "current" | "future";
+      if (lastEnd < nowMs) {
+        cycleStatus = "past";
+      } else if (firstStart > nowMs) {
+        cycleStatus = "future";
+      } else {
+        cycleStatus = "current";
+      }
+
+      // Tab filter: skip entire cycle if it doesn't match the selected tab
+      if (tab !== cycleStatus) return;
+
+      // Check if any slot in this cycle matches the day/location/time filters
+      const anySlotMatchesFilters = group.slots.some((s) => {
         const start = parseISO(s.start_time);
 
-        // Tab filter
-        if (tab === "past" && !isPast(end)) return false;
-        if (tab === "future" && !isFuture(start)) return false;
-        if (tab === "current" && isPast(end) && !isFuture(start)) return false;
-
-        // Day filter
         if (filterDay !== "all" && start.getDay().toString() !== filterDay) return false;
-
-        // Location filter
         if (filterLocation !== "all" && s.location_id !== filterLocation) return false;
-
-        // Time filter
         if (filterTime !== "all") {
           const hour = start.getHours();
           if (filterTime === "morning" && (hour < 6 || hour >= 12)) return false;
           if (filterTime === "afternoon" && (hour < 12 || hour >= 17)) return false;
           if (filterTime === "evening" && (hour < 17 || hour >= 23)) return false;
         }
-
         return true;
       });
 
-      if (filteredSlots.length > 0) {
-        if (search.trim()) {
-          const q = search.toLowerCase();
-          const nameMatch = group.name.toLowerCase().includes(q);
-          const slotMatches = filteredSlots.filter((s) => {
-            const playerNames = s.bookings.map((b) =>
-              (b.profiles?.full_name || b.guest_players?.full_name || "").toLowerCase()
-            );
-            return playerNames.some((n) => n.includes(q));
-          });
-          if (nameMatch) {
-            result.set(key, { name: group.name, slots: filteredSlots });
-          } else if (slotMatches.length > 0) {
-            result.set(key, { name: group.name, slots: slotMatches });
-          }
-        } else {
-          result.set(key, { name: group.name, slots: filteredSlots });
+      if (!anySlotMatchesFilters) return;
+
+      // Show ALL slots from matching cycles (don't split them)
+      const allSlots = group.slots;
+
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const nameMatch = group.name.toLowerCase().includes(q);
+        const slotMatches = allSlots.filter((s) => {
+          const playerNames = s.bookings.map((b) =>
+            (b.profiles?.full_name || b.guest_players?.full_name || "").toLowerCase()
+          );
+          return playerNames.some((n) => n.includes(q));
+        });
+        if (nameMatch) {
+          result.set(key, { name: group.name, slots: allSlots });
+        } else if (slotMatches.length > 0) {
+          result.set(key, { name: group.name, slots: allSlots });
         }
+      } else {
+        result.set(key, { name: group.name, slots: allSlots });
       }
     });
 
