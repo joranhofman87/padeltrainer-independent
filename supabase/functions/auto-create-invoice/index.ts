@@ -262,8 +262,12 @@ serve(async (req) => {
     }
 
     // Apply split payment: divide each line item's unit_price among players
+    // Calculate unsplit total first, then use floor division for consistency
+    let unsplitTotal: number | null = null;
     if (splitAmongPlayers && splitAmongPlayers > 1) {
       logStep("Applying split payment", { splitAmongPlayers });
+      // Calculate the unsplit total before modifying line items
+      unsplitTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
       for (const item of lineItems) {
         item.unit_price = Math.round((item.unit_price / splitAmongPlayers) * 100) / 100;
         item.description = `${item.description} (1/${splitAmongPlayers})`;
