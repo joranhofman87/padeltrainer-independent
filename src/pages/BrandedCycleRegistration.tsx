@@ -196,7 +196,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
     { label: t('common:breadcrumbs.registration', 'Registration') },
   ];
 
-  if (isLoading || authLoading) {
+  if (isLoading) {
     return (
       <ProfileLayout breadcrumbs={breadcrumbs} showBackButton={false}>
         <div className="max-w-2xl mx-auto space-y-6">
