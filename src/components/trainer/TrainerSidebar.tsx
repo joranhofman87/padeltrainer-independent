@@ -72,7 +72,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
 
   const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
   const [trainerSlug, setTrainerSlug] = useState<string | null>(null);
-  const [trainerClubs, setTrainerClubs] = useState<TrainerClub[]>([]);
+  
   const [hasAcademy, setHasAcademy] = useState<boolean>(false);
   const [showGetStarted, setShowGetStarted] = useState(false);
 
