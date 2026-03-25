@@ -121,7 +121,7 @@ export function DeleteSlotDialog({
       const { data: invoices } = await supabase
         .from("invoices")
         .select("id, invoice_number, status, booking_ids, total, vat_rate, line_items")
-        .in("status", ["sent", "paid", "pending"])
+        .in("status", ["draft", "sent", "paid", "pending"])
         .overlaps("booking_ids", bookingIds);
 
       setAffectedInvoices((invoices || []).map(inv => ({
