@@ -1271,6 +1271,34 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!res.ok) {
       console.error("Resend API error:", emailResponse);
+      
+      // Alert via Slack on email send failure
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        if (supabaseUrl && serviceKey) {
+          await fetch(`${supabaseUrl}/functions/v1/slack-notify`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({
+              event: "edge_function_error",
+              data: {
+                function: "send-email",
+                type,
+                recipient: to,
+                error: emailResponse.message || "Resend API error",
+                status: res.status,
+              },
+            }),
+          });
+        }
+      } catch (slackErr) {
+        console.error("Failed to send Slack alert:", slackErr);
+      }
+      
       return new Response(
         JSON.stringify({ error: emailResponse.message || "Failed to send email" }),
         { status: res.status, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -1285,6 +1313,29 @@ const handler = async (req: Request): Promise<Response> => {
     });
   } catch (error: any) {
     console.error("Error in send-email function:", error);
+    
+    // Alert via Slack on unexpected errors
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (supabaseUrl && serviceKey) {
+        await fetch(`${supabaseUrl}/functions/v1/slack-notify`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({
+            event: "edge_function_error",
+            data: {
+              function: "send-email",
+              error: error.message || "Unknown error",
+            },
+          }),
+        });
+      }
+    } catch (_) { /* ignore */ }
+    
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }

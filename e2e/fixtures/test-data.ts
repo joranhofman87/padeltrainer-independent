@@ -94,6 +94,9 @@ export const ROUTES = {
   academyProfile: '/app/academy/profile',
   academySettings: '/app/academy/settings',
 
+  // Registration
+  registrationForm: '/nl/academies/rl-padel-performance/register/8c8cdf92-0189-4111-9f84-adca26fbd448',
+
   // Admin Dashboard
   admin: '/app/admin',
   adminUsers: '/app/admin/users',
