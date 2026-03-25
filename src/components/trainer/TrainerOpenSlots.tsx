@@ -314,11 +314,18 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
                   </div>
                   <div className="flex items-center gap-2 ml-2">
                     {slot.price_per_session != null && slot.price_per_session > 0 && (
-                      <Badge variant="secondary" className="font-semibold">
-                        {slot.allow_single_booking && slot.max_participants > 1
-                          ? `${formatPrice(slot.price_per_session / slot.max_participants)}/spot`
-                          : formatPrice(slot.price_per_session)}
-                      </Badge>
+                      <div className="text-right">
+                        <Badge variant="secondary" className="font-semibold">
+                          {slot.split_payment
+                            ? `${formatPrice(slot.price_per_session)} ${t('common:total', 'total')}`
+                            : slot.allow_single_booking && slot.max_participants > 1
+                              ? `${formatPrice(slot.price_per_session / slot.max_participants)}/spot`
+                              : formatPrice(slot.price_per_session)}
+                        </Badge>
+                        {slot.split_payment && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{t('common:splitAmongPlayers', 'Verdeeld over spelers')}</p>
+                        )}
+                      </div>
                     )}
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>
