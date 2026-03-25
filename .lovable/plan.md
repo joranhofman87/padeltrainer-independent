@@ -1,21 +1,17 @@
 
 
-# Skip Invoice Generation for Manual Payment Cycles
+# Add Extra Cost Presets Card to Academy Settings
 
-## Changes
+## Problem
+The `ExtraCostPresetsCard` is only rendered on the **Trainer** booking settings page (`TrainerBookingSettings.tsx`). The **Academy** settings page (`AcademySettings.tsx`) never includes it. So for RL Performance Academy (and any academy), presets are invisible and inaccessible.
 
-### 1. Remove auto-invoice call for manual payment
-In `src/pages/BookLesson.tsx` (lines 309-312), remove the block that calls `auto-create-invoice` when `paymentTiming === 'manual'`. This ensures no invoice is generated when a cycle is marked as manually paid.
+## Fix
 
-### 2. Update help text to mention "no invoice"
-In `src/i18n/locales/en/cycles.json`, update `form.paymentManualHelp` from:
-> "You handle payment collection yourself (cash, bank transfer, etc.)"
-
-to:
-> "You handle payment collection yourself (cash, bank transfer, etc.). No invoice will be generated."
+Add the `ExtraCostPresetsCard` component to `AcademySettings.tsx`, passing `academyProfileId={activeAcademy.id}`.
 
 | File | Change |
 |------|--------|
-| `src/pages/BookLesson.tsx` | Remove lines 309-312 (auto-create-invoice call for manual payment) |
-| `src/i18n/locales/en/cycles.json` | Update `paymentManualHelp` to mention no invoice is generated |
+| `src/pages/academy/AcademySettings.tsx` | Import `ExtraCostPresetsCard` and render it with `academyProfileId={activeAcademy.id}` alongside the other settings cards |
+
+This is a one-line import + a few lines of JSX. The component already supports the `academyProfileId` prop — it just was never placed on the academy page.
 
