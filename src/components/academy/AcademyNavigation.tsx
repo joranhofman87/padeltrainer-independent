@@ -55,7 +55,7 @@ const groupedItems: NavGroup[] = [
     items: [
       { key: "profile", path: "/app/academy/profile", icon: GraduationCap },
       { key: "locations", path: "/app/academy/locations", icon: MapPin },
-      { key: "earnings", path: "/app/academy/earnings", icon: DollarSign },
+      
       { key: "subscription", path: "/app/academy/subscription", icon: CreditCard },
       { key: "settings", path: "/app/academy/settings", icon: Settings },
     ],
