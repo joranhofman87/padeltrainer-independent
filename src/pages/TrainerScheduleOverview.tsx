@@ -579,32 +579,42 @@ export default function TrainerScheduleOverview() {
                 }
 
                 if (newBookings.length > 0) {
-                  const { data: createdBookings } = await supabase.from("bookings").insert(newBookings).select("id");
+                  const { data: createdBookings } = await supabase.from("bookings").insert(newBookings).select("id, player_id, guest_player_id");
 
-                  // Update unpaid invoices with the new booking IDs
+                  // Add new booking IDs to unpaid invoices so section 3b recalculates them
                   if (createdBookings && createdBookings.length > 0) {
-                    const newBookingIds = createdBookings.map((b) => b.id);
+                    // Get all existing booking IDs for this cycle to find invoices
+                    const { data: allCycleBookings } = await supabase
+                      .from("bookings")
+                      .select("id")
+                      .in("slot_id", existingSlotIds)
+                      .in("status", ["confirmed", "attended", "pending"]);
 
-                    // Find invoices for this cycle's bookings
+                    const allExistingBookingIds = (allCycleBookings || []).map((b) => b.id);
+
                     const { data: affectedInvoices } = await supabase
                       .from("invoices")
-                      .select("id, booking_ids, line_items, vat_rate, status, total")
+                      .select("id, booking_ids")
                       .in("status", ["draft", "sent", "pending"])
-                      .overlaps("booking_ids", existingSlotIds.length > 0 ? existingBookings.map((b) => b.player_id || b.guest_player_id).filter(Boolean) : []);
+                      .overlaps("booking_ids", allExistingBookingIds);
 
-                    // Use syncInvoicesAfterBookingRemoval-style approach: just recalculate via invoiceSync
-                    // Instead, directly add new booking IDs per player to their invoice
-                    if (affectedInvoices && affectedInvoices.length > 0) {
-                      // We'll let the existing invoice sync (section 3b below) handle recalculation
-                      // Just add new booking IDs to each relevant invoice
+                    if (affectedInvoices) {
                       for (const inv of affectedInvoices) {
                         const currentIds = (inv.booking_ids as string[]) || [];
-                        // Find which new bookings belong to this invoice's players
-                        const invPlayerBookings = existingBookings.filter((eb) =>
-                          currentIds.some((cid) => existingBookings.some((x) => x.player_id === eb.player_id || x.guest_player_id === eb.guest_player_id))
-                        );
-                        if (invPlayerBookings.length > 0) {
-                          const relevantNewIds = newBookingIds; // All new bookings for now
+                        // Find which players this invoice covers
+                        const invExistingBookings = existingBookings.filter((eb) => {
+                          const ebId = allCycleBookings?.find((ab) =>
+                            existingBookings.some((x) => (x.player_id === eb.player_id && x.guest_player_id === eb.guest_player_id))
+                          )?.id;
+                          return ebId && currentIds.includes(ebId);
+                        });
+                        // Get new bookings for those same players
+                        const playerKeys = new Set(invExistingBookings.map((b) => b.player_id || b.guest_player_id));
+                        const relevantNewIds = createdBookings
+                          .filter((nb) => playerKeys.has(nb.player_id || nb.guest_player_id))
+                          .map((nb) => nb.id);
+
+                        if (relevantNewIds.length > 0) {
                           await supabase
                             .from("invoices")
                             .update({ booking_ids: [...currentIds, ...relevantNewIds], pdf_url: null })
