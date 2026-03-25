@@ -294,6 +294,9 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
                       {slot.cyclus_id && slot.total_price != null && slot.total_price > 0 && (
                         <p className="text-xs text-muted-foreground">{t('common:total', 'Total')}: {formatPrice(slot.total_price)}</p>
                       )}
+                      {slot.split_payment && (
+                        <p className="text-[10px] text-muted-foreground">{t('common:splitAmongPlayers', 'Verdeeld over spelers')}</p>
+                      )}
                     </div>
                     <Button
                       size="sm"
