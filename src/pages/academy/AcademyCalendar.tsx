@@ -124,7 +124,7 @@ export default function AcademyCalendar() {
     setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
     const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
     setSelectedSlotTrainerId(trainerToUse);
-    setSlotTypeChoiceOpen(true);
+    setBulkCreateOpen(true);
   };
 
   useEffect(() => {
