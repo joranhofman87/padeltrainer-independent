@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
-import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
@@ -46,6 +46,7 @@ export default function AcademyInvoices() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingAll, setSendingAll] = useState(false);
+  const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
@@ -232,6 +233,18 @@ export default function AcademyInvoices() {
     },
   });
 
+  const handleForwardInvoice = async (invoiceId: string) => {
+    setForwardingId(invoiceId);
+    const { error } = await supabase.functions.invoke('forward-invoice', {
+      body: { invoiceId },
+    });
+    if (error) {
+      toast.error(t("invoices.forwardError", "Failed to forward invoice"));
+    } else {
+      toast.success(t("invoices.forwardSuccess", "Invoice forwarded to bookkeeper"));
+    }
+    setForwardingId(null);
+  };
 
   const handleDownloadPdf = async (invoice: Invoice) => {
     if (!invoice.pdf_url) {
@@ -445,6 +458,21 @@ export default function AcademyInvoices() {
                                   </Button>
                                 </>
                               )}
+                              {inv.status === "paid" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleForwardInvoice(inv.id)}
+                                  disabled={forwardingId === inv.id}
+                                  title={t("invoices.forwardToBookkeeper", "Forward to bookkeeper")}
+                                >
+                                  {forwardingId === inv.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Mail className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
                               {inv.pdf_url && (
                                 <Button
                                   size="sm"
@@ -504,6 +532,12 @@ export default function AcademyInvoices() {
                               <Pencil className="h-4 w-4 mr-1" />{t("invoices.edit", "Edit")}
                             </Button>
                           </>
+                        )}
+                        {inv.status === "paid" && (
+                          <Button size="sm" variant="outline" onClick={() => handleForwardInvoice(inv.id)} disabled={forwardingId === inv.id}>
+                            {forwardingId === inv.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+                            {t("invoices.forwardToBookkeeper", "Forward")}
+                          </Button>
                         )}
                         {inv.pdf_url && (
                           <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>

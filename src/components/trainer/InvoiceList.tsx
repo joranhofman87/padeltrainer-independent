@@ -495,7 +495,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                       </>
                     )}
 
-                    {invoice.status === 'paid' && forwardEmails.length > 0 && (
+                    {invoice.status === 'paid' && (
                       <Button
                         variant="ghost"
                         size="icon"
