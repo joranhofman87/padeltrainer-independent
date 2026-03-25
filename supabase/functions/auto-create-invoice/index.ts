@@ -339,6 +339,24 @@ serve(async (req) => {
       }
     }
 
+    // For split payments, use floor(unsplitTotal/N) to ensure all shares sum to original
+    // The split-invoice function handles giving the remainder to the first player
+    if (unsplitTotal !== null && splitAmongPlayers && splitAmongPlayers > 1) {
+      const splitShare = Math.floor((unsplitTotal / splitAmongPlayers) * 100) / 100;
+      logStep("Correcting split total", { unsplitTotal, splitShare, calculatedTotal: totalInclusive });
+      totalInclusive = splitShare;
+      // Recalculate VAT from corrected total
+      if (slotPricesIncludeVat) {
+        subtotal = totalInclusive / (1 + vatRate / 100);
+        vatAmount = totalInclusive - subtotal;
+      } else {
+        subtotal = totalInclusive / (1 + vatRate / 100);
+        vatAmount = totalInclusive - subtotal;
+      }
+      subtotal = Math.round(subtotal * 100) / 100;
+      vatAmount = Math.round(vatAmount * 100) / 100;
+    }
+
     // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings
     const recipientFilter = playerId
       ? { player_id: playerId }
