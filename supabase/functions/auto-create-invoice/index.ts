@@ -244,6 +244,7 @@ serve(async (req) => {
             description: isOneTime ? ec.description : `${ec.description} (per sessie)`,
             quantity: isOneTime ? 1 : bookings.length,
             unit_price: ec.price,
+            vat_rate: ec.vat_rate ?? vatRate,
           });
         }
       }
@@ -261,20 +262,66 @@ serve(async (req) => {
     // Determine if prices include VAT
     const slotPricesIncludeVat = (bookings[0].availability_slots as any).prices_include_vat ?? true;
 
-    // Calculate totals based on VAT inclusion
-    const lineItemTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+    // Calculate per-line-item VAT for multi-rate support
+    const hasMultipleVatRates = lineItems.some((item: any) => (item.vat_rate ?? vatRate) !== vatRate);
+
     let subtotal: number;
     let vatAmount: number;
     let totalInclusive: number;
+    let vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
 
-    if (slotPricesIncludeVat) {
-      totalInclusive = lineItemTotal;
-      subtotal = totalInclusive / (1 + vatRate / 100);
-      vatAmount = totalInclusive - subtotal;
+    if (hasMultipleVatRates) {
+      // Per-line-item VAT calculation
+      let totalSub = 0;
+      let totalVat = 0;
+
+      for (const item of lineItems) {
+        const lineTotal = item.quantity * item.unit_price;
+        const lineVatRate = (item as any).vat_rate ?? vatRate;
+        let lineSub: number;
+        let lineVat: number;
+
+        if (slotPricesIncludeVat) {
+          lineSub = lineTotal / (1 + lineVatRate / 100);
+          lineVat = lineTotal - lineSub;
+        } else {
+          lineSub = lineTotal;
+          lineVat = lineSub * (lineVatRate / 100);
+        }
+
+        totalSub += lineSub;
+        totalVat += lineVat;
+
+        if (!vatBreakdown[lineVatRate]) {
+          vatBreakdown[lineVatRate] = { subtotal: 0, vat: 0 };
+        }
+        vatBreakdown[lineVatRate].subtotal += lineSub;
+        vatBreakdown[lineVatRate].vat += lineVat;
+      }
+
+      subtotal = Math.round(totalSub * 100) / 100;
+      vatAmount = Math.round(totalVat * 100) / 100;
+      totalInclusive = slotPricesIncludeVat 
+        ? lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+        : Math.round((subtotal + vatAmount) * 100) / 100;
+
+      // Round breakdown values
+      for (const rate in vatBreakdown) {
+        vatBreakdown[rate].subtotal = Math.round(vatBreakdown[rate].subtotal * 100) / 100;
+        vatBreakdown[rate].vat = Math.round(vatBreakdown[rate].vat * 100) / 100;
+      }
     } else {
-      subtotal = lineItemTotal;
-      vatAmount = subtotal * (vatRate / 100);
-      totalInclusive = subtotal + vatAmount;
+      // Single VAT rate (existing behavior)
+      const lineItemTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+      if (slotPricesIncludeVat) {
+        totalInclusive = lineItemTotal;
+        subtotal = totalInclusive / (1 + vatRate / 100);
+        vatAmount = totalInclusive - subtotal;
+      } else {
+        subtotal = lineItemTotal;
+        vatAmount = subtotal * (vatRate / 100);
+        totalInclusive = subtotal + vatAmount;
+      }
     }
 
     // Generate invoice number using profile's custom prefix
