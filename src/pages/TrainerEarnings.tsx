@@ -89,6 +89,7 @@ export default function TrainerEarnings() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, role, loading } = useAuth();
+  const { data: isAdmin } = useIsAdmin();
   const { toast } = useToast();
   
   const [bookings, setBookings] = useState<EarningsBooking[]>([]);
