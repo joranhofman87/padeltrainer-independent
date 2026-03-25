@@ -233,6 +233,18 @@ export default function AcademyInvoices() {
     },
   });
 
+  const handleForwardInvoice = async (invoiceId: string) => {
+    setForwardingId(invoiceId);
+    const { error } = await supabase.functions.invoke('forward-invoice', {
+      body: { invoiceId },
+    });
+    if (error) {
+      toast.error(t("invoices.forwardError", "Failed to forward invoice"));
+    } else {
+      toast.success(t("invoices.forwardSuccess", "Invoice forwarded to bookkeeper"));
+    }
+    setForwardingId(null);
+  };
 
   const handleDownloadPdf = async (invoice: Invoice) => {
     if (!invoice.pdf_url) {
