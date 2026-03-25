@@ -162,12 +162,6 @@ export default function AcademyPublicProfile() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  // Quick stats
-  const quickStats: Array<{ icon: React.ReactNode; label: string; value: string | number }> = [];
-  
-  if (academy?.is_verified) {
-    quickStats.push({ icon: <CheckCircle className="h-4 w-4 text-green-500" />, label: t('common:verified', 'Verified'), value: '✓' });
-  }
   
   quickStats.push(
     { icon: <Users className="h-4 w-4" />, label: t('stats.trainers'), value: trainers.length },
