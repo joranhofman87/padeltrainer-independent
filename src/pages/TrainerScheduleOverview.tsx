@@ -203,6 +203,17 @@ export default function TrainerScheduleOverview() {
     enabled: !!user,
   });
 
+  // Fetch trainer profile ID for preset picker
+  const { data: trainerProfileId } = useQuery({
+    queryKey: ["trainer-profile-id-for-overview", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const tp = await getTrainerProfile(user.id);
+      return tp?.id || null;
+    },
+    enabled: !!user,
+  });
+
   // Fetch trainer locations for edit dialog
   const { data: trainerLocations } = useQuery({
     queryKey: ["trainer-locations-for-overview", user?.id],
