@@ -508,11 +508,6 @@ export default function CycleApplicationForm({
                   <FormControl>
                     <Input {...field} type="email" disabled={!isGuest} />
                   </FormControl>
-                  {isGuest && (
-                    <FormDescription className="text-xs">
-                      {t('application.form.yourEmailHelp', 'We\'ll send you a confirmation and a link to set up your account.')}
-                    </FormDescription>
-                  )}
                   <FormMessage />
                 </FormItem>
               )}
