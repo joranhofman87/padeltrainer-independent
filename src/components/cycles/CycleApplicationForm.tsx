@@ -384,9 +384,35 @@ export default function CycleApplicationForm({
       setIsSuccess(true);
       toast.success(t('application.success.title'));
       onSuccess?.();
+
+      // Non-blocking Slack notification
+      supabase.functions.invoke('slack-notify', {
+        body: {
+          event: 'new_registration',
+          data: {
+            name: values.full_name,
+            email: values.email,
+            cycle: cycle.name,
+            lesson_types: values.lesson_types.join(', '),
+            flow: isGuest ? 'guest' : 'logged_in',
+          },
+        },
+      }).catch(() => {});
     } catch (error: any) {
       logger.error('Error submitting application', error instanceof Error ? error : new Error(String(error)), { component: 'CycleApplicationForm' });
       toast.error(error.message || t('application.form.submitError'));
+
+      // Non-blocking Slack error alert
+      supabase.functions.invoke('slack-notify', {
+        body: {
+          event: 'registration_error',
+          data: {
+            cycle: cycle.name,
+            error: error?.message || 'Unknown error',
+            flow: isGuest ? 'guest' : 'logged_in',
+          },
+        },
+      }).catch(() => {});
     } finally {
       setIsSubmitting(false);
     }

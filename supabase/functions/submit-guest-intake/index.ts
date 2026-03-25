@@ -419,12 +419,61 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Non-blocking Slack notification for successful guest registration
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      await fetch(`${supabaseUrl}/functions/v1/slack-notify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          event: "new_registration",
+          data: {
+            name: fullName,
+            email,
+            cycle: cycleData?.name || cycleId,
+            flow: "guest",
+            is_new_user: isNewUser ? "yes" : "no",
+          },
+        }),
+      });
+    } catch (_) {
+      // Non-blocking
+    }
+
     return new Response(
       JSON.stringify({ success: true, intakeRequest: intakeData }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("submit-guest-intake error:", err);
+
+    // Non-blocking Slack error alert
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      await fetch(`${supabaseUrl}/functions/v1/slack-notify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          event: "registration_error",
+          data: {
+            email: "unknown",
+            error: err instanceof Error ? err.message : String(err),
+            flow: "guest",
+          },
+        }),
+      });
+    } catch (_) {
+      // Non-blocking
+    }
+
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
