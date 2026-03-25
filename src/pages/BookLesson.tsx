@@ -349,8 +349,20 @@ export default function BookLesson() {
             .eq('player_id', profile.id).in('slot_id', selectedCyclus.slots.map(s => s.id))
             .eq('status', 'pending').order('created_at', { ascending: false });
           const bookingIds = createdBookings?.map(b => b.id) || [];
+          // Calculate payment amount: if split_payment, divide by number of confirmed players + this player
+          let paymentAmount = selectedCyclus.totalPrice;
+          if (cycleSettings?.split_payment) {
+            // Count existing confirmed players for this cycle
+            const { count: existingPlayers } = await supabase
+              .from('bookings')
+              .select('player_id', { count: 'exact', head: true })
+              .in('slot_id', selectedCyclus.slots.map(s => s.id))
+              .in('status', ['pending', 'confirmed']);
+            const totalPlayers = Math.max(existingPlayers || 1, 1);
+            paymentAmount = Math.round((selectedCyclus.totalPrice / totalPlayers) * 100) / 100;
+          }
           const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
-            body: { slotId: selectedCyclus.slots[0].id, amount: selectedCyclus.totalPrice, description: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`, trainerId: trainer.id, bookingIds },
+            body: { slotId: selectedCyclus.slots[0].id, amount: paymentAmount, description: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`, trainerId: trainer.id, bookingIds },
           });
           if (paymentError) throw paymentError;
           if (paymentData?.checkoutUrl) { window.location.href = paymentData.checkoutUrl; } else { throw new Error('No checkout URL received'); }
