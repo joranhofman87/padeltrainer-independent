@@ -54,6 +54,20 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
 
   const fetchOpenSlots = async () => {
     try {
+      // Fetch active trainer IDs for this academy
+      const { data: trainerRows } = await supabase
+        .from('academy_trainers')
+        .select('trainer_profile_id')
+        .eq('academy_profile_id', academyId)
+        .eq('status', 'active');
+
+      const trainerIds = (trainerRows || []).map(t => t.trainer_profile_id);
+
+      // Build OR filter: academy-level slots OR trainer-owned slots
+      const orFilter = trainerIds.length > 0
+        ? `academy_profile_id.eq.${academyId},trainer_id.in.(${trainerIds.join(',')})`
+        : `academy_profile_id.eq.${academyId}`;
+
       const { data: slotsData } = await supabase
         .from('availability_slots')
         .select(`
@@ -77,7 +91,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
             profiles:user_id(full_name)
           )
         `)
-        .eq('academy_profile_id', academyId)
+        .or(orFilter)
         .eq('is_marked_full', false)
         .eq('is_public', true)
         .is('cyclus_id', null)
