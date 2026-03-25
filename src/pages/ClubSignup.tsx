@@ -78,7 +78,7 @@ export default function ClubSignup() {
     trackEvent('signup_started', { role: 'club', method: 'email', ...getUtmParams() });
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName);
+    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Club');
 
     if (error) {
       logger.error('Club signup failed', error, { component: 'ClubSignup', action: 'signUp' });
