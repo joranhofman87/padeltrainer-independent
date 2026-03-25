@@ -1,91 +1,58 @@
 
 
-
-# Split Payment for Cycles & Slots
+# Re-invoice as Split (Retroactive Split Payment)
 
 ## What it does
-Adds a "split payment" toggle to cycle settings and individual slots. When enabled, the **full total** (session prices + all extra costs) is divided equally among booked players. Each player receives their own invoice showing their share.
+Adds a "Split over spelers" action button on unpaid invoices. When clicked:
+1. **Edits the existing invoice** — recalculates line items divided by N players, keeping it assigned to the original player
+2. **Creates new invoices** for the other players in the same cycle/slot group, each with their equal share
 
-**Example**: Cyclus total = €300 (sessions) + €50 (ball costs) + €20 (court fee) = €370. With 4 players → each gets an invoice for €92.50, with line items showing their proportional share.
+No credit notes needed since only paid invoices are forwarded to bookkeepers.
+
+---
+
+## How it works
+
+1. From the invoice's `booking_ids`, query all bookings on the same slots to find other unique players
+2. Count total unique players (N) including the original
+3. Update the existing invoice: divide each line item's `unit_price` by N, add `(1/N)` suffix
+4. For each other player, call `auto-create-invoice` with their booking IDs + `splitAmongPlayers: N`
 
 ---
 
 ## Changes
 
-### 1. Database migration
-- Add `split_payment boolean DEFAULT false` to `availability_slots`
+### 1. New Edge Function: `split-invoice`
 
-### 2. CycleSettings interface (`src/lib/cycles.ts`)
-- Add `split_payment?: boolean` to `CycleSettings`
+`supabase/functions/split-invoice/index.ts`
 
-### 3. CycleForm UI (`src/components/cycles/CycleForm.tsx`)
-- Add toggle in payment section: "Split betaling over spelers"
-- Help text: "Total price (including extra costs) is divided equally among all registered players. Each player receives an individual invoice."
-- Store in `settings.split_payment`
+Accepts `{ invoiceId: string }`. Logic:
+- Fetch the invoice (must be unpaid: draft/sent/overdue)
+- From `booking_ids`, find the slot IDs → find all confirmed bookings on those slots
+- Group by player, count unique players (N)
+- If N ≤ 1, return error "no other players to split with"
+- **Update existing invoice**: recalculate line items (divide unit_price by N), update subtotal/vat/total, clear `pdf_url`
+- **Create invoices for other players**: call `auto-create-invoice` for each other player's booking IDs with `splitAmongPlayers: N`
+- Update cycle settings to mark `split_payment: true` (so future invoices auto-split)
 
-### 4. Slot creation (`src/components/trainer/AddSlotDialog.tsx`)
-- Propagate cycle's `split_payment` to generated slots
-- Add standalone toggle for non-cycle slots
+### 2. UI: Add split button to `InvoiceList.tsx`
 
-### 5. Invoice logic (`supabase/functions/auto-create-invoice/index.ts`)
-- Accept optional `splitAmongPlayers` count in the request body
-- When provided, divide each line item's `unit_price` by that count
-- Session line: `€X.XX /session (1/N van totaal)`
-- Extra cost lines: same division, same suffix
-- Result: each player's invoice total = (session total + extra costs total) / N
+Add a "Split" button (icon: `Users` or `Split`) next to edit/mark-paid for unpaid invoices that have `booking_ids`. On click:
+- Confirm dialog: "Weet je zeker dat je deze factuur wilt splitsen over alle spelers? De huidige factuur wordt aangepast en er worden nieuwe facturen aangemaakt voor de andere spelers."
+- Call the `split-invoice` edge function
+- Refresh invoice list on success
 
-### 6. Auto-invoice-cycles (`supabase/functions/auto-invoice-cycles/index.ts`)
-- Read `split_payment` from cycle settings
-- If enabled, count total unique players across all bookings in the cycle
-- Pass `splitAmongPlayers: playerCount` to `auto-create-invoice` for each player
+### 3. Also add to academy invoice list
 
-### 7. Booking/payment flow (`src/pages/BookLesson.tsx`)
-- When `split_payment` is active on slot, calculate per-player share for Mollie checkout
-- Share = (session price + extra costs) / number of confirmed players
-
-### 8. Public display (`AcademyPublicOpenSlots.tsx`, `TrainerOpenSlots.tsx`)
-- When `split_payment` is true, show: "Prijs wordt verdeeld over alle deelnemers"
-- If `max_participants` known: show indicative per-player price
+Check if there's an academy-side invoice list and add the same button there.
 
 ---
 
-# Extra Cost Presets with Per-Item VAT Rate
+## Files
 
-## What it does
-1. Trainers/academies can save **extra cost presets** in their settings (e.g. "Ball costs — €5.00 — 21% BTW", "Court rental — €10.00 — 0% BTW")
-2. When creating a cycle or slot, toggling on extra costs shows a **preset picker** to quickly add saved costs
-3. Each extra cost carries its own `vat_rate`, so session prices and extra costs can have different tax rates
-4. Invoicing calculates VAT per line item group instead of a single flat rate
+| File | Change |
+|------|--------|
+| `supabase/functions/split-invoice/index.ts` | New edge function with split logic |
+| `src/components/trainer/InvoiceList.tsx` | Add split button for unpaid invoices |
+| Academy invoice list (if exists) | Same split button |
 
-## Completed Changes
-
-### 1. Database
-- Created `extra_cost_presets` table with RLS policies for trainer/academy ownership
-- Added `vat_breakdown` JSONB column to `invoices` table
-
-### 2. ExtraCost interface (`src/lib/cycles.ts`)
-- Added `vat_rate?: number` field
-
-### 3. Settings UI (`src/components/settings/ExtraCostPresetsCard.tsx`)
-- CRUD card for managing presets (description, price, VAT %, type)
-- Added to `TrainerBookingSettings.tsx`
-
-### 4. Preset Picker (`src/components/settings/ExtraCostPresetPicker.tsx`)
-- Dropdown component for quick preset selection
-- Integrated in CycleForm and AddSlotDialog (BulkCreateSheet)
-
-### 5. CycleForm & AddSlotDialog
-- Added VAT % input per extra cost row
-- Added preset picker button alongside "Add cost"
-
-### 6. Invoice creation (`auto-create-invoice`)
-- Extra cost line items now carry their own `vat_rate`
-- Multi-rate VAT calculation with `vat_breakdown` stored on invoice
-- Falls back to single-rate when all items share the same rate
-
-### 7. Invoice PDF (`generate-invoice`)
-- Shows per-rate VAT breakdown when multiple rates exist
-
-### 8. Edit Invoice Dialog
-- Per-line-item VAT rate editing
-- Auto-calculated VAT breakdown display
