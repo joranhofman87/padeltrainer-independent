@@ -404,46 +404,6 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                 </SidebarMenuItem>
               </Collapsible>
 
-              {/* My Clubs Group - Only show if trainer has clubs */}
-              {trainerClubs.length > 0 && (
-                <Collapsible
-                  open={clubsOpen && !collapsed}
-                  onOpenChange={setClubsOpen}
-                  className="group/clubs"
-                >
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton tooltip={t("nav.myClubs")}>
-                        <Building2 className="h-4 w-4" />
-                        {!collapsed && (
-                          <>
-                            <span className="flex-1">{t("nav.myClubs")}</span>
-                            <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/clubs:rotate-90" />
-                          </>
-                        )}
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {trainerClubs.map((club) => (
-                          <SidebarMenuSubItem key={club.clubId}>
-                            <SidebarMenuSubButton asChild>
-                              <NavLink
-                                to={`/location/${club.locationSlug}`}
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                              >
-                                <span className="truncate">{club.clubName}</span>
-                              </NavLink>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
-              )}
-
               {/* Business Group */}
               <Collapsible
                 open={businessOpen && !collapsed}
