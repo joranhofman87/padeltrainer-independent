@@ -1,41 +1,42 @@
 
 
-# Connect Split Payment Toggle to Invoice Splitting
+# Fix: Extra Costs Missing from Invoices After Cycle Edit
 
 ## Problem
-When toggling "Split payment" on in the Schedule Overview cycle edit, it only saves a flag on `availability_slots`. It does NOT:
-1. Update the `cycles` table `settings.split_payment`
-2. Trigger the actual `split-invoice` edge function for existing unpaid invoices
+When editing a cycle in Schedule Overview (adding extra costs like "Baanhuur PAZ avond €36" and enabling split payment), the existing invoice only gets its session line items split. The newly added extra costs are never added to the invoice because:
 
-So existing invoices (like INV-2026-0009) remain unchanged and no new invoices are created for other players.
+1. `handleSaveCycleEdit` saves extra costs to `availability_slots` and cycle settings ✓
+2. But it never updates the **line items** of existing unpaid invoices to include those costs
+3. `split-invoice` only splits whatever line items already exist on the invoice
+
+## Solution
+Add a step in `handleSaveCycleEdit` that **recalculates existing unpaid invoices** when extra costs change, adding missing extra cost line items before any split happens.
 
 ## Changes
 
 ### `src/pages/TrainerScheduleOverview.tsx` — `handleSaveCycleEdit`
 
-After the existing slot updates (around line 573), add logic when `splitPayment` is toggled **on**:
+Insert new logic **after slot updates (step 3) but before split payment (step 4)** (~line 575):
 
-1. **Update the `cycles` table** — if the cycle has a `cyclus_id`, update `cycles.settings` to include `split_payment: true`
-2. **Find existing unpaid invoices** for bookings on this cycle's slots and trigger `split-invoice` for each one:
-   - Query `bookings` for all slots with this `cyclus_id`
-   - Query `invoices` where `booking_ids` overlaps with those booking IDs and status is not `paid`
-   - Call `supabase.functions.invoke('split-invoice', { body: { invoiceId } })` for each matching invoice
-3. **Show feedback** — toast with how many invoices were split
+- Query unpaid invoices linked to this cycle's bookings (same query pattern already used in step 4)
+- For each invoice, compare its line items against the current `cycleEditData.extraCosts`
+- Remove old extra cost line items (non-session items) and re-add from current cycle settings
+- Recalculate subtotal/vat/total
+- Update the invoice (with `pdf_url: null` to force PDF regeneration)
 
-When toggled **off**, just update the flag (no un-splitting needed).
+This ensures that by the time `split-invoice` runs (if enabled), the invoice already contains the correct extra cost line items.
 
-### Flow
+### Key logic
 ```text
-User toggles split ON → Save cycle edit
-  → Update slots (existing)
-  → Update cycles.settings.split_payment = true
-  → Find unpaid invoices linked to this cycle's bookings
-  → For each: invoke split-invoice edge function
-  → Toast: "X invoices split over players"
+For each unpaid invoice on this cycle:
+  1. Keep session line items (first item, the one with qty = booking count)
+  2. Remove any existing extra cost line items  
+  3. Re-add extra costs from cycleEditData.extraCosts
+  4. Recalculate totals respecting prices_include_vat
+  5. Update invoice in DB
 ```
 
-### Files
 | File | Change |
 |------|--------|
-| `src/pages/TrainerScheduleOverview.tsx` | Add post-save logic to find and split existing invoices when `splitPayment` is toggled on |
+| `src/pages/TrainerScheduleOverview.tsx` | Add invoice extra-cost sync step in `handleSaveCycleEdit` between step 3 and step 4 |
 
