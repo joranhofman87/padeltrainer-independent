@@ -433,26 +433,16 @@ export default function TrainerCalendar() {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
               size="sm"
               onClick={() => {
                 setDefaultSlotDate(undefined);
                 setDefaultSlotTime(undefined);
-                setAddSlotOpen(true);
+                setBulkCreateOpen(true);
               }}
               className="gap-2"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
-            </Button>
-            
-            <Button
-              size="sm"
-              onClick={() => setBulkCreateOpen(true)}
-              className="gap-2"
-            >
-              <Repeat className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.createCyclus")}</span>
             </Button>
           </div>
         </div>
