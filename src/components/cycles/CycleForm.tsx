@@ -242,7 +242,7 @@ export default function CycleForm({
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
       setSplitPayment((cycle?.settings as any)?.split_payment ?? false);
-      const settings = cycle?.settings as any;
+      if (settings?.payment_timing) {
         setPaymentTiming(settings.payment_timing);
       } else if (settings?.mark_as_paid) {
         setPaymentTiming('manual');
