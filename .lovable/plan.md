@@ -1,57 +1,70 @@
 
 
-# Fix: Player Sees "Coach Trainer" Instead of Actual Trainer Name
+# Auto-Follow Trainer on First Booking
 
-## Root Cause
+## Approach
 
-The `trainer_profiles` table has RLS policies that only grant SELECT to:
-- The trainer themselves
-- Academy managers
-- Club managers
-- Admins
+Create a database trigger on `bookings` table that automatically inserts a `trainer_followers` row when a booking is created with a `player_id`. This covers all booking paths (player self-booking, trainer booking for player, cycle registration, webhook-created bookings) without modifying any frontend code.
 
-**Players have no SELECT access to `trainer_profiles`**. When `PlayerBookings.tsx` queries `trainer_profiles` to get the `user_id` (line 99-102), the query returns empty for a player, so the fallback `'Trainer'` is used.
+## Changes
 
-## Fix
-
-Two options — I recommend **Option A** for simplicity:
-
-### Option A: Add an RLS policy for players who have bookings with the trainer
-
-Add a SELECT policy on `trainer_profiles` that allows players to see trainer profiles if they have a booking with that trainer. This uses the existing `is_player_of_trainer` pattern but in reverse.
+### Migration SQL — Create trigger function + trigger
 
 ```sql
-CREATE POLICY "Players can view profiles of their trainers"
-  ON public.trainer_profiles FOR SELECT
-  TO authenticated
-  USING (
-    id IN (
-      SELECT DISTINCT s.trainer_id 
-      FROM bookings b
-      JOIN availability_slots s ON s.id = b.slot_id
-      WHERE b.player_id IN (
-        SELECT id FROM profiles WHERE user_id = auth.uid()
-      )
-    )
-  );
+CREATE OR REPLACE FUNCTION public.auto_follow_trainer_on_booking()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_trainer_id uuid;
+BEGIN
+  -- Only for bookings with a player_id
+  IF NEW.player_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Get trainer_id from the slot
+  SELECT trainer_id INTO v_trainer_id
+  FROM availability_slots
+  WHERE id = NEW.slot_id;
+
+  IF v_trainer_id IS NOT NULL THEN
+    INSERT INTO trainer_followers (player_id, trainer_id, notify_new_availability)
+    VALUES (NEW.player_id, v_trainer_id, true)
+    ON CONFLICT (player_id, trainer_id) DO NOTHING;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_auto_follow_trainer_on_booking
+  AFTER INSERT ON public.bookings
+  FOR EACH ROW
+  EXECUTE FUNCTION public.auto_follow_trainer_on_booking();
 ```
 
-Alternatively, also allow viewing **public** trainer profiles (since those are shown on public pages anyway):
+### Data patch — Link Joran to Rene
+
+In the same migration, upsert the follow for existing booked players who aren't yet following their trainers:
 
 ```sql
-CREATE POLICY "Anyone can view public trainer profiles data"
-  ON public.trainer_profiles FOR SELECT
-  TO authenticated
-  USING (is_public = true);
+INSERT INTO trainer_followers (player_id, trainer_id, notify_new_availability)
+SELECT DISTINCT b.player_id, s.trainer_id, true
+FROM bookings b
+JOIN availability_slots s ON s.id = b.slot_id
+WHERE b.player_id IS NOT NULL
+  AND s.trainer_id IS NOT NULL
+ON CONFLICT (player_id, trainer_id) DO NOTHING;
 ```
 
-### Recommendation
+This catches Joran + any other existing players with bookings who aren't following yet.
 
-Add **both** policies — one for public trainers (consistent with other public views) and one for booked trainers (so even non-public trainers show names to their players).
+| File | Change |
+|------|--------|
+| Migration SQL | Create `auto_follow_trainer_on_booking` trigger + backfill existing booking relationships |
 
-| Change | Detail |
-|--------|--------|
-| Migration SQL | Add 2 RLS policies on `trainer_profiles` for SELECT access |
-
-No code changes needed — the existing query in `PlayerBookings.tsx` will start working once RLS allows the read.
+No frontend code changes needed.
 
