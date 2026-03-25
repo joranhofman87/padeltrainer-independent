@@ -93,6 +93,9 @@ export default function CycleForm({
   const [invoiceDelayWeeks, setInvoiceDelayWeeks] = useState<number>(
     (cycle?.settings as any)?.invoice_delay_weeks ?? 2
   );
+  const [splitPayment, setSplitPayment] = useState<boolean>(
+    (cycle?.settings as any)?.split_payment ?? false
+  );
   const [extraCosts, setExtraCosts] = useState<ExtraCost[]>(
     (cycle?.settings as any)?.extra_costs ?? []
   );
