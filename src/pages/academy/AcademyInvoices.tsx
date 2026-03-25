@@ -458,6 +458,21 @@ export default function AcademyInvoices() {
                                   </Button>
                                 </>
                               )}
+                              {inv.status === "paid" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleForwardInvoice(inv.id)}
+                                  disabled={forwardingId === inv.id}
+                                  title={t("invoices.forwardToBookkeeper", "Forward to bookkeeper")}
+                                >
+                                  {forwardingId === inv.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Mail className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
                               {inv.pdf_url && (
                                 <Button
                                   size="sm"
