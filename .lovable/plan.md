@@ -1,39 +1,26 @@
 
 
-# Fix: Player Signup Sends "Trainer" Slack Notification
+# Fix: Forward Invoice Ignores Academy Forwarding Emails
 
-## Root Cause
-
-Two issues combine:
-
-1. **`signup-user/index.ts`** (server-side, uses service role key) hardcodes `role: 'Trainer'` in its Slack notification — this is the only one that succeeds
-2. **`PlayerSignup.tsx`** (client-side, uses anon key) tries to call `slack-notify` directly, but `slack-notify` requires service role auth → **401 Unauthorized** → silently fails
-
-Same issue exists for Club/Academy signup pages — their client-side Slack calls also fail silently.
+## Problem
+The `forward-invoice` edge function only fetches forwarding emails from `trainer_profiles.invoice_forward_emails`. For academy invoices (like RL Performance Academy), the forwarding emails are stored on `academy_profiles.invoice_forward_emails` — which is never checked. The trainer profile has `null` for this field, so the function returns "No forwarding emails configured" silently.
 
 ## Fix
 
-### 1. `supabase/functions/signup-user/index.ts`
-- Accept an optional `role` parameter in the request body (already destructured alongside `language`)
-- Use it in the Slack notification instead of hardcoded `'Trainer'`
-- Default to `'Unknown'` if not provided
+### `supabase/functions/forward-invoice/index.ts`
 
-### 2. `src/pages/PlayerSignup.tsx`
-- Pass `role: 'player'` in the body sent to `signup-user`
-- **Remove** the direct client-side `slack-notify` calls (both success paths) — they always fail due to auth
+After fetching the trainer profile (line 76-80), add a fallback check: if the invoice has an `academy_profile_id`, fetch `academy_profiles.invoice_forward_emails` and use those if the trainer's are empty.
 
-### 3. `src/pages/AcademySignup.tsx`
-- Pass `role: 'academy'` in the body sent to `signup-user`  
-- **Remove** the direct client-side `slack-notify` calls
+Logic change:
+1. Keep existing trainer profile fetch
+2. If `invoice.academy_profile_id` exists, also fetch `academy_profiles.invoice_forward_emails` and `business_name`
+3. Use academy forwarding emails if trainer's are empty/null
+4. Use academy `business_name` as fallback for the email footer
+5. Authorization: if academy invoice, also allow academy managers (check `is_academy_manager` RPC)
 
-### 4. `src/pages/ClubSignup.tsx`
-- Pass `role: 'club'` in the body sent to `signup-user`
-- **Remove** the direct client-side `slack-notify` calls
+This is ~15 lines added. No other files need changes.
 
 | File | Change |
 |------|--------|
-| `supabase/functions/signup-user/index.ts` | Use `role` from request body instead of hardcoded `'Trainer'` |
-| `src/pages/PlayerSignup.tsx` | Pass `role: 'player'` to signup-user, remove failing client-side slack-notify |
-| `src/pages/AcademySignup.tsx` | Pass `role: 'academy'`, remove client-side slack-notify |
-| `src/pages/ClubSignup.tsx` | Pass `role: 'club'`, remove client-side slack-notify |
+| `supabase/functions/forward-invoice/index.ts` | Add academy_profiles fallback for forwarding emails and business name |
 
