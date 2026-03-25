@@ -303,7 +303,7 @@ export default function AcademyPublicProfile() {
         }
       >
         {/* Hero + Stats side-by-side like trainer profile */}
-        <div className="flex flex-col lg:flex-row gap-4 mb-6">
+        <div className="flex flex-col lg:flex-row gap-4">
           <div className="lg:flex-1">
             <ProfileHeroCard
               name={academy.name}
@@ -329,7 +329,6 @@ export default function AcademyPublicProfile() {
               title={t('common:statistics', 'Statistics')}
               stats={quickStats}
             />
-            {/* About Card */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">{t('profile.about')}</CardTitle>
@@ -345,33 +344,27 @@ export default function AcademyPublicProfile() {
           </div>
         </div>
 
-        {/* Content Grid */}
-        <ProfileContentGrid>
-          {/* Main Content - Open Registrations & Open Slots */}
-          <ProfileMainColumn>
-            {/* Open Registrations */}
-            <AcademyOpenCycles 
-              academyId={academy.id!}
-              academyName={academy.name || 'Academy'}
-              academySlug={academy.slug || ''}
-            />
+        {/* Open Registrations & Slots */}
+        <div className="space-y-4 mt-4">
+          <AcademyOpenCycles 
+            academyId={academy.id!}
+            academyName={academy.name || 'Academy'}
+            academySlug={academy.slug || ''}
+          />
 
-            {/* Open Slots */}
-            <AcademyPublicOpenSlots
-              academyId={academy.id!}
-              academySlug={academy.slug || ''}
-            />
+          <AcademyPublicOpenSlots
+            academyId={academy.id!}
+            academySlug={academy.slug || ''}
+          />
 
-            {/* Waiting List Card - only when enabled */}
-            {(academy as any).waiting_list_enabled && (
-              <WaitingListCard
-                ownerType="academy"
-                ownerId={academy.id!}
-                ownerName={academy.name || 'Academy'}
-              />
-            )}
-          </ProfileMainColumn>
-        </ProfileContentGrid>
+          {(academy as any).waiting_list_enabled && (
+            <WaitingListCard
+              ownerType="academy"
+              ownerId={academy.id!}
+              ownerName={academy.name || 'Academy'}
+            />
+          )}
+        </div>
 
         {/* Full Width - Locations Section */}
         {locations.length > 0 && (
