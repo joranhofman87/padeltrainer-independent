@@ -74,7 +74,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
   cancelled: { label: 'Geannuleerd', variant: 'secondary', icon: AlertCircle },
 };
 
-export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: InvoiceListProps) {
+export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isAdmin = false }: InvoiceListProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
