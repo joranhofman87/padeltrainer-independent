@@ -27,7 +27,7 @@ import {
   ProfileSidebarColumn,
   ProfileFullWidthSection,
   ProfileHeroCard,
-  ProfileQuickStatsCard,
+  VideoGallery,
   VideoGallery,
 } from '@/components/profiles';
 import { 
