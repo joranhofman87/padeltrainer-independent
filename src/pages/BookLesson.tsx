@@ -215,6 +215,7 @@ export default function BookLesson() {
               payment_timing: (settings?.payment_timing as string) || undefined,
               invoice_delay_weeks: (settings?.invoice_delay_weeks as number) || undefined,
               mark_as_paid: (settings?.mark_as_paid as boolean) || undefined,
+              split_payment: (settings?.split_payment as boolean) || undefined,
             };
           }
         }
