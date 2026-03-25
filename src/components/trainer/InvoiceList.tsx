@@ -287,7 +287,32 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
     setActionLoading(null);
   };
 
-  const filteredInvoices = invoices.filter(inv => {
+  const handleSplitInvoice = async (invoiceId: string) => {
+    setSplitConfirm({ open: false, invoiceId: '' });
+    setActionLoading(invoiceId);
+    try {
+      const { data, error } = await supabase.functions.invoke('split-invoice', {
+        body: { invoiceId },
+      });
+      if (error || data?.error) {
+        const msg = data?.error === 'no_other_players' 
+          ? 'Er zijn geen andere spelers om mee te splitsen'
+          : (data?.message || 'Kon factuur niet splitsen');
+        toast({ title: 'Fout', description: msg, variant: 'destructive' });
+      } else {
+        toast({ 
+          title: 'Factuur gesplitst', 
+          description: `Gesplitst over ${data.totalPlayers} spelers. ${data.createdInvoices?.length || 0} nieuwe facturen aangemaakt.` 
+        });
+        fetchInvoices();
+      }
+    } catch {
+      toast({ title: 'Fout', description: 'Kon factuur niet splitsen', variant: 'destructive' });
+    }
+    setActionLoading(null);
+  };
+
+
     if (statusFilter === 'all') return true;
     return inv.status === statusFilter;
   });
