@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
-  MapPin, Users, ExternalLink, Calendar, Share2, Copy, Check, 
-  MessageCircle
+  MapPin, Users, Star, ExternalLink, Calendar, Share2, Copy, Check, 
+  MessageCircle, CheckCircle, Award
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
