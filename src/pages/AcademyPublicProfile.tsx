@@ -273,45 +273,23 @@ export default function AcademyPublicProfile() {
           ) : null
         }
       >
-        {/* Hero + Stats side-by-side like trainer profile */}
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="lg:flex-1 min-w-0">
-            <ProfileHeroCard
-              name={academy.name}
-              avatarUrl={academy.logo_url}
-              avatarAlt={`${academy.name} logo`}
-              location={locations[0]?.location?.city}
-              statsSlot={
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Users className="h-4 w-4" />
-                    {trainers.length} {t('stats.trainers')}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {locations.length} {t('stats.locations')}
-                  </span>
-                </div>
-              }
-              
-            />
-          </div>
-          <div className="lg:w-[260px] flex-shrink-0">
-            <Card className="h-full">
-              <CardContent className="p-4 space-y-3">
-                {quickStats.map((stat, index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground flex items-center gap-2">
-                      {stat.icon}
-                      {stat.label}
-                    </span>
-                    <span className="font-semibold">{stat.value}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+        <ProfileHeroCard
+          name={academy.name}
+          avatarUrl={academy.logo_url}
+          avatarAlt={`${academy.name} logo`}
+          statsSlot={
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Users className="h-4 w-4" />
+                {trainers.length} {t('stats.trainers')}
+              </span>
+              <span className="flex items-center gap-1">
+                <MapPin className="h-4 w-4" />
+                {locations.length} {t('stats.locations')}
+              </span>
+            </div>
+          }
+        />
 
         {/* Open Registrations & Slots */}
         <div className="space-y-4 mt-4">
