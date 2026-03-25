@@ -161,6 +161,7 @@ export default function TrainerScheduleOverview() {
     originalRepeatCount: 0,
     pricesIncludeVat: true,
     splitPayment: false,
+    originalSplitPayment: false,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
