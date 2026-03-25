@@ -37,11 +37,11 @@ export async function recalculateInvoiceAfterRemoval(
   );
 
   if (remainingBookingIds.length === 0) {
-    // All bookings removed — mark invoice as credited
+    // All bookings removed — mark invoice as cancelled
     await supabase
       .from("invoices")
       .update({
-        status: "credited",
+        status: "cancelled",
         booking_ids: [],
         line_items: [],
         subtotal: 0,
@@ -49,7 +49,7 @@ export async function recalculateInvoiceAfterRemoval(
         total: 0,
         pdf_url: null,
         vat_breakdown: null,
-        notes: "Invoice credited — all sessions were cancelled",
+        notes: "Invoice cancelled — all sessions were removed",
       })
       .eq("id", invoice.id);
     return;
