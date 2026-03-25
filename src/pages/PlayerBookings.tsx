@@ -238,9 +238,22 @@ export default function PlayerBookings() {
 
   return (
     <main className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">{t('bookings.title')}</h1>
-        <p className="text-muted-foreground">{t('bookings.subtitle')}</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{t('bookings.title')}</h1>
+          <p className="text-muted-foreground">{t('bookings.subtitle')}</p>
+        </div>
+        {upcomingBookings.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => handleDownloadCalendar(upcomingBookings)}
+          >
+            <CalendarPlus className="h-4 w-4" />
+            {t('bookings.addToCalendar', 'Add to Calendar')}
+          </Button>
+        )}
       </div>
       
       <Tabs defaultValue="upcoming">

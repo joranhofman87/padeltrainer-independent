@@ -31,14 +31,6 @@ export default function PlayerSettings() {
       iconColor: 'text-gray-600',
     },
     {
-      title: t('nav.calendarSync'),
-      description: t('settings.calendarSyncDescription', 'Sync your bookings with external calendars'),
-      icon: CalendarSync,
-      route: '/player/settings/calendar',
-      iconBg: 'bg-blue-500/10',
-      iconColor: 'text-blue-600',
-    },
-    {
       title: t('nav.notifications'),
       description: t('settings.notificationsDescription', 'Manage your notification preferences'),
       icon: Bell,

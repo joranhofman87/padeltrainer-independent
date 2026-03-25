@@ -208,7 +208,8 @@ export function DomainRouter() {
           <Route path="profile" element={<EditProfile />} />
           <Route path="settings" element={<PlayerSettings />} />
           <Route path="settings/notifications" element={<NotificationSettings />} />
-          <Route path="settings/calendar" element={<CalendarSettings />} />
+          {/* Calendar sync hidden — replaced by ICS download on bookings page */}
+          {/* <Route path="settings/calendar" element={<CalendarSettings />} /> */}
         </Route>
         
         {/* Trainer routes */}
