@@ -61,6 +61,7 @@ interface InvoiceListProps {
   trainerId: string;
   refreshTrigger?: number;
   forwardEmails?: string[];
+  isAdmin?: boolean;
 }
 
 type StatusFilter = 'all' | 'draft' | 'sent' | 'paid' | 'overdue';
