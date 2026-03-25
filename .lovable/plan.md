@@ -1,48 +1,57 @@
 
 
-# Edit Invoice: Line Items, VAT & Notes with Optional Booking Sync
-
-## Overview
-Add an edit dialog to invoices (both Academy and Trainer dashboards) that allows editing line items (description, qty, unit price), VAT rate, notes, and due date. Optionally sync price changes back to linked bookings.
+# Academy Public Profile: Visual Cleanup & Cycle Location
 
 ## Changes
 
-### 1. New component: `src/components/invoices/EditInvoiceDialog.tsx`
+### 1. `src/pages/AcademyPublicProfile.tsx` — Hero cleanup + side-by-side stats
 
-A reusable dialog with:
-- **Line items table**: editable description, quantity, unit_price per row. Each row shows calculated `amount = qty × unit_price`. No add/remove rows (per user request).
-- **VAT rate**: editable number input
-- **Due date**: date picker
-- **Notes**: textarea
-- **Sync checkbox**: "Ook prijswijzigingen doorvoeren naar boekingen" — only shown when prices changed and `booking_ids` exist
-- Auto-recalculates subtotal, vat_amount, total on every change (respecting prices_include_vat logic)
-- On save: updates the invoice record (`line_items`, `vat_rate`, `due_date`, `notes`, `subtotal`, `vat_amount`, `total`, clears `pdf_url` to force regeneration)
-- If sync checked: calls a new edge function to update booking payment_amounts
+**Remove from ProfileHeroCard:**
+- `socialLinks` prop (line 305)
+- `isVerified` prop (line 304) — move verified badge to quick stats
+- Website button (lines 320-330)
+- Share dropdown (lines 331-357)
 
-### 2. Edge function: `supabase/functions/sync-invoice-to-bookings/index.ts`
+**Keep:** Only the Follow button (if applicable) or no children at all.
 
-- Accepts `invoiceId` 
-- Reads the invoice's `booking_ids` and `line_items`
-- For the main session line item, calculates new per-booking price = `unit_price`
-- Updates each booking's `payment_amount` in the `bookings` table
-- Also updates the corresponding `availability_slots.price_per_session` if the cycle's session price changed
-- Auth: validates the caller is the trainer or academy manager
+**Layout change:** Wrap hero card + quick stats side-by-side like trainer profile:
+```
+<div className="flex flex-col lg:flex-row gap-4 mb-8">
+  <div className="lg:flex-1">
+    <ProfileHeroCard ... />
+  </div>
+  <div className="lg:w-[320px] flex-shrink-0 space-y-4">
+    <ProfileQuickStatsCard ... />  ← moved from sidebar
+    {/* About card */}
+  </div>
+</div>
+```
 
-### 3. `src/pages/academy/AcademyInvoices.tsx` — Add edit button
+Add verified status as a stat in quickStats array (with CheckCircle icon).
 
-- Add a Pencil icon button in the actions column for unpaid invoices
-- Opens `EditInvoiceDialog` with invoice data
-- On save success: invalidate query cache
+**Remove Quick Stats and About from sidebar** — they move next to the hero.
 
-### 4. `src/components/trainer/InvoiceList.tsx` — Add edit button
+**Remove the Contact Info card** from sidebar (if present).
 
-- Same Pencil icon button for unpaid invoices
-- Opens `EditInvoiceDialog`
-- On save success: re-fetch invoices
+### 2. `src/components/academy/AcademyOpenCycles.tsx` — Show location on cycle cards
+
+Add location name display to each cycle card. The data is already available via `cycle.location?.name`.
+
+Add a MapPin icon + location name in the metadata row (line 121-148 area):
+```tsx
+{cycle.location?.name && (
+  <span className="flex items-center gap-1">
+    <MapPin className="h-4 w-4" />
+    {cycle.location.name}
+  </span>
+)}
+```
+
+### 3. Spacing/padding
+
+Ensure `gap-4` or `gap-6` between all major card sections. The content grid and full-width sections already use spacing — verify `space-y-4` on cycle items and `gap-4`/`gap-6` on grids.
 
 ## Files
-- `src/components/invoices/EditInvoiceDialog.tsx` — New shared component
-- `supabase/functions/sync-invoice-to-bookings/index.ts` — New edge function
-- `src/pages/academy/AcademyInvoices.tsx` — Add edit action
-- `src/components/trainer/InvoiceList.tsx` — Add edit action
+- `src/pages/AcademyPublicProfile.tsx` — Hero cleanup, side-by-side layout with stats
+- `src/components/academy/AcademyOpenCycles.tsx` — Add location to cycle cards
 
