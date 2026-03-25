@@ -296,11 +296,20 @@ export default function AcademyPublicProfile() {
               
             />
           </div>
-          <div className="lg:w-[280px] flex-shrink-0 space-y-4">
-            <ProfileQuickStatsCard
-              title={t('common:statistics', 'Statistics')}
-              stats={quickStats}
-            />
+          <div className="lg:w-[260px] flex-shrink-0">
+            <Card className="h-full">
+              <CardContent className="p-4 space-y-3">
+                {quickStats.map((stat, index) => (
+                  <div key={index} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      {stat.icon}
+                      {stat.label}
+                    </span>
+                    <span className="font-semibold">{stat.value}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
         </div>
 
