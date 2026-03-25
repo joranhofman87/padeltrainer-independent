@@ -453,6 +453,17 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        {invoice.booking_ids && invoice.booking_ids.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSplitConfirm({ open: true, invoiceId: invoice.id })}
+                            disabled={actionLoading === invoice.id}
+                            title="Split over spelers"
+                          >
+                            <Users className="h-4 w-4" />
+                          </Button>
+                        )}
                       </>
                     )}
 
