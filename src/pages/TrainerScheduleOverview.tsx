@@ -898,12 +898,30 @@ export default function TrainerScheduleOverview() {
 
       if (cycleSlots && cycleSlots.length > 0) {
         const field = player.type === 'guest' ? 'guest_player_id' : 'player_id';
-        await supabase
+        
+        // Get the booking IDs before cancelling so we can sync invoices
+        const { data: bookingsToCancel } = await supabase
           .from("bookings")
-          .update({ status: 'cancelled' })
+          .select("id")
           .eq(field, player.id)
           .in("slot_id", cycleSlots.map(s => s.id))
           .neq("status", "cancelled");
+
+        const cancelledIds = (bookingsToCancel || []).map(b => b.id);
+
+        if (cancelledIds.length > 0) {
+          await supabase
+            .from("bookings")
+            .update({ status: 'cancelled' })
+            .in("id", cancelledIds);
+
+          // Sync affected invoices
+          try {
+            await syncInvoicesAfterBookingRemoval(cancelledIds);
+          } catch (err) {
+            logger.error("Invoice sync failed after cycle player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
+          }
+        }
       }
 
       setEditCyclePlayers(prev => prev.filter(p => p.id !== player.id));
