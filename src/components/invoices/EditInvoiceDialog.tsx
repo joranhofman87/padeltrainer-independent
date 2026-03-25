@@ -53,7 +53,7 @@ interface EditInvoiceDialogProps {
   academyProfileId?: string | null;
 }
 
-export function EditInvoiceDialog({ open, onClose, invoice, onSaved }: EditInvoiceDialogProps) {
+export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId }: EditInvoiceDialogProps) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [vatRate, setVatRate] = useState(21);
   const [dueDate, setDueDate] = useState<Date | undefined>();
