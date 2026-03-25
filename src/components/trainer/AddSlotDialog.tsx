@@ -671,6 +671,7 @@ export function BulkCreateSheet({
           markAsPaid: false,
           extraCosts: lastSlot.extraCosts,
           hasExtraCosts: lastSlot.hasExtraCosts,
+          splitPayment: lastSlot.splitPayment,
         },
       ]);
     } else {
