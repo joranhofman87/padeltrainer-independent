@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabaseClient';
-import { Package, Plus } from 'lucide-react';
+import { Package, Settings } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { ExtraCost } from '@/lib/cycles';
 
 interface Preset {
