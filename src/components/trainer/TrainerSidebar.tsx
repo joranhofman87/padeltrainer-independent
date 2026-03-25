@@ -118,7 +118,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
           supabase.from('trainer_onboarding').select('setup_dismissed_at').eq('user_id', user.id).maybeSingle(),
         ]);
 
-        setTrainerClubs(clubs);
+        
         setHasAcademy(!!academy);
 
         // If dismissed, hide get started
