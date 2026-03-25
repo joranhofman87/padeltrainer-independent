@@ -1,31 +1,41 @@
 
 
-# Fix Schedule Overview Tabs: Classify Cycles, Not Sessions
+# Connect Split Payment Toggle to Invoice Splitting
 
 ## Problem
-The current tab filter applies per-slot, splitting a single cycle across tabs. A 10-session cycle might show 6 sessions under "Current" and 4 under "Future", making session counts and details confusing.
+When toggling "Split payment" on in the Schedule Overview cycle edit, it only saves a flag on `availability_slots`. It does NOT:
+1. Update the `cycles` table `settings.split_payment`
+2. Trigger the actual `split-invoice` edge function for existing unpaid invoices
 
-## New behavior
-Tabs classify **entire cycles** based on first/last session dates:
-- **Current** — first session has started AND last session hasn't ended yet
-- **Past** — last session is in the past (cycle fully completed)
-- **Future** — first session is still in the future (hasn't started yet)
-
-All tabs always show the **full cycle details** (total sessions, all players, total price, etc.).
+So existing invoices (like INV-2026-0009) remain unchanged and no new invoices are created for other players.
 
 ## Changes
 
-### `src/pages/TrainerScheduleOverview.tsx`
+### `src/pages/TrainerScheduleOverview.tsx` — `handleSaveCycleEdit`
 
-**Tab filtering logic (~lines 254-307)**:
-- Move the tab filter from per-slot to per-group level
-- For each cycle group, determine `firstStart` (earliest slot) and `lastEnd` (latest slot)
-- Classify:
-  - `past`: `lastEnd` is in the past
-  - `future`: `firstStart` is in the future  
-  - `current`: everything else (started but not finished)
-- Keep day/location/time/search filters working per-slot within the group, but always include **all slots** from matching cycles in the display
-- The per-slot filters (day, location, time) narrow which cycles appear (if any slot matches, show the full cycle), but don't hide individual sessions within a cycle
+After the existing slot updates (around line 573), add logic when `splitPayment` is toggled **on**:
 
-**Display**: No changes needed to the cycle cards themselves — they already show totals when all slots are included.
+1. **Update the `cycles` table** — if the cycle has a `cyclus_id`, update `cycles.settings` to include `split_payment: true`
+2. **Find existing unpaid invoices** for bookings on this cycle's slots and trigger `split-invoice` for each one:
+   - Query `bookings` for all slots with this `cyclus_id`
+   - Query `invoices` where `booking_ids` overlaps with those booking IDs and status is not `paid`
+   - Call `supabase.functions.invoke('split-invoice', { body: { invoiceId } })` for each matching invoice
+3. **Show feedback** — toast with how many invoices were split
+
+When toggled **off**, just update the flag (no un-splitting needed).
+
+### Flow
+```text
+User toggles split ON → Save cycle edit
+  → Update slots (existing)
+  → Update cycles.settings.split_payment = true
+  → Find unpaid invoices linked to this cycle's bookings
+  → For each: invoke split-invoice edge function
+  → Toast: "X invoices split over players"
+```
+
+### Files
+| File | Change |
+|------|--------|
+| `src/pages/TrainerScheduleOverview.tsx` | Add post-save logic to find and split existing invoices when `splitPayment` is toggled on |
 
