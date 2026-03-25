@@ -31,7 +31,7 @@ export default function MollieCallback() {
       // Redirect after short delay to show success message
       setTimeout(() => {
         if (entity === 'academy') {
-          navigate('/academy/earnings?mollie_connected=true');
+          navigate('/academy/settings?mollie_connected=true');
         } else {
           navigate('/trainer/earnings?mollie_connected=true');
         }
@@ -63,7 +63,7 @@ export default function MollieCallback() {
   const handleRetry = () => {
     const entity = searchParams.get('entity') || searchParams.get('state')?.split('_')[0];
     if (entity === 'academy') {
-      navigate('/academy/earnings');
+      navigate('/academy/settings');
     } else {
       navigate('/trainer/earnings');
     }
