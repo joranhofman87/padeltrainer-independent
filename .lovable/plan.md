@@ -1,53 +1,43 @@
 
 
-# Fix Split Payment Rounding: Totals Don't Add Up
+# Fix Split Invoice Calculation for Multi-Rate VAT
 
-## Problem
+## Root Cause
 
-When splitting an invoice among N players, the code divides each line item's `unit_price` by N and rounds individually. This causes rounding errors that compound across line items:
+The split payment correction in `auto-create-invoice` (lines 344-358) is broken for invoices with **multiple VAT rates**:
 
-```text
-Example: €92.50 / 4 = €23.125 → rounded to €23.13
-4 × €23.13 = €92.52 (not €92.50)
-Over 16 sessions: €0.32 overpaid across all 4 players
-```
+1. `unsplitTotal` captures the sum of **excl-VAT** line items = €2,088
+2. The correction sets `totalInclusive = floor(2088/4) = €522.00` — treating this as the final total
+3. It then recalculates VAT using a **single** `vatRate` (9%), ignoring that baanhuur is 0%
 
-The split totals don't sum back to the original invoice total. This happens in **two places**: the `split-invoice` edge function (retroactive split) and `auto-create-invoice` (split at creation time).
+**Result**: each invoice = €522.08 instead of the correct €555.30 (= €2,221.20 ÷ 4). The VAT on training sessions (€33.30 per person) is effectively lost.
 
-## Fix: Use Total-Level Division Instead of Per-Line Rounding
+Maarten's unsplit invoice (INV-2026-0003) is correct at €2,221.20, confirming the expected total.
 
-Instead of dividing each `unit_price` by N (which compounds rounding), calculate the **original total first**, then divide the total by N. Give N-1 players `floor(total/N)` and give the first player the remainder to absorb rounding.
+## Fix
 
-### Changes
+### 1. Code fix in `auto-create-invoice/index.ts` (lines 342-358)
 
-#### 1. `supabase/functions/split-invoice/index.ts` (lines 152-161)
-
-**Before**: Divides each line item's `unit_price` by `totalPlayers`, rounding each independently.
-
-**After**: Still divide unit_price per line item (needed for display), but after calculating totals, adjust the original invoice's total to absorb the rounding difference:
+Skip the split total correction when `hasMultipleVatRates` is true. The per-line VAT calculation (lines 288-327) already handles split prices correctly — each line item was divided by N and VAT calculated individually. The single-rate override destroys this.
 
 ```typescript
-// Calculate what the original total was
-const originalTotal = invoice.total;
-// Each split share (floor)
-const splitShare = Math.floor((originalTotal / totalPlayers) * 100) / 100;
-// Remainder goes to the first invoice
-const remainder = Math.round((originalTotal - splitShare * totalPlayers) * 100) / 100;
-// First invoice gets splitShare + remainder
+// Only apply split correction for single-rate VAT
+if (unsplitTotal !== null && splitAmongPlayers && splitAmongPlayers > 1 && !hasMultipleVatRates) {
+  // ... existing correction logic
+}
 ```
 
-#### 2. `supabase/functions/auto-create-invoice/index.ts` (lines 264-271)
+### 2. Fix the 4 existing invoices via migration
 
-Same approach: after splitting line items for display, recalculate the final total as `floor(originalTotal / N)` to ensure consistency. The calling function (`split-invoice`) handles the remainder adjustment on the first invoice.
-
-### Technical Detail
-
-- Line items still show `(1/N)` with divided prices for transparency
-- The `total` field is adjusted so that `N × splitShare = originalTotal` (±1 cent on one invoice)
-- This ensures the sum of all split invoices exactly equals the original unsplit amount
+Update INV-2026-0062 through 0065 with correct values:
+- **subtotal**: €522.00 (370 training + 152 baanhuur)
+- **vat_amount**: €33.30 (370 × 9%)
+- **total**: €555.30
+- **vat_breakdown**: `{0: {subtotal: 152, vat: 0}, 9: {subtotal: 370, vat: 33.30}}`
+- Clear `pdf_url` to force regeneration
 
 | File | Change |
 |------|--------|
-| `supabase/functions/split-invoice/index.ts` | Adjust total after line-item division to absorb rounding remainder |
-| `supabase/functions/auto-create-invoice/index.ts` | Same rounding correction when `splitAmongPlayers` is used |
+| `supabase/functions/auto-create-invoice/index.ts` | Add `&& !hasMultipleVatRates` guard to split correction block (line 344) |
+| Migration SQL | Update totals on the 4 draft invoices to €555.30 each |
 
