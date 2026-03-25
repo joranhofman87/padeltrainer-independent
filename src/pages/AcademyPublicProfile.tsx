@@ -173,10 +173,16 @@ export default function AcademyPublicProfile() {
   if (academy?.social_linkedin) socialLinks.push({ platform: 'linkedin' as const, handle: academy.social_linkedin });
 
   // Quick stats
-  const quickStats: Array<{ icon: React.ReactNode; label: string; value: string | number }> = [
+  const quickStats: Array<{ icon: React.ReactNode; label: string; value: string | number }> = [];
+  
+  if (academy?.is_verified) {
+    quickStats.push({ icon: <CheckCircle className="h-4 w-4 text-green-500" />, label: t('common:verified', 'Verified'), value: '✓' });
+  }
+  
+  quickStats.push(
     { icon: <Users className="h-4 w-4" />, label: t('stats.trainers'), value: trainers.length },
     { icon: <MapPin className="h-4 w-4" />, label: t('stats.locations'), value: locations.length },
-  ];
+  );
 
   const avgRating = trainers.filter(t => t.avgRating).reduce((sum, t) => sum + (t.avgRating || 0), 0) / (trainers.filter(t => t.avgRating).length || 1);
   if (trainers.some(t => t.avgRating)) {
