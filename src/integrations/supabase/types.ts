@@ -2130,6 +2130,7 @@ export type Database = {
           trainer_id: string
           updated_at: string
           vat_amount: number
+          vat_breakdown: Json | null
           vat_rate: number
         }
         Insert: {
@@ -2160,6 +2161,7 @@ export type Database = {
           trainer_id: string
           updated_at?: string
           vat_amount?: number
+          vat_breakdown?: Json | null
           vat_rate?: number
         }
         Update: {
@@ -2190,6 +2192,7 @@ export type Database = {
           trainer_id?: string
           updated_at?: string
           vat_amount?: number
+          vat_breakdown?: Json | null
           vat_rate?: number
         }
         Relationships: [

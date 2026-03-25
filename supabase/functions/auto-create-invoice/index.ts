@@ -390,6 +390,7 @@ serve(async (req) => {
         vat_rate: vatRate,
         vat_amount: Math.round(vatAmount * 100) / 100,
         total: Math.round(totalInclusive * 100) / 100,
+        ...(Object.keys(vatBreakdown).length > 0 ? { vat_breakdown: vatBreakdown } : {}),
         status: invoiceStatus,
         booking_ids: bookingIds,
         ...(invoiceStatus === "sent" ? { sent_at: new Date().toISOString() } : {}),
