@@ -72,7 +72,7 @@ export default function AcademySignup() {
     trackEvent('signup_started', { role: 'academy', method: 'email', ...getUtmParams() });
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName);
+    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Academy');
 
     if (error) {
       logger.error('Academy signup failed', error, { component: 'AcademySignup', action: 'signUp' });
