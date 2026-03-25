@@ -11,6 +11,7 @@ interface LineItem {
   quantity: number;
   unit_price: number;
   date?: string;
+  vat_rate?: number;
 }
 
 interface InvoiceData {
