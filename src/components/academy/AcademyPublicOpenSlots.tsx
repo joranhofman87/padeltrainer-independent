@@ -28,6 +28,7 @@ interface SlotData {
   max_participants: number;
   allow_single_booking: boolean;
   spots_left: number;
+  split_payment: boolean;
 }
 
 interface DayGroup {
