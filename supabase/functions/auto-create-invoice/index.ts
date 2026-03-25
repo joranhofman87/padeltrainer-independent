@@ -33,7 +33,7 @@ serve(async (req) => {
       });
     }
 
-    logStep("Processing bookings", { bookingIds, asDraft });
+    logStep("Processing bookings", { bookingIds, asDraft, splitAmongPlayers });
 
     // Fetch all bookings with details
     const { data: bookings, error: bookingsError } = await supabase
