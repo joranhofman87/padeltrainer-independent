@@ -180,6 +180,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
             max_participants: maxP,
             allow_single_booking: s.allow_single_booking || false,
             spots_left: maxP - booked,
+            split_payment: (s as any).split_payment || false,
           };
         });
 
