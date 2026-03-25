@@ -4769,6 +4769,7 @@ export type Database = {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
       }
+      get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
       get_user_academy_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_role: {
