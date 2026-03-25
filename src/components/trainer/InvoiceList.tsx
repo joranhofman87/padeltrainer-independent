@@ -312,7 +312,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
     setActionLoading(null);
   };
 
-
+  const filteredInvoices = invoices.filter(inv => {
     if (statusFilter === 'all') return true;
     return inv.status === statusFilter;
   });
