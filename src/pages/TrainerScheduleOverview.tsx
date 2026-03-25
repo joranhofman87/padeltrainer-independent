@@ -382,6 +382,7 @@ export default function TrainerScheduleOverview() {
       originalRepeatCount: group.slots.length,
       pricesIncludeVat: firstSlot?.prices_include_vat ?? true,
       splitPayment: firstSlot?.split_payment ?? false,
+      originalSplitPayment: firstSlot?.split_payment ?? false,
     });
 
     // Collect unique players from all bookings across cycle slots
