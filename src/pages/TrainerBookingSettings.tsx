@@ -286,6 +286,11 @@ export default function TrainerBookingSettings() {
             </div>
           </CardContent>
         </Card>
+        {/* Extra Cost Presets Card */}
+        {trainerProfileId && (
+          <ExtraCostPresetsCard trainerId={trainerProfileId} />
+        )}
+
         {/* VAT Settings Card */}
         <Card>
           <CardHeader>
