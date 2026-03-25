@@ -29,6 +29,7 @@ interface InvoiceData {
   vat_amount: number;
   total: number;
   notes: string | null;
+  vat_breakdown?: Record<string, { subtotal: number; vat: number }> | null;
   logo_url: string | null;
   trainer: {
     business_name: string;
