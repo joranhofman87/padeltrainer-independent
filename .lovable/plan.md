@@ -1,57 +1,50 @@
 
 
-# Academy Public Profile: Visual Cleanup & Cycle Location
+# Performance Optimization: Reduce Page Load Times
+
+## Problem
+Pages take 5-10 seconds to load. The root causes are:
+
+1. **Auth waterfall blocks rendering**: `useAuth` makes 4 parallel DB queries (roles, profile, club manager check, academy manager check) + a Stripe subscription edge function call — all while showing a loading skeleton. Edge function cold starts can add 2-5 seconds alone.
+2. **No data caching between navigations**: Public pages (AcademyPublicProfile, TrainerProfile, etc.) use raw `useEffect` + `useState` instead of TanStack Query, so every navigation re-fetches everything from scratch.
+3. **Subscription check blocks auth**: `fetchSubscription` calls an edge function on every page load for trainers — even on public pages where subscription status is irrelevant.
+4. **Sequential data waterfalls**: AcademyPublicProfile first fetches the academy, THEN fetches trainers + locations — a classic waterfall.
 
 ## Changes
 
-### 1. `src/pages/AcademyPublicProfile.tsx` — Hero cleanup + side-by-side stats
+### 1. Defer subscription check out of auth loading (`src/hooks/useAuth.tsx`)
+- Stop calling `fetchSubscription` inside the initial auth flow
+- Set `loading = false` immediately after `fetchUserData` completes (roles + profile)
+- Keep subscription fetch as a separate, non-blocking effect that updates `subscription` state after render
+- This alone should cut 2-4 seconds off initial load for trainers
 
-**Remove from ProfileHeroCard:**
-- `socialLinks` prop (line 305)
-- `isVerified` prop (line 304) — move verified badge to quick stats
-- Website button (lines 320-330)
-- Share dropdown (lines 331-357)
+### 2. Migrate AcademyPublicProfile to TanStack Query (`src/pages/AcademyPublicProfile.tsx`)
+- Replace `useEffect` + `useState` with `useQuery` for academy data, trainers, and locations
+- Use `staleTime: 5 * 60 * 1000` so revisiting the page is instant
+- Enable parallel fetching: use separate `useQuery` calls for trainers/locations that depend on `academy.id`, so they start as soon as academy data resolves
+- This means navigating back to a previously visited profile is instant
 
-**Keep:** Only the Follow button (if applicable) or no children at all.
+### 3. Migrate TrainerProfile to TanStack Query (`src/pages/TrainerProfile.tsx`)
+- Same pattern: replace `useEffect` data fetching with cached `useQuery` calls
+- Trainer data, reviews, availability — all cached across navigations
 
-**Layout change:** Wrap hero card + quick stats side-by-side like trainer profile:
-```
-<div className="flex flex-col lg:flex-row gap-4 mb-8">
-  <div className="lg:flex-1">
-    <ProfileHeroCard ... />
-  </div>
-  <div className="lg:w-[320px] flex-shrink-0 space-y-4">
-    <ProfileQuickStatsCard ... />  ← moved from sidebar
-    {/* About card */}
-  </div>
-</div>
-```
+### 4. Skip auth-related DB calls for anonymous users (`src/hooks/useAuth.tsx`)
+- When `onAuthStateChange` fires with no session, immediately set `loading = false`
+- Don't call `fetchUserData` (roles, profile, manager checks) for anonymous users — they have no data to fetch
+- This speeds up all public page loads for non-logged-in visitors
 
-Add verified status as a stat in quickStats array (with CheckCircle icon).
+### 5. Lazy-load subscription check only for trainer routes
+- Move the `check-stripe-subscription` edge function call to the TrainerLayout component instead of the global auth provider
+- Academy subscription is already handled separately in `AcademyLayout` via TanStack Query — good pattern to follow
 
-**Remove Quick Stats and About from sidebar** — they move next to the hero.
-
-**Remove the Contact Info card** from sidebar (if present).
-
-### 2. `src/components/academy/AcademyOpenCycles.tsx` — Show location on cycle cards
-
-Add location name display to each cycle card. The data is already available via `cycle.location?.name`.
-
-Add a MapPin icon + location name in the metadata row (line 121-148 area):
-```tsx
-{cycle.location?.name && (
-  <span className="flex items-center gap-1">
-    <MapPin className="h-4 w-4" />
-    {cycle.location.name}
-  </span>
-)}
-```
-
-### 3. Spacing/padding
-
-Ensure `gap-4` or `gap-6` between all major card sections. The content grid and full-width sections already use spacing — verify `space-y-4` on cycle items and `gap-4`/`gap-6` on grids.
+## Impact
+- **Anonymous visitors** (majority of traffic): Auth resolves instantly (no DB calls), page data loads via cached queries
+- **Logged-in trainers**: Auth resolves after 4 fast DB queries (~200-500ms), subscription check happens in background after page renders
+- **Return navigations**: Instant from TanStack Query cache
 
 ## Files
-- `src/pages/AcademyPublicProfile.tsx` — Hero cleanup, side-by-side layout with stats
-- `src/components/academy/AcademyOpenCycles.tsx` — Add location to cycle cards
+- `src/hooks/useAuth.tsx` — Defer subscription, skip calls for anon users
+- `src/pages/AcademyPublicProfile.tsx` — Migrate to TanStack Query
+- `src/pages/TrainerProfile.tsx` — Migrate to TanStack Query
+- `src/components/trainer/TrainerLayout.tsx` — Move subscription check here
 
