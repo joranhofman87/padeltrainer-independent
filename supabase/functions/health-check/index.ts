@@ -35,7 +35,31 @@ serve(async (req) => {
     checks.database = { ok: false, error: String(e) };
   }
 
-  // 2. Critical secrets present
+  // 2. RLS recursion smoke check
+  try {
+    const rlsStart = Date.now();
+    const supabaseUrl2 = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const anonClient = createClient(supabaseUrl2, anonKey);
+
+    const rlsTables = ["profiles", "trainer_profiles", "bookings"];
+    const rlsErrors: string[] = [];
+
+    for (const table of rlsTables) {
+      const { error } = await anonClient.from(table).select("id").limit(1);
+      if (error?.message?.includes("infinite recursion")) {
+        rlsErrors.push(`${table}: ${error.message}`);
+      }
+    }
+
+    checks.rls_recursion = rlsErrors.length > 0
+      ? { ok: false, ms: Date.now() - rlsStart, error: rlsErrors.join("; ") }
+      : { ok: true, ms: Date.now() - rlsStart };
+  } catch (e) {
+    checks.rls_recursion = { ok: false, error: String(e) };
+  }
+
+  // 3. Critical secrets present
   const requiredSecrets = ["MOLLIE_API_KEY", "RESEND_API_KEY", "SLACK_WEBHOOK_URL"];
   const missingSecrets = requiredSecrets.filter((s) => !Deno.env.get(s));
   checks.secrets = {
