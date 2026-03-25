@@ -517,6 +517,23 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
         invoice={editInvoice}
         onSaved={() => fetchInvoices()}
       />
+
+      <AlertDialog open={splitConfirm.open} onOpenChange={(open) => !open && setSplitConfirm({ open: false, invoiceId: '' })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Factuur splitsen over spelers</AlertDialogTitle>
+            <AlertDialogDescription>
+              Weet je zeker dat je deze factuur wilt splitsen over alle spelers? De huidige factuur wordt aangepast (bedragen gedeeld door het aantal spelers) en er worden nieuwe facturen aangemaakt voor de andere spelers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleSplitInvoice(splitConfirm.invoiceId)}>
+              Splitsen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
