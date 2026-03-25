@@ -572,6 +572,72 @@ export default function TrainerScheduleOverview() {
         }
       }
 
+      // 4. If splitPayment toggled ON, update cycle settings and split existing invoices
+      if (cycleEditData.splitPayment) {
+        // Update cycles table settings
+        const { data: cycleRow } = await supabase
+          .from("cycles")
+          .select("settings")
+          .eq("id", editCycleId)
+          .maybeSingle();
+
+        if (cycleRow) {
+          const settings: Record<string, unknown> = ((cycleRow.settings as Record<string, unknown>) || {});
+          settings.split_payment = true;
+          await supabase.from("cycles").update({ settings: settings as any }).eq("id", editCycleId);
+        }
+
+        // Find all bookings on this cycle's slots
+        const { data: cycleSlotIds } = await supabase
+          .from("availability_slots")
+          .select("id")
+          .eq("cyclus_id", editCycleId);
+
+        if (cycleSlotIds && cycleSlotIds.length > 0) {
+          const slotIdList = cycleSlotIds.map((s) => s.id);
+          const { data: cycleBookings } = await supabase
+            .from("bookings")
+            .select("id")
+            .in("slot_id", slotIdList)
+            .in("status", ["confirmed", "attended"]);
+
+          if (cycleBookings && cycleBookings.length > 0) {
+            const bookingIdList = cycleBookings.map((b) => b.id);
+
+            // Find unpaid invoices that reference any of these bookings
+            const { data: invoices } = await supabase
+              .from("invoices")
+              .select("id, booking_ids, status")
+              .neq("status", "paid");
+
+            if (invoices && invoices.length > 0) {
+              const matchingInvoices = invoices.filter((inv) => {
+                const ids = (inv.booking_ids as string[]) || [];
+                return ids.some((bid) => bookingIdList.includes(bid));
+              });
+
+              let splitCount = 0;
+              for (const inv of matchingInvoices) {
+                try {
+                  const { error: splitErr } = await supabase.functions.invoke("split-invoice", {
+                    body: { invoiceId: inv.id },
+                  });
+                  if (!splitErr) splitCount++;
+                } catch {
+                  // non-blocking
+                }
+              }
+
+              if (splitCount > 0) {
+                toast({
+                  title: t("scheduleOverview.invoicesSplit", "{{count}} invoice(s) split over players", { count: splitCount }),
+                });
+              }
+            }
+          }
+        }
+      }
+
       toast({ title: t("scheduleOverview.cycleSaved", "Cycle updated") });
       setEditDialogOpen(false);
       invalidate();
