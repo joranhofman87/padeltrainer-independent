@@ -438,6 +438,20 @@ export default function AcademyPublicProfile() {
           </ProfileFullWidthSection>
         )}
 
+        {/* About */}
+        {academy.description && (
+          <ProfileFullWidthSection>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('common:aboutAcademy', 'About')} {academy.name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground whitespace-pre-line">{academy.description}</p>
+              </CardContent>
+            </Card>
+          </ProfileFullWidthSection>
+        )}
+
         {/* Reviews */}
         {academy.id && <AcademyReviews academyId={academy.id} />}
       </ProfileLayout>
