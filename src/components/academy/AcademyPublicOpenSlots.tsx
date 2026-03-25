@@ -86,6 +86,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           total_price,
           max_participants,
           allow_single_booking,
+          extra_costs,
           location_id,
           trainer_id,
           locations:location_id(name)
