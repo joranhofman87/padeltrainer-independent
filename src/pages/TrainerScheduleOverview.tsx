@@ -83,6 +83,7 @@ type SlotWithBookings = {
   price_per_session: number | null;
   prices_include_vat: boolean;
   extra_costs: ExtraCost[] | null;
+  split_payment: boolean | null;
   locations?: { name: string; city: string } | null;
   bookings: {
     id: string;
