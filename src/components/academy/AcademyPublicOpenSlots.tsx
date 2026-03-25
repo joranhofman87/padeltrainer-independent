@@ -57,11 +57,13 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
   const fetchOpenSlots = async () => {
     try {
       // Fetch active trainer IDs for this academy
-      const { data: trainerRows } = await supabase
+      const { data: trainerRows, error: trainerError } = await supabase
         .from('academy_trainers')
         .select('trainer_profile_id')
         .eq('academy_profile_id', academyId)
         .eq('status', 'active');
+
+      console.log('[OpenSlots] trainerRows:', trainerRows?.length, 'error:', trainerError);
 
       const trainerIds = (trainerRows || []).map(t => t.trainer_profile_id);
 
@@ -70,7 +72,9 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         ? `academy_profile_id.eq.${academyId},trainer_id.in.(${trainerIds.join(',')})`
         : `academy_profile_id.eq.${academyId}`;
 
-      const { data: slotsData } = await supabase
+      console.log('[OpenSlots] orFilter:', orFilter);
+
+      const { data: slotsData, error: slotsError } = await supabase
         .from('availability_slots')
         .select(`
           id,
@@ -101,6 +105,8 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })
         .limit(50);
+
+      console.log('[OpenSlots] slotsData:', slotsData?.length, 'error:', slotsError);
 
       if (!slotsData || slotsData.length === 0) {
         setDayGroups([]);
