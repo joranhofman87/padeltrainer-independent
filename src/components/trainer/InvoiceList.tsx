@@ -21,8 +21,19 @@ import {
   Trash2,
   Eye,
   Mail,
-  Pencil
+  Pencil,
+  Users
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { format, parseISO, isAfter } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -71,6 +82,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [splitConfirm, setSplitConfirm] = useState<{ open: boolean; invoiceId: string }>({ open: false, invoiceId: '' });
 
   useEffect(() => {
     fetchInvoices();
@@ -275,6 +287,31 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
     setActionLoading(null);
   };
 
+  const handleSplitInvoice = async (invoiceId: string) => {
+    setSplitConfirm({ open: false, invoiceId: '' });
+    setActionLoading(invoiceId);
+    try {
+      const { data, error } = await supabase.functions.invoke('split-invoice', {
+        body: { invoiceId },
+      });
+      if (error || data?.error) {
+        const msg = data?.error === 'no_other_players' 
+          ? 'Er zijn geen andere spelers om mee te splitsen'
+          : (data?.message || 'Kon factuur niet splitsen');
+        toast({ title: 'Fout', description: msg, variant: 'destructive' });
+      } else {
+        toast({ 
+          title: 'Factuur gesplitst', 
+          description: `Gesplitst over ${data.totalPlayers} spelers. ${data.createdInvoices?.length || 0} nieuwe facturen aangemaakt.` 
+        });
+        fetchInvoices();
+      }
+    } catch {
+      toast({ title: 'Fout', description: 'Kon factuur niet splitsen', variant: 'destructive' });
+    }
+    setActionLoading(null);
+  };
+
   const filteredInvoices = invoices.filter(inv => {
     if (statusFilter === 'all') return true;
     return inv.status === statusFilter;
@@ -416,6 +453,17 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        {invoice.booking_ids && invoice.booking_ids.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSplitConfirm({ open: true, invoiceId: invoice.id })}
+                            disabled={actionLoading === invoice.id}
+                            title="Split over spelers"
+                          >
+                            <Users className="h-4 w-4" />
+                          </Button>
+                        )}
                       </>
                     )}
 
@@ -469,6 +517,23 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
         invoice={editInvoice}
         onSaved={() => fetchInvoices()}
       />
+
+      <AlertDialog open={splitConfirm.open} onOpenChange={(open) => !open && setSplitConfirm({ open: false, invoiceId: '' })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Factuur splitsen over spelers</AlertDialogTitle>
+            <AlertDialogDescription>
+              Weet je zeker dat je deze factuur wilt splitsen over alle spelers? De huidige factuur wordt aangepast (bedragen gedeeld door het aantal spelers) en er worden nieuwe facturen aangemaakt voor de andere spelers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleSplitInvoice(splitConfirm.invoiceId)}>
+              Splitsen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
