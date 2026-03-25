@@ -482,16 +482,14 @@ export default function AcademyInvoices() {
                                   )}
                                 </Button>
                               )}
-                              {inv.pdf_url && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleDownloadPdf(inv)}
-                                  title={t("invoices.downloadPdf", "Download PDF")}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDownloadPdf(inv)}
+                                title={t("invoices.downloadPdf", "Download PDF")}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
