@@ -204,7 +204,7 @@ export default function BookLesson() {
         }
       });
 
-      let newCycleSettingsMap: Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean }> = {};
+      let newCycleSettingsMap: Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean }> = {};
       if (cyclusIds.length > 0) {
         const { data: cyclesData } = await supabase.from('cycles').select('id, settings').in('id', cyclusIds);
         if (cyclesData) {
