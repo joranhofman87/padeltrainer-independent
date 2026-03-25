@@ -546,11 +546,9 @@ export default function AcademyInvoices() {
                             {t("invoices.forwardToBookkeeper", "Forward")}
                           </Button>
                         )}
-                        {inv.pdf_url && (
-                          <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>
-                            <Download className="h-4 w-4 mr-1" />PDF
-                          </Button>
-                        )}
+                        <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>
+                          <Download className="h-4 w-4 mr-1" />PDF
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
