@@ -824,6 +824,7 @@ export function BulkCreateSheet({
               ? config.extraCosts.filter(c => c.description || c.price > 0) 
               : []) as unknown as Json,
             prices_include_vat: pricesIncludeVat,
+            split_payment: config.splitPayment,
           } as any);
 
           // Add to existing times to prevent duplicates within same batch
