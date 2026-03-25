@@ -1,25 +1,39 @@
 
 
-# Add Manual Forward-to-Bookkeeper Button on Paid Invoices
+# Fix: Player Signup Sends "Trainer" Slack Notification
 
-## Problem
-The trainer invoice list (`InvoiceList.tsx`) already has a forward button for paid invoices, but the academy invoice page (`AcademyInvoices.tsx`) — which RL Performance Academy uses — has no such button. Also, if the automatic forwarding via the webhook fails, there's no manual retry option visible.
+## Root Cause
 
-## Changes
+Two issues combine:
 
-### `src/pages/academy/AcademyInvoices.tsx`
+1. **`signup-user/index.ts`** (server-side, uses service role key) hardcodes `role: 'Trainer'` in its Slack notification — this is the only one that succeeds
+2. **`PlayerSignup.tsx`** (client-side, uses anon key) tries to call `slack-notify` directly, but `slack-notify` requires service role auth → **401 Unauthorized** → silently fails
 
-1. **Import `Mail` icon** from lucide-react
-2. **Fetch forward emails** from `trainer_profiles.invoice_forward_emails` for the academy's trainers (or from the academy profile if stored there) — need to check where RL Performance Academy stores this setting
-3. **Add a forward button** on paid invoices (both desktop table and mobile cards) that calls `supabase.functions.invoke('forward-invoice', { body: { invoiceId } })` with a toast on success/failure
-4. Show the button on all paid invoices (not gated by `forwardEmails.length > 0` — the edge function already handles the "no emails configured" case gracefully)
+Same issue exists for Club/Academy signup pages — their client-side Slack calls also fail silently.
 
-### `src/components/trainer/InvoiceList.tsx`
+## Fix
 
-5. **Remove the `forwardEmails.length > 0` gate** on the existing forward button (line 498) — show it on all paid invoices so trainers can always manually retry. The edge function returns a harmless "no forwarding emails configured" message if none are set.
+### 1. `supabase/functions/signup-user/index.ts`
+- Accept an optional `role` parameter in the request body (already destructured alongside `language`)
+- Use it in the Slack notification instead of hardcoded `'Trainer'`
+- Default to `'Unknown'` if not provided
+
+### 2. `src/pages/PlayerSignup.tsx`
+- Pass `role: 'player'` in the body sent to `signup-user`
+- **Remove** the direct client-side `slack-notify` calls (both success paths) — they always fail due to auth
+
+### 3. `src/pages/AcademySignup.tsx`
+- Pass `role: 'academy'` in the body sent to `signup-user`  
+- **Remove** the direct client-side `slack-notify` calls
+
+### 4. `src/pages/ClubSignup.tsx`
+- Pass `role: 'club'` in the body sent to `signup-user`
+- **Remove** the direct client-side `slack-notify` calls
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyInvoices.tsx` | Add Mail icon import, add forward button on paid invoices (desktop + mobile) |
-| `src/components/trainer/InvoiceList.tsx` | Show forward button on all paid invoices regardless of forwardEmails config |
+| `supabase/functions/signup-user/index.ts` | Use `role` from request body instead of hardcoded `'Trainer'` |
+| `src/pages/PlayerSignup.tsx` | Pass `role: 'player'` to signup-user, remove failing client-side slack-notify |
+| `src/pages/AcademySignup.tsx` | Pass `role: 'academy'`, remove client-side slack-notify |
+| `src/pages/ClubSignup.tsx` | Pass `role: 'club'`, remove client-side slack-notify |
 
