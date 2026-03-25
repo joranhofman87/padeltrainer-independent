@@ -247,13 +247,22 @@ export default function AcademyInvoices() {
   };
 
   const handleDownloadPdf = async (invoice: Invoice) => {
-    if (!invoice.pdf_url) {
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-invoice', {
+        body: { invoiceId: invoice.id },
+      });
+      if (error || !data?.html) {
+        toast.error(t("invoices.noPdf", "No PDF available"));
+        return;
+      }
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(data.html);
+        printWindow.document.close();
+        printWindow.onload = () => printWindow.print();
+      }
+    } catch {
       toast.error(t("invoices.noPdf", "No PDF available"));
-      return;
-    }
-    const { data } = await supabase.storage.from("invoices").createSignedUrl(invoice.pdf_url, 60);
-    if (data?.signedUrl) {
-      window.open(data.signedUrl, "_blank");
     }
   };
 
@@ -473,16 +482,14 @@ export default function AcademyInvoices() {
                                   )}
                                 </Button>
                               )}
-                              {inv.pdf_url && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleDownloadPdf(inv)}
-                                  title={t("invoices.downloadPdf", "Download PDF")}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDownloadPdf(inv)}
+                                title={t("invoices.downloadPdf", "Download PDF")}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -539,11 +546,9 @@ export default function AcademyInvoices() {
                             {t("invoices.forwardToBookkeeper", "Forward")}
                           </Button>
                         )}
-                        {inv.pdf_url && (
-                          <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>
-                            <Download className="h-4 w-4 mr-1" />PDF
-                          </Button>
-                        )}
+                        <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>
+                          <Download className="h-4 w-4 mr-1" />PDF
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
