@@ -341,7 +341,7 @@ serve(async (req) => {
 
     // For split payments, use floor(unsplitTotal/N) to ensure all shares sum to original
     // The split-invoice function handles giving the remainder to the first player
-    if (unsplitTotal !== null && splitAmongPlayers && splitAmongPlayers > 1) {
+    if (unsplitTotal !== null && splitAmongPlayers && splitAmongPlayers > 1 && !hasMultipleVatRates) {
       const splitShare = Math.floor((unsplitTotal / splitAmongPlayers) * 100) / 100;
       logStep("Correcting split total", { unsplitTotal, splitShare, calculatedTotal: totalInclusive });
       totalInclusive = splitShare;
