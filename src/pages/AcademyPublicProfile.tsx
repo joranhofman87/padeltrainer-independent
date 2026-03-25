@@ -28,7 +28,6 @@ import {
   ProfileFullWidthSection,
   ProfileHeroCard,
   VideoGallery,
-  VideoGallery,
 } from '@/components/profiles';
 import { 
   getAcademyBySlug, 
