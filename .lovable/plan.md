@@ -1,38 +1,48 @@
 
 
-# Fix: Draft Invoices Not Updated on Slot Deletion
+# Admin Invoice Delete + Duplicate Prevention
 
-## Root Cause
-`DeleteSlotDialog.checkAffectedInvoices` (line 124) queries invoices with status filter `["sent", "paid", "pending"]` — but **"draft" is missing**. Both Nick's and Joran's invoices (INV-2026-0054 and INV-2026-0055) have status "draft", so the dialog never finds them and never triggers recalculation.
-
-The shared utility `invoiceSync.ts` (line 247) already includes "draft" correctly — the bug is only in the dialog's preview/check query.
+## Problem
+1. INV-0010 is a stale full invoice (€2189.20, status "sent") that was never updated when split invoices INV-0054/0055 were created — it's a duplicate
+2. Admins have no way to delete or void invoices
+3. The `split-invoice` edge function doesn't check for existing split invoices before creating new ones, risking duplicates
 
 ## Plan
 
-### 1. Fix status filter in DeleteSlotDialog (1 line)
-**File:** `src/components/trainer/DeleteSlotDialog.tsx`, line 124
-
-Change:
-```typescript
-.in("status", ["sent", "paid", "pending"])
-```
-To:
-```typescript
-.in("status", ["draft", "sent", "paid", "pending"])
+### 1. Add RLS policy for admin DELETE on invoices (migration)
+```sql
+CREATE POLICY "Admins can delete invoices"
+ON public.invoices FOR DELETE
+TO authenticated
+USING (public.is_admin(auth.uid()));
 ```
 
-### 2. Manually fix INV-2026-0054 and INV-2026-0055 (data patch)
-Remove the deleted booking IDs and recalculate for 16 sessions:
+### 2. Add "Void" action to InvoiceList for admins
+**File:** `src/components/trainer/InvoiceList.tsx`
+- Accept an `isAdmin` prop
+- For admins, show a delete/void button on ALL invoices (not just drafts)
+- Use an AlertDialog confirmation before deleting
+- For sent/overdue invoices, set status to "cancelled" instead of hard-deleting (audit trail); for drafts, hard-delete
 
-- **INV-0054**: Remove `716961ff-0d06-43c6-89e4-0d1b11933444` from booking_ids
-- **INV-0055**: Remove `476c63f2-6d87-4f5c-96dc-0b3994ab1172` from booking_ids
-- Update line items to 16 weken, recalculate totals:
-  - Sessions: 16 × €46.25 = €740.00 (9% VAT inclusive)
-  - Extra costs: 16 × €18.00 = €288.00 (0% VAT)
-  - Subtotal: €966.97, VAT: €61.03, Total: €1,028.00
+### 3. Pass `isAdmin` from parent pages
+Check where `InvoiceList` is used (`TrainerEarnings.tsx`) and pass `isAdmin` when the current user is an admin (already available from auth context).
+
+### 4. Add duplicate guard to `split-invoice` edge function
+**File:** `supabase/functions/split-invoice/index.ts`
+- Before creating new invoices for other players, check if an invoice already exists with overlapping `booking_ids` for that player
+- Skip creation if a split invoice already exists, preventing duplicates
+
+### 5. Delete duplicate INV-0010 (data patch)
+Use the insert tool to delete the stale invoice:
+```sql
+DELETE FROM invoices WHERE id = 'd240142a-bac9-4aac-bf9a-06f8cb3bec49';
+```
 
 | File | Change |
 |------|--------|
-| `src/components/trainer/DeleteSlotDialog.tsx` | Add "draft" to invoice status filter |
-| Database (insert tool) | Patch both invoices to 16 sessions |
+| Migration SQL | Admin DELETE policy on invoices |
+| `src/components/trainer/InvoiceList.tsx` | Add admin void/delete capability for all statuses |
+| `src/pages/TrainerEarnings.tsx` | Pass `isAdmin` prop |
+| `supabase/functions/split-invoice/index.ts` | Add duplicate booking_ids check before creating |
+| Database (data patch) | Remove INV-0010 |
 
