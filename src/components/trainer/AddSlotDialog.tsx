@@ -1235,6 +1235,30 @@ export function BulkCreateSheet({
 
                     {slot.hasExtraCosts && (
                       <div className="space-y-2 pl-6 border-l-2 border-primary/20">
+                        {/* Presets first */}
+                        <div className="flex flex-wrap gap-2">
+                          <ExtraCostPresetPicker
+                            trainerId={slot.trainerId}
+                            academyProfileId={slot.academyProfileId}
+                            onSelect={(cost) => {
+                              updateBulkSlot(index, { extraCosts: [...slot.extraCosts, cost] });
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              updateBulkSlot(index, { extraCosts: [...slot.extraCosts, { description: '', price: 0, type: 'per_session', vat_rate: 21 }] });
+                            }}
+                            className="gap-1 text-muted-foreground"
+                          >
+                            <Plus className="h-3 w-3" />
+                            {t("calendar.addCostLine", "Handmatig toevoegen")}
+                          </Button>
+                        </div>
+
+                        {/* Existing cost items */}
                         {slot.extraCosts.map((cost, costIndex) => (
                           <div key={costIndex} className="space-y-1.5">
                             <Input
@@ -1331,27 +1355,6 @@ export function BulkCreateSheet({
                             </div>
                           </div>
                         ))}
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              updateBulkSlot(index, { extraCosts: [...slot.extraCosts, { description: '', price: 0, type: 'per_session', vat_rate: 21 }] });
-                            }}
-                            className="gap-1"
-                          >
-                            <Plus className="h-3 w-3" />
-                            {t("calendar.addCostLine", "Add cost")}
-                          </Button>
-                          <ExtraCostPresetPicker
-                            trainerId={slot.trainerId}
-                            academyProfileId={slot.academyProfileId}
-                            onSelect={(cost) => {
-                              updateBulkSlot(index, { extraCosts: [...slot.extraCosts, cost] });
-                            }}
-                          />
-                        </div>
                         {slot.extraCosts.length > 0 && slot.extraCosts.some(c => c.price > 0) && (
                           <p className="text-xs text-muted-foreground">
                             {t("calendar.extraCostsPerSession", "Extra costs per session")}: {formatPrice(slot.extraCosts.filter(c => (c.type || 'per_session') === 'per_session').reduce((sum, c) => sum + (c.price || 0), 0))}
