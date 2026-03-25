@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Calendar, Clock, MapPin, User, Star, FileText } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin, User, Star, FileText, CalendarPlus } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { cancelBooking } from '@/lib/lessons';
@@ -16,6 +16,7 @@ import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { getPlayerReview } from '@/lib/reviews';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
+import { downloadIcsFile } from '@/lib/icsGenerator';
 
 interface BookingWithDetails {
   id: string;
@@ -212,6 +213,21 @@ export default function PlayerBookings() {
     (b) => b.status === 'cancelled' || isPast(parseISO(b.availability_slots.start_time))
   );
 
+  const handleDownloadCalendar = (bookingsToExport: BookingWithDetails[]) => {
+    const events = bookingsToExport
+      .filter(b => b.status !== 'cancelled')
+      .map(b => ({
+        title: `Padel Training – ${b.trainerName}${b.availability_slots.cyclus_name ? ` (${b.availability_slots.cyclus_name})` : ''}`,
+        startTime: b.availability_slots.start_time,
+        endTime: b.availability_slots.end_time,
+        location: b.availability_slots.locations?.name || undefined,
+        description: `Coach: ${b.trainerName}`,
+      }));
+    if (events.length === 0) return;
+    const cycleName = bookingsToExport[0]?.availability_slots.cyclus_name || 'training';
+    downloadIcsFile(events, `${cycleName.replace(/\s+/g, '-').toLowerCase()}-sessions.ics`);
+  };
+
   if (loading || loadingBookings) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -222,9 +238,22 @@ export default function PlayerBookings() {
 
   return (
     <main className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">{t('bookings.title')}</h1>
-        <p className="text-muted-foreground">{t('bookings.subtitle')}</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{t('bookings.title')}</h1>
+          <p className="text-muted-foreground">{t('bookings.subtitle')}</p>
+        </div>
+        {upcomingBookings.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => handleDownloadCalendar(upcomingBookings)}
+          >
+            <CalendarPlus className="h-4 w-4" />
+            {t('bookings.addToCalendar', 'Add to Calendar')}
+          </Button>
+        )}
       </div>
       
       <Tabs defaultValue="upcoming">
