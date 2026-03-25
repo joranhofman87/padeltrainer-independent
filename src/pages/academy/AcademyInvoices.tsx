@@ -46,6 +46,7 @@ export default function AcademyInvoices() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingAll, setSendingAll] = useState(false);
+  const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
