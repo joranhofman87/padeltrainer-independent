@@ -119,6 +119,12 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
                     )}
                   </div>
                   <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
+                    {cycle.location?.name && (
+                      <span className="flex items-center gap-1 font-medium text-foreground">
+                        <MapPin className="h-4 w-4" />
+                        {cycle.location.name}
+                      </span>
+                    )}
                     <span className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
                       {format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}
