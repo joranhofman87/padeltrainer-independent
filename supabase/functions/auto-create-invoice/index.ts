@@ -54,6 +54,8 @@ serve(async (req) => {
           cyclus_id,
           cyclus_name,
           prices_include_vat,
+          extra_costs,
+          split_payment,
           locations(name, city)
         )
       `)

@@ -913,9 +913,11 @@ export function BulkCreateSheet({
 
                     for (const [, bIds] of playerBookingMap) {
                       try {
-                        await supabase.functions.invoke("auto-create-invoice", {
-                          body: { bookingIds: bIds, asDraft: true },
-                        });
+                        const invoiceBody: Record<string, unknown> = { bookingIds: bIds, asDraft: true };
+                        if (config.splitPayment && playerBookingMap.size > 1) {
+                          invoiceBody.splitAmongPlayers = playerBookingMap.size;
+                        }
+                        await supabase.functions.invoke("auto-create-invoice", invoiceBody);
                       } catch (invoiceErr) {
                         logger.warn("Draft invoice creation failed (non-blocking)", { error: invoiceErr, component: 'AddSlotDialog' });
                       }
