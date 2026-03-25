@@ -829,7 +829,10 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
       const summaryRows: string[] = [];
       if (data.phone) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.phone}:</strong> ${data.phone}</p>`);
       if (data.birthDate) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.birthDate}:</strong> ${formatDate(data.birthDate) || data.birthDate}</p>`);
-      if (data.lessonTypes && data.lessonTypes.length > 0) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.lessonType}:</strong> ${data.lessonTypes.join(', ')}</p>`);
+      if (data.lessonTypes && data.lessonTypes.length > 0) {
+        const translatedTypes = data.lessonTypes.map((lt: string) => ltLabels[lt] || lt);
+        summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.lessonType}:</strong> ${translatedTypes.join(', ')}</p>`);
+      }
       if (data.preferredDurationMinutes) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.duration}:</strong> ${data.preferredDurationMinutes} ${t.min}</p>`);
       if (data.sessionsPerWeek) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.sessionsWeek}:</strong> ${data.sessionsPerWeek}</p>`);
       if (data.selectedPackageLabel) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.package_}:</strong> ${data.selectedPackageLabel}</p>`);
