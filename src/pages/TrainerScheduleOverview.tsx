@@ -1238,7 +1238,23 @@ export default function TrainerScheduleOverview() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  <div className="flex gap-2 pl-1">
+                  <div className="flex gap-2 pl-1 items-center">
+                    <div className="relative w-20">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        className="pr-5 h-7 text-xs"
+                        value={cost.vat_rate ?? 21}
+                        onChange={(e) => {
+                          const updated = [...cycleEditData.extraCosts];
+                          updated[idx] = { ...updated[idx], vat_rate: parseFloat(e.target.value) || 0 };
+                          setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                        }}
+                      />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                    </div>
                     <label className={cn(
                       "flex items-center gap-1 text-xs cursor-pointer px-2 py-0.5 rounded-md border transition-colors",
                       (cost.type || 'per_session') === 'per_session' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
