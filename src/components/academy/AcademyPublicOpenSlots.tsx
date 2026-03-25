@@ -21,7 +21,9 @@ interface SlotData {
   court_type: string | null;
   location_name: string | null;
   trainer_name: string | null;
+  trainer_slug: string | null;
   price_per_session: number | null;
+  total_price: number | null;
   max_participants: number;
   allow_single_booking: boolean;
   spots_left: number;
