@@ -1,40 +1,34 @@
 
 
-# Attach Invoice Document to Bookkeeper Forwarding Email
+# Hide Calendar Sync + Add .ICS Download for Cycles
 
-## Current State
-The `forward-invoice` edge function sends an email with a **link** to the invoice HTML file in storage, but doesn't attach the actual document. Bookkeepers need the file attached so they can import it directly into their accounting software.
+## What Changes
 
-## Approach
-Resend supports email attachments via `attachments: [{ filename, content }]` where `content` is a base64-encoded string. The invoice documents are stored as HTML files in Supabase Storage.
-
-## Changes
-
-### `supabase/functions/forward-invoice/index.ts`
-
-1. **Download the invoice HTML** from storage using `supabase.storage.from('invoices').download(fileName)`
-2. **If `pdf_url` is null**, first call `generate-invoice` to ensure the document exists before downloading
-3. **Convert to base64** and attach to the Resend email as `{invoice_number}.html`
-4. Keep the existing download link in the email body as a fallback
-
-Key code addition (after the signed URL generation, before sending):
-```typescript
-// Download invoice file for attachment
-const { data: fileData } = await supabase.storage
-  .from("invoices")
-  .download(fileName);
-
-let attachments = [];
-if (fileData) {
-  const buffer = await fileData.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-  attachments = [{ filename: `${invoice.invoice_number}.html`, content: base64 }];
-}
-```
-
-Then add `attachments` to each `resend.emails.send()` call.
+### 1. Hide Calendar Sync from Player Settings
+Remove the Calendar Sync card from the settings grid and the sidebar link. Keep the route/page intact so it can be re-enabled later.
 
 | File | Change |
 |------|--------|
-| `supabase/functions/forward-invoice/index.ts` | Download invoice from storage, attach as HTML file to email |
+| `src/pages/PlayerSettings.tsx` | Remove the calendar sync entry from `settingsItems` array (lines 33-40), remove `CalendarSync` import |
+| `src/components/player/PlayerSidebar.tsx` | Remove/comment out the calendar sync nav link (line 276-281) |
+| `src/components/DomainRouter.tsx` | Comment out the calendar route for player (line 211) — keeps code, hides access |
+
+### 2. Add "Add to Calendar" (.ICS download) Button on Player Bookings
+Instead of a full Google Calendar integration, generate a downloadable `.ics` file for each cycle's sessions so players can import them into any calendar app (Google, Apple, Outlook).
+
+**Where it appears:**
+- On the **Player Bookings** page — an "Add to Calendar" button per booking/cycle
+- Optionally on the **Booking Success** page after payment
+
+**How it works (client-side, no edge function needed):**
+- Create a utility `src/lib/icsGenerator.ts` that builds a valid iCalendar `.ics` string from booking data (event title, start/end time, location, trainer name)
+- For a full cycle: generate a single `.ics` file containing all sessions as separate `VEVENT` entries
+- Trigger a browser download when the player clicks "Add to Calendar"
+
+**ICS format is universal** — works with Google Calendar, Apple Calendar, Outlook, etc. No OAuth integration needed.
+
+| File | Change |
+|------|--------|
+| `src/lib/icsGenerator.ts` | New file — utility to generate `.ics` content from booking/slot data |
+| `src/pages/player/PlayerBookings.tsx` (or equivalent) | Add "Add to Calendar" button that generates and downloads the `.ics` file |
 
