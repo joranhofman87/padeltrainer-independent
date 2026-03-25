@@ -1,64 +1,71 @@
 
 
-# Split Payment for Cycles & Slots
+# Extra Cost Presets with Per-Item VAT Rate
 
-## What it does
-Adds a "split payment" toggle to cycle settings and individual slots. When enabled, the **full total** (session prices + all extra costs) is divided equally among booked players. Each player receives their own invoice showing their share.
+## What this does
+1. Trainers/academies can save **extra cost presets** in their settings (e.g. "Ball costs — €5.00 — 21% BTW", "Court rental — €10.00 — 0% BTW")
+2. When creating a cycle or slot, toggling on extra costs shows a **preset picker** to quickly add saved costs
+3. Each extra cost carries its own `vat_rate`, so session prices and extra costs can have different tax rates
+4. Invoicing calculates VAT per line item group instead of a single flat rate
 
-**Example**: Cyclus total = €300 (sessions) + €50 (ball costs) + €20 (court fee) = €370. With 4 players → each gets an invoice for €92.50, with line items showing their proportional share.
+## Technical changes
 
----
+### 1. Database: New `extra_cost_presets` table
+```sql
+CREATE TABLE public.extra_cost_presets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trainer_id uuid REFERENCES trainer_profiles(id) ON DELETE CASCADE,
+  academy_profile_id uuid REFERENCES academy_profiles(id) ON DELETE CASCADE,
+  description text NOT NULL,
+  price numeric NOT NULL DEFAULT 0,
+  vat_rate numeric NOT NULL DEFAULT 21,
+  type text NOT NULL DEFAULT 'per_session', -- 'per_session' | 'one_time'
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT owner_check CHECK (
+    (trainer_id IS NOT NULL AND academy_profile_id IS NULL) OR
+    (trainer_id IS NULL AND academy_profile_id IS NOT NULL)
+  )
+);
+-- RLS: owner can CRUD their own presets
+```
 
-## Changes
+### 2. Update `ExtraCost` interface (`src/lib/cycles.ts`)
+Add `vat_rate?: number` to the existing `ExtraCost` interface. This field is stored on each extra cost in `availability_slots.extra_costs` JSON and cycle settings.
 
-### 1. Database migration
-- Add `split_payment boolean DEFAULT false` to `availability_slots`
+### 3. Settings UI: Manage presets
+Add a new **"Extra kosten presets"** card to `TrainerBookingSettings.tsx` (and equivalent academy settings):
+- List existing presets with description, price, VAT %, and type
+- Add/edit/delete presets inline
+- Each preset has: description, price (€), VAT rate (%), type (per session / one-time)
 
-### 2. CycleSettings interface (`src/lib/cycles.ts`)
-- Add `split_payment?: boolean` to `CycleSettings`
+### 4. CycleForm & AddSlotDialog: Preset picker
+When the "Extra costs" section is active, show a **"Kies uit presets"** button that opens a dropdown/popover listing saved presets. Selecting a preset auto-fills a new extra cost row with the preset's description, price, VAT rate, and type. Users can still manually add custom costs.
 
-### 3. CycleForm UI (`src/components/cycles/CycleForm.tsx`)
-- Add toggle in payment section: "Split betaling over spelers"
-- Help text: "Total price (including extra costs) is divided equally among all registered players. Each player receives an individual invoice."
-- Store in `settings.split_payment`
+Add a VAT % input field to each extra cost row (next to the price field), defaulting to the trainer's global VAT rate.
 
-### 4. Slot creation (`src/components/trainer/AddSlotDialog.tsx`)
-- Propagate cycle's `split_payment` to generated slots
-- Add standalone toggle for non-cycle slots
+### 5. Invoice creation: Per-line-item VAT calculation
+Update `auto-create-invoice/index.ts`:
+- Each line item gets an optional `vat_rate` field
+- Session line items use the slot's global VAT rate (existing behavior)
+- Extra cost line items use their own `vat_rate` from the extra cost data
+- Calculate VAT as sum of per-line-item VAT amounts instead of one flat rate
+- Store a `vat_breakdown` (JSON) on the invoice for multi-rate display
+- Keep `vat_rate` field as the primary/session rate for backward compatibility
 
-### 5. Invoice logic (`supabase/functions/auto-create-invoice/index.ts`)
-- Accept optional `splitAmongPlayers` count in the request body
-- When provided, divide each line item's `unit_price` by that count
-- Session line: `€X.XX /session (1/N van totaal)`
-- Extra cost lines: same division, same suffix
-- Result: each player's invoice total = (session total + extra costs total) / N
+### 6. Invoice PDF & Edit dialog
+Update `generate-invoice` to show VAT breakdown when multiple rates exist (e.g. "BTW 21%: €X.XX / BTW 0%: €Y.YY"). Update `EditInvoiceDialog` to show per-line-item VAT rate.
 
-### 6. Auto-invoice-cycles (`supabase/functions/auto-invoice-cycles/index.ts`)
-- Read `split_payment` from cycle settings
-- If enabled, count total unique players across all bookings in the cycle
-- Pass `splitAmongPlayers: playerCount` to `auto-create-invoice` for each player
-
-### 7. Booking/payment flow (`src/pages/BookLesson.tsx`)
-- When `split_payment` is active on slot, calculate per-player share for Mollie checkout
-- Share = (session price + extra costs) / number of confirmed players
-
-### 8. Public display (`AcademyPublicOpenSlots.tsx`, `TrainerOpenSlots.tsx`)
-- When `split_payment` is true, show: "Prijs wordt verdeeld over alle deelnemers"
-- If `max_participants` known: show indicative per-player price
-
----
-
-## Files
+## Files to modify
 
 | File | Change |
 |------|--------|
-| Migration SQL | Add `split_payment` to `availability_slots` |
-| `src/lib/cycles.ts` | Add to `CycleSettings` interface |
-| `src/components/cycles/CycleForm.tsx` | Toggle UI |
-| `src/components/trainer/AddSlotDialog.tsx` | Propagate & standalone toggle |
-| `supabase/functions/auto-create-invoice/index.ts` | Split calculation logic |
-| `supabase/functions/auto-invoice-cycles/index.ts` | Pass player count |
-| `src/pages/BookLesson.tsx` | Per-player Mollie amount |
-| `src/components/academy/AcademyPublicOpenSlots.tsx` | Split indicator |
-| `src/components/trainer/TrainerOpenSlots.tsx` | Split indicator |
+| Migration SQL | Create `extra_cost_presets` table with RLS |
+| `src/lib/cycles.ts` | Add `vat_rate` to `ExtraCost` interface |
+| `src/pages/TrainerBookingSettings.tsx` | Add preset management card |
+| `src/components/cycles/CycleForm.tsx` | Preset picker + VAT % per extra cost row |
+| `src/components/trainer/AddSlotDialog.tsx` | Preset picker + VAT % per extra cost row |
+| `supabase/functions/auto-create-invoice/index.ts` | Per-line-item VAT calculation |
+| `supabase/functions/generate-invoice/index.ts` | Multi-rate VAT display in PDF |
+| `src/components/invoices/EditInvoiceDialog.tsx` | Per-line-item VAT rate editing |
+| `src/pages/TrainerScheduleOverview.tsx` | Pass VAT rate in extra cost editing |
 
