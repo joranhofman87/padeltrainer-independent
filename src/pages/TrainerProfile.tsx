@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useFollowTrainer } from '@/hooks/useFollowTrainer';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -84,8 +85,6 @@ interface ProfileData {
   location: string | null;
 }
 
-// LessonData removed - lessons table no longer exists
-
 interface TrainerLocationData {
   id: string;
   is_primary: boolean;
@@ -105,30 +104,138 @@ interface TrainerLocationData {
   } | null;
 }
 
+// Core data fetcher
+async function fetchTrainerData(trainerId: string, currentUserId?: string) {
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trainerId);
+  
+  let trainerResult;
+  if (isUUID) {
+    trainerResult = await supabase.from('trainer_profiles_safe').select('*').eq('id', trainerId).maybeSingle();
+  } else {
+    trainerResult = await supabase.from('trainer_profiles_safe').select('*').eq('slug', trainerId).maybeSingle();
+  }
+
+  if (trainerResult.error || !trainerResult.data) return null;
+
+  const trainerData = trainerResult.data;
+
+  // Fetch profile
+  const profileResult = await supabase
+    .from('profiles_public')
+    .select('full_name, avatar_url, bio, location')
+    .eq('user_id', trainerData.user_id)
+    .maybeSingle();
+
+  // Check club link for visibility
+  const { data: clubLink } = await supabase
+    .from('trainer_locations')
+    .select(`id, show_on_club_page, location:locations!inner(id, club_profiles:club_profiles!inner(id, is_verified))`)
+    .eq('trainer_id', trainerData.id)
+    .eq('relationship_type', 'club_trainer');
+  
+  const hasVerifiedClubLink = clubLink?.some(
+    (link: any) => link.show_on_club_page && link.location?.club_profiles?.is_verified
+  );
+
+  const isOwnProfile = currentUserId === trainerData.user_id;
+  const now = new Date().toISOString();
+  const hasActiveSubscription = trainerData.subscription_status === 'active';
+  const inPaidAcademy = await isTrainerInPaidAcademy(trainerData.id);
+  const hasSubscriptionAccess = hasActiveSubscription || inPaidAcademy;
+
+  if (!trainerData.is_public && !hasVerifiedClubLink && !isOwnProfile) return null;
+  if (!hasSubscriptionAccess && !isOwnProfile) return null;
+
+  // Parallel fetches
+  const [ratingRes, locationsResult, academyData] = await Promise.all([
+    getTrainerAverageRating(trainerData.id),
+    supabase
+      .from('trainer_locations')
+      .select(`id, is_primary, relationship_type, location:locations(id, name, city, slug, indoor_courts, outdoor_courts)`)
+      .eq('trainer_id', trainerData.id),
+    getTrainerAcademy(trainerData.id),
+  ]);
+
+  // Resolve clubs for locations
+  let trainerLocations: TrainerLocationData[] = [];
+  if (locationsResult.data) {
+    const locationIds = locationsResult.data.map(l => (l.location as any)?.id).filter(Boolean);
+    let clubsMap: Record<string, any> = {};
+    if (locationIds.length > 0) {
+      const { data: clubs } = await supabase
+        .from('club_profiles')
+        .select('id, location_id, is_verified')
+        .in('location_id', locationIds)
+        .eq('is_verified', true);
+      if (clubs) clubs.forEach(club => { clubsMap[club.location_id] = club; });
+    }
+    trainerLocations = locationsResult.data.map(loc => ({
+      ...loc,
+      location: loc.location as any,
+      club: clubsMap[(loc.location as any)?.id] || null
+    }));
+  }
+
+  return {
+    trainer: trainerData as TrainerData,
+    profile: profileResult.data as ProfileData | null,
+    averageRating: ratingRes.average,
+    reviewCount: ratingRes.count,
+    trainerLocations,
+    trainerAcademy: academyData,
+  };
+}
+
 export default function TrainerProfile() {
   const { trainerId } = useParams<{ trainerId: string }>();
   const { t } = useTranslation(['trainer', 'common']);
-  const [trainer, setTrainer] = useState<TrainerData | null>(null);
-  const [profile, setProfile] = useState<ProfileData | null>(null);
-  
-  const [trainerLocations, setTrainerLocations] = useState<TrainerLocationData[]>([]);
-  const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [averageRating, setAverageRating] = useState<number | null>(null);
-  const [reviewCount, setReviewCount] = useState(0);
   const [copied, setCopied] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
-  const [preferredRatingSystemName, setPreferredRatingSystemName] = useState<string>('');
   const navigate = useNavigate();
   const { user, role, subscription } = useAuth();
-  const { isFollowing, loading: followLoading, toggleFollow, canFollow } = useFollowTrainer(trainer?.id || null);
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
 
-  // Use slug for URLs if available, else fallback to trainerId from params
+  // Cached trainer data query
+  const { data, isLoading } = useQuery({
+    queryKey: ['trainer-public-profile', trainerId],
+    queryFn: () => fetchTrainerData(trainerId!, user?.id),
+    enabled: !!trainerId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const trainer = data?.trainer || null;
+  const profile = data?.profile || null;
+  const averageRating = data?.averageRating ?? null;
+  const reviewCount = data?.reviewCount ?? 0;
+  const trainerLocations = data?.trainerLocations ?? [];
+  const trainerAcademy = data?.trainerAcademy ?? null;
+
+  const { isFollowing, loading: followLoading, toggleFollow, canFollow } = useFollowTrainer(trainer?.id || null);
+
   const trainerSlug = trainer?.slug || trainerId;
   const profileUrl = getMarketingUrl(`trainer/${trainerSlug}`, currentLang);
   const trainerName = profile?.full_name || 'Trainer';
+
+  // Rating system name
+  const { data: preferredRatingSystemName = '' } = useQuery({
+    queryKey: ['rating-system', trainer?.preferred_rating_system],
+    queryFn: async () => {
+      const system = await getRatingSystemByCode(trainer!.preferred_rating_system!);
+      return system?.name || '';
+    },
+    enabled: !!trainer?.preferred_rating_system,
+    staleTime: Infinity,
+  });
+
+  // Record view
+  useEffect(() => {
+    if (trainer?.id) {
+      recordProfileView(trainer.id);
+      trackEvent('trainer_profile_viewed', { trainer_id: trainer.id, trainer_slug: trainer.slug });
+    }
+  }, [trainer?.id]);
 
   const handleCopyLink = async () => {
     try {
@@ -155,169 +262,6 @@ export default function TrainerProfile() {
     window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(profileUrl)}`, '_blank');
   };
 
-  useEffect(() => {
-    if (trainerId) {
-      fetchTrainerProfile();
-    }
-  }, [trainerId]);
-
-  useEffect(() => {
-    if (trainer?.id) {
-      recordProfileView(trainer.id);
-      trackEvent('trainer_profile_viewed', {
-        trainer_id: trainer.id,
-        trainer_slug: trainer.slug,
-      });
-    }
-  }, [trainer?.id]);
-
-  useEffect(() => {
-    if (trainer?.preferred_rating_system) {
-      getRatingSystemByCode(trainer.preferred_rating_system).then(system => {
-        if (system) setPreferredRatingSystemName(system.name);
-      });
-    }
-  }, [trainer?.preferred_rating_system]);
-
-  const fetchTrainerProfile = async () => {
-    setLoading(true);
-    
-    // Fetch trainer profile by slug (preferred) or ID (fallback for legacy URLs)
-    const isUUID = trainerId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trainerId);
-    
-    let trainerResult;
-    if (isUUID) {
-      // Legacy UUID-based URL
-      trainerResult = await supabase
-        .from('trainer_profiles_safe')
-        .select('*')
-        .eq('id', trainerId)
-        .maybeSingle();
-    } else {
-      // SEO-friendly slug URL
-      trainerResult = await supabase
-        .from('trainer_profiles_safe')
-        .select('*')
-        .eq('slug', trainerId)
-        .maybeSingle();
-    }
-
-    if (trainerResult.error || !trainerResult.data) {
-      logger.error('Error fetching trainer', undefined, { supabaseError: trainerResult.error });
-      setLoading(false);
-      return;
-    }
-
-    // Then fetch the user profile using the trainer's user_id
-    const profileResult = await supabase
-      .from('profiles_public')
-      .select('full_name, avatar_url, bio, location')
-      .eq('user_id', trainerResult.data.user_id)
-      .maybeSingle();
-
-    if (trainerResult.error) {
-      logger.error('Error fetching trainer', undefined, { supabaseError: trainerResult.error });
-      setLoading(false);
-      return;
-    }
-
-    const { data: clubLink } = await supabase
-      .from('trainer_locations')
-      .select(`
-        id,
-        show_on_club_page,
-        location:locations!inner(
-          id,
-          club_profiles:club_profiles!inner(id, is_verified)
-        )
-      `)
-      .eq('trainer_id', trainerResult.data.id)
-      .eq('relationship_type', 'club_trainer');
-    
-    const hasVerifiedClubLink = clubLink?.some(
-      (link: any) => link.show_on_club_page && link.location?.club_profiles?.is_verified
-    );
-
-    // Allow the trainer to view their own profile even if not public
-    const isOwnProfile = user?.id === trainerResult.data.user_id;
-
-    // Check subscription-based visibility: must have active subscription, trial, or paid academy
-    const now = new Date().toISOString();
-    const hasActiveSubscription = trainerResult.data.subscription_status === 'active';
-    const hasActiveTrial = trainerResult.data.trial_ends_at && trainerResult.data.trial_ends_at > now;
-    const inPaidAcademy = await isTrainerInPaidAcademy(trainerResult.data.id);
-    const hasSubscriptionAccess = hasActiveSubscription || inPaidAcademy;
-
-    if (!trainerResult.data.is_public && !hasVerifiedClubLink && !isOwnProfile) {
-      logger.debug('Trainer is not public and not linked to verified club');
-      setLoading(false);
-      return;
-    }
-
-    if (!hasSubscriptionAccess && !isOwnProfile) {
-      logger.debug('Trainer has no active subscription, trial, or paid academy membership');
-      setLoading(false);
-      return;
-    }
-    
-    setTrainer(trainerResult.data);
-    
-    const [ratingRes, locationsResult] = await Promise.all([
-      getTrainerAverageRating(trainerResult.data.id),
-      supabase
-        .from('trainer_locations')
-        .select(`
-          id,
-          is_primary,
-          relationship_type,
-          location:locations(id, name, city, slug, indoor_courts, outdoor_courts)
-        `)
-        .eq('trainer_id', trainerResult.data.id)
-    ]);
-
-    setAverageRating(ratingRes.average);
-    setReviewCount(ratingRes.count);
-    
-    if (locationsResult.data) {
-      const locationIds = locationsResult.data
-        .map(l => (l.location as any)?.id)
-        .filter(Boolean);
-      
-      let clubsMap: Record<string, any> = {};
-      if (locationIds.length > 0) {
-        const { data: clubs } = await supabase
-          .from('club_profiles')
-          .select('id, location_id, is_verified')
-          .in('location_id', locationIds)
-          .eq('is_verified', true);
-        
-        if (clubs) {
-          clubs.forEach(club => {
-            clubsMap[club.location_id] = club;
-          });
-        }
-      }
-      
-      setTrainerLocations(locationsResult.data.map(loc => ({
-        ...loc,
-        location: loc.location as any,
-        club: clubsMap[(loc.location as any)?.id] || null
-      })));
-    }
-
-    // Fetch academy affiliation
-    const academyData = await getTrainerAcademy(trainerResult.data.id);
-    setTrainerAcademy(academyData);
-
-    if (profileResult.error) {
-      logger.error('Error fetching profile', undefined, { supabaseError: profileResult.error });
-    } else {
-      setProfile(profileResult.data);
-    }
-
-    setLoading(false);
-  };
-
   const videoInfo = trainer?.video_url ? parseVideoUrl(trainer.video_url) : null;
 
   // Build social links
@@ -342,7 +286,7 @@ export default function TrainerProfile() {
     });
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -366,7 +310,6 @@ export default function TrainerProfile() {
     );
   }
 
-  // Get primary city for cross-linking
   const trainerCity = profile?.location || trainerLocations[0]?.location?.city;
   const trainerCitySlug = trainerCity?.toLowerCase().replace(/\s+/g, '-');
 
@@ -377,18 +320,9 @@ export default function TrainerProfile() {
     "jobTitle": "Padel Trainer",
     "image": profile.avatar_url,
     "url": `https://padeltrainer.ai/trainer/${trainerSlug}`,
-    "address": profile.location ? {
-      "@type": "PostalAddress",
-      "addressLocality": profile.location
-    } : undefined,
+    "address": profile.location ? { "@type": "PostalAddress", "addressLocality": profile.location } : undefined,
     ...(averageRating !== null && reviewCount > 0 ? {
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": averageRating,
-        "reviewCount": reviewCount,
-        "bestRating": 5,
-        "worstRating": 1
-      }
+      "aggregateRating": { "@type": "AggregateRating", "ratingValue": averageRating, "reviewCount": reviewCount, "bestRating": 5, "worstRating": 1 }
     } : {})
   };
 
@@ -446,7 +380,7 @@ export default function TrainerProfile() {
                         .eq('user_id', user.id);
                       if (!error) {
                         toast.success('Profile published!');
-                        fetchTrainerProfile();
+                        window.location.reload();
                       }
                     }}>Publish profile</Button>
                   ) : (
@@ -540,7 +474,7 @@ export default function TrainerProfile() {
             {/* Open Registrations */}
             {trainer && <TrainerOpenCycles trainerId={trainer.id} trainerName={profile.full_name || 'Trainer'} />}
 
-            {/* Waiting List - only when enabled */}
+            {/* Waiting List */}
             {trainer && (trainer as any).waiting_list_enabled && (
               <WaitingListCard
                 ownerType="trainer"

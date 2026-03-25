@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,7 +15,7 @@ export default function TrainerLayout() {
   const { t } = useTranslation('trainer');
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, role, roles, loading, subscription } = useAuth();
+  const { user, role, roles, loading, subscription, refreshSubscription } = useAuth();
 
   // Check academy membership with caching
   const { data: hasAcademy = false } = useQuery({
@@ -32,11 +32,18 @@ export default function TrainerLayout() {
       return !!academy;
     },
     enabled: !!user,
-    staleTime: 5 * 60 * 1000,  // cache for 5 minutes
+    staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
 
-  // Auth guard - use roles array to support dual-role trainers
+  // Trigger subscription fetch when entering trainer layout (if not yet loaded)
+  useEffect(() => {
+    if (!loading && user && roles.includes('trainer') && subscription === null) {
+      refreshSubscription();
+    }
+  }, [loading, user, roles, subscription, refreshSubscription]);
+
+  // Auth guard
   useEffect(() => {
     if (!loading) {
       if (!user) {

@@ -19,6 +19,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { SEO } from '@/components/SEO';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 import {
   ProfileLayout,
   ProfileContentGrid,
@@ -91,57 +92,54 @@ export default function AcademyPublicProfile() {
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
 
-  const [academy, setAcademy] = useState<Partial<AcademyProfile> | null>(null);
-  const [trainers, setTrainers] = useState<TrainerData[]>([]);
-  const [locations, setLocations] = useState<LocationData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   const profileUrl = getMarketingUrl(`academies/${slug}`, currentLang);
 
-  useEffect(() => {
-    async function fetchData() {
-      if (!slug) return;
+  // Cached academy data
+  const { data: academy, isLoading: academyLoading } = useQuery({
+    queryKey: ['academy-public', slug],
+    queryFn: async () => {
+      if (!slug) return null;
+      const data = await getAcademyBySlug(slug, isPreview);
+      if (!data) return null;
+      if (!isPreview && !data.is_public) return null;
+      return data;
+    },
+    enabled: !!slug,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
 
-      try {
-        const academyData = await getAcademyBySlug(slug, isPreview);
-        if (!academyData) {
-          navigate(localizePath('/academies'));
-          return;
-        }
+  // Parallel cached queries for trainers and locations
+  const { data: trainers = [] } = useQuery<TrainerData[]>({
+    queryKey: ['academy-public-trainers', academy?.id],
+    queryFn: () => getPublicAcademyTrainers(academy!.id),
+    enabled: !!academy?.id,
+    staleTime: 5 * 60 * 1000,
+  });
 
-        // Only show if public (unless preview mode)
-        if (!isPreview && !academyData.is_public) {
-          navigate(localizePath('/academies'));
-          return;
-        }
+  const { data: locations = [] } = useQuery<LocationData[]>({
+    queryKey: ['academy-public-locations', academy?.id],
+    queryFn: () => getPublicAcademyLocations(academy!.id),
+    enabled: !!academy?.id,
+    staleTime: 5 * 60 * 1000,
+  });
 
-        setAcademy(academyData);
-
-        // Fetch trainers and locations in parallel
-        const [trainersData, locationsData] = await Promise.all([
-          getPublicAcademyTrainers(academyData.id),
-          getPublicAcademyLocations(academyData.id),
-        ]);
-
-        setTrainers(trainersData);
-        setLocations(locationsData);
-      } catch (error) {
-        logger.error('Error fetching academy', error as Error, { component: 'AcademyPublicProfile', slug });
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, [slug, navigate, localizePath]);
-
+  // Record view (fire-and-forget)
   useEffect(() => {
     if (academy?.id) {
       recordAcademyProfileView(academy.id);
       trackEvent('academy_profile_viewed', { academy_id: academy.id, academy_slug: slug });
     }
   }, [academy?.id]);
+
+  // Redirect if not found after loading
+  useEffect(() => {
+    if (!academyLoading && academy === null && slug) {
+      navigate(localizePath('/academies'));
+    }
+  }, [academyLoading, academy, slug]);
 
   const handleCopyLink = async () => {
     try {
@@ -163,14 +161,6 @@ export default function AcademyPublicProfile() {
     if (!name) return 'A';
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
-
-  // Build social links
-  const socialLinks = [];
-  if (academy?.social_instagram) socialLinks.push({ platform: 'instagram' as const, handle: academy.social_instagram });
-  if (academy?.social_facebook) socialLinks.push({ platform: 'facebook' as const, handle: academy.social_facebook });
-  if (academy?.social_tiktok) socialLinks.push({ platform: 'tiktok' as const, handle: academy.social_tiktok });
-  if (academy?.social_youtube) socialLinks.push({ platform: 'youtube' as const, handle: academy.social_youtube });
-  if (academy?.social_linkedin) socialLinks.push({ platform: 'linkedin' as const, handle: academy.social_linkedin });
 
   // Quick stats
   const quickStats: Array<{ icon: React.ReactNode; label: string; value: string | number }> = [];
@@ -196,31 +186,15 @@ export default function AcademyPublicProfile() {
   ];
 
   const structuredData = academy ? [
-    // BreadcrumbList schema
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        {
-          "@type": "ListItem",
-          "position": 1,
-          "name": t('common:navigation.home'),
-          "item": `${MARKETING_DOMAIN}/${currentLang}`
-        },
-        {
-          "@type": "ListItem",
-          "position": 2,
-          "name": t('common:academies', 'Academies'),
-          "item": `${MARKETING_DOMAIN}/${currentLang}/academies`
-        },
-        {
-          "@type": "ListItem",
-          "position": 3,
-          "name": academy.name
-        }
+        { "@type": "ListItem", "position": 1, "name": t('common:navigation.home'), "item": `${MARKETING_DOMAIN}/${currentLang}` },
+        { "@type": "ListItem", "position": 2, "name": t('common:academies', 'Academies'), "item": `${MARKETING_DOMAIN}/${currentLang}/academies` },
+        { "@type": "ListItem", "position": 3, "name": academy.name }
       ]
     },
-    // EducationalOrganization schema (enhanced)
     {
       "@context": "https://schema.org",
       "@type": "EducationalOrganization",
@@ -239,10 +213,7 @@ export default function AcademyPublicProfile() {
       ...(locations.length > 0 && {
         "areaServed": {
           "@type": "GeoCircle",
-          "geoMidpoint": {
-            "@type": "GeoCoordinates",
-            "addressCountry": "NL"
-          }
+          "geoMidpoint": { "@type": "GeoCoordinates", "addressCountry": "NL" }
         }
       }),
       "member": trainers.slice(0, 5).map(t => ({
@@ -253,7 +224,7 @@ export default function AcademyPublicProfile() {
     }
   ] : undefined;
 
-  if (loading) {
+  if (academyLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
@@ -467,15 +438,8 @@ export default function AcademyPublicProfile() {
           </ProfileFullWidthSection>
         )}
 
-        {/* Full Width - Reviews Section */}
-        <ProfileFullWidthSection>
-          <AcademyReviews academyId={academy.id!} />
-        </ProfileFullWidthSection>
-
-        {/* Full Width - Videos Section */}
-        <ProfileFullWidthSection>
-          <VideoGallery academyProfileId={academy.id!} />
-        </ProfileFullWidthSection>
+        {/* Reviews */}
+        {academy.id && <AcademyReviews academyId={academy.id} />}
       </ProfileLayout>
     </>
   );

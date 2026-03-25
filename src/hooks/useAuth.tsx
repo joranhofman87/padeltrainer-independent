@@ -94,7 +94,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Check trainer subscription status via Stripe
       const { data, error } = await supabase.functions.invoke('check-stripe-subscription', {
         body: { type: 'trainer' },
         headers: {
@@ -115,7 +114,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Use tier directly from API response (database-driven) instead of Stripe product ID mapping
       const tier = data.tier || 'trial';
       
       setSubscription({
@@ -150,11 +148,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchSubscription]);
 
   useEffect(() => {
-    // Use sessionStorage to deduplicate welcome emails across page refreshes
     const welcomeEmailsKey = 'hasTriggeredWelcomeEmails';
 
-    // Safety timeout: if auth hasn't resolved in 5 seconds, force loading=false
-    // This prevents the app from being stuck on skeleton loaders forever
     const safetyTimeout = setTimeout(() => {
       setLoading((current) => {
         if (current) {
@@ -164,10 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     }, 5_000);
 
-    // Single source of truth: onAuthStateChange handles INITIAL_SESSION + all state changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // Handle token refresh failures
         if (event === 'TOKEN_REFRESHED' && !session) {
           logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
           setLoading(false);
@@ -180,21 +173,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (session?.user && lastFetchedRef.current !== session.user.id) {
           lastFetchedRef.current = session.user.id;
-          // Race fetchUserData against a 5-second deadline so a hanging
-          // DB query can't block the entire app from rendering
+          // Only fetch user data (roles + profile) — subscription is deferred
           await Promise.race([
             fetchUserData(session.user.id),
             new Promise((resolve) => setTimeout(resolve, 5000)),
           ]);
 
-          // Trigger welcome emails only once per browser session (not on page refresh)
+          // Trigger welcome emails only once per browser session
           if (
             !sessionStorage.getItem(welcomeEmailsKey) &&
             session.user.email_confirmed_at &&
             (event === 'SIGNED_IN' || event === 'USER_UPDATED')
           ) {
             sessionStorage.setItem(welcomeEmailsKey, '1');
-            // Fire-and-forget, don't block rendering
             requestIdleCallback(() => {
               supabase.functions.invoke('trigger-welcome-emails', {
                 headers: { Authorization: `Bearer ${session.access_token}` },
@@ -205,7 +196,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               });
             });
           }
-        } else {
+        } else if (!session?.user) {
+          // Anonymous user — reset immediately, no DB calls
           lastFetchedRef.current = null;
           setProfile(null);
           setRole(null);
@@ -215,6 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSubscription(null);
           resetUser();
         }
+        // Set loading=false immediately — subscription loads in background
         setLoading(false);
       }
     );
@@ -225,20 +218,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Fetch subscription when role changes to trainer
+  // Deferred: fetch subscription in background after auth resolves (non-blocking)
   useEffect(() => {
     if (role === 'trainer' && session?.access_token) {
       fetchSubscription();
     }
   }, [role, session?.access_token, fetchSubscription]);
 
-  // Set up periodic subscription refresh for trainers (every 60 seconds)
+  // Periodic subscription refresh for trainers (every 5 minutes)
   useEffect(() => {
     if (role !== 'trainer' || !session?.access_token) return;
 
     const interval = setInterval(() => {
       fetchSubscription();
-    }, 5 * 60 * 1000); // every 5 minutes instead of 60s
+    }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
   }, [role, session?.access_token, fetchSubscription]);
