@@ -533,6 +533,12 @@ export default function AcademyInvoices() {
                             </Button>
                           </>
                         )}
+                        {inv.status === "paid" && (
+                          <Button size="sm" variant="outline" onClick={() => handleForwardInvoice(inv.id)} disabled={forwardingId === inv.id}>
+                            {forwardingId === inv.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+                            {t("invoices.forwardToBookkeeper", "Forward")}
+                          </Button>
+                        )}
                         {inv.pdf_url && (
                           <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>
                             <Download className="h-4 w-4 mr-1" />PDF
