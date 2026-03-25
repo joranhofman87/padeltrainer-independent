@@ -518,6 +518,7 @@ export function BulkCreateSheet({
       markAsPaid: false,
       extraCosts: [],
       hasExtraCosts: false,
+      splitPayment: false,
     };
   };
 
