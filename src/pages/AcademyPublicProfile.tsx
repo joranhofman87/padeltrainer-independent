@@ -293,7 +293,7 @@ export default function AcademyPublicProfile() {
                   </span>
                 </div>
               }
-              quote={academy.description || undefined}
+              
             />
           </div>
           <div className="lg:w-[280px] flex-shrink-0 space-y-4">
@@ -435,6 +435,20 @@ export default function AcademyPublicProfile() {
                 </Card>
               ))}
             </div>
+          </ProfileFullWidthSection>
+        )}
+
+        {/* About */}
+        {academy.description && (
+          <ProfileFullWidthSection>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('common:aboutAcademy', 'About')} {academy.name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground whitespace-pre-line">{academy.description}</p>
+              </CardContent>
+            </Card>
           </ProfileFullWidthSection>
         )}
 
