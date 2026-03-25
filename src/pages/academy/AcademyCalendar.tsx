@@ -664,26 +664,6 @@ export default function AcademyCalendar() {
       {/* Slot Creation Dialogs */}
       {activeAcademy && (
         <>
-          <SlotTypeChoiceDialog
-            open={slotTypeChoiceOpen}
-            onOpenChange={setSlotTypeChoiceOpen}
-            onChooseSingleSlot={() => setAddSlotOpen(true)}
-            onChooseCyclus={() => setBulkCreateOpen(true)}
-          />
-
-          <AddSlotDialog
-            open={addSlotOpen}
-            onOpenChange={setAddSlotOpen}
-            trainerId={selectedSlotTrainerId}
-            defaultDate={defaultSlotDate}
-            defaultTime={defaultSlotTime}
-            defaultDuration={60}
-            defaultWeeks={8}
-            onSlotsCreated={handleSlotsCreated}
-            availableLocations={locations}
-            academyId={activeAcademy?.id}
-          />
-
           <BulkCreateSheet
             open={bulkCreateOpen}
             onOpenChange={(open) => {

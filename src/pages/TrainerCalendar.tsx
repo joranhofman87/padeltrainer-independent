@@ -549,26 +549,6 @@ export default function TrainerCalendar() {
         </Card>
       </main>
 
-      {/* Slot Type Choice Dialog */}
-      <SlotTypeChoiceDialog
-        open={slotTypeChoiceOpen}
-        onOpenChange={setSlotTypeChoiceOpen}
-        onChooseSingleSlot={handleChooseSingleSlot}
-        onChooseCyclus={handleChooseCyclus}
-      />
-
-      {/* Add Slot Dialog */}
-      <AddSlotDialog
-        open={addSlotOpen}
-        onOpenChange={setAddSlotOpen}
-        trainerId={trainerId}
-        defaultDate={defaultSlotDate}
-        defaultTime={defaultSlotTime}
-        defaultDuration={settings.slot_duration_minutes}
-        defaultWeeks={settings.schedule_weeks_ahead}
-        onSlotsCreated={handleSlotsCreated}
-      />
-
       {/* Bulk Create Sheet */}
       <BulkCreateSheet
         open={bulkCreateOpen}
