@@ -30,8 +30,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
-import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
-import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
+import { BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
