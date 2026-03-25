@@ -16,6 +16,7 @@ import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { getPlayerReview } from '@/lib/reviews';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
+import { downloadIcsFile } from '@/lib/icsGenerator';
 
 interface BookingWithDetails {
   id: string;
