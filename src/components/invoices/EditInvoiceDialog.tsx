@@ -20,6 +20,7 @@ interface LineItem {
   quantity: number;
   unit_price: number;
   amount: number;
+  vat_rate?: number;
 }
 
 interface EditInvoiceData {
