@@ -1,41 +1,31 @@
 
 
-# Fix: Adding Sessions Doesn't Book Existing Players + Invoice Not Updated
+# Fix VAT Calculation on Joran & Nick Invoices
 
 ## Root Cause
 
-In `TrainerScheduleOverview.tsx` lines 512-547, when the repeat count increases, new slots are created but **no bookings are created for existing players** on those new slots. The code copies slot properties but never queries who's already booked on the existing slots to replicate those bookings.
+The trainer has `prices_include_vat = false`, meaning €46.25 is the **net** price (VAT gets added on top). But the invoices were manually patched using the **inclusive** formula (`740 / 1.09 = 678.90`, VAT = `61.10`), which is wrong.
 
-After the new slots are inserted, the invoice sync (line 580-693) only looks at *existing* bookings — since no bookings were created for the new slots, the invoice stays at the old session count.
+Correct calculation (VAT-exclusive):
+- Sessions: 16 × €46.25 = **€740.00** net, VAT 9% = **€66.60**
+- Extra costs: 16 × €19.00 = **€304.00** net, VAT 0% = €0.00
+- **Subtotal: €1,044.00 | VAT: €66.60 | Total: €1,110.60**
 
-## Code Fix
+The `auto-create-invoice` edge function code actually handles this correctly (lines 298-300), so the bug is only in the manually patched data from earlier. Future auto-created invoices will be correct.
 
-### `src/pages/TrainerScheduleOverview.tsx` — After inserting new slots, create bookings for existing players
+## Changes
 
-After line 547 (`await supabase.from("availability_slots").insert(newSlots);`), add logic to:
+**Data patch only** — update both invoices:
 
-1. Query all existing bookings on the cycle's slots (grouped by `player_id` / `guest_player_id`) to find which players are enrolled
-2. Fetch the newly inserted slot IDs (query by `cyclus_id` + the new start times)
-3. For each player/guest, insert a booking for each new slot (same status, payment_amount, etc.)
-4. After creating bookings, update associated unpaid invoices:
-   - Add the new booking IDs to `booking_ids`
-   - Update the session line item quantity to match the new total
-   - Recalculate totals
+| Field | Wrong (current) | Correct |
+|-------|-----------------|---------|
+| subtotal | €982.90 | €1,044.00 |
+| vat_amount | €61.10 | €66.60 |
+| total | €1,044.00 | €1,110.60 |
+| vat_breakdown 9% | subtotal: 678.90, vat: 61.10 | subtotal: 740.00, vat: 66.60 |
+| vat_breakdown 0% | subtotal: 304, vat: 0 | unchanged |
 
-This is ~40 lines of code after line 547.
+Both INV-2026-0001 and INV-2026-0002 get the same correction. PDF URLs reset to null for regeneration.
 
-## Data Fix (via insert tool)
-
-1. **Rename invoice**: `INV-2026-0058` → `INV-2026-0003`
-2. **Create 2 bookings** for Maarten (guest `22985231-a70c-46ae-b248-d7d938376de7`) on the 2 empty slots (`43ba9298...` and `f1d16140...`)
-3. **Update invoice** `c8c9f2a5...`: add the 2 new booking IDs, update line items to 18 sessions, recalculate totals:
-   - Sessions: 18 × €92.50 = €1,665.00 (9% VAT inclusive)
-   - Extra costs: 18 × €38.00 = €684.00 (0% VAT)
-   - Subtotal: €2,215.60, VAT: €133.40 (9% on sessions only), Total: €2,349.00
-4. **Update `trainer_profiles.invoice_next_number`** to 4 (since 0003 is now used)
-
-| File | Change |
-|------|--------|
-| `src/pages/TrainerScheduleOverview.tsx` | After inserting new cycle slots, auto-create bookings for existing players and update invoices |
-| Database (data patch) | Rename invoice, create 2 bookings, update invoice totals, bump next number |
+Also check and fix INV-2026-0003 (Maarten) if it has the same issue.
 
