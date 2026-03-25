@@ -304,7 +304,7 @@ export default function AcademyPublicProfile() {
       >
         {/* Hero + Stats side-by-side like trainer profile */}
         <div className="flex flex-col lg:flex-row gap-4">
-          <div className="lg:flex-1">
+          <div className="lg:flex-1 min-w-0">
             <ProfileHeroCard
               name={academy.name}
               avatarUrl={academy.logo_url}
@@ -322,25 +322,14 @@ export default function AcademyPublicProfile() {
                   </span>
                 </div>
               }
+              quote={academy.description || undefined}
             />
           </div>
-          <div className="lg:w-[320px] flex-shrink-0 space-y-4">
+          <div className="lg:w-[280px] flex-shrink-0 space-y-4">
             <ProfileQuickStatsCard
               title={t('common:statistics', 'Statistics')}
               stats={quickStats}
             />
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t('profile.about')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {academy.description ? (
-                  <p className="text-muted-foreground whitespace-pre-wrap text-sm">{academy.description}</p>
-                ) : (
-                  <p className="text-muted-foreground italic text-sm">{t('common:noDescription', 'No description available.')}</p>
-                )}
-              </CardContent>
-            </Card>
           </div>
         </div>
 
