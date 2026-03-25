@@ -429,6 +429,7 @@ export default function TrainerScheduleOverview() {
         is_marked_full: cycleEditData.isPrivate,
         extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : null,
         prices_include_vat: cycleEditData.pricesIncludeVat,
+        split_payment: cycleEditData.splitPayment,
       };
       if (cycleEditData.pricePerSession !== "") {
         updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
