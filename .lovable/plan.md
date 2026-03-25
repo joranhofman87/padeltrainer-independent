@@ -1,60 +1,44 @@
 
 
-# Sync Invoices When Slots Are Deleted
+# Show Player Names & Actions on Academy Calendar
 
 ## Problem
-When a slot is deleted from the calendar (`DeleteSlotDialog`), the invoice recalculation logic has critical gaps:
-1. **No split payment support** — doesn't divide prices by number of players or add `(1/2)` suffixes
-2. **No multi-rate VAT** — doesn't compute `vat_breakdown` for extra costs with different VAT rates  
-3. **No `pdf_url: null`** — old PDF URL isn't cleared, so cached PDFs remain stale
-4. **Extra cost `vat_rate` not preserved** — multi-rate totals break
+The academy calendar shows booking **counts** (e.g. "2/4 geboekt") but always shows "Empty slot" for all player positions because:
 
-Additionally, the **Schedule Overview** has two actions that cancel bookings but never update invoices:
-- `handleRemovePlayer` (single session removal)
-- `handleRemovePlayerFromCycle` (remove from all sessions)
-- Reducing repeat count (deletes trailing slots without bookings — less critical since those slots have no bookings)
+1. **No player data fetched** — `AcademyCalendar.tsx` only queries `bookings` with `slot_id, status` (no player/guest_player joins)
+2. **`booked_players: []` hardcoded** — line 290 always sets an empty array
+3. **Missing RLS policy** — no policy allows academy managers to SELECT from `bookings` for their trainers' slots
 
 ## Plan
 
-### 1. Fix `DeleteSlotDialog.recalculateInvoice` (~50 lines changed)
-**File:** `src/components/trainer/DeleteSlotDialog.tsx`
+### 1. Add RLS policy for academy managers on bookings (migration)
+Allow academy managers to SELECT bookings where the slot belongs to one of their academy's trainers:
+```sql
+CREATE POLICY "Academy managers can view bookings for their trainers slots"
+ON public.bookings FOR SELECT
+USING (
+  slot_id IN (
+    SELECT s.id FROM availability_slots s
+    WHERE s.trainer_id IN (
+      SELECT at.trainer_profile_id FROM academy_trainers at
+      WHERE at.status = 'active'
+      AND at.academy_profile_id IN (SELECT get_user_academy_ids(auth.uid()))
+    )
+  )
+);
+```
 
-- After building line items, check if the invoice has split indicators (line items with `(1/2)` or similar in descriptions)
-- If split, detect the split count from existing line item descriptions and apply the same division to rebuilt items
-- Add `vat_rate` to extra cost line items (from `ec.vat_rate`)
-- Implement multi-rate VAT calculation with `vat_breakdown` (same logic as `auto-create-invoice`)
-- Set `pdf_url: null` in the update call
-- Set `vat_breakdown` in the update call
+### 2. Update `AcademyCalendar.tsx` fetch to include player data
+In `fetchSlots`, expand the bookings query to include player info (same pattern as `TrainerCalendar.tsx`):
+- Join `profiles:player_id` and `guest_players:guest_player_id` with names and ratings
+- Build `BookedPlayer[]` arrays per slot
+- Pass them into the mapped `SlotWithBookings` instead of `booked_players: []`
 
-### 2. Add invoice sync to `handleRemovePlayer` in Schedule Overview
-**File:** `src/pages/TrainerScheduleOverview.tsx`
+### 3. Wire up booking action callbacks
+Pass `onBookForPlayer`, `onDeleteSlot`, `onEditBooking`, `onToggleMarkedFull`, and `onDuplicateCyclus` callbacks from `AcademyCalendar` to `TrainerCalendarGrid`, same as the trainer calendar does. Add the corresponding dialog components (`BookForPlayerDialog`, `DeleteSlotDialog`, `EditBookingDialog`).
 
-After cancelling a booking, find any unpaid invoices containing that booking ID and recalculate them using the same logic as `DeleteSlotDialog`.
-
-### 3. Add invoice sync to `handleRemovePlayerFromCycle` in Schedule Overview
-**File:** `src/pages/TrainerScheduleOverview.tsx`
-
-After cancelling all bookings for a player across the cycle, find and recalculate affected unpaid invoices.
-
-### 4. Extract shared recalculation utility
-**File:** `src/lib/invoiceSync.ts` (new)
-
-Extract the invoice recalculation logic into a shared function used by both `DeleteSlotDialog` and `TrainerScheduleOverview` to avoid duplication. This function will:
-- Accept an invoice ID and list of removed booking IDs
-- Fetch remaining bookings and rebuild line items
-- Handle split payment detection and application
-- Calculate multi-rate VAT with breakdown
-- Clear `pdf_url` and regenerate PDF
-
-### 5. Manual fix for current invoices
-Use the insert tool to update Nick & Joran's invoices (and others affected by the April 27th deletion) — same approach as previous patches.
-
----
-
-**Files changed:**
 | File | Change |
 |------|--------|
-| `src/lib/invoiceSync.ts` | New shared recalculation utility |
-| `src/components/trainer/DeleteSlotDialog.tsx` | Use shared utility instead of inline logic |
-| `src/pages/TrainerScheduleOverview.tsx` | Add invoice sync to player removal actions |
+| Migration SQL | Add academy manager SELECT policy on bookings |
+| `src/pages/academy/AcademyCalendar.tsx` | Fetch player data in bookings query, build `booked_players`, add action callbacks + dialogs |
 
