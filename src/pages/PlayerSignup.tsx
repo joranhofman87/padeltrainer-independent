@@ -98,10 +98,7 @@ export default function PlayerSignup() {
       if (data.user?.id) {
         supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
       }
-      // Slack notification (non-blocking)
-      supabase.functions.invoke('slack-notify', {
-        body: { event: 'new_signup', data: { name: fullName, email, role: 'Player' } },
-      }).catch(() => {});
+      // Slack notification handled server-side by signup-user
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
       if (redirectUrl) {
