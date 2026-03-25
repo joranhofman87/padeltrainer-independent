@@ -1,5 +1,6 @@
 
 
+
 # Split Payment for Cycles & Slots
 
 ## What it does
@@ -48,17 +49,43 @@ Adds a "split payment" toggle to cycle settings and individual slots. When enabl
 
 ---
 
-## Files
+# Extra Cost Presets with Per-Item VAT Rate
 
-| File | Change |
-|------|--------|
-| Migration SQL | Add `split_payment` to `availability_slots` |
-| `src/lib/cycles.ts` | Add to `CycleSettings` interface |
-| `src/components/cycles/CycleForm.tsx` | Toggle UI |
-| `src/components/trainer/AddSlotDialog.tsx` | Propagate & standalone toggle |
-| `supabase/functions/auto-create-invoice/index.ts` | Split calculation logic |
-| `supabase/functions/auto-invoice-cycles/index.ts` | Pass player count |
-| `src/pages/BookLesson.tsx` | Per-player Mollie amount |
-| `src/components/academy/AcademyPublicOpenSlots.tsx` | Split indicator |
-| `src/components/trainer/TrainerOpenSlots.tsx` | Split indicator |
+## What it does
+1. Trainers/academies can save **extra cost presets** in their settings (e.g. "Ball costs — €5.00 — 21% BTW", "Court rental — €10.00 — 0% BTW")
+2. When creating a cycle or slot, toggling on extra costs shows a **preset picker** to quickly add saved costs
+3. Each extra cost carries its own `vat_rate`, so session prices and extra costs can have different tax rates
+4. Invoicing calculates VAT per line item group instead of a single flat rate
 
+## Completed Changes
+
+### 1. Database
+- Created `extra_cost_presets` table with RLS policies for trainer/academy ownership
+- Added `vat_breakdown` JSONB column to `invoices` table
+
+### 2. ExtraCost interface (`src/lib/cycles.ts`)
+- Added `vat_rate?: number` field
+
+### 3. Settings UI (`src/components/settings/ExtraCostPresetsCard.tsx`)
+- CRUD card for managing presets (description, price, VAT %, type)
+- Added to `TrainerBookingSettings.tsx`
+
+### 4. Preset Picker (`src/components/settings/ExtraCostPresetPicker.tsx`)
+- Dropdown component for quick preset selection
+- Integrated in CycleForm and AddSlotDialog (BulkCreateSheet)
+
+### 5. CycleForm & AddSlotDialog
+- Added VAT % input per extra cost row
+- Added preset picker button alongside "Add cost"
+
+### 6. Invoice creation (`auto-create-invoice`)
+- Extra cost line items now carry their own `vat_rate`
+- Multi-rate VAT calculation with `vat_breakdown` stored on invoice
+- Falls back to single-rate when all items share the same rate
+
+### 7. Invoice PDF (`generate-invoice`)
+- Shows per-rate VAT breakdown when multiple rates exist
+
+### 8. Edit Invoice Dialog
+- Per-line-item VAT rate editing
+- Auto-calculated VAT breakdown display
