@@ -322,14 +322,6 @@ export default function TrainerCalendar() {
   const handleCellClick = (date: Date, hour: number) => {
     setDefaultSlotDate(date);
     setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
-    setSlotTypeChoiceOpen(true);
-  };
-
-  const handleChooseSingleSlot = () => {
-    setAddSlotOpen(true);
-  };
-
-  const handleChooseCyclus = () => {
     setBulkCreateOpen(true);
   };
 
