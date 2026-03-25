@@ -64,6 +64,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 
 const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es };
 
