@@ -23,6 +23,8 @@ const EVENT_CONFIG: Record<string, { emoji: string; title: string }> = {
   account_deletion: { emoji: "🗑️", title: "Account Deletion Requested" },
   new_club_claim: { emoji: "🏢", title: "New Club Claim" },
   edge_function_error: { emoji: "🚨", title: "Edge Function Error" },
+  new_registration: { emoji: "📝", title: "New Cycle Registration" },
+  registration_error: { emoji: "⚠️", title: "Registration Form Error" },
 };
 
 function formatMessage(event: string, data: Record<string, unknown>): object {
