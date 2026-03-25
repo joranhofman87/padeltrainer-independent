@@ -523,7 +523,7 @@ export default function AcademyCalendar() {
                 setDefaultSlotTime(undefined);
                 const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
                 setSelectedSlotTrainerId(trainerToUse);
-                setSlotTypeChoiceOpen(true);
+                setBulkCreateOpen(true);
               }}
               className="gap-2"
             >
