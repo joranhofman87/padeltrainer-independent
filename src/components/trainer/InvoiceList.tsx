@@ -516,6 +516,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
         onClose={() => setEditInvoice(null)}
         invoice={editInvoice}
         onSaved={() => fetchInvoices()}
+        trainerId={trainerId}
       />
 
       <AlertDialog open={splitConfirm.open} onOpenChange={(open) => !open && setSplitConfirm({ open: false, invoiceId: '' })}>

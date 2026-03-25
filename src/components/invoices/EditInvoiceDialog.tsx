@@ -15,16 +15,6 @@ import { nl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
-import { Label } from '@/components/ui/label';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { supabase } from '@/lib/supabaseClient';
-import { logger } from '@/lib/logger';
-import { Loader2, CalendarIcon } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { nl } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 
 interface LineItem {
   description: string;

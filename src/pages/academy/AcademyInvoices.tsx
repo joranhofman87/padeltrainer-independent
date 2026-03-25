@@ -532,6 +532,7 @@ export default function AcademyInvoices() {
         onClose={() => setEditInvoice(null)}
         invoice={editInvoice}
         onSaved={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
+        academyProfileId={activeAcademy?.id}
       />
     </div>
   );
