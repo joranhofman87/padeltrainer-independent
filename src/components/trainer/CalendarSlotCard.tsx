@@ -110,7 +110,7 @@ function calculateAverageRating(players: BookedPlayer[]): { average: number | nu
   };
 }
 
-export function CalendarSlotCard({ slot, compact = false, cyclusSessions, rowSpan, showTrainerInfo, onSlotClick, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTrainerInfo, onSlotClick, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
   const { t, i18n } = useTranslation("trainer");
   const dfLocale = dateFnsLocales[i18n.language] || enUS;
   const navigate = useNavigate();

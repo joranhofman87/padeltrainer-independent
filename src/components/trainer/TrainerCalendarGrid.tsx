@@ -83,71 +83,22 @@ export function TrainerCalendarGrid({
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [currentDate]);
 
-  // Calculate how many half-hour rows a slot spans
-  const getSlotRowSpan = (slot: SlotWithBookings) => {
-    const startTime = new Date(slot.start_time).getTime();
-    const endTime = new Date(slot.end_time).getTime();
-    const halfHours = (endTime - startTime) / (30 * 60 * 1000);
-    return Math.max(1, Math.round(halfHours));
-  };
-
-  // Get the half-hour index for a slot (e.g., 10:00 → index of 10.0, 10:30 → index of 10.5)
-  const getSlotHalfHourKey = (slot: SlotWithBookings) => {
-    const d = new Date(slot.start_time);
-    return d.getHours() + (d.getMinutes() >= 30 ? 0.5 : 0);
-  };
-
-  // Track which half-hour cells are occupied by spanning slots
-  const occupiedCells = useMemo(() => {
-    const occupied = new Set<string>();
-    
-    slots.forEach((slot) => {
-      const slotDate = new Date(slot.start_time);
-      const dayKey = format(slotDate, "yyyy-MM-dd");
-      const startKey = getSlotHalfHourKey(slot);
-      const span = getSlotRowSpan(slot);
-      
-      // Mark rows after the first as occupied
-      for (let i = 1; i < span; i++) {
-        const occupiedKey = startKey + i * 0.5;
-        if (occupiedKey <= 23) {
-          occupied.add(`${dayKey}-${occupiedKey}`);
-        }
-      }
-    });
-    
-    return occupied;
-  }, [slots]);
-
-  // Map slots to half-hour keys for the grid
-  const slotsByDayAndHalfHour = useMemo(() => {
-    const map: Record<string, Record<number, SlotWithBookings[]>> = {};
-    
+  // Map slots by day for absolute positioning
+  const slotsByDay = useMemo(() => {
+    const map: Record<string, SlotWithBookings[]> = {};
     weekDays.forEach((day) => {
-      const dayKey = format(day, "yyyy-MM-dd");
-      map[dayKey] = {};
-      HALF_HOURS.forEach((hh) => {
-        map[dayKey][hh] = [];
-      });
+      map[format(day, "yyyy-MM-dd")] = [];
     });
-
     slots.forEach((slot) => {
-      const slotDate = new Date(slot.start_time);
-      const dayKey = format(slotDate, "yyyy-MM-dd");
-      const halfHourKey = getSlotHalfHourKey(slot);
-      
-      if (map[dayKey] && map[dayKey][halfHourKey] !== undefined) {
-        map[dayKey][halfHourKey].push(slot);
-      }
+      const dayKey = format(new Date(slot.start_time), "yyyy-MM-dd");
+      if (map[dayKey]) map[dayKey].push(slot);
     });
-
     return map;
   }, [slots, weekDays]);
 
   // Also keep full-hour map for mobile view
   const slotsByDayAndHour = useMemo(() => {
     const map: Record<string, Record<number, SlotWithBookings[]>> = {};
-    
     weekDays.forEach((day) => {
       const dayKey = format(day, "yyyy-MM-dd");
       map[dayKey] = {};
@@ -155,19 +106,28 @@ export function TrainerCalendarGrid({
         map[dayKey][hour] = [];
       });
     });
-
     slots.forEach((slot) => {
       const slotDate = new Date(slot.start_time);
       const dayKey = format(slotDate, "yyyy-MM-dd");
       const hour = slotDate.getHours();
-      
       if (map[dayKey] && map[dayKey][hour] !== undefined) {
         map[dayKey][hour].push(slot);
       }
     });
-
     return map;
   }, [slots, weekDays]);
+
+  // Helper to compute slot position
+  const getSlotPosition = (slot: SlotWithBookings) => {
+    const start = new Date(slot.start_time);
+    const end = new Date(slot.end_time);
+    const startMinutes = (start.getHours() - GRID_START_HOUR) * 60 + start.getMinutes();
+    const durationMinutes = (end.getTime() - start.getTime()) / (60 * 1000);
+    return {
+      top: (startMinutes / 60) * HOUR_HEIGHT,
+      height: Math.max((durationMinutes / 60) * HOUR_HEIGHT - 2, 20), // -2 for gap, min 20px
+    };
+  };
 
   if (view === "day") {
     return (
