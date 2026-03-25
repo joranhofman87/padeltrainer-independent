@@ -168,6 +168,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved }: EditInvoi
           subtotal,
           vat_amount: vatAmount,
           total,
+          vat_breakdown: vatBreakdown || null,
           pdf_url: null, // force regeneration
         })
         .eq('id', invoice.id);
