@@ -31,7 +31,7 @@ export default function MollieCallback() {
       // Redirect after short delay to show success message
       setTimeout(() => {
         if (entity === 'academy') {
-          navigate('/academy/earnings?mollie_connected=true');
+          navigate('/academy/settings?mollie_connected=true');
         } else {
           navigate('/trainer/earnings?mollie_connected=true');
         }
