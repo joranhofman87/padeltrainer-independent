@@ -544,7 +544,88 @@ export default function TrainerScheduleOverview() {
                 prices_include_vat: cycleEditData.pricesIncludeVat,
               });
             }
-            await supabase.from("availability_slots").insert(newSlots);
+            const { data: insertedSlots } = await supabase.from("availability_slots").insert(newSlots).select("id, start_time");
+
+            // Auto-book existing players/guests on the new slots
+            if (insertedSlots && insertedSlots.length > 0) {
+              // Find all enrolled players/guests from existing cycle bookings
+              const existingSlotIds = cycleSlots.map((s) => s.id);
+              const { data: existingBookings } = await supabase
+                .from("bookings")
+                .select("player_id, guest_player_id, status, payment_amount, payment_status")
+                .in("slot_id", existingSlotIds)
+                .in("status", ["confirmed", "attended", "pending"]);
+
+              if (existingBookings && existingBookings.length > 0) {
+                // Get unique players (by player_id or guest_player_id)
+                const playerMap = new Map<string, typeof existingBookings[0]>();
+                for (const b of existingBookings) {
+                  const key = b.player_id || b.guest_player_id || "";
+                  if (key && !playerMap.has(key)) playerMap.set(key, b);
+                }
+
+                const newBookings: any[] = [];
+                for (const [, templateBooking] of playerMap) {
+                  for (const newSlot of insertedSlots) {
+                    newBookings.push({
+                      slot_id: newSlot.id,
+                      player_id: templateBooking.player_id,
+                      guest_player_id: templateBooking.guest_player_id,
+                      status: templateBooking.status,
+                      payment_amount: templateBooking.payment_amount,
+                      payment_status: templateBooking.payment_status || "pending",
+                    });
+                  }
+                }
+
+                if (newBookings.length > 0) {
+                  const { data: createdBookings } = await supabase.from("bookings").insert(newBookings).select("id, player_id, guest_player_id");
+
+                  // Add new booking IDs to unpaid invoices so section 3b recalculates them
+                  if (createdBookings && createdBookings.length > 0) {
+                    // Get all existing booking IDs for this cycle to find invoices
+                    const { data: allCycleBookings } = await supabase
+                      .from("bookings")
+                      .select("id")
+                      .in("slot_id", existingSlotIds)
+                      .in("status", ["confirmed", "attended", "pending"]);
+
+                    const allExistingBookingIds = (allCycleBookings || []).map((b) => b.id);
+
+                    const { data: affectedInvoices } = await supabase
+                      .from("invoices")
+                      .select("id, booking_ids")
+                      .in("status", ["draft", "sent", "pending"])
+                      .overlaps("booking_ids", allExistingBookingIds);
+
+                    if (affectedInvoices) {
+                      for (const inv of affectedInvoices) {
+                        const currentIds = (inv.booking_ids as string[]) || [];
+                        // Find which players this invoice covers
+                        const invExistingBookings = existingBookings.filter((eb) => {
+                          const ebId = allCycleBookings?.find((ab) =>
+                            existingBookings.some((x) => (x.player_id === eb.player_id && x.guest_player_id === eb.guest_player_id))
+                          )?.id;
+                          return ebId && currentIds.includes(ebId);
+                        });
+                        // Get new bookings for those same players
+                        const playerKeys = new Set(invExistingBookings.map((b) => b.player_id || b.guest_player_id));
+                        const relevantNewIds = createdBookings
+                          .filter((nb) => playerKeys.has(nb.player_id || nb.guest_player_id))
+                          .map((nb) => nb.id);
+
+                        if (relevantNewIds.length > 0) {
+                          await supabase
+                            .from("invoices")
+                            .update({ booking_ids: [...currentIds, ...relevantNewIds], pdf_url: null })
+                            .eq("id", inv.id);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           } else if (newCount < cycleSlots.length) {
             // Remove trailing slots without active bookings
             const slotsToRemove = cycleSlots.length - newCount;
