@@ -162,16 +162,6 @@ export default function AcademyPublicProfile() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  
-  quickStats.push(
-    { icon: <Users className="h-4 w-4" />, label: t('stats.trainers'), value: trainers.length },
-    { icon: <MapPin className="h-4 w-4" />, label: t('stats.locations'), value: locations.length },
-  );
-
-  const avgRating = trainers.filter(t => t.avgRating).reduce((sum, t) => sum + (t.avgRating || 0), 0) / (trainers.filter(t => t.avgRating).length || 1);
-  if (trainers.some(t => t.avgRating)) {
-    quickStats.push({ icon: <Star className="h-4 w-4" />, label: t('common:avgRating', 'Avg Rating'), value: avgRating.toFixed(1) });
-  }
 
   const breadcrumbs = [
     { label: t('common:navigation.home'), path: '/' },
