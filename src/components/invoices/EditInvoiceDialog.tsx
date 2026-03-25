@@ -49,6 +49,8 @@ interface EditInvoiceDialogProps {
   onClose: () => void;
   invoice: EditInvoiceData | null;
   onSaved: () => void;
+  trainerId?: string | null;
+  academyProfileId?: string | null;
 }
 
 export function EditInvoiceDialog({ open, onClose, invoice, onSaved }: EditInvoiceDialogProps) {
