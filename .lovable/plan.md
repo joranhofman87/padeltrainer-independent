@@ -1,26 +1,40 @@
 
 
-# Fix: Forward Invoice Ignores Academy Forwarding Emails
+# Attach Invoice Document to Bookkeeper Forwarding Email
 
-## Problem
-The `forward-invoice` edge function only fetches forwarding emails from `trainer_profiles.invoice_forward_emails`. For academy invoices (like RL Performance Academy), the forwarding emails are stored on `academy_profiles.invoice_forward_emails` — which is never checked. The trainer profile has `null` for this field, so the function returns "No forwarding emails configured" silently.
+## Current State
+The `forward-invoice` edge function sends an email with a **link** to the invoice HTML file in storage, but doesn't attach the actual document. Bookkeepers need the file attached so they can import it directly into their accounting software.
 
-## Fix
+## Approach
+Resend supports email attachments via `attachments: [{ filename, content }]` where `content` is a base64-encoded string. The invoice documents are stored as HTML files in Supabase Storage.
+
+## Changes
 
 ### `supabase/functions/forward-invoice/index.ts`
 
-After fetching the trainer profile (line 76-80), add a fallback check: if the invoice has an `academy_profile_id`, fetch `academy_profiles.invoice_forward_emails` and use those if the trainer's are empty.
+1. **Download the invoice HTML** from storage using `supabase.storage.from('invoices').download(fileName)`
+2. **If `pdf_url` is null**, first call `generate-invoice` to ensure the document exists before downloading
+3. **Convert to base64** and attach to the Resend email as `{invoice_number}.html`
+4. Keep the existing download link in the email body as a fallback
 
-Logic change:
-1. Keep existing trainer profile fetch
-2. If `invoice.academy_profile_id` exists, also fetch `academy_profiles.invoice_forward_emails` and `business_name`
-3. Use academy forwarding emails if trainer's are empty/null
-4. Use academy `business_name` as fallback for the email footer
-5. Authorization: if academy invoice, also allow academy managers (check `is_academy_manager` RPC)
+Key code addition (after the signed URL generation, before sending):
+```typescript
+// Download invoice file for attachment
+const { data: fileData } = await supabase.storage
+  .from("invoices")
+  .download(fileName);
 
-This is ~15 lines added. No other files need changes.
+let attachments = [];
+if (fileData) {
+  const buffer = await fileData.arrayBuffer();
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  attachments = [{ filename: `${invoice.invoice_number}.html`, content: base64 }];
+}
+```
+
+Then add `attachments` to each `resend.emails.send()` call.
 
 | File | Change |
 |------|--------|
-| `supabase/functions/forward-invoice/index.ts` | Add academy_profiles fallback for forwarding emails and business name |
+| `supabase/functions/forward-invoice/index.ts` | Download invoice from storage, attach as HTML file to email |
 
