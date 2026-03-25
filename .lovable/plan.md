@@ -1,39 +1,41 @@
 
 
-# Fix: Guest-to-Player Linking on Signup
+# Fix: Invoice Forwarding Not Triggered on Payment
 
-## Root Causes
+## Root Cause
 
-### 1. Wrong ID used in trigger (invoices)
-The `link_guest_invoices_on_signup` trigger sets `invoices.player_id = NEW.user_id`, but `invoices.player_id` references `profiles(id)` (the profiles table primary key), NOT `auth.users(id)`. These are different UUIDs. The trigger should use `NEW.id` (the profiles row PK) instead of `NEW.user_id`.
+The `mollie-webhook` has two payment paths:
 
-### 2. Bookings are never linked
-The trigger only links invoices and guest_players, but **bookings still have `guest_player_id` set and `player_id = NULL`**. The player dashboard queries `.eq('player_id', profile.id)`, so guest bookings remain invisible after signup.
+1. **Invoice-only payments** (lines 272-308) — when a player pays via an invoice payment link (`create-invoice-payment`). This path marks the invoice as paid and syncs bookings, but **never calls `forward-invoice`**. It returns at line 308 without forwarding.
 
-## Changes
+2. **Booking-based payments** (lines 362-375) — calls `auto-create-invoice`, which internally forwards if all bookings are paid. But this path is only for direct booking payments, not invoice payments.
 
-### 1. Update the `link_guest_invoices_on_signup` trigger function
+Since RL Performance Academy uses invoice payment links, the invoice-only path is hit — and forwarding is completely skipped.
 
-Replace `NEW.user_id` with `NEW.id` for the invoice update (since `invoices.player_id` references `profiles.id`).
+## Fix
 
-Add a third UPDATE to also link bookings:
-```sql
-UPDATE bookings b
-SET player_id = NEW.id
-FROM guest_players gp
-WHERE b.guest_player_id = gp.id
-  AND lower(gp.email) = lower(NEW.email)
-  AND b.player_id IS NULL;
+### `supabase/functions/mollie-webhook/index.ts`
+
+After the invoice is marked as paid (line 281) and bookings are synced (line 304), add a call to `forward-invoice` before the `return` on line 308:
+
+```typescript
+// Forward invoice to bookkeeping emails
+try {
+  await supabase.functions.invoke("forward-invoice", {
+    body: { invoiceId: invoiceIdFromMetadata },
+    headers: { Authorization: `Bearer ${supabaseServiceKey}` },
+  });
+  logStep("Invoice forwarded to bookkeeping");
+} catch (fwdErr) {
+  logStep("Invoice forwarding failed (non-fatal)", { error: String(fwdErr) });
+}
 ```
 
-### 2. Data patch for current situation
-Manually link Joran's (the player who just signed up) bookings and invoice to their profile. Need to:
-- Find the profile ID for the newly signed-up player
-- Update `invoices.player_id` to the correct `profiles.id`
-- Update `bookings.player_id` for all bookings with matching `guest_player_id`
+This is ~8 lines added inside the `if (payment.status === "paid")` block, before `return new Response("OK", ...)`.
+
+No other files need changes — the `forward-invoice` function already handles fetching the trainer's forwarding emails and sending via Resend.
 
 | File | Change |
 |------|--------|
-| Migration SQL | Fix `link_guest_invoices_on_signup`: use `NEW.id` instead of `NEW.user_id`, add bookings linking |
-| Database (data patch) | Link existing bookings + fix invoice player_id for the signed-up player |
+| `supabase/functions/mollie-webhook/index.ts` | Add `forward-invoice` call in invoice-only payment path |
 
