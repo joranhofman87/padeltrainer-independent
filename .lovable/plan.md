@@ -1,34 +1,57 @@
 
 
-# Hide Calendar Sync + Add .ICS Download for Cycles
+# Fix: Player Sees "Coach Trainer" Instead of Actual Trainer Name
 
-## What Changes
+## Root Cause
 
-### 1. Hide Calendar Sync from Player Settings
-Remove the Calendar Sync card from the settings grid and the sidebar link. Keep the route/page intact so it can be re-enabled later.
+The `trainer_profiles` table has RLS policies that only grant SELECT to:
+- The trainer themselves
+- Academy managers
+- Club managers
+- Admins
 
-| File | Change |
-|------|--------|
-| `src/pages/PlayerSettings.tsx` | Remove the calendar sync entry from `settingsItems` array (lines 33-40), remove `CalendarSync` import |
-| `src/components/player/PlayerSidebar.tsx` | Remove/comment out the calendar sync nav link (line 276-281) |
-| `src/components/DomainRouter.tsx` | Comment out the calendar route for player (line 211) — keeps code, hides access |
+**Players have no SELECT access to `trainer_profiles`**. When `PlayerBookings.tsx` queries `trainer_profiles` to get the `user_id` (line 99-102), the query returns empty for a player, so the fallback `'Trainer'` is used.
 
-### 2. Add "Add to Calendar" (.ICS download) Button on Player Bookings
-Instead of a full Google Calendar integration, generate a downloadable `.ics` file for each cycle's sessions so players can import them into any calendar app (Google, Apple, Outlook).
+## Fix
 
-**Where it appears:**
-- On the **Player Bookings** page — an "Add to Calendar" button per booking/cycle
-- Optionally on the **Booking Success** page after payment
+Two options — I recommend **Option A** for simplicity:
 
-**How it works (client-side, no edge function needed):**
-- Create a utility `src/lib/icsGenerator.ts` that builds a valid iCalendar `.ics` string from booking data (event title, start/end time, location, trainer name)
-- For a full cycle: generate a single `.ics` file containing all sessions as separate `VEVENT` entries
-- Trigger a browser download when the player clicks "Add to Calendar"
+### Option A: Add an RLS policy for players who have bookings with the trainer
 
-**ICS format is universal** — works with Google Calendar, Apple Calendar, Outlook, etc. No OAuth integration needed.
+Add a SELECT policy on `trainer_profiles` that allows players to see trainer profiles if they have a booking with that trainer. This uses the existing `is_player_of_trainer` pattern but in reverse.
 
-| File | Change |
-|------|--------|
-| `src/lib/icsGenerator.ts` | New file — utility to generate `.ics` content from booking/slot data |
-| `src/pages/player/PlayerBookings.tsx` (or equivalent) | Add "Add to Calendar" button that generates and downloads the `.ics` file |
+```sql
+CREATE POLICY "Players can view profiles of their trainers"
+  ON public.trainer_profiles FOR SELECT
+  TO authenticated
+  USING (
+    id IN (
+      SELECT DISTINCT s.trainer_id 
+      FROM bookings b
+      JOIN availability_slots s ON s.id = b.slot_id
+      WHERE b.player_id IN (
+        SELECT id FROM profiles WHERE user_id = auth.uid()
+      )
+    )
+  );
+```
+
+Alternatively, also allow viewing **public** trainer profiles (since those are shown on public pages anyway):
+
+```sql
+CREATE POLICY "Anyone can view public trainer profiles data"
+  ON public.trainer_profiles FOR SELECT
+  TO authenticated
+  USING (is_public = true);
+```
+
+### Recommendation
+
+Add **both** policies — one for public trainers (consistent with other public views) and one for booked trainers (so even non-public trainers show names to their players).
+
+| Change | Detail |
+|--------|--------|
+| Migration SQL | Add 2 RLS policies on `trainer_profiles` for SELECT access |
+
+No code changes needed — the existing query in `PlayerBookings.tsx` will start working once RLS allows the read.
 
