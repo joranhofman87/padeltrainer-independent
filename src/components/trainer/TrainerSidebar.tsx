@@ -90,7 +90,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
     location.pathname.startsWith("/trainer/intake-requests") ||
     location.pathname.startsWith("/trainer/waiting-list")
   );
-  const [clubsOpen, setClubsOpen] = useState(false);
+  
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.startsWith("/trainer/settings") ||
     location.pathname.startsWith("/trainer/subscription") ||
