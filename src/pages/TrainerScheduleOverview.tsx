@@ -582,9 +582,9 @@ export default function TrainerScheduleOverview() {
           .maybeSingle();
 
         if (cycleRow) {
-          const settings = (cycleRow.settings as Record<string, unknown>) || {};
+          const settings: Record<string, unknown> = ((cycleRow.settings as Record<string, unknown>) || {});
           settings.split_payment = true;
-          await supabase.from("cycles").update({ settings }).eq("id", editCycleId);
+          await supabase.from("cycles").update({ settings: settings as any }).eq("id", editCycleId);
         }
 
         // Find all bookings on this cycle's slots
