@@ -340,6 +340,7 @@ export default function CycleForm({
         mark_as_paid: isEvent ? (eventPaymentMethod === 'cash') : paymentTiming === 'manual',
         payment_timing: isEvent ? undefined : paymentTiming,
         invoice_delay_weeks: paymentTiming === 'invoice_after_weeks' ? invoiceDelayWeeks : undefined,
+        split_payment: isEvent ? undefined : splitPayment,
         extra_costs: isEvent ? undefined : extraCosts.filter(ec => ec.description && ec.price > 0),
         // Event-specific
         payment_methods: isEvent ? eventPaymentMethod : undefined,
