@@ -73,6 +73,15 @@ serve(async (req) => {
     const slot = bookings[0].availability_slots as any;
     const trainerId = slot.trainer_id;
 
+    // Auto-detect split payment from slot if not explicitly passed
+    if (!splitAmongPlayers && slot.split_payment === true) {
+      const uniquePlayers = new Set(bookings.map((b) => b.player_id || b.guest_player_id).filter(Boolean));
+      if (uniquePlayers.size > 1) {
+        splitAmongPlayers = uniquePlayers.size;
+        logStep("Auto-detected split payment from slot", { splitAmongPlayers });
+      }
+    }
+
     // Check if trainer belongs to an academy
     let academyProfileId: string | null = null;
     const { data: academyTrainer } = await supabase
