@@ -104,8 +104,6 @@ export default function AcademyCalendar() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
   
   // Slot creation dialog state
-  const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
-  const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
