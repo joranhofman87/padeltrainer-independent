@@ -213,6 +213,21 @@ export default function PlayerBookings() {
     (b) => b.status === 'cancelled' || isPast(parseISO(b.availability_slots.start_time))
   );
 
+  const handleDownloadCalendar = (bookingsToExport: BookingWithDetails[]) => {
+    const events = bookingsToExport
+      .filter(b => b.status !== 'cancelled')
+      .map(b => ({
+        title: `Padel Training – ${b.trainerName}${b.availability_slots.cyclus_name ? ` (${b.availability_slots.cyclus_name})` : ''}`,
+        startTime: b.availability_slots.start_time,
+        endTime: b.availability_slots.end_time,
+        location: b.availability_slots.locations?.name || undefined,
+        description: `Coach: ${b.trainerName}`,
+      }));
+    if (events.length === 0) return;
+    const cycleName = bookingsToExport[0]?.availability_slots.cyclus_name || 'training';
+    downloadIcsFile(events, `${cycleName.replace(/\s+/g, '-').toLowerCase()}-sessions.ics`);
+  };
+
   if (loading || loadingBookings) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
