@@ -82,6 +82,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           is_marked_full,
           is_public,
           price_per_session,
+          total_price,
           max_participants,
           allow_single_booking,
           location_id,
@@ -89,6 +90,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           locations:location_id(name),
           trainer_profiles:trainer_id(
             id,
+            slug,
             user_id,
             profiles:user_id(full_name)
           )
@@ -96,7 +98,6 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         .or(orFilter)
         .eq('is_marked_full', false)
         .eq('is_public', true)
-        .is('cyclus_id', null)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })
         .limit(50);
