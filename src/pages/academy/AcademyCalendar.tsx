@@ -31,11 +31,15 @@ import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
+import { useToast } from "@/hooks/use-toast";
 import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
+import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
+import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
+import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
-import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
+import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 
 interface AcademySlot {
   id: string;
@@ -45,15 +49,18 @@ interface AcademySlot {
   is_marked_full: boolean;
   location_id: string | null;
   max_participants: number;
+  cyclus_id: string | null;
   cyclus_name: string | null;
   trainer_name: string;
   trainer_avatar: string | null;
   location_name: string | null;
   active_bookings: number;
   pending_bookings: number;
+  booked_players: BookedPlayer[];
   rating_system?: string | null;
   min_rating?: number | null;
   max_rating?: number | null;
+  price_per_session?: number | null;
 }
 
 interface Trainer {
@@ -80,9 +87,11 @@ const dateFnsLocales: Record<string, typeof enUS> = {
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
+  const { t: tTrainer } = useTranslation("trainer");
   const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split("-")[0]] || enUS;
   const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
+  const { toast } = useToast();
   
   const [view, setView] = useState<"day" | "week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -103,6 +112,15 @@ export default function AcademyCalendar() {
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string>();
   const [selectedSlotTrainerId, setSelectedSlotTrainerId] = useState<string | null>(null);
+
+  // Action dialog state
+  const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
+  const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
+  const [editBookingOpen, setEditBookingOpen] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
+  const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
+  const [bookingToEdit, setBookingToEdit] = useState<any>(null);
+  const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
 
   const handleCellClick = (day: Date, hour: number) => {
     setDefaultSlotDate(day);
@@ -182,10 +200,12 @@ export default function AcademyCalendar() {
           max_participants,
           is_marked_full,
           location_id,
+          cyclus_id,
           cyclus_name,
           rating_system,
           min_rating,
           max_rating,
+          price_per_session,
           locations(name)
         `)
         .in("trainer_id", trainerIds)
@@ -217,24 +237,66 @@ export default function AcademyCalendar() {
         (trainerProfiles || []).map((tp) => [tp.id, tp.user_id])
       );
 
+      // Fetch bookings WITH player data (same pattern as TrainerCalendar)
       const slotIds = slotsData?.map((s) => s.id) || [];
-      const { data: bookings } = await supabase
-        .from("bookings")
-        .select("slot_id, status")
-        .in("slot_id", slotIds);
+      let bookings: any[] = [];
+      
+      if (slotIds.length > 0) {
+        const { data: bookingsData, error: bookingsError } = await supabase
+          .from("bookings")
+          .select(`
+            id,
+            slot_id,
+            status,
+            player_id,
+            guest_player_id,
+            profiles:player_id (full_name, skill_rating, rating_system),
+            guest_players:guest_player_id (full_name, skill_rating, rating_system)
+          `)
+          .in("slot_id", slotIds);
 
-      const bookingCounts = new Map<string, { active: number; pending: number }>();
-      (bookings || []).forEach((b) => {
-        const current = bookingCounts.get(b.slot_id) || { active: 0, pending: 0 };
-        if (b.status === "confirmed") current.active++;
-        if (b.status === "pending") current.pending++;
-        bookingCounts.set(b.slot_id, current);
+        if (bookingsError) {
+          logger.error("Error fetching bookings", bookingsError as Error, { component: "AcademyCalendar" });
+        } else {
+          bookings = bookingsData || [];
+        }
+      }
+
+      // Aggregate booking counts and player info
+      const bookingCounts: Record<string, { active: number; pending: number; players: BookedPlayer[] }> = {};
+      bookings.forEach((b) => {
+        if (!bookingCounts[b.slot_id]) {
+          bookingCounts[b.slot_id] = { active: 0, pending: 0, players: [] };
+        }
+        if (b.status === "confirmed") {
+          bookingCounts[b.slot_id].active++;
+        } else if (b.status === "pending") {
+          bookingCounts[b.slot_id].pending++;
+        }
+
+        const profile = b.profiles as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
+        const guestPlayer = b.guest_players as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
+        const playerName = profile?.full_name || guestPlayer?.full_name || "Unknown";
+        const skillRating = profile?.skill_rating ?? guestPlayer?.skill_rating ?? null;
+        const ratingSystem = profile?.rating_system || guestPlayer?.rating_system || 'knltb';
+
+        if (b.status === "confirmed" || b.status === "pending") {
+          bookingCounts[b.slot_id].players.push({
+            id: b.player_id || b.guest_player_id || b.id,
+            bookingId: b.id,
+            name: playerName,
+            status: b.status as "confirmed" | "pending",
+            isGuest: !!b.guest_player_id,
+            skillRating,
+            ratingSystem,
+          });
+        }
       });
 
       const enrichedSlots: AcademySlot[] = (slotsData || []).map((slot: any) => {
         const userId = trainerUserMap.get(slot.trainer_id);
         const profile = userId ? profileMap.get(userId) : null;
-        const counts = bookingCounts.get(slot.id) || { active: 0, pending: 0 };
+        const counts = bookingCounts[slot.id] || { active: 0, pending: 0, players: [] };
 
         return {
           id: slot.id,
@@ -244,15 +306,18 @@ export default function AcademyCalendar() {
           is_marked_full: slot.is_marked_full,
           location_id: slot.location_id,
           max_participants: slot.max_participants || 4,
+          cyclus_id: slot.cyclus_id || null,
           cyclus_name: slot.cyclus_name || null,
           trainer_name: profile?.full_name || "Unknown",
           trainer_avatar: profile?.avatar_url || null,
           location_name: slot.locations?.name || null,
           active_bookings: counts.active,
           pending_bookings: counts.pending,
+          booked_players: counts.players,
           rating_system: slot.rating_system || null,
           min_rating: slot.min_rating != null ? Number(slot.min_rating) : null,
           max_rating: slot.max_rating != null ? Number(slot.max_rating) : null,
+          price_per_session: slot.price_per_session || null,
         };
       });
 
@@ -281,13 +346,13 @@ export default function AcademyCalendar() {
       start_time: slot.start_time,
       end_time: slot.end_time,
       max_participants: slot.max_participants || 4,
-      price: null,
+      price: slot.price_per_session || null,
       active_bookings: slot.active_bookings,
       pending_bookings: slot.pending_bookings,
       is_past: new Date(slot.start_time) < now,
-      cyclus_id: null,
+      cyclus_id: slot.cyclus_id,
       cyclus_name: slot.cyclus_name,
-      booked_players: [],
+      booked_players: slot.booked_players,
       is_marked_full: slot.is_marked_full,
       location_name: slot.location_name,
       trainer_id: slot.trainer_id,
@@ -321,6 +386,98 @@ export default function AcademyCalendar() {
     return format(currentDate, "MMMM yyyy", { locale: dateLocale });
   };
 
+  // Action handlers
+  const handleBookForPlayer = (slot: SlotWithBookings) => {
+    setSelectedSlot(slot);
+    setBookForPlayerOpen(true);
+  };
+
+  const handleDuplicateCyclus = (cyclusId: string) => {
+    setPreselectedCyclusId(cyclusId);
+    setBulkCreateOpen(true);
+  };
+
+  const handleDeleteSlot = (slot: SlotWithBookings) => {
+    setSlotToDelete(slot);
+    setDeleteSlotOpen(true);
+  };
+
+  const handleEditBooking = async (bookingId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(`
+          id,
+          status,
+          notes,
+          payment_status,
+          payment_amount,
+          guest_player_id,
+          availability_slots (id, start_time, end_time),
+          profiles:player_id (id, full_name, email)
+        `)
+        .eq("id", bookingId)
+        .single();
+
+      if (error) throw error;
+
+      setBookingToEdit({
+        ...data,
+        player: data.profiles,
+      });
+      setEditBookingOpen(true);
+    } catch (error) {
+      logger.error("Error fetching booking", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyCalendar' });
+    }
+  };
+
+  const handleToggleMarkedFull = async (
+    slotId: string,
+    value: boolean,
+    applyToCyclus?: boolean
+  ) => {
+    try {
+      if (applyToCyclus) {
+        const slot = slots.find((s) => s.id === slotId);
+        if (slot?.cyclus_id) {
+          const { error } = await supabase
+            .from("availability_slots")
+            .update({ is_marked_full: value })
+            .eq("cyclus_id", slot.cyclus_id)
+            .gte("start_time", new Date().toISOString());
+
+          if (error) throw error;
+
+          toast({
+            title: value
+              ? tTrainer("calendar.cyclusMarkedFull")
+              : tTrainer("calendar.cyclusMarkedOpen"),
+          });
+        }
+      } else {
+        const { error } = await supabase
+          .from("availability_slots")
+          .update({ is_marked_full: value })
+          .eq("id", slotId);
+
+        if (error) throw error;
+
+        toast({
+          title: value
+            ? tTrainer("calendar.slotMarkedFull")
+            : tTrainer("calendar.slotMarkedOpen"),
+        });
+      }
+      fetchSlots();
+    } catch (error) {
+      logger.error("Error toggling marked full", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyCalendar' });
+    }
+  };
+
+  const handleSlotsCreated = () => {
+    fetchSlots();
+  };
+
   // Stats
   const freeSlots = slots.filter(
     (s) => !isBefore(new Date(s.start_time), new Date()) && s.active_bookings === 0 && s.pending_bookings === 0
@@ -340,6 +497,13 @@ export default function AcademyCalendar() {
       </div>
     );
   }
+
+  // Determine trainer ID for dialogs - use filtered trainer or the slot's trainer
+  const getTrainerIdForSlot = () => {
+    if (selectedSlot?.trainer_id) return selectedSlot.trainer_id;
+    if (selectedTrainerId !== "all") return selectedTrainerId;
+    return trainers[0]?.id || "";
+  };
 
   return (
     <>
@@ -488,6 +652,11 @@ export default function AcademyCalendar() {
               view={view}
               showTrainerInfo
               onCellClick={handleCellClick}
+              onBookForPlayer={handleBookForPlayer}
+              onDuplicateCyclus={handleDuplicateCyclus}
+              onDeleteSlot={handleDeleteSlot}
+              onEditBooking={handleEditBooking}
+              onToggleMarkedFull={handleToggleMarkedFull}
               onNavigatePrevious={navigatePrevious}
               onNavigateNext={navigateNext}
             />
@@ -513,26 +682,75 @@ export default function AcademyCalendar() {
             defaultTime={defaultSlotTime}
             defaultDuration={60}
             defaultWeeks={8}
-            onSlotsCreated={() => fetchSlots()}
+            onSlotsCreated={handleSlotsCreated}
             availableLocations={locations}
             academyId={activeAcademy?.id}
           />
 
           <BulkCreateSheet
             open={bulkCreateOpen}
-            onOpenChange={setBulkCreateOpen}
+            onOpenChange={(open) => {
+              setBulkCreateOpen(open);
+              if (!open) {
+                setPreselectedCyclusId(undefined);
+              }
+            }}
             trainerId={selectedSlotTrainerId}
             defaultDate={defaultSlotDate}
             defaultTime={defaultSlotTime}
             defaultDuration={60}
             defaultWeeks={8}
-            onSlotsCreated={() => fetchSlots()}
+            onSlotsCreated={handleSlotsCreated}
             availableLocations={locations}
             availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
             academyId={activeAcademy?.id}
+            prefillFromCyclusId={preselectedCyclusId}
           />
 
+          {/* Book for Player Dialog */}
+          {selectedSlot && (
+            <BookForPlayerDialog
+              open={bookForPlayerOpen}
+              onOpenChange={(open) => {
+                setBookForPlayerOpen(open);
+                if (!open) setSelectedSlot(null);
+              }}
+              trainerId={selectedSlot.trainer_id || getTrainerIdForSlot()}
+              slot={{
+                id: selectedSlot.id,
+                start_time: selectedSlot.start_time,
+                end_time: selectedSlot.end_time,
+                cyclus_id: selectedSlot.cyclus_id,
+                cyclus_name: selectedSlot.cyclus_name,
+                booked_players: selectedSlot.booked_players,
+              }}
+              onBookingCreated={handleSlotsCreated}
+            />
+          )}
 
+          {/* Delete Slot Dialog */}
+          <DeleteSlotDialog
+            open={deleteSlotOpen}
+            onOpenChange={(open) => {
+              setDeleteSlotOpen(open);
+              if (!open) setSlotToDelete(null);
+            }}
+            slot={slotToDelete}
+            trainerId={slotToDelete?.trainer_id || getTrainerIdForSlot()}
+            onSlotDeleted={handleSlotsCreated}
+          />
+
+          {/* Edit Booking Dialog */}
+          <EditBookingDialog
+            open={editBookingOpen}
+            onOpenChange={(open) => {
+              setEditBookingOpen(open);
+              if (!open) setBookingToEdit(null);
+            }}
+            booking={bookingToEdit}
+            trainerId={getTrainerIdForSlot()}
+            onBookingUpdated={handleSlotsCreated}
+          />
         </>
       )}
     </>
