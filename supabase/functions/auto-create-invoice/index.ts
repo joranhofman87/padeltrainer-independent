@@ -23,7 +23,7 @@ serve(async (req) => {
     const body = await req.json();
     const bookingIds: string[] = body.bookingIds || (body.bookingId ? [body.bookingId] : []);
     const asDraft: boolean = body.asDraft === true;
-    const splitAmongPlayers: number | null = body.splitAmongPlayers || null;
+    let splitAmongPlayers: number | null = body.splitAmongPlayers || null;
 
     if (bookingIds.length === 0) {
       logStep("No booking IDs provided");
@@ -54,6 +54,8 @@ serve(async (req) => {
           cyclus_id,
           cyclus_name,
           prices_include_vat,
+          extra_costs,
+          split_payment,
           locations(name, city)
         )
       `)
@@ -70,6 +72,15 @@ serve(async (req) => {
     // Get trainer ID from first booking
     const slot = bookings[0].availability_slots as any;
     const trainerId = slot.trainer_id;
+
+    // Auto-detect split payment from slot if not explicitly passed
+    if (!splitAmongPlayers && slot.split_payment === true) {
+      const uniquePlayers = new Set(bookings.map((b) => b.player_id || b.guest_player_id).filter(Boolean));
+      if (uniquePlayers.size > 1) {
+        splitAmongPlayers = uniquePlayers.size;
+        logStep("Auto-detected split payment from slot", { splitAmongPlayers });
+      }
+    }
 
     // Check if trainer belongs to an academy
     let academyProfileId: string | null = null;
