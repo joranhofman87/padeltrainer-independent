@@ -1,55 +1,41 @@
 
+## Fix Plan: Restore Academy Data + Player Bookings After RLS Recursion
 
-# Fix: Infinite Recursion in trainer_profiles RLS Policy
+### What I found
+- The app is still hitting `500` with: **`infinite recursion detected in policy for relation "trainer_profiles"`**.
+- The failing request is even a simple profile read (`/profiles?user_id=...`), which explains why:
+  - academy context appears empty
+  - player bookings page also breaks
+- The previous migration fixed one part (`get_profile_id_for_user`) but the current `trainer_profiles` player policy still queries `bookings` directly under RLS, which re-enters other policies and loops.
 
-## Root Cause
+### Implementation
+1. **Create a new migration** to fully break recursion at the source (policy-level, no frontend changes).
+2. **Add a SECURITY DEFINER helper** (public schema) that checks if the current user has ever booked a given trainer:
+   - input: `trainer_profile_id`
+   - internally resolves player profile id (via `get_profile_id_for_user(auth.uid())`)
+   - checks `bookings + availability_slots`
+   - returns boolean
+3. **Replace policy** `Players can view profiles of their trainers` on `trainer_profiles` to use that helper function, so policy evaluation no longer queries `bookings` with RLS.
+4. **Harden bookings player policies** (same migration) to remove direct `profiles` subqueries:
+   - `Players can view their own bookings`
+   - `Players can create bookings`
+   - `Players can update their own bookings`
+   Use `player_id = public.get_profile_id_for_user(auth.uid())`.
+5. Keep all existing access scope intact (only recursion path removed, no broad permission expansion).
 
-Circular RLS dependency between `trainer_profiles` and `profiles`:
+### Files to change
+- `supabase/migrations/<new_timestamp>_fix_trainer_profiles_recursion.sql` (new)
 
-1. `trainer_profiles` → "Players can view profiles of their trainers" contains `SELECT profiles.id FROM profiles WHERE profiles.user_id = auth.uid()` — this triggers RLS evaluation on `profiles`
-2. `profiles` → "Academy managers can view their trainers profiles" contains `FROM trainer_profiles tp JOIN ...` — this triggers RLS evaluation back on `trainer_profiles`
+### Technical details
+- Root cycle currently involves:
+  - `profiles` policy referencing `trainer_profiles`
+  - `trainer_profiles` player policy referencing `bookings`
+  - `bookings` policies referencing `profiles` / `trainer_profiles`
+- Moving the trainer-visibility check into a **SECURITY DEFINER** function prevents RLS re-entry loops while preserving row filtering logic.
+- No changes needed in React code; once RLS stops failing, existing queries should render academy data and player bookings again.
 
-This loop causes the "infinite recursion detected in policy for relation trainer_profiles" error, which breaks the academy cycles page and likely other pages.
-
-## Fix
-
-Replace the subquery in the "Players can view profiles of their trainers" policy to avoid touching the `profiles` table. Instead, use a `SECURITY DEFINER` function to get the player's profile ID from `auth.uid()`.
-
-### Migration SQL
-
-```sql
--- 1. Create a helper function to get profile id from auth uid (avoids RLS on profiles)
-CREATE OR REPLACE FUNCTION public.get_profile_id_for_user(_user_id uuid)
-RETURNS uuid
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT id FROM profiles WHERE user_id = _user_id LIMIT 1
-$$;
-
--- 2. Drop and recreate the problematic policy
-DROP POLICY IF EXISTS "Players can view profiles of their trainers" ON trainer_profiles;
-
-CREATE POLICY "Players can view profiles of their trainers"
-ON trainer_profiles FOR SELECT TO authenticated
-USING (
-  id IN (
-    SELECT DISTINCT s.trainer_id
-    FROM bookings b
-    JOIN availability_slots s ON s.id = b.slot_id
-    WHERE b.player_id = public.get_profile_id_for_user(auth.uid())
-  )
-);
-```
-
-This breaks the recursion by using a `SECURITY DEFINER` function to look up the profile ID, bypassing RLS on `profiles`.
-
-| Change | Detail |
-|--------|--------|
-| New DB function `get_profile_id_for_user` | Security definer function to get profile.id from auth.uid() without triggering profiles RLS |
-| Recreate RLS policy on `trainer_profiles` | Replace `profiles` subquery with the new function call |
-
-No frontend code changes needed.
-
+### Verification after migration
+1. Confirm `/profiles?user_id=...` returns 200 (no recursion error).
+2. Open RL Performance academy dashboard/profile: data and forms should reappear.
+3. Open player bookings page: bookings list should load again.
+4. Spot-check trainer name resolution still works in bookings/cards.
