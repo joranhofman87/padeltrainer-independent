@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabaseClient';
-import { Package, Plus } from 'lucide-react';
+import { Package, Settings } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { ExtraCost } from '@/lib/cycles';
 
 interface Preset {
@@ -53,16 +54,26 @@ export function ExtraCostPresetPicker({ trainerId, academyProfileId, onSelect }:
       </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="start">
         {presets.length === 0 ? (
-          <p className="text-sm text-muted-foreground p-2">
-            Geen presets gevonden. Voeg ze toe in je instellingen.
-          </p>
+          <div className="p-2 space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Geen presets gevonden.
+            </p>
+            <Link
+              to="/app/settings"
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+              onClick={() => setOpen(false)}
+            >
+              <Settings className="h-3 w-3" />
+              Presets beheren in instellingen →
+            </Link>
+          </div>
         ) : (
           <div className="space-y-1">
             {presets.map((preset) => (
               <button
                 key={preset.id}
                 type="button"
-                className="w-full text-left px-3 py-2 rounded-md hover:bg-accent text-sm transition-colors"
+                className="w-full text-left px-3 py-2 rounded-md hover:bg-accent hover:text-accent-foreground text-sm transition-colors"
                 onClick={() => {
                   onSelect({
                     description: preset.description,
@@ -79,6 +90,16 @@ export function ExtraCostPresetPicker({ trainerId, academyProfileId, onSelect }:
                 </div>
               </button>
             ))}
+            <div className="border-t pt-1 mt-1">
+              <Link
+                to="/app/settings"
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline px-3 py-1.5"
+                onClick={() => setOpen(false)}
+              >
+                <Settings className="h-3 w-3" />
+                Presets beheren →
+              </Link>
+            </div>
           </div>
         )}
       </PopoverContent>
