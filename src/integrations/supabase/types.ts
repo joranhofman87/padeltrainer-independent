@@ -1786,6 +1786,75 @@ export type Database = {
           },
         ]
       }
+      extra_cost_presets: {
+        Row: {
+          academy_profile_id: string | null
+          created_at: string | null
+          description: string
+          id: string
+          price: number
+          trainer_id: string | null
+          type: string
+          vat_rate: number
+        }
+        Insert: {
+          academy_profile_id?: string | null
+          created_at?: string | null
+          description: string
+          id?: string
+          price?: number
+          trainer_id?: string | null
+          type?: string
+          vat_rate?: number
+        }
+        Update: {
+          academy_profile_id?: string | null
+          created_at?: string | null
+          description?: string
+          id?: string
+          price?: number
+          trainer_id?: string | null
+          type?: string
+          vat_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "extra_cost_presets_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_cost_presets_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_cost_presets_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_cost_presets_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_cost_presets_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       guest_players: {
         Row: {
           academy_profile_id: string | null
@@ -2061,6 +2130,7 @@ export type Database = {
           trainer_id: string
           updated_at: string
           vat_amount: number
+          vat_breakdown: Json | null
           vat_rate: number
         }
         Insert: {
@@ -2091,6 +2161,7 @@ export type Database = {
           trainer_id: string
           updated_at?: string
           vat_amount?: number
+          vat_breakdown?: Json | null
           vat_rate?: number
         }
         Update: {
@@ -2121,6 +2192,7 @@ export type Database = {
           trainer_id?: string
           updated_at?: string
           vat_amount?: number
+          vat_breakdown?: Json | null
           vat_rate?: number
         }
         Relationships: [

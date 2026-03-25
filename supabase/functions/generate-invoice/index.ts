@@ -11,6 +11,7 @@ interface LineItem {
   quantity: number;
   unit_price: number;
   date?: string;
+  vat_rate?: number;
 }
 
 interface InvoiceData {
@@ -28,6 +29,7 @@ interface InvoiceData {
   vat_amount: number;
   total: number;
   notes: string | null;
+  vat_breakdown?: Record<string, { subtotal: number; vat: number }> | null;
   logo_url: string | null;
   trainer: {
     business_name: string;
@@ -151,10 +153,20 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
         <span>Subtotaal</span>
         <span>${formatCurrency(invoice.subtotal)}</span>
       </div>
-      <div class="totals-row">
-        <span>BTW ${invoice.vat_rate}%</span>
-        <span>${formatCurrency(invoice.vat_amount)}</span>
-      </div>
+      ${invoice.vat_breakdown && Object.keys(invoice.vat_breakdown).length > 1
+        ? Object.entries(invoice.vat_breakdown)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([rate, data]) => `
+              <div class="totals-row">
+                <span>BTW ${rate}%</span>
+                <span>${formatCurrency((data as any).vat)}</span>
+              </div>
+            `).join('')
+        : `<div class="totals-row">
+            <span>BTW ${invoice.vat_rate}%</span>
+            <span>${formatCurrency(invoice.vat_amount)}</span>
+          </div>`
+      }
       <div class="totals-row total">
         <span>Totaal</span>
         <span>${formatCurrency(invoice.total)}</span>
@@ -324,6 +336,7 @@ const handler = async (req: Request): Promise<Response> => {
       vat_amount: invoice.vat_amount,
       total: invoice.total,
       notes: invoice.notes,
+      vat_breakdown: invoice.vat_breakdown || null,
       logo_url: businessSource.invoice_logo_url || null,
       trainer: {
         business_name: businessName,

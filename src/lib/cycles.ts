@@ -57,6 +57,7 @@ export interface ExtraCost {
   description: string;
   price: number;
   type?: 'per_session' | 'one_time';
+  vat_rate?: number;
 }
 
 export interface CyclusOption {

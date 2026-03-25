@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow, type CyclusOption } from '@/lib/cycles';
+import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 import { toast } from 'sonner';
 
@@ -1710,7 +1711,7 @@ export default function CycleForm({
                 <p className="text-xs text-muted-foreground">{t('form.extraCostsHelp')}</p>
                 {extraCosts.map((cost, index) => (
                   <div key={index} className="space-y-1.5">
-                    <div className="grid grid-cols-[1fr_8rem_auto] items-center gap-3">
+                    <div className="grid grid-cols-[1fr_6rem_5rem_auto] items-center gap-2">
                       <Input
                         placeholder={t('form.costDescription')}
                         value={cost.description}
@@ -1720,7 +1721,7 @@ export default function CycleForm({
                           setExtraCosts(updated);
                         }}
                       />
-                      <div className="relative w-28">
+                      <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
                         <Input
                           type="number"
@@ -1735,6 +1736,22 @@ export default function CycleForm({
                           }}
                           className="pl-7"
                         />
+                      </div>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={cost.vat_rate ?? 21}
+                          onChange={(e) => {
+                            const updated = [...extraCosts];
+                            updated[index] = { ...updated[index], vat_rate: Number(e.target.value) || 0 };
+                            setExtraCosts(updated);
+                          }}
+                          className="pr-6"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                       </div>
                       <Button
                         type="button"
@@ -1783,15 +1800,22 @@ export default function CycleForm({
                     </div>
                   </div>
                 ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setExtraCosts([...extraCosts, { description: '', price: 0, type: 'per_session' }])}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  {t('form.addCost')}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setExtraCosts([...extraCosts, { description: '', price: 0, type: 'per_session', vat_rate: 21 }])}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {t('form.addCost')}
+                  </Button>
+                  <ExtraCostPresetPicker
+                    trainerId={ownerType === 'trainer' ? ownerId : undefined}
+                    academyProfileId={ownerType === 'academy' ? ownerId : undefined}
+                    onSelect={(cost) => setExtraCosts([...extraCosts, cost])}
+                  />
+                </div>
               </div>
 
               <FormDescription className="text-xs">

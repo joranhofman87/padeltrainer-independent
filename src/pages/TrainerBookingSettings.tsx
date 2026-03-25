@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, ShieldCheck, Zap, Loader2, MessageSquare, Euro } from 'lucide-react';
+import { ExtraCostPresetsCard } from '@/components/settings/ExtraCostPresetsCard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useTranslation } from 'react-i18next';
@@ -285,6 +286,11 @@ export default function TrainerBookingSettings() {
             </div>
           </CardContent>
         </Card>
+        {/* Extra Cost Presets Card */}
+        {trainerProfileId && (
+          <ExtraCostPresetsCard trainerId={trainerProfileId} />
+        )}
+
         {/* VAT Settings Card */}
         <Card>
           <CardHeader>
