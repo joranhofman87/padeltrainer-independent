@@ -1182,7 +1182,17 @@ export default function TrainerScheduleOverview() {
               />
             </div>
 
-            {/* Extra costs */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="edit-split-toggle" className="text-sm">
+                {t("scheduleOverview.splitPayment", "Split payment over players")}
+              </Label>
+              <Switch
+                id="edit-split-toggle"
+                checked={cycleEditData.splitPayment}
+                onCheckedChange={(checked) => setCycleEditData((prev) => ({ ...prev, splitPayment: checked }))}
+              />
+            </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>{t("scheduleOverview.extraCosts", "Extra costs")}</Label>
