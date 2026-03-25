@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { sendBookingCancellation } from "@/lib/email";
 import { logger } from "@/lib/logger";
+import { recalculateInvoiceAfterRemoval } from "@/lib/invoiceSync";
 import {
   AlertDialog,
   AlertDialogContent,
