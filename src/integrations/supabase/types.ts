@@ -2122,6 +2122,7 @@ export type Database = {
           player_business_name: string | null
           player_id: string | null
           player_name: string
+          prices_include_vat: boolean
           public_token: string
           sent_at: string | null
           status: string
@@ -2153,6 +2154,7 @@ export type Database = {
           player_business_name?: string | null
           player_id?: string | null
           player_name: string
+          prices_include_vat?: boolean
           public_token?: string
           sent_at?: string | null
           status?: string
@@ -2184,6 +2186,7 @@ export type Database = {
           player_business_name?: string | null
           player_id?: string | null
           player_name?: string
+          prices_include_vat?: boolean
           public_token?: string
           sent_at?: string | null
           status?: string

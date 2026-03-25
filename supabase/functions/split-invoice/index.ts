@@ -181,6 +181,8 @@ serve(async (req) => {
     let newTotal: number = firstPlayerTotal;
     let newVatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
 
+    const invoicePricesIncludeVat = invoice.prices_include_vat ?? true;
+
     if (hasMultipleVatRates) {
       // For multi-rate, calculate proportional VAT based on corrected total
       const lineItemTotal = updatedLineItems.reduce(
@@ -192,8 +194,15 @@ serve(async (req) => {
       for (const item of updatedLineItems) {
         const lineTotal = item.quantity * item.unit_price * adjustmentRatio;
         const lineVatRate = item.vat_rate ?? vatRate;
-        const lineSub = lineTotal / (1 + lineVatRate / 100);
-        const lineVat = lineTotal - lineSub;
+        let lineSub: number;
+        let lineVat: number;
+        if (invoicePricesIncludeVat) {
+          lineSub = lineTotal / (1 + lineVatRate / 100);
+          lineVat = lineTotal - lineSub;
+        } else {
+          lineSub = lineTotal;
+          lineVat = lineSub * (lineVatRate / 100);
+        }
         totalSub += lineSub;
         totalVat += lineVat;
         if (!newVatBreakdown[lineVatRate]) {
@@ -209,8 +218,13 @@ serve(async (req) => {
         newVatBreakdown[rate].vat = Math.round(newVatBreakdown[rate].vat * 100) / 100;
       }
     } else {
-      newSubtotal = newTotal / (1 + vatRate / 100);
-      newVatAmount = newTotal - newSubtotal;
+      if (invoicePricesIncludeVat) {
+        newSubtotal = newTotal / (1 + vatRate / 100);
+        newVatAmount = newTotal - newSubtotal;
+      } else {
+        newSubtotal = newTotal / (1 + vatRate / 100);
+        newVatAmount = newTotal - newSubtotal;
+      }
     }
 
     const { error: updateErr } = await supabase
