@@ -1,41 +1,36 @@
 
-## Fix Plan: Restore Academy Data + Player Bookings After RLS Recursion
 
-### What I found
-- The app is still hitting `500` with: **`infinite recursion detected in policy for relation "trainer_profiles"`**.
-- The failing request is even a simple profile read (`/profiles?user_id=...`), which explains why:
-  - academy context appears empty
-  - player bookings page also breaks
-- The previous migration fixed one part (`get_profile_id_for_user`) but the current `trainer_profiles` player policy still queries `bookings` directly under RLS, which re-enters other policies and loops.
+# Add RLS Recursion Regression Tests
 
-### Implementation
-1. **Create a new migration** to fully break recursion at the source (policy-level, no frontend changes).
-2. **Add a SECURITY DEFINER helper** (public schema) that checks if the current user has ever booked a given trainer:
-   - input: `trainer_profile_id`
-   - internally resolves player profile id (via `get_profile_id_for_user(auth.uid())`)
-   - checks `bookings + availability_slots`
-   - returns boolean
-3. **Replace policy** `Players can view profiles of their trainers` on `trainer_profiles` to use that helper function, so policy evaluation no longer queries `bookings` with RLS.
-4. **Harden bookings player policies** (same migration) to remove direct `profiles` subqueries:
-   - `Players can view their own bookings`
-   - `Players can create bookings`
-   - `Players can update their own bookings`
-   Use `player_id = public.get_profile_id_for_user(auth.uid())`.
-5. Keep all existing access scope intact (only recursion path removed, no broad permission expansion).
+## Problem
+RLS infinite recursion bugs have broken the app multiple times. There's no automated check to catch this early.
 
-### Files to change
-- `supabase/migrations/<new_timestamp>_fix_trainer_profiles_recursion.sql` (new)
+## Approach
+Create an edge function `rls-smoke-test` that performs lightweight queries against the critical tables (profiles, trainer_profiles, bookings, academy_profiles, etc.) using the **anon key** (simulating an authenticated user context). If any query returns a 500/infinite recursion error, the test fails. Then add an E2E test that calls this edge function and asserts all checks pass.
 
-### Technical details
-- Root cycle currently involves:
-  - `profiles` policy referencing `trainer_profiles`
-  - `trainer_profiles` player policy referencing `bookings`
-  - `bookings` policies referencing `profiles` / `trainer_profiles`
-- Moving the trainer-visibility check into a **SECURITY DEFINER** function prevents RLS re-entry loops while preserving row filtering logic.
-- No changes needed in React code; once RLS stops failing, existing queries should render academy data and player bookings again.
+This catches recursion at the database level — where it actually happens — rather than trying to unit-test SQL policies.
 
-### Verification after migration
-1. Confirm `/profiles?user_id=...` returns 200 (no recursion error).
-2. Open RL Performance academy dashboard/profile: data and forms should reappear.
-3. Open player bookings page: bookings list should load again.
-4. Spot-check trainer name resolution still works in bookings/cards.
+## Changes
+
+### 1. New edge function: `supabase/functions/rls-smoke-test/index.ts`
+- Accept a service-role call
+- For each critical table (`profiles`, `trainer_profiles`, `bookings`, `academy_profiles`, `academy_managers`, `availability_slots`), run a simple `.select('id').limit(1)` query using the **anon client** (to trigger RLS evaluation)
+- Return a JSON report: `{ table: string, ok: boolean, error?: string }[]`
+- If any table has "infinite recursion" in the error, flag it
+
+### 2. New E2E test: `e2e/rls-health.spec.ts`
+- Call the `rls-smoke-test` edge function
+- Assert all tables return `ok: true`
+- Assert no errors contain "infinite recursion"
+- This runs in CI on every push, catching regressions before deploy
+
+### 3. Extend existing health-check function
+- Add an RLS smoke check to the existing `health-check` edge function as an additional check (queries `profiles` and `trainer_profiles` with anon key)
+- This provides ongoing monitoring beyond just CI
+
+| File | Change |
+|------|--------|
+| `supabase/functions/rls-smoke-test/index.ts` | New edge function that tests RLS on critical tables |
+| `e2e/rls-health.spec.ts` | New E2E test calling the smoke-test function |
+| `supabase/functions/health-check/index.ts` | Add RLS recursion check to existing health endpoint |
+
