@@ -1169,21 +1169,32 @@ export default function TrainerScheduleOverview() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>{t("scheduleOverview.extraCosts", "Extra costs")}</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() =>
-                    setCycleEditData((prev) => ({
-                      ...prev,
-                      extraCosts: [...prev.extraCosts, { description: "", price: 0, type: 'per_session' as const }],
-                    }))
-                  }
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  {t("scheduleOverview.addCost", "Add cost")}
-                </Button>
+                <div className="flex items-center gap-1">
+                  <ExtraCostPresetPicker
+                    trainerId={trainerProfileId}
+                    onSelect={(cost) =>
+                      setCycleEditData((prev) => ({
+                        ...prev,
+                        extraCosts: [...prev.extraCosts, { description: cost.description, price: cost.price, type: cost.type, vat_rate: cost.vat_rate }],
+                      }))
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() =>
+                      setCycleEditData((prev) => ({
+                        ...prev,
+                        extraCosts: [...prev.extraCosts, { description: "", price: 0, type: 'per_session' as const }],
+                      }))
+                    }
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    {t("scheduleOverview.addCost", "Add cost")}
+                  </Button>
+                </div>
               </div>
               {cycleEditData.extraCosts.map((cost, idx) => (
                 <div key={idx} className="space-y-1.5">
