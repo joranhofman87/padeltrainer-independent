@@ -293,7 +293,7 @@ export default function AcademyPublicProfile() {
                   </span>
                 </div>
               }
-              quote={academy.description || undefined}
+              
             />
           </div>
           <div className="lg:w-[280px] flex-shrink-0 space-y-4">
