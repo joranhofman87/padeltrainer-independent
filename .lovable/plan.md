@@ -1,31 +1,39 @@
 
 
-# Move Academy "About" Section Below Trainers
+# Fix Registration Page Load Speed
 
 ## Problem
-The academy description is currently passed as the `quote` prop on the `ProfileHeroCard`, making it too long and cluttered in the hero area. It should be in its own card below the trainers section.
+Two issues cause slow loading:
+
+1. **Auth blocks the page** — The page shows a skeleton while `authLoading` is true. Console logs confirm the 5-second safety timeout is being triggered for anonymous users, meaning `onAuthStateChange` isn't firing quickly enough. The auth listener waits for Supabase to check for a stored session before emitting `INITIAL_SESSION`, which can take seconds on cold loads.
+
+2. **Sequential data fetching** — The page makes ~6 DB calls in series (owner → cycle → location → trainers → locations → applied check), each waiting for the previous one.
 
 ## Changes
 
-### `src/pages/AcademyPublicProfile.tsx`
+### 1. `src/pages/BrandedCycleRegistration.tsx` — Don't block on auth
 
-1. **Remove** the `quote={academy.description || undefined}` prop from `ProfileHeroCard` (line 296)
+The registration page is a public page. It should **not** wait for `authLoading` before rendering content. Only the "has applied" check and the form variant (guest vs logged-in) depend on auth.
 
-2. **Add** a new "About" card after the Trainers section (after line 438), before Reviews:
-```tsx
-{academy.description && (
-  <ProfileFullWidthSection>
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('common:aboutAcademy', 'About')} {academy.name}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground whitespace-pre-line">{academy.description}</p>
-      </CardContent>
-    </Card>
-  </ProfileFullWidthSection>
-)}
+- Remove `authLoading` from the loading skeleton guard (line ~167)
+- Start fetching cycle/owner data immediately, regardless of auth state
+- Split the `useEffect` into two: one for public data (owner, cycle, location, trainers, locations) that runs immediately, and one for auth-dependent data (hasApplied check) that runs when `user` changes
+- Parallelize the public data fetches where possible (owner + cycle can be fetched in parallel)
+
+### 2. `src/pages/BrandedCycleRegistration.tsx` — Parallelize fetches
+
+Current waterfall:
+```text
+owner → cycle → location → trainers → locations → applied
 ```
 
-Two small edits in one file.
+Improved:
+```text
+[owner + cycle] in parallel → [location + trainers + locations] in parallel → applied (only if logged in)
+```
+
+Use `Promise.all` for independent calls.
+
+## Files
+- `src/pages/BrandedCycleRegistration.tsx` — Remove auth blocking, parallelize data fetching
 
