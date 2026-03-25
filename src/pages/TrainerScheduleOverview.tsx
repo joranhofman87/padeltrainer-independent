@@ -117,6 +117,7 @@ type CycleEditData = {
   originalRepeatCount: number;
   pricesIncludeVat: boolean;
   splitPayment: boolean;
+  originalSplitPayment: boolean;
 };
 
 type TrainerLocationOption = {
@@ -160,6 +161,7 @@ export default function TrainerScheduleOverview() {
     originalRepeatCount: 0,
     pricesIncludeVat: true,
     splitPayment: false,
+    originalSplitPayment: false,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -380,6 +382,7 @@ export default function TrainerScheduleOverview() {
       originalRepeatCount: group.slots.length,
       pricesIncludeVat: firstSlot?.prices_include_vat ?? true,
       splitPayment: firstSlot?.split_payment ?? false,
+      originalSplitPayment: firstSlot?.split_payment ?? false,
     });
 
     // Collect unique players from all bookings across cycle slots
@@ -689,8 +692,8 @@ export default function TrainerScheduleOverview() {
         }
       }
 
-      // 4. If splitPayment toggled ON, update cycle settings and split existing invoices
-      if (cycleEditData.splitPayment) {
+      // 4. If splitPayment toggled ON (from off), update cycle settings and split existing invoices
+      if (cycleEditData.splitPayment && !cycleEditData.originalSplitPayment) {
         // Update cycles table settings
         const { data: cycleRow } = await supabase
           .from("cycles")
@@ -721,16 +724,20 @@ export default function TrainerScheduleOverview() {
           if (cycleBookings && cycleBookings.length > 0) {
             const bookingIdList = cycleBookings.map((b) => b.id);
 
-            // Find unpaid invoices that reference any of these bookings
+            // Find active unpaid invoices (exclude cancelled and paid, skip already-split)
             const { data: invoices } = await supabase
               .from("invoices")
-              .select("id, booking_ids, status")
-              .neq("status", "paid");
+              .select("id, booking_ids, status, line_items")
+              .in("status", ["draft", "sent", "overdue", "pending"]);
 
             if (invoices && invoices.length > 0) {
               const matchingInvoices = invoices.filter((inv) => {
                 const ids = (inv.booking_ids as string[]) || [];
-                return ids.some((bid) => bookingIdList.includes(bid));
+                const hasMatchingBooking = ids.some((bid) => bookingIdList.includes(bid));
+                // Skip invoices already split (line items contain "(1/" pattern)
+                const lineItems = (inv.line_items as any[]) || [];
+                const alreadySplit = lineItems.some((li: any) => /\(1\/\d+\)/.test(li.description || ""));
+                return hasMatchingBooking && !alreadySplit;
               });
 
               let splitCount = 0;

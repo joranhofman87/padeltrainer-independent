@@ -324,6 +324,44 @@ serve(async (req) => {
       }
     }
 
+    // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings
+    const recipientFilter = playerId
+      ? { player_id: playerId }
+      : guestPlayerId
+        ? { guest_player_id: guestPlayerId }
+        : null;
+
+    if (recipientFilter) {
+      const dupeQuery = supabase
+        .from("invoices")
+        .select("id, invoice_number")
+        .eq("trainer_id", trainerId)
+        .not("status", "eq", "cancelled")
+        .contains("booking_ids", bookingIds);
+
+      if (recipientFilter.player_id) {
+        dupeQuery.eq("player_id", recipientFilter.player_id);
+      } else if (recipientFilter.guest_player_id) {
+        dupeQuery.eq("guest_player_id", recipientFilter.guest_player_id);
+      }
+
+      const { data: existingInvoices } = await dupeQuery;
+      if (existingInvoices && existingInvoices.length > 0) {
+        // Check for exact match (same booking set)
+        const exactMatch = existingInvoices.find(() => true); // contains already checks subset
+        if (exactMatch) {
+          logStep("Duplicate invoice found, skipping creation", {
+            existingId: exactMatch.id,
+            existingNumber: exactMatch.invoice_number,
+          });
+          return new Response(
+            JSON.stringify({ success: true, invoiceId: exactMatch.id, invoiceNumber: exactMatch.invoice_number, deduped: true }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+    }
+
     // Generate invoice number using profile's custom prefix
     const prefix = invoiceProfile.invoice_prefix || "INV";
     const year = new Date().getFullYear();
