@@ -394,7 +394,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.business")}
-                      className={isActive("/app/academy/settings") || isActive("/app/academy/subscription") || isActive("/app/academy/earnings") || isActive("/app/academy/invoices")
+                      className={isActive("/app/academy/settings") || isActive("/app/academy/subscription") || isActive("/app/academy/invoices")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
