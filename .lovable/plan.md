@@ -1,32 +1,42 @@
 
+Problem identified from your console logs:
+- The open slots request fails with `PGRST200` because `AcademyPublicOpenSlots` is trying to do a nested join `trainer_profiles -> profiles:user_id`, but there is no direct FK relationship for that nested path.
+- Because the query errors, `dayGroups` stays empty and the whole section returns `null`, so nothing is shown.
 
-# Enhanced Open Slots on Academy Public Page
+Implementation plan (focused fix):
 
-## Current State
-`AcademyPublicOpenSlots` already fetches `court_type` from `availability_slots` and includes it in `SlotData`, but:
-- Filters out cyclus slots (`.is('cyclus_id', null)`)
-- Doesn't display `court_type` (indoor/outdoor)
-- No total price for cyclus slots
-- No proper booking CTA
-- Click just navigates to academy page (useless)
+1) Update `src/components/academy/AcademyPublicOpenSlots.tsx` query strategy
+- Remove the nested relational select that causes the error:
+  - remove `trainer_profiles:trainer_id(... profiles:user_id(full_name))`
+- Keep the slots query simple and safe:
+  - fetch slot fields + `trainer_id` + `location` only.
 
-## Changes in `src/components/academy/AcademyPublicOpenSlots.tsx`
+2) Fetch trainer slug/name in sequential queries (no problematic nested join)
+- Query `trainer_profiles_safe` with collected `trainer_id`s to get `id, slug, user_id`.
+- Query `profiles_public` with collected `user_id`s to get `full_name`.
+- Merge results in-memory:
+  - `trainer_slug` from `trainer_profiles_safe`
+  - `trainer_name` from `profiles_public`
+- This follows the existing project pattern for trainer/profile data and avoids schema-cache relationship errors.
 
-1. **Remove `.is('cyclus_id', null)`** — show all open slots including cyclus ones
-2. **Add to query**: `total_price`, trainer `slug`
-3. **Add to `SlotData` interface**: `total_price`, `trainer_slug`
-4. **Display per slot row**:
-   - Indoor/outdoor badge when `court_type` is set (use 🏠/☀️ pattern from `SlotList.tsx`)
-   - Cyclus name badge when `cyclus_name` is set, otherwise "Single session"
-   - Price per session always; total price additionally when cyclus
-5. **Replace ChevronRight with a "Book" Button** as CTA:
-   - Cyclus slot → navigate to `/academies/${academySlug}/register/${cyclus_id}`
-   - Standalone slot → navigate to `/book/${trainer_slug}`
-6. **Remove the row-level onClick** (replaced by button CTA)
+3) Keep current slot UI requirements intact
+- Preserve:
+  - Date
+  - Time
+  - Cyclus vs single-session badge
+  - Indoor/outdoor badge
+  - Location
+  - Price per session + total for cyclus
+  - Book CTA routing (cyclus registration vs trainer booking page)
 
-## Position on page
-Already correct — between Open Registrations and Locations sections (line 285).
+4) Harden rendering + cleanup
+- Remove temporary debug `console.log` lines.
+- Add defensive dedupe by `slot.id` before grouping/rendering to prevent duplicate React key warnings.
+- Keep graceful fallback if trainer name is unavailable (show row without trainer name, not a crash).
 
-## Files
-- `src/components/academy/AcademyPublicOpenSlots.tsx` — all changes in this single file
-
+5) Verify end-to-end on `/en/academies/rl-padel-performance`
+- Confirm section renders between “Open for Registration” and “Academy Locations”.
+- Confirm console no longer shows `PGRST200`.
+- Confirm Book button routes correctly for:
+  - cyclus slot (`/academies/{academySlug}/register/{cyclusId}`)
+  - standalone slot (`/book/{trainerSlug}`).
