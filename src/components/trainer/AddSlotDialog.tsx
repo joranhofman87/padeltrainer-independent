@@ -613,6 +613,7 @@ export function BulkCreateSheet({
           markAsPaid: false,
           extraCosts,
           hasExtraCosts: extraCosts.length > 0,
+          splitPayment: firstSlot.split_payment ?? false,
         };
 
         setBulkSlots([prefilled]);
