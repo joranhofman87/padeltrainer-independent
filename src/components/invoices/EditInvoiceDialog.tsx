@@ -68,6 +68,8 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved }: EditInvoi
         item.quantity = Number(value) || 0;
       } else if (field === 'unit_price') {
         item.unit_price = Number(value) || 0;
+      } else if (field === 'vat_rate') {
+        item.vat_rate = Number(value) || 0;
       }
       item.amount = Math.round(item.quantity * item.unit_price * 100) / 100;
       updated[index] = item;
