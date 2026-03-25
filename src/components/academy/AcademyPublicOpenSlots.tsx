@@ -24,6 +24,7 @@ interface SlotData {
   trainer_slug: string | null;
   price_per_session: number | null;
   total_price: number | null;
+  extra_costs: { description: string; price: number }[];
   max_participants: number;
   allow_single_booking: boolean;
   spots_left: number;
@@ -85,6 +86,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           total_price,
           max_participants,
           allow_single_booking,
+          extra_costs,
           location_id,
           trainer_id,
           locations:location_id(name)
@@ -157,6 +159,9 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           const booked = bookingCounts[s.id] || 0;
           const trainer = trainerMap[s.trainer_id] || { slug: null, user_id: null };
           const trainerName = trainer.user_id ? nameMap[trainer.user_id] || null : null;
+          const parsedExtras: { description: string; price: number }[] = Array.isArray(s.extra_costs)
+            ? (s.extra_costs as any[]).filter(e => e && typeof e.price === 'number')
+            : [];
           return {
             id: s.id,
             start_time: s.start_time,
@@ -169,6 +174,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
             trainer_slug: trainer.slug,
             price_per_session: s.price_per_session || null,
             total_price: s.total_price || null,
+            extra_costs: parsedExtras,
             max_participants: maxP,
             allow_single_booking: s.allow_single_booking || false,
             spots_left: maxP - booked,
@@ -269,9 +275,18 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
                     </div>
                   </div>
                   <div className="flex items-center gap-3 ml-2">
-                    <div className="text-right">
+                    <div className="text-right space-y-0.5">
                       {slot.price_per_session != null && slot.price_per_session > 0 && (
                         <p className="text-sm font-semibold">{formatPrice(slot.price_per_session)}<span className="text-xs font-normal text-muted-foreground">/{t('common:session', 'session')}</span></p>
+                      )}
+                      {slot.extra_costs.length > 0 && slot.extra_costs.map((ec, i) => (
+                        <p key={i} className="text-xs text-muted-foreground">+ {formatPrice(ec.price)} {ec.description}</p>
+                      ))}
+                      {slot.extra_costs.length > 0 && slot.price_per_session != null && slot.price_per_session > 0 && (
+                        <p className="text-xs font-semibold border-t border-border pt-0.5">
+                          {formatPrice(slot.price_per_session + slot.extra_costs.reduce((sum, ec) => sum + ec.price, 0))}
+                          <span className="font-normal text-muted-foreground">/{t('common:session', 'session')}</span>
+                        </p>
                       )}
                       {slot.cyclus_id && slot.total_price != null && slot.total_price > 0 && (
                         <p className="text-xs text-muted-foreground">{t('common:total', 'Total')}: {formatPrice(slot.total_price)}</p>
