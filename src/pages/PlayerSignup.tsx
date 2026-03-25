@@ -82,7 +82,7 @@ export default function PlayerSignup() {
     trackEvent('signup_started', { role: 'player', method: 'email', ...getUtmParams() });
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName);
+    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Player');
 
     if (error) {
       logger.error('Player signup failed', error, { component: 'PlayerSignup', action: 'signUp' });
