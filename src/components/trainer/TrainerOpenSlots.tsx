@@ -136,6 +136,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
             max_participants: maxParticipants,
             allow_single_booking: (s as any).allow_single_booking || false,
             spots_left: maxParticipants - booked,
+            split_payment: (s as any).split_payment || false,
           };
         });
 
