@@ -44,6 +44,8 @@
     "customLessonTypePlaceholder": "Tipo personalizado {{number}}",
     "showPreferredTrainer": "Permitir preferencia de entrenador",
     "showPreferredTrainerHelp": "Los jugadores pueden indicar un entrenador preferido al solicitar",
+    "showPriceIndication": "Mostrar indicación de precio",
+    "showPriceIndicationHelp": "Mostrar una calculadora de precios en el formulario de registro",
     "maxGroupSize": "Tamaño máximo del grupo",
     "minGroupSize": "Tamaño mínimo del grupo",
     "minGroupSizeHelp": "Mínimo de jugadores requeridos por sesión",

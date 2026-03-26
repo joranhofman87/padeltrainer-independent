@@ -164,6 +164,7 @@ export default function CycleForm({
     enrollment_deadline: z.date().optional(),
     lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1),
     show_preferred_trainer: z.boolean(),
+    show_price_indication: z.boolean(),
     max_group_size: z.coerce.number().min(2).max(20).optional(),
     min_group_size: z.coerce.number().min(1).max(20).optional(),
     assigned_trainer_id: z.string().optional(),
