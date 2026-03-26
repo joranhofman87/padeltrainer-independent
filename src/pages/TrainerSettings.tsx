@@ -219,7 +219,7 @@ export default function TrainerSettings() {
       title: t('settings.notifications'),
       description: t('settings.notificationsDescription'),
       icon: Bell,
-      route: '/settings/notifications',
+      route: '/trainer/settings/notifications',
       iconBg: 'bg-orange-500/10',
       iconColor: 'text-orange-600',
     },
