@@ -109,12 +109,10 @@
     "availableDays": "Verfügbare Tage & Zeiten",
     "availableDaysHelp": "Wähle aus, an welchen Tagen und zu welchen Zeiten trainiert werden kann. Spieler sehen nur diese Optionen."
   },
-
   "detail": {
     "pricesIncludeVat": "Alle Preise verstehen sich inkl. MwSt.",
     "pricesExcludeVat": "Alle Preise verstehen sich zzgl. MwSt."
   },
-
   "actions": {
     "openEnrollment": "Anmeldung öffnen",
     "closeEnrollment": "Anmeldung schließen",
@@ -125,7 +123,6 @@
     "linkCopied": "Anmeldelink kopiert!",
     "copyLink": "Anmeldelink kopieren"
   },
-  
   "paymentBadge": {
     "upfront": "Vorauszahlung",
     "invoice_after_weeks": "Rechnung nach {{count}} Wo.",
@@ -214,13 +211,11 @@
       "experienceRequired": "Bitte erzähl uns von deiner Erfahrung",
       "consent": "Ich bin einverstanden, bezüglich meiner Bewerbung kontaktiert zu werden, und stimme der Verarbeitung meiner Daten zu.",
       "consentRequired": "Du musst zustimmen, um fortzufahren",
-
       "createAccount": "Erstelle dein Konto",
       "createAccountHelp": "Wähle ein Passwort, um dein Konto zu erstellen. Damit kannst du deine Anmeldung verfolgen und deine Buchungen verwalten.",
       "password": "Passwort",
       "passwordPlaceholder": "Passwort erstellen",
       "passwordMin": "Passwort muss mindestens 6 Zeichen haben",
-
       "nameMin": "Name muss mindestens 2 Zeichen haben",
       "emailInvalid": "Bitte gib eine gültige E-Mail-Adresse ein",
       "submitError": "Bewerbung konnte nicht eingereicht werden",
@@ -235,7 +230,8 @@
       "step1": "Wir prüfen deine Bewerbung und Verfügbarkeit",
       "step2": "Du wirst einem passenden Trainingsplatz zugeordnet",
       "step3": "Du erhältst eine E-Mail mit deinem bestätigten Zeitplan",
-      "backToProfile": "Zurück zum Profil"
+      "backToProfile": "Zurück zum Profil",
+      "backToForm": "Zurück zum Formular"
     }
   },
   "intakeRequests": {
@@ -407,7 +403,6 @@
     "applicationReceived": "Bewerbung eingegangen",
     "scheduleConfirmed": "Dein Trainingsplan ist bestätigt"
   },
-
   "workflow": {
     "generate": "Generieren",
     "generateDesc": "{{count}} neue Anfragen",

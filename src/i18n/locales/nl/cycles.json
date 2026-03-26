@@ -277,7 +277,8 @@
       "step1": "We bekijken je aanmelding en beschikbaarheid",
       "step2": "Je wordt gekoppeld aan een passend trainingsmoment",
       "step3": "Je ontvangt een e-mail met je bevestigde schema",
-      "backToProfile": "Terug naar profiel"
+      "backToProfile": "Terug naar profiel",
+      "backToForm": "Terug naar formulier"
     }
   },
   "intakeRequests": {
