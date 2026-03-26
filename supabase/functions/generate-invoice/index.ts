@@ -75,10 +75,11 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Factuur ${invoice.invoice_number}</title>
   <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; margin: 0; padding: 40px; }
-    .invoice-container { max-width: 800px; margin: 0 auto; }
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; margin: 0; padding: 0; }
+    .banner-strip { height: 6px; background: ${accentColor}; }
+    .invoice-container { max-width: 800px; margin: 0 auto; padding: 40px; }
     .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
-    .invoice-title { font-size: 32px; font-weight: bold; color: #16a34a; margin: 0; }
+    .invoice-title { font-size: 32px; font-weight: bold; color: ${accentColor}; margin: 0; }
     .invoice-meta { text-align: right; }
     .invoice-meta p { margin: 4px 0; }
     .parties { display: flex; justify-content: space-between; margin-bottom: 40px; }
@@ -87,24 +88,27 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     .party-name { font-weight: bold; font-size: 16px; }
     .party-details { font-size: 14px; color: #4b5563; white-space: pre-line; }
     .items-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-    .items-table th { background: #f3f4f6; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #6b7280; }
+    .items-table th { background: ${accentColor}15; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #4b5563; border-bottom: 2px solid ${accentColor}40; }
     .items-table th:nth-child(2), .items-table th:nth-child(3), .items-table th:nth-child(4) { text-align: right; }
     .items-table th:nth-child(2) { text-align: center; }
     .totals { margin-left: auto; width: 300px; }
     .totals-row { display: flex; justify-content: space-between; padding: 8px 0; }
-    .totals-row.total { font-weight: bold; font-size: 18px; border-top: 2px solid #1f2937; padding-top: 12px; margin-top: 8px; }
-    .payment-info { background: #f9fafb; padding: 20px; border-radius: 8px; margin-top: 40px; }
+    .totals-row.total { font-weight: bold; font-size: 18px; border-top: 2px solid ${accentColor}; padding-top: 12px; margin-top: 8px; color: ${accentColor}; }
+    .payment-info { background: #f9fafb; padding: 20px; border-radius: 8px; margin-top: 40px; border-left: 4px solid ${accentColor}; }
     .payment-title { font-weight: bold; margin-bottom: 12px; }
     .payment-row { display: flex; gap: 24px; font-size: 14px; }
     .payment-label { color: #6b7280; width: 120px; }
     .notes { margin-top: 24px; padding: 16px; background: #fef3c7; border-radius: 8px; font-size: 14px; }
     @media print {
-      body { padding: 20px; }
+      body { padding: 0; }
+      .banner-strip { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .items-table th, .totals-row.total, .payment-info { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .invoice-container { max-width: 100%; }
     }
   </style>
 </head>
 <body>
+  <div class="banner-strip"></div>
   <div class="invoice-container">
     <div class="header">
       <div style="display: flex; align-items: center; gap: 16px;">
