@@ -77,7 +77,9 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
   <title>Factuur ${invoice.invoice_number}</title>
   <style>
     body { font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; margin: 0; padding: 0; }
-    .banner-strip { height: 6px; background: ${accentColor}; }
+    .branded-header { background: ${accentColor}; padding: 24px 40px; text-align: center; }
+    .branded-header img { max-height: 48px; max-width: 200px; object-fit: contain; }
+    .branded-header h2 { color: white; font-size: 20px; font-weight: bold; margin: 0; }
     .invoice-container { max-width: 800px; margin: 0 auto; padding: 40px; }
     .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
     .invoice-title { font-size: 32px; font-weight: bold; color: ${accentColor}; margin: 0; }
@@ -102,20 +104,19 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     .notes { margin-top: 24px; padding: 16px; background: #fef3c7; border-radius: 8px; font-size: 14px; }
     @media print {
       body { padding: 0; }
-      .banner-strip { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .branded-header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .items-table th, .totals-row.total, .payment-info { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .invoice-container { max-width: 100%; }
     }
   </style>
 </head>
 <body>
-  <div class="banner-strip"></div>
+  <div class="branded-header">
+    ${invoice.logo_url ? `<img src="${invoice.logo_url}" alt="Logo" />` : `<h2>${invoice.trainer.business_name}</h2>`}
+  </div>
   <div class="invoice-container">
     <div class="header">
-      <div style="display: flex; align-items: center; gap: 16px;">
-        ${invoice.logo_url ? `<img src="${invoice.logo_url}" alt="Logo" style="max-height: 60px; max-width: 200px; object-fit: contain;" />` : ''}
-        <h1 class="invoice-title">FACTUUR</h1>
-      </div>
+      <h1 class="invoice-title">FACTUUR</h1>
       <div class="invoice-meta">
         <p><strong>Factuurnummer:</strong> ${invoice.invoice_number}</p>
         <p><strong>Factuurdatum:</strong> ${formatDate(invoice.invoice_date)}</p>
