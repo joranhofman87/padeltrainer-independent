@@ -74,6 +74,7 @@ export interface CycleSettings {
   lesson_types?: ('private' | 'duo' | 'group' | 'group3' | 'group4' | 'kids')[];
   custom_lesson_types?: string[];
   show_preferred_trainer?: boolean;
+  show_price_indication?: boolean;
   default_duration_minutes?: number;
   max_group_size?: number;
   min_group_size?: number;
