@@ -47,19 +47,38 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Rate limiting: max 3 per hour per email
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count } = await adminClient
+    // Duplicate check: reject same email + cycle within 60 seconds (prevents double-clicks)
+    const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const { count: dupeCount } = await adminClient
       .from("intake_requests")
       .select("*", { count: "exact", head: true })
       .eq("email", email)
-      .gte("created_at", oneHourAgo);
+      .eq("cycle_id", cycleId)
+      .gte("created_at", sixtySecondsAgo);
 
-    if (count && count >= 3) {
+    if (dupeCount && dupeCount >= 1) {
       return new Response(
-        JSON.stringify({ error: "Too many applications submitted. Please try again later." }),
+        JSON.stringify({ error: "duplicate_submission", message: "This registration was already submitted. Please wait a moment before trying again." }),
         { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // IP-based rate limit: max 15 submissions per hour per IP (catches automated spam)
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    if (clientIp !== "unknown") {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count: ipCount } = await adminClient
+        .from("intake_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("metadata->>client_ip", clientIp)
+        .gte("created_at", oneHourAgo);
+
+      if (ipCount && ipCount >= 15) {
+        return new Response(
+          JSON.stringify({ error: "rate_limited", message: "Too many submissions. Please try again later." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Check if user already has a profile (existing user)
