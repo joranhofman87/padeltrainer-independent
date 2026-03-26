@@ -505,7 +505,7 @@ export function BulkCreateSheet({
       courtType: null,
       locationId: null,
       isMarkedFull: false,
-      academyProfileId: null,
+      academyProfileId: aId || null,
       trainerId: tId,
       ratingSystem: null,
       minRating: null,
