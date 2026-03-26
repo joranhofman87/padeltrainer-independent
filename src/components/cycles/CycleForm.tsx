@@ -332,6 +332,7 @@ export default function CycleForm({
         lesson_types: isEvent ? undefined : values.lesson_types as CycleSettings['lesson_types'],
         custom_lesson_types: !isEvent && customLessonTypes.length > 0 ? customLessonTypes : undefined,
         show_preferred_trainer: values.show_preferred_trainer,
+        show_price_indication: values.show_price_indication,
         max_group_size: isEvent ? undefined : values.max_group_size,
         min_group_size: isEvent ? undefined : values.min_group_size,
         assigned_trainer_id: values.assigned_trainer_id || undefined,
