@@ -262,7 +262,8 @@ export default function AddIntakeRequestDialog({
 
       await createManualIntakeRequest({
         cycle_id: data.cycle_id,
-        player_id: playerData.profileId,
+        player_id: playerData.profileId || null,
+        guest_player_id: playerData.guestPlayerId || null,
         full_name: data.full_name,
         email: data.email,
         phone: data.phone || undefined,
