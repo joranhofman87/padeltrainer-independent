@@ -1,47 +1,24 @@
 
 
-# Add Prominent Academy Branding Banner to Generated Invoice
+# Replace Rate Limiter with Better Spam Prevention
 
-## Current State
-The generated invoice has:
-- A **6px thin strip** at the top (`banner-strip`) using the accent color
-- A small logo (60px) next to the "FACTUUR" title in the header
+## Problem
+The current rate limit (max 3 submissions per hour per email) blocks legitimate use — families registering multiple members back-to-back. The frontend already has a honeypot field + 2-second timing check (`useHoneypot`), but the edge function has its own server-side rate limit that's too aggressive.
 
-The payment page (`PublicInvoicePay.tsx`) has a much more prominent look: a **full-width colored banner** with a centered logo (or academy name in white if no logo).
+## Approach
 
-## Plan
+**Remove** the per-email rate limit from `submit-guest-intake/index.ts` (lines 50-63).
 
-Update the HTML template in `generate-invoice/index.ts` to replace the thin strip + inline logo with a prominent branded header, similar to the payment page:
+**Add server-side spam checks** that don't block legitimate family registrations:
 
-**Replace lines 80, 112-118** with:
+1. **IP-based rate limit** — limit to 15 submissions per hour per IP (catches automated spam without blocking family registrations from the same email)
+2. **Duplicate submission check** — reject exact same email + cycle_id combination submitted within 60 seconds (prevents accidental double-clicks, not intentional re-registrations)
 
-```html
-/* CSS */
-.branded-header {
-  background: {accentColor};
-  padding: 24px;
-  text-align: center;
-  margin-bottom: 0;
-}
-.branded-header img { max-height: 48px; max-width: 200px; object-fit: contain; }
-.branded-header h2 { color: white; font-size: 20px; font-weight: bold; margin: 0; }
-
-/* HTML */
-<div class="branded-header">
-  {logo ? <img src="..." /> : <h2>{business_name}</h2>}
-</div>
-<div class="invoice-container">
-  <div class="header">
-    <h1 class="invoice-title">FACTUUR</h1>
-    <div class="invoice-meta">...</div>
-  </div>
-```
-
-This gives a full-width colored banner with centered logo (or academy name fallback in white text), followed by the invoice title and meta below — matching the payment page style.
+The existing frontend honeypot + timing check remains as first line of defense.
 
 ## Changes
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-invoice/index.ts` | Replace thin `banner-strip` with full-width branded header block; move logo from inline-with-title to centered in banner; add academy name fallback when no logo |
+| `supabase/functions/submit-guest-intake/index.ts` | Remove email-based rate limit (lines 50-63). Add: (1) duplicate check — reject same email+cycle within 60s; (2) IP-based rate limit — max 15/hour per IP using `x-forwarded-for` header |
 
