@@ -492,7 +492,7 @@ export function BulkCreateSheet({
     return `Cyclus ${dayName} ${startTime}`;
   };
 
-  const createDefaultSlotConfig = (startDate: Date, startTime: string, duration: number, weeks: number, tId: string | null): BulkSlotConfig => {
+  const createDefaultSlotConfig = (startDate: Date, startTime: string, duration: number, weeks: number, tId: string | null, aId?: string | null): BulkSlotConfig => {
     const pricing = autoCalcPricing(tId, duration, weeks);
     return {
       startDate,
@@ -505,7 +505,7 @@ export function BulkCreateSheet({
       courtType: null,
       locationId: null,
       isMarkedFull: false,
-      academyProfileId: null,
+      academyProfileId: aId || null,
       trainerId: tId,
       ratingSystem: null,
       minRating: null,
@@ -532,7 +532,7 @@ export function BulkCreateSheet({
     if (open && defaultDate) {
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
-      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId)]);
+      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId, academyId)]);
     }
     if (!open) {
       setBulkSlots([]);
@@ -560,7 +560,7 @@ export function BulkCreateSheet({
           // Fall back to default
           const newStartDate = getInitialStartDate();
           const newStartTime = getInitialStartTime();
-          setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId)]);
+          setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId, academyId)]);
           return;
         }
 
