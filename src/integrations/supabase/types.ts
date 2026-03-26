@@ -1971,13 +1971,14 @@ export type Database = {
           cycle_id: string
           email: string
           full_name: string
+          guest_player_id: string | null
           id: string
           lesson_type: string[]
           location_id: string | null
           metadata: Json | null
           notes: string | null
           phone: string | null
-          player_id: string
+          player_id: string | null
           preferred_days: string[]
           preferred_duration_minutes: number | null
           preferred_time_windows: Json
@@ -1996,13 +1997,14 @@ export type Database = {
           cycle_id: string
           email: string
           full_name: string
+          guest_player_id?: string | null
           id?: string
           lesson_type: string[]
           location_id?: string | null
           metadata?: Json | null
           notes?: string | null
           phone?: string | null
-          player_id: string
+          player_id?: string | null
           preferred_days: string[]
           preferred_duration_minutes?: number | null
           preferred_time_windows: Json
@@ -2021,13 +2023,14 @@ export type Database = {
           cycle_id?: string
           email?: string
           full_name?: string
+          guest_player_id?: string | null
           id?: string
           lesson_type?: string[]
           location_id?: string | null
           metadata?: Json | null
           notes?: string | null
           phone?: string | null
-          player_id?: string
+          player_id?: string | null
           preferred_days?: string[]
           preferred_duration_minutes?: number | null
           preferred_time_windows?: Json
@@ -2045,6 +2048,13 @@ export type Database = {
             columns: ["cycle_id"]
             isOneToOne: false
             referencedRelation: "cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_guest_player_id_fkey"
+            columns: ["guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
             referencedColumns: ["id"]
           },
           {

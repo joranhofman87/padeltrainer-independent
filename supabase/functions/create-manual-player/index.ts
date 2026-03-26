@@ -51,7 +51,7 @@ serve(async (req) => {
       );
     }
 
-    const { email, fullName, phone, ratingSystem, rating, cycleName } = await req.json();
+    const { email, fullName, phone, ratingSystem, rating, cycleName, academyProfileId, trainerProfileId } = await req.json();
 
     if (!email || !fullName) {
       return new Response(
@@ -62,83 +62,88 @@ serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if user with this email already exists
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    // Check if a profile already exists with this email
+    const { data: existingProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
 
-    let profileId: string;
-    let temporaryPassword: string | null = null;
+    let profileId: string | null = null;
+    let guestPlayerId: string | null = null;
     let isNewUser = false;
 
-    if (existingUser) {
-      // User exists, get their profile ID
-      const { data: existingProfile, error: profileError } = await supabaseAdmin
-        .from("profiles")
-        .select("id")
-        .eq("user_id", existingUser.id)
-        .single();
-
-      if (profileError || !existingProfile) {
-        return new Response(
-          JSON.stringify({ error: "User exists but profile not found" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
+    if (existingProfile) {
+      // User already has an account
       profileId = existingProfile.id;
     } else {
-      // Create new user account with temporary password
-      temporaryPassword = generatePassword();
+      // Create a guest player record instead of an auth user
       isNewUser = true;
 
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password: temporaryPassword,
-        email_confirm: true,
-        user_metadata: { full_name: fullName },
-      });
+      const guestData: Record<string, unknown> = {
+        full_name: fullName,
+        email: email.toLowerCase(),
+        phone: phone || null,
+        skill_rating: rating || null,
+        rating_system: ratingSystem || "knltb",
+        source: "manual_registration",
+      };
 
-      if (createError) {
-        return new Response(
-          JSON.stringify({ error: `Failed to create user: ${createError.message}` }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (academyProfileId) {
+        guestData.academy_profile_id = academyProfileId;
+      }
+      if (trainerProfileId) {
+        guestData.trainer_id = trainerProfileId;
       }
 
-      // Update their profile with additional data
-      await supabaseAdmin
-        .from("profiles")
-        .update({
-          full_name: fullName,
-          phone: phone || null,
-          rating_system: ratingSystem || "knltb",
-          skill_rating: rating || null,
-        })
-        .eq("user_id", newUser.user.id);
-
-      // Add player role (upsert to avoid duplicates)
-      await supabaseAdmin
-        .from("user_roles")
-        .upsert(
-          { user_id: newUser.user.id, role: "player" },
-          { onConflict: "user_id,role" }
-        );
-
-      // Get the profile ID (created by trigger)
-      const { data: newProfile, error: profileError } = await supabaseAdmin
-        .from("profiles")
-        .select("id")
-        .eq("user_id", newUser.user.id)
-        .single();
-
-      if (profileError || !newProfile) {
-        return new Response(
-          JSON.stringify({ error: "Failed to get new profile" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      // Check for existing guest with same email + context
+      let existingGuest = null;
+      if (academyProfileId) {
+        const { data } = await supabaseAdmin
+          .from("guest_players")
+          .select("id")
+          .eq("email", email.toLowerCase())
+          .eq("academy_profile_id", academyProfileId)
+          .maybeSingle();
+        existingGuest = data;
+      } else if (trainerProfileId) {
+        const { data } = await supabaseAdmin
+          .from("guest_players")
+          .select("id")
+          .eq("email", email.toLowerCase())
+          .eq("trainer_id", trainerProfileId)
+          .maybeSingle();
+        existingGuest = data;
       }
 
-      profileId = newProfile.id;
+      if (existingGuest) {
+        guestPlayerId = existingGuest.id;
+        // Update with latest info
+        await supabaseAdmin
+          .from("guest_players")
+          .update({
+            full_name: fullName,
+            phone: phone || null,
+            skill_rating: rating || null,
+            rating_system: ratingSystem || "knltb",
+          })
+          .eq("id", guestPlayerId);
+      } else {
+        const { data: newGuest, error: guestError } = await supabaseAdmin
+          .from("guest_players")
+          .insert(guestData)
+          .select("id")
+          .single();
+
+        if (guestError) {
+          return new Response(
+            JSON.stringify({ error: `Failed to create guest player: ${guestError.message}` }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        guestPlayerId = newGuest.id;
+      }
     }
 
     // Send confirmation email to the player
@@ -156,13 +161,12 @@ serve(async (req) => {
       });
     } catch (emailError) {
       console.error("Failed to send confirmation email:", emailError);
-      // Don't fail the whole request if email fails
     }
 
     return new Response(
       JSON.stringify({
         profileId,
-        temporaryPassword,
+        guestPlayerId,
         isNewUser,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -176,12 +180,3 @@ serve(async (req) => {
     );
   }
 });
-
-function generatePassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
-  let password = "";
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return password;
-}

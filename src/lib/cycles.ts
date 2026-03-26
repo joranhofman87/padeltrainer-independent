@@ -1339,11 +1339,12 @@ export async function deleteIntakeRequest(requestId: string): Promise<void> {
 
 // Create a manual intake request (for club managers to add registrations)
 export async function createManualIntakeRequest(
-  input: IntakeRequestInput & { player_id: string }
+  input: IntakeRequestInput & { player_id?: string | null; guest_player_id?: string | null }
 ): Promise<IntakeRequest> {
-  const insertData = {
+  const insertData: Record<string, unknown> = {
     cycle_id: input.cycle_id,
-    player_id: input.player_id,
+    player_id: input.player_id || null,
+    guest_player_id: (input as any).guest_player_id || null,
     full_name: input.full_name,
     email: input.email,
     phone: input.phone || null,
@@ -1363,7 +1364,7 @@ export async function createManualIntakeRequest(
 
   const { data, error } = await supabase
     .from('intake_requests')
-    .insert(insertData)
+    .insert(insertData as any)
     .select()
     .single();
 
