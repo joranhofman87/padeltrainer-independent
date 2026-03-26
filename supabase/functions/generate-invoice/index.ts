@@ -97,7 +97,7 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     .totals { margin-left: auto; width: 300px; }
     .totals-row { display: flex; justify-content: space-between; padding: 8px 0; }
     .totals-row.total { font-weight: bold; font-size: 18px; border-top: 2px solid ${accentColor}; padding-top: 12px; margin-top: 8px; color: ${accentColor}; }
-    .payment-info { background: #f9fafb; padding: 20px; border-radius: 8px; margin-top: 40px; border-left: 4px solid ${accentColor}; }
+    .payment-info { background: #f9fafb; padding: 14px; border-radius: 8px; margin-top: 20px; border-left: 4px solid ${accentColor}; }
     .payment-title { font-weight: bold; margin-bottom: 12px; }
     .payment-row { display: flex; gap: 24px; font-size: 14px; }
     .payment-label { color: #6b7280; width: 120px; }
