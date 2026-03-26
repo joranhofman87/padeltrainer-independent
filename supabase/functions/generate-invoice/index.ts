@@ -339,6 +339,7 @@ const handler = async (req: Request): Promise<Response> => {
       notes: invoice.notes,
       vat_breakdown: invoice.vat_breakdown || null,
       logo_url: businessSource.invoice_logo_url || null,
+      banner_color: (academyProfile?.invoice_banner_color) || null,
       trainer: {
         business_name: businessName,
         business_address: businessSource.business_address || '',
