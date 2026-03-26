@@ -1,25 +1,52 @@
 
 
-# Fix Custom Lesson Type Display in Intake Requests Table
+# Fix: Session Price Change Not Synced to Invoices
 
 ## Problem
-Custom lesson types (e.g. "Masterclass René Lindenbergh") show as raw translation keys like `application.form.lessonTypes.Masterclass René Lindenbergh` instead of the actual name. The code blindly passes every lesson type through `t()`, but custom types have no translation key.
+
+When editing a cyclus in Schedule Overview, the session price updates on the `availability_slots` table correctly (line 440), but the invoice sync logic (section 3b, line 690-696) keeps the **old** session line item from the invoice as-is. It only rebuilds extra cost line items. So deleting extra costs is reflected, but the session price change is not.
+
+## Root Cause
+
+Line 694-696:
+```typescript
+const sessionItems = existingItems.filter(
+  (_item: any, idx: number) => idx === 0
+);
+```
+
+This preserves the first line item (session item) with its **old** `unit_price`. It never applies the new `cycleEditData.pricePerSession` to it.
 
 ## Fix
 
-Apply the same pattern already used in `CycleApplicationForm.tsx`: check if the type is a standard one (`private`, `duo`, `group3`, `group4`, `kids`) — if yes, translate it; if not, capitalize and display as-is.
+**File**: `src/pages/TrainerScheduleOverview.tsx` (lines 694-696)
 
-**Same fix needed in 2 files:**
+After filtering the session item, update its `unit_price` and `amount` if the session price was changed:
 
-| File | Line | Change |
-|------|------|--------|
-| `src/components/cycles/IntakeRequestsTable.tsx` | 234 | Replace `t(\`application.form.lessonTypes.${type}\`)` with standard-type check + fallback |
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | 192 | Same replacement |
-
-Both will use:
-```tsx
-{['private','duo','group3','group4','kids'].includes(type)
-  ? t(`application.form.lessonTypes.${type}`)
-  : type.charAt(0).toUpperCase() + type.slice(1)}
+```typescript
+const sessionItems = existingItems.filter(
+  (_item: any, idx: number) => idx === 0
+).map((item: any) => {
+  // Update session line item price if changed
+  if (cycleEditData.pricePerSession !== "") {
+    const newPrice = parseFloat(cycleEditData.pricePerSession);
+    return {
+      ...item,
+      unit_price: newPrice,
+      amount: item.quantity * newPrice,
+    };
+  }
+  return item;
+});
 ```
+
+This ensures the session line item's price is updated before recalculating totals.
+
+## Data Fix
+
+After deploying, invoke `recalculate-invoices` for INV-2026-0003 to correct its current totals from the stored (now-correct) line items. Or: since the line items still have the old price, we should re-save the cyclus after deploying to trigger the sync again.
+
+| File | Change |
+|------|--------|
+| `src/pages/TrainerScheduleOverview.tsx` | Lines 694-696: Update session item's `unit_price` with new price from `cycleEditData.pricePerSession` |
 
