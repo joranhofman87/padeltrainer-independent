@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
         location_id: locationId || null,
         notes: notes || null,
         consent_given: consentGiven ?? true,
-        metadata: metadata || {},
+        metadata: { ...(metadata || {}), client_ip: clientIp },
         status: "new",
       })
       .select()
