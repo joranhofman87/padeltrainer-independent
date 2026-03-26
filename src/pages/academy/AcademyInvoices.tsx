@@ -424,75 +424,101 @@ export default function AcademyInvoices() {
                           <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
                           <TableCell>{getStatusBadge(inv)}</TableCell>
                           <TableCell>
-                            <div className="flex justify-end gap-1">
-                              {inv.status !== "paid" && (
-                                <>
-                                  {/* Share public invoice link */}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => {
-                                      const url = `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
-                                      navigator.clipboard.writeText(url);
-                                      toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
-                                    }}
-                                    title={t("invoices.shareLink", "Share invoice link")}
-                                  >
-                                    <Share2 className="h-4 w-4" />
-                                  </Button>
-                                  {!inv.sent_at && (
+                            <TooltipProvider delayDuration={0}>
+                              <div className="flex justify-end gap-1">
+                                {inv.status !== "paid" && (
+                                  <>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => {
+                                            const url = `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
+                                            navigator.clipboard.writeText(url);
+                                            toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
+                                          }}
+                                        >
+                                          <Share2 className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>{t("invoices.shareLink", "Share invoice link")}</TooltipContent>
+                                    </Tooltip>
+                                    {!inv.sent_at && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => sendInvoiceMutation.mutate(inv)}
+                                            disabled={sendInvoiceMutation.isPending}
+                                          >
+                                            <Send className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>{t("invoices.send", "Send invoice")}</TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => markPaidMutation.mutate(inv.id)}
+                                          disabled={markPaidMutation.isPending}
+                                        >
+                                          <CheckCircle className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>{t("invoices.markPaid", "Mark paid")}</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => setEditInvoice(inv)}
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>{t("invoices.edit", "Edit")}</TooltipContent>
+                                    </Tooltip>
+                                  </>
+                                )}
+                                {inv.status === "paid" && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleForwardInvoice(inv.id)}
+                                        disabled={forwardingId === inv.id}
+                                      >
+                                        {forwardingId === inv.id ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Mail className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{t("invoices.forwardToBookkeeper", "Forward to bookkeeper")}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      onClick={() => sendInvoiceMutation.mutate(inv)}
-                                      disabled={sendInvoiceMutation.isPending}
+                                      onClick={() => handleDownloadPdf(inv)}
                                     >
-                                      <Send className="h-4 w-4" />
+                                      <Download className="h-4 w-4" />
                                     </Button>
-                                  )}
-                                   <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => markPaidMutation.mutate(inv.id)}
-                                    disabled={markPaidMutation.isPending}
-                                    title={t("invoices.markPaid", "Mark paid")}
-                                  >
-                                    <CheckCircle className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => setEditInvoice(inv)}
-                                    title={t("invoices.edit", "Edit")}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                </>
-                              )}
-                              {inv.status === "paid" && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleForwardInvoice(inv.id)}
-                                  disabled={forwardingId === inv.id}
-                                  title={t("invoices.forwardToBookkeeper", "Forward to bookkeeper")}
-                                >
-                                  {forwardingId === inv.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Mail className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDownloadPdf(inv)}
-                                title={t("invoices.downloadPdf", "Download PDF")}
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{t("invoices.downloadPdf", "Download PDF")}</TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </TooltipProvider>
                           </TableCell>
                         </TableRow>
                       ))}
