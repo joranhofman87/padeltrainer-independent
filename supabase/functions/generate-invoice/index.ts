@@ -32,6 +32,7 @@ interface InvoiceData {
   vat_breakdown?: Record<string, { subtotal: number; vat: number }> | null;
   logo_url: string | null;
   banner_color: string | null;
+  payment_url: string | null;
   trainer: {
     business_name: string;
     business_address: string;
