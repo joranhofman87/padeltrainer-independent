@@ -44,6 +44,8 @@
     "customLessonTypePlaceholder": "Eigen type {{number}}",
     "showPreferredTrainer": "Trainer voorkeur toestaan",
     "showPreferredTrainerHelp": "Spelers kunnen een voorkeurscoach aangeven bij aanmelding",
+    "showPriceIndication": "Prijsindicatie tonen",
+    "showPriceIndicationHelp": "Toon een prijscalculator op het aanmeldformulier",
     "maxGroupSize": "Max groepsgrootte",
     "minGroupSize": "Min groepsgrootte",
     "minGroupSizeHelp": "Minimum aantal spelers vereist per sessie",

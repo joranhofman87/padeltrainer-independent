@@ -919,7 +919,7 @@ export default function CycleApplicationForm({
         )}
 
         {/* Selection Summary Calculator */}
-        {!isEvent && (() => {
+        {!isEvent && (cycle.settings as any)?.show_price_indication !== false && (() => {
           const watchedLessonTypes = form.watch('lesson_types') || [];
           const watchedDuration = form.watch('preferred_duration_minutes');
           

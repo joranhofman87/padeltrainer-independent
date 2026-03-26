@@ -164,6 +164,7 @@ export default function CycleForm({
     enrollment_deadline: z.date().optional(),
     lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1),
     show_preferred_trainer: z.boolean(),
+    show_price_indication: z.boolean(),
     max_group_size: z.coerce.number().min(2).max(20).optional(),
     min_group_size: z.coerce.number().min(1).max(20).optional(),
     assigned_trainer_id: z.string().optional(),
@@ -197,6 +198,7 @@ export default function CycleForm({
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
       lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group3', 'group4']),
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
+      show_price_indication: (cycle?.settings as any)?.show_price_indication ?? true,
       max_group_size: cycle?.settings?.max_group_size || 4,
       min_group_size: cycle?.settings?.min_group_size || 1,
       assigned_trainer_id: cycle?.settings?.assigned_trainer_id || '',
@@ -227,6 +229,7 @@ export default function CycleForm({
         enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
         lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group3', 'group4']),
         show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
+        show_price_indication: (cycle?.settings as any)?.show_price_indication ?? true,
         max_group_size: cycle?.settings?.max_group_size || 4,
         min_group_size: cycle?.settings?.min_group_size || 1,
         assigned_trainer_id: cycle?.settings?.assigned_trainer_id || '',
@@ -329,6 +332,7 @@ export default function CycleForm({
         lesson_types: isEvent ? undefined : values.lesson_types as CycleSettings['lesson_types'],
         custom_lesson_types: !isEvent && customLessonTypes.length > 0 ? customLessonTypes : undefined,
         show_preferred_trainer: values.show_preferred_trainer,
+        show_price_indication: values.show_price_indication,
         max_group_size: isEvent ? undefined : values.max_group_size,
         min_group_size: isEvent ? undefined : values.min_group_size,
         assigned_trainer_id: values.assigned_trainer_id || undefined,
@@ -2002,6 +2006,29 @@ export default function CycleForm({
                 )}
               />
             </div>
+            )}
+
+            {isRegistration && (
+              <FormField
+                control={form.control}
+                name="show_price_indication"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel>{t('form.showPriceIndication')}</FormLabel>
+                      <FormDescription className="text-xs">
+                        {t('form.showPriceIndicationHelp')}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
             )}
 
 
