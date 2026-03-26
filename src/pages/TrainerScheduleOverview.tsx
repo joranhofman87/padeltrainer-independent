@@ -428,6 +428,19 @@ export default function TrainerScheduleOverview() {
     setSavingEdit(true);
 
     try {
+      const normalizedSessionPrice = cycleEditData.pricePerSession.trim().replace(",", ".");
+      const parsedSessionPrice = normalizedSessionPrice === "" ? null : Number(normalizedSessionPrice);
+      const hasValidSessionPrice = parsedSessionPrice !== null && Number.isFinite(parsedSessionPrice);
+      const sessionPrice = hasValidSessionPrice ? parsedSessionPrice : null;
+
+      if (cycleEditData.pricePerSession !== "" && sessionPrice === null) {
+        toast({
+          title: t("scheduleOverview.invalidPrice", "Enter a valid session price"),
+          variant: "destructive",
+        });
+        return;
+      }
+
       // 1. Build bulk updates for all existing slots
       const updates: Record<string, unknown> = {
         cyclus_name: cycleEditData.name.trim(),
@@ -436,8 +449,8 @@ export default function TrainerScheduleOverview() {
         prices_include_vat: cycleEditData.pricesIncludeVat,
         split_payment: cycleEditData.splitPayment,
       };
-      if (cycleEditData.pricePerSession !== "") {
-        updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
+      if (sessionPrice !== null) {
+        updates.price_per_session = sessionPrice;
       }
       if (cycleEditData.locationId) {
         updates.location_id = cycleEditData.locationId;
@@ -530,7 +543,7 @@ export default function TrainerScheduleOverview() {
                 is_public: lastSlot.is_public,
                 is_marked_full: cycleEditData.isPrivate,
                 location_id: cycleEditData.locationId || lastSlot.location_id,
-                price_per_session: cycleEditData.pricePerSession !== "" ? parseFloat(cycleEditData.pricePerSession) : lastSlot.price_per_session,
+                price_per_session: sessionPrice ?? lastSlot.price_per_session,
                 extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : lastSlot.extra_costs,
                 academy_profile_id: lastSlot.academy_profile_id,
                 allow_single_booking: lastSlot.allow_single_booking,
@@ -671,34 +684,39 @@ export default function TrainerScheduleOverview() {
             .from("bookings")
             .select("id")
             .in("slot_id", syncSlotIdList)
-            .in("status", ["confirmed", "attended"]);
+            .neq("status", "cancelled");
 
           if (syncBookings && syncBookings.length > 0) {
             const syncBookingIdList = syncBookings.map((b) => b.id);
 
-            const { data: allInvoices } = await supabase
+            const { data: matchingUnpaidInvoices } = await supabase
               .from("invoices")
               .select("id, booking_ids, line_items, vat_rate, status")
-              .neq("status", "paid");
+              .in("status", ["draft", "sent", "pending", "overdue"])
+              .overlaps("booking_ids", syncBookingIdList);
 
-            if (allInvoices && allInvoices.length > 0) {
-              const matchingUnpaidInvoices = allInvoices.filter((inv) => {
-                const ids = (inv.booking_ids as string[]) || [];
-                return ids.some((bid) => syncBookingIdList.includes(bid));
-              });
-
+            if (matchingUnpaidInvoices && matchingUnpaidInvoices.length > 0) {
               for (const inv of matchingUnpaidInvoices) {
                 const existingItems = (inv.line_items as any[]) || [];
-                // Keep only session line items (first item / items without extra cost markers)
-                // Session items typically have quantity > 1 or are the first item
-                const sessionItems = existingItems.filter(
-                  (_item: any, idx: number) => idx === 0
+                const bookingCount = (inv.booking_ids as string[])?.length || 1;
+                const baseSessionItems = existingItems.filter(
+                  (_item: any, idx: number) => idx === 0,
+                );
+
+                const sessionItems = (baseSessionItems.length > 0
+                  ? baseSessionItems
+                  : [{
+                    description: `${cycleEditData.name.trim()} (${bookingCount} weken)`,
+                    quantity: bookingCount,
+                    unit_price: sessionPrice ?? 0,
+                  }]
                 ).map((item: any) => {
-                  if (cycleEditData.pricePerSession !== "") {
-                    const newPrice = parseFloat(cycleEditData.pricePerSession);
-                    if (!isNaN(newPrice)) {
-                      return { ...item, unit_price: newPrice, amount: item.quantity * newPrice };
-                    }
+                  if (sessionPrice !== null) {
+                    return {
+                      ...item,
+                      unit_price: sessionPrice,
+                      amount: (item.quantity ?? 1) * sessionPrice,
+                    };
                   }
                   return item;
                 });
