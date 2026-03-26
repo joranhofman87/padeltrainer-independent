@@ -104,7 +104,7 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     .notes { margin-top: 24px; padding: 16px; background: #fef3c7; border-radius: 8px; font-size: 14px; }
     @media print {
       body { padding: 0; }
-      .banner-strip { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .branded-header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .items-table th, .totals-row.total, .payment-info { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .invoice-container { max-width: 100%; }
     }
