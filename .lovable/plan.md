@@ -1,26 +1,47 @@
 
 
-# Filter Out 0% VAT Rows from Invoice
+# Add Prominent Academy Branding Banner to Generated Invoice
 
-## Problem
-The invoice VAT breakdown section shows "BTW 0%" even when the VAT amount for that rate is €0.00. This happens because the `vat_breakdown` object contains a 0% entry from line items that have 0% VAT rate, but if there's no actual value it shouldn't be displayed.
+## Current State
+The generated invoice has:
+- A **6px thin strip** at the top (`banner-strip`) using the accent color
+- A small logo (60px) next to the "FACTUUR" title in the header
 
-## Fix
+The payment page (`PublicInvoicePay.tsx`) has a much more prominent look: a **full-width colored banner** with a centered logo (or academy name in white if no logo).
 
-**File**: `supabase/functions/generate-invoice/index.ts` (lines 164-172)
+## Plan
 
-Add a filter to skip VAT breakdown entries where the VAT amount is 0:
+Update the HTML template in `generate-invoice/index.ts` to replace the thin strip + inline logo with a prominent branded header, similar to the payment page:
 
-```typescript
-Object.entries(invoice.vat_breakdown)
-  .filter(([_, data]) => (data as any).vat !== 0)  // Skip 0 VAT rows
-  .sort(([a], [b]) => Number(a) - Number(b))
-  .map(([rate, data]) => `...`)
+**Replace lines 80, 112-118** with:
+
+```html
+/* CSS */
+.branded-header {
+  background: {accentColor};
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 0;
+}
+.branded-header img { max-height: 48px; max-width: 200px; object-fit: contain; }
+.branded-header h2 { color: white; font-size: 20px; font-weight: bold; margin: 0; }
+
+/* HTML */
+<div class="branded-header">
+  {logo ? <img src="..." /> : <h2>{business_name}</h2>}
+</div>
+<div class="invoice-container">
+  <div class="header">
+    <h1 class="invoice-title">FACTUUR</h1>
+    <div class="invoice-meta">...</div>
+  </div>
 ```
 
-Also adjust the condition for when to use multi-rate display: only count rates that actually have a non-zero VAT amount.
+This gives a full-width colored banner with centered logo (or academy name fallback in white text), followed by the invoice title and meta below — matching the payment page style.
+
+## Changes
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-invoice/index.ts` | Lines 164-172: Filter out VAT breakdown entries where `vat === 0` |
+| `supabase/functions/generate-invoice/index.ts` | Replace thin `banner-strip` with full-width branded header block; move logo from inline-with-title to centered in banner; add academy name fallback when no logo |
 
