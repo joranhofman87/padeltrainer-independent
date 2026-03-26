@@ -1,17 +1,25 @@
 
 
-# Remove "Back to Homepage" Button from Registration Success Screen
+# Fix Custom Lesson Type Display in Intake Requests Table
 
-## Change
+## Problem
+Custom lesson types (e.g. "Masterclass René Lindenbergh") show as raw translation keys like `application.form.lessonTypes.Masterclass René Lindenbergh` instead of the actual name. The code blindly passes every lesson type through `t()`, but custom types have no translation key.
 
-Remove the conditional block that shows either "Back to profile" (logged-in) or "Back to homepage" (guest) after registration success. Only keep the "Terug naar formulier / Back to form" button.
+## Fix
 
-## Files
+Apply the same pattern already used in `CycleApplicationForm.tsx`: check if the type is a standard one (`private`, `duo`, `group3`, `group4`, `kids`) — if yes, translate it; if not, capitalize and display as-is.
 
-| File | Change |
-|------|--------|
-| `src/pages/BrandedCycleRegistration.tsx` | Lines 268-272: Remove the `{user ? ... : ...}` block showing "Back to profile" / "Back to homepage" |
-| `src/pages/CycleRegistration.tsx` | Lines 315-323: Same removal |
+**Same fix needed in 2 files:**
 
-Both files keep only the existing `variant="outline"` "Back to form" button.
+| File | Line | Change |
+|------|------|--------|
+| `src/components/cycles/IntakeRequestsTable.tsx` | 234 | Replace `t(\`application.form.lessonTypes.${type}\`)` with standard-type check + fallback |
+| `src/components/cycles/IntakeRequestDetailSheet.tsx` | 192 | Same replacement |
+
+Both will use:
+```tsx
+{['private','duo','group3','group4','kids'].includes(type)
+  ? t(`application.form.lessonTypes.${type}`)
+  : type.charAt(0).toUpperCase() + type.slice(1)}
+```
 
