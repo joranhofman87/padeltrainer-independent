@@ -32,6 +32,7 @@ interface InvoiceData {
   vat_breakdown?: Record<string, { subtotal: number; vat: number }> | null;
   logo_url: string | null;
   banner_color: string | null;
+  payment_url: string | null;
   trainer: {
     business_name: string;
     business_address: string;
@@ -180,6 +181,22 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
       </div>
     </div>
 
+    ${invoice.payment_url ? `
+    <div class="payment-info">
+      <div class="payment-title">Betaal online</div>
+      <div style="display: flex; align-items: center; gap: 24px;">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(invoice.payment_url)}&size=150x150&color=${(invoice.banner_color || '#16a34a').replace('#', '')}" 
+             alt="QR code" width="120" height="120" style="border-radius: 8px;" />
+        <div>
+          <p style="margin: 0 0 8px 0;">Scan de QR code of klik op de link om online te betalen:</p>
+          <a href="${invoice.payment_url}" style="color: ${accentColor}; font-weight: bold; word-break: break-all;">${invoice.payment_url}</a>
+          <p style="margin-top: 12px; font-size: 13px; color: #6b7280;">
+            Referentie: ${invoice.invoice_number} · Vervaldatum: ${formatDate(invoice.due_date)}
+          </p>
+        </div>
+      </div>
+    </div>
+    ` : `
     <div class="payment-info">
       <div class="payment-title">Betalingsgegevens</div>
       <div class="payment-row">
@@ -201,6 +218,7 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
         <span>${formatDate(invoice.due_date)}</span>
       </div>
     </div>
+    `}
 
     ${invoice.notes ? `<div class="notes">${invoice.notes}</div>` : ''}
   </div>
@@ -278,7 +296,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (invoice.academy_profile_id) {
       const { data: ap } = await supabase
         .from('academy_profiles')
-        .select('name, business_name, business_address, kvk_number, btw_number, iban, bic, invoice_logo_url, invoice_banner_color, payment_terms_days')
+        .select('name, slug, business_name, business_address, kvk_number, btw_number, iban, bic, invoice_logo_url, invoice_banner_color, payment_terms_days')
         .eq('id', invoice.academy_profile_id)
         .single();
       academyProfile = ap;
@@ -327,6 +345,34 @@ const handler = async (req: Request): Promise<Response> => {
       ? (academyProfile.business_name || academyProfile.name || '')
       : (trainerProfile.business_name || '');
 
+    // Check for active Mollie connection to determine payment method
+    let hasMollie = false;
+    if (invoice.academy_profile_id) {
+      const { data: mollieAccount } = await supabase
+        .from('academy_mollie_accounts')
+        .select('charges_enabled, onboarding_complete')
+        .eq('academy_profile_id', invoice.academy_profile_id)
+        .maybeSingle();
+      hasMollie = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete);
+    } else {
+      const { data: mollieAccount } = await supabase
+        .from('trainer_mollie_accounts')
+        .select('charges_enabled, onboarding_complete')
+        .eq('trainer_id', invoice.trainer_id)
+        .maybeSingle();
+      hasMollie = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete);
+    }
+
+    // Build payment URL if Mollie is connected and invoice has a public token
+    let paymentUrl: string | null = null;
+    if (hasMollie && invoice.public_token) {
+      if (academyProfile?.slug) {
+        paymentUrl = `https://padeltrainer.ai/nl/academies/${academyProfile.slug}/pay/${invoice.public_token}`;
+      } else {
+        paymentUrl = `https://padeltrainer.ai/nl/pay/${invoice.public_token}`;
+      }
+    }
+
     // Generate HTML invoice
     const invoiceData: InvoiceData = {
       id: invoice.id,
@@ -346,6 +392,7 @@ const handler = async (req: Request): Promise<Response> => {
       vat_breakdown: invoice.vat_breakdown || null,
       logo_url: businessSource.invoice_logo_url || null,
       banner_color: (academyProfile?.invoice_banner_color) || null,
+      payment_url: paymentUrl,
       trainer: {
         business_name: businessName,
         business_address: businessSource.business_address || '',
