@@ -1,54 +1,26 @@
 
 
-# Add Online Payment Link to Invoice (Replace IBAN When Mollie Connected)
+# Filter Out 0% VAT Rows from Invoice
 
 ## Problem
-The generated invoice always shows IBAN bank transfer details in the "Betalingsgegevens" section, even when the academy has Mollie connected. Since online payment is available, the invoice should show a payment link (and optionally a QR code) instead of IBAN details.
+The invoice VAT breakdown section shows "BTW 0%" even when the VAT amount for that rate is €0.00. This happens because the `vat_breakdown` object contains a 0% entry from line items that have 0% VAT rate, but if there's no actual value it shouldn't be displayed.
 
-## Approach
+## Fix
 
-In `generate-invoice/index.ts`:
+**File**: `supabase/functions/generate-invoice/index.ts` (lines 164-172)
 
-1. **Check for Mollie connection** — query `academy_mollie_accounts` (or `trainer_mollie_accounts`) to see if `onboarding_complete = true` and `charges_enabled = true`
-2. **Fetch academy slug** — already available from `academy_profiles`; add `slug` to the select
-3. **Build payment URL** — use the invoice's `public_token` + academy slug: `https://padeltrainer.ai/nl/academies/{slug}/pay/{public_token}`
-4. **Conditionally render payment section**:
-   - **Mollie connected + public_token exists**: Show "Betaal online" button/link + QR code (generated via a public QR API like `https://api.qrserver.com/v1/create-qr-code/?data=URL&size=150x150`), hide IBAN
-   - **No Mollie**: Keep current IBAN details as fallback
+Add a filter to skip VAT breakdown entries where the VAT amount is 0:
 
-## HTML Template Changes
-
-Replace the static IBAN payment-info block (lines 183-203) with conditional logic:
-
-```html
-<!-- When Mollie is connected -->
-<div class="payment-info">
-  <div class="payment-title">Betaal online</div>
-  <div style="display: flex; align-items: center; gap: 24px;">
-    <img src="https://api.qrserver.com/v1/create-qr-code/?data={paymentUrl}&size=150x150" 
-         alt="QR code" width="120" height="120" />
-    <div>
-      <p>Scan de QR code of klik op de link:</p>
-      <a href="{paymentUrl}" style="color: {accentColor}; font-weight: bold;">{paymentUrl}</a>
-      <p style="margin-top: 8px; font-size: 13px; color: #6b7280;">
-        Referentie: {invoice_number} · Vervaldatum: {due_date}
-      </p>
-    </div>
-  </div>
-</div>
-
-<!-- Fallback: no Mollie → show IBAN as before -->
+```typescript
+Object.entries(invoice.vat_breakdown)
+  .filter(([_, data]) => (data as any).vat !== 0)  // Skip 0 VAT rows
+  .sort(([a], [b]) => Number(a) - Number(b))
+  .map(([rate, data]) => `...`)
 ```
 
-## Data Requirements
-
-Add to the `academy_profiles` select: `slug`
-Add query: check `academy_mollie_accounts` or `trainer_mollie_accounts` for active connection
-Add to invoice select: `public_token` (already in the `*` select)
-
-## Changes
+Also adjust the condition for when to use multi-rate display: only count rates that actually have a non-zero VAT amount.
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-invoice/index.ts` | Add Mollie account check; add `slug` to academy select; add `paymentUrl` + `hasMollie` to `InvoiceData`; replace IBAN section with conditional online payment block (QR + link) or IBAN fallback |
+| `supabase/functions/generate-invoice/index.ts` | Lines 164-172: Filter out VAT breakdown entries where `vat === 0` |
 
