@@ -44,6 +44,8 @@ interface InvoiceData {
 }
 
 function generateInvoiceHTML(invoice: InvoiceData): string {
+  const accentColor = invoice.banner_color || '#16a34a';
+  
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
