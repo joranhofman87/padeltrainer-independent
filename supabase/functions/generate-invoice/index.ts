@@ -296,7 +296,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (invoice.academy_profile_id) {
       const { data: ap } = await supabase
         .from('academy_profiles')
-        .select('name, business_name, business_address, kvk_number, btw_number, iban, bic, invoice_logo_url, invoice_banner_color, payment_terms_days')
+        .select('name, slug, business_name, business_address, kvk_number, btw_number, iban, bic, invoice_logo_url, invoice_banner_color, payment_terms_days')
         .eq('id', invoice.academy_profile_id)
         .single();
       academyProfile = ap;
