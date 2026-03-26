@@ -1,24 +1,24 @@
 
 
-# Make Invoice Payment Section More Compact (Fit on One Page)
+# Add "Show Price Indication" Toggle to Registration Form Settings
 
 ## Problem
-The Mollie payment section (QR code + link) takes too much vertical space, pushing the invoice to two pages. The branded header, payment box padding, and QR code size all contribute.
+The price indication calculator is always shown on the registration form. Not all academies/trainers want to display pricing on their public form.
+
+## Approach
+Add a `show_price_indication` boolean to cycle settings (default `true` for backward compat), with a toggle in `CycleForm.tsx`. Then conditionally render the price card in `CycleApplicationForm.tsx`.
 
 ## Changes
 
-**File**: `supabase/functions/generate-invoice/index.ts`
-
-1. **Reduce branded header padding**: `24px 40px` → `14px 40px`, and logo max-height `48px` → `36px`
-2. **Reduce payment-info box**: padding `20px` → `14px`, margin-top `40px` → `20px`
-3. **Shrink QR code**: from `120x120` (requesting `150x150`) → `80x80` (requesting `100x100`)
-4. **Reduce text spacing** in payment section: smaller font, tighter margins
-5. **Reduce invoice-container padding**: `40px` → `30px`
-6. **Reduce header/parties margin-bottom**: `40px` → `24px`
-
-These changes together should save ~150-200px of vertical space, keeping most invoices on a single page.
-
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-invoice/index.ts` | Reduce padding/margins on branded header, invoice container, parties section, and payment-info box; shrink QR code; tighten text spacing |
+| `src/components/cycles/CycleForm.tsx` | Add `show_price_indication` to schema (default `true`), load from `cycle.settings`, save to settings object, add Switch toggle in the form settings section near other toggles |
+| `src/components/cycles/CycleApplicationForm.tsx` | Line 922: add check `(cycle.settings as any)?.show_price_indication !== false` before rendering the price indication card |
+| `src/i18n/locales/en/cycles.json` | Add `form.showPriceIndication` label + description |
+| `src/i18n/locales/nl/cycles.json` | Add Dutch translation |
+| `src/i18n/locales/de/cycles.json` | Add German translation |
+| `src/i18n/locales/fr/cycles.json` | Add French translation |
+| `src/i18n/locales/es/cycles.json` | Add Spanish translation |
+
+No database changes needed — the setting is stored in the existing `settings` JSONB column on the `cycles` table.
 
