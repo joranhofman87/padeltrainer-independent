@@ -1,20 +1,21 @@
 
 
-# Fix Academy Invoice Download
+# Add "Back to Form" Button on Registration Success Screen
 
-## Problem
+## Change
 
-`AcademyInvoices.tsx` tries to use `invoice.pdf_url` as a storage path to create a signed URL via `supabase.storage.from("invoices").createSignedUrl(...)`. But `pdf_url` contains a **full signed URL** (or is null), not a storage path. This always fails silently.
+In `src/pages/CycleRegistration.tsx` (lines 311-319), add a "Back to form" button that resets `isSuccess` to `false` so users can fill out the form again. This goes alongside the existing buttons.
 
-Meanwhile, the trainer's `InvoiceList.tsx` correctly calls the `generate-invoice` edge function, which returns fresh HTML for printing.
-
-## Fix
-
-Replace `handleDownloadPdf` in `AcademyInvoices.tsx` with the same approach used in `InvoiceList.tsx`: call `generate-invoice`, open the returned HTML in a new window, and trigger print.
+Also add translation keys for EN and NL.
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyInvoices.tsx` | Replace `handleDownloadPdf` with `generate-invoice` function call + print window (matching `InvoiceList.tsx` pattern) |
+| `src/pages/CycleRegistration.tsx` | Add a button before the existing user/guest buttons that calls `setIsSuccess(false); setHasApplied(false);` to return to the form |
+| `src/i18n/locales/en/cycles.json` | Add `application.success.backToForm`: "Back to form" |
+| `src/i18n/locales/nl/cycles.json` | Add `application.success.backToForm`: "Terug naar formulier" |
+| `src/i18n/locales/es/cycles.json` | Add `application.success.backToForm`: "Volver al formulario" |
+| `src/i18n/locales/de/cycles.json` | Add `application.success.backToForm`: "Zurück zum Formular" |
+| `src/i18n/locales/fr/cycles.json` | Add `application.success.backToForm`: "Retour au formulaire" |
 
-The `generate-invoice` edge function already authorizes academy managers, so no backend changes needed.
+The new button uses `variant="outline"` and sits above the existing navigation button.
 
