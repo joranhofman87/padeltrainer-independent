@@ -105,12 +105,10 @@
     "pricesIncludeVatHint": "Les joueurs verront : \"Tous les prix incluent la TVA\"",
     "pricesExcludeVatHint": "Les joueurs verront : \"Tous les prix sont hors TVA\""
   },
-
   "detail": {
     "pricesIncludeVat": "Tous les prix incluent la TVA",
     "pricesExcludeVat": "Tous les prix sont hors TVA"
   },
-
   "actions": {
     "openEnrollment": "Ouvrir les inscriptions",
     "closeEnrollment": "Fermer les inscriptions",
@@ -121,7 +119,6 @@
     "linkCopied": "Lien d'inscription copié !",
     "copyLink": "Copier le lien d'inscription"
   },
-  
   "paymentBadge": {
     "upfront": "Paiement à l'avance",
     "invoice_after_weeks": "Facture après {{count}} sem.",
@@ -209,13 +206,11 @@
       "experienceRequired": "Veuillez nous parler de votre expérience",
       "consent": "J'accepte d'être contacté concernant ma candidature et je consens au traitement de mes données.",
       "consentRequired": "Vous devez accepter pour continuer",
-
       "createAccount": "Créez votre compte",
       "createAccountHelp": "Choisissez un mot de passe pour créer votre compte. Cela vous permettra de suivre votre inscription et de gérer vos réservations.",
       "password": "Mot de passe",
       "passwordPlaceholder": "Créer un mot de passe",
       "passwordMin": "Le mot de passe doit contenir au moins 6 caractères",
-
       "nameMin": "Le nom doit contenir au moins 2 caractères",
       "emailInvalid": "Veuillez entrer une adresse e-mail valide",
       "submitError": "Échec de l'envoi de la candidature",
@@ -230,7 +225,8 @@
       "step1": "Nous examinerons votre candidature et vos disponibilités",
       "step2": "Vous serez associé à un créneau d'entraînement approprié",
       "step3": "Vous recevrez un e-mail avec votre planning confirmé",
-      "backToProfile": "Retour au profil"
+      "backToProfile": "Retour au profil",
+      "backToForm": "Retour au formulaire"
     }
   },
   "intakeRequests": {
@@ -402,7 +398,6 @@
     "applicationReceived": "Candidature reçue",
     "scheduleConfirmed": "Votre planning d'entraînement est confirmé"
   },
-
   "workflow": {
     "generate": "Générer",
     "generateDesc": "{{count}} nouvelles demandes",

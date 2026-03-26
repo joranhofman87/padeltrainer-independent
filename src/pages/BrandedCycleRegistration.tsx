@@ -261,11 +261,16 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
               labelKey={t('common:messageFrom', { name: owner.name, defaultValue: `Message from ${owner.name}` })}
             />
           )}
-          {user ? (
-            <Button onClick={() => navigate('/app/player')}>{t('application.success.backToProfile')}</Button>
-          ) : (
-            <Button onClick={() => navigate('/')}>{t('common:backToHome', 'Back to homepage')}</Button>
-          )}
+          <div className="flex flex-col gap-2">
+            <Button variant="outline" onClick={() => { setIsSuccess(false); setHasApplied(false); }}>
+              {t('application.success.backToForm', 'Back to form')}
+            </Button>
+            {user ? (
+              <Button onClick={() => navigate('/app/player')}>{t('application.success.backToProfile')}</Button>
+            ) : (
+              <Button onClick={() => navigate('/')}>{t('common:backToHome', 'Back to homepage')}</Button>
+            )}
+          </div>
         </div>
       </ProfileLayout>
     );

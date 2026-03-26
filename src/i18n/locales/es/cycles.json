@@ -105,12 +105,10 @@
     "pricesIncludeVatHint": "Los jugadores verán: \"Todos los precios incluyen IVA\"",
     "pricesExcludeVatHint": "Los jugadores verán: \"Todos los precios excluyen IVA\""
   },
-
   "detail": {
     "pricesIncludeVat": "Todos los precios incluyen IVA",
     "pricesExcludeVat": "Todos los precios excluyen IVA"
   },
-
   "actions": {
     "openEnrollment": "Abrir inscripción",
     "closeEnrollment": "Cerrar inscripción",
@@ -121,7 +119,6 @@
     "linkCopied": "¡Enlace de inscripción copiado!",
     "copyLink": "Copiar enlace de inscripción"
   },
-  
   "paymentBadge": {
     "upfront": "Pago adelantado",
     "invoice_after_weeks": "Factura después de {{count}} sem.",
@@ -209,13 +206,11 @@
       "experienceRequired": "Por favor cuéntanos sobre tu experiencia",
       "consent": "Acepto ser contactado sobre mi solicitud y doy mi consentimiento para el tratamiento de mis datos.",
       "consentRequired": "Debes aceptar para continuar",
-
       "createAccount": "Crea tu cuenta",
       "createAccountHelp": "Elige una contraseña para crear tu cuenta. Así podrás seguir tu inscripción y gestionar tus reservas.",
       "password": "Contraseña",
       "passwordPlaceholder": "Crea una contraseña",
       "passwordMin": "La contraseña debe tener al menos 6 caracteres",
-
       "nameMin": "El nombre debe tener al menos 2 caracteres",
       "emailInvalid": "Introduce una dirección de correo válida",
       "submitError": "Error al enviar la solicitud",
@@ -230,7 +225,8 @@
       "step1": "Revisaremos tu solicitud y disponibilidad",
       "step2": "Serás asignado a una franja de entrenamiento adecuada",
       "step3": "Recibirás un email con tu horario confirmado",
-      "backToProfile": "Volver al perfil"
+      "backToProfile": "Volver al perfil",
+      "backToForm": "Volver al formulario"
     }
   },
   "intakeRequests": {
@@ -402,7 +398,6 @@
     "applicationReceived": "Solicitud recibida",
     "scheduleConfirmed": "Tu horario de entrenamiento está confirmado"
   },
-
   "workflow": {
     "generate": "Generar",
     "generateDesc": "{{count}} nuevas solicitudes",

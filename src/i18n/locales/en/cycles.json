@@ -19,14 +19,12 @@
   "noRegistrations": "No registrations yet",
   "noRegistrationsDescription": "Create a registration to start collecting player interest",
   "academyDescription": "Create and manage registration cycles for your academy programs",
-  
   "status": {
     "draft": "Draft",
     "open": "Open",
     "closed": "Closed",
     "archived": "Archived"
   },
-  
   "editRegistration": "Edit Registration",
   "deleteRegistration": "Delete Registration",
   "form": {
@@ -119,12 +117,10 @@
     "availableDays": "Available Days & Times",
     "availableDaysHelp": "Select which days and time frames are available for training. Players will only see these options."
   },
-
   "detail": {
     "pricesIncludeVat": "All prices include VAT",
     "pricesExcludeVat": "All prices exclude VAT"
   },
-  
   "actions": {
     "openEnrollment": "Open Enrollment",
     "closeEnrollment": "Close Enrollment",
@@ -135,13 +131,11 @@
     "linkCopied": "Registration link copied!",
     "copyLink": "Copy Registration Link"
   },
-  
   "paymentBadge": {
     "upfront": "Pay upfront",
     "invoice_after_weeks": "Invoice after {{count}} wk",
     "manual": "Manual payment"
   },
-  
   "stats": {
     "applications": "Applications",
     "new": "New",
@@ -149,7 +143,6 @@
     "confirmed": "Confirmed",
     "waitlist": "Waitlist"
   },
-  
   "application": {
     "title": "Apply for Training",
     "subtitle": "Submit your application for {{cycleName}}",
@@ -161,7 +154,6 @@
     "apply": "Apply",
     "signUpAndApply": "Sign up & apply",
     "loginToApply": "Login to apply",
-    
     "form": {
       "personalInfo": "Personal Information",
       "name": "Full Name",
@@ -170,7 +162,6 @@
       "rating": "Current Rating",
       "ratingLabel": "Current Rating",
       "ratingSystem": "Rating System",
-      
       "preferences": "Training Preferences",
       "lessonType": "Lesson Type",
       "lessonTypeRequired": "Select at least one lesson type",
@@ -193,7 +184,6 @@
       "preferredTrainersHelp": "Select trainers you'd prefer to train with",
       "noPreference": "No preference",
       "location": "Preferred Location",
-      
       "availability": "Your Availability",
       "availabilityLabel": "Availability",
       "availabilityHelp": "Select the days and times you're available for training. The more times you indicate, the greater the chance you'll be assigned.",
@@ -221,7 +211,6 @@
         "weekend": "Weekends"
       },
       "customTimes": "Or set specific times",
-      
       "additional": "More information about your padel experience",
       "birthDate": "Date of birth",
       "birthDateRequired": "Please enter your date of birth",
@@ -230,13 +219,11 @@
       "experienceRequired": "Please tell us about your experience",
       "consent": "I agree to be contacted regarding my application and consent to the processing of my data.",
       "consentRequired": "You must agree to continue",
-      
       "createAccount": "Create Your Account",
       "createAccountHelp": "Choose a password to create your account. This lets you track your application and manage your bookings.",
       "password": "Password",
       "passwordPlaceholder": "Create a password",
       "passwordMin": "Password must be at least 6 characters",
-
       "nameMin": "Name must be at least 2 characters",
       "emailInvalid": "Please enter a valid email address",
       "submitError": "Failed to submit application",
@@ -244,7 +231,6 @@
       "submitting": "Submitting...",
       "validationSummary": "Please fix the following:"
     },
-    
     "summary": {
       "title": "Your Selection",
       "lessonType": "Lesson type",
@@ -258,7 +244,6 @@
       "priceIndication": "Price indication",
       "indicativeNote": "Indicative pricing — confirmed after registration"
     },
-    
     "success": {
       "title": "Application Submitted!",
       "message": "Thank you for your application. You will receive a confirmation email shortly.",
@@ -266,10 +251,10 @@
       "step1": "We will review your application and availability",
       "step2": "You will be matched with an appropriate training slot",
       "step3": "You will receive an email with your confirmed schedule",
-      "backToProfile": "Back to Profile"
+      "backToProfile": "Back to Profile",
+      "backToForm": "Back to form"
     }
   },
-  
   "intakeRequests": {
     "title": "Intake Requests",
     "noRequests": "No intake requests yet",
@@ -325,7 +310,6 @@
       "confirm": "Delete"
     }
   },
-  
   "proposals": {
     "title": "Proposed Assignments",
     "noProposals": "No proposals yet",
@@ -409,7 +393,6 @@
       "continue": "Continue"
     }
   },
-
   "unplacedSidebar": {
     "title": "Unplaced",
     "search": "Search players...",
@@ -419,7 +402,6 @@
     "playerAssigned": "Player assigned to slot",
     "playerUnassigned": "Player returned to unplaced pool"
   },
-
   "skipReasons": {
     "no_matching_slots": {
       "short": "No match",
@@ -447,12 +429,10 @@
       "description": "The rating difference with other players in available slots exceeds the maximum allowed."
     }
   },
-  
   "emails": {
     "applicationReceived": "Application Received",
     "scheduleConfirmed": "Your Training Schedule is Confirmed"
   },
-
   "workflow": {
     "generate": "Generate",
     "generateDesc": "{{count}} new requests",
