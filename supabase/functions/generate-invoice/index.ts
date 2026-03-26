@@ -161,20 +161,26 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
         <span>Subtotaal</span>
         <span>${formatCurrency(invoice.subtotal)}</span>
       </div>
-      ${invoice.vat_breakdown && Object.keys(invoice.vat_breakdown).length > 1
-        ? Object.entries(invoice.vat_breakdown)
+      ${(() => {
+        const nonZeroEntries = invoice.vat_breakdown 
+          ? Object.entries(invoice.vat_breakdown).filter(([_, data]) => (data as any).vat !== 0)
+          : [];
+        if (nonZeroEntries.length > 1) {
+          return nonZeroEntries
             .sort(([a], [b]) => Number(a) - Number(b))
             .map(([rate, data]) => `
               <div class="totals-row">
                 <span>BTW ${rate}%</span>
                 <span>${formatCurrency((data as any).vat)}</span>
               </div>
-            `).join('')
-        : `<div class="totals-row">
+            `).join('');
+        } else {
+          return `<div class="totals-row">
             <span>BTW ${invoice.vat_rate}%</span>
             <span>${formatCurrency(invoice.vat_amount)}</span>
-          </div>`
-      }
+          </div>`;
+        }
+      })()}
       <div class="totals-row total">
         <span>Totaal</span>
         <span>${formatCurrency(invoice.total)}</span>
