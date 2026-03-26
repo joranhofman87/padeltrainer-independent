@@ -231,7 +231,9 @@ export default function IntakeRequestsTable({
                   <div className="flex flex-wrap gap-1">
                     {(Array.isArray(request.lesson_type) ? request.lesson_type : [request.lesson_type]).map((type: string) => (
                       <Badge key={type} variant="outline" className={getLessonTypeBadge(type)}>
-                        {t(`application.form.lessonTypes.${type}`)}
+                        {['private','duo','group3','group4','kids'].includes(type)
+                          ? t(`application.form.lessonTypes.${type}`)
+                          : type.charAt(0).toUpperCase() + type.slice(1)}
                       </Badge>
                     ))}
                   </div>
