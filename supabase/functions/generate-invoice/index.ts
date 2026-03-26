@@ -345,6 +345,34 @@ const handler = async (req: Request): Promise<Response> => {
       ? (academyProfile.business_name || academyProfile.name || '')
       : (trainerProfile.business_name || '');
 
+    // Check for active Mollie connection to determine payment method
+    let hasMollie = false;
+    if (invoice.academy_profile_id) {
+      const { data: mollieAccount } = await supabase
+        .from('academy_mollie_accounts')
+        .select('charges_enabled, onboarding_complete')
+        .eq('academy_profile_id', invoice.academy_profile_id)
+        .maybeSingle();
+      hasMollie = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete);
+    } else {
+      const { data: mollieAccount } = await supabase
+        .from('trainer_mollie_accounts')
+        .select('charges_enabled, onboarding_complete')
+        .eq('trainer_id', invoice.trainer_id)
+        .maybeSingle();
+      hasMollie = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete);
+    }
+
+    // Build payment URL if Mollie is connected and invoice has a public token
+    let paymentUrl: string | null = null;
+    if (hasMollie && invoice.public_token) {
+      if (academyProfile?.slug) {
+        paymentUrl = `https://padeltrainer.ai/nl/academies/${academyProfile.slug}/pay/${invoice.public_token}`;
+      } else {
+        paymentUrl = `https://padeltrainer.ai/nl/pay/${invoice.public_token}`;
+      }
+    }
+
     // Generate HTML invoice
     const invoiceData: InvoiceData = {
       id: invoice.id,
