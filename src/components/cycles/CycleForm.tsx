@@ -198,6 +198,7 @@ export default function CycleForm({
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
       lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group3', 'group4']),
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
+      show_price_indication: cycle?.settings?.show_price_indication ?? true,
       max_group_size: cycle?.settings?.max_group_size || 4,
       min_group_size: cycle?.settings?.min_group_size || 1,
       assigned_trainer_id: cycle?.settings?.assigned_trainer_id || '',
