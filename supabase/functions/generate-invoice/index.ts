@@ -77,11 +77,11 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
   <title>Factuur ${invoice.invoice_number}</title>
   <style>
     body { font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; margin: 0; padding: 0; }
-    .branded-header { background: ${accentColor}; padding: 24px 40px; text-align: center; }
-    .branded-header img { max-height: 48px; max-width: 200px; object-fit: contain; }
-    .branded-header h2 { color: white; font-size: 20px; font-weight: bold; margin: 0; }
-    .invoice-container { max-width: 800px; margin: 0 auto; padding: 40px; }
-    .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
+    .branded-header { background: ${accentColor}; padding: 14px 40px; text-align: center; }
+    .branded-header img { max-height: 36px; max-width: 200px; object-fit: contain; }
+    .branded-header h2 { color: white; font-size: 18px; font-weight: bold; margin: 0; }
+    .invoice-container { max-width: 800px; margin: 0 auto; padding: 30px 40px; }
+    .header { display: flex; justify-content: space-between; margin-bottom: 24px; }
     .invoice-title { font-size: 32px; font-weight: bold; color: ${accentColor}; margin: 0; }
     .invoice-meta { text-align: right; }
     .invoice-meta p { margin: 4px 0; }
