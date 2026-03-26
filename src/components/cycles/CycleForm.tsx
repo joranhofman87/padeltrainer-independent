@@ -2008,6 +2008,29 @@ export default function CycleForm({
             </div>
             )}
 
+            {isRegistration && (
+              <FormField
+                control={form.control}
+                name="show_price_indication"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel>{t('form.showPriceIndication')}</FormLabel>
+                      <FormDescription className="text-xs">
+                        {t('form.showPriceIndicationHelp')}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            )}
+
 
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t">
               <Button
