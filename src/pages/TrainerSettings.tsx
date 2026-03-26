@@ -216,14 +216,6 @@ export default function TrainerSettings() {
       iconColor: 'text-green-600',
     },
     {
-      title: t('settings.calendarSync'),
-      description: t('settings.calendarSyncDescription'),
-      icon: CalendarSync,
-      route: '/settings/calendar',
-      iconBg: 'bg-blue-500/10',
-      iconColor: 'text-blue-600',
-    },
-    {
       title: t('settings.notifications'),
       description: t('settings.notificationsDescription'),
       icon: Bell,
