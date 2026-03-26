@@ -192,12 +192,12 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     <div class="payment-info">
       <div class="payment-title">Betaal online</div>
       <div style="display: flex; align-items: center; gap: 24px;">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(invoice.payment_url)}&size=150x150&color=${(invoice.banner_color || '#16a34a').replace('#', '')}" 
-             alt="QR code" width="120" height="120" style="border-radius: 8px;" />
+        <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(invoice.payment_url)}&size=100x100&color=${(invoice.banner_color || '#16a34a').replace('#', '')}" 
+             alt="QR code" width="80" height="80" style="border-radius: 6px;" />
         <div>
-          <p style="margin: 0 0 8px 0;">Scan de QR code of klik op de link om online te betalen:</p>
-          <a href="${invoice.payment_url}" style="color: ${accentColor}; font-weight: bold; word-break: break-all;">${invoice.payment_url}</a>
-          <p style="margin-top: 12px; font-size: 13px; color: #6b7280;">
+          <p style="margin: 0 0 4px 0; font-size: 13px;">Scan de QR code of klik op de link om online te betalen:</p>
+          <a href="${invoice.payment_url}" style="color: ${accentColor}; font-weight: bold; word-break: break-all; font-size: 13px;">${invoice.payment_url}</a>
+          <p style="margin-top: 6px; font-size: 12px; color: #6b7280;">
             Referentie: ${invoice.invoice_number} · Vervaldatum: ${formatDate(invoice.due_date)}
           </p>
         </div>
