@@ -77,15 +77,15 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
   <title>Factuur ${invoice.invoice_number}</title>
   <style>
     body { font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; margin: 0; padding: 0; }
-    .branded-header { background: ${accentColor}; padding: 24px 40px; text-align: center; }
-    .branded-header img { max-height: 48px; max-width: 200px; object-fit: contain; }
-    .branded-header h2 { color: white; font-size: 20px; font-weight: bold; margin: 0; }
-    .invoice-container { max-width: 800px; margin: 0 auto; padding: 40px; }
-    .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
+    .branded-header { background: ${accentColor}; padding: 14px 40px; text-align: center; }
+    .branded-header img { max-height: 36px; max-width: 200px; object-fit: contain; }
+    .branded-header h2 { color: white; font-size: 18px; font-weight: bold; margin: 0; }
+    .invoice-container { max-width: 800px; margin: 0 auto; padding: 30px 40px; }
+    .header { display: flex; justify-content: space-between; margin-bottom: 24px; }
     .invoice-title { font-size: 32px; font-weight: bold; color: ${accentColor}; margin: 0; }
     .invoice-meta { text-align: right; }
     .invoice-meta p { margin: 4px 0; }
-    .parties { display: flex; justify-content: space-between; margin-bottom: 40px; }
+    .parties { display: flex; justify-content: space-between; margin-bottom: 24px; }
     .party { width: 45%; }
     .party-label { font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 8px; }
     .party-name { font-weight: bold; font-size: 16px; }
@@ -97,7 +97,7 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     .totals { margin-left: auto; width: 300px; }
     .totals-row { display: flex; justify-content: space-between; padding: 8px 0; }
     .totals-row.total { font-weight: bold; font-size: 18px; border-top: 2px solid ${accentColor}; padding-top: 12px; margin-top: 8px; color: ${accentColor}; }
-    .payment-info { background: #f9fafb; padding: 20px; border-radius: 8px; margin-top: 40px; border-left: 4px solid ${accentColor}; }
+    .payment-info { background: #f9fafb; padding: 14px; border-radius: 8px; margin-top: 20px; border-left: 4px solid ${accentColor}; }
     .payment-title { font-weight: bold; margin-bottom: 12px; }
     .payment-row { display: flex; gap: 24px; font-size: 14px; }
     .payment-label { color: #6b7280; width: 120px; }
@@ -192,12 +192,12 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     <div class="payment-info">
       <div class="payment-title">Betaal online</div>
       <div style="display: flex; align-items: center; gap: 24px;">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(invoice.payment_url)}&size=150x150&color=${(invoice.banner_color || '#16a34a').replace('#', '')}" 
-             alt="QR code" width="120" height="120" style="border-radius: 8px;" />
+        <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(invoice.payment_url)}&size=100x100&color=${(invoice.banner_color || '#16a34a').replace('#', '')}" 
+             alt="QR code" width="80" height="80" style="border-radius: 6px;" />
         <div>
-          <p style="margin: 0 0 8px 0;">Scan de QR code of klik op de link om online te betalen:</p>
-          <a href="${invoice.payment_url}" style="color: ${accentColor}; font-weight: bold; word-break: break-all;">${invoice.payment_url}</a>
-          <p style="margin-top: 12px; font-size: 13px; color: #6b7280;">
+          <p style="margin: 0 0 4px 0; font-size: 13px;">Scan de QR code of klik op de link om online te betalen:</p>
+          <a href="${invoice.payment_url}" style="color: ${accentColor}; font-weight: bold; word-break: break-all; font-size: 13px;">${invoice.payment_url}</a>
+          <p style="margin-top: 6px; font-size: 12px; color: #6b7280;">
             Referentie: ${invoice.invoice_number} · Vervaldatum: ${formatDate(invoice.due_date)}
           </p>
         </div>
