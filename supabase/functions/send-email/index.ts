@@ -885,7 +885,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
             ${summaryBlock}
             ${priceBlock}
             <p>${t.footer}</p>
-            <p>${t.regards}<br><a href="https://padeltrainer.ai" style="color: ${BRAND_ORANGE}; text-decoration: none;">PadelTrainer.ai</a> Team</p>
+            <p>${t.regards}<br>${data.ownerName || data.trainerName || 'PadelTrainer.ai Team'}</p>
           </div>
         `,
       };
