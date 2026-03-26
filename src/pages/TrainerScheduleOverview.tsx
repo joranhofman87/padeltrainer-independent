@@ -693,7 +693,15 @@ export default function TrainerScheduleOverview() {
                 // Session items typically have quantity > 1 or are the first item
                 const sessionItems = existingItems.filter(
                   (_item: any, idx: number) => idx === 0
-                );
+                ).map((item: any) => {
+                  if (cycleEditData.pricePerSession !== "") {
+                    const newPrice = parseFloat(cycleEditData.pricePerSession);
+                    if (!isNaN(newPrice)) {
+                      return { ...item, unit_price: newPrice, amount: item.quantity * newPrice };
+                    }
+                  }
+                  return item;
+                });
 
                 // Build extra cost line items from current cycle settings
                 const extraCostItems = cycleEditData.extraCosts.map((ec: any) => {
