@@ -7,35 +7,6 @@ const corsHeaders = {
 };
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
-const BRAND_ORANGE = "#f45d25";
-
-function getWelcomeEmailTemplate(userName: string, actionLink: string) {
-  const baseStyle = `font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;`;
-  const buttonStyle = `background: ${BRAND_ORANGE}; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;`;
-
-  return {
-    subject: "Complete your account - PadelTrainer 🎾",
-    html: `
-      <div style="${baseStyle}">
-        ${EMAIL_LOGO}
-        <h2 style="color: #333;">Thanks for registering!</h2>
-        <p>Hi ${userName},</p>
-        <p>Your registration has been submitted successfully. Set a password to access your account and track your registration status.</p>
-        <p style="text-align: center; margin: 30px 0;">
-          <a href="${actionLink}" style="${buttonStyle}">Set Your Password</a>
-        </p>
-        <p style="color: #666; font-size: 14px;">
-          If you didn't register for a padel training, you can safely ignore this email.
-        </p>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-        <p style="color: #999; font-size: 12px; text-align: center;">
-          © ${new Date().getFullYear()} PadelTrainer.ai - Find your perfect padel trainer
-        </p>
-      </div>
-    `,
-  };
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -91,79 +62,104 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if user already exists
-    let userId: string;
-    let isNewUser = false;
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(
-      (u: any) => u.email?.toLowerCase() === email.toLowerCase()
-    );
+    // Check if user already has a profile (existing user)
+    let playerId: string | null = null;
+    let guestPlayerId: string | null = null;
 
-    if (existingUser) {
-      userId = existingUser.id;
-    } else {
-      // Create user with random password (user will set their own via email)
-      const randomPassword = crypto.randomUUID() + crypto.randomUUID();
-      const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
-        email,
-        password: randomPassword,
-        email_confirm: true,
-        user_metadata: { full_name: fullName },
-      });
-
-      if (createError) {
-        console.error("Error creating user:", createError);
-        return new Response(
-          JSON.stringify({ error: createError.message }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      userId = newUser.user.id;
-      isNewUser = true;
-
-      // Wait briefly for the profile trigger to fire
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    // Assign player role (upsert to avoid duplicates)
-    await adminClient
-      .from("user_roles")
-      .upsert(
-        { user_id: userId, role: "player" },
-        { onConflict: "user_id,role" }
-      );
-
-    // Update profile with phone/rating/birth_date if provided
-    const profileUpdates: Record<string, unknown> = {};
-    if (phone) profileUpdates.phone = phone;
-    if (birthDate) profileUpdates.birth_date = birthDate;
-    if (rating) {
-      profileUpdates.skill_rating = rating;
-      profileUpdates.rating_system = ratingSystem || "knltb";
-    }
-    if (Object.keys(profileUpdates).length > 0) {
-      await adminClient
-        .from("profiles")
-        .update(profileUpdates)
-        .eq("user_id", userId);
-    }
-
-    // Get profile ID
-    const { data: profileData, error: profileError } = await adminClient
+    const { data: existingProfile } = await adminClient
       .from("profiles")
       .select("id")
-      .eq("user_id", userId)
-      .single();
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
 
-    if (profileError || !profileData) {
-      return new Response(
-        JSON.stringify({ error: "Profile not found" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (existingProfile) {
+      // Existing user with profile — use their profile ID
+      playerId = existingProfile.id;
+    } else {
+      // Guest: create or find a guest_players record
+      // First get the cycle to determine the owner (academy/trainer/club)
+      const { data: cycleForOwner } = await adminClient
+        .from("cycles")
+        .select("owner_type, owner_id")
+        .eq("id", cycleId)
+        .single();
+
+      const guestData: Record<string, unknown> = {
+        full_name: fullName,
+        email: email.toLowerCase(),
+        phone: phone || null,
+        skill_rating: rating || null,
+        rating_system: ratingSystem || "knltb",
+        source: "intake_form",
+      };
+
+      // Link to academy or trainer based on cycle owner
+      if (cycleForOwner) {
+        if (cycleForOwner.owner_type === "academy") {
+          guestData.academy_profile_id = cycleForOwner.owner_id;
+        } else if (cycleForOwner.owner_type === "trainer") {
+          guestData.trainer_id = cycleForOwner.owner_id;
+        }
+      }
+
+      // Try to find existing guest by email + owner context
+      let existingGuest = null;
+      if (guestData.academy_profile_id) {
+        const { data } = await adminClient
+          .from("guest_players")
+          .select("id")
+          .eq("email", email.toLowerCase())
+          .eq("academy_profile_id", guestData.academy_profile_id as string)
+          .maybeSingle();
+        existingGuest = data;
+      } else if (guestData.trainer_id) {
+        const { data } = await adminClient
+          .from("guest_players")
+          .select("id")
+          .eq("email", email.toLowerCase())
+          .eq("trainer_id", guestData.trainer_id as string)
+          .maybeSingle();
+        existingGuest = data;
+      } else {
+        const { data } = await adminClient
+          .from("guest_players")
+          .select("id")
+          .eq("email", email.toLowerCase())
+          .is("academy_profile_id", null)
+          .is("trainer_id", null)
+          .maybeSingle();
+        existingGuest = data;
+      }
+
+      if (existingGuest) {
+        guestPlayerId = existingGuest.id;
+        // Update guest record with latest info
+        await adminClient
+          .from("guest_players")
+          .update({
+            full_name: fullName,
+            phone: phone || null,
+            skill_rating: rating || null,
+            rating_system: ratingSystem || "knltb",
+          })
+          .eq("id", guestPlayerId);
+      } else {
+        const { data: newGuest, error: guestError } = await adminClient
+          .from("guest_players")
+          .insert(guestData)
+          .select("id")
+          .single();
+
+        if (guestError) {
+          console.error("Error creating guest player:", guestError);
+          return new Response(
+            JSON.stringify({ error: guestError.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        guestPlayerId = newGuest.id;
+      }
     }
-
-    const playerId = profileData.id;
 
     // Insert intake request
     const { data: intakeData, error: intakeError } = await adminClient
@@ -171,6 +167,7 @@ Deno.serve(async (req) => {
       .insert({
         cycle_id: cycleId,
         player_id: playerId,
+        guest_player_id: guestPlayerId,
         full_name: fullName,
         email,
         phone: phone || null,
@@ -200,7 +197,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Auto-follow and add to student list (non-blocking)
+    // Auto-follow (only for existing users with a profile)
     let cycleData: any = null;
     try {
       const { data: cycle } = await adminClient
@@ -211,7 +208,7 @@ Deno.serve(async (req) => {
 
       cycleData = cycle;
 
-      if (cycle) {
+      if (cycle && playerId) {
         if (cycle.owner_type === "trainer") {
           await adminClient.from("trainer_followers").upsert(
             { player_id: playerId, trainer_id: cycle.owner_id, notify_new_availability: true },
@@ -231,49 +228,6 @@ Deno.serve(async (req) => {
       }
     } catch (followErr) {
       console.error("Auto-follow failed (non-blocking):", followErr);
-    }
-
-    // Send "Complete your account" email for new users (non-blocking)
-    if (isNewUser && RESEND_API_KEY) {
-      try {
-        // Generate a password recovery link so user can set their password
-        const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-          type: "recovery",
-          email,
-          options: {
-            redirectTo: "https://padeltrainer.ai/app/auth",
-          },
-        });
-
-        if (linkError) {
-          console.error("Error generating recovery link:", linkError);
-        } else {
-          const actionLink = linkData.properties.action_link;
-          const emailContent = getWelcomeEmailTemplate(fullName, actionLink);
-
-          const res = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${RESEND_API_KEY}`,
-            },
-            body: JSON.stringify({
-              from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
-              to: [email],
-              subject: emailContent.subject,
-              html: emailContent.html,
-            }),
-          });
-
-          if (!res.ok) {
-            console.error("Resend API error:", await res.text());
-          } else {
-            console.log(`Welcome email sent to ${email}`);
-          }
-        }
-      } catch (emailErr) {
-        console.error("Welcome email failed (non-blocking):", emailErr);
-      }
     }
 
     // Send registration confirmation email (non-blocking)
@@ -331,10 +285,6 @@ Deno.serve(async (req) => {
             .single();
           cycleLocationName = locData?.name || '';
         }
-
-        // Invoke send-email edge function using service role
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
         // Compute price lines for the email
         const cycleSettings = cycleData.settings || {};
@@ -419,10 +369,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Non-blocking Slack notification for successful guest registration
+    // Non-blocking Slack notification
     try {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       await fetch(`${supabaseUrl}/functions/v1/slack-notify`, {
         method: "POST",
         headers: {
@@ -436,7 +384,7 @@ Deno.serve(async (req) => {
             email,
             cycle: cycleData?.name || cycleId,
             flow: "guest",
-            is_new_user: isNewUser ? "yes" : "no",
+            is_new_user: playerId ? "no" : "yes (guest)",
           },
         }),
       });
@@ -475,7 +423,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
