@@ -181,6 +181,22 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
       </div>
     </div>
 
+    ${invoice.payment_url ? `
+    <div class="payment-info">
+      <div class="payment-title">Betaal online</div>
+      <div style="display: flex; align-items: center; gap: 24px;">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(invoice.payment_url)}&size=150x150&color=${(invoice.banner_color || '#16a34a').replace('#', '')}" 
+             alt="QR code" width="120" height="120" style="border-radius: 8px;" />
+        <div>
+          <p style="margin: 0 0 8px 0;">Scan de QR code of klik op de link om online te betalen:</p>
+          <a href="${invoice.payment_url}" style="color: ${accentColor}; font-weight: bold; word-break: break-all;">${invoice.payment_url}</a>
+          <p style="margin-top: 12px; font-size: 13px; color: #6b7280;">
+            Referentie: ${invoice.invoice_number} · Vervaldatum: ${formatDate(invoice.due_date)}
+          </p>
+        </div>
+      </div>
+    </div>
+    ` : `
     <div class="payment-info">
       <div class="payment-title">Betalingsgegevens</div>
       <div class="payment-row">
@@ -202,6 +218,7 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
         <span>${formatDate(invoice.due_date)}</span>
       </div>
     </div>
+    `}
 
     ${invoice.notes ? `<div class="notes">${invoice.notes}</div>` : ''}
   </div>
