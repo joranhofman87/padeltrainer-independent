@@ -1364,7 +1364,7 @@ export async function createManualIntakeRequest(
 
   const { data, error } = await supabase
     .from('intake_requests')
-    .insert(insertData)
+    .insert(insertData as any)
     .select()
     .single();
 
