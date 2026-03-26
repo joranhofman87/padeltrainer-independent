@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2, Globe, GraduationCap, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Crown, User, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2, Globe, GraduationCap, ExternalLink } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
@@ -214,14 +214,6 @@ export default function TrainerSettings() {
       route: '/trainer/settings/bookings',
       iconBg: 'bg-green-500/10',
       iconColor: 'text-green-600',
-    },
-    {
-      title: t('settings.calendarSync'),
-      description: t('settings.calendarSyncDescription'),
-      icon: CalendarSync,
-      route: '/settings/calendar',
-      iconBg: 'bg-blue-500/10',
-      iconColor: 'text-blue-600',
     },
     {
       title: t('settings.notifications'),
