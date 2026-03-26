@@ -312,15 +312,6 @@ export default function CycleRegistration() {
               <Button variant="outline" onClick={() => { setIsSuccess(false); setHasApplied(false); }}>
                 {t('application.success.backToForm', 'Back to form')}
               </Button>
-              {user ? (
-                <Button onClick={() => navigate('/app/player')}>
-                  {t('application.success.backToProfile')}
-                </Button>
-              ) : (
-                <Button onClick={() => navigate('/')}>
-                  {t('common:backToHome', 'Back to homepage')}
-                </Button>
-              )}
             </div>
           </div>
         </div>
