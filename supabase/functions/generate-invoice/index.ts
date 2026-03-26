@@ -111,13 +111,12 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
   </style>
 </head>
 <body>
-  <div class="banner-strip"></div>
+  <div class="branded-header">
+    ${invoice.logo_url ? `<img src="${invoice.logo_url}" alt="Logo" />` : `<h2>${invoice.trainer.business_name}</h2>`}
+  </div>
   <div class="invoice-container">
     <div class="header">
-      <div style="display: flex; align-items: center; gap: 16px;">
-        ${invoice.logo_url ? `<img src="${invoice.logo_url}" alt="Logo" style="max-height: 60px; max-width: 200px; object-fit: contain;" />` : ''}
-        <h1 class="invoice-title">FACTUUR</h1>
-      </div>
+      <h1 class="invoice-title">FACTUUR</h1>
       <div class="invoice-meta">
         <p><strong>Factuurnummer:</strong> ${invoice.invoice_number}</p>
         <p><strong>Factuurdatum:</strong> ${formatDate(invoice.invoice_date)}</p>
