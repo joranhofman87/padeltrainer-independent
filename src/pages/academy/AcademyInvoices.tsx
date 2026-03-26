@@ -261,7 +261,8 @@ export default function AcademyInvoices() {
         printWindow.document.close();
         printWindow.onload = () => printWindow.print();
       }
-    } catch {
+    } catch (err) {
+      console.error('Invoice download failed:', err);
       toast.error(t("invoices.noPdf", "No PDF available"));
     }
   };
