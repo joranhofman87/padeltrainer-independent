@@ -1,28 +1,29 @@
 
 
-# Fix: Preserve Split Payment When Syncing Invoice After Cyclus Edit
+# Manual Fix for INV-2026-0002 (Split Price Correction)
 
 ## Problem
 
-When editing a cyclus (e.g. changing session price), the invoice sync logic at line 714 of `TrainerScheduleOverview.tsx` overwrites `unit_price` with the full session price, ignoring that the invoice was previously split (e.g. `(1/2)`). The description still contains `(1/2)` but the price is now the full amount — so one player's invoice shows the entire cost.
+INV-2026-0002 currently has `unit_price: 130.5` (the full session price) instead of `65.25` (half, since it's split 1/2). The re-save didn't re-split because the split detection now works for *future* edits, but the existing data was already wrong.
 
-## Root Cause
+## Current vs Correct Values
 
-Line 714-718: the code sets `unit_price: sessionPrice` without checking whether the existing line item was split. The `detectSplitCount` pattern used in `invoiceSync.ts` is not applied here.
+| Field | Current | Correct |
+|-------|---------|---------|
+| unit_price | 130.50 | 65.25 |
+| line total | 2,088.00 | 1,044.00 |
+| subtotal | 2,088.00 | 957.80 |
+| vat_amount | 187.92 | 86.20 |
+| total | 2,275.92 | 1,044.00 |
+
+(VAT 9%, prices include VAT: subtotal = 1044/1.09 ≈ 957.80, vat = 86.20)
 
 ## Fix
 
-**File**: `src/pages/TrainerScheduleOverview.tsx` (lines ~700-722)
+Run a direct database update on the invoice to correct the unit_price and recalculate totals, then regenerate the PDF.
 
-1. Before updating session items, detect the split count from the existing line item descriptions (same logic as `invoiceSync.ts` — look for `(1/N)` pattern)
-2. When applying the new session price, divide by the split count: `unit_price: sessionPrice / splitCount`
-3. Also apply the split to extra cost items built on lines 725-735
-
-This ensures that if an invoice was previously split among 2 players, editing the cyclus price keeps each invoice at half the new price.
-
-## Changes
-
-| File | Change |
+| Step | Action |
 |------|--------|
-| `src/pages/TrainerScheduleOverview.tsx` | Lines 700-735: Detect split count from existing line items; divide `sessionPrice` and extra cost prices by split count when updating; preserve `(1/N)` suffix in extra cost descriptions |
+| 1 | Update INV-2026-0002: set `unit_price` to 65.25, recalculate subtotal/vat/total, clear `pdf_url` |
+| 2 | Invoke `generate-invoice` edge function to regenerate the PDF |
 
