@@ -1,24 +1,24 @@
 
 
-# Replace Rate Limiter with Better Spam Prevention
+# Make Invoice Payment Section More Compact (Fit on One Page)
 
 ## Problem
-The current rate limit (max 3 submissions per hour per email) blocks legitimate use — families registering multiple members back-to-back. The frontend already has a honeypot field + 2-second timing check (`useHoneypot`), but the edge function has its own server-side rate limit that's too aggressive.
-
-## Approach
-
-**Remove** the per-email rate limit from `submit-guest-intake/index.ts` (lines 50-63).
-
-**Add server-side spam checks** that don't block legitimate family registrations:
-
-1. **IP-based rate limit** — limit to 15 submissions per hour per IP (catches automated spam without blocking family registrations from the same email)
-2. **Duplicate submission check** — reject exact same email + cycle_id combination submitted within 60 seconds (prevents accidental double-clicks, not intentional re-registrations)
-
-The existing frontend honeypot + timing check remains as first line of defense.
+The Mollie payment section (QR code + link) takes too much vertical space, pushing the invoice to two pages. The branded header, payment box padding, and QR code size all contribute.
 
 ## Changes
 
+**File**: `supabase/functions/generate-invoice/index.ts`
+
+1. **Reduce branded header padding**: `24px 40px` → `14px 40px`, and logo max-height `48px` → `36px`
+2. **Reduce payment-info box**: padding `20px` → `14px`, margin-top `40px` → `20px`
+3. **Shrink QR code**: from `120x120` (requesting `150x150`) → `80x80` (requesting `100x100`)
+4. **Reduce text spacing** in payment section: smaller font, tighter margins
+5. **Reduce invoice-container padding**: `40px` → `30px`
+6. **Reduce header/parties margin-bottom**: `40px` → `24px`
+
+These changes together should save ~150-200px of vertical space, keeping most invoices on a single page.
+
 | File | Change |
 |------|--------|
-| `supabase/functions/submit-guest-intake/index.ts` | Remove email-based rate limit (lines 50-63). Add: (1) duplicate check — reject same email+cycle within 60s; (2) IP-based rate limit — max 15/hour per IP using `x-forwarded-for` header |
+| `supabase/functions/generate-invoice/index.ts` | Reduce padding/margins on branded header, invoice container, parties section, and payment-info box; shrink QR code; tighten text spacing |
 
