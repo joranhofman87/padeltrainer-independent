@@ -492,7 +492,7 @@ export function BulkCreateSheet({
     return `Cyclus ${dayName} ${startTime}`;
   };
 
-  const createDefaultSlotConfig = (startDate: Date, startTime: string, duration: number, weeks: number, tId: string | null): BulkSlotConfig => {
+  const createDefaultSlotConfig = (startDate: Date, startTime: string, duration: number, weeks: number, tId: string | null, aId?: string | null): BulkSlotConfig => {
     const pricing = autoCalcPricing(tId, duration, weeks);
     return {
       startDate,
