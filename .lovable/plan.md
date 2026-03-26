@@ -1,15 +1,17 @@
 
 
-# Remove Calendar Integration Settings Card
+# Fix Notification Settings Route for Trainer Profile
 
 ## Problem
-The Google Calendar integration settings card is still visible in Trainer Settings (route `/settings/calendar`), even though the route itself is already commented out in `DomainRouter.tsx`. Clicking it leads nowhere useful.
+The notification settings card in `TrainerSettings.tsx` links to `/settings/notifications` instead of `/trainer/settings/notifications`. This means clicking it navigates to a non-existent route, showing a blank/broken page.
 
-## Changes
+Other settings cards correctly use the `/trainer/...` prefix (e.g., `/trainer/profile`, `/trainer/settings/bookings`).
+
+## Fix
 
 | File | Change |
 |------|--------|
-| `src/pages/TrainerSettings.tsx` | Remove the calendar sync settings card (lines 218-225) from the `settingsCards` array. Remove `CalendarSync` from the lucide-react import if no longer used. |
+| `src/pages/TrainerSettings.tsx` | Line 222: Change `route: '/settings/notifications'` → `route: '/trainer/settings/notifications'` |
 
-The `CalendarSettings.tsx` page, `src/lib/calendar.ts`, and the edge functions (`google-calendar-auth`, `google-calendar-callback`, `sync-calendar-event`) can remain as dead code for now — they're not referenced from any active route. The route is already commented out in `DomainRouter.tsx`.
+One-line fix — aligns with the existing routing pattern used by the other settings cards.
 
