@@ -532,7 +532,7 @@ export function BulkCreateSheet({
     if (open && defaultDate) {
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
-      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId)]);
+      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId, academyId)]);
     }
     if (!open) {
       setBulkSlots([]);
