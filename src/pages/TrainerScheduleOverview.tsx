@@ -699,6 +699,14 @@ export default function TrainerScheduleOverview() {
               for (const inv of matchingUnpaidInvoices) {
                 const existingItems = (inv.line_items as any[]) || [];
                 const bookingCount = (inv.booking_ids as string[])?.length || 1;
+
+                // Detect split count from existing line items (e.g. "(1/2)" → 2)
+                let splitCount = 1;
+                for (const item of existingItems) {
+                  const splitMatch = item.description?.match(/\(1\/(\d+)\)/);
+                  if (splitMatch) { splitCount = parseInt(splitMatch[1], 10); break; }
+                }
+
                 const baseSessionItems = existingItems.filter(
                   (_item: any, idx: number) => idx === 0,
                 );
@@ -712,10 +720,13 @@ export default function TrainerScheduleOverview() {
                   }]
                 ).map((item: any) => {
                   if (sessionPrice !== null) {
+                    const splitPrice = splitCount > 1
+                      ? Math.round((sessionPrice / splitCount) * 100) / 100
+                      : sessionPrice;
                     return {
                       ...item,
-                      unit_price: sessionPrice,
-                      amount: (item.quantity ?? 1) * sessionPrice,
+                      unit_price: splitPrice,
+                      amount: (item.quantity ?? 1) * splitPrice,
                     };
                   }
                   return item;
@@ -725,11 +736,16 @@ export default function TrainerScheduleOverview() {
                 const extraCostItems = cycleEditData.extraCosts.map((ec: any) => {
                   const isPerSession = ec.type === "per_session";
                   const bookingCount = (inv.booking_ids as string[])?.length || 1;
+                  let ecPrice = ec.price;
+                  if (splitCount > 1) {
+                    ecPrice = Math.round((ecPrice / splitCount) * 100) / 100;
+                  }
+                  const ecDesc = `${ec.description}${isPerSession ? " (per sessie)" : ""}`;
                   return {
-                    description: `${ec.description}${isPerSession ? " (per sessie)" : ""}`,
+                    description: splitCount > 1 ? `${ecDesc} (1/${splitCount})` : ecDesc,
                     quantity: isPerSession ? bookingCount : 1,
-                    unit_price: ec.price,
-                    amount: ec.price * (isPerSession ? bookingCount : 1),
+                    unit_price: ecPrice,
+                    amount: ecPrice * (isPerSession ? bookingCount : 1),
                     vat_rate: ec.vat_rate ?? inv.vat_rate ?? 21,
                   };
                 });
