@@ -85,7 +85,7 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     .invoice-title { font-size: 32px; font-weight: bold; color: ${accentColor}; margin: 0; }
     .invoice-meta { text-align: right; }
     .invoice-meta p { margin: 4px 0; }
-    .parties { display: flex; justify-content: space-between; margin-bottom: 40px; }
+    .parties { display: flex; justify-content: space-between; margin-bottom: 24px; }
     .party { width: 45%; }
     .party-label { font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 8px; }
     .party-name { font-weight: bold; font-size: 16px; }
