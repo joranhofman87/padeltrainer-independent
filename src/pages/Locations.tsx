@@ -33,7 +33,7 @@ import { LocationCard } from '@/components/locations/LocationCard';
 import { LocationsMap } from '@/components/locations/LocationsMap';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
-import { searchLocationsPage, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type LocationListItem, type Location } from '@/lib/locations';
+import { searchLocationsPage, searchLocationsAll, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type LocationListItem, type Location } from '@/lib/locations';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
