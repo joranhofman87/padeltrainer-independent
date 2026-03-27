@@ -254,29 +254,31 @@ export default function RacketFinder() {
         structuredData={structuredData}
       />
 
-      <div className="container max-w-2xl mx-auto px-4 py-12 sm:py-16">
-        {/* Intro text for SEO (always rendered but visually hidden during quiz/results) */}
+      <div className="container max-w-2xl mx-auto px-4 py-12 sm:py-20">
+        {/* Intro hero */}
         <div className={phase !== 'intro' ? 'sr-only' : ''}>
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+            className="text-center"
           >
-            <h1 className="text-3xl sm:text-4xl font-bold text-foreground text-center mb-4 text-balance">
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-6">
+              <span>🎾</span> {t('quiz.badge', 'Free · 60 seconds · No signup')}
+            </div>
+            <h1 className="text-4xl sm:text-5xl font-bold text-foreground mb-5 text-balance leading-tight">
               {t('quiz.title', 'Find Your Perfect Padel Racket')}
             </h1>
-            <p className="text-lg text-muted-foreground text-center mb-6 text-pretty max-w-xl mx-auto">
+            <p className="text-lg text-muted-foreground mb-10 text-pretty max-w-lg mx-auto leading-relaxed">
               {t('quiz.intro', "Not sure which padel racket to buy? Our racket finder quiz matches you with the ideal racket based on your playing level, style, budget, and physical needs. Whether you're a beginner looking for your first racket or an advanced player upgrading your weapon, we'll point you in the right direction.")}
             </p>
-            <div className="flex justify-center">
-              <Button
-                size="lg"
-                onClick={() => setPhase('quiz')}
-                className="text-base px-8 py-6 rounded-xl shadow-md hover:shadow-lg transition-shadow"
-              >
-                {t('quiz.start', 'Start Quiz')} 🎾
-              </Button>
-            </div>
+            <Button
+              size="lg"
+              onClick={() => setPhase('quiz')}
+              className="text-base px-10 py-6 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+            >
+              {t('quiz.start', 'Start Quiz')} →
+            </Button>
           </motion.div>
         </div>
 
