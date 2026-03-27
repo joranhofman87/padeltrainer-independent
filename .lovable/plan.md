@@ -1,17 +1,19 @@
 
 
-# Fix Notification Settings Route for Trainer Profile
+# Fix: Map View Shows Only Current Page of Locations
 
 ## Problem
-The notification settings card in `TrainerSettings.tsx` links to `/settings/notifications` instead of `/trainer/settings/notifications`. This means clicking it navigates to a non-existent route, showing a blank/broken page.
-
-Other settings cards correctly use the `/trainer/...` prefix (e.g., `/trainer/profile`, `/trainer/settings/bookings`).
+The map view receives `locations` from the paginated state (48 items per page via `searchLocationsPage`). When the user switches to map view, they only see one page's worth of markers — not all matching locations.
 
 ## Fix
+When switching to map view, fetch **all** matching locations (without pagination) and pass those to `LocationsMap`. Keep the paginated fetch for list view.
+
+## Changes
 
 | File | Change |
 |------|--------|
-| `src/pages/TrainerSettings.tsx` | Line 222: Change `route: '/settings/notifications'` → `route: '/trainer/settings/notifications'` |
+| `src/lib/locations.ts` | Add a new `searchLocationsAll` function that reuses the same filter logic as `searchLocationsPage` but without `.range()` — returns all matching `LocationListItem[]`. Handle Supabase's 1000-row default limit by paginating internally if `totalCount > 1000`. |
+| `src/pages/Locations.tsx` | Add state `allMapLocations`. When `viewMode === 'map'`, call `searchLocationsAll` with current filters and store result. Pass `allMapLocations` (instead of paginated `locations`) to `<LocationsMap>`. |
 
-One-line fix — aligns with the existing routing pattern used by the other settings cards.
+This ensures the map always shows every location matching the active filters, regardless of pagination.
 
