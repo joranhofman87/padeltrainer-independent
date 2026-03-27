@@ -598,7 +598,7 @@ export default function Locations() {
             </div>
           ) : viewMode === 'map' ? (
             <LocationsMap
-              locations={locations.map(asLocation)}
+              locations={allMapLocations.map(asLocation)}
               trainerCounts={trainerCounts}
               claimedIds={claimedIds}
               clubLogos={clubLogos}
