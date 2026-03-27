@@ -20,30 +20,31 @@ export default function RacketFinderContent() {
   const { lang = 'en' } = useParams<{ lang: string }>();
 
   return (
-    <div className="container max-w-4xl mx-auto px-4 pb-16 space-y-20">
+    <div className="container max-w-4xl mx-auto px-4 pb-16 space-y-24">
       {/* How It Works */}
       <motion.section
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         className="text-center"
       >
-        <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-10">
+        <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-14">
           {t('quiz.howItWorks.title', 'How It Works')}
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="relative grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-6">
+          {/* Timeline connector (desktop only) */}
+          <div className="hidden md:block absolute top-7 left-[calc(16.67%+28px)] right-[calc(16.67%+28px)] h-0.5 bg-border" />
+
           {steps.map((step, i) => (
-            <div key={step.key} className="flex flex-col items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-                <step.icon className="h-7 w-7 text-primary" />
+            <div key={step.key} className="relative flex flex-col items-center gap-4">
+              {/* Numbered circle */}
+              <div className="relative z-10 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-lg font-bold shadow-md">
+                {i + 1}
               </div>
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                {t(`quiz.howItWorks.${step.key}Label`, `Step ${i + 1}`)}
-              </span>
               <h3 className="text-lg font-semibold text-foreground">
                 {t(`quiz.howItWorks.${step.key}`, step.fallback)}
               </h3>
-              <p className="text-sm text-muted-foreground max-w-xs">
+              <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
                 {t(`quiz.howItWorks.${step.key}Desc`, step.desc)}
               </p>
             </div>
@@ -53,24 +54,24 @@ export default function RacketFinderContent() {
 
       {/* Why Use Our Finder */}
       <motion.section
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         className="text-center"
       >
-        <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-10">
+        <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-14">
           {t('quiz.whyUse.title', 'Why Use Our Racket Finder?')}
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {valueProps.map((vp) => (
-            <div key={vp.key} className="flex flex-col items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-accent/50 flex items-center justify-center">
-                <vp.icon className="h-7 w-7 text-accent-foreground" />
+            <div key={vp.key} className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                <vp.icon className="h-6 w-6 text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground">
                 {t(`quiz.whyUse.${vp.key}`, vp.fallback)}
               </h3>
-              <p className="text-sm text-muted-foreground max-w-xs">
+              <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
                 {t(`quiz.whyUse.${vp.key}Desc`, vp.desc)}
               </p>
             </div>
