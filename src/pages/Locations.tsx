@@ -33,7 +33,7 @@ import { LocationCard } from '@/components/locations/LocationCard';
 import { LocationsMap } from '@/components/locations/LocationsMap';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
-import { searchLocationsPage, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type LocationListItem, type Location } from '@/lib/locations';
+import { searchLocationsPage, searchLocationsAll, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type LocationListItem, type Location } from '@/lib/locations';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -64,6 +64,8 @@ export default function Locations() {
   const [countryOpen, setCountryOpen] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [allMapLocations, setAllMapLocations] = useState<LocationListItem[]>([]);
+  const [mapLoading, setMapLoading] = useState(false);
 
   // Debounce search input
   useEffect(() => {
@@ -167,7 +169,29 @@ export default function Locations() {
     fetchLocations();
   }, [debouncedSearch, selectedCountry, selectedCity, trainersAvailable, indoorCourtsOnly, currentPage]);
 
-  // Filter cities based on selected country (from pre-fetched metadata)
+  // Fetch all locations when map view is active
+  useEffect(() => {
+    if (viewMode !== 'map') return;
+    async function fetchAllForMap() {
+      setMapLoading(true);
+      try {
+        const all = await searchLocationsAll({
+          search: debouncedSearch,
+          country: selectedCountry,
+          city: selectedCity,
+          trainersAvailable,
+          indoorOnly: indoorCourtsOnly,
+        });
+        setAllMapLocations(all);
+      } catch (error) {
+        logger.error('Error fetching all locations for map', error instanceof Error ? error : new Error(String(error)), { component: 'Locations' });
+      } finally {
+        setMapLoading(false);
+      }
+    }
+    fetchAllForMap();
+  }, [viewMode, debouncedSearch, selectedCountry, selectedCity, trainersAvailable, indoorCourtsOnly]);
+
   const filteredCities = useMemo(() => {
     // When a country is selected, we can't filter cities from the paginated data
     // We rely on the full cities list; ideally filtered by country but we don't have that mapping in metadata
@@ -574,7 +598,7 @@ export default function Locations() {
             </div>
           ) : viewMode === 'map' ? (
             <LocationsMap
-              locations={locations.map(asLocation)}
+              locations={allMapLocations.map(asLocation)}
               trainerCounts={trainerCounts}
               claimedIds={claimedIds}
               clubLogos={clubLogos}

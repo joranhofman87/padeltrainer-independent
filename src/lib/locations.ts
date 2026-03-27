@@ -453,6 +453,75 @@ export async function searchLocationsPage(params: SearchLocationsParams): Promis
   };
 }
 
+// Fetch ALL matching locations (no pagination) for map view
+export async function searchLocationsAll(params: Omit<SearchLocationsParams, 'page' | 'pageSize'>): Promise<LocationListItem[]> {
+  const { search, country, city, trainersAvailable, indoorOnly } = params;
+
+  // If trainersAvailable filter is on, first get location IDs that have trainers
+  let trainerLocationIds: string[] | null = null;
+  if (trainersAvailable) {
+    const { data: trainerLocs } = await supabase
+      .from('trainer_locations')
+      .select('location_id');
+    trainerLocationIds = [...new Set(trainerLocs?.map(tl => tl.location_id) || [])];
+    if (trainerLocationIds.length === 0) {
+      return [];
+    }
+  }
+
+  const allResults: LocationListItem[] = [];
+  const batchSize = 1000;
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    let query = supabase
+      .from('locations')
+      .select(LOCATION_LIST_COLUMNS)
+      .eq('is_active', true);
+
+    if (country && country !== 'all') {
+      query = query.eq('country', country);
+    }
+    if (city && city !== 'all') {
+      query = query.eq('city', city);
+    }
+    if (indoorOnly) {
+      query = query.gt('indoor_courts', 0);
+    }
+    if (search && search.length >= 2) {
+      const pattern = `%${search}%`;
+      query = query.or(`name.ilike.${pattern},city.ilike.${pattern},street_address.ilike.${pattern}`);
+    }
+    if (trainerLocationIds) {
+      query = query.in('id', trainerLocationIds);
+    }
+
+    query = query
+      .order('city', { ascending: true })
+      .order('name', { ascending: true })
+      .range(from, from + batchSize - 1);
+
+    const { data, error } = await query;
+
+    if (error) {
+      logger.error('Error fetching all locations for map', undefined, { error });
+      throw error;
+    }
+
+    const batch = (data || []) as LocationListItem[];
+    allResults.push(...batch);
+
+    if (batch.length < batchSize) {
+      hasMore = false;
+    } else {
+      from += batchSize;
+    }
+  }
+
+  return allResults;
+}
+
 // Search locations by name or city (server-side search for large datasets)
 export async function searchLocations(query: string, limit: number = 100): Promise<Location[]> {
   if (!query || query.length < 2) {
