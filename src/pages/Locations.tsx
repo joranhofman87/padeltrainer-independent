@@ -169,7 +169,29 @@ export default function Locations() {
     fetchLocations();
   }, [debouncedSearch, selectedCountry, selectedCity, trainersAvailable, indoorCourtsOnly, currentPage]);
 
-  // Filter cities based on selected country (from pre-fetched metadata)
+  // Fetch all locations when map view is active
+  useEffect(() => {
+    if (viewMode !== 'map') return;
+    async function fetchAllForMap() {
+      setMapLoading(true);
+      try {
+        const all = await searchLocationsAll({
+          search: debouncedSearch,
+          country: selectedCountry,
+          city: selectedCity,
+          trainersAvailable,
+          indoorOnly: indoorCourtsOnly,
+        });
+        setAllMapLocations(all);
+      } catch (error) {
+        logger.error('Error fetching all locations for map', error instanceof Error ? error : new Error(String(error)), { component: 'Locations' });
+      } finally {
+        setMapLoading(false);
+      }
+    }
+    fetchAllForMap();
+  }, [viewMode, debouncedSearch, selectedCountry, selectedCity, trainersAvailable, indoorCourtsOnly]);
+
   const filteredCities = useMemo(() => {
     // When a country is selected, we can't filter cities from the paginated data
     // We rely on the full cities list; ideally filtered by country but we don't have that mapping in metadata
