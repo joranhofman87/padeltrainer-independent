@@ -64,6 +64,8 @@ export default function Locations() {
   const [countryOpen, setCountryOpen] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [allMapLocations, setAllMapLocations] = useState<LocationListItem[]>([]);
+  const [mapLoading, setMapLoading] = useState(false);
 
   // Debounce search input
   useEffect(() => {
