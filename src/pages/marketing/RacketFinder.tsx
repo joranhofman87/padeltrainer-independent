@@ -285,19 +285,30 @@ export default function RacketFinder() {
         {/* Quiz flow */}
         {phase === 'quiz' && (
           <div>
-            <div className="mb-8">
-              <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+            <div className="mb-10">
+              <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
                 <button
                   onClick={handleBack}
-                  className="text-primary hover:text-primary/80 transition-colors font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                  className="text-primary hover:text-primary/80 transition-colors font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg px-2 py-1 -ml-2"
                 >
                   {t('quiz.back', '← Back')}
                 </button>
-                <span>
+                <span className="tabular-nums font-medium">
                   {stepIndex + 1} / {totalSteps}
                 </span>
               </div>
-              <Progress value={progressPct} className="h-2" />
+              <Progress value={progressPct} className="h-1.5 rounded-full" />
+              {/* Step dots */}
+              <div className="flex justify-center gap-1.5 mt-3">
+                {activeSteps.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      i <= stepIndex ? 'w-6 bg-primary' : 'w-1.5 bg-border'
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
 
             <AnimatePresence mode="wait" custom={direction}>
