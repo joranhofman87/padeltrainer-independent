@@ -314,7 +314,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Allow the trainer, the player, AND academy managers to access the invoice
-    const isTrainer = trainerProfile.user_id === user.id;
+    const isTrainer = trainerProfile?.user_id === user.id;
     let isPlayer = invoice.player_id === user.id;
     let isAcademyManager = false;
 

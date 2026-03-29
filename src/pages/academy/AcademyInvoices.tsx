@@ -610,6 +610,15 @@ export default function AcademyInvoices() {
         onSaved={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
         academyProfileId={activeAcademy?.id}
       />
+
+      {activeAcademy?.id && (
+        <CreateCustomInvoiceDialog
+          open={createDialogOpen}
+          onClose={() => setCreateDialogOpen(false)}
+          academyProfileId={activeAcademy.id}
+          onCreated={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
+        />
+      )}
     </div>
   );
 }
