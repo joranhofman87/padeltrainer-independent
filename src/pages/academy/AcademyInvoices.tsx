@@ -12,10 +12,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil, Mail } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil, Mail, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
+import { CreateCustomInvoiceDialog } from "@/components/invoices/CreateCustomInvoiceDialog";
 import { nl, enUS } from "date-fns/locale";
 
 interface Invoice {
@@ -50,6 +51,7 @@ export default function AcademyInvoices() {
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
   const formatEuro = (amount: number) =>
@@ -292,6 +294,13 @@ export default function AcademyInvoices() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            <PlusCircle className="h-4 w-4 mr-2" />
+            {t("invoices.createInvoice", "Create invoice")}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -601,6 +610,15 @@ export default function AcademyInvoices() {
         onSaved={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
         academyProfileId={activeAcademy?.id}
       />
+
+      {activeAcademy?.id && (
+        <CreateCustomInvoiceDialog
+          open={createDialogOpen}
+          onClose={() => setCreateDialogOpen(false)}
+          academyProfileId={activeAcademy.id}
+          onCreated={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
+        />
+      )}
     </div>
   );
 }

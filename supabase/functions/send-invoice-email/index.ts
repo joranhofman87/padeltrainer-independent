@@ -147,6 +147,16 @@ const handler = async (req: Request): Promise<Response> => {
           { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
+    } else if (!isServiceRole && invoice.academy_profile_id) {
+      // Custom invoice without trainer - check academy manager access
+      const { data: isManager } = await supabase
+        .rpc("is_academy_manager", { _user_id: authenticatedUserId, _academy_profile_id: invoice.academy_profile_id });
+      if (!isManager) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
     }
 
     // Build public invoice URL

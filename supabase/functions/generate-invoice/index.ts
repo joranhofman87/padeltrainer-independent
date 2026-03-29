@@ -284,18 +284,22 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch trainer business info
-    const { data: trainerProfile, error: trainerError } = await supabase
-      .from('trainer_profiles')
-      .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, invoice_logo_url')
-      .eq('id', invoice.trainer_id)
-      .single();
+    // Fetch trainer business info (only if trainer_id exists)
+    let trainerProfile: any = null;
+    if (invoice.trainer_id) {
+      const { data: tp, error: trainerError } = await supabase
+        .from('trainer_profiles')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, invoice_logo_url')
+        .eq('id', invoice.trainer_id)
+        .single();
 
-    if (trainerError || !trainerProfile) {
-      return new Response(
-        JSON.stringify({ error: "Trainer profile not found" }),
-        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      if (trainerError || !tp) {
+        return new Response(
+          JSON.stringify({ error: "Trainer profile not found" }),
+          { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      trainerProfile = tp;
     }
 
     // Fetch academy profile if invoice belongs to an academy
@@ -310,7 +314,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Allow the trainer, the player, AND academy managers to access the invoice
-    const isTrainer = trainerProfile.user_id === user.id;
+    const isTrainer = trainerProfile?.user_id === user.id;
     let isPlayer = invoice.player_id === user.id;
     let isAcademyManager = false;
 
@@ -350,7 +354,7 @@ const handler = async (req: Request): Promise<Response> => {
     const businessSource = academyProfile || trainerProfile;
     const businessName = academyProfile
       ? (academyProfile.business_name || academyProfile.name || '')
-      : (trainerProfile.business_name || '');
+      : (trainerProfile?.business_name || '');
 
     // Check for active Mollie connection to determine payment method
     let hasMollie = false;
@@ -361,7 +365,7 @@ const handler = async (req: Request): Promise<Response> => {
         .eq('academy_profile_id', invoice.academy_profile_id)
         .maybeSingle();
       hasMollie = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete);
-    } else {
+    } else if (invoice.trainer_id) {
       const { data: mollieAccount } = await supabase
         .from('trainer_mollie_accounts')
         .select('charges_enabled, onboarding_complete')
@@ -413,8 +417,9 @@ const handler = async (req: Request): Promise<Response> => {
 
     const htmlContent = generateInvoiceHTML(invoiceData);
     
-    // Store under trainer's user_id folder (consistent path)
-    const fileName = `${trainerProfile.user_id}/${invoice.invoice_number}.html`;
+    // Store under trainer's user_id or academy_profile_id folder
+    const folderKey = trainerProfile?.user_id || invoice.academy_profile_id || 'custom';
+    const fileName = `${folderKey}/${invoice.invoice_number}.html`;
     const { error: uploadError } = await supabase.storage
       .from('invoices')
       .upload(fileName, new Blob([htmlContent], { type: 'text/html' }), {
