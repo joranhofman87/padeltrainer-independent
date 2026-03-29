@@ -1,29 +1,49 @@
 
 
-# UI Refresh for Racket Finder Quiz
+# Custom Invoice Creation for Academy Owners
 
 ## Problem
-The racket finder quiz pages (intro, quiz steps, results) look generic and template-like. Plain centered text, basic bordered cards, no visual hierarchy or brand personality.
+Academy owners sometimes make special arrangements (company invoices, clinics, custom agreements) that don't originate from bookings. They need to create standalone invoices with full control over receiver details, line items, and VAT.
 
-## Design Direction
-Make it feel hand-crafted and premium — closer to a product recommendation tool you'd find on a quality sports site. Key improvements:
-- **Intro**: Add a hero section with a subtle gradient background, tighter copy, and a more prominent CTA
-- **Quiz steps**: Cards with hover states that feel interactive (subtle scale, gradient border on hover), better visual hierarchy with step indicators
-- **Results**: Racket cards with image placeholders, visual score indicators, and clearer hierarchy between top pick and alternatives
+## Database Changes
+
+**Migration: Make `trainer_id` nullable on `invoices`**
+- `ALTER TABLE invoices ALTER COLUMN trainer_id DROP NOT NULL;`
+- Add RLS INSERT policy for academy managers: allow insert when `academy_profile_id` is set and user is a manager of that academy.
+
+## New Component: `CreateCustomInvoiceDialog`
+
+A dialog accessible from the Academy Invoices page with:
+1. **Receiver details**: name (required), business name, address, BTW number, email
+2. **Line items**: description, quantity, unit price, VAT rate per line — reuses the same layout as `EditInvoiceDialog`
+3. **Invoice settings**: due date, notes, prices include VAT toggle
+4. **Extra cost preset picker** — reuse existing `ExtraCostPresetPicker`
+5. **Totals**: auto-calculated subtotal, VAT breakdown, total — same logic as `EditInvoiceDialog`
+
+On save:
+- Fetch academy's `invoice_prefix` and `invoice_next_number` to generate the invoice number
+- Insert into `invoices` with `trainer_id: null`, `academy_profile_id` set, `booking_ids: null`
+- Increment academy's `invoice_next_number`
+- Optionally create a `guest_player` record if email is provided (for sending)
+
+## Edge Function Updates
+
+**`generate-invoice/index.ts`**: When `trainer_id` is null, skip trainer profile fetch. Use academy profile directly as `businessSource`. Already partially handles this via the `academyProfile || trainerProfile` fallback — just need to make the trainer fetch conditional.
+
+**`send-invoice-email/index.ts`**: Similar — make trainer profile fetch conditional when `trainer_id` is null.
+
+## UI Integration
+
+Add a "Create Invoice" button next to "Generate missing invoices" on `AcademyInvoices.tsx`. Opens the new dialog. After creation, the invoice appears in the list and can be edited (existing `EditInvoiceDialog`), sent, shared, downloaded like any other invoice.
 
 ## Changes
 
 | File | Change |
 |------|--------|
-| `src/pages/marketing/RacketFinder.tsx` | Restyle intro section: add gradient bg section, larger heading with gradient text accent, smaller subtitle, pill-shaped CTA with icon. Better spacing. |
-| `src/components/racketfinder/QuizQuestion.tsx` | Redesign option cards: add number indicators, subtle left border accent on hover, smoother entrance animations, better mobile spacing. Replace emoji with styled icon badges. |
-| `src/components/racketfinder/QuizResults.tsx` | Redesign result cards: top pick gets a highlighted border/gradient top, better badge styling (pill-shaped colored badges instead of plain text), clearer visual separation between specs and description. Add a summary card at top showing the user's selected preferences as pills. |
-| `src/components/racketfinder/RacketFinderContent.tsx` | Restyle "How it Works" steps: use a horizontal timeline connector between steps on desktop, numbered circles instead of plain icons. Clean up "Why Use" section with a subtle card background. |
-
-## Visual Details
-- **Intro hero**: `bg-gradient-to-b from-primary/5 to-background` with rounded container, centered layout
-- **Quiz option cards**: Remove emoji column. Use a subtle left-side colored indicator bar. On hover: `border-primary shadow-md`. Selected state: filled primary left bar + light primary bg
-- **Progress bar**: Keep existing but add step dots below
-- **Result cards**: Top pick gets `ring-2 ring-primary` + "Best Match" pill badge. Others get standard border. Add preference summary pills (e.g., "Intermediate", "Allround", "€100-150") at top of results
-- **Overall**: Consistent `rounded-xl` everywhere, tighter spacing, less wasted whitespace
+| **Database migration** | Make `trainer_id` nullable; add INSERT RLS policy for academy managers |
+| `src/components/invoices/CreateCustomInvoiceDialog.tsx` | New dialog: receiver fields, line items editor, VAT calc, save to DB |
+| `src/pages/academy/AcademyInvoices.tsx` | Add "Create Invoice" button, wire up the new dialog |
+| `supabase/functions/generate-invoice/index.ts` | Make trainer profile fetch conditional (`if (invoice.trainer_id)`) |
+| `supabase/functions/send-invoice-email/index.ts` | Make trainer profile fetch conditional |
+| `supabase/functions/get-public-invoice/index.ts` | Ensure it works when `trainer_id` is null |
 
