@@ -249,12 +249,20 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
                 <Input value={playerBusinessName} onChange={(e) => setPlayerBusinessName(e.target.value)} placeholder="Optioneel" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Adres</Label>
-                <Input value={playerAddress} onChange={(e) => setPlayerAddress(e.target.value)} placeholder="Straat, postcode, plaats" />
-              </div>
-              <div>
                 <Label className="text-xs text-muted-foreground">BTW-nummer</Label>
                 <Input value={playerBtwNumber} onChange={(e) => setPlayerBtwNumber(e.target.value)} placeholder="NL000000000B01" />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs text-muted-foreground">Straat + huisnummer</Label>
+                <Input value={playerStreet} onChange={(e) => setPlayerStreet(e.target.value)} placeholder="Kapelweg 12" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Postcode</Label>
+                <Input value={playerZipCode} onChange={(e) => setPlayerZipCode(e.target.value)} placeholder="3951AC" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Plaats</Label>
+                <Input value={playerCity} onChange={(e) => setPlayerCity(e.target.value)} placeholder="Maarn" />
               </div>
               <div className="col-span-2">
                 <Label className="text-xs text-muted-foreground">E-mailadres (voor verzending)</Label>
