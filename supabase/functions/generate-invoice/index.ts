@@ -284,18 +284,22 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch trainer business info
-    const { data: trainerProfile, error: trainerError } = await supabase
-      .from('trainer_profiles')
-      .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, invoice_logo_url')
-      .eq('id', invoice.trainer_id)
-      .single();
+    // Fetch trainer business info (only if trainer_id exists)
+    let trainerProfile: any = null;
+    if (invoice.trainer_id) {
+      const { data: tp, error: trainerError } = await supabase
+        .from('trainer_profiles')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, invoice_logo_url')
+        .eq('id', invoice.trainer_id)
+        .single();
 
-    if (trainerError || !trainerProfile) {
-      return new Response(
-        JSON.stringify({ error: "Trainer profile not found" }),
-        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      if (trainerError || !tp) {
+        return new Response(
+          JSON.stringify({ error: "Trainer profile not found" }),
+          { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      trainerProfile = tp;
     }
 
     // Fetch academy profile if invoice belongs to an academy
