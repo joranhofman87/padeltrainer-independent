@@ -49,7 +49,9 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
   const resetForm = () => {
     setPlayerName('');
     setPlayerBusinessName('');
-    setPlayerAddress('');
+    setPlayerStreet('');
+    setPlayerZipCode('');
+    setPlayerCity('');
     setPlayerBtwNumber('');
     setPlayerEmail('');
     setLineItems([{ description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: 21 }]);
