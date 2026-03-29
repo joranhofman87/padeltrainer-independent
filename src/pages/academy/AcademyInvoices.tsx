@@ -295,6 +295,13 @@ export default function AcademyInvoices() {
         </div>
         <div className="flex gap-2">
           <Button
+            size="sm"
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            <PlusCircle className="h-4 w-4 mr-2" />
+            {t("invoices.createInvoice", "Create invoice")}
+          </Button>
+          <Button
             variant="outline"
             size="sm"
             onClick={() => backfillMutation.mutate()}
