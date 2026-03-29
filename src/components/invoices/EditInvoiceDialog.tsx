@@ -342,7 +342,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                   />
                   <Input
                     type="number"
-                    value={li.quantity}
+                    value={li.quantity || ''}
                     onChange={(e) => updateLineItem(i, 'quantity', e.target.value)}
                     placeholder="Aantal"
                     className="text-sm"
@@ -350,7 +350,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                   />
                   <Input
                     type="number"
-                    value={li.unit_price}
+                    value={li.unit_price || ''}
                     onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
                     placeholder="Prijs"
                     className="text-sm"
@@ -360,7 +360,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                   <div className="relative">
                     <Input
                       type="number"
-                      value={li.vat_rate ?? vatRate}
+                      value={li.vat_rate || ''}
                       onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)}
                       className="text-sm pr-5"
                       min={0}
