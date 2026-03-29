@@ -365,7 +365,7 @@ const handler = async (req: Request): Promise<Response> => {
         .eq('academy_profile_id', invoice.academy_profile_id)
         .maybeSingle();
       hasMollie = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete);
-    } else {
+    } else if (invoice.trainer_id) {
       const { data: mollieAccount } = await supabase
         .from('trainer_mollie_accounts')
         .select('charges_enabled, onboarding_complete')
