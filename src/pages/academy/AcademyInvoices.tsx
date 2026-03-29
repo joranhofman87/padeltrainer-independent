@@ -12,10 +12,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil, Mail } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil, Mail, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
+import { CreateCustomInvoiceDialog } from "@/components/invoices/CreateCustomInvoiceDialog";
 import { nl, enUS } from "date-fns/locale";
 
 interface Invoice {
