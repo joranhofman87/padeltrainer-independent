@@ -417,8 +417,9 @@ const handler = async (req: Request): Promise<Response> => {
 
     const htmlContent = generateInvoiceHTML(invoiceData);
     
-    // Store under trainer's user_id folder (consistent path)
-    const fileName = `${trainerProfile.user_id}/${invoice.invoice_number}.html`;
+    // Store under trainer's user_id or academy_profile_id folder
+    const folderKey = trainerProfile?.user_id || invoice.academy_profile_id || 'custom';
+    const fileName = `${folderKey}/${invoice.invoice_number}.html`;
     const { error: uploadError } = await supabase.storage
       .from('invoices')
       .upload(fileName, new Blob([htmlContent], { type: 'text/html' }), {
