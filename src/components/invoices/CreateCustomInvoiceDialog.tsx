@@ -33,7 +33,9 @@ interface CreateCustomInvoiceDialogProps {
 export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onCreated }: CreateCustomInvoiceDialogProps) {
   const [playerName, setPlayerName] = useState('');
   const [playerBusinessName, setPlayerBusinessName] = useState('');
-  const [playerAddress, setPlayerAddress] = useState('');
+  const [playerStreet, setPlayerStreet] = useState('');
+  const [playerZipCode, setPlayerZipCode] = useState('');
+  const [playerCity, setPlayerCity] = useState('');
   const [playerBtwNumber, setPlayerBtwNumber] = useState('');
   const [playerEmail, setPlayerEmail] = useState('');
   const [lineItems, setLineItems] = useState<LineItem[]>([
