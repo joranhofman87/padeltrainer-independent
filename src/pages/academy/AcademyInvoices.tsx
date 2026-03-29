@@ -39,6 +39,12 @@ interface Invoice {
   vat_amount: number;
   vat_rate: number;
   public_token: string;
+  prices_include_vat?: boolean;
+  player_business_name?: string;
+  player_address?: string;
+  player_btw_number?: string;
+  booking_ids?: string[] | null;
+  notes?: string | null;
 }
 
 export default function AcademyInvoices() {

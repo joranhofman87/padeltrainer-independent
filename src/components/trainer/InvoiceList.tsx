@@ -55,6 +55,10 @@ interface Invoice {
   line_items: any;
   booking_ids: string[] | null;
   notes: string | null;
+  prices_include_vat?: boolean;
+  player_business_name?: string;
+  player_address?: string;
+  player_btw_number?: string;
 }
 
 interface InvoiceListProps {

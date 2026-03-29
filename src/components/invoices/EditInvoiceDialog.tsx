@@ -4,12 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { Loader2, CalendarIcon, Plus } from 'lucide-react';
+import { Loader2, CalendarIcon, Plus, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -32,6 +33,10 @@ interface EditInvoiceData {
   notes?: string;
   booking_ids?: string[];
   prices_include_vat?: boolean;
+  player_name?: string;
+  player_business_name?: string;
+  player_address?: string;
+  player_btw_number?: string;
 }
 
 interface EditInvoiceDialogProps {
@@ -43,6 +48,16 @@ interface EditInvoiceDialogProps {
   academyProfileId?: string | null;
 }
 
+function parseAddress(address?: string | null): { street: string; zipCode: string; city: string } {
+  if (!address) return { street: '', zipCode: '', city: '' };
+  const parts = address.split('\n');
+  return {
+    street: parts[0] || '',
+    zipCode: parts[1] || '',
+    city: parts[2] || '',
+  };
+}
+
 export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId }: EditInvoiceDialogProps) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [vatRate, setVatRate] = useState(21);
@@ -50,6 +65,15 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
   const [notes, setNotes] = useState('');
   const [syncToBookings, setSyncToBookings] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
+
+  // Receiver details
+  const [playerName, setPlayerName] = useState('');
+  const [playerBusinessName, setPlayerBusinessName] = useState('');
+  const [playerStreet, setPlayerStreet] = useState('');
+  const [playerZipCode, setPlayerZipCode] = useState('');
+  const [playerCity, setPlayerCity] = useState('');
+  const [playerBtwNumber, setPlayerBtwNumber] = useState('');
 
   useEffect(() => {
     if (invoice) {
@@ -58,6 +82,15 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
       setDueDate(invoice.due_date ? parseISO(invoice.due_date) : undefined);
       setNotes((invoice as any).notes || '');
       setSyncToBookings(false);
+      setPricesIncludeVat(invoice.prices_include_vat ?? true);
+
+      setPlayerName(invoice.player_name || '');
+      setPlayerBusinessName(invoice.player_business_name || '');
+      const addr = parseAddress(invoice.player_address);
+      setPlayerStreet(addr.street);
+      setPlayerZipCode(addr.zipCode);
+      setPlayerCity(addr.city);
+      setPlayerBtwNumber(invoice.player_btw_number || '');
     }
   }, [invoice]);
 
@@ -80,10 +113,11 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
     });
   };
 
-  const pricesIncludeVat = invoice?.prices_include_vat ?? true;
+  const removeLineItem = (index: number) => {
+    setLineItems(prev => prev.filter((_, i) => i !== index));
+  };
 
   const { subtotal, vatAmount, total, vatBreakdown } = useMemo(() => {
-    // Check if line items have per-item vat rates
     const hasPerItemVat = lineItems.some(li => li.vat_rate !== undefined && li.vat_rate !== vatRate);
     
     if (hasPerItemVat) {
@@ -113,7 +147,6 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
         breakdown[lineVatRate].vat += lineVat;
       }
 
-      // Round
       for (const rate in breakdown) {
         breakdown[rate].subtotal = Math.round(breakdown[rate].subtotal * 100) / 100;
         breakdown[rate].vat = Math.round(breakdown[rate].vat * 100) / 100;
@@ -128,7 +161,6 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
       return { subtotal: sub, vatAmount: vat, total: t, vatBreakdown: breakdown };
     }
 
-    // Single VAT rate (original logic)
     const lineTotal = lineItems.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
     if (pricesIncludeVat) {
       const t = Math.round(lineTotal * 100) / 100;
@@ -161,6 +193,9 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
         amount: Math.round(li.quantity * li.unit_price * 100) / 100,
       }));
 
+      const playerAddress = [playerStreet.trim(), playerZipCode.trim(), playerCity.trim()]
+        .filter(Boolean).join('\n') || null;
+
       const { error } = await supabase
         .from('invoices')
         .update({
@@ -172,6 +207,11 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
           vat_amount: vatAmount,
           total,
           vat_breakdown: vatBreakdown || null,
+          prices_include_vat: pricesIncludeVat,
+          player_name: playerName.trim() || null,
+          player_business_name: playerBusinessName.trim() || null,
+          player_address: playerAddress,
+          player_btw_number: playerBtwNumber.trim() || null,
           pdf_url: null, // force regeneration
         })
         .eq('id', invoice.id);
@@ -206,10 +246,53 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Factuur bewerken</DialogTitle>
-          <DialogDescription>Pas regelitems, BTW, vervaldatum of notities aan.</DialogDescription>
+          <DialogDescription>Pas ontvanger, regelitems, BTW, vervaldatum of notities aan.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+          {/* Receiver details */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">Ontvanger</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                placeholder="Naam"
+                className="text-sm"
+              />
+              <Input
+                value={playerBusinessName}
+                onChange={(e) => setPlayerBusinessName(e.target.value)}
+                placeholder="Bedrijfsnaam (optioneel)"
+                className="text-sm"
+              />
+              <Input
+                value={playerStreet}
+                onChange={(e) => setPlayerStreet(e.target.value)}
+                placeholder="Straat + huisnummer"
+                className="text-sm col-span-2"
+              />
+              <Input
+                value={playerZipCode}
+                onChange={(e) => setPlayerZipCode(e.target.value)}
+                placeholder="Postcode"
+                className="text-sm"
+              />
+              <Input
+                value={playerCity}
+                onChange={(e) => setPlayerCity(e.target.value)}
+                placeholder="Plaats"
+                className="text-sm"
+              />
+              <Input
+                value={playerBtwNumber}
+                onChange={(e) => setPlayerBtwNumber(e.target.value)}
+                placeholder="BTW-nummer (optioneel)"
+                className="text-sm col-span-2"
+              />
+            </div>
+          </div>
+
           {/* Line items */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -250,7 +333,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
             </div>
             <div className="space-y-2">
               {lineItems.map((li, i) => (
-                <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem] gap-2 items-center">
+                <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
                   <Input
                     value={li.description}
                     onChange={(e) => updateLineItem(i, 'description', e.target.value)}
@@ -289,9 +372,25 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                   <div className="text-right text-sm font-medium py-2">
                     €{(li.quantity * li.unit_price).toFixed(2)}
                   </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => removeLineItem(i)}
+                    disabled={lineItems.length <= 1}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Prices include VAT toggle */}
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">Prijzen zijn inclusief BTW</Label>
+            <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
           </div>
 
           {/* Totals */}
