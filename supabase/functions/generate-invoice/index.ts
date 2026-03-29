@@ -354,7 +354,7 @@ const handler = async (req: Request): Promise<Response> => {
     const businessSource = academyProfile || trainerProfile;
     const businessName = academyProfile
       ? (academyProfile.business_name || academyProfile.name || '')
-      : (trainerProfile.business_name || '');
+      : (trainerProfile?.business_name || '');
 
     // Check for active Mollie connection to determine payment method
     let hasMollie = false;
