@@ -187,7 +187,7 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
           due_date: format(dueDate, 'yyyy-MM-dd'),
           player_name: playerName.trim(),
           player_business_name: playerBusinessName.trim() || null,
-          player_address: playerAddress.trim() || null,
+          player_address: [playerStreet.trim(), playerZipCode.trim(), playerCity.trim()].filter(Boolean).join('\n') || null,
           player_btw_number: playerBtwNumber.trim() || null,
           guest_player_id: guestPlayerId,
           academy_profile_id: academyProfileId,
