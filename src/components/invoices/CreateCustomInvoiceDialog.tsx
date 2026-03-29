@@ -33,7 +33,9 @@ interface CreateCustomInvoiceDialogProps {
 export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onCreated }: CreateCustomInvoiceDialogProps) {
   const [playerName, setPlayerName] = useState('');
   const [playerBusinessName, setPlayerBusinessName] = useState('');
-  const [playerAddress, setPlayerAddress] = useState('');
+  const [playerStreet, setPlayerStreet] = useState('');
+  const [playerZipCode, setPlayerZipCode] = useState('');
+  const [playerCity, setPlayerCity] = useState('');
   const [playerBtwNumber, setPlayerBtwNumber] = useState('');
   const [playerEmail, setPlayerEmail] = useState('');
   const [lineItems, setLineItems] = useState<LineItem[]>([
@@ -47,7 +49,9 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
   const resetForm = () => {
     setPlayerName('');
     setPlayerBusinessName('');
-    setPlayerAddress('');
+    setPlayerStreet('');
+    setPlayerZipCode('');
+    setPlayerCity('');
     setPlayerBtwNumber('');
     setPlayerEmail('');
     setLineItems([{ description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: 21 }]);
@@ -187,7 +191,7 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
           due_date: format(dueDate, 'yyyy-MM-dd'),
           player_name: playerName.trim(),
           player_business_name: playerBusinessName.trim() || null,
-          player_address: playerAddress.trim() || null,
+          player_address: [playerStreet.trim(), playerZipCode.trim(), playerCity.trim()].filter(Boolean).join('\n') || null,
           player_btw_number: playerBtwNumber.trim() || null,
           guest_player_id: guestPlayerId,
           academy_profile_id: academyProfileId,
@@ -245,12 +249,20 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
                 <Input value={playerBusinessName} onChange={(e) => setPlayerBusinessName(e.target.value)} placeholder="Optioneel" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Adres</Label>
-                <Input value={playerAddress} onChange={(e) => setPlayerAddress(e.target.value)} placeholder="Straat, postcode, plaats" />
-              </div>
-              <div>
                 <Label className="text-xs text-muted-foreground">BTW-nummer</Label>
                 <Input value={playerBtwNumber} onChange={(e) => setPlayerBtwNumber(e.target.value)} placeholder="NL000000000B01" />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs text-muted-foreground">Straat + huisnummer</Label>
+                <Input value={playerStreet} onChange={(e) => setPlayerStreet(e.target.value)} placeholder="Kapelweg 12" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Postcode</Label>
+                <Input value={playerZipCode} onChange={(e) => setPlayerZipCode(e.target.value)} placeholder="3951AC" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Plaats</Label>
+                <Input value={playerCity} onChange={(e) => setPlayerCity(e.target.value)} placeholder="Maarn" />
               </div>
               <div className="col-span-2">
                 <Label className="text-xs text-muted-foreground">E-mailadres (voor verzending)</Label>
