@@ -1,20 +1,19 @@
 
 
-# Add Receiver Details & Full Editing to EditInvoiceDialog
+# Fix Persistent Leading Zero in Invoice Line Item Inputs
 
 ## Problem
-The Edit Invoice dialog only allows editing line items, VAT rate, due date, and notes. The Create Custom Invoice dialog has more capabilities: receiver details (name, business name, street/zip/city, BTW number), line item removal, and a prices-include-VAT toggle. These should also be available when editing any invoice.
+When creating/editing an invoice, the quantity and unit_price fields are initialized to `0`. When the user clicks into the field and starts typing, the browser keeps the leading zero (e.g., `0346` instead of `346`).
+
+## Fix
+Convert the numeric `value` to a string for display, showing an empty string when the value is `0`. This way, when the user focuses the field, they get a clean empty input instead of a sticky `0`.
 
 ## Changes
 
 | File | Change |
 |------|--------|
-| `src/components/invoices/EditInvoiceDialog.tsx` | **Expand interface**: Add `player_name`, `player_business_name`, `player_address`, `player_btw_number`, `prices_include_vat` to `EditInvoiceData`. **Add state**: `playerName`, `playerBusinessName`, `playerStreet`, `playerZipCode`, `playerCity`, `playerBtwNumber`, `pricesIncludeVat` — initialize from invoice (parse `player_address` by splitting on `\n`). **Add UI**: Receiver details section (same layout as CreateCustomInvoiceDialog), prices-include-VAT toggle, trash button per line item. **Update save**: Include receiver fields and `prices_include_vat` in the update call. |
-| `src/pages/academy/AcademyInvoices.tsx` | Pass the additional fields (`player_name`, `player_business_name`, `player_address`, `player_btw_number`, `prices_include_vat`) when setting `editInvoice`. |
-| `src/components/trainer/InvoiceList.tsx` | Same — pass the additional fields to `editInvoice` so the Edit dialog has access to them. |
+| `src/components/invoices/CreateCustomInvoiceDialog.tsx` | For `quantity` and `unit_price` inputs: change `value={li.quantity}` → `value={li.quantity || ''}` and `value={li.unit_price}` → `value={li.unit_price || ''}`. Same for `vat_rate`. |
+| `src/components/invoices/EditInvoiceDialog.tsx` | Apply the same fix to the equivalent line item inputs. |
 
-## Details
-- `player_address` is stored as a newline-separated string (`street\nzip\ncity`). On load, split by `\n` into three fields. On save, join back.
-- Line item removal: add a `Trash2` icon button per row (disabled when only 1 item remains), matching `CreateCustomInvoiceDialog`.
-- The `pricesIncludeVat` toggle affects VAT calculation — reuse the same `useMemo` logic already present but make it reactive to the toggle instead of reading from the immutable `invoice` prop.
+This ensures `0` values render as empty placeholders, preventing the leading-zero problem.
 
