@@ -2138,7 +2138,7 @@ export type Database = {
           status: string
           subtotal: number
           total: number
-          trainer_id: string
+          trainer_id: string | null
           updated_at: string
           vat_amount: number
           vat_breakdown: Json | null
@@ -2170,7 +2170,7 @@ export type Database = {
           status?: string
           subtotal?: number
           total?: number
-          trainer_id: string
+          trainer_id?: string | null
           updated_at?: string
           vat_amount?: number
           vat_breakdown?: Json | null
@@ -2202,7 +2202,7 @@ export type Database = {
           status?: string
           subtotal?: number
           total?: number
-          trainer_id?: string
+          trainer_id?: string | null
           updated_at?: string
           vat_amount?: number
           vat_breakdown?: Json | null
