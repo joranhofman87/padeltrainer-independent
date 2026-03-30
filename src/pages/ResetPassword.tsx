@@ -188,7 +188,7 @@ export default function ResetPassword() {
                 data-testid="input-reset-confirm-password"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-reset-submit">
               {isLoading 
                 ? t('resetPassword.loading', 'Updating...') 
                 : t('resetPassword.button', 'Update Password')

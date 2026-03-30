@@ -270,7 +270,7 @@ export default function AcademySignup() {
                 <p className="text-sm text-destructive">{errors.password}</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-signup-submit">
               {isLoading ? t('signUp.loading') : t('signUp.button')}
             </Button>
           </form>

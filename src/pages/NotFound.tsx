@@ -59,7 +59,7 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted px-4">
+    <div className="flex min-h-screen items-center justify-center bg-muted px-4" data-testid="page-not-found">
       <div className="w-full max-w-md text-center space-y-6">
         {/* Icon + heading */}
         <div className="flex flex-col items-center gap-3">

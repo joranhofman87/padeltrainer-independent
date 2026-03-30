@@ -33,7 +33,7 @@ export default function SignupRolePicker() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {roles.map(({ key, icon: Icon, path }) => (
-            <Link key={key} to={buildPath(path)} className="group">
+            <Link key={key} to={buildPath(path)} className="group" data-testid={`signup-role-${key}`}>
               <Card className="h-full transition-all hover:border-primary hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring">
                 <CardContent className="flex flex-col items-center text-center gap-3 p-6">
                   <div className="rounded-full bg-primary/10 p-3">

@@ -101,7 +101,7 @@ export default function ForgotPassword() {
                 data-testid="input-forgot-email"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-forgot-submit">
               {isLoading 
                 ? t('forgotPassword.loading', 'Sending...') 
                 : t('forgotPassword.button', 'Send Reset Link')
