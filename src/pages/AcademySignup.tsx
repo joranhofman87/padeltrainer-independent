@@ -263,6 +263,7 @@ export default function AcademySignup() {
                 className={errors.password ? 'border-destructive' : ''}
                 required
                 minLength={6}
+                data-testid="input-signup-password"
               />
               <PasswordStrengthIndicator password={password} />
               {errors.password && (
