@@ -5,8 +5,8 @@
   "stats": {
     "passed": 4,
     "failed": 0,
-    "blocked": 1,
-    "pending": 40,
+    "blocked": 2,
+    "pending": 39,
     "bugs_fixed": 0
   },
   "auth_config": {
@@ -177,13 +177,13 @@
       ],
       "expected_result": "User is redirected to the trainer dashboard",
       "pass_criteria": "URL contains '/app/trainer' and element with data-testid='page-trainer-dashboard' is visible",
-      "status": "pending",
+      "status": "blocked",
       "passed": false,
       "fix_attempts": 0,
       "max_fix_attempts": 3,
       "failure_reason": "",
       "fix_description": "",
-      "blocked_reason": ""
+      "blocked_reason": "Same browser automation limitation as TEST-004: session crashes after Supabase auth login redirect. Confirmed pattern — login API works (TEST-005 proved credentials valid) but post-login redirect kills the browser session."
     },
     {
       "id": "TEST-007",
