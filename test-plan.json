@@ -3,10 +3,10 @@
   "generated_at": "2026-03-30T12:00:00Z",
   "total_tests": 45,
   "stats": {
-    "passed": 7,
+    "passed": 8,
     "failed": 0,
     "blocked": 3,
-    "pending": 35,
+    "pending": 34,
     "bugs_fixed": 0
   },
   "auth_config": {
@@ -298,8 +298,8 @@
       ],
       "expected_result": "Form validation prevents submission and shows error indicators",
       "pass_criteria": "The form does not navigate away from /app/signup/player and validation errors are visible (either HTML5 validation or custom error messages)",
-      "status": "pending",
-      "passed": false,
+      "status": "passed",
+      "passed": true,
       "fix_attempts": 0,
       "max_fix_attempts": 3,
       "failure_reason": "",
