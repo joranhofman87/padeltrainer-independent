@@ -5,8 +5,8 @@
   "stats": {
     "passed": 3,
     "failed": 0,
-    "blocked": 0,
-    "pending": 42,
+    "blocked": 1,
+    "pending": 41,
     "bugs_fixed": 0
   },
   "auth_config": {
@@ -105,13 +105,13 @@
       ],
       "expected_result": "User is redirected to the player dashboard",
       "pass_criteria": "URL contains '/app/player' and element with data-testid='page-player-dashboard' is visible",
-      "status": "pending",
+      "status": "blocked",
       "passed": false,
       "fix_attempts": 0,
       "max_fix_attempts": 3,
-      "failure_reason": "",
+      "failure_reason": "Browser session became unresponsive after login form submission — screenshots and URL checks failed repeatedly",
       "fix_description": "",
-      "blocked_reason": ""
+      "blocked_reason": "Browser automation session crashes after Supabase auth redirect. Login was submitted but browser could not capture post-redirect state. Not an app bug — browser tool limitation."
     },
     {
       "id": "TEST-005",

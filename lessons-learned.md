@@ -26,9 +26,7 @@
 - 404 page: `data-testid='page-not-found'`
 - Login form uses `id='signin-email'` and `id='signin-password'` for input fields (HTML id, not testid).
 
-## Common Failure Patterns
-
-_None yet — will be populated during test execution._
+- Browser session becomes unresponsive after Supabase auth login redirects — screenshots and URL checks fail. Login tests via browser automation are unreliable. Consider marking auth-dependent tests as blocked if the session dies after login.
 
 ## Fix Patterns
 
