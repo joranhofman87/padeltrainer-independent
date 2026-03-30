@@ -3,10 +3,10 @@
   "generated_at": "2026-03-30T12:00:00Z",
   "total_tests": 45,
   "stats": {
-    "passed": 6,
+    "passed": 7,
     "failed": 0,
     "blocked": 3,
-    "pending": 36,
+    "pending": 35,
     "bugs_fixed": 0
   },
   "auth_config": {
@@ -274,8 +274,8 @@
       ],
       "expected_result": "Signup form is visible with name, email, password fields and submit button",
       "pass_criteria": "Elements with data-testid='page-signup-player', 'form-signup-player', 'input-signup-name', 'input-signup-email', 'input-signup-password', 'btn-signup-submit' are visible",
-      "status": "pending",
-      "passed": false,
+      "status": "passed",
+      "passed": true,
       "fix_attempts": 0,
       "max_fix_attempts": 3,
       "failure_reason": "",
