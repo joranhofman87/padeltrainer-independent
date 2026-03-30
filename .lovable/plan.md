@@ -1,50 +1,44 @@
 
 
-# Automatic Database Backup System (Every 12 Hours)
+# Fix: Invoice Deletion Failing Silently for Academy Managers
 
-## Summary
-Build a fully automated backup system that runs every 12 hours via a cron job. An edge function exports critical tables as JSON to a private `backups` storage bucket. An admin page shows backup history and allows downloading past backups.
+## Root Cause
 
-## Architecture
+The invoices table has **no DELETE RLS policy for academy managers**. The existing policies are:
+- **Trainers**: Can DELETE only `draft` invoices they own
+- **Admins**: Can DELETE any invoice
+- **Academy managers**: Have SELECT and UPDATE policies, but **no DELETE policy**
 
-```text
-pg_cron (every 12h) ──► Edge Function (backup-database)
-                              │
-                              ├── Queries critical tables (service role)
-                              └── Writes JSON to "backups" storage bucket
-                                       │
-Admin UI (read-only) ◄────────────────┘
-  - View backup history
-  - Download table files
-  - Delete old backups
+When an academy manager tries to delete a draft invoice, the `supabase.from('invoices').delete()` call silently affects 0 rows (RLS blocks it without returning an error). For non-draft invoices, the `.update({ status: 'cancelled' })` should work via the existing UPDATE policy — but only if the invoice has `academy_profile_id` set.
+
+Additionally, the trainer DELETE policy only allows deleting `draft` invoices, so non-draft trainer invoices also can't be hard-deleted by trainers (which is fine — they get soft-cancelled via UPDATE).
+
+## Fix
+
+**One migration** to add a DELETE policy for academy managers:
+
+```sql
+CREATE POLICY "Academy managers can delete their draft invoices"
+ON public.invoices FOR DELETE
+TO authenticated
+USING (
+  academy_profile_id IS NOT NULL
+  AND public.is_academy_manager(auth.uid(), academy_profile_id)
+  AND status = 'draft'
+);
 ```
 
-## Tables Backed Up
-`profiles`, `trainer_profiles`, `academy_profiles`, `club_profiles`, `invoices`, `bookings`, `availability_slots`, `locations`, `guest_players`, `club_managers`, `academy_managers`, `academy_trainers`, `user_roles`
+This mirrors the trainer pattern: hard-delete for drafts only. Non-draft invoices are already handled by the UPDATE policy (setting status to `cancelled`).
 
-## Changes
+## Additional Safety
 
-| Component | Change |
-|-----------|--------|
-| **Storage bucket** | Create private `backups` bucket via migration |
-| **Edge function** `backup-database` | New. Validates admin role OR cron secret. Queries each table with service role, writes `{timestamp}/{table}.json` to bucket. Returns summary. |
-| **Migration** | Enable `pg_net` extension (pg_cron already enabled). Insert cron job to call backup function every 12 hours. |
-| **`src/pages/admin/AdminBackups.tsx`** | New page. Lists past backups from storage, download individual files, delete old backups. No "create" button — fully automatic. |
-| **`src/components/admin/AdminSidebar.tsx`** | Add "Backups" item under Settings with `Database` icon. |
-| **`src/components/DomainRouter.tsx`** | Add route `/app/admin/backups` → `AdminBackups`. |
-| **`supabase/config.toml`** | Add `[functions.backup-database]` entry. |
+Add a check in both `InvoiceList.tsx` and `AcademyInvoices.tsx` to detect when 0 rows were affected — Supabase returns `data` with count info when using `.select()` after mutations. However, the simpler fix is just adding the missing RLS policy, since the UPDATE path for non-draft invoices should already work.
 
-## Cron Schedule
-Runs at **00:00 and 12:00 UTC** daily (`0 0,12 * * *`). Each run creates a timestamped folder in the `backups` bucket.
+## Files Changed
 
-## Admin UI Features
-- Backup history list (date, table count, total rows)
-- Download individual table JSON files
-- Delete old backups with confirmation
-- Status badge showing last successful backup time
+| File | Change |
+|------|--------|
+| New migration | Add DELETE RLS policy for academy managers on draft invoices |
 
-## Security
-- Edge function validates either admin JWT or a shared cron secret
-- `backups` bucket is private, admin-only RLS
-- Service role used only server-side
+No application code changes needed — the RLS policy is the only blocker.
 
