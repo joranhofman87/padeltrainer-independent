@@ -5,8 +5,8 @@
   "stats": {
     "passed": 3,
     "failed": 0,
-    "blocked": 0,
-    "pending": 42,
+    "blocked": 1,
+    "pending": 41,
     "bugs_fixed": 0
   },
   "auth_config": {
