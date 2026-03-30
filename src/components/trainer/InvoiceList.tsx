@@ -89,6 +89,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [splitConfirm, setSplitConfirm] = useState<{ open: boolean; invoiceId: string }>({ open: false, invoiceId: '' });
   const [voidConfirm, setVoidConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
 
   useEffect(() => {
     fetchInvoices();
