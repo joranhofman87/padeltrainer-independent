@@ -3,10 +3,10 @@
   "generated_at": "2026-03-30T12:00:00Z",
   "total_tests": 45,
   "stats": {
-    "passed": 1,
+    "passed": 2,
     "failed": 0,
     "blocked": 0,
-    "pending": 44,
+    "pending": 43,
     "bugs_fixed": 0
   },
   "auth_config": {
