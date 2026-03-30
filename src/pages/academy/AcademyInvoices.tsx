@@ -638,6 +638,11 @@ export default function AcademyInvoices() {
                             {t("invoices.forwardToBookkeeper", "Forward")}
                           </Button>
                         )}
+                        {inv.status !== "cancelled" && (
+                          <Button size="sm" variant="outline" onClick={() => setDeleteConfirm({ open: true, invoice: inv })}>
+                            <Trash2 className="h-4 w-4 mr-1" />{inv.status === "draft" ? t("invoices.delete", "Delete") : t("invoices.cancel", "Cancel")}
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>
                           <Download className="h-4 w-4 mr-1" />PDF
                         </Button>
