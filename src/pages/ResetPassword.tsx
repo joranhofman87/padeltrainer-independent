@@ -170,6 +170,7 @@ export default function ResetPassword() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
+                data-testid="input-reset-password"
               />
             </div>
             <div className="space-y-2">
