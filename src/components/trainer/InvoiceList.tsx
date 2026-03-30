@@ -439,30 +439,31 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                   
                   <div className="flex items-center gap-1">
                     {invoice.status === 'draft' && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleSendInvoice(invoice)}
-                          disabled={actionLoading === invoice.id}
-                          title="Verstuur factuur"
-                        >
-                          {actionLoading === invoice.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Send className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(invoice.id)}
-                          disabled={actionLoading === invoice.id}
-                          title="Verwijderen"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleSendInvoice(invoice)}
+                        disabled={actionLoading === invoice.id}
+                        title="Verstuur factuur"
+                      >
+                        {actionLoading === invoice.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                      </Button>
+                    )}
+
+                    {invoice.status !== 'cancelled' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteConfirm({ open: true, invoice })}
+                        disabled={actionLoading === invoice.id}
+                        title={invoice.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     )}
                     
                     {invoice.status !== 'paid' && (
