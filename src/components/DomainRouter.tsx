@@ -266,6 +266,7 @@ export function DomainRouter() {
           <Route path="blog/topics" element={<AdminBlogTopics />} />
           <Route path="blog/:id" element={<AdminBlogEditor />} />
           <Route path="blog/:id/sources" element={<AdminBlogSources />} />
+          <Route path="backups" element={<AdminBackups />} />
         </Route>
         
         {/* Club routes */}
