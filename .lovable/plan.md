@@ -1,27 +1,50 @@
 
 
-# Add Invoice Delete with Confirmation Dialog (Trainer & Academy Only)
+# Automatic Database Backup System (Every 12 Hours)
 
 ## Summary
-Add a delete button (Trash2 icon) to invoices in **Trainer InvoiceList** and **Academy AcademyInvoices** only. Players cannot delete invoices. All deletions show an AlertDialog confirmation before proceeding. Deletion only removes the invoice record — no side effects on slots or cycles.
+Build a fully automated backup system that runs every 12 hours via a cron job. An edge function exports critical tables as JSON to a private `backups` storage bucket. An admin page shows backup history and allows downloading past backups.
 
-## Deletion Logic
-- **Draft invoices**: Hard-delete from database
-- **Non-draft invoices** (sent/overdue/paid): Soft-delete by setting `status = 'cancelled'`
-- No updates to `bookings`, `availability_slots`, or cycles
+## Architecture
+
+```text
+pg_cron (every 12h) ──► Edge Function (backup-database)
+                              │
+                              ├── Queries critical tables (service role)
+                              └── Writes JSON to "backups" storage bucket
+                                       │
+Admin UI (read-only) ◄────────────────┘
+  - View backup history
+  - Download table files
+  - Delete old backups
+```
+
+## Tables Backed Up
+`profiles`, `trainer_profiles`, `academy_profiles`, `club_profiles`, `invoices`, `bookings`, `availability_slots`, `locations`, `guest_players`, `club_managers`, `academy_managers`, `academy_trainers`, `user_roles`
 
 ## Changes
 
-| File | Change |
-|------|--------|
-| `src/components/trainer/InvoiceList.tsx` | Replace the existing `confirm()` call in `handleDelete` with an AlertDialog pattern (add `deleteConfirm` state like the existing `voidConfirm`). Draft → hard delete, others → set status to `cancelled`. |
-| `src/pages/academy/AcademyInvoices.tsx` | Add Trash2 delete button per invoice row. Add AlertDialog confirmation + `deleteMutation`. Draft → hard delete, others → cancel. |
+| Component | Change |
+|-----------|--------|
+| **Storage bucket** | Create private `backups` bucket via migration |
+| **Edge function** `backup-database` | New. Validates admin role OR cron secret. Queries each table with service role, writes `{timestamp}/{table}.json` to bucket. Returns summary. |
+| **Migration** | Enable `pg_net` extension (pg_cron already enabled). Insert cron job to call backup function every 12 hours. |
+| **`src/pages/admin/AdminBackups.tsx`** | New page. Lists past backups from storage, download individual files, delete old backups. No "create" button — fully automatic. |
+| **`src/components/admin/AdminSidebar.tsx`** | Add "Backups" item under Settings with `Database` icon. |
+| **`src/components/DomainRouter.tsx`** | Add route `/app/admin/backups` → `AdminBackups`. |
+| **`supabase/config.toml`** | Add `[functions.backup-database]` entry. |
 
-## Confirmation Dialog Text
-- **Draft**: Title "Factuur verwijderen", body "Weet je zeker dat je factuur {number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt."
-- **Non-draft**: Title "Factuur annuleren", body "Weet je zeker dat je factuur {number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd."
-- Buttons: "Annuleren" / "Verwijderen" (destructive)
+## Cron Schedule
+Runs at **00:00 and 12:00 UTC** daily (`0 0,12 * * *`). Each run creates a timestamped folder in the `backups` bucket.
 
-## Not Changed
-- `PlayerInvoicesTab.tsx` — players cannot delete or cancel invoices
+## Admin UI Features
+- Backup history list (date, table count, total rows)
+- Download individual table JSON files
+- Delete old backups with confirmation
+- Status badge showing last successful backup time
+
+## Security
+- Edge function validates either admin JWT or a shared cron secret
+- `backups` bucket is private, admin-only RLS
+- Service role used only server-side
 
