@@ -266,6 +266,29 @@ export default function AcademyInvoices() {
     setForwardingId(null);
   };
 
+  // Delete / cancel invoice
+  const deleteMutation = useMutation({
+    mutationFn: async (invoice: Invoice) => {
+      if (invoice.status === 'draft') {
+        const { error } = await supabase.from("invoices").delete().eq("id", invoice.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
+        if (error) throw error;
+      }
+      return invoice;
+    },
+    onSuccess: (invoice) => {
+      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+      toast.success(invoice.status === 'draft'
+        ? t("invoices.deleted", "Invoice deleted")
+        : t("invoices.cancelled", "Invoice cancelled"));
+    },
+    onError: () => {
+      toast.error(t("invoices.deleteError", "Failed to delete invoice"));
+    },
+  });
+
   const handleDownloadPdf = async (invoice: Invoice) => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-invoice', {
