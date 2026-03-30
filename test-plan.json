@@ -5,8 +5,8 @@
   "stats": {
     "passed": 4,
     "failed": 0,
-    "blocked": 2,
-    "pending": 39,
+    "blocked": 3,
+    "pending": 38,
     "bugs_fixed": 0
   },
   "auth_config": {
@@ -203,13 +203,13 @@
       ],
       "expected_result": "User is redirected to the admin dashboard",
       "pass_criteria": "URL contains '/app/admin' and element with data-testid='page-admin-dashboard' is visible",
-      "status": "pending",
+      "status": "blocked",
       "passed": false,
       "fix_attempts": 0,
       "max_fix_attempts": 3,
       "failure_reason": "",
       "fix_description": "",
-      "blocked_reason": ""
+      "blocked_reason": "Same browser automation limitation as TEST-004/006: session crashes after Supabase auth login redirect."
     },
     {
       "id": "TEST-008",
