@@ -98,6 +98,7 @@ export default function ForgotPassword() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                data-testid="input-forgot-email"
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
