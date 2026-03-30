@@ -12,11 +12,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil, Mail, PlusCircle } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil, Mail, PlusCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
 import { CreateCustomInvoiceDialog } from "@/components/invoices/CreateCustomInvoiceDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { nl, enUS } from "date-fns/locale";
 
 interface Invoice {
@@ -58,6 +68,7 @@ export default function AcademyInvoices() {
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
   const formatEuro = (amount: number) =>
@@ -254,6 +265,29 @@ export default function AcademyInvoices() {
     }
     setForwardingId(null);
   };
+
+  // Delete / cancel invoice
+  const deleteMutation = useMutation({
+    mutationFn: async (invoice: Invoice) => {
+      if (invoice.status === 'draft') {
+        const { error } = await supabase.from("invoices").delete().eq("id", invoice.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
+        if (error) throw error;
+      }
+      return invoice;
+    },
+    onSuccess: (invoice) => {
+      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+      toast.success(invoice.status === 'draft'
+        ? t("invoices.deleted", "Invoice deleted")
+        : t("invoices.cancelled", "Invoice cancelled"));
+    },
+    onError: () => {
+      toast.error(t("invoices.deleteError", "Failed to delete invoice"));
+    },
+  });
 
   const handleDownloadPdf = async (invoice: Invoice) => {
     try {
@@ -520,6 +554,21 @@ export default function AcademyInvoices() {
                                     <TooltipContent>{t("invoices.forwardToBookkeeper", "Forward to bookkeeper")}</TooltipContent>
                                   </Tooltip>
                                 )}
+                                {inv.status !== "cancelled" && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setDeleteConfirm({ open: true, invoice: inv })}
+                                        disabled={deleteMutation.isPending}
+                                      >
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{inv.status === "draft" ? t("invoices.delete", "Delete") : t("invoices.cancel", "Cancel")}</TooltipContent>
+                                  </Tooltip>
+                                )}
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
@@ -589,6 +638,11 @@ export default function AcademyInvoices() {
                             {t("invoices.forwardToBookkeeper", "Forward")}
                           </Button>
                         )}
+                        {inv.status !== "cancelled" && (
+                          <Button size="sm" variant="outline" onClick={() => setDeleteConfirm({ open: true, invoice: inv })}>
+                            <Trash2 className="h-4 w-4 mr-1" />{inv.status === "draft" ? t("invoices.delete", "Delete") : t("invoices.cancel", "Cancel")}
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>
                           <Download className="h-4 w-4 mr-1" />PDF
                         </Button>
@@ -625,6 +679,36 @@ export default function AcademyInvoices() {
           onCreated={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
         />
       )}
+
+      <AlertDialog open={deleteConfirm.open} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, invoice: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirm.invoice?.status === 'draft' ? 'Factuur verwijderen' : 'Factuur annuleren'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm.invoice?.status === 'draft'
+                ? `Weet je zeker dat je factuur ${deleteConfirm.invoice?.invoice_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
+                : `Weet je zeker dat je factuur ${deleteConfirm.invoice?.invoice_number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteConfirm.invoice) {
+                  deleteMutation.mutate(deleteConfirm.invoice);
+                  setDeleteConfirm({ open: false, invoice: null });
+                }
+              }}
+            >
+              {deleteConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -89,6 +89,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [splitConfirm, setSplitConfirm] = useState<{ open: boolean; invoiceId: string }>({ open: false, invoiceId: '' });
   const [voidConfirm, setVoidConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
 
   useEffect(() => {
     fetchInvoices();
@@ -271,24 +272,26 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     setActionLoading(null);
   };
 
-  const handleDelete = async (invoiceId: string) => {
-    if (!confirm('Weet je zeker dat je dit concept wilt verwijderen?')) return;
-    
-    setActionLoading(invoiceId);
-    const { error } = await supabase
-      .from('invoices')
-      .delete()
-      .eq('id', invoiceId);
+  const handleDelete = async (invoice: Invoice) => {
+    setDeleteConfirm({ open: false, invoice: null });
+    setActionLoading(invoice.id);
 
-    if (error) {
-      toast({
-        title: 'Fout',
-        description: 'Kon factuur niet verwijderen',
-        variant: 'destructive',
-      });
+    if (invoice.status === 'draft') {
+      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
+      if (error) {
+        toast({ title: 'Fout', description: 'Kon factuur niet verwijderen', variant: 'destructive' });
+      } else {
+        toast({ title: 'Factuur verwijderd' });
+        fetchInvoices();
+      }
     } else {
-      toast({ title: 'Concept verwijderd' });
-      fetchInvoices();
+      const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
+      if (error) {
+        toast({ title: 'Fout', description: 'Kon factuur niet annuleren', variant: 'destructive' });
+      } else {
+        toast({ title: 'Factuur geannuleerd' });
+        fetchInvoices();
+      }
     }
     setActionLoading(null);
   };
@@ -436,30 +439,31 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                   
                   <div className="flex items-center gap-1">
                     {invoice.status === 'draft' && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleSendInvoice(invoice)}
-                          disabled={actionLoading === invoice.id}
-                          title="Verstuur factuur"
-                        >
-                          {actionLoading === invoice.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Send className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(invoice.id)}
-                          disabled={actionLoading === invoice.id}
-                          title="Verwijderen"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleSendInvoice(invoice)}
+                        disabled={actionLoading === invoice.id}
+                        title="Verstuur factuur"
+                      >
+                        {actionLoading === invoice.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                      </Button>
+                    )}
+
+                    {invoice.status !== 'cancelled' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteConfirm({ open: true, invoice })}
+                        disabled={actionLoading === invoice.id}
+                        title={invoice.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     )}
                     
                     {invoice.status !== 'paid' && (
@@ -599,6 +603,30 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
               onClick={() => voidConfirm.invoice && handleVoidInvoice(voidConfirm.invoice)}
             >
               {voidConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={deleteConfirm.open} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, invoice: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirm.invoice?.status === 'draft' ? 'Factuur verwijderen' : 'Factuur annuleren'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm.invoice?.status === 'draft'
+                ? `Weet je zeker dat je factuur ${deleteConfirm.invoice?.invoice_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
+                : `Weet je zeker dat je factuur ${deleteConfirm.invoice?.invoice_number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteConfirm.invoice && handleDelete(deleteConfirm.invoice)}
+            >
+              {deleteConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
