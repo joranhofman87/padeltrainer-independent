@@ -3,10 +3,10 @@
   "generated_at": "2026-03-30T12:00:00Z",
   "total_tests": 45,
   "stats": {
-    "passed": 2,
+    "passed": 3,
     "failed": 0,
     "blocked": 0,
-    "pending": 43,
+    "pending": 42,
     "bugs_fixed": 0
   },
   "auth_config": {
@@ -81,8 +81,8 @@
       ],
       "expected_result": "Login form is visible with email input, password input, submit button, and Google sign-in button",
       "pass_criteria": "Elements with data-testid='page-auth', 'auth-email-input', 'auth-password-input', 'auth-login-button', and 'auth-google-button' are all visible",
-      "status": "pending",
-      "passed": false,
+      "status": "passed",
+      "passed": true,
       "fix_attempts": 0,
       "max_fix_attempts": 3,
       "failure_reason": "",
