@@ -127,11 +127,11 @@
       "pass_criteria": "URL contains '/app/player' and element with data-testid='page-player-dashboard' is visible",
       "status": "blocked",
       "passed": false,
-      "fix_attempts": 0,
+      "fix_attempts": 1,
       "max_fix_attempts": 3,
       "failure_reason": "Browser session became unresponsive after login form submission — screenshots and URL checks failed repeatedly",
       "fix_description": "",
-      "blocked_reason": "Browser automation session crashes after Supabase auth redirect. Login was submitted but browser could not capture post-redirect state. Not an app bug — browser tool limitation."
+      "blocked_reason": "Browser automation session consistently crashes after Supabase auth login redirect. Retried twice across separate runs — same result. Tool limitation, not an app bug (no auth errors in console)."
     },
     {
       "id": "TEST-005",
