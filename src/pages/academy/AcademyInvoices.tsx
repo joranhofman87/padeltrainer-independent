@@ -554,6 +554,21 @@ export default function AcademyInvoices() {
                                     <TooltipContent>{t("invoices.forwardToBookkeeper", "Forward to bookkeeper")}</TooltipContent>
                                   </Tooltip>
                                 )}
+                                {inv.status !== "cancelled" && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setDeleteConfirm({ open: true, invoice: inv })}
+                                        disabled={deleteMutation.isPending}
+                                      >
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{inv.status === "draft" ? t("invoices.delete", "Delete") : t("invoices.cancel", "Cancel")}</TooltipContent>
+                                  </Tooltip>
+                                )}
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
