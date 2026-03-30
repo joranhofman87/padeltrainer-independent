@@ -3,10 +3,10 @@
   "generated_at": "2026-03-30T12:00:00Z",
   "total_tests": 45,
   "stats": {
-    "passed": 0,
+    "passed": 1,
     "failed": 0,
     "blocked": 0,
-    "pending": 45,
+    "pending": 44,
     "bugs_fixed": 0
   },
   "auth_config": {
@@ -37,8 +37,8 @@
       ],
       "expected_result": "Homepage renders with the PadelTrainer.ai branding and hero section",
       "pass_criteria": "Text 'PadelTrainer' is visible on the page and the page does not show a blank screen or error",
-      "status": "pending",
-      "passed": false,
+      "status": "passed",
+      "passed": true,
       "fix_attempts": 0,
       "max_fix_attempts": 3,
       "failure_reason": "",
