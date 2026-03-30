@@ -47,6 +47,7 @@ import {
   
   FileText,
   ListTodo,
+  Database,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -72,7 +73,7 @@ const settingsNavItems = [
   { title: "Review Tags", url: "/app/admin/review-tags", icon: Tags },
   { title: "Pricing Plans", url: "/app/admin/pricing", icon: CreditCard },
   { title: "Onboarding Emails", url: "/app/admin/onboarding-emails", icon: Mail },
-  
+  { title: "Backups", url: "/app/admin/backups", icon: Database },
 ];
 
 export function AdminSidebar() {

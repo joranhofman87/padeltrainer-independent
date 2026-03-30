@@ -183,3 +183,6 @@ verify_jwt = false
 
 [functions.bulk-update-vat]
 verify_jwt = false
+
+[functions.backup-database]
+verify_jwt = false
