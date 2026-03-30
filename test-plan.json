@@ -3,10 +3,10 @@
   "generated_at": "2026-03-30T12:00:00Z",
   "total_tests": 45,
   "stats": {
-    "passed": 5,
+    "passed": 6,
     "failed": 0,
     "blocked": 3,
-    "pending": 37,
+    "pending": 36,
     "bugs_fixed": 0
   },
   "auth_config": {
@@ -250,8 +250,8 @@
       ],
       "expected_result": "All role options are visible",
       "pass_criteria": "Elements with data-testid='page-signup-role-picker', 'signup-role-player', 'signup-role-trainer' are visible",
-      "status": "pending",
-      "passed": false,
+      "status": "passed",
+      "passed": true,
       "fix_attempts": 0,
       "max_fix_attempts": 3,
       "failure_reason": "",
