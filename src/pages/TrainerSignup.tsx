@@ -239,6 +239,7 @@ export default function TrainerSignup() {
                 onChange={(e) => setEmail(e.target.value)}
                 className={errors.email ? 'border-destructive' : ''}
                 required
+                data-testid="input-signup-email"
               />
               {errors.email && (
                 <p className="text-sm text-destructive">{errors.email}</p>
