@@ -17,6 +17,16 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
 import { CreateCustomInvoiceDialog } from "@/components/invoices/CreateCustomInvoiceDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { nl, enUS } from "date-fns/locale";
 
 interface Invoice {
