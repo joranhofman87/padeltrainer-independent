@@ -185,6 +185,7 @@ export default function ResetPassword() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 minLength={6}
+                data-testid="input-reset-confirm-password"
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
