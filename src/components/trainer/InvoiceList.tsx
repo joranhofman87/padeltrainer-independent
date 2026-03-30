@@ -272,24 +272,26 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     setActionLoading(null);
   };
 
-  const handleDelete = async (invoiceId: string) => {
-    if (!confirm('Weet je zeker dat je dit concept wilt verwijderen?')) return;
-    
-    setActionLoading(invoiceId);
-    const { error } = await supabase
-      .from('invoices')
-      .delete()
-      .eq('id', invoiceId);
+  const handleDelete = async (invoice: Invoice) => {
+    setDeleteConfirm({ open: false, invoice: null });
+    setActionLoading(invoice.id);
 
-    if (error) {
-      toast({
-        title: 'Fout',
-        description: 'Kon factuur niet verwijderen',
-        variant: 'destructive',
-      });
+    if (invoice.status === 'draft') {
+      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
+      if (error) {
+        toast({ title: 'Fout', description: 'Kon factuur niet verwijderen', variant: 'destructive' });
+      } else {
+        toast({ title: 'Factuur verwijderd' });
+        fetchInvoices();
+      }
     } else {
-      toast({ title: 'Concept verwijderd' });
-      fetchInvoices();
+      const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
+      if (error) {
+        toast({ title: 'Fout', description: 'Kon factuur niet annuleren', variant: 'destructive' });
+      } else {
+        toast({ title: 'Factuur geannuleerd' });
+        fetchInvoices();
+      }
     }
     setActionLoading(null);
   };
