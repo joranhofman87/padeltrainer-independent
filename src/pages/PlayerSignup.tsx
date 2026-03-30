@@ -166,8 +166,8 @@ export default function PlayerSignup() {
 
   return (
     <FeatureErrorBoundary featureName="PlayerSignup" onRetry={() => window.location.reload()}>
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4" data-testid="page-signup-player">
+      <Card className="w-full max-w-md" data-testid="form-signup-player">
         <CardHeader className="text-center">
           <Link 
             to="/" 
