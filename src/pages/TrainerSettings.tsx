@@ -249,7 +249,7 @@ export default function TrainerSettings() {
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8" data-testid="page-trainer-settings">
         {/* Profile Visibility Section */}
         <div className="max-w-4xl mb-8">
           <Card>

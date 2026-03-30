@@ -57,7 +57,7 @@ export default function PlayerSettings() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <div className="grid md:grid-cols-2 gap-4 max-w-4xl">
+        <div className="grid md:grid-cols-2 gap-4 max-w-4xl" data-testid="page-player-settings">
           {settingsItems.map((item) => (
             <Card
               key={item.route}

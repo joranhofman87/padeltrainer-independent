@@ -67,8 +67,8 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4" data-testid="page-forgot-password">
+      <Card className="w-full max-w-md" data-testid="form-forgot-password">
         <CardHeader className="text-center">
           <Link 
             to="/app/auth" 
@@ -98,9 +98,10 @@ export default function ForgotPassword() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                data-testid="input-forgot-email"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-forgot-submit">
               {isLoading 
                 ? t('forgotPassword.loading', 'Sending...') 
                 : t('forgotPassword.button', 'Send Reset Link')

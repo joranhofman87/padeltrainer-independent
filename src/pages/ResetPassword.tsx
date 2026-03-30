@@ -143,8 +143,8 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4" data-testid="page-reset-password">
+      <Card className="w-full max-w-md" data-testid="form-reset-password">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <KeyRound className="h-6 w-6 text-primary" />
@@ -170,6 +170,7 @@ export default function ResetPassword() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
+                data-testid="input-reset-password"
               />
             </div>
             <div className="space-y-2">
@@ -184,9 +185,10 @@ export default function ResetPassword() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 minLength={6}
+                data-testid="input-reset-confirm-password"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-reset-submit">
               {isLoading 
                 ? t('resetPassword.loading', 'Updating...') 
                 : t('resetPassword.button', 'Update Password')

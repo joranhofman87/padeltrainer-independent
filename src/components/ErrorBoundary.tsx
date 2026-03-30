@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="error-boundary-fallback">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
               <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">

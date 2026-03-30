@@ -147,8 +147,8 @@ export default function AcademySignup() {
 
   return (
     <FeatureErrorBoundary featureName="AcademySignup" onRetry={() => window.location.reload()}>
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4" data-testid="page-signup-academy">
+      <Card className="w-full max-w-md" data-testid="form-signup-academy">
         <CardHeader className="text-center">
           <Link 
             to="/" 
@@ -230,6 +230,7 @@ export default function AcademySignup() {
                 onChange={(e) => setFullName(e.target.value)}
                 className={errors.fullName ? 'border-destructive' : ''}
                 required
+                data-testid="input-signup-name"
               />
               {errors.fullName && (
                 <p className="text-sm text-destructive">{errors.fullName}</p>
@@ -245,6 +246,7 @@ export default function AcademySignup() {
                 onChange={(e) => setEmail(e.target.value)}
                 className={errors.email ? 'border-destructive' : ''}
                 required
+                data-testid="input-signup-email"
               />
               {errors.email && (
                 <p className="text-sm text-destructive">{errors.email}</p>
@@ -261,13 +263,14 @@ export default function AcademySignup() {
                 className={errors.password ? 'border-destructive' : ''}
                 required
                 minLength={6}
+                data-testid="input-signup-password"
               />
               <PasswordStrengthIndicator password={password} />
               {errors.password && (
                 <p className="text-sm text-destructive">{errors.password}</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-signup-submit">
               {isLoading ? t('signUp.loading') : t('signUp.button')}
             </Button>
           </form>

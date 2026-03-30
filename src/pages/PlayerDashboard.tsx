@@ -292,7 +292,7 @@ export default function PlayerDashboard() {
   };
 
   return (
-    <main className="container mx-auto px-4 py-8 space-y-8">
+    <main className="container mx-auto px-4 py-8 space-y-8" data-testid="page-player-dashboard">
       {/* Welcome Section */}
       <div>
         <h1 className="text-3xl font-bold mb-2">
