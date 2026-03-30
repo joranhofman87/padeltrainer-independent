@@ -47,6 +47,7 @@ import {
   
   FileText,
   ListTodo,
+  Database,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useNavigate, useLocation } from "react-router-dom";
