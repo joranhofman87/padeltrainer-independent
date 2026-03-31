@@ -60,6 +60,7 @@ export default function AcademyIntakeRequests() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
+  const [playerLinksData, setPlayerLinksData] = useState<PlayerLink[]>([]);
   
 
   const fetchData = async () => {
