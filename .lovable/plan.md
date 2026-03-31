@@ -1,26 +1,17 @@
 
 
-# Add CSV Export for Registration Intake Requests
+# Fix CSV Export: Use Semicolons as Delimiter for Excel Compatibility
 
-## Summary
-Add a "Download CSV" button next to the "Add registration" button on both the Academy and Trainer intake requests pages. The CSV will contain all fields from the registration form for the currently filtered requests.
+## Problem
+The CSV uses commas as delimiters, but Dutch/European Excel expects semicolons. This causes all data to appear in a single column (as shown in the screenshot).
 
-## CSV Columns
-`Full Name`, `Email`, `Phone`, `Rating`, `Rating System`, `Lesson Type`, `Preferred Days`, `Preferred Time Windows`, `Duration (min)`, `Sessions/Week`, `Preferred Trainers`, `Notes`, `Status`, `Applied Date`
+## Fix
 
-## Changes
+**File: `src/lib/cycles.ts`** — `exportIntakeRequestsToCsv` function
 
-| File | Change |
-|------|--------|
-| `src/lib/cycles.ts` | Add `exportIntakeRequestsToCsv(requests, trainers?)` utility function. Converts `IntakeRequestWithProposal[]` to CSV string, handles arrays (days, lesson types, time windows) by joining with semicolons. Triggers browser download. |
-| `src/pages/academy/AcademyIntakeRequests.tsx` | Add `Download` icon button next to "Add registration" button. Calls the export utility with `filteredRequests` and trainer list. |
-| `src/pages/TrainerIntakeRequests.tsx` | Same CSV export button added next to the existing action buttons. |
+1. **Use semicolons** as the column delimiter instead of commas
+2. **Wrap every value in double quotes** to safely handle commas, newlines, and semicolons within field values
+3. Use `\r\n` line endings for better Excel compatibility
 
-## Export Logic
-- Uses `filteredRequests` (respects current cycle + status filter)
-- Preferred time windows formatted as `"Mon 09:00-11:00; Wed 14:00-16:00"`
-- Preferred trainer IDs resolved to names using the trainers list when available
-- Lesson type array joined with semicolons
-- UTF-8 BOM prefix for Excel compatibility
-- Filename: `registrations-{cycle_name}-{date}.csv` or `registrations-all-{date}.csv`
+The change is ~5 lines in the existing function: replace `.join(',')` with `.join(';')` for both headers and rows, and always quote-wrap values.
 
