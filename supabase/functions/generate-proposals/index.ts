@@ -736,9 +736,12 @@ Deno.serve(async (req) => {
       if (aGroup && bGroup && aGroup !== bGroup) return aGroup.localeCompare(bGroup);
       return 0;
     });
+
+    // Process each request
+    for (let i = 0; i < sortedRequests.length; i++) {
+      const request = sortedRequests[i] as IntakeRequest;
       const preferredWeeks = request.metadata?.preferred_number_of_weeks as number | undefined;
 
-      // All slots are now uniform 60-min; no duration filter needed
       if (preferredWeeks) {
         console.log(`Request ${request.id} (${request.full_name}) prefers ${preferredWeeks} weeks`);
       }
@@ -759,7 +762,6 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Check if player's rating is compatible with any trainer's preferences
       if (request.rating && maxRatingSpread !== null) {
         const hasCompatibleTrainer = matchingSlots.some((slot) => {
           const trainerProfile = trainerProfileMap[slot.trainer_id];
@@ -802,7 +804,7 @@ Deno.serve(async (req) => {
         );
         rationale.push({ type: "level_compatible", score: levelResult.score, detail: levelResult.detail });
 
-        const priorityResult = calculatePriorityScore(i, requests.length, normalizedWeights.priority_bonus);
+        const priorityResult = calculatePriorityScore(i, sortedRequests.length, normalizedWeights.priority_bonus);
         rationale.push({ type: "priority_bonus", score: priorityResult.score, detail: priorityResult.detail });
 
         const currentBookings = bookingCounts[slot.id] || 0;
@@ -812,6 +814,17 @@ Deno.serve(async (req) => {
 
         const sessionsResult = calculateSessionsScore(request.sessions_per_week || 1, normalizedWeights.sessions_per_week);
         rationale.push({ type: "sessions_per_week", score: sessionsResult.score, detail: sessionsResult.detail });
+
+        // Group cohesion bonus: if this player is linked with others, boost slots where linked members are already placed
+        const playerGroup = requestLinkGroup[request.id];
+        if (playerGroup) {
+          const groupMemberIds = linkGroupMembers[playerGroup] || [];
+          const linkedInSlot = existingPlayersInSlot.filter(p => groupMemberIds.includes(p.id));
+          if (linkedInSlot.length > 0) {
+            const cohesionScore = 25; // Strong bonus to keep linked players together
+            rationale.push({ type: "group_cohesion", score: cohesionScore, detail: `${linkedInSlot.length} linked player(s) already in this slot` });
+          }
+        }
 
         const totalScore = rationale.reduce((sum, r) => sum + r.score, 0);
 
