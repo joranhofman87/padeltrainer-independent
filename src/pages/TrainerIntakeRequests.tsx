@@ -314,7 +314,7 @@ export default function TrainerIntakeRequests() {
             onClick={() => {
               const cycleName = selectedCycle?.name ?? 'all';
               const date = format(new Date(), 'yyyy-MM-dd');
-              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`);
+              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData);
             }}
             disabled={filteredRequests.length === 0}
             className="h-8 text-xs"
