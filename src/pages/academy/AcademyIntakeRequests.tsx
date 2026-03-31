@@ -295,7 +295,11 @@ export default function AcademyIntakeRequests() {
             onClick={() => {
               const cycleName = selectedCycle?.name ?? 'all';
               const date = format(new Date(), 'yyyy-MM-dd');
-              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData);
+              const locMap: Record<string, string> = {};
+              for (const c of cycles) {
+                if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
+              }
+              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData, locMap);
             }}
             disabled={filteredRequests.length === 0}
             className="h-8 text-xs"
