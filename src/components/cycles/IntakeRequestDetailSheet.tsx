@@ -336,6 +336,14 @@ export default function IntakeRequestDetailSheet({
 
           {/* Actions */}
           <div className="flex flex-wrap gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowEditDialog(true)}
+            >
+              <Pencil className="h-4 w-4 mr-1" />
+              {t('intakeRequests.actions.edit', { defaultValue: 'Bewerken' })}
+            </Button>
             {request.status !== 'confirmed' && (
               <Button 
                 size="sm" 
@@ -399,6 +407,18 @@ export default function IntakeRequestDetailSheet({
             </AlertDialog>
           </div>
         </div>
+
+        {/* Edit Dialog */}
+        {request && (
+          <EditIntakeRequestDialog
+            open={showEditDialog}
+            onOpenChange={setShowEditDialog}
+            request={request}
+            onSuccess={() => {
+              onStatusChange?.();
+            }}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );
