@@ -71,6 +71,7 @@ export default function IntakeRequestDetailSheet({
   const [proposal, setProposal] = useState<EnrichedProposedAssignment | null>(null);
   const [isLoadingProposal, setIsLoadingProposal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
