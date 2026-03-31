@@ -1663,24 +1663,37 @@ export function exportIntakeRequestsToCsv(
   filename: string,
   trainerMap?: Record<string, string>, // id → name
 ) {
+  const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+  const dayHeaders = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
   const headers = [
     'Full Name', 'Email', 'Phone', 'Rating', 'Rating System',
-    'Lesson Type', 'Preferred Days', 'Preferred Time Windows',
+    'Lesson Type', ...dayHeaders,
     'Duration (min)', 'Sessions/Week', 'Preferred Trainers',
     'Notes', 'Status', 'Applied Date',
   ];
 
   const escCsv = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
 
-
   const rows = requests.map((r) => {
-    const timeWindows = (r.preferred_time_windows ?? [])
-      .map((tw) => `${tw.day} ${tw.start}-${tw.end}`)
-      .join('; ');
-
     const trainers = (r.preferred_trainer_ids ?? [])
       .map((id) => trainerMap?.[id] ?? id)
       .join('; ');
+
+    // Build a map: day → time ranges
+    const windowsByDay: Record<string, string[]> = {};
+    for (const tw of (r.preferred_time_windows ?? [])) {
+      const key = (tw.day ?? '').toLowerCase();
+      if (!windowsByDay[key]) windowsByDay[key] = [];
+      windowsByDay[key].push(`${tw.start}-${tw.end}`);
+    }
+
+    const dayCols = dayKeys.map((day) => {
+      if (windowsByDay[day]?.length) return windowsByDay[day].join('; ');
+      // Day selected but no specific times → whole day
+      if ((r.preferred_days ?? []).some((d: string) => d.toLowerCase() === day)) return '✓';
+      return '';
+    });
 
     return [
       r.full_name,
@@ -1689,8 +1702,7 @@ export function exportIntakeRequestsToCsv(
       r.rating != null ? String(r.rating) : '',
       r.rating_system ?? '',
       Array.isArray(r.lesson_type) ? r.lesson_type.join('; ') : (r.lesson_type ?? ''),
-      (r.preferred_days ?? []).join('; '),
-      timeWindows,
+      ...dayCols,
       r.preferred_duration_minutes ? String(r.preferred_duration_minutes) : '',
       r.sessions_per_week ? String(r.sessions_per_week) : '',
       trainers,
