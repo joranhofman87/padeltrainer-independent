@@ -711,9 +711,31 @@ Deno.serve(async (req) => {
       .update({ skip_reason: null })
       .in("id", requestIds);
 
-    // Process each request
-    for (let i = 0; i < requests.length; i++) {
-      const request = requests[i] as IntakeRequest;
+    // ===== Fetch player links for group cohesion =====
+    const { data: playerLinksData } = await supabase
+      .from("player_links")
+      .select("*")
+      .in("intake_request_id", requestIds);
+
+    // Build link group map: requestId -> linkGroup, linkGroup -> requestIds
+    const requestLinkGroup: Record<string, string> = {};
+    const linkGroupMembers: Record<string, string[]> = {};
+    (playerLinksData || []).forEach((pl: { intake_request_id: string; link_group: string }) => {
+      requestLinkGroup[pl.intake_request_id] = pl.link_group;
+      if (!linkGroupMembers[pl.link_group]) linkGroupMembers[pl.link_group] = [];
+      linkGroupMembers[pl.link_group].push(pl.intake_request_id);
+    });
+
+    // Sort requests: linked players first (grouped together), then the rest
+    const sortedRequests = [...requests];
+    sortedRequests.sort((a, b) => {
+      const aGroup = requestLinkGroup[a.id];
+      const bGroup = requestLinkGroup[b.id];
+      if (aGroup && !bGroup) return -1;
+      if (!aGroup && bGroup) return 1;
+      if (aGroup && bGroup && aGroup !== bGroup) return aGroup.localeCompare(bGroup);
+      return 0;
+    });
       const preferredWeeks = request.metadata?.preferred_number_of_weeks as number | undefined;
 
       // All slots are now uniform 60-min; no duration filter needed
