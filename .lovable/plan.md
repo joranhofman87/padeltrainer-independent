@@ -1,23 +1,40 @@
 
 
-# CSV Export: Day-Per-Column with Times
+# Add "Linked Players" Column to CSV Export
 
 ## Summary
-Replace the single "Preferred Days" and "Preferred Time Windows" columns with one column per weekday (Monday–Sunday). Each cell shows the time windows for that day, or is empty if the player didn't select it. This lets trainers sort/filter in Excel by any specific day.
+Add a column to the CSV export showing the names of players each registration is linked to (via admin/trainer connections).
 
-## Current → New Column Layout
+## Change
 
-**Remove**: `Preferred Days`, `Preferred Time Windows`
+**File: `src/lib/cycles.ts`**
 
-**Add 7 columns**: `Monday`, `Tuesday`, `Wednesday`, `Thursday`, `Friday`, `Saturday`, `Sunday`
+Update `exportIntakeRequestsToCsv` to accept a `playerLinks` parameter (`PlayerLink[]`):
 
-Each cell contains the time ranges for that day (e.g. `09:00-11:00; 14:00-16:00`) or is empty if not selected. If a day is in `preferred_days` but has no time windows, the cell shows `✓` (available whole day).
+1. Add `"Linked Players"` header after `"Status"` (before `"Applied Date"`)
+2. Group `playerLinks` by `link_group` to find which requests share a group
+3. For each request, find linked partners via shared `link_group`, look up their names from `requests`, and join with `; `
+4. Empty string if no links exist
 
-## File Changed
+**Files: `AcademyIntakeRequests.tsx` + `TrainerIntakeRequests.tsx`**
+
+Pass `playerLinksData` as third argument to `exportIntakeRequestsToCsv`.
+
+Update the function signature:
+```ts
+export function exportIntakeRequestsToCsv(
+  requests: IntakeRequestWithProposal[],
+  filename: string,
+  trainerMap?: Record<string, string>,
+  playerLinks?: PlayerLink[],
+)
+```
+
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/lib/cycles.ts` | Update `exportIntakeRequestsToCsv` — replace 2 columns with 7 day columns, populate from `preferred_time_windows` and `preferred_days` |
-
-No other files need changes — the callers just pass requests and get a download.
+| `src/lib/cycles.ts` | Add `playerLinks` param, add "Linked Players" column with partner names |
+| `src/pages/academy/AcademyIntakeRequests.tsx` | Pass `playerLinksData` to export call |
+| `src/pages/TrainerIntakeRequests.tsx` | Pass `playerLinksData` to export call |
 
