@@ -1716,13 +1716,25 @@ export function exportIntakeRequestsToCsv(
       return '';
     });
 
+    const meta = r.metadata as Record<string, any> | undefined;
+    const selectedOption = meta?.selected_cyclus_option;
+    const packageLabel = selectedOption
+      ? `${selectedOption.label ?? ''}${selectedOption.price != null ? ` (€${selectedOption.price})` : ''}`
+      : '';
+    const prefWeeks = meta?.preferred_number_of_weeks != null ? String(meta.preferred_number_of_weeks) : '';
+    const locationName = r.location_id ? (locationMap?.[r.location_id] ?? '') : '';
+
     return [
       r.full_name,
       r.email,
       r.phone ?? '',
+      r.birth_date ? format(new Date(r.birth_date), 'yyyy-MM-dd') : '',
       r.rating != null ? String(r.rating) : '',
       r.rating_system ?? '',
       Array.isArray(r.lesson_type) ? r.lesson_type.join('; ') : (r.lesson_type ?? ''),
+      locationName,
+      packageLabel,
+      prefWeeks,
       ...dayCols,
       r.preferred_duration_minutes ? String(r.preferred_duration_minutes) : '',
       r.sessions_per_week ? String(r.sessions_per_week) : '',
