@@ -1687,8 +1687,9 @@ export function exportIntakeRequestsToCsv(
   }
 
   const headers = [
-    'Full Name', 'Email', 'Phone', 'Rating', 'Rating System',
-    'Lesson Type', ...dayHeaders,
+    'Full Name', 'Email', 'Phone', 'Birth Date', 'Rating', 'Rating System',
+    'Lesson Type', 'Location', 'Package', 'Preferred Weeks',
+    ...dayHeaders,
     'Duration (min)', 'Sessions/Week', 'Preferred Trainers',
     'Notes', 'Status', 'Linked Players', 'Applied Date',
   ];
