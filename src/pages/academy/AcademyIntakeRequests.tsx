@@ -277,6 +277,20 @@ export default function AcademyIntakeRequests() {
             <UserPlus className="h-3 w-3 mr-1" />
             {t('intakeRequests.addManual', { defaultValue: 'Add registration' })}
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const cycleName = selectedCycle?.name ?? 'all';
+              const date = format(new Date(), 'yyyy-MM-dd');
+              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`);
+            }}
+            disabled={filteredRequests.length === 0}
+            className="h-8 text-xs"
+          >
+            <Download className="h-3 w-3 mr-1" />
+            CSV
+          </Button>
         </div>
 
         <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
