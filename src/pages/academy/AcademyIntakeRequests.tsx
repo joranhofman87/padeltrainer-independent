@@ -23,9 +23,13 @@ import {
   assignPlayerToSlot,
   unassignPlayer,
   exportIntakeRequestsToCsv,
+  getPlayerLinks,
+  linkPlayers,
+  unlinkPlayer,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
+  type PlayerLink,
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
@@ -56,6 +60,7 @@ export default function AcademyIntakeRequests() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
+  const [playerLinksData, setPlayerLinksData] = useState<PlayerLink[]>([]);
   
 
   const fetchData = async () => {
@@ -69,6 +74,14 @@ export default function AcademyIntakeRequests() {
       ]);
       setCycles(cyclesData);
       setRequests(requestsData);
+
+      // Fetch player links for all cycles
+      const allLinks: PlayerLink[] = [];
+      for (const c of cyclesData) {
+        const links = await getPlayerLinks(c.id);
+        allLinks.push(...links);
+      }
+      setPlayerLinksData(allLinks);
     } catch (error: any) {
       logger.error('Error fetching intake requests', error as Error, { component: 'AcademyIntakeRequests', academyId: activeAcademy?.id });
       toast.error(error.message);
@@ -331,6 +344,21 @@ export default function AcademyIntakeRequests() {
           onRowClick={setSelectedRequest}
           emptyMessage={t('intakeRequests.noRequests')}
           emptyDescription={t('intakeRequests.noRequestsDescription')}
+          playerLinks={playerLinksData}
+          onLinkPlayers={async (ids) => {
+            try {
+              await linkPlayers(ids);
+              toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
+              fetchData();
+            } catch (e: any) { toast.error(e.message); }
+          }}
+          onUnlinkPlayer={async (id) => {
+            try {
+              await unlinkPlayer(id);
+              toast.success(t('intakeRequests.links.unlinked', { defaultValue: 'Player unlinked' }));
+              fetchData();
+            } catch (e: any) { toast.error(e.message); }
+          }}
         />
       ) : (
         <ProposalScheduleGrid

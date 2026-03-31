@@ -1338,6 +1338,135 @@ export async function deleteIntakeRequest(requestId: string): Promise<void> {
   if (error) throw error;
 }
 
+// Update an existing intake request (edit registration)
+export async function updateIntakeRequest(
+  requestId: string,
+  updates: Partial<{
+    full_name: string;
+    email: string;
+    phone: string | null;
+    rating: number | null;
+    rating_system: string;
+    lesson_type: string[];
+    preferred_days: string[];
+    preferred_time_windows: TimeWindow[];
+    preferred_duration_minutes: number;
+    sessions_per_week: number;
+    preferred_trainer_ids: string[];
+    notes: string | null;
+    metadata: Record<string, unknown>;
+  }>
+): Promise<IntakeRequest> {
+  const updateData: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (updates.full_name !== undefined) updateData.full_name = updates.full_name;
+  if (updates.email !== undefined) updateData.email = updates.email;
+  if (updates.phone !== undefined) updateData.phone = updates.phone;
+  if (updates.rating !== undefined) updateData.rating = updates.rating;
+  if (updates.rating_system !== undefined) updateData.rating_system = updates.rating_system;
+  if (updates.lesson_type !== undefined) updateData.lesson_type = updates.lesson_type;
+  if (updates.preferred_days !== undefined) updateData.preferred_days = updates.preferred_days;
+  if (updates.preferred_time_windows !== undefined) updateData.preferred_time_windows = updates.preferred_time_windows as unknown as Json;
+  if (updates.preferred_duration_minutes !== undefined) updateData.preferred_duration_minutes = updates.preferred_duration_minutes;
+  if (updates.sessions_per_week !== undefined) updateData.sessions_per_week = updates.sessions_per_week;
+  if (updates.preferred_trainer_ids !== undefined) updateData.preferred_trainer_ids = updates.preferred_trainer_ids;
+  if (updates.notes !== undefined) updateData.notes = updates.notes;
+  if (updates.metadata !== undefined) updateData.metadata = updates.metadata as unknown as Json;
+
+  const { data, error } = await supabase
+    .from('intake_requests')
+    .update(updateData)
+    .eq('id', requestId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return toIntakeRequest(data);
+}
+
+// Player Links (for linking registrations that want to train together)
+export interface PlayerLink {
+  id: string;
+  link_group: string;
+  intake_request_id: string;
+  created_at: string;
+}
+
+export async function getPlayerLinks(cycleId: string): Promise<PlayerLink[]> {
+  // Get all intake request ids for this cycle
+  const { data: requests } = await supabase
+    .from('intake_requests')
+    .select('id')
+    .eq('cycle_id', cycleId);
+
+  if (!requests || requests.length === 0) return [];
+
+  const requestIds = requests.map(r => r.id);
+  const { data, error } = await supabase
+    .from('player_links')
+    .select('*')
+    .in('intake_request_id', requestIds);
+
+  if (error) throw error;
+  return (data || []) as PlayerLink[];
+}
+
+export async function linkPlayers(intakeRequestIds: string[]): Promise<void> {
+  if (intakeRequestIds.length < 2) throw new Error('Need at least 2 registrations to link');
+
+  // Generate a shared link_group UUID
+  const linkGroup = crypto.randomUUID();
+
+  // First remove any existing links for these requests
+  await supabase
+    .from('player_links')
+    .delete()
+    .in('intake_request_id', intakeRequestIds);
+
+  // Insert new links with shared group
+  const inserts = intakeRequestIds.map(id => ({
+    link_group: linkGroup,
+    intake_request_id: id,
+  }));
+
+  const { error } = await supabase
+    .from('player_links')
+    .insert(inserts);
+
+  if (error) throw error;
+}
+
+export async function unlinkPlayer(intakeRequestId: string): Promise<void> {
+  // Get the link group for this request
+  const { data: link } = await supabase
+    .from('player_links')
+    .select('link_group')
+    .eq('intake_request_id', intakeRequestId)
+    .single();
+
+  if (!link) return;
+
+  // Delete this player's link
+  await supabase
+    .from('player_links')
+    .delete()
+    .eq('intake_request_id', intakeRequestId);
+
+  // If only 1 player remains in the group, remove them too (can't have a group of 1)
+  const { data: remaining } = await supabase
+    .from('player_links')
+    .select('id')
+    .eq('link_group', link.link_group);
+
+  if (remaining && remaining.length === 1) {
+    await supabase
+      .from('player_links')
+      .delete()
+      .eq('link_group', link.link_group);
+  }
+}
+
 // Create a manual intake request (for club managers to add registrations)
 export async function createManualIntakeRequest(
   input: IntakeRequestInput & { player_id?: string | null; guest_player_id?: string | null }

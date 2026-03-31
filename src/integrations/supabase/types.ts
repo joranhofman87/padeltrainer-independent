@@ -2885,6 +2885,35 @@ export type Database = {
         }
         Relationships: []
       }
+      player_links: {
+        Row: {
+          created_at: string
+          id: string
+          intake_request_id: string
+          link_group: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intake_request_id: string
+          link_group?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intake_request_id?: string
+          link_group?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_links_intake_request_id_fkey"
+            columns: ["intake_request_id"]
+            isOneToOne: true
+            referencedRelation: "intake_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_locations: {
         Row: {
           created_at: string

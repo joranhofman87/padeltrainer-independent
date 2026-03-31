@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -17,9 +20,11 @@ import {
   AlertCircle, 
   Calendar,
   CheckCircle2,
-  Clock
+  Clock,
+  Link2,
+  Unlink,
 } from 'lucide-react';
-import { type IntakeRequestWithProposal } from '@/lib/cycles';
+import { type IntakeRequestWithProposal, type PlayerLink } from '@/lib/cycles';
 import {
   Tooltip,
   TooltipContent,
@@ -38,28 +43,55 @@ interface IntakeRequestsTableProps {
   onRowClick: (request: IntakeRequestWithProposal) => void;
   emptyMessage?: string;
   emptyDescription?: string;
+  playerLinks?: PlayerLink[];
+  onLinkPlayers?: (ids: string[]) => void;
+  onUnlinkPlayer?: (id: string) => void;
 }
+
+// Colors for link groups so linked players are visually distinct
+const LINK_COLORS = [
+  'bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-purple-500',
+  'bg-pink-500', 'bg-cyan-500', 'bg-yellow-500', 'bg-red-500',
+];
 
 export default function IntakeRequestsTable({
   requests,
   trainers = [],
   onRowClick,
   emptyMessage = 'No requests',
-  emptyDescription = 'Applications will appear here when players sign up'
+  emptyDescription = 'Applications will appear here when players sign up',
+  playerLinks = [],
+  onLinkPlayers,
+  onUnlinkPlayer,
 }: IntakeRequestsTableProps) {
   const { t } = useTranslation('cycles');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Build link group map
+  const linkGroupMap = new Map<string, string>(); // requestId -> linkGroup
+  const linkGroups = new Map<string, string[]>(); // linkGroup -> requestIds
+  playerLinks.forEach(pl => {
+    linkGroupMap.set(pl.intake_request_id, pl.link_group);
+    const existing = linkGroups.get(pl.link_group) || [];
+    existing.push(pl.intake_request_id);
+    linkGroups.set(pl.link_group, existing);
+  });
+
+  // Assign colors to link groups
+  const groupColors = new Map<string, string>();
+  let colorIdx = 0;
+  linkGroups.forEach((_, groupId) => {
+    groupColors.set(groupId, LINK_COLORS[colorIdx % LINK_COLORS.length]);
+    colorIdx++;
+  });
 
   const getTrainerNames = (request: IntakeRequestWithProposal): React.ReactNode => {
     const ids = request.preferred_trainer_ids || [];
-    
     if (ids.length === 0) return <span className="text-muted-foreground">—</span>;
-    
     const names = ids
       .map(id => trainers.find(t => t.id === id)?.name)
       .filter(Boolean) as string[];
-    
     if (names.length === 0) return <span className="text-muted-foreground">—</span>;
-    
     if (names.length === 1) return <span className="text-sm">{names[0]}</span>;
     if (names.length === 2) return <span className="text-sm">{names[0]}, {names[1]}</span>;
     return <span className="text-sm">{names[0]} <span className="text-muted-foreground">+{names.length - 1}</span></span>;
@@ -94,7 +126,6 @@ export default function IntakeRequestsTable({
   };
 
   const renderProposalIndicator = (request: IntakeRequestWithProposal) => {
-    // Show checkmark for confirmed
     if (request.status === 'confirmed') {
       return (
         <div className="flex items-center gap-1 text-green-600">
@@ -103,7 +134,6 @@ export default function IntakeRequestsTable({
       );
     }
 
-    // Show proposal details for proposed status
     if (request.status === 'proposed' && request.proposal) {
       return (
         <div className="space-y-0.5">
@@ -148,7 +178,6 @@ export default function IntakeRequestsTable({
       );
     }
 
-    // Show just proposed badge if no details available
     if (request.status === 'proposed') {
       return (
         <div className="flex items-center gap-1 text-purple-600">
@@ -158,7 +187,6 @@ export default function IntakeRequestsTable({
       );
     }
 
-    // Show skip reason for new requests that were skipped
     if (request.status === 'new' && request.skip_reason) {
       return (
         <TooltipProvider>
@@ -180,6 +208,66 @@ export default function IntakeRequestsTable({
     return <span className="text-muted-foreground text-xs">—</span>;
   };
 
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleLink = () => {
+    if (selectedIds.size < 2) return;
+    onLinkPlayers?.(Array.from(selectedIds));
+    setSelectedIds(new Set());
+  };
+
+  const handleUnlink = (requestId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onUnlinkPlayer?.(requestId);
+  };
+
+  const renderLinkIndicator = (requestId: string) => {
+    const groupId = linkGroupMap.get(requestId);
+    if (!groupId) return null;
+
+    const color = groupColors.get(groupId) || 'bg-muted';
+    const members = linkGroups.get(groupId) || [];
+    const memberNames = members
+      .filter(id => id !== requestId)
+      .map(id => requests.find(r => r.id === id)?.full_name)
+      .filter(Boolean);
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => handleUnlink(requestId, e)}
+              className="inline-flex items-center gap-1"
+            >
+              <span className={`inline-block h-2.5 w-2.5 rounded-full ${color}`} />
+              <Link2 className="h-3 w-3 text-muted-foreground" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs font-medium mb-1">{t('intakeRequests.links.linkedWith', { defaultValue: 'Linked with' })}:</p>
+            <ul className="text-xs">
+              {memberNames.map((name, i) => (
+                <li key={i}>{name}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground mt-1">{t('intakeRequests.links.clickToUnlink', { defaultValue: 'Click to unlink' })}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
+  const hasLinkingSupport = !!onLinkPlayers;
+
   if (requests.length === 0) {
     return (
       <Card>
@@ -200,10 +288,28 @@ export default function IntakeRequestsTable({
 
   return (
     <Card>
+      {/* Link action bar */}
+      {hasLinkingSupport && selectedIds.size >= 2 && (
+        <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2">
+          <Link2 className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">
+            {selectedIds.size} {t('intakeRequests.links.selected', { defaultValue: 'selected' })}
+          </span>
+          <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={handleLink}>
+            <Link2 className="h-3 w-3 mr-1" />
+            {t('intakeRequests.links.linkTogether', { defaultValue: 'Link together' })}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedIds(new Set())}>
+            {t('common:cancel', { defaultValue: 'Cancel' })}
+          </Button>
+        </div>
+      )}
+
       <CardContent className="p-0">
         <Table>
           <TableHeader>
             <TableRow>
+              {hasLinkingSupport && <TableHead className="w-10"></TableHead>}
               <TableHead>{t('intakeRequests.table.player')}</TableHead>
               <TableHead>{t('intakeRequests.table.lessonType')}</TableHead>
               <TableHead>{t('intakeRequests.table.rating')}</TableHead>
@@ -221,10 +327,28 @@ export default function IntakeRequestsTable({
                 className="cursor-pointer hover:bg-muted/50"
                 onClick={() => onRowClick(request)}
               >
+                {hasLinkingSupport && (
+                  <TableCell className="w-10 pr-0" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds.has(request.id)}
+                      onCheckedChange={() => {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(request.id)) next.delete(request.id);
+                          else next.add(request.id);
+                          return next;
+                        });
+                      }}
+                    />
+                  </TableCell>
+                )}
                 <TableCell>
-                  <div>
-                    <div className="font-medium">{request.full_name}</div>
-                    <div className="text-sm text-muted-foreground">{request.email}</div>
+                  <div className="flex items-center gap-2">
+                    {renderLinkIndicator(request.id)}
+                    <div>
+                      <div className="font-medium">{request.full_name}</div>
+                      <div className="text-sm text-muted-foreground">{request.email}</div>
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>
