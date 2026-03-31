@@ -1664,6 +1664,7 @@ export function exportIntakeRequestsToCsv(
   filename: string,
   trainerMap?: Record<string, string>, // id → name
   playerLinks?: PlayerLink[],
+  locationMap?: Record<string, string>, // id → name
 ) {
   const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
   const dayHeaders = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
