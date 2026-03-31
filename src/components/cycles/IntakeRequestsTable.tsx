@@ -1,10 +1,7 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -16,13 +13,11 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   FileText, 
-  Users, 
   AlertCircle, 
   Calendar,
   CheckCircle2,
   Clock,
   Link2,
-  Unlink,
 } from 'lucide-react';
 import { type IntakeRequestWithProposal, type PlayerLink } from '@/lib/cycles';
 import {
@@ -44,8 +39,6 @@ interface IntakeRequestsTableProps {
   emptyMessage?: string;
   emptyDescription?: string;
   playerLinks?: PlayerLink[];
-  onLinkPlayers?: (ids: string[]) => void;
-  onUnlinkPlayer?: (id: string) => void;
 }
 
 // Colors for link groups so linked players are visually distinct
@@ -61,15 +54,12 @@ export default function IntakeRequestsTable({
   emptyMessage = 'No requests',
   emptyDescription = 'Applications will appear here when players sign up',
   playerLinks = [],
-  onLinkPlayers,
-  onUnlinkPlayer,
 }: IntakeRequestsTableProps) {
   const { t } = useTranslation('cycles');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Build link group map
-  const linkGroupMap = new Map<string, string>(); // requestId -> linkGroup
-  const linkGroups = new Map<string, string[]>(); // linkGroup -> requestIds
+  const linkGroupMap = new Map<string, string>();
+  const linkGroups = new Map<string, string[]>();
   playerLinks.forEach(pl => {
     linkGroupMap.set(pl.intake_request_id, pl.link_group);
     const existing = linkGroups.get(pl.link_group) || [];
@@ -208,30 +198,9 @@ export default function IntakeRequestsTable({
     return <span className="text-muted-foreground text-xs">—</span>;
   };
 
-  const toggleSelect = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleLink = () => {
-    if (selectedIds.size < 2) return;
-    onLinkPlayers?.(Array.from(selectedIds));
-    setSelectedIds(new Set());
-  };
-
-  const handleUnlink = (requestId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    onUnlinkPlayer?.(requestId);
-  };
-
-  const renderLinkIndicator = (requestId: string) => {
+  const renderLinkedColumn = (requestId: string) => {
     const groupId = linkGroupMap.get(requestId);
-    if (!groupId) return null;
+    if (!groupId) return <span className="text-muted-foreground text-xs">—</span>;
 
     const color = groupColors.get(groupId) || 'bg-muted';
     const members = linkGroups.get(groupId) || [];
@@ -240,17 +209,19 @@ export default function IntakeRequestsTable({
       .map(id => requests.find(r => r.id === id)?.full_name)
       .filter(Boolean);
 
+    if (memberNames.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
-              onClick={(e) => handleUnlink(requestId, e)}
-              className="inline-flex items-center gap-1"
-            >
-              <span className={`inline-block h-2.5 w-2.5 rounded-full ${color}`} />
-              <Link2 className="h-3 w-3 text-muted-foreground" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <span className={`inline-block h-2.5 w-2.5 rounded-full ${color} shrink-0`} />
+              <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                {memberNames.length === 1 ? memberNames[0] : `${memberNames[0]} +${memberNames.length - 1}`}
+              </span>
+            </div>
           </TooltipTrigger>
           <TooltipContent>
             <p className="text-xs font-medium mb-1">{t('intakeRequests.links.linkedWith', { defaultValue: 'Linked with' })}:</p>
@@ -259,14 +230,11 @@ export default function IntakeRequestsTable({
                 <li key={i}>{name}</li>
               ))}
             </ul>
-            <p className="text-xs text-muted-foreground mt-1">{t('intakeRequests.links.clickToUnlink', { defaultValue: 'Click to unlink' })}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
     );
   };
-
-  const hasLinkingSupport = !!onLinkPlayers;
 
   if (requests.length === 0) {
     return (
@@ -288,34 +256,17 @@ export default function IntakeRequestsTable({
 
   return (
     <Card>
-      {/* Link action bar */}
-      {hasLinkingSupport && selectedIds.size >= 2 && (
-        <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2">
-          <Link2 className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">
-            {selectedIds.size} {t('intakeRequests.links.selected', { defaultValue: 'selected' })}
-          </span>
-          <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={handleLink}>
-            <Link2 className="h-3 w-3 mr-1" />
-            {t('intakeRequests.links.linkTogether', { defaultValue: 'Link together' })}
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedIds(new Set())}>
-            {t('common:cancel', { defaultValue: 'Cancel' })}
-          </Button>
-        </div>
-      )}
-
       <CardContent className="p-0">
         <Table>
           <TableHeader>
             <TableRow>
-              {hasLinkingSupport && <TableHead className="w-10"></TableHead>}
               <TableHead>{t('intakeRequests.table.player')}</TableHead>
               <TableHead>{t('intakeRequests.table.lessonType')}</TableHead>
               <TableHead>{t('intakeRequests.table.rating')}</TableHead>
               <TableHead className="hidden md:table-cell">{t('intakeRequests.table.availability')}</TableHead>
               <TableHead className="hidden lg:table-cell">{t('intakeRequests.table.preferredTrainer')}</TableHead>
               <TableHead>{t('intakeRequests.table.status')}</TableHead>
+              <TableHead>{t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' })}</TableHead>
               <TableHead>{t('proposals.title')}</TableHead>
               <TableHead className="hidden sm:table-cell">{t('intakeRequests.table.applied')}</TableHead>
             </TableRow>
@@ -327,28 +278,10 @@ export default function IntakeRequestsTable({
                 className="cursor-pointer hover:bg-muted/50"
                 onClick={() => onRowClick(request)}
               >
-                {hasLinkingSupport && (
-                  <TableCell className="w-10 pr-0" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedIds.has(request.id)}
-                      onCheckedChange={() => {
-                        setSelectedIds(prev => {
-                          const next = new Set(prev);
-                          if (next.has(request.id)) next.delete(request.id);
-                          else next.add(request.id);
-                          return next;
-                        });
-                      }}
-                    />
-                  </TableCell>
-                )}
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    {renderLinkIndicator(request.id)}
-                    <div>
-                      <div className="font-medium">{request.full_name}</div>
-                      <div className="text-sm text-muted-foreground">{request.email}</div>
-                    </div>
+                  <div>
+                    <div className="font-medium">{request.full_name}</div>
+                    <div className="text-sm text-muted-foreground">{request.email}</div>
                   </div>
                 </TableCell>
                 <TableCell>
@@ -384,6 +317,9 @@ export default function IntakeRequestsTable({
                   <Badge variant="outline" className={getStatusColor(request.status)}>
                     {t(`intakeRequests.filters.${request.status}`)}
                   </Badge>
+                </TableCell>
+                <TableCell>
+                  {renderLinkedColumn(request.id)}
                 </TableCell>
                 <TableCell>
                   {renderProposalIndicator(request)}

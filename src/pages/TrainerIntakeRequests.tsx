@@ -26,8 +26,6 @@ import {
   unassignPlayer,
   exportIntakeRequestsToCsv,
   getPlayerLinks,
-  linkPlayers,
-  unlinkPlayer,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
@@ -355,20 +353,6 @@ export default function TrainerIntakeRequests() {
           emptyMessage={t('intakeRequests.noRequests')}
           emptyDescription={t('intakeRequests.noRequestsDescription')}
           playerLinks={playerLinksData}
-          onLinkPlayers={async (ids) => {
-            try {
-              await linkPlayers(ids);
-              toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
-              fetchData();
-            } catch (e: any) { toast.error(e.message); }
-          }}
-          onUnlinkPlayer={async (id) => {
-            try {
-              await unlinkPlayer(id);
-              toast.success(t('intakeRequests.links.unlinked', { defaultValue: 'Player unlinked' }));
-              fetchData();
-            } catch (e: any) { toast.error(e.message); }
-          }}
         />
       ) : (
         <ProposalScheduleGrid
@@ -468,6 +452,9 @@ export default function TrainerIntakeRequests() {
         onOpenChange={(open) => !open && setSelectedRequest(null)}
         onStatusChange={fetchData}
         cycleId={selectedCycle?.id}
+        playerLinks={playerLinksData}
+        allRequests={requests}
+        onLinkChanged={fetchData}
       />
 
       {/* Generate Proposals Wizard */}
