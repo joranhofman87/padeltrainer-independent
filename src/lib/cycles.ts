@@ -140,6 +140,7 @@ export interface IntakeRequest {
   sessions_per_week: number;
   preferred_trainer_ids: string[];
   location_id: string | null;
+  birth_date: string | null;
   notes: string | null;
   consent_given: boolean;
   status: 'new' | 'proposed' | 'confirmed' | 'rejected' | 'waitlist';
