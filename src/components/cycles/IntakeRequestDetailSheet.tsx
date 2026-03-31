@@ -50,6 +50,7 @@ import {
   deleteIntakeRequest
 } from '@/lib/cycles';
 import ProposalCard from './ProposalCard';
+import EditIntakeRequestDialog from './EditIntakeRequestDialog';
 
 interface IntakeRequestDetailSheetProps {
   request: IntakeRequestWithProposal | null;
