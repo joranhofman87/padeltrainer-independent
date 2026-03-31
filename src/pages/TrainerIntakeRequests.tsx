@@ -25,9 +25,13 @@ import {
   assignPlayerToSlot,
   unassignPlayer,
   exportIntakeRequestsToCsv,
+  getPlayerLinks,
+  linkPlayers,
+  unlinkPlayer,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
+  type PlayerLink,
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
