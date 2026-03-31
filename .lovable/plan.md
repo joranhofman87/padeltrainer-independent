@@ -1,77 +1,42 @@
 
 
-# Edit Registrations & Player Linking System
+# Move Player Linking from Table Checkboxes to Detail Sheet
 
 ## Summary
-Two features for the intake requests (aanmeldingen) system:
+Remove the confusing checkbox-based bulk linking from the table. Instead, add a dedicated "Linked" column in the table showing colored indicators, and move all link/unlink actions into the detail drawer with a searchable dropdown.
 
-1. **Edit registrations** — Trainers and academy managers can edit any field of a registration from the detail sheet.
-2. **Link players together** — Simply connect 2+ registrations so they stay together during proposal generation. No group names, no extra metadata — just links between registrations within the same cycle.
+## Changes
 
-No existing data is modified. Only new capabilities and a new table are added.
+### 1. IntakeRequestsTable.tsx — Simplify table
+- **Remove**: Checkbox column, `selectedIds` state, bulk action bar, `onLinkPlayers` prop
+- **Keep**: `playerLinks` prop and `onUnlinkPlayer` prop for data display
+- **Add**: A new "Linked" column (between Status and Proposal, or after Player name) that shows:
+  - Nothing if not linked
+  - Colored dot + linked player names as a compact badge/tooltip if linked
+  - No click-to-unlink on the table — just visual indicator
 
-## Database Changes
+### 2. IntakeRequestDetailSheet.tsx — Add linking section
+- Add a new **"Linked Players"** card section (after Notes, before Proposal)
+- Shows currently linked players as badges with an X to unlink
+- Has a **searchable dropdown** (Popover + Command) to search other registrations in the same cycle and add them as linked
+- When linking: calls `linkPlayers([currentRequestId, selectedRequestId])` or adds to existing group
+- When unlinking: calls `unlinkPlayer(requestId)`
+- New props: `playerLinks`, `allRequests` (list of all requests in the cycle for the search), `onLinkPlayer`, `onUnlinkPlayer`
 
-### New table: `player_links`
+### 3. Page components (AcademyIntakeRequests.tsx, TrainerIntakeRequests.tsx)
+- Remove `onLinkPlayers` from table props
+- Pass `playerLinks`, `allRequests`, `onLinkPlayer`, `onUnlinkPlayer` to the detail sheet instead
+- Keep existing link data fetching logic
 
-A simple join table that groups registrations together. Registrations sharing the same `link_group` UUID belong together.
+### 4. No database changes
+The `player_links` table and existing CRUD functions (`linkPlayers`, `unlinkPlayer`, `getPlayerLinks`) remain unchanged.
 
-```sql
-CREATE TABLE public.player_links (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  link_group uuid NOT NULL DEFAULT gen_random_uuid(),
-  intake_request_id uuid NOT NULL REFERENCES intake_requests(id) ON DELETE CASCADE,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (intake_request_id)
-);
-```
-
-- Each registration can belong to at most one link group
-- Registrations with the same `link_group` value want to train together
-- No name column — purely structural linking
-
-RLS policies mirror existing intake_requests policies (trainers for their cycles, academy managers for their academy's cycles).
-
-## Application Changes
-
-### 1. Edit Registration
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/lib/cycles.ts` | Add `updateIntakeRequest(id, fields)` function |
-| `src/components/cycles/EditIntakeRequestDialog.tsx` | New dialog with form pre-populated with current data (name, email, phone, rating, lesson type, days, time windows, duration, sessions/week, trainers, notes) |
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Add "Edit" (Pencil) button that opens the edit dialog |
-
-### 2. Link Players Together
-
-| File | Change |
-|------|--------|
-| `src/lib/cycles.ts` | Add `getPlayerLinks(cycleId)`, `linkPlayers(intakeRequestIds)`, `unlinkPlayer(intakeRequestId)` functions |
-| `src/components/cycles/IntakeRequestsTable.tsx` | Add a colored "link" badge/icon showing linked registrations. Add checkbox selection + "Link selected" button. Show which players are linked together using matching colored dots/icons. |
-| `src/pages/academy/AcademyIntakeRequests.tsx` | Pass link data to table, wire up link/unlink actions |
-| `src/pages/TrainerIntakeRequests.tsx` | Same integration |
-
-**Linking flow:**
-1. Select 2+ registrations using checkboxes in the table
-2. Click "Link together" button
-3. All selected registrations get the same `link_group` UUID
-4. Linked registrations show a matching colored indicator in the table
-5. Click the link icon on any linked registration to unlink it
-
-### 3. Proposal Generator Update
-
-| File | Change |
-|------|--------|
-| `supabase/functions/generate-proposals/index.ts` | Fetch `player_links` for the cycle. When placing a player that has a link group, heavily boost score for slots where other linked players are already placed. Process linked players consecutively. |
-
-The group cohesion score is additive — it does not override time/availability matching, it just strongly favors keeping linked players in the same slot.
-
-### 4. Translation Keys
-Add Dutch translations for link-related UI labels and messages.
-
-## Safety
-- No changes to existing `intake_requests` schema
-- No existing data modified — only INSERTs into the new `player_links` table
-- Cycles without any links work exactly as before
-- Edit only updates fields the admin explicitly changes
+| `IntakeRequestsTable.tsx` | Remove checkboxes, bulk action bar, selection state. Add read-only "Linked" column with colored dot + names. |
+| `IntakeRequestDetailSheet.tsx` | Add "Linked Players" card with searchable dropdown to link/unlink. New props for link data and actions. |
+| `AcademyIntakeRequests.tsx` | Move link handlers from table to detail sheet props. Pass `allRequests` to sheet. |
+| `TrainerIntakeRequests.tsx` | Same as above. |
 
