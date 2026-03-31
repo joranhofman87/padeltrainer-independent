@@ -444,6 +444,9 @@ export default function AcademyIntakeRequests() {
         onOpenChange={(open) => !open && setSelectedRequest(null)}
         onStatusChange={fetchData}
         cycleId={selectedCycle?.id}
+        playerLinks={playerLinksData}
+        allRequests={requests}
+        onLinkChanged={fetchData}
       />
 
       {/* Generate Proposals Wizard */}

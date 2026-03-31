@@ -454,6 +454,9 @@ export default function TrainerIntakeRequests() {
         onOpenChange={(open) => !open && setSelectedRequest(null)}
         onStatusChange={fetchData}
         cycleId={selectedCycle?.id}
+        playerLinks={playerLinksData}
+        allRequests={requests}
+        onLinkChanged={fetchData}
       />
 
       {/* Generate Proposals Wizard */}
