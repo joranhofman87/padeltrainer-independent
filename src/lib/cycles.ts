@@ -1541,12 +1541,8 @@ export function exportIntakeRequestsToCsv(
     'Notes', 'Status', 'Applied Date',
   ];
 
-  const escCsv = (val: string) => {
-    if (val.includes('"') || val.includes(',') || val.includes('\n')) {
-      return `"${val.replace(/"/g, '""')}"`;
-    }
-    return val;
-  };
+  const escCsv = (val: string) => `"${(val || '').replace(/"/g, '""')}"`;
+
 
   const rows = requests.map((r) => {
     const timeWindows = (r.preferred_time_windows ?? [])
@@ -1572,11 +1568,11 @@ export function exportIntakeRequestsToCsv(
       r.notes ?? '',
       r.status ?? '',
       r.created_at ? format(new Date(r.created_at), 'yyyy-MM-dd HH:mm') : '',
-    ].map(escCsv).join(',');
+    ].map(escCsv).join(';');
   });
 
   const BOM = '\uFEFF';
-  const csv = BOM + [headers.join(','), ...rows].join('\n');
+  const csv = BOM + [headers.map(escCsv).join(';'), ...rows].join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
