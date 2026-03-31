@@ -1,28 +1,23 @@
 
 
-# Show Day-Linked Time Windows in Registration Views
+# CSV Export: Day-Per-Column with Times
 
 ## Summary
-Pure display fix. All existing registrations already store `preferred_time_windows` as `{ day, start, end }[]` — the detail sheet and table just need to group and display them by day instead of showing days and times separately.
+Replace the single "Preferred Days" and "Preferred Time Windows" columns with one column per weekday (Monday–Sunday). Each cell shows the time windows for that day, or is empty if the player didn't select it. This lets trainers sort/filter in Excel by any specific day.
 
-## Changes
+## Current → New Column Layout
 
-### IntakeRequestDetailSheet.tsx — Availability section (~lines 330-360)
-Replace the two separate sections (days chips + flat time windows list) with a grouped view:
-- Group `preferred_time_windows` by their `day` field
-- For each day in `preferred_days`, show the day name followed by its time range badges
-- Days with no time windows show "(hele dag)" / "(whole day)"
-- Example: `Maandag: 09:00 - 11:00 | 14:00 - 16:00`
+**Remove**: `Preferred Days`, `Preferred Time Windows`
 
-### IntakeRequestsTable.tsx — Availability column
-Update `formatAvailability()` to show compact day+time (e.g. "Ma 09-11, Wo 18-21") instead of just day abbreviations.
+**Add 7 columns**: `Monday`, `Tuesday`, `Wednesday`, `Thursday`, `Friday`, `Saturday`, `Sunday`
 
-## Files Changed
+Each cell contains the time ranges for that day (e.g. `09:00-11:00; 14:00-16:00`) or is empty if not selected. If a day is in `preferred_days` but has no time windows, the cell shows `✓` (available whole day).
+
+## File Changed
 
 | File | Change |
 |------|--------|
-| `IntakeRequestDetailSheet.tsx` | Group time windows by day in availability section |
-| `IntakeRequestsTable.tsx` | Show day+time in availability column |
+| `src/lib/cycles.ts` | Update `exportIntakeRequestsToCsv` — replace 2 columns with 7 day columns, populate from `preferred_time_windows` and `preferred_days` |
 
-No database, migration, or data changes needed.
+No other files need changes — the callers just pass requests and get a download.
 
