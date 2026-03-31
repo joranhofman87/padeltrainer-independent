@@ -99,10 +99,30 @@ export default function IntakeRequestsTable({
   };
 
   const formatAvailability = (request: IntakeRequestWithProposal) => {
-    const days = request.preferred_days?.slice(0, 3).map(d => 
-      d.charAt(0).toUpperCase() + d.slice(1, 3)
-    ).join(', ');
-    return days || '—';
+    const timeWindows = (request.preferred_time_windows || []) as Array<{ day?: string; start?: string; end?: string }>;
+    const windowsByDay = new Map<string, Array<{ start: string; end: string }>>();
+    timeWindows.forEach(tw => {
+      if (tw.day && tw.start && tw.end) {
+        const existing = windowsByDay.get(tw.day) || [];
+        existing.push({ start: tw.start, end: tw.end });
+        windowsByDay.set(tw.day, existing);
+      }
+    });
+    const days = request.preferred_days || [];
+    if (days.length === 0 && windowsByDay.size === 0) return '—';
+    const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const uniqueDays = [...new Set([...days, ...windowsByDay.keys()])].sort(
+      (a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b)
+    );
+    return uniqueDays.slice(0, 3).map(day => {
+      const abbr = day.charAt(0).toUpperCase() + day.slice(1, 3);
+      const windows = windowsByDay.get(day) || [];
+      if (windows.length > 0) {
+        const timeStr = windows.map(w => `${w.start.slice(0, 5)}-${w.end.slice(0, 5)}`).join(', ');
+        return `${abbr} ${timeStr}`;
+      }
+      return abbr;
+    }).join(', ') + (uniqueDays.length > 3 ? ` +${uniqueDays.length - 3}` : '');
   };
 
   const getLessonTypeBadge = (lessonType: string) => {
