@@ -74,6 +74,14 @@ export default function AcademyIntakeRequests() {
       ]);
       setCycles(cyclesData);
       setRequests(requestsData);
+
+      // Fetch player links for all cycles
+      const allLinks: PlayerLink[] = [];
+      for (const c of cyclesData) {
+        const links = await getPlayerLinks(c.id);
+        allLinks.push(...links);
+      }
+      setPlayerLinksData(allLinks);
     } catch (error: any) {
       logger.error('Error fetching intake requests', error as Error, { component: 'AcademyIntakeRequests', academyId: activeAcademy?.id });
       toast.error(error.message);
