@@ -1,40 +1,44 @@
 
 
-# Add "Linked Players" Column to CSV Export
+# Add Missing Fields to CSV Export
 
 ## Summary
-Add a column to the CSV export showing the names of players each registration is linked to (via admin/trainer connections).
+The CSV export is missing several fields that players fill out during registration. These fields exist in the database and are already fetched — they just need to be added to the CSV output.
 
-## Change
+## Missing Fields
 
-**File: `src/lib/cycles.ts`**
+| Field | In DB | In CSV | Action |
+|-------|-------|--------|--------|
+| Birth Date | ✅ `birth_date` | ❌ | Add column |
+| Location | ✅ `location_id` | ❌ | Add column (resolve name from cycles/locations) |
+| Selected Package | ✅ `metadata.selected_cyclus_option` | ❌ | Add column (label + price) |
+| Preferred Weeks | ✅ `metadata.preferred_number_of_weeks` | ❌ | Add column |
 
-Update `exportIntakeRequestsToCsv` to accept a `playerLinks` parameter (`PlayerLink[]`):
+All other form fields (name, email, phone, rating, rating system, lesson type, duration, sessions/week, preferred trainer, notes, availability days) are already in the CSV.
 
-1. Add `"Linked Players"` header after `"Status"` (before `"Applied Date"`)
-2. Group `playerLinks` by `link_group` to find which requests share a group
-3. For each request, find linked partners via shared `link_group`, look up their names from `requests`, and join with `; `
-4. Empty string if no links exist
+## Changes
+
+**File: `src/lib/cycles.ts`** — `exportIntakeRequestsToCsv`
+
+Add 4 new columns to the headers and row mapping:
+- **"Birth Date"** — formatted from `r.birth_date`
+- **"Location"** — resolved from `location_id` (pass location map as parameter, or extract from metadata)
+- **"Package"** — from `r.metadata?.selected_cyclus_option?.label`
+- **"Preferred Weeks"** — from `r.metadata?.preferred_number_of_weeks`
 
 **Files: `AcademyIntakeRequests.tsx` + `TrainerIntakeRequests.tsx`**
 
-Pass `playerLinksData` as third argument to `exportIntakeRequestsToCsv`.
+Pass a location name map (built from the cycles' location data already loaded) to the export function.
 
-Update the function signature:
-```ts
-export function exportIntakeRequestsToCsv(
-  requests: IntakeRequestWithProposal[],
-  filename: string,
-  trainerMap?: Record<string, string>,
-  playerLinks?: PlayerLink[],
-)
-```
+**File: `src/lib/cycles.ts`** — `IntakeRequest` interface
+
+Add `birth_date: string | null` to the interface so TypeScript is aware of it (it's already returned at runtime).
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/lib/cycles.ts` | Add `playerLinks` param, add "Linked Players" column with partner names |
-| `src/pages/academy/AcademyIntakeRequests.tsx` | Pass `playerLinksData` to export call |
-| `src/pages/TrainerIntakeRequests.tsx` | Pass `playerLinksData` to export call |
+| `src/lib/cycles.ts` | Add `birth_date` to interface; add 4 new CSV columns; accept optional `locationMap` param |
+| `AcademyIntakeRequests.tsx` | Pass location map to export |
+| `TrainerIntakeRequests.tsx` | Pass location map to export |
 
