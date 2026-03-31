@@ -4,11 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ArrowLeft, List, CalendarDays, AlertCircle } from 'lucide-react';
+import { ArrowLeft, List, CalendarDays, AlertCircle, Download } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -23,6 +24,7 @@ import {
   deleteSlot,
   assignPlayerToSlot,
   unassignPlayer,
+  exportIntakeRequestsToCsv,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
@@ -287,14 +289,30 @@ export default function TrainerIntakeRequests() {
           </TabsList>
         </Tabs>
 
-        <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
-          <ToggleGroupItem value="list" aria-label="List view">
-            <List className="h-4 w-4" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="schedule" aria-label="Schedule view">
-            <CalendarDays className="h-4 w-4" />
-          </ToggleGroupItem>
-        </ToggleGroup>
+        <div className="flex items-center gap-2">
+          <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
+            <ToggleGroupItem value="list" aria-label="List view">
+              <List className="h-4 w-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="schedule" aria-label="Schedule view">
+              <CalendarDays className="h-4 w-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const cycleName = selectedCycle?.name ?? 'all';
+              const date = format(new Date(), 'yyyy-MM-dd');
+              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`);
+            }}
+            disabled={filteredRequests.length === 0}
+            className="h-8 text-xs"
+          >
+            <Download className="h-3 w-3 mr-1" />
+            CSV
+          </Button>
+        </div>
       </div>
 
       {/* Skipped reasons summary */}

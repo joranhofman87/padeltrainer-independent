@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { List, CalendarDays, AlertCircle, UserPlus } from 'lucide-react';
+import { List, CalendarDays, AlertCircle, UserPlus, Download } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -21,6 +22,7 @@ import {
   deleteSlot,
   assignPlayerToSlot,
   unassignPlayer,
+  exportIntakeRequestsToCsv,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
@@ -275,6 +277,20 @@ export default function AcademyIntakeRequests() {
           >
             <UserPlus className="h-3 w-3 mr-1" />
             {t('intakeRequests.addManual', { defaultValue: 'Add registration' })}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const cycleName = selectedCycle?.name ?? 'all';
+              const date = format(new Date(), 'yyyy-MM-dd');
+              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`);
+            }}
+            disabled={filteredRequests.length === 0}
+            className="h-8 text-xs"
+          >
+            <Download className="h-3 w-3 mr-1" />
+            CSV
           </Button>
         </div>
 

@@ -1526,3 +1526,62 @@ export async function swapSlots(
 
   if (error) throw error;
 }
+
+// ── CSV Export ──────────────────────────────────────────────
+
+export function exportIntakeRequestsToCsv(
+  requests: IntakeRequestWithProposal[],
+  filename: string,
+  trainerMap?: Record<string, string>, // id → name
+) {
+  const headers = [
+    'Full Name', 'Email', 'Phone', 'Rating', 'Rating System',
+    'Lesson Type', 'Preferred Days', 'Preferred Time Windows',
+    'Duration (min)', 'Sessions/Week', 'Preferred Trainers',
+    'Notes', 'Status', 'Applied Date',
+  ];
+
+  const escCsv = (val: string) => {
+    if (val.includes('"') || val.includes(',') || val.includes('\n')) {
+      return `"${val.replace(/"/g, '""')}"`;
+    }
+    return val;
+  };
+
+  const rows = requests.map((r) => {
+    const timeWindows = (r.preferred_time_windows ?? [])
+      .map((tw) => `${tw.day} ${tw.start}-${tw.end}`)
+      .join('; ');
+
+    const trainers = (r.preferred_trainer_ids ?? [])
+      .map((id) => trainerMap?.[id] ?? id)
+      .join('; ');
+
+    return [
+      r.full_name,
+      r.email,
+      r.phone ?? '',
+      r.rating != null ? String(r.rating) : '',
+      r.rating_system ?? '',
+      r.lesson_type ?? '',
+      (r.preferred_days ?? []).join('; '),
+      timeWindows,
+      r.preferred_duration_minutes ? String(r.preferred_duration_minutes) : '',
+      r.sessions_per_week ? String(r.sessions_per_week) : '',
+      trainers,
+      r.notes ?? '',
+      r.status ?? '',
+      r.created_at ? format(new Date(r.created_at), 'yyyy-MM-dd HH:mm') : '',
+    ].map(escCsv).join(',');
+  });
+
+  const BOM = '\uFEFF';
+  const csv = BOM + [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
