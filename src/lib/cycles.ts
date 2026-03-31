@@ -1541,7 +1541,7 @@ export function exportIntakeRequestsToCsv(
     'Notes', 'Status', 'Applied Date',
   ];
 
-  const escCsv = (val: string) => `"${(val || '').replace(/"/g, '""')}"`;
+  const escCsv = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
 
 
   const rows = requests.map((r) => {
@@ -1559,7 +1559,7 @@ export function exportIntakeRequestsToCsv(
       r.phone ?? '',
       r.rating != null ? String(r.rating) : '',
       r.rating_system ?? '',
-      r.lesson_type ?? '',
+      Array.isArray(r.lesson_type) ? r.lesson_type.join('; ') : (r.lesson_type ?? ''),
       (r.preferred_days ?? []).join('; '),
       timeWindows,
       r.preferred_duration_minutes ? String(r.preferred_duration_minutes) : '',
@@ -1578,6 +1578,8 @@ export function exportIntakeRequestsToCsv(
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   URL.revokeObjectURL(url);
 }
