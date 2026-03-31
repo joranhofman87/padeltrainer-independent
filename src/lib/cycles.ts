@@ -1726,6 +1726,7 @@ export function exportIntakeRequestsToCsv(
       trainers,
       r.notes ?? '',
       r.status ?? '',
+      (linkedNamesMap.get(r.id) ?? []).join('; '),
       r.created_at ? format(new Date(r.created_at), 'yyyy-MM-dd HH:mm') : '',
     ].map(escCsv).join(';');
   });
