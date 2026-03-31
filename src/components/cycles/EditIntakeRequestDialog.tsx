@@ -22,7 +22,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -32,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { updateIntakeRequest, type IntakeRequestWithProposal, type TimeWindow } from '@/lib/cycles';
-import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
+import DayAvailabilityPicker, { type DayAvailability, type TimeBlock } from './DayAvailabilityPicker';
 
 interface EditIntakeRequestDialogProps {
   open: boolean;
@@ -55,7 +54,6 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 const LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
 export default function EditIntakeRequestDialog({
   open,
@@ -66,7 +64,7 @@ export default function EditIntakeRequestDialog({
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedLessonTypes, setSelectedLessonTypes] = useState<string[]>([]);
-  const [dayAvailability, setDayAvailability] = useState<DayAvailability[]>([]);
+  const [dayAvailability, setDayAvailability] = useState<DayAvailability>({});
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -98,26 +96,27 @@ export default function EditIntakeRequestDialog({
       const lessonTypes = Array.isArray(request.lesson_type) ? request.lesson_type : [request.lesson_type];
       setSelectedLessonTypes(lessonTypes);
 
-      // Convert time windows to DayAvailability format
-      const availability: DayAvailability[] = DAYS.map(day => {
-        const windows = (request.preferred_time_windows || []).filter(tw => tw.day === day);
-        return {
-          day,
-          enabled: windows.length > 0 || (request.preferred_days || []).includes(day),
-          windows: windows.length > 0 ? windows.map(tw => ({ start: tw.start, end: tw.end })) : [{ start: '09:00', end: '17:00' }],
-        };
-      });
-      setDayAvailability(availability);
+      // Convert TimeWindow[] to DayAvailability record
+      const avail: DayAvailability = {};
+      const windows = request.preferred_time_windows || [];
+      for (const tw of windows) {
+        if (!avail[tw.day]) avail[tw.day] = [];
+        avail[tw.day].push({ start: tw.start, end: tw.end });
+      }
+      // Also add enabled days with no windows as default windows
+      for (const day of (request.preferred_days || [])) {
+        if (!avail[day]) avail[day] = [{ start: '09:00', end: '17:00' }];
+      }
+      setDayAvailability(avail);
     }
   }, [open, request]);
 
   const handleSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
-      const preferredDays = dayAvailability.filter(d => d.enabled).map(d => d.day);
-      const timeWindows: TimeWindow[] = dayAvailability
-        .filter(d => d.enabled)
-        .flatMap(d => d.windows.map(w => ({ day: d.day, start: w.start, end: w.end })));
+      const preferredDays = Object.keys(dayAvailability).filter(day => dayAvailability[day].length > 0);
+      const timeWindows: TimeWindow[] = Object.entries(dayAvailability)
+        .flatMap(([day, blocks]) => blocks.map(b => ({ day, start: b.start, end: b.end })));
 
       await updateIntakeRequest(request.id, {
         full_name: values.full_name,
@@ -133,7 +132,7 @@ export default function EditIntakeRequestDialog({
         notes: values.notes || null,
       });
 
-      toast.success(t('intakeRequests.edit.success', { defaultValue: 'Registration updated' }));
+      toast.success(t('intakeRequests.edit.success', { defaultValue: 'Registratie bijgewerkt' }));
       onSuccess();
       onOpenChange(false);
     } catch (error: any) {
@@ -153,9 +152,9 @@ export default function EditIntakeRequestDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t('intakeRequests.edit.title', { defaultValue: 'Edit registration' })}</DialogTitle>
+          <DialogTitle>{t('intakeRequests.edit.title', { defaultValue: 'Registratie bewerken' })}</DialogTitle>
           <DialogDescription>
-            {t('intakeRequests.edit.description', { defaultValue: 'Update the registration details' })}
+            {t('intakeRequests.edit.description', { defaultValue: 'Pas de registratiegegevens aan' })}
           </DialogDescription>
         </DialogHeader>
 
@@ -168,7 +167,7 @@ export default function EditIntakeRequestDialog({
                 name="full_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('application.form.name', { defaultValue: 'Name' })}</FormLabel>
+                    <FormLabel>{t('application.form.name', { defaultValue: 'Naam' })}</FormLabel>
                     <FormControl><Input {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -179,7 +178,7 @@ export default function EditIntakeRequestDialog({
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('application.form.email', { defaultValue: 'Email' })}</FormLabel>
+                    <FormLabel>{t('application.form.email', { defaultValue: 'E-mail' })}</FormLabel>
                     <FormControl><Input type="email" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -194,7 +193,7 @@ export default function EditIntakeRequestDialog({
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('application.form.phone', { defaultValue: 'Phone' })}</FormLabel>
+                    <FormLabel>{t('application.form.phone', { defaultValue: 'Telefoon' })}</FormLabel>
                     <FormControl><Input {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -216,7 +215,7 @@ export default function EditIntakeRequestDialog({
                 name="rating_system"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('application.form.ratingSystem', { defaultValue: 'System' })}</FormLabel>
+                    <FormLabel>{t('application.form.ratingSystem', { defaultValue: 'Systeem' })}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -235,7 +234,7 @@ export default function EditIntakeRequestDialog({
 
             {/* Lesson Types */}
             <div>
-              <Label className="text-sm font-medium">{t('application.form.lessonType', { defaultValue: 'Lesson type' })}</Label>
+              <Label className="text-sm font-medium">{t('application.form.lessonType', { defaultValue: 'Lesvorm' })}</Label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {LESSON_TYPES.map(type => (
                   <Button
@@ -258,7 +257,7 @@ export default function EditIntakeRequestDialog({
                 name="preferred_duration_minutes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('application.form.duration', { defaultValue: 'Duration (min)' })}</FormLabel>
+                    <FormLabel>{t('application.form.duration', { defaultValue: 'Duur (min)' })}</FormLabel>
                     <FormControl><Input type="number" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -269,7 +268,7 @@ export default function EditIntakeRequestDialog({
                 name="sessions_per_week"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('application.form.sessionsPerWeek', { defaultValue: 'Sessions/week' })}</FormLabel>
+                    <FormLabel>{t('application.form.sessionsPerWeek', { defaultValue: 'Sessies/week' })}</FormLabel>
                     <FormControl><Input type="number" min={1} max={7} {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -279,7 +278,7 @@ export default function EditIntakeRequestDialog({
 
             {/* Availability */}
             <div>
-              <Label className="text-sm font-medium">{t('intakeRequests.detail.availability', { defaultValue: 'Availability' })}</Label>
+              <Label className="text-sm font-medium">{t('intakeRequests.detail.availability', { defaultValue: 'Beschikbaarheid' })}</Label>
               <div className="mt-2">
                 <DayAvailabilityPicker
                   value={dayAvailability}
@@ -294,7 +293,7 @@ export default function EditIntakeRequestDialog({
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('intakeRequests.detail.notes', { defaultValue: 'Notes' })}</FormLabel>
+                  <FormLabel>{t('intakeRequests.detail.notes', { defaultValue: 'Opmerkingen' })}</FormLabel>
                   <FormControl><Textarea rows={3} {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -303,12 +302,12 @@ export default function EditIntakeRequestDialog({
 
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                {t('common:cancel', { defaultValue: 'Cancel' })}
+                {t('common:cancel', { defaultValue: 'Annuleren' })}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting
-                  ? t('intakeRequests.edit.saving', { defaultValue: 'Saving...' })
-                  : t('intakeRequests.edit.save', { defaultValue: 'Save changes' })}
+                  ? t('intakeRequests.edit.saving', { defaultValue: 'Opslaan...' })
+                  : t('intakeRequests.edit.save', { defaultValue: 'Wijzigingen opslaan' })}
               </Button>
             </div>
           </form>
