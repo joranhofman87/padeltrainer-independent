@@ -1662,15 +1662,33 @@ export function exportIntakeRequestsToCsv(
   requests: IntakeRequestWithProposal[],
   filename: string,
   trainerMap?: Record<string, string>, // id → name
+  playerLinks?: PlayerLink[],
 ) {
   const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
   const dayHeaders = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  // Build link group lookup: requestId → set of linked request ids
+  const linkedNamesMap = new Map<string, string[]>();
+  if (playerLinks?.length) {
+    const groupMap = new Map<string, string[]>();
+    for (const pl of playerLinks) {
+      if (!groupMap.has(pl.link_group)) groupMap.set(pl.link_group, []);
+      groupMap.get(pl.link_group)!.push(pl.intake_request_id);
+    }
+    const nameMap = new Map(requests.map(r => [r.id, r.full_name]));
+    for (const members of groupMap.values()) {
+      for (const id of members) {
+        const partners = members.filter(m => m !== id).map(m => nameMap.get(m) ?? m);
+        if (partners.length) linkedNamesMap.set(id, partners);
+      }
+    }
+  }
 
   const headers = [
     'Full Name', 'Email', 'Phone', 'Rating', 'Rating System',
     'Lesson Type', ...dayHeaders,
     'Duration (min)', 'Sessions/Week', 'Preferred Trainers',
-    'Notes', 'Status', 'Applied Date',
+    'Notes', 'Status', 'Linked Players', 'Applied Date',
   ];
 
   const escCsv = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
