@@ -329,32 +329,47 @@ export default function IntakeRequestDetailSheet({
                 {t('intakeRequests.detail.availability')}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {request.preferred_days && request.preferred_days.length > 0 && (
-                <div>
-                  <span className="text-sm text-muted-foreground block mb-2">Preferred days</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {request.preferred_days.map(day => (
-                      <Badge key={day} variant="outline" className="text-xs">
-                        {getDayLabel(day)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {request.preferred_time_windows && request.preferred_time_windows.length > 0 && (
-                <div>
-                  <span className="text-sm text-muted-foreground block mb-2">Time preferences</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {request.preferred_time_windows.map((window, idx) => (
-                      <Badge key={idx} variant="secondary" className="text-xs">
-                        <Clock3 className="h-3 w-3 mr-1" />
-                        {window.start && window.end ? formatTimeWindow(window as { start: string; end: string }) : 'Custom'}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <CardContent className="space-y-2">
+              {(() => {
+                const timeWindows = (request.preferred_time_windows || []) as Array<{ day?: string; start?: string; end?: string }>;
+                const windowsByDay = new Map<string, Array<{ start: string; end: string }>>();
+                timeWindows.forEach(tw => {
+                  if (tw.day) {
+                    const existing = windowsByDay.get(tw.day) || [];
+                    if (tw.start && tw.end) existing.push({ start: tw.start, end: tw.end });
+                    windowsByDay.set(tw.day, existing);
+                  }
+                });
+                const allDays = request.preferred_days || [];
+                if (allDays.length === 0 && windowsByDay.size === 0) {
+                  return <span className="text-sm text-muted-foreground">—</span>;
+                }
+                // Merge: show all days from preferred_days + any extra days from windows
+                const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+                const uniqueDays = [...new Set([...allDays, ...windowsByDay.keys()])].sort(
+                  (a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b)
+                );
+                return uniqueDays.map(day => {
+                  const windows = windowsByDay.get(day) || [];
+                  return (
+                    <div key={day} className="flex items-start gap-2">
+                      <span className="text-sm font-medium min-w-[90px]">{getDayLabel(day)}</span>
+                      <div className="flex flex-wrap gap-1">
+                        {windows.length > 0 ? windows.map((w, i) => (
+                          <Badge key={i} variant="secondary" className="text-xs">
+                            <Clock3 className="h-3 w-3 mr-1" />
+                            {w.start} - {w.end}
+                          </Badge>
+                        )) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                            {t('intakeRequests.detail.wholeDay', { defaultValue: 'Whole day' })}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </CardContent>
           </Card>
 
