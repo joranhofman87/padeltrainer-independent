@@ -89,6 +89,13 @@ export default function TrainerIntakeRequests() {
       ]);
       setCycles(cyclesData);
       setRequests(requestsData);
+
+      const allLinks: PlayerLink[] = [];
+      for (const c of cyclesData) {
+        const links = await getPlayerLinks(c.id);
+        allLinks.push(...links);
+      }
+      setPlayerLinksData(allLinks);
     } catch (error: any) {
       logger.error('Error fetching intake requests', error as Error, { component: 'TrainerIntakeRequests', trainerId });
       toast.error(error.message);
