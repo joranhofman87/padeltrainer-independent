@@ -39,7 +39,8 @@ import {
   Clock3,
   Sparkles,
   AlertCircle,
-  Trash2
+  Trash2,
+  Pencil
 } from 'lucide-react';
 import { 
   type IntakeRequestWithProposal, 
