@@ -1541,12 +1541,8 @@ export function exportIntakeRequestsToCsv(
     'Notes', 'Status', 'Applied Date',
   ];
 
-  const escCsv = (val: string) => {
-    if (val.includes('"') || val.includes(',') || val.includes('\n')) {
-      return `"${val.replace(/"/g, '""')}"`;
-    }
-    return val;
-  };
+  const escCsv = (val: string) => `"${(val || '').replace(/"/g, '""')}"`;
+
 
   const rows = requests.map((r) => {
     const timeWindows = (r.preferred_time_windows ?? [])
