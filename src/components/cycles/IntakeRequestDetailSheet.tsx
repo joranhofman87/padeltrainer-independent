@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -26,6 +26,19 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
   User,
   Mail,
   Phone,
@@ -40,14 +53,20 @@ import {
   Sparkles,
   AlertCircle,
   Trash2,
-  Pencil
+  Pencil,
+  Link2,
+  Plus,
+  X,
 } from 'lucide-react';
 import { 
   type IntakeRequestWithProposal, 
   type EnrichedProposedAssignment,
+  type PlayerLink,
   updateIntakeRequestStatus,
   getProposedAssignmentForRequest,
-  deleteIntakeRequest
+  deleteIntakeRequest,
+  linkPlayers,
+  unlinkPlayer,
 } from '@/lib/cycles';
 import ProposalCard from './ProposalCard';
 import EditIntakeRequestDialog from './EditIntakeRequestDialog';
@@ -58,6 +77,9 @@ interface IntakeRequestDetailSheetProps {
   onOpenChange: (open: boolean) => void;
   onStatusChange?: () => void;
   cycleId?: string;
+  playerLinks?: PlayerLink[];
+  allRequests?: IntakeRequestWithProposal[];
+  onLinkChanged?: () => void;
 }
 
 export default function IntakeRequestDetailSheet({
@@ -65,7 +87,10 @@ export default function IntakeRequestDetailSheet({
   open,
   onOpenChange,
   onStatusChange,
-  cycleId
+  cycleId,
+  playerLinks = [],
+  allRequests = [],
+  onLinkChanged,
 }: IntakeRequestDetailSheetProps) {
   const { t } = useTranslation('cycles');
   const [proposal, setProposal] = useState<EnrichedProposedAssignment | null>(null);
@@ -73,6 +98,8 @@ export default function IntakeRequestDetailSheet({
   const [isUpdating, setIsUpdating] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
+  const [isLinking, setIsLinking] = useState(false);
 
   useEffect(() => {
     const fetchProposal = async () => {
@@ -93,6 +120,37 @@ export default function IntakeRequestDetailSheet({
       fetchProposal();
     }
   }, [request, open]);
+
+  // Compute linked players for current request
+  const currentLinkGroup = useMemo(() => {
+    if (!request) return null;
+    const link = playerLinks.find(pl => pl.intake_request_id === request.id);
+    return link?.link_group ?? null;
+  }, [request, playerLinks]);
+
+  const linkedRequestIds = useMemo(() => {
+    if (!currentLinkGroup) return [];
+    return playerLinks
+      .filter(pl => pl.link_group === currentLinkGroup && pl.intake_request_id !== request?.id)
+      .map(pl => pl.intake_request_id);
+  }, [currentLinkGroup, playerLinks, request]);
+
+  const linkedRequests = useMemo(() => {
+    return linkedRequestIds
+      .map(id => allRequests.find(r => r.id === id))
+      .filter(Boolean) as IntakeRequestWithProposal[];
+  }, [linkedRequestIds, allRequests]);
+
+  // Available requests to link (same cycle, not already linked to this group, not self)
+  const availableToLink = useMemo(() => {
+    if (!request) return [];
+    const currentCycleId = request.cycle_id;
+    const alreadyLinkedIds = new Set([request.id, ...linkedRequestIds]);
+    return allRequests.filter(r => 
+      r.cycle_id === currentCycleId && 
+      !alreadyLinkedIds.has(r.id)
+    );
+  }, [request, allRequests, linkedRequestIds]);
 
   const handleStatusChange = async (newStatus: IntakeRequestWithProposal['status']) => {
     if (!request) return;
@@ -122,6 +180,36 @@ export default function IntakeRequestDetailSheet({
       toast.error(error.message);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleLinkPlayer = async (targetRequestId: string) => {
+    if (!request) return;
+    setIsLinking(true);
+    try {
+      if (currentLinkGroup && linkedRequestIds.length > 0) {
+        // Add to existing group: link current + all existing + new target
+        await linkPlayers([request.id, ...linkedRequestIds, targetRequestId]);
+      } else {
+        await linkPlayers([request.id, targetRequestId]);
+      }
+      toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
+      setLinkPopoverOpen(false);
+      onLinkChanged?.();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const handleUnlinkPlayer = async (targetRequestId: string) => {
+    try {
+      await unlinkPlayer(targetRequestId);
+      toast.success(t('intakeRequests.links.unlinked', { defaultValue: 'Player unlinked' }));
+      onLinkChanged?.();
+    } catch (error: any) {
+      toast.error(error.message);
     }
   };
 
@@ -286,6 +374,68 @@ export default function IntakeRequestDetailSheet({
               </CardContent>
             </Card>
           )}
+
+          {/* Linked Players */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Link2 className="h-4 w-4" />
+                {t('intakeRequests.links.linkedPlayers', { defaultValue: 'Samen trainen' })}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {linkedRequests.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {linkedRequests.map(lr => (
+                    <Badge key={lr.id} variant="secondary" className="flex items-center gap-1 pr-1">
+                      <span>{lr.full_name}</span>
+                      <button
+                        onClick={() => handleUnlinkPlayer(lr.id)}
+                        className="ml-1 rounded-full hover:bg-muted p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {t('intakeRequests.links.noLinks', { defaultValue: 'Geen gekoppelde spelers' })}
+                </p>
+              )}
+
+              <Popover open={linkPopoverOpen} onOpenChange={setLinkPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs" disabled={isLinking || availableToLink.length === 0}>
+                    <Plus className="h-3 w-3 mr-1" />
+                    {t('intakeRequests.links.addLink', { defaultValue: 'Koppelen' })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[280px]" align="start">
+                  <Command>
+                    <CommandInput placeholder={t('intakeRequests.links.searchPlayer', { defaultValue: 'Zoek speler...' })} />
+                    <CommandList>
+                      <CommandEmpty>{t('intakeRequests.links.noResults', { defaultValue: 'Geen spelers gevonden' })}</CommandEmpty>
+                      <CommandGroup>
+                        {availableToLink.map(r => (
+                          <CommandItem
+                            key={r.id}
+                            value={r.full_name}
+                            onSelect={() => handleLinkPlayer(r.id)}
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">{r.full_name}</span>
+                              <span className="text-xs text-muted-foreground">{r.email}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </CardContent>
+          </Card>
 
           <Separator />
 
