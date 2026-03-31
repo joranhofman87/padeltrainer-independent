@@ -289,14 +289,30 @@ export default function TrainerIntakeRequests() {
           </TabsList>
         </Tabs>
 
-        <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
-          <ToggleGroupItem value="list" aria-label="List view">
-            <List className="h-4 w-4" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="schedule" aria-label="Schedule view">
-            <CalendarDays className="h-4 w-4" />
-          </ToggleGroupItem>
-        </ToggleGroup>
+        <div className="flex items-center gap-2">
+          <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
+            <ToggleGroupItem value="list" aria-label="List view">
+              <List className="h-4 w-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="schedule" aria-label="Schedule view">
+              <CalendarDays className="h-4 w-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const cycleName = selectedCycle?.name ?? 'all';
+              const date = format(new Date(), 'yyyy-MM-dd');
+              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`);
+            }}
+            disabled={filteredRequests.length === 0}
+            className="h-8 text-xs"
+          >
+            <Download className="h-3 w-3 mr-1" />
+            CSV
+          </Button>
+        </div>
       </div>
 
       {/* Skipped reasons summary */}
