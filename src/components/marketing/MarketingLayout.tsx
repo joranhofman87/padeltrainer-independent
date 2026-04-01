@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Menu, X, Linkedin, Facebook, Instagram, Youtube, BookOpen, Target, MapPin, GraduationCap, Video, PenLine, Dumbbell, DollarSign, Rocket, Users, Building, Handshake } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
