@@ -56,6 +56,7 @@ export default function AcademyInvoices() {
   const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
   const [trainerFilter, setTrainerFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
@@ -66,20 +67,57 @@ export default function AcademyInvoices() {
   const formatEuro = (amount: number) =>
     amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // Fetch trainers for filter
+  // Fetch trainers for filter (two-step: get user_ids, then profiles for names)
   const { data: trainers = [] } = useQuery({
     queryKey: ["academy-trainers-filter", activeAcademy?.id],
     queryFn: async () => {
       if (!activeAcademy?.id) return [];
       const { data, error } = await supabase
         .from("academy_trainers")
-        .select("trainer_profile_id, trainer_profiles(id, business_name)")
+        .select("trainer_profile_id, trainer_profiles(id, business_name, user_id)")
         .eq("academy_profile_id", activeAcademy.id)
         .eq("status", "active");
       if (error) throw error;
+      
+      // Collect user_ids to fetch full_name from profiles
+      const userIds = (data || [])
+        .map((t: any) => t.trainer_profiles?.user_id)
+        .filter(Boolean);
+      
+      let profileMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("user_id, full_name")
+          .in("user_id", userIds);
+        profileMap = (profiles || []).reduce((acc: Record<string, string>, p: any) => {
+          acc[p.user_id] = p.full_name || "";
+          return acc;
+        }, {});
+      }
+      
       return (data || []).map((t: any) => ({
         id: t.trainer_profile_id,
-        name: t.trainer_profiles?.business_name || "Trainer",
+        name: t.trainer_profiles?.business_name || profileMap[t.trainer_profiles?.user_id] || "Trainer",
+      }));
+    },
+    enabled: !!activeAcademy?.id,
+  });
+
+  // Fetch academy locations for filter
+  const { data: academyLocations = [] } = useQuery({
+    queryKey: ["academy-locations-filter", activeAcademy?.id],
+    queryFn: async () => {
+      if (!activeAcademy?.id) return [];
+      const { data, error } = await supabase
+        .from("academy_locations")
+        .select("location_id, locations(id, name)")
+        .eq("academy_profile_id", activeAcademy.id)
+        .eq("is_active", true);
+      if (error) throw error;
+      return (data || []).map((l: any) => ({
+        id: l.location_id,
+        name: l.locations?.name || "Location",
       }));
     },
     enabled: !!activeAcademy?.id,
@@ -98,6 +136,52 @@ export default function AcademyInvoices() {
       return (data || []) as Invoice[];
     },
     enabled: !!activeAcademy?.id,
+  });
+
+  // Build invoice → location map from booking_ids → bookings → slots
+  const { data: invoiceLocationMap = {} } = useQuery({
+    queryKey: ["invoice-location-map", invoices.map(i => i.id).join(",")],
+    queryFn: async () => {
+      const allBookingIds = invoices
+        .flatMap(i => i.booking_ids || [])
+        .filter(Boolean);
+      if (allBookingIds.length === 0) return {};
+      
+      const { data: bookings } = await supabase
+        .from("bookings")
+        .select("id, slot_id")
+        .in("id", allBookingIds);
+      if (!bookings?.length) return {};
+      
+      const slotIds = [...new Set(bookings.map(b => b.slot_id))];
+      const { data: slots } = await supabase
+        .from("availability_slots")
+        .select("id, location_id")
+        .in("id", slotIds);
+      if (!slots?.length) return {};
+      
+      const slotLocationMap = slots.reduce((acc: Record<string, string>, s: any) => {
+        if (s.location_id) acc[s.id] = s.location_id;
+        return acc;
+      }, {});
+      
+      const bookingLocationMap = bookings.reduce((acc: Record<string, string>, b: any) => {
+        if (slotLocationMap[b.slot_id]) acc[b.id] = slotLocationMap[b.slot_id];
+        return acc;
+      }, {});
+      
+      const map: Record<string, string> = {};
+      for (const inv of invoices) {
+        for (const bid of (inv.booking_ids || [])) {
+          if (bookingLocationMap[bid]) {
+            map[inv.id] = bookingLocationMap[bid];
+            break;
+          }
+        }
+      }
+      return map;
+    },
+    enabled: invoices.length > 0,
   });
 
   // Backfill mutation
@@ -123,14 +207,18 @@ export default function AcademyInvoices() {
     },
   });
 
-  // Filter by trainer
+  // Filter by trainer, then by location
   const trainerFiltered = trainerFilter === "all"
     ? invoices
     : invoices.filter(i => (i as any).trainer_id === trainerFilter);
 
-  const unpaidInvoices = trainerFiltered.filter((i) => i.status !== "paid" && i.status !== "cancelled");
-  const paidInvoices = trainerFiltered.filter((i) => i.status === "paid");
-  const draftInvoices = trainerFiltered.filter((i) => !i.sent_at && i.status !== "paid" && i.status !== "cancelled");
+  const locationFiltered = locationFilter === "all"
+    ? trainerFiltered
+    : trainerFiltered.filter(i => (invoiceLocationMap as Record<string, string>)[i.id] === locationFilter);
+
+  const unpaidInvoices = locationFiltered.filter((i) => i.status !== "paid" && i.status !== "cancelled");
+  const paidInvoices = locationFiltered.filter((i) => i.status === "paid");
+  const draftInvoices = locationFiltered.filter((i) => !i.sent_at && i.status !== "paid" && i.status !== "cancelled");
 
   const tabFiltered = activeTab === "paid" ? paidInvoices : unpaidInvoices;
 
@@ -467,16 +555,29 @@ export default function AcademyInvoices() {
             <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({unpaidInvoices.length})</TabsTrigger>
             <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
           </TabsList>
-          <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 flex-1 flex-wrap">
             {trainers.length > 0 && (
               <Select value={trainerFilter} onValueChange={setTrainerFilter}>
                 <SelectTrigger className="w-48">
-                  <SelectValue placeholder={t("invoices.allTrainers", "All trainers")} />
+                  <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("invoices.allTrainers", "All trainers")}</SelectItem>
+                  <SelectItem value="all">{t("invoices.allTrainers", "Alle trainers")}</SelectItem>
                   {trainers.map((tr: any) => (
                     <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {academyLocations.length > 0 && (
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("invoices.allLocations", "Alle locaties")}</SelectItem>
+                  {academyLocations.map((loc: any) => (
+                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -484,7 +585,7 @@ export default function AcademyInvoices() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder={t("invoices.searchPlaceholder", "Search player name...")}
+                placeholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 w-64"
