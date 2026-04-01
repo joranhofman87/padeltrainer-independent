@@ -1,30 +1,48 @@
 
 
-# Enforce Minimum Quantity of 1 on Invoice Line Items
+# Fix Quantity Input UX — Allow Empty During Editing
 
 ## Problem
-In `CreateCustomInvoiceDialog` and `EditInvoiceDialog`, the quantity field passes the raw string value without parsing or enforcing a minimum. A user can set quantity to 0 or leave it empty, causing the total to show €0.00 — confusing users who don't understand why.
+The current `Math.max(1, parseInt(...) || 1)` runs on every keystroke, so users can never clear the field to type a new number. They have to awkwardly prepend digits then delete the old ones.
 
-`CreateInvoiceDialog` already does `parseInt(e.target.value) || 1` which is correct.
+## Solution
+Track quantity as a **string** during editing. Parse and enforce minimum of 1 only **on blur** (when the user leaves the field). This lets users freely clear and retype.
 
 ## Changes
 
-### 1. `src/components/invoices/CreateCustomInvoiceDialog.tsx`
-- Change quantity `onChange` from passing raw `e.target.value` to `Math.max(1, parseInt(e.target.value) || 1)`
-- Add `min="1"` to the input
+### 1. `CreateCustomInvoiceDialog.tsx`
+- Store quantity as string in state during editing
+- `onChange`: pass raw string value, no parsing
+- `onBlur`: parse to int, enforce `Math.max(1, ...)`, update line item
+- Same pattern for the quantity input
 
-### 2. `src/components/invoices/EditInvoiceDialog.tsx`
-- Same fix: parse and enforce minimum 1 on quantity onChange
-- Add `min="1"` to the input
+### 2. `EditInvoiceDialog.tsx`
+- Same approach: raw string on change, parse+enforce on blur
 
-### 3. `src/components/trainer/CreateInvoiceDialog.tsx`
-- Already uses `parseInt(e.target.value) || 1` — just add `Math.max(1, ...)` for extra safety (already has `min="1"` on the input)
+### 3. `CreateInvoiceDialog.tsx`
+- Same approach: raw string on change, parse+enforce on blur
+
+### Technical approach (all 3 files)
+Instead of changing the line item model, simply change the input handling:
+
+```tsx
+// quantity input
+value={item.quantity === 0 ? '' : item.quantity}
+onChange={(e) => updateLineItem(index, 'quantity', e.target.value === '' ? 0 : parseInt(e.target.value) || 0)}
+onBlur={() => {
+  if (!item.quantity || item.quantity < 1) {
+    updateLineItem(index, 'quantity', 1);
+  }
+}}
+```
+
+Using `0` as sentinel for "empty field", and resetting to `1` on blur. The `value` shows empty when quantity is 0, and the totals recalculate live (showing €0 while empty, which is fine since it resets on blur).
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `CreateCustomInvoiceDialog.tsx` | Parse quantity as int with min 1, add `min="1"` |
-| `EditInvoiceDialog.tsx` | Parse quantity as int with min 1, add `min="1"` |
-| `CreateInvoiceDialog.tsx` | Wrap existing parse in `Math.max(1, ...)` |
+| `CreateCustomInvoiceDialog.tsx` | Allow empty quantity, enforce min 1 on blur |
+| `EditInvoiceDialog.tsx` | Same |
+| `CreateInvoiceDialog.tsx` | Same |
 
