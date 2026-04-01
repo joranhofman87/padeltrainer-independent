@@ -215,7 +215,7 @@ export function HeroSection() {
     <section className="relative overflow-hidden">
       <div className="relative max-w-[1200px] mx-auto px-4 md:px-6 py-20 md:py-32">
         {/* Centered copy */}
-        <div className="text-center animate-fade-in max-w-3xl mx-auto">
+        <div className="text-center max-w-3xl mx-auto">
           <h1 className="text-4xl md:text-[44px] lg:text-[52px] font-bold tracking-[-0.02em] leading-[1.1] mb-6 text-[hsl(var(--brand-navy))]">
             {t('homev2.hero.h1')}
           </h1>
@@ -246,8 +246,7 @@ export function HeroSection() {
 
         {/* Interactive product showcase with floating effect */}
         <div
-          className="animate-fade-in max-w-3xl mx-auto"
-          style={{ animationDelay: '200ms', animationFillMode: 'backwards' }}
+          className="max-w-3xl mx-auto"
         >
           {/* Tabs with underline indicator */}
           <div className="flex gap-1 overflow-x-auto pb-0 mb-0 scrollbar-hide justify-center border-b border-border">
