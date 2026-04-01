@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { LocalizedLink } from '@/components/LocalizedLink';
-import { AnimatePresence, motion } from 'framer-motion';
 
 interface MegaMenuColumn {
   title: string;
