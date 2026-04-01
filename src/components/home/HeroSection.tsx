@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
 
-const TABS = ['booking', 'registration', 'payments', 'profile'] as const;
+const TABS = ['booking', 'players', 'payments', 'profile'] as const;
 type Tab = typeof TABS[number];
 
 const TAB_ICONS: Record<Tab, React.ElementType> = {
