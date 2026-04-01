@@ -427,6 +427,12 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                         Betaald: {format(parseISO(invoice.paid_at), 'd MMM yyyy', { locale: nl })}
                       </span>
                     )}
+                    {invoice.forwarded_at && (
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <Mail className="h-3 w-3" />
+                        Doorgestuurd: {format(parseISO(invoice.forwarded_at), 'd MMM yyyy', { locale: nl })}
+                      </span>
+                    )}
                   </div>
                 </div>
                 
