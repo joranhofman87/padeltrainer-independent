@@ -129,31 +129,49 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Generate a fresh signed URL for the invoice
-    const fileName = `${trainerProfile?.user_id || 'academy'}/${invoice.invoice_number}.html`;
+    const folderKey = trainerProfile?.user_id || invoice.academy_profile_id || 'custom';
+    const htmlFileName = `${folderKey}/${invoice.invoice_number}.html`;
+    const pdfFileName = `${folderKey}/${invoice.invoice_number}.pdf`;
     const { data: signedUrl } = await supabase.storage
       .from("invoices")
-      .createSignedUrl(fileName, 604800); // 7 days
+      .createSignedUrl(htmlFileName, 604800); // 7 days
 
     const pdfLink = signedUrl?.signedUrl || invoice.pdf_url || "";
 
-    // Download invoice file for attachment
+    // Download PDF file for attachment (fall back to HTML if PDF not available)
     let attachments: { filename: string; content: string }[] = [];
-    const { data: fileData } = await supabase.storage
+    const { data: pdfData } = await supabase.storage
       .from("invoices")
-      .download(fileName);
+      .download(pdfFileName);
 
-    if (fileData) {
-      const buffer = await fileData.arrayBuffer();
+    if (pdfData) {
+      const buffer = await pdfData.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       let binary = "";
       for (let i = 0; i < bytes.length; i++) {
         binary += String.fromCharCode(bytes[i]);
       }
       const base64 = btoa(binary);
-      attachments = [{ filename: `${invoice.invoice_number}.html`, content: base64 }];
-      console.log(`Attached invoice file: ${invoice.invoice_number}.html (${bytes.length} bytes)`);
+      attachments = [{ filename: `${invoice.invoice_number}.pdf`, content: base64 }];
+      console.log(`Attached PDF invoice: ${invoice.invoice_number}.pdf (${bytes.length} bytes)`);
     } else {
-      console.log("Could not download invoice file for attachment, sending without attachment");
+      // Fall back to HTML attachment
+      const { data: htmlData } = await supabase.storage
+        .from("invoices")
+        .download(htmlFileName);
+      if (htmlData) {
+        const buffer = await htmlData.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+        attachments = [{ filename: `${invoice.invoice_number}.html`, content: base64 }];
+        console.log(`Attached HTML invoice (PDF not available): ${invoice.invoice_number}.html`);
+      } else {
+        console.log("Could not download invoice file for attachment, sending without attachment");
+      }
     }
 
     const emailPromises = emails.map((email: string) =>
