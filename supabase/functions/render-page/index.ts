@@ -748,6 +748,7 @@ async function renderPadelCityPage(supabase: any, citySlug: string, lang: string
   return htmlDoc({ title, description, url: `/padel/${citySlug}`, lang, structuredData, body });
 }
 
+async function renderLocationPage(supabase: any, slug: string, lang: string): Promise<string> {
   const { data: location } = await supabase
     .from('locations')
     .select('id, name, city, slug, street_address, postal_code, indoor_courts, outdoor_courts, number_of_courts, website_url, description, logo_url')
