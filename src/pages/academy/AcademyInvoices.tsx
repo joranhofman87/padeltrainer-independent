@@ -216,9 +216,9 @@ export default function AcademyInvoices() {
     ? trainerFiltered
     : trainerFiltered.filter(i => (invoiceLocationMap as Record<string, string>)[i.id] === locationFilter);
 
-  const unpaidInvoices = trainerFiltered.filter((i) => i.status !== "paid" && i.status !== "cancelled");
-  const paidInvoices = trainerFiltered.filter((i) => i.status === "paid");
-  const draftInvoices = trainerFiltered.filter((i) => !i.sent_at && i.status !== "paid" && i.status !== "cancelled");
+  const unpaidInvoices = locationFiltered.filter((i) => i.status !== "paid" && i.status !== "cancelled");
+  const paidInvoices = locationFiltered.filter((i) => i.status === "paid");
+  const draftInvoices = locationFiltered.filter((i) => !i.sent_at && i.status !== "paid" && i.status !== "cancelled");
 
   const tabFiltered = activeTab === "paid" ? paidInvoices : unpaidInvoices;
 
