@@ -4,12 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
 
 const playerLinks = [
-  { to: '/trainers', icon: Dumbbell, labelKey: 'footer.findTrainers', descKey: 'homev2.playerBanner.trainersDesc' },
-  { to: '/locations', icon: MapPin, labelKey: 'footer.locations', descKey: 'homev2.playerBanner.locationsDesc' },
-  { to: '/padel-rules', icon: BookOpen, labelKey: 'homev2.playerBanner.rules', descKey: 'homev2.playerBanner.rulesDesc' },
-  { to: '/video-tips', icon: Video, labelKey: 'homev2.playerBanner.videoTips', descKey: 'homev2.playerBanner.videoTipsDesc' },
-  { to: '/blog', icon: PenLine, labelKey: 'nav.blog', descKey: 'homev2.playerBanner.blogDesc' },
-  { to: '/racket-finder', icon: Target, labelKey: 'quiz.title', descKey: 'quiz.subtitle' },
+  { to: '/trainers', icon: Dumbbell, labelKey: 'footer.findTrainers' },
+  { to: '/locations', icon: MapPin, labelKey: 'footer.locations' },
+  { to: '/padel-rules', icon: BookOpen, labelKey: 'homev2.playerBanner.rules' },
+  { to: '/video-tips', icon: Video, labelKey: 'homev2.playerBanner.videoTips' },
+  { to: '/blog', icon: PenLine, labelKey: 'nav.blog' },
+  { to: '/racket-finder', icon: Target, labelKey: 'quiz.title' },
 ];
 
 export function PlayerBanner() {
