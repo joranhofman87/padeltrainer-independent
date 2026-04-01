@@ -1,43 +1,53 @@
 
 
-# Add End Date Override to Registration/Cyclus Form
+# Add Guest Players Overview & Stats to Admin Panel
 
-## Problem
-Currently, the end date is auto-calculated as `start_date + number_of_weeks`. If lessons run Monday–Friday and a cycle is 9 weeks starting on a Monday, the computed end date lands on a Monday — but the trainer wants to show it ending on the Friday (last lesson day of that final week).
-
-## Solution
-Add an **end date picker** next to the "Number of weeks" field. It auto-fills based on `start_date + weeks` but can be manually overridden. When the user picks a custom end date, it takes precedence over the computed one.
+## Summary
+Create a new **Guest Players** admin page showing all registrations (from `guest_players` table), and add registration/conversion stats to the admin dashboard.
 
 ## Changes
 
-### `src/components/cycles/CycleForm.tsx`
+### 1. New page: `src/pages/admin/AdminGuestPlayers.tsx`
+A searchable, filterable table of all guest players with columns:
+- **Name** | **Email** | **Phone** | **Rating** | **Trainer** (via `trainer_id` → `trainer_profiles`) | **Academy** (via `academy_profile_id`) | **Source** | **Status** (converted if `linked_profile_id` is set, trained if `has_trained`) | **Created**
 
-1. **Schema**: The `end_date` field already exists in the schema as optional. Make it always available for registration/cyclus types (not just events).
+**Filters:**
+- Search by name/email
+- Filter by status: All / Not converted / Converted (has `linked_profile_id`)
+- Filter by source: all / `manual_registration` / `intake` / etc.
 
-2. **UI**: Replace the current 2-column grid (`start_date` | `number_of_weeks`) with a 3-column layout or a 2-row layout:
-   - Row 1: **Start Date** | **Number of weeks**
-   - Row 2: **End Date** (calendar picker, pre-filled with computed date, editable)
-   - Keep the "Ends on [date]" hint below number_of_weeks, but now it reflects the actual `end_date` field value.
+Uses service-role via RPC or direct query (admin RLS policy already covers this via `is_admin`).
 
-3. **Auto-sync logic**: 
-   - When `start_date` or `number_of_weeks` changes → auto-update `end_date` (unless user has manually set it).
-   - Track a `customEndDate` flag via `useRef` to know if user manually picked an end date.
-   - When user picks an end date manually, set the flag and stop auto-updating.
+### 2. Route & Sidebar
+- **`DomainRouter.tsx`**: Add route `<Route path="guest-players" element={<AdminGuestPlayers />} />`
+- **`AdminSidebar.tsx`**: Add "Registrations" item (with `UserPlus` icon) under main nav, linking to `/app/admin/guest-players`
 
-4. **Submit logic** (lines ~374-382): For non-event types, use `values.end_date` if set, otherwise fall back to `addWeeks(start_date, number_of_weeks)`.
-
-### Layout sketch
-```text
-Start Date              Number of weeks
-[May 4th, 2026  📅]     [9              ]
-
-End Date
-[July 4th, 2026 📅]     ← auto-filled, but editable
+### 3. Dashboard stats — `get-admin-stats/index.ts`
+Add guest player metrics to the edge function response:
 ```
+registrations: {
+  totalGuests: number,
+  convertedToAccount: number,   // linked_profile_id IS NOT NULL
+  hasTrained: number,           // has_trained = true
+  thisMonth: number,
+  lastMonth: number,
+}
+```
+
+### 4. Dashboard UI — `AdminStatsCards.tsx`
+Add a new stats card showing:
+- **Total Registrations** (guest players count)
+- **Converted** (linked to real account)
+- **Monthly trend** (this month vs last month)
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/CycleForm.tsx` | Add end date picker for registration/cyclus; auto-sync from weeks; use manual override on submit |
+| `src/pages/admin/AdminGuestPlayers.tsx` | New page — guest players table with search/filters |
+| `src/components/DomainRouter.tsx` | Add route for guest-players |
+| `src/components/admin/AdminSidebar.tsx` | Add "Registrations" nav item |
+| `supabase/functions/get-admin-stats/index.ts` | Add registration stats queries |
+| `src/lib/admin.ts` | Extend `AdminStats` type with registrations |
+| `src/components/admin/AdminStatsCards.tsx` | Add registrations stats card |
 
