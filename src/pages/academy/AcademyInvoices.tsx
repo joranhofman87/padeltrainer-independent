@@ -599,7 +599,21 @@ export default function AcademyInvoices() {
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
-                          <TableCell>{getStatusBadge(inv)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              {getStatusBadge(inv)}
+                              {inv.forwarded_at && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Doorgestuurd op {format(new Date(inv.forwarded_at), "dd MMM yyyy HH:mm", { locale: dateFnsLocale })}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
                             <div className="flex justify-end gap-1">
                               {inv.status !== "paid" && inv.status !== "cancelled" && (
