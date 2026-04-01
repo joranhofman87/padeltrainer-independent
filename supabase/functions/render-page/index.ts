@@ -38,7 +38,11 @@ Deno.serve(async (req) => {
       cacheMaxAge = 1800;
     } else if (/^\/trainers\/([^/]+)$/.test(cleanPath)) {
       const citySlug = cleanPath.match(/^\/trainers\/([^/]+)$/)![1];
-      html = await renderCityPage(supabase, citySlug, lang);
+      html = await renderCityTrainersPage(supabase, citySlug, lang);
+      cacheMaxAge = 3600;
+    } else if (/^\/padel\/([^/]+)$/.test(cleanPath)) {
+      const citySlug = cleanPath.match(/^\/padel\/([^/]+)$/)![1];
+      html = await renderPadelCityPage(supabase, citySlug, lang);
       cacheMaxAge = 3600;
     } else if (/^\/locations\/([^/]+)$/.test(cleanPath)) {
       const locSlug = cleanPath.match(/^\/locations\/([^/]+)$/)![1];
