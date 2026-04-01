@@ -138,7 +138,7 @@
         "tracking": "Track your bookings"
       }
     },
-  "trainers": {
+    "trainers": {
       "badge": "For Trainers",
       "title": "Choose your plan",
       "subtitle": "Start free and upgrade as your business grows. Lower platform fees with higher tiers.",
@@ -158,13 +158,34 @@
           "description": "Everything you need to streamline your admin.",
           "cta": "Start Free",
           "featureList": [
-            { "title": "Trainer profile", "description": "Showcase yourself to players" },
-            { "title": "Add to marketplace", "description": "Be found & receive new bookings" },
-            { "title": "Unlimited players", "description": "No limitation on the number of players" },
-            { "title": "Unlimited trainings", "description": "No limitations on the number of sessions" },
-            { "title": "Waiting list", "description": "Allow players to sign up to your waiting list" },
-            { "title": "Open registration", "description": "Open up a registration & have our system plan things for you" },
-            { "title": "€1.00 per booking fee", "description": "Charge players right when they book a session, no need to chase money anymore" }
+            {
+              "title": "Trainer profile",
+              "description": "Showcase yourself to players"
+            },
+            {
+              "title": "Add to marketplace",
+              "description": "Be found & receive new bookings"
+            },
+            {
+              "title": "Unlimited players",
+              "description": "No limitation on the number of players"
+            },
+            {
+              "title": "Unlimited trainings",
+              "description": "No limitations on the number of sessions"
+            },
+            {
+              "title": "Waiting list",
+              "description": "Allow players to sign up to your waiting list"
+            },
+            {
+              "title": "Open registration",
+              "description": "Open up a registration & have our system plan things for you"
+            },
+            {
+              "title": "€1.00 per booking fee",
+              "description": "Charge players right when they book a session, no need to chase money anymore"
+            }
           ]
         },
         "professional": {
@@ -175,9 +196,18 @@
           "description": "For serious trainers",
           "cta": "Get Professional",
           "featureList": [
-            { "title": "Everything from Starter", "description": "All the features you need to streamline your admin processes" },
-            { "title": "Manual invoicing", "description": "Send invoices yourself, we can auto generate these for you" },
-            { "title": "€0.75 per booking fee", "description": "Reduced fee for charging players when they book a session with you" }
+            {
+              "title": "Everything from Starter",
+              "description": "All the features you need to streamline your admin processes"
+            },
+            {
+              "title": "Manual invoicing",
+              "description": "Send invoices yourself, we can auto generate these for you"
+            },
+            {
+              "title": "€0.75 per booking fee",
+              "description": "Reduced fee for charging players when they book a session with you"
+            }
           ]
         },
         "academy": {
@@ -188,59 +218,71 @@
           "description": "For training academies",
           "cta": "Contact Sales",
           "featureList": [
-            { "title": "Add up to 15 trainers", "description": "Manage & add your team to streamline the bookings" },
-            { "title": "Add players to the marketplace", "description": "Add your branding to their profile & increase bookings for your team" },
-            { "title": "Add academy to the marketplace", "description": "Be marked as featured in the marketplace to receive more bookings" },
-            { "title": "€0.50 per booking fee", "description": "Streamline your book keeping. Charge clients upfront and sync invoices to your book keeping software. Lowest fee per booking" }
+            {
+              "title": "Add up to 15 trainers",
+              "description": "Manage & add your team to streamline the bookings"
+            },
+            {
+              "title": "Add players to the marketplace",
+              "description": "Add your branding to their profile & increase bookings for your team"
+            },
+            {
+              "title": "Add academy to the marketplace",
+              "description": "Be marked as featured in the marketplace to receive more bookings"
+            },
+            {
+              "title": "€0.50 per booking fee",
+              "description": "Streamline your book keeping. Charge clients upfront and sync invoices to your book keeping software. Lowest fee per booking"
+            }
           ]
         }
       }
-  },
-  "clubs": {
-    "badge": "For Clubs",
-    "title": "Club Plan",
-    "subtitle": "Complete platform for managing your club's training operations",
-    "price": "€199",
-    "period": "/month",
-    "billedAnnually": "Billed annually at €2,388/year",
-    "trialBadge": "14-day free trial",
-    "cta": "Start Free Trial",
-    "features": {
-      "trainers": "Unlimited trainers",
-      "calendar": "Unified trainer calendar",
-      "players": "Player management",
-      "bookings": "Centralized booking system",
-      "analytics": "Club analytics dashboard",
-      "profile": "Custom club profile page",
-      "support": "Priority support",
-      "branding": "Club branding"
-    }
-  },
-  "faq": {
-    "title": "Frequently asked questions",
-    "questions": {
-      "platformFee": {
-        "q": "How does the platform fee work?",
-        "a": "A flat fee is deducted from each lesson payment based on your subscription tier. Starter pays €1.00 per booking, Professional pays €0.75, and Academy pays €0.50."
-      },
-      "changePlans": {
-        "q": "Can I change plans later?",
-        "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
-      },
-      "contract": {
-        "q": "Is there a contract or commitment?",
-        "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
-      },
-      "payouts": {
-        "q": "How do payouts work?",
-        "a": "Payments are processed through Mollie, our trusted payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
-      },
-      "clubTrial": {
-        "q": "How does the club free trial work?",
-        "a": "Clubs get a 14-day free trial with full access to all features. No credit card required to start. After the trial, you'll be billed annually at €2,388/year."
+    },
+    "clubs": {
+      "badge": "For Clubs",
+      "title": "Club Plan",
+      "subtitle": "Complete platform for managing your club's training operations",
+      "price": "€199",
+      "period": "/month",
+      "billedAnnually": "Billed annually at €2,388/year",
+      "trialBadge": "14-day free trial",
+      "cta": "Start Free Trial",
+      "features": {
+        "trainers": "Unlimited trainers",
+        "calendar": "Unified trainer calendar",
+        "players": "Player management",
+        "bookings": "Centralized booking system",
+        "analytics": "Club analytics dashboard",
+        "profile": "Custom club profile page",
+        "support": "Priority support",
+        "branding": "Club branding"
+      }
+    },
+    "faq": {
+      "title": "Frequently asked questions",
+      "questions": {
+        "platformFee": {
+          "q": "How does the platform fee work?",
+          "a": "A flat fee is deducted from each lesson payment based on your subscription tier. Starter pays €1.00 per booking, Professional pays €0.75, and Academy pays €0.50."
+        },
+        "changePlans": {
+          "q": "Can I change plans later?",
+          "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
+        },
+        "contract": {
+          "q": "Is there a contract or commitment?",
+          "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
+        },
+        "payouts": {
+          "q": "How do payouts work?",
+          "a": "Payments are processed through Mollie, our trusted payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
+        },
+        "clubTrial": {
+          "q": "How does the club free trial work?",
+          "a": "Clubs get a 14-day free trial with full access to all features. No credit card required to start. After the trial, you'll be billed annually at €2,388/year."
+        }
       }
     }
-  }
   },
   "about": {
     "hero": {
@@ -564,12 +606,11 @@
   },
   "homev2": {
     "hero": {
-      "h1": "Manage your padel coaching like a pro.",
-      "subheadline": "One place to manage sessions, get paid, and fill your schedule.",
-      "tab_booking": "Easy Booking",
-      "tab_registration": "Open Registration",
-      "tab_payments": "Automated Payments",
-      "tab_profile": "Your Profile",
+      "h1": "You became a padel coach to be on the court. Not on your phone.",
+      "subheadline": "PadelTrainer.ai handles bookings, payments, and cancellations — so you can stop managing WhatsApp groups and start filling your schedule.",
+      "tab_booking": "Bookings",
+      "tab_payments": "Payments",
+      "tab_profile": "Your profile page",
       "mock_booking_title": "Today's Schedule",
       "mock_booking_slot": "Available",
       "mock_booking_booked": "Booked",
@@ -583,28 +624,29 @@
       "mock_payments_auto": "Auto-invoice",
       "mock_payments_powered": "Automate payments by connecting",
       "mock_profile_slots": "open slots this week",
-      "mock_profile_cta": "Book now"
+      "mock_profile_cta": "Book now",
+      "tab_players": "Player management"
     },
     "cta": {
-      "startTrial": "Start free trial",
+      "startTrial": "Start your free trial",
       "watchDemo": "See how it works",
-      "trustMicrocopy": "Players are always free. Trainers start with a free trial, then from €9/month."
+      "trustMicrocopy": "No credit card required. Set up in 10 minutes."
     },
     "socialProof": {
-      "headline": "Used by trainers and academies worldwide",
-      "testimonial1": "I got my evenings back. No more coordinating lessons over WhatsApp.",
+      "headline": "Trusted by padel coaches and academies across Europe.",
+      "testimonial1": "I have my evenings back. No more lesson planning over WhatsApp.",
       "author1": "Bram Meijer",
       "author1role": "Head Trainer, Bramos Padel Academy",
-      "testimonial2": "Players just book themselves now. I chase payments way less.",
+      "testimonial2": "Players book themselves now. I barely chase payments anymore.",
       "author2": "René Lindenbergh",
       "author2role": "Founder, RL Padel Performance",
       "metric_hours_value": "10h/month",
       "metric_hours_label": "less admin",
       "metric_slots_value": "5+ slots",
-      "metric_slots_label": "filled monthly",
+      "metric_slots_label": "filled from cancellations",
       "metric_noshows_value": "50%",
-      "metric_noshows_label": "fewer empty slots",
-      "disclaimer": "Based on trainers using Padel Trainer. Results vary."
+      "metric_noshows_label": "fewer no-shows",
+      "disclaimer": "Based on trainers using PadelTrainer.ai. Results vary."
     },
     "chaos": {
       "headline": "Most padel trainers run their business on chaos",
@@ -624,16 +666,16 @@
       "item_lateReply": "Late replies hurt your conversion from 'interested' to 'booked'."
     },
     "solution": {
-      "headline": "Stop juggling five apps to run your coaching.",
-      "category": "Built for padel coaching. Not repurposed from some generic appointment tool. Handles group sessions, courts, cancellations, and everything in between.",
-      "value_filled_title": "Fill cancellations fast",
-      "value_filled_desc": "Open slots go live instantly. Players get notified and can grab them in a few taps.",
-      "value_admin_title": "No more WhatsApp planning",
-      "value_admin_desc": "Bookings, confirmations, reminders. All automatic.",
-      "value_noshows_title": "Get paid before the lesson",
-      "value_noshows_desc": "Online payments via iDEAL and cards. Players who pay upfront actually show up.",
-      "value_player_title": "A booking page your players will like",
-      "value_player_desc": "Simple, fast, mobile-first. Players see your availability and book in seconds."
+      "headline": "Built for padel coaches. Not another generic booking app.",
+      "category": "We handle group lessons, court types, cancellations, and everything else that generic tools weren't designed for.",
+      "value_filled_title": "Fill cancellations automatically",
+      "value_filled_desc": "When a slot opens up, players who follow you get notified. No more posting in group chats hoping someone sees it.",
+      "value_admin_title": "Syncs with your life",
+      "value_admin_desc": "Connects with Google Calendar. Your personal appointments and padel sessions, all in one view. Set it up once, it stays in sync.",
+      "value_noshows_title": "Get paid before the lesson starts",
+      "value_noshows_desc": "Online payments via iDEAL and card. Players who pay upfront actually show up. No more chasing Tikkies.",
+      "value_player_title": "A booking page your players will actually use",
+      "value_player_desc": "Simple, fast, mobile-first. Players see your availability and book in seconds. Put the link in your WhatsApp bio, Instagram, or send it directly."
     },
     "whyPadelTrainer": {
       "headline": "Why Padel Trainer wins for padel trainers",
@@ -645,13 +687,13 @@
       "visibility_desc": "Create a public profile and share your booking link. Marketplace visibility in our network."
     },
     "howItWorks": {
-      "headline": "Set it up once. Then let it run.",
+      "headline": "Set it up once. Then it runs.",
       "step1_title": "Add your availability",
       "step1_desc": "Set your times, locations, group sizes, and prices. Takes about 10 minutes.",
       "step2_title": "Share your link",
-      "step2_desc": "Drop it in your WhatsApp bio, Instagram, or send it directly. Players book themselves.",
+      "step2_desc": "padeltrainer.ai/your-name — put it in your WhatsApp bio, Instagram, or send it directly to players.",
       "step3_title": "Coach. We handle the rest.",
-      "step3_desc": "Calendar sync, payments, confirmations, reminders. Runs itself."
+      "step3_desc": "Bookings, confirmations, payments, reminders, cancellations. It just works."
     },
     "realities": {
       "headline": "How it actually changes your day",
@@ -673,27 +715,27 @@
       "result": "Less time on your phone. More time on court."
     },
     "jtbd": {
-      "headline": "Works for your setup",
-      "intro": "Solo trainer, academy, or club. We built it to work for all three.",
+      "headline": "Independent trainer, academy, or club. We built it for all three.",
+      "intro": "",
       "cta": "Start free trial",
       "academy_title": "Academy owners",
-      "academy_subtitle": "Run multiple trainers from one place.",
-      "academy_b1": "See all trainer schedules in a single view",
-      "academy_b2": "Fill gaps when someone cancels",
-      "academy_b3": "Collect payments per session or per cycle",
-      "academy_b4": "Give each trainer their own booking page",
+      "academy_subtitle": "Manage multiple trainers from one place.",
+      "academy_b1": "See every trainer's schedule at a glance.",
+      "academy_b2": "Fill gaps when someone cancels.",
+      "academy_b3": "Collect per session or per cycle.",
+      "academy_b4": "Give each trainer their own booking page.",
       "trainer_title": "Independent trainers",
       "trainer_subtitle": "Run your own thing without the admin headache.",
       "trainer_b1": "Players book and pay online. Done.",
-      "trainer_b2": "Your Google Calendar stays up to date",
-      "trainer_b3": "Reminders go out automatically",
-      "trainer_b4": "Your own public profile and booking link",
+      "trainer_b2": "Your Google Calendar stays up to date.",
+      "trainer_b3": "Reminders go out automatically.",
+      "trainer_b4": "Your own profile and booking page.",
       "club_title": "Clubs",
       "club_subtitle": "Offer coaching sessions through your club.",
-      "club_b1": "Members book directly through a club page",
-      "club_b2": "Less admin for your front desk",
-      "club_b3": "Trainers manage their own availability",
-      "club_b4": "Payments handled cleanly"
+      "club_b1": "Members book directly via your club page.",
+      "club_b2": "Less admin for your front desk.",
+      "club_b3": "Trainers manage their own availability.",
+      "club_b4": "Payments handled cleanly."
     },
     "criticalEvents": {
       "headline": "When trainers switch to Padel Trainer",
@@ -705,47 +747,47 @@
       "closing": "If any of this is you, start your free trial today."
     },
     "pricing": {
-      "headline": "Simple, transparent pricing",
+      "headline": "Simple, transparent pricing.",
       "players_title": "Players",
       "players_price": "Free",
-      "players_desc": "Find trainers, book lessons, and pay online.",
-      "players_desc2": "Always free. No catch.",
+      "players_desc": "Find trainers, book lessons, and pay online. Always free, no catch.",
+      "players_desc2": "",
       "players_cta": "Sign up for free",
       "trainers_title": "Trainers",
-      "trainers_price": "Free trial → from €9/mo",
-      "trainers_desc": "Booking, payments, calendar sync, and your own profile page. Everything you need.",
-      "no_cc": "No credit card required.",
-      "trainers_microcopy": "Try it free. Upgrade from €9/month when you're ready.",
+      "trainers_price": "Free trial → from €9/month",
+      "trainers_desc": "Bookings, payments, calendar sync, and your own profile page. Everything you need.",
+      "no_cc": "No credit card required. Try it free, upgrade from €9/month when you're ready.",
+      "trainers_microcopy": "",
       "seeAllPlans": "See all plans →"
     },
     "faq": {
       "headline": "Got questions?",
       "onlyPadel_q": "Is this only for padel?",
-      "onlyPadel_a": "Yes. Built for padel from day one. Group sessions, court types, ratings, the works.",
-      "playersFree_q": "Are players really free?",
-      "playersFree_a": "Completely. Players never pay us anything.",
+      "onlyPadel_a": "Yes. We built it specifically for padel coaches, academies, and clubs. That's why it handles things like group lessons, court types, and cancellations properly — unlike generic booking tools.",
+      "playersFree_q": "Is it really free for players?",
+      "playersFree_a": "Yes. Players never pay for the platform. They only pay for the lessons they book.",
       "trialHow_q": "How does the free trial work?",
-      "trialHow_a": "Sign up, set up your profile and sessions. You get full access. After the trial, plans start from €9/month.",
+      "trialHow_a": "You get full access for 14 days. No credit card required. After that, plans start from €9/month.",
       "needWebsite_q": "Do I need my own website?",
       "needWebsite_a": "Nope. You get a booking page you can share directly.",
       "onlineBooking_q": "Can players book online?",
-      "onlineBooking_a": "Yes, through your personal booking page. Works on mobile.",
+      "onlineBooking_a": "Yes. They see your available slots and book in a few taps. You get a notification when someone books.",
       "payments_q": "How do payments work?",
-      "payments_a": "Players pay via iDEAL or card when they book. The money goes to you via Mollie.",
+      "payments_a": "Players pay when they book via iDEAL or card. The money goes to your account. No more chasing.",
       "calendarSync_q": "Does it sync with Google Calendar?",
-      "calendarSync_a": "Yes. Every booking appears in your calendar automatically.",
+      "calendarSync_a": "Yes. Two-way sync. Your padel sessions appear in your personal calendar and vice versa.",
       "europe_q": "Is this only for the Netherlands?",
-      "europe_a": "It started in the Netherlands but works across Europe. Payments in EUR.",
+      "europe_a": "No. We have trainers across Europe. The platform works in multiple languages.",
       "gdpr_q": "Is it GDPR compliant?",
-      "gdpr_a": "Yes. Data is stored in the EU. See our privacy policy for the details."
+      "gdpr_a": "Yes."
     },
     "finalCta": {
-      "headline": "Ready to stop doing admin between sessions?",
-      "body": "Set up takes 10 minutes. Your first booking could come today."
+      "headline": "Ready to stop doing admin between lessons?",
+      "body": "Set up takes 10 minutes. Your first booking can come in today."
     },
     "playerBanner": {
       "headline": "Are you a padel player?",
-      "subtitle": "Here's what we've got for you.",
+      "subtitle": "Here's what we built for you:",
       "trainersDesc": "Book a session near you",
       "locationsDesc": "Find clubs near you",
       "rules": "Padel Rules",
@@ -755,11 +797,20 @@
       "blogDesc": "Tips, guides & news"
     },
     "dualCta": {
-      "headline": "The only booking platform built for padel.",
-      "body": "Trainers get a system that fills sessions and handles payments. Players get a simple way to find and book lessons.",
+      "headline": "Ready to stop doing admin between lessons?",
+      "body": "Set up takes 10 minutes. Your first booking can come in today.",
       "trainerCta": "Start free trial",
       "playerCta": "Sign up as player",
-      "microcopy": "No credit card needed. Players are always free."
+      "microcopy": "Players are always free. Trainers start with a free trial, then from €9/month."
+    },
+    "pain": {
+      "headline": "Sound familiar?",
+      "whatsapp_story": "Your phone buzzes at 22:00 — \"Can I switch to Thursday?\" You open WhatsApp, check your notes, scroll back through three group chats, and realize you've lost track of who's confirmed for tomorrow.",
+      "whatsapp_solution": "With PadelTrainer.ai: Players book and reschedule themselves. You just coach.",
+      "cancellation_story": "A player cancels 2 hours before the session. The slot stays empty. You lose the income, and three other players who would've loved that spot never even knew it was available.",
+      "cancellation_solution": "With PadelTrainer.ai: Followers get notified instantly. Empty slots fill themselves.",
+      "payments_story": "End of the month: who's paid, who hasn't? You're scrolling through Tikkie requests, bank transfers, and \"I'll pay you next week\" messages. You feel like an accountant, not a coach.",
+      "payments_solution": "With PadelTrainer.ai: Players pay upfront when they book. Automatic. Done."
     }
   },
   "cityPage": {
@@ -864,12 +915,35 @@
     "q4": "Do you have any arm or elbow issues?",
     "q5": "Do you have a weight preference?",
     "q6": "Do you know which shape you prefer?",
-    "a1": { "beginner": "Just starting out", "intermediate": "I play regularly (1-2x per week)", "advanced": "I compete in tournaments" },
-    "a2": { "control": "Defend and control the rally", "allround": "A mix of everything", "power": "Attack and finish points with power" },
-    "a3": { "under100": "Under €100" },
-    "a4": { "yes": "Yes, I need something soft on my arm", "no": "No issues" },
-    "a5": { "light": "Light racket (easier to swing)", "medium": "Standard weight", "heavy": "Heavier (more stability)", "any": "No preference" },
-    "a6": { "round": "Round (maximum control)", "teardrop": "Teardrop (balance of control & power)", "diamond": "Diamond (maximum power)", "any": "Not sure — recommend for me" },
+    "a1": {
+      "beginner": "Just starting out",
+      "intermediate": "I play regularly (1-2x per week)",
+      "advanced": "I compete in tournaments"
+    },
+    "a2": {
+      "control": "Defend and control the rally",
+      "allround": "A mix of everything",
+      "power": "Attack and finish points with power"
+    },
+    "a3": {
+      "under100": "Under €100"
+    },
+    "a4": {
+      "yes": "Yes, I need something soft on my arm",
+      "no": "No issues"
+    },
+    "a5": {
+      "light": "Light racket (easier to swing)",
+      "medium": "Standard weight",
+      "heavy": "Heavier (more stability)",
+      "any": "No preference"
+    },
+    "a6": {
+      "round": "Round (maximum control)",
+      "teardrop": "Teardrop (balance of control & power)",
+      "diamond": "Diamond (maximum power)",
+      "any": "Not sure — recommend for me"
+    },
     "results": {
       "title": "Your Perfect Racket Match",
       "noResults": "No exact matches found. Try adjusting your preferences.",

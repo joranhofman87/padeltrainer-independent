@@ -606,12 +606,11 @@
   },
   "homev2": {
     "hero": {
-      "h1": "Beheer je padelcoaching als een pro.",
-      "subheadline": "Eén plek om sessies te beheren, betaald te worden en je agenda te vullen.",
-      "tab_booking": "Eenvoudig boeken",
-      "tab_registration": "Open inschrijving",
-      "tab_payments": "Automatische betalingen",
-      "tab_profile": "Jouw profiel",
+      "h1": "Je bent padeltrainer geworden om op de baan te staan. Niet op je telefoon.",
+      "subheadline": "PadelTrainer.ai regelt boekingen, betalingen en annuleringen — zodat jij kunt stoppen met WhatsApp-groepen beheren en je agenda kunt vullen.",
+      "tab_booking": "Boekingen",
+      "tab_payments": "Betalingen",
+      "tab_profile": "Jouw profielpagina",
       "mock_booking_title": "Agenda vandaag",
       "mock_booking_slot": "Beschikbaar",
       "mock_booking_booked": "Geboekt",
@@ -625,28 +624,29 @@
       "mock_payments_auto": "Automatisch factureren",
       "mock_payments_powered": "Automatiseer betalingen door te koppelen met",
       "mock_profile_slots": "open plekken deze week",
-      "mock_profile_cta": "Boek nu"
+      "mock_profile_cta": "Boek nu",
+      "tab_players": "Spelerbeheer"
     },
     "cta": {
-      "startTrial": "Start gratis proefperiode",
+      "startTrial": "Start je gratis proefperiode",
       "watchDemo": "Bekijk hoe het werkt",
-      "trustMicrocopy": "Spelers zijn altijd gratis. trainers starten met een gratis proefperiode, daarna vanaf €9/maand."
+      "trustMicrocopy": "Geen creditcard nodig. In 10 minuten opgezet."
     },
     "socialProof": {
-      "headline": "Gebruikt door trainers en academies wereldwijd",
-      "testimonial1": "Ik heb mijn avonden terug. geen lesplanning meer via WhatsApp.",
-      "author1": "Bram meijer",
-      "author1role": "Hoofdtrainer, bramos Padel Academy",
-      "testimonial2": "Spelers boeken nu zelf. ik hoef veel minder achter betalingen aan.",
-      "author2": "René lindenbergh",
-      "author2role": "Oprichter, RL Padel performance",
+      "headline": "Vertrouwd door padelcoaches en academies in heel Europa.",
+      "testimonial1": "Ik heb mijn avonden terug. Geen lesplanning meer via WhatsApp.",
+      "author1": "Bram Meijer",
+      "author1role": "Hoofdtrainer, Bramos Padel Academy",
+      "testimonial2": "Spelers boeken nu zelf. Ik hoef nauwelijks meer achter betalingen aan.",
+      "author2": "René Lindenbergh",
+      "author2role": "Oprichter, RL Padel Performance",
       "metric_hours_value": "10u/maand",
       "metric_hours_label": "minder admin",
       "metric_slots_value": "5+ plekken",
-      "metric_slots_label": "extra gevuld",
+      "metric_slots_label": "gevuld na annuleringen",
       "metric_noshows_value": "50%",
-      "metric_noshows_label": "minder lege slots",
-      "disclaimer": "Gebaseerd op trainers die Padel trainer gebruiken. resultaten variëren."
+      "metric_noshows_label": "minder no-shows",
+      "disclaimer": "Gebaseerd op trainers die PadelTrainer.ai gebruiken. Resultaten variëren."
     },
     "chaos": {
       "headline": "De meeste padeltrainers runnen hun bedrijf in chaos",
@@ -666,16 +666,16 @@
       "item_lateReply": "Late reacties schaden je conversie van 'geïnteresseerd' naar 'geboekt'."
     },
     "solution": {
-      "headline": "Stop met vijf apps jongleren om je coaching te runnen.",
-      "category": "Gebouwd voor padelcoaching. niet een generieke afsprakenapp met een padel-sausje. handelt groepslessen, baantypes, annuleringen en alles daartussen.",
-      "value_filled_title": "Vul annuleringen snel",
-      "value_filled_desc": "Open plekken gaan direct live. spelers worden genotificeerd en boeken met een paar tikken.",
-      "value_admin_title": "Geen whatsApp-planning meer",
-      "value_admin_desc": "Boekingen, bevestigingen, herinneringen. allemaal automatisch.",
-      "value_noshows_title": "Betaald vóór de les",
-      "value_noshows_desc": "Online betalingen via iDEAL en kaart. spelers die vooraf betalen komen ook echt opdagen.",
-      "value_player_title": "Een boekingspagina die spelers fijn vinden",
-      "value_player_desc": "Simpel, snel, mobile-first. spelers zien je beschikbaarheid en boeken in seconden."
+      "headline": "Gebouwd voor padelcoaches. Geen generieke boekingsapp.",
+      "category": "Wij regelen groepslessen, baantypes, annuleringen en alles wat generieke tools niet aankunnen.",
+      "value_filled_title": "Vul annuleringen automatisch",
+      "value_filled_desc": "Als er een plek vrijkomt, krijgen spelers die je volgen een melding. Geen berichten meer in groepschats in de hoop dat iemand het ziet.",
+      "value_admin_title": "Synct met je leven",
+      "value_admin_desc": "Koppelt met Google Calendar. Je persoonlijke afspraken en padelsessies, alles in één overzicht. Eén keer instellen, blijft in sync.",
+      "value_noshows_title": "Betaald vóór de les begint",
+      "value_noshows_desc": "Online betalingen via iDEAL en kaart. Spelers die vooraf betalen komen ook echt opdagen. Geen Tikkies meer najagen.",
+      "value_player_title": "Een boekingspagina die spelers ook echt gebruiken",
+      "value_player_desc": "Simpel, snel, mobile-first. Spelers zien je beschikbaarheid en boeken in seconden. Zet de link in je WhatsApp-bio, Instagram, of stuur hem direct."
     },
     "whyPadelTrainer": {
       "headline": "Waarom Padel trainer wint voor padeltrainers",
@@ -687,13 +687,13 @@
       "visibility_desc": "Maak een openbaar profiel en deel je boekingslink. zichtbaarheid in ons netwerk."
     },
     "howItWorks": {
-      "headline": "Stel het één keer in. daarna draait het.",
+      "headline": "Eén keer instellen. Daarna draait het.",
       "step1_title": "Voeg je beschikbaarheid toe",
-      "step1_desc": "Stel je tijden, locaties, groepsgroottes en prijzen in. duurt zo'n 10 minuten.",
+      "step1_desc": "Stel je tijden, locaties, groepsgroottes en prijzen in. Duurt zo'n 10 minuten.",
       "step2_title": "Deel je link",
-      "step2_desc": "Zet hem in je WhatsApp bio, Instagram, of stuur hem direct. spelers boeken zelf.",
-      "step3_title": "Coach. wij regelen de rest.",
-      "step3_desc": "Agenda sync, betalingen, boekingsbevestigingen, herinneringen. draait vanzelf."
+      "step2_desc": "padeltrainer.ai/jouw-naam — zet hem in je WhatsApp-bio, Instagram, of stuur hem direct naar spelers.",
+      "step3_title": "Coach. Wij regelen de rest.",
+      "step3_desc": "Boekingen, bevestigingen, betalingen, herinneringen, annuleringen. Het werkt gewoon."
     },
     "realities": {
       "headline": "Hoe het je dag echt verandert",
@@ -715,27 +715,27 @@
       "result": "Minder tijd op je telefoon. meer tijd op de baan."
     },
     "jtbd": {
-      "headline": "Werkt voor jouw opzet",
-      "intro": "Zelfstandige trainer, academy of club. we hebben het gebouwd voor alle drie.",
+      "headline": "Zelfstandige trainer, academy of club. Gebouwd voor alle drie.",
+      "intro": "",
       "cta": "Start gratis proefperiode",
       "academy_title": "Academy-eigenaren",
       "academy_subtitle": "Beheer meerdere trainers vanuit één plek.",
-      "academy_b1": "Zie alle trainersagenda's in één overzicht",
-      "academy_b2": "Vul gaten bij annuleringen",
-      "academy_b3": "Incasseer per sessie of per cyclus",
-      "academy_b4": "Geef elke trainer een eigen boekingspagina",
+      "academy_b1": "Zie alle trainersagenda's in één oogopslag.",
+      "academy_b2": "Vul gaten bij annuleringen.",
+      "academy_b3": "Incasseer per sessie of per cyclus.",
+      "academy_b4": "Geef elke trainer een eigen boekingspagina.",
       "trainer_title": "Zelfstandige trainers",
       "trainer_subtitle": "Run je eigen ding zonder admin-hoofdpijn.",
-      "trainer_b1": "Spelers boeken en betalen online. klaar.",
-      "trainer_b2": "Je Google calendar blijft up-to-date",
-      "trainer_b3": "Herinneringen gaan automatisch uit",
-      "trainer_b4": "Je eigen openbare profiel en boekingslink",
+      "trainer_b1": "Spelers boeken en betalen online. Klaar.",
+      "trainer_b2": "Je Google Calendar blijft up-to-date.",
+      "trainer_b3": "Herinneringen gaan automatisch uit.",
+      "trainer_b4": "Je eigen profiel en boekingspagina.",
       "club_title": "Clubs",
       "club_subtitle": "Bied coachingsessies aan via je club.",
-      "club_b1": "Leden boeken direct via een clubpagina",
-      "club_b2": "Minder admin voor je balie",
-      "club_b3": "Trainers beheren hun eigen beschikbaarheid",
-      "club_b4": "Betalingen netjes afgehandeld"
+      "club_b1": "Leden boeken direct via je clubpagina.",
+      "club_b2": "Minder admin voor je balie.",
+      "club_b3": "Trainers beheren hun eigen beschikbaarheid.",
+      "club_b4": "Betalingen netjes afgehandeld."
     },
     "criticalEvents": {
       "headline": "Wanneer trainers overstappen naar Padel trainer",
@@ -747,47 +747,47 @@
       "closing": "Als dit op jou van toepassing is, start vandaag je gratis proefperiode."
     },
     "pricing": {
-      "headline": "Simpele, transparante prijzen",
+      "headline": "Simpele, transparante prijzen.",
       "players_title": "Spelers",
       "players_price": "Gratis",
-      "players_desc": "Vind trainers, boek lessen en betaal online.",
-      "players_desc2": "Altijd gratis. geen addertje.",
+      "players_desc": "Vind trainers, boek lessen en betaal online. Altijd gratis, geen addertje.",
+      "players_desc2": "",
       "players_cta": "Gratis aanmelden",
       "trainers_title": "Trainers",
-      "trainers_price": "Gratis proef → vanaf €9/mnd",
-      "trainers_desc": "Boekingen, betalingen, agenda sync en je eigen profielpagina. alles wat je nodig hebt.",
-      "no_cc": "Geen creditcard vereist.",
-      "trainers_microcopy": "Probeer het gratis. upgrade vanaf €9/maand wanneer je klaar bent.",
+      "trainers_price": "Gratis proef → vanaf €9/maand",
+      "trainers_desc": "Boekingen, betalingen, agenda sync en je eigen profielpagina. Alles wat je nodig hebt.",
+      "no_cc": "Geen creditcard nodig. Probeer het gratis, upgrade vanaf €9/maand wanneer je klaar bent.",
+      "trainers_microcopy": "",
       "seeAllPlans": "Bekijk alle plannen →"
     },
     "faq": {
       "headline": "Heb je vragen?",
       "onlyPadel_q": "Is dit alleen voor padel?",
-      "onlyPadel_a": "Ja. vanaf dag één gebouwd voor padel. groepslessen, baantypes, ratings, alles.",
-      "playersFree_q": "Zijn spelers echt gratis?",
-      "playersFree_a": "Helemaal. spelers betalen ons nooit iets.",
+      "onlyPadel_a": "Ja. We hebben het specifiek gebouwd voor padelcoaches, academies en clubs. Daarom handelt het dingen als groepslessen, baantypes en annuleringen goed af — in tegenstelling tot generieke boekingstools.",
+      "playersFree_q": "Is het echt gratis voor spelers?",
+      "playersFree_a": "Ja. Spelers betalen nooit voor het platform. Ze betalen alleen voor de lessen die ze boeken.",
       "trialHow_q": "Hoe werkt de gratis proefperiode?",
-      "trialHow_a": "Meld je aan, stel je profiel en sessies in. je krijgt volledige toegang. na de proefperiode beginnen plannen vanaf €9/maand.",
+      "trialHow_a": "Je krijgt 14 dagen volledige toegang. Geen creditcard nodig. Daarna beginnen plannen vanaf €9/maand.",
       "needWebsite_q": "Heb ik een eigen website nodig?",
       "needWebsite_a": "Nee. je krijgt een boekingspagina die je direct kunt delen.",
       "onlineBooking_q": "Kunnen spelers online boeken?",
-      "onlineBooking_a": "Ja, via je persoonlijke boekingspagina. werkt op mobiel.",
+      "onlineBooking_a": "Ja. Ze zien je beschikbare plekken en boeken in een paar tikken. Je krijgt een melding als iemand boekt.",
       "payments_q": "Hoe werken betalingen?",
-      "payments_a": "Spelers betalen via iDEAL of kaart bij het boeken. het geld gaat naar jou via Mollie.",
+      "payments_a": "Spelers betalen bij het boeken via iDEAL of kaart. Het geld gaat naar jouw rekening. Geen gejaag meer.",
       "calendarSync_q": "Synct het met Google calendar?",
-      "calendarSync_a": "Ja. elke boeking verschijnt automatisch in je agenda.",
+      "calendarSync_a": "Ja. Tweerichtings-sync. Je padelsessies verschijnen in je persoonlijke agenda en andersom.",
       "europe_q": "Is dit alleen voor Nederland?",
-      "europe_a": "Het begon in Nederland maar werkt door heel europa. betalingen in EUR.",
+      "europe_a": "Nee. We hebben trainers door heel Europa. Het platform werkt in meerdere talen.",
       "gdpr_q": "Is het aVG-compliant?",
-      "gdpr_a": "Ja. data wordt opgeslagen in de EU. zie ons privacybeleid voor details."
+      "gdpr_a": "Ja."
     },
     "finalCta": {
-      "headline": "Klaar om te stoppen met admin tussen je lessen?",
-      "body": "Opzetten duurt 10 minuten. je eerste boeking kan vandaag nog binnenkomen."
+      "headline": "Klaar om te stoppen met admin tussen de lessen door?",
+      "body": "Opzetten duurt 10 minuten. Je eerste boeking kan vandaag nog binnenkomen."
     },
     "playerBanner": {
       "headline": "Ben je een padelspeler?",
-      "subtitle": "Dit hebben we voor jou.",
+      "subtitle": "Dit hebben we voor jou gebouwd:",
       "trainersDesc": "Boek een les bij jou in de buurt",
       "locationsDesc": "Vind clubs bij jou in de buurt",
       "rules": "Padelregels",
@@ -797,11 +797,20 @@
       "blogDesc": "Tips, gidsen & nieuws"
     },
     "dualCta": {
-      "headline": "Het enige boekingsplatform gebouwd voor padel.",
-      "body": "Trainers krijgen een systeem dat sessies vult en betalingen afhandelt. spelers vinden en boeken eenvoudig lessen.",
+      "headline": "Klaar om te stoppen met admin tussen de lessen door?",
+      "body": "Opzetten duurt 10 minuten. Je eerste boeking kan vandaag nog binnenkomen.",
       "trainerCta": "Start gratis proefperiode",
       "playerCta": "Aanmelden als speler",
-      "microcopy": "Geen creditcard nodig. spelers zijn altijd gratis."
+      "microcopy": "Spelers zijn altijd gratis. Trainers starten met een gratis proefperiode, daarna vanaf €9/maand."
+    },
+    "pain": {
+      "headline": "Herkenbaar?",
+      "whatsapp_story": "Je telefoon zoemt om 22:00 — \"Kan ik naar donderdag switchen?\" Je opent WhatsApp, checkt je notities, scrollt door drie groepschats, en beseft dat je niet meer weet wie er morgen komt.",
+      "whatsapp_solution": "Met PadelTrainer.ai: spelers boeken en wijzigen zelf. Jij coacht gewoon.",
+      "cancellation_story": "Een speler annuleert 2 uur voor de les. De plek blijft leeg. Je verliest het inkomen, en drie andere spelers die die plek graag hadden gewild wisten niet eens dat hij beschikbaar was.",
+      "cancellation_solution": "Met PadelTrainer.ai: volgers krijgen direct een melding. Lege plekken vullen zichzelf.",
+      "payments_story": "Einde van de maand: wie heeft betaald, wie niet? Je scrollt door Tikkie-verzoeken, bankoverschrijvingen en \"ik betaal je volgende week\"-berichten. Je voelt je een boekhouder, geen coach.",
+      "payments_solution": "Met PadelTrainer.ai: spelers betalen vooraf bij het boeken. Automatisch. Klaar."
     }
   },
   "cityPage": {

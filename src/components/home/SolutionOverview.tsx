@@ -62,10 +62,10 @@ function MiniShield() {
 }
 
 const values = [
-  { key: 'filled', Visual: MiniCalendarGrid },
-  { key: 'admin', Visual: MiniChecklist },
-  { key: 'noshows', Visual: MiniShield },
   { key: 'player', Visual: MiniPhoneBooking },
+  { key: 'filled', Visual: MiniCalendarGrid },
+  { key: 'noshows', Visual: MiniShield },
+  { key: 'admin', Visual: MiniChecklist },
 ];
 
 export function SolutionOverview() {
