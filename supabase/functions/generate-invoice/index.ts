@@ -418,22 +418,43 @@ const handler = async (req: Request): Promise<Response> => {
 
     const htmlContent = generateInvoiceHTML(invoiceData);
     
+    // Generate PDF version
+    const pdfBytes = await generateInvoicePDF(invoiceData);
+    
     // Store under trainer's user_id or academy_profile_id folder
     const folderKey = trainerProfile?.user_id || invoice.academy_profile_id || 'custom';
     const fileName = `${folderKey}/${invoice.invoice_number}.html`;
-    const { error: uploadError } = await supabase.storage
-      .from('invoices')
-      .upload(fileName, new Blob([htmlContent], { type: 'text/html' }), {
-        upsert: true,
-        contentType: 'text/html',
-      });
+    const pdfFileName = `${folderKey}/${invoice.invoice_number}.pdf`;
 
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
+    // Upload HTML and PDF in parallel
+    const [htmlUpload, pdfUpload] = await Promise.all([
+      supabase.storage
+        .from('invoices')
+        .upload(fileName, new Blob([htmlContent], { type: 'text/html' }), {
+          upsert: true,
+          contentType: 'text/html',
+        }),
+      supabase.storage
+        .from('invoices')
+        .upload(pdfFileName, pdfBytes, {
+          upsert: true,
+          contentType: 'application/pdf',
+        }),
+    ]);
+
+    if (htmlUpload.error) {
+      console.error('HTML upload error:', htmlUpload.error);
       return new Response(
-        JSON.stringify({ error: "Failed to save invoice" }),
+        JSON.stringify({ error: "Failed to save invoice HTML" }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
+    }
+
+    if (pdfUpload.error) {
+      console.error('PDF upload error:', pdfUpload.error);
+      // Non-fatal — continue without PDF
+    } else {
+      console.log('PDF invoice uploaded:', pdfFileName);
     }
 
     // Get signed URL for download
