@@ -384,7 +384,7 @@ export default function CycleForm({
 
       // Calculate end date
       let endDate: string;
-      if (isEvent && values.end_date) {
+      if (values.end_date) {
         endDate = format(values.end_date, 'yyyy-MM-dd');
       } else if (isEvent) {
         endDate = format(values.start_date, 'yyyy-MM-dd');
