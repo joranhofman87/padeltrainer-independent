@@ -21,6 +21,13 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    const resend = new Resend(resendApiKey);
+
+    const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
+
+    const formatCurrency = (amount: number) =>
+      new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(amount);
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
