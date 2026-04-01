@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { logger } from '@/lib/logger';
 import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import { useTranslation } from 'react-i18next';
