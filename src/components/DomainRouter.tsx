@@ -57,6 +57,7 @@ const RacketFinder = lazy(() => import('@/pages/marketing/RacketFinder'));
 const RacketListing = lazy(() => import('@/pages/marketing/RacketListing'));
 const RacketDetail = lazy(() => import('@/pages/marketing/RacketDetail'));
 const PadelLevelTest = lazy(() => import('@/pages/marketing/PadelLevelTest'));
+const CityLanding = lazy(() => import('@/pages/marketing/CityLanding'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
@@ -366,6 +367,7 @@ export function DomainRouter() {
           <Route path="gear/rackets" element={<RacketListing />} />
           <Route path="gear/rackets/:slug" element={<RacketDetail />} />
           <Route path="tools/padel-level-test" element={<PadelLevelTest />} />
+          <Route path="padel/:city" element={<CityLanding />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />

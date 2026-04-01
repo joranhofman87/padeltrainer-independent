@@ -351,6 +351,7 @@ Deno.serve(async (req) => {
 
       for (const citySlug of pageCities) {
         xml += generateUrlEntry(`/trainers/${citySlug}`, today, 'weekly', '0.8');
+        xml += generateUrlEntry(`/padel/${citySlug}`, today, 'weekly', '0.8');
       }
 
       xml += '</urlset>';

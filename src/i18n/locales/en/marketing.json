@@ -1020,5 +1020,23 @@
     "retakeQuiz": "Retake Quiz",
     "shareText": "I'm a level {{level}} padel player ({{title}})! 🎾 What's your level?",
     "linkCopied": "Link copied!"
+  },
+  "cityLanding": {
+    "metaTitle": "Padel in {{city}}",
+    "metaDescription": "Find {{count}} padel clubs and coaches in {{city}}. Compare courts, book lessons and start playing padel today.",
+    "heroSubtitle": "Find padel courts, clubs and coaches in {{city}}. Book a lesson or find your nearest court.",
+    "findCourt": "Find a court",
+    "bookCoach": "Book a coach",
+    "clubs": "Clubs",
+    "coaches": "Coaches",
+    "clubsHeading": "Padel clubs in {{city}}",
+    "trainersHeading": "Padel coaches in {{city}}",
+    "lessonsHeading": "Padel lessons in {{city}}",
+    "faqHeading": "Frequently asked questions about padel in {{city}}",
+    "showAllClubs": "Show all {{count}} clubs",
+    "viewAllTrainers": "View all coaches in {{city}}",
+    "startTrial": "Start your free trial",
+    "nearbyCities": "Also popular",
+    "unknownTrainer": "Trainer"
   }
 }

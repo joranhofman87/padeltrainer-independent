@@ -1011,5 +1011,23 @@
     "retakeQuiz": "Repetir Test",
     "shareText": "¡Soy nivel {{level}} en pádel ({{title}})! 🎾 ¿Cuál es tu nivel?",
     "linkCopied": "¡Enlace copiado!"
+  },
+  "cityLanding": {
+    "metaTitle": "Padel en {{city}}",
+    "metaDescription": "Encuentra {{count}} clubes de padel y entrenadores en {{city}}. Compara pistas, reserva clases y empieza a jugar hoy.",
+    "heroSubtitle": "Encuentra pistas de padel, clubes y entrenadores en {{city}}. Reserva una clase o encuentra la pista mas cercana.",
+    "findCourt": "Encontrar pista",
+    "bookCoach": "Reservar coach",
+    "clubs": "Clubes",
+    "coaches": "Entrenadores",
+    "clubsHeading": "Clubes de padel en {{city}}",
+    "trainersHeading": "Entrenadores de padel en {{city}}",
+    "lessonsHeading": "Clases de padel en {{city}}",
+    "faqHeading": "Preguntas frecuentes sobre padel en {{city}}",
+    "showAllClubs": "Mostrar los {{count}} clubes",
+    "viewAllTrainers": "Ver todos los entrenadores en {{city}}",
+    "startTrial": "Empieza gratis",
+    "nearbyCities": "Tambien popular",
+    "unknownTrainer": "Entrenador"
   }
 }

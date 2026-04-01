@@ -38,7 +38,11 @@ Deno.serve(async (req) => {
       cacheMaxAge = 1800;
     } else if (/^\/trainers\/([^/]+)$/.test(cleanPath)) {
       const citySlug = cleanPath.match(/^\/trainers\/([^/]+)$/)![1];
-      html = await renderCityPage(supabase, citySlug, lang);
+      html = await renderCityTrainersPage(supabase, citySlug, lang);
+      cacheMaxAge = 3600;
+    } else if (/^\/padel\/([^/]+)$/.test(cleanPath)) {
+      const citySlug = cleanPath.match(/^\/padel\/([^/]+)$/)![1];
+      html = await renderPadelCityPage(supabase, citySlug, lang);
       cacheMaxAge = 3600;
     } else if (/^\/locations\/([^/]+)$/.test(cleanPath)) {
       const locSlug = cleanPath.match(/^\/locations\/([^/]+)$/)![1];
@@ -496,7 +500,7 @@ async function renderTrainerProfile(supabase: any, slug: string, lang: string): 
   return htmlDoc({ title, description, url: `/trainer/${trainerSlug}`, lang, image: profile?.avatar_url, structuredData, body });
 }
 
-async function renderCityPage(supabase: any, citySlug: string, lang: string): Promise<string> {
+async function renderCityTrainersPage(supabase: any, citySlug: string, lang: string): Promise<string> {
   const displayCity = decodeURIComponent(citySlug)
     .split('-')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -677,6 +681,71 @@ async function renderCityPage(supabase: any, citySlug: string, lang: string): Pr
   `;
 
   return htmlDoc({ title, description, url: `/trainers/${citySlug}`, lang, image: `${SITE_URL}/og-trainers.png`, structuredData, body });
+}
+
+async function renderPadelCityPage(supabase: any, citySlug: string, lang: string): Promise<string> {
+  const displayCity = decodeURIComponent(citySlug)
+    .split('-')
+    .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+
+  const { data: locations } = await supabase
+    .from('locations')
+    .select('id, name, slug, city, street_address, postal_code, indoor_courts, outdoor_courts')
+    .eq('is_active', true);
+
+  const cityLocations = (locations || []).filter((l: any) =>
+    l.city.toLowerCase().replace(/\s+/g, '-') === citySlug.toLowerCase()
+  );
+
+  const clubCount = cityLocations.length;
+  const title = `Padel in ${displayCity} — Courts, Clubs & Coaches`;
+  const description = `Find ${clubCount} padel clubs and coaches in ${displayCity}. Compare courts, book lessons and start playing padel today.`;
+
+  const clubListHtml = cityLocations.slice(0, 6).map((l: any) =>
+    `<div class="card"><h3><a href="${SITE_URL}/${lang}/locations/${l.slug}">${escHtml(l.name)}</a></h3>` +
+    `<p>${escHtml(l.street_address || '')} ${escHtml(l.postal_code || '')} ${escHtml(l.city)}</p>` +
+    (l.indoor_courts ? `<span class="badge">${l.indoor_courts} indoor</span> ` : '') +
+    (l.outdoor_courts ? `<span class="badge">${l.outdoor_courts} outdoor</span>` : '') +
+    `</div>`
+  ).join('');
+
+  const faqItems = [
+    { q: `How many padel clubs are there in ${displayCity}?`, a: `There are currently ${clubCount} active padel clubs in and around ${displayCity}.` },
+    { q: `What does a padel lesson cost in ${displayCity}?`, a: `Group lessons typically cost 25 to 50 euros per hour. Private coaching costs 40 to 80 euros per hour.` },
+    { q: `Can I play padel indoors in ${displayCity}?`, a: `Yes, most clubs in ${displayCity} offer indoor courts so you can play year-round.` },
+  ];
+
+  const faqHtml = faqItems.map(f => `<div class="faq-item"><div class="faq-q">${escHtml(f.q)}</div><p>${escHtml(f.a)}</p></div>`).join('');
+
+  const structuredData = [
+    breadcrumbSchema([
+      { name: 'Home', url: '/' },
+      { name: `Padel in ${displayCity}` },
+    ], lang),
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": faqItems.map(f => ({
+        "@type": "Question",
+        "name": f.q,
+        "acceptedAnswer": { "@type": "Answer", "text": f.a },
+      })),
+    },
+  ];
+
+  const body = `
+    ${breadcrumb([{ name: 'Home', url: '/' }, { name: `Padel in ${displayCity}` }], lang)}
+    <h1>Padel in ${escHtml(displayCity)}</h1>
+    <p>Find padel courts, clubs and coaches in ${escHtml(displayCity)}. Book a lesson or find your nearest court.</p>
+    ${clubCount > 0 ? `<h2>Padel clubs in ${escHtml(displayCity)}</h2><div class="grid">${clubListHtml}</div>` : ''}
+    <h2>Padel coaches in ${escHtml(displayCity)}</h2>
+    <p><a href="${SITE_URL}/${lang}/trainers/${citySlug}">View all coaches in ${escHtml(displayCity)}</a></p>
+    <h2>Frequently asked questions</h2>
+    <div class="faq">${faqHtml}</div>
+  `;
+
+  return htmlDoc({ title, description, url: `/padel/${citySlug}`, lang, structuredData, body });
 }
 
 async function renderLocationPage(supabase: any, slug: string, lang: string): Promise<string> {
