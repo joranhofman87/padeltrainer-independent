@@ -369,8 +369,13 @@ export function CreateInvoiceDialog({
                         <Input
                           type="number"
                           min="1"
-                          value={item.quantity || ''}
-                          onChange={(e) => updateLineItem(index, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                          value={item.quantity === 0 ? '' : item.quantity}
+                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
+                          onBlur={() => {
+                            if (!item.quantity || item.quantity < 1) {
+                              updateLineItem(index, 'quantity', 1);
+                            }
+                          }}
                         />
                       </div>
                       <div className="space-y-2">

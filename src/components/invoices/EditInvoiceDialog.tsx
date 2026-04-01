@@ -101,7 +101,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
       if (field === 'description') {
         item.description = value as string;
       } else if (field === 'quantity') {
-        item.quantity = Math.max(1, parseInt(String(value)) || 1);
+        item.quantity = value === '' || value === 0 ? 0 : (parseInt(String(value)) || 0);
       } else if (field === 'unit_price') {
         item.unit_price = Number(value) || 0;
       } else if (field === 'vat_rate') {
@@ -350,11 +350,16 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                   />
                   <Input
                     type="number"
-                    value={li.quantity || ''}
+                    value={li.quantity === 0 ? '' : li.quantity}
                     onChange={(e) => updateLineItem(i, 'quantity', e.target.value)}
+                    onBlur={() => {
+                      if (!li.quantity || li.quantity < 1) {
+                        updateLineItem(i, 'quantity', 1);
+                      }
+                    }}
                     placeholder="Aantal"
                     className="text-sm"
-                    min={0}
+                    min={1}
                   />
                   <Input
                     type="number"
