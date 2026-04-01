@@ -370,7 +370,7 @@ export function CreateInvoiceDialog({
                           type="number"
                           min="1"
                           value={item.quantity || ''}
-                          onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                          onChange={(e) => updateLineItem(index, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
                         />
                       </div>
                       <div className="space-y-2">
