@@ -215,7 +215,7 @@ export function HeroSection() {
 
   const mockScreens: Record<Tab, React.ReactNode> = {
     booking: <MockBooking t={t} />,
-    registration: <MockRegistration t={t} />,
+    players: <MockRegistration t={t} />,
     payments: <MockPayments t={t} />,
     profile: <MockProfile t={t} />,
   };
