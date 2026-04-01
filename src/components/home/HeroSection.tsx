@@ -227,7 +227,7 @@ export function HeroSection() {
       <div className="relative max-w-5xl mx-auto px-4 md:px-6 py-16 md:py-24">
         {/* Centered copy */}
         <div className="text-center animate-fade-in max-w-3xl mx-auto">
-          <h1 className="text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
+          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.1] mb-6">
             {t('homev2.hero.h1')}
           </h1>
 
