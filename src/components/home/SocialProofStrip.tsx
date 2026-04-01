@@ -33,7 +33,7 @@ export function SocialProofStrip() {
   ];
 
   return (
-    <section className="py-16 md:py-24">
+    <section className="py-12 md:py-16">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
         <h2 className="text-center text-lg font-medium text-muted-foreground mb-10">
           {t('homev2.socialProof.headline')}
