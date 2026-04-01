@@ -1,48 +1,77 @@
 
 
-# Fix Quantity Input UX — Allow Empty During Editing
+# Revamp Academy Invoices Overview
 
-## Problem
-The current `Math.max(1, parseInt(...) || 1)` runs on every keystroke, so users can never clear the field to type a new number. They have to awkwardly prepend digits then delete the old ones.
-
-## Solution
-Track quantity as a **string** during editing. Parse and enforce minimum of 1 only **on blur** (when the user leaves the field). This lets users freely clear and retype.
+## Summary
+Restructure the invoices page with trainer/location filters, default to unpaid view, and reorganize row actions into a share dropdown and move destructive/management actions into the edit dialog.
 
 ## Changes
 
-### 1. `CreateCustomInvoiceDialog.tsx`
-- Store quantity as string in state during editing
-- `onChange`: pass raw string value, no parsing
-- `onBlur`: parse to int, enforce `Math.max(1, ...)`, update line item
-- Same pattern for the quantity input
+### 1. `AcademyInvoices.tsx` — Filters and Tabs
 
-### 2. `EditInvoiceDialog.tsx`
-- Same approach: raw string on change, parse+enforce on blur
+**Add filter dropdowns above the table:**
+- **Trainer filter**: Fetch trainers from `academy_trainers` joined with `trainer_profiles` for names. Show a Select/Combobox with "All trainers" default. Filter invoices by `trainer_id`.
+- **Location filter**: Since invoices don't have a `location_id`, we can derive location from the line items or bookings. However, this is complex. Instead, skip location filter for now unless you confirm invoices should track location.
 
-### 3. `CreateInvoiceDialog.tsx`
-- Same approach: raw string on change, parse+enforce on blur
+**Change tabs from** `All | Draft | Sent/Overdue | Paid` **to:**
+- `Unpaid` (default) — all invoices where status !== "paid" (draft + sent + overdue)
+- `Paid` — status === "paid"
 
-### Technical approach (all 3 files)
-Instead of changing the line item model, simply change the input handling:
+Set `activeTab` default to `"unpaid"`.
 
-```tsx
-// quantity input
-value={item.quantity === 0 ? '' : item.quantity}
-onChange={(e) => updateLineItem(index, 'quantity', e.target.value === '' ? 0 : parseInt(e.target.value) || 0)}
-onBlur={() => {
-  if (!item.quantity || item.quantity < 1) {
-    updateLineItem(index, 'quantity', 1);
-  }
-}}
+### 2. `AcademyInvoices.tsx` — Row Actions Restructure
+
+**Keep on row (desktop):**
+- **Share dropdown** (Share2 icon) with a DropdownMenu containing:
+  - "Copy link" — copies payment URL
+  - "Send via email" — triggers email send (existing logic)
+  - "Mark as sent" — updates status to "sent" and sets `sent_at` without sending email
+
+**Move to EditInvoiceDialog:**
+- Delete / Cancel invoice
+- Download PDF
+- Mark as paid
+
+**Remove from row:** Edit pencil (clicking the row or a single edit button opens the dialog), Delete, Download, Mark as paid, individual Send.
+
+### 3. `EditInvoiceDialog.tsx` — Add action buttons
+
+Add a footer section or action bar inside the edit dialog with:
+- Download PDF button
+- Mark as paid button (if not already paid)
+- Delete/Cancel button (destructive, with confirmation)
+
+### 4. Mark as Sent logic
+
+New mutation: update invoice `status` to "sent" and `sent_at` to current timestamp, without invoking `send-invoice-email`. Toast confirmation.
+
+### 5. Mobile cards
+
+Apply same pattern: Share dropdown, tap card to open edit dialog with all actions inside.
+
+## Technical Details
+
+**Trainer filter query:**
+```typescript
+const { data: trainers } = await supabase
+  .from('academy_trainers')
+  .select('trainer_profile_id, trainer_profile:trainer_profiles(id, business_name)')
+  .eq('academy_profile_id', activeAcademy.id);
 ```
 
-Using `0` as sentinel for "empty field", and resetting to `1` on blur. The `value` shows empty when quantity is 0, and the totals recalculate live (showing €0 while empty, which is fine since it resets on blur).
+**Mark as sent mutation:**
+```typescript
+await supabase.from("invoices")
+  .update({ status: "sent", sent_at: new Date().toISOString() })
+  .eq("id", invoiceId);
+```
+
+**Share dropdown uses** `DropdownMenu` from existing UI components.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `CreateCustomInvoiceDialog.tsx` | Allow empty quantity, enforce min 1 on blur |
-| `EditInvoiceDialog.tsx` | Same |
-| `CreateInvoiceDialog.tsx` | Same |
+| `AcademyInvoices.tsx` | Add trainer filter Select, change tabs to Unpaid/Paid (default Unpaid), replace row actions with Share dropdown, remove inline edit/delete/download/mark-paid buttons, add mark-as-sent mutation |
+| `EditInvoiceDialog.tsx` | Add Download PDF, Mark as paid, Delete/Cancel buttons inside the dialog |
 
