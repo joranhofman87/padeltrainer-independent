@@ -88,24 +88,26 @@ export function SocialProofStrip() {
         </div>
 
         {/* Metrics — big bold numbers */}
-        <div className="flex flex-wrap justify-center gap-12 md:gap-20 text-center mb-4">
-          {metrics.map(m => (
-            <div
-              key={m.key}
-              className="flex flex-col items-center gap-1"
-            >
-              <span className="text-4xl md:text-5xl font-extrabold text-[hsl(var(--brand-navy))]">
-                {t(`homev2.socialProof.metric_${m.key}_value`)}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {t(`homev2.socialProof.metric_${m.key}_label`)}
-              </span>
-            </div>
-          ))}
+        <div className="bg-[hsl(var(--muted))] rounded-xl px-8 py-8 border-y border-border/50">
+          <div className="flex flex-wrap justify-center gap-12 md:gap-20 text-center mb-4">
+            {metrics.map(m => (
+              <div
+                key={m.key}
+                className="flex flex-col items-center gap-1"
+              >
+                <span className="text-4xl md:text-5xl font-extrabold text-[hsl(var(--brand-navy))]">
+                  {t(`homev2.socialProof.metric_${m.key}_value`)}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {t(`homev2.socialProof.metric_${m.key}_label`)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs text-muted-foreground">
+            {t('homev2.socialProof.disclaimer')}
+          </p>
         </div>
-        <p className="text-center text-xs text-muted-foreground">
-          {t('homev2.socialProof.disclaimer')}
-        </p>
       </div>
     </section>
   );

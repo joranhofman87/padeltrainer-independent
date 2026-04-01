@@ -278,7 +278,7 @@ export function HeroSection() {
           </div>
 
           {/* Mock screen container with floating shadow */}
-          <div className="relative rounded-b-xl rounded-t-none border-2 border-t-0 border-border bg-card shadow-2xl overflow-hidden">
+          <div className="relative rounded-b-xl rounded-t-none border-2 border-t-0 border-border bg-card shadow-[0_4px_24px_rgba(0,0,0,0.08)] overflow-hidden">
             {/* Subtle blur backdrop */}
             <div className="absolute -inset-4 bg-primary/5 blur-3xl -z-10 rounded-3xl" />
             <div className="relative min-h-[320px] md:min-h-[340px]">
