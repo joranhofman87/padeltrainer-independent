@@ -440,7 +440,7 @@ export default function Trainers() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
+    <div className="min-h-screen bg-background">
       <SEO
         title="Find Padel Trainers"
         description="Discover certified padel trainers worldwide. Compare rates, read reviews, and book lessons that match your skill level."
