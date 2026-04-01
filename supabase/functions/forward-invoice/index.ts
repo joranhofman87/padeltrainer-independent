@@ -184,6 +184,14 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Forward invoice ${invoice.invoice_number}: sent to ${emails.length - failed}/${emails.length} addresses`);
 
+    // Track forwarding timestamp
+    if (emails.length - failed > 0) {
+      await supabase
+        .from("invoices")
+        .update({ forwarded_at: new Date().toISOString() })
+        .eq("id", invoice.id);
+    }
+
     return new Response(
       JSON.stringify({ success: true, sent: emails.length - failed, failed }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
