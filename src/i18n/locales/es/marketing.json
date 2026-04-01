@@ -1028,6 +1028,12 @@
     "viewAllTrainers": "Ver todos los entrenadores en {{city}}",
     "startTrial": "Empieza gratis",
     "nearbyCities": "Tambien popular",
-    "unknownTrainer": "Entrenador"
+    "unknownTrainer": "Entrenador",
+    "indoor": "Indoor",
+    "outdoor": "Outdoor",
+    "noTrainersMessage": "Aun no hay entrenadores disponibles en {{city}}. Eres entrenador de padel? Registrate y empieza a entrenar.",
+    "becomeTrainer": "Ser entrenador",
+    "moreAboutPadel": "Mas sobre padel",
+    "viewProfile": "Ver perfil"
   }
 }

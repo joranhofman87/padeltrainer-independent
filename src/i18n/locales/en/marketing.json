@@ -1037,6 +1037,12 @@
     "viewAllTrainers": "View all coaches in {{city}}",
     "startTrial": "Start your free trial",
     "nearbyCities": "Also popular",
-    "unknownTrainer": "Trainer"
+    "unknownTrainer": "Trainer",
+    "indoor": "Indoor",
+    "outdoor": "Outdoor",
+    "noTrainersMessage": "No trainers available yet in {{city}}. Are you a padel trainer? Sign up and start coaching.",
+    "becomeTrainer": "Become a trainer",
+    "moreAboutPadel": "More about padel",
+    "viewProfile": "View profile"
   }
 }
