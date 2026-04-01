@@ -1,50 +1,66 @@
 
 
-# Final Homepage Adjustments — 8 Changes
+# Homepage Performance Optimization
 
-## 1. Remove Featured Trainers & Academies
-Remove `HomeFeaturedSections` from `Home.tsx` — delete the import and the `<HomeFeaturedSections />` component from the JSX.
+## Current State (What's Already Good)
+- Below-fold sections are already lazy-loaded via `React.lazy()` + `Suspense`
+- Third-party scripts (PostHog, Reditus) already load deferred via `requestIdleCallback`
+- Vite already handles code-splitting, tree-shaking, content-hashed filenames, and CSS purging
+- Tailwind v3 purges unused CSS automatically
+- `loading="lazy"` already on testimonial images
+- Hero section uses no external images (pure JSX/SVG mockups) so LCP is text-based and fast
+- Viewport meta tag already present in `index.html`
+- No framer-motion on any active homepage component (old unused components still import it but aren't loaded)
 
-## 2. Reorder bottom sections
-New order in `Home.tsx`:
-```
-PlayerBanner → PricingPreview → FAQSection → FinalCTASection
-```
-Move `FinalCTASection` after `FAQSection` (currently it's already last before HomeFeaturedSections, so just removing HomeFeaturedSections achieves this).
+## Changes Needed
 
-## 3. Fix pill wrapping in PlayerBanner
-In `PlayerBanner.tsx`, reduce pill padding from `px-4` to `px-3` and narrow the left text column from `md:max-w-md` to `md:max-w-sm` to give pills more room.
+### 1. Hero animation delays LCP — remove `animate-fade-in` with `animationDelay`
+**`HeroSection.tsx`**: The hero text wrapper has `animate-fade-in` and the mockup has a 200ms `animationDelay` with `animationFillMode: 'backwards'` (which means it starts invisible). This delays LCP.
+- Remove `animate-fade-in` from the hero text `div`
+- Remove `animate-fade-in`, `animationDelay`, and `animationFillMode` from the product mockup wrapper
+- Both should render instantly at full opacity
 
-## 4. Scale up HowItWorks mini illustrations
-In `HowItWorksSection.tsx`:
-- `MiniWeekCalendar`: increase `p-4` → `p-5`, slot size `h-5 w-7` → `h-7 w-10`, gap `gap-3` → `gap-4`
-- `MiniShareLink`: increase padding `px-4 py-3` → `px-5 py-4`, text `text-xs` → `text-sm`
-- `MiniNotification`: increase icon `h-8 w-8` → `h-10 w-10`, text sizes up one step
-- Increase `min-h-[60px]` → `min-h-[80px]` on the visual container
+### 2. Testimonial images — add explicit dimensions to prevent CLS
+**`SocialProofStrip.tsx`**: Avatar images inside `AvatarImage` lack `width`/`height` attributes. The logo images already have `width={80} height={28}`.
+- Add `width={56} height={56}` to the `AvatarImage` elements (matching the `h-14 w-14` avatar container)
 
-## 5. Tighten spacing between middle sections
-- `PainStoriesSection`: reduce `py-24 md:py-32` → `py-16 md:py-20`
-- `SolutionOverview`: reduce `py-24 md:py-32` → `py-16 md:py-20`
-- `HowItWorksSection`: reduce `py-24 md:py-32` → `py-16 md:py-24`
+### 3. Preconnect to Google Fonts (if used) or confirm no external fonts
+No `@font-face` or font preloads exist. The app appears to use system fonts via Tailwind defaults. No action needed — this is already optimal (no font requests to block rendering).
 
-## 6. Feature cards hover effect
-In `SolutionOverview.tsx`, add `hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200` to each card's className.
+### 4. Sponsor banner images — add dimensions and lazy loading
+**`BannerAd.tsx`**: The `<img>` already has `loading="lazy"` and `decoding="async"` but lacks `width`/`height` attributes, which causes CLS.
+- Add `width` and `height` attributes to the banner image (use a standard aspect ratio like `width={728} height={90}` for leaderboard banners, with CSS override for responsive)
 
-## 7. Hero mockup shadow
-In `HeroSection.tsx`, the mockup container already has `shadow-2xl`. Add a more specific custom shadow: `shadow-[0_4px_24px_rgba(0,0,0,0.08)]` to the outer container for a softer float effect. Also add `rounded-xl` to the full container (currently `rounded-b-xl rounded-t-none` — keep the tab bar border but add shadow to wrapper).
+### 5. Dead homepage components — verify they're not in the bundle
+Files like `ChaosPainSection.tsx`, `PadelRealitiesSection.tsx`, `CriticalEventsSection.tsx`, `ImpactSection.tsx`, `WhyPadelTrainerSection.tsx`, `DualCTABanner.tsx` import `framer-motion` but are NOT imported in `Home.tsx`. Vite tree-shakes them out. However, they add noise — optionally delete them to keep the codebase clean and prevent accidental future imports pulling in framer-motion.
 
-## 8. Stats row visual separation
-In `SocialProofStrip.tsx`, wrap the metrics row in a container with `border-y border-border/50 py-8` and give it a subtle background `bg-[#FAFAFA] rounded-xl px-8`.
+### 6. DNS prefetch for Sanity CDN
+Already present in `index.html`: `<link rel="preconnect" href="https://cdn.sanity.io" />`. Good.
 
-## Files Changed
+### 7. Add `fetchpriority="high"` to hero LCP element
+The hero's LCP element is the `<h1>` text (no image). No further action needed — text renders from the initial HTML/CSS without waiting for additional resources.
+
+### 8. Compression and cache headers
+These are handled at the infrastructure level (Cloudflare Worker proxy). Cloudflare automatically applies Brotli/gzip and Vite's content-hashed filenames enable long-term caching. No code changes needed.
+
+## Summary of Actual Code Changes
 
 | File | Change |
 |------|--------|
-| `src/pages/marketing/Home.tsx` | Remove HomeFeaturedSections, reorder sections |
-| `src/components/home/PlayerBanner.tsx` | Tighter pills, narrower left column |
-| `src/components/home/HowItWorksSection.tsx` | Scale up illustrations ~40% |
-| `src/components/home/PainStoriesSection.tsx` | Reduce vertical padding |
-| `src/components/home/SolutionOverview.tsx` | Reduce padding, add hover translateY |
-| `src/components/home/HeroSection.tsx` | Softer mockup shadow |
-| `src/components/home/SocialProofStrip.tsx` | Stats row dividers + subtle bg |
+| `src/components/home/HeroSection.tsx` | Remove `animate-fade-in` and `animationDelay` from hero elements to eliminate LCP delay |
+| `src/components/home/SocialProofStrip.tsx` | Add `width={56} height={56}` to avatar images for CLS prevention |
+| `src/components/sponsors/BannerAd.tsx` | Add `width` and `height` attributes to banner `<img>` |
+| Delete 6 unused files | `ChaosPainSection.tsx`, `PadelRealitiesSection.tsx`, `CriticalEventsSection.tsx`, `ImpactSection.tsx`, `WhyPadelTrainerSection.tsx`, `DualCTABanner.tsx` — dead code importing framer-motion |
+
+## What's NOT Needed (Already Handled)
+- **Code splitting**: Already done via `React.lazy()`
+- **CSS purging**: Tailwind v3 does this automatically
+- **Font optimization**: No external fonts loaded
+- **Third-party script deferral**: Already deferred
+- **Image lazy loading**: Already on below-fold images
+- **Compression/caching**: Cloudflare handles this
+- **Viewport meta**: Already present
+- **Tree-shaking**: Vite handles this
+
+This is a focused, low-risk optimization — the homepage is already well-structured. The main win is removing the hero animation delay that artificially pushes LCP later.
 
