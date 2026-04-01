@@ -246,8 +246,7 @@ export function HeroSection() {
 
         {/* Interactive product showcase with floating effect */}
         <div
-          className="animate-fade-in max-w-3xl mx-auto"
-          style={{ animationDelay: '200ms', animationFillMode: 'backwards' }}
+          className="max-w-3xl mx-auto"
         >
           {/* Tabs with underline indicator */}
           <div className="flex gap-1 overflow-x-auto pb-0 mb-0 scrollbar-hide justify-center border-b border-border">

@@ -68,6 +68,8 @@ export function BannerAd({ banner }: BannerAdProps) {
         className="w-full h-auto rounded-lg"
         loading="lazy"
         decoding="async"
+        width={728}
+        height={90}
       />
       {banner.ctaText && (
         <span className="absolute bottom-2 right-2 bg-primary text-primary-foreground text-sm px-3 py-1 rounded-full shadow-sm">

@@ -59,6 +59,8 @@ export function SocialProofStrip() {
                       alt={t(`homev2.socialProof.author${item.key}`)}
                       loading="lazy"
                       decoding="async"
+                      width={56}
+                      height={56}
                     />
                     <AvatarFallback>
                       {t(`homev2.socialProof.author${item.key}`).charAt(0)}
