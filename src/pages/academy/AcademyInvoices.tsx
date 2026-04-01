@@ -359,16 +359,16 @@ export default function AcademyInvoices() {
           toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
         }}>
           <Link2 className="h-4 w-4 mr-2" />
-          {t("invoices.copyLink", "Copy link")}
+          {t("invoices.copyLink", "Link kopiëren")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => sendInvoiceMutation.mutate(invoice)}>
           <Mail className="h-4 w-4 mr-2" />
-          {t("invoices.sendViaEmail", "Send via email")}
+          {t("invoices.sendViaEmail", "Verstuur via e-mail")}
         </DropdownMenuItem>
         {invoice.status !== "sent" && !invoice.sent_at && (
           <DropdownMenuItem onClick={() => markAsSentMutation.mutate(invoice.id)}>
             <CheckCheck className="h-4 w-4 mr-2" />
-            {t("invoices.markAsSent", "Mark as sent")}
+            {t("invoices.markAsSent", "Markeer als verstuurd")}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
