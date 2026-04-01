@@ -348,7 +348,7 @@ export default function TrainerEarnings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -504,7 +504,7 @@ export default function TrainerEarnings() {
 
         {/* Mollie Connect Card - only show when NOT using manual invoicing and NOT an academy trainer */}
         {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && !connectStatusLoading && connectStatus && !connectStatus.chargesEnabled && (
-          <Card className="mb-8 border-primary/50 bg-gradient-to-r from-primary/5 to-primary/10">
+          <Card className="mb-8 border-primary/50">
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-full bg-primary/10">

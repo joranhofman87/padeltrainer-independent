@@ -38,7 +38,7 @@ export function ProfileLayout({
   const { t } = useTranslation();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+    <div className="min-h-screen bg-background">
       {/* Banner */}
       {bannerUrl && (
         <div className="w-full h-32 sm:h-48 md:h-64 overflow-hidden">

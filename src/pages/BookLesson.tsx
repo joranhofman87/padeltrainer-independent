@@ -465,7 +465,7 @@ export default function BookLesson() {
 
   return (
     <FeatureErrorBoundary featureName="BookLesson" onRetry={() => window.location.reload()}>
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
+    <div className="min-h-screen bg-background">
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>

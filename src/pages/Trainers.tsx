@@ -440,7 +440,7 @@ export default function Trainers() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
+    <div className="min-h-screen bg-background">
       <SEO
         title="Find Padel Trainers"
         description="Discover certified padel trainers worldwide. Compare rates, read reviews, and book lessons that match your skill level."
@@ -479,7 +479,7 @@ export default function Trainers() {
         {/* Featured Trainers Section */}
         {!loading && featuredTrainers.length > 0 && !searchQuery && activeFilterCount === 0 && (
           <Collapsible open={featuredOpen} onOpenChange={setFeaturedOpen} className="mb-8">
-            <section className="py-6 px-4 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 rounded-xl border border-primary/10">
+            <section className="py-6 px-4 bg-muted/30 rounded-xl border border-border">
               <CollapsibleTrigger asChild>
                 <button className="w-full flex items-center justify-between gap-2 cursor-pointer group">
                   <div className="flex items-center gap-2">

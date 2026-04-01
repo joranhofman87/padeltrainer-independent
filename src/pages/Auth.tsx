@@ -186,7 +186,7 @@ export default function Auth() {
 
   return (
     <FeatureErrorBoundary featureName="Auth" onRetry={() => window.location.reload()}>
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4" data-testid="page-auth">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="page-auth">
       <Card className="w-full max-w-md" data-testid="form-login">
         <CardHeader className="text-center">
           <Link 

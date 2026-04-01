@@ -12,7 +12,7 @@ interface FeaturedSectionProps {
 
 export function FeaturedSection({ title, description, children, className = '' }: FeaturedSectionProps) {
   return (
-    <section className={`py-6 px-4 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 rounded-xl border border-primary/10 ${className}`}>
+    <section className={`py-6 px-4 bg-muted/30 rounded-xl border border-border ${className}`}>
       <div className="flex items-center gap-2 mb-4">
         <Star className="h-5 w-5 text-primary fill-primary/50" />
         <h2 className="text-lg font-semibold">{title}</h2>

@@ -85,7 +85,7 @@ export default function TrainerSubscription() {
 
   if (loading || loadingPlans) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+      <div className="min-h-screen bg-background">
         <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center gap-3">
@@ -207,7 +207,7 @@ export default function TrainerSubscription() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -225,7 +225,7 @@ export default function TrainerSubscription() {
 
       <main className="container mx-auto px-4 py-8">
         {/* Current Plan Banner */}
-        <Card className="mb-8 border-primary/20 bg-gradient-to-r from-primary/5 to-primary/10">
+        <Card className="mb-8 border-primary/20">
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
