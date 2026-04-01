@@ -235,6 +235,245 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
   `;
 }
 
+async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const page = pdfDoc.addPage([595.28, 841.89]); // A4
+  const { width, height } = page.getSize();
+  const margin = 50;
+  let y = height;
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(amount);
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  // Parse accent color to RGB (0-1 range)
+  const hexToRgb = (hex: string) => {
+    const h = hex.replace('#', '');
+    return rgb(
+      parseInt(h.substring(0, 2), 16) / 255,
+      parseInt(h.substring(2, 4), 16) / 255,
+      parseInt(h.substring(4, 6), 16) / 255,
+    );
+  };
+  const accentColor = hexToRgb(invoice.banner_color || '#16a34a');
+
+  // Helper to draw text and return the y position
+  const drawText = (text: string, x: number, yPos: number, options: { font?: any; size?: number; color?: any; maxWidth?: number } = {}) => {
+    const f = options.font || font;
+    const size = options.size || 10;
+    const color = options.color || rgb(0.12, 0.16, 0.22);
+
+    // Simple word wrapping
+    if (options.maxWidth) {
+      const words = text.split(' ');
+      let line = '';
+      let currentY = yPos;
+      for (const word of words) {
+        const testLine = line ? `${line} ${word}` : word;
+        const testWidth = f.widthOfTextAtSize(testLine, size);
+        if (testWidth > options.maxWidth && line) {
+          page.drawText(line, { x, y: currentY, font: f, size, color });
+          currentY -= size + 4;
+          line = word;
+        } else {
+          line = testLine;
+        }
+      }
+      if (line) {
+        page.drawText(line, { x, y: currentY, font: f, size, color });
+        currentY -= size + 4;
+      }
+      return currentY;
+    }
+
+    page.drawText(text, { x, y: yPos, font: f, size, color });
+    return yPos - size - 4;
+  };
+
+  // ── Header bar ──
+  page.drawRectangle({ x: 0, y: height - 50, width, height: 50, color: accentColor });
+  page.drawText(invoice.trainer.business_name, {
+    x: margin, y: height - 34, font: fontBold, size: 16, color: rgb(1, 1, 1),
+  });
+  y = height - 70;
+
+  // ── FACTUUR title + meta ──
+  page.drawText('FACTUUR', { x: margin, y, font: fontBold, size: 24, color: accentColor });
+
+  const metaX = width - margin - 180;
+  drawText(`Factuurnummer: ${invoice.invoice_number}`, metaX, y, { font: fontBold, size: 9 });
+  drawText(`Factuurdatum: ${formatDate(invoice.invoice_date)}`, metaX, y - 14, { size: 9 });
+  drawText(`Vervaldatum: ${formatDate(invoice.due_date)}`, metaX, y - 28, { size: 9 });
+  y -= 55;
+
+  // ── Parties ──
+  const colLeft = margin;
+  const colRight = width / 2 + 20;
+  let yLeft = y;
+  let yRight = y;
+
+  // From
+  yLeft = drawText('VAN', colLeft, yLeft, { font: fontBold, size: 8, color: rgb(0.42, 0.45, 0.5) });
+  yLeft = drawText(invoice.trainer.business_name, colLeft, yLeft, { font: fontBold, size: 11 });
+  if (invoice.trainer.business_address) {
+    yLeft = drawText(invoice.trainer.business_address, colLeft, yLeft, { size: 9, maxWidth: 220 });
+  }
+  yLeft -= 4;
+  yLeft = drawText(`KvK: ${invoice.trainer.kvk_number}`, colLeft, yLeft, { size: 9 });
+  if (invoice.trainer.btw_number) {
+    yLeft = drawText(`BTW: ${invoice.trainer.btw_number}`, colLeft, yLeft, { size: 9 });
+  }
+
+  // To
+  yRight = drawText('AAN', colRight, yRight, { font: fontBold, size: 8, color: rgb(0.42, 0.45, 0.5) });
+  if (invoice.player_business_name) {
+    yRight = drawText(invoice.player_business_name, colRight, yRight, { font: fontBold, size: 11 });
+    yRight = drawText(invoice.player_name, colRight, yRight, { size: 9 });
+  } else {
+    yRight = drawText(invoice.player_name, colRight, yRight, { font: fontBold, size: 11 });
+  }
+  if (invoice.player_address) {
+    yRight = drawText(invoice.player_address, colRight, yRight, { size: 9, maxWidth: 220 });
+  }
+  if (invoice.player_btw_number) {
+    yRight -= 4;
+    yRight = drawText(`BTW: ${invoice.player_btw_number}`, colRight, yRight, { size: 9 });
+  }
+
+  y = Math.min(yLeft, yRight) - 20;
+
+  // ── Line items table ──
+  const colWidths = [250, 50, 90, 90]; // description, qty, price, amount
+  const tableX = margin;
+  const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+
+  // Table header
+  page.drawRectangle({ x: tableX, y: y - 4, width: tableWidth, height: 20, color: rgb(0.96, 0.97, 0.98) });
+  const headerY = y;
+  const headers = ['Omschrijving', 'Aantal', 'Prijs', 'Bedrag'];
+  let hx = tableX + 6;
+  for (let i = 0; i < headers.length; i++) {
+    const align = i === 0 ? hx : hx + colWidths[i] - font.widthOfTextAtSize(headers[i], 8) - 6;
+    page.drawText(headers[i], { x: i === 0 ? hx : align, y: headerY, font: fontBold, size: 8, color: rgb(0.3, 0.35, 0.4) });
+    hx += colWidths[i];
+  }
+  y -= 20;
+
+  // Table rows
+  for (const item of invoice.line_items) {
+    const rowHeight = 18;
+    y -= rowHeight;
+
+    if (y < 80) {
+      // Add new page if running out of space
+      const newPage = pdfDoc.addPage([595.28, 841.89]);
+      // For simplicity we stop here — most invoices fit on one page
+      break;
+    }
+
+    // Draw separator
+    page.drawLine({ start: { x: tableX, y: y + rowHeight - 2 }, end: { x: tableX + tableWidth, y: y + rowHeight - 2 }, thickness: 0.5, color: rgb(0.9, 0.91, 0.93) });
+
+    let cx = tableX + 6;
+    // Description (truncate if too long)
+    let desc = item.description;
+    const maxDescWidth = colWidths[0] - 12;
+    while (font.widthOfTextAtSize(desc, 9) > maxDescWidth && desc.length > 3) {
+      desc = desc.slice(0, -1);
+    }
+    page.drawText(desc, { x: cx, y: y + 4, font, size: 9 });
+    cx += colWidths[0];
+
+    // Quantity (center)
+    const qtyText = `${item.quantity}`;
+    const qtyWidth = font.widthOfTextAtSize(qtyText, 9);
+    page.drawText(qtyText, { x: cx + (colWidths[1] - qtyWidth) / 2, y: y + 4, font, size: 9 });
+    cx += colWidths[1];
+
+    // Price (right)
+    const priceText = formatCurrency(item.unit_price);
+    page.drawText(priceText, { x: cx + colWidths[2] - font.widthOfTextAtSize(priceText, 9) - 6, y: y + 4, font, size: 9 });
+    cx += colWidths[2];
+
+    // Amount (right)
+    const amountText = formatCurrency(item.quantity * item.unit_price);
+    page.drawText(amountText, { x: cx + colWidths[3] - font.widthOfTextAtSize(amountText, 9) - 6, y: y + 4, font, size: 9 });
+  }
+
+  y -= 12;
+
+  // ── Totals ──
+  const totalsX = tableX + colWidths[0] + colWidths[1];
+  const totalsWidth = colWidths[2] + colWidths[3];
+
+  const drawTotalRow = (label: string, value: string, bold = false, accent = false) => {
+    const f = bold ? fontBold : font;
+    const size = bold ? 12 : 10;
+    const color = accent ? accentColor : rgb(0.12, 0.16, 0.22);
+    if (bold) {
+      page.drawLine({ start: { x: totalsX, y: y + 14 }, end: { x: totalsX + totalsWidth, y: y + 14 }, thickness: 1.5, color: accentColor });
+    }
+    page.drawText(label, { x: totalsX + 6, y, font: f, size, color });
+    const valW = f.widthOfTextAtSize(value, size);
+    page.drawText(value, { x: totalsX + totalsWidth - valW - 6, y, font: f, size, color });
+    y -= size + 8;
+  };
+
+  drawTotalRow('Subtotaal', formatCurrency(invoice.subtotal));
+
+  // VAT rows
+  const nonZeroEntries = invoice.vat_breakdown
+    ? Object.entries(invoice.vat_breakdown).filter(([_, data]) => (data as any).vat !== 0)
+    : [];
+  if (nonZeroEntries.length > 1) {
+    for (const [rate, data] of nonZeroEntries.sort(([a], [b]) => Number(a) - Number(b))) {
+      drawTotalRow(`BTW ${rate}%`, formatCurrency((data as any).vat));
+    }
+  } else {
+    drawTotalRow(`BTW ${invoice.vat_rate}%`, formatCurrency(invoice.vat_amount));
+  }
+
+  y -= 4;
+  drawTotalRow('Totaal', formatCurrency(invoice.total), true, true);
+
+  y -= 8;
+
+  // ── Payment info ──
+  if (y > 60) {
+    page.drawRectangle({ x: margin, y: y - 50, width: tableWidth, height: 60, color: rgb(0.97, 0.97, 0.98) });
+    page.drawRectangle({ x: margin, y: y - 50, width: 3, height: 60, color: accentColor });
+
+    const payY = y;
+    page.drawText('Betalingsgegevens', { x: margin + 12, y: payY, font: fontBold, size: 10 });
+
+    if (invoice.payment_url) {
+      drawText(`Betaallink: ${invoice.payment_url}`, margin + 12, payY - 16, { size: 8, maxWidth: tableWidth - 24 });
+    } else {
+      drawText(`IBAN: ${invoice.trainer.iban}`, margin + 12, payY - 16, { size: 9 });
+      if (invoice.trainer.bic) {
+        drawText(`BIC: ${invoice.trainer.bic}`, margin + 12, payY - 30, { size: 9 });
+      }
+    }
+    drawText(`Referentie: ${invoice.invoice_number}`, margin + 12, payY - (invoice.trainer.bic ? 44 : 30), { size: 9 });
+    y -= 70;
+  }
+
+  // ── Notes ──
+  if (invoice.notes && y > 40) {
+    y -= 6;
+    drawText('Opmerking:', margin, y, { font: fontBold, size: 9 });
+    drawText(invoice.notes, margin, y - 14, { size: 9, maxWidth: tableWidth });
+  }
+
+  return await pdfDoc.save();
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
