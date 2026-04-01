@@ -11,18 +11,18 @@ function MiniWeekCalendar() {
     [0,1,0,0,1],
   ];
   return (
-    <div className="rounded-xl border bg-card p-4 w-fit shadow-sm" aria-hidden>
-      <div className="flex gap-3 mb-2">
+    <div className="rounded-xl border bg-card p-5 w-fit shadow-sm" aria-hidden>
+      <div className="flex gap-4 mb-2">
         {days.map(d => (
-          <span key={d} className="text-[11px] font-medium text-muted-foreground w-7 text-center">{d}</span>
+          <span key={d} className="text-xs font-medium text-muted-foreground w-10 text-center">{d}</span>
         ))}
       </div>
       {grid.map((row, ri) => (
-        <div key={ri} className="flex gap-3 mb-1.5">
+        <div key={ri} className="flex gap-4 mb-2">
           {row.map((slot, ci) => (
             <div
               key={ci}
-              className={`h-5 w-7 rounded ${slot ? 'bg-primary/60' : 'bg-muted'}`}
+              className={`h-7 w-10 rounded ${slot ? 'bg-primary/60' : 'bg-muted'}`}
             />
           ))}
         </div>
