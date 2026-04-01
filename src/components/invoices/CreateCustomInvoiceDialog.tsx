@@ -333,11 +333,16 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
                   />
                   <Input
                     type="number"
-                    value={li.quantity || ''}
+                    value={li.quantity === 0 ? '' : li.quantity}
                     onChange={(e) => updateLineItem(i, 'quantity', e.target.value)}
+                    onBlur={() => {
+                      if (!li.quantity || li.quantity < 1) {
+                        updateLineItem(i, 'quantity', 1);
+                      }
+                    }}
                     placeholder="Aantal"
                     className="text-sm"
-                    min={0}
+                    min={1}
                   />
                   <Input
                     type="number"
