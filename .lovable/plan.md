@@ -1,70 +1,88 @@
 
 
-# City Landing Pages for SEO — `/padel/[city]`
+# City Page Improvements — 8 Changes
 
-## Approach
+## 1. Fix nearby cities casing
+**File**: `src/pages/marketing/CityLanding.tsx` (line ~427)
 
-Rather than enriching the existing `/trainers/[city]` page (which is trainer-focused), create a new dedicated city landing page at `/padel/[city-slug]`. This keeps the trainer directory page intact while giving us a broader, keyword-rich page targeting "padel [city]" queries.
+The `nc.city` value comes from the database as-is (sometimes ALL CAPS like "KAATSHEUVEL"). Apply title-case normalization in the nearby cities strip, same logic as `displayCity` uses.
 
-The existing `TrainersCity.tsx` already fetches all the data we need (locations, trainers, academies, nearby cities). The new page will reuse the same data-fetching logic but present it in the richer layout described in the prompt.
+## 2. Trainers section — show even when empty
+**File**: `src/pages/marketing/CityLanding.tsx`
 
-## New Files
+Currently the trainers section is wrapped in `{trainers.length > 0 && ...}` — so it disappears entirely when no trainers exist. Change to always render the section:
+- If trainers exist: show the grid (as now) + "View all trainers" link
+- If no trainers: show a message like "No trainers available yet in [City]. Are you a padel trainer? Sign up." with a CTA button linking to trainer signup
+- Add "View profile" link text on each trainer card
 
-### 1. `src/pages/marketing/CityLanding.tsx`
-New page component with these sections:
-- **Hero**: H1 "Padel in [City]", subtitle, two anchor CTAs ("Find a court" / "Book a coach")
-- **City intro**: Template-generated 200-300 word paragraph using city data (club count, trainer count, top club names, indoor/outdoor availability). Generated client-side from a helper function — no CMS needed for v1
-- **Clubs section** (H2): Grid of `LocationCard` components, show 6 initially with "Show all" expand
-- **Trainers section** (H2): Grid of trainer cards (reuse pattern from `TrainersCity.tsx`), CTA linking to `/trainers/[city]`
-- **Padel lessons section** (H2): Template paragraph targeting "padel les [city]", group vs private, CTA to signup
-- **FAQ section** (H2): 5 city-specific FAQs with `FAQPage` structured data
-- **Nearby cities strip**: Horizontal scroll of city links to `/padel/[city]`
+Add new i18n keys: `noTrainersMessage`, `becomeTrainer` across all 5 locales.
 
-Data fetching reuses existing functions: `getActiveLocations()`, `getLocationTrainerCounts()`, `getClaimedLocationIds()`, `getCitiesWithTrainers()`, plus the same trainer-fetching logic from `TrainersCity.tsx`.
+## 3. Expand content to 400+ words
+**File**: `src/lib/cityContent.ts`
 
-### 2. `src/lib/cityContent.ts`
-Helper that generates the city intro paragraph and lessons paragraph from template strings using city data variables (city name, club count, trainer count, indoor/outdoor counts, top club names, province). Returns localized text per language.
+### a) Expand intro templates (~80 → ~150 words)
+Add a second paragraph to each language template mentioning:
+- Indoor vs outdoor balance for this city
+- Proximity to nearby padel cities
+- Growth of the padel scene
 
-## Modified Files
+### b) Add "Which club suits you?" paragraph
+Add a new export `generateClubIntro()` that returns ~60 words (all 5 languages) like: "Every club in [City] has its own character. Some focus on competitive players, others suit beginners or families. Below you'll find an overview with address, court count, and type (indoor/outdoor) to help you choose."
 
-### 3. `src/components/DomainRouter.tsx`
-Add route: `<Route path="padel/:city" element={<CityLanding />} />`
+### c) Expand lessons text (~50 → ~100 words)
+Expand `lessonsTemplates` to mention: what a first lesson looks like, that most trainers speak Dutch and English, that PadelTrainer.ai handles booking.
 
-### 4. Translation files (all 5 locales)
-Add `cityLanding` namespace with:
-- Page title/meta description templates
-- Hero headline/subtitle
-- Section headings (clubs, trainers, lessons, FAQ)
-- FAQ question/answer templates
-- CTA button labels
-- Lessons section copy template
+**File**: `src/pages/marketing/CityLanding.tsx`
+- Render the club intro paragraph above the clubs grid
+- Split the city intro into two `<p>` tags for readability
 
-### 5. `supabase/functions/sitemap/index.ts`
-In the `cities` section, generate entries for `/padel/[city]` in addition to (or instead of) `/trainers/[city]`. Both URL patterns will be in the sitemap.
+## 4. Improve FAQ answer length
+**File**: `src/lib/cityContent.ts`
 
-### 6. `supabase/functions/render-page/index.ts`
-Add `/padel/:city` to the pre-rendering paths so bots get server-rendered HTML with proper OG tags.
+Pass `locations` data into `generateFAQs` (change signature to accept locations array and trainerCounts). Expand each FAQ answer to 2-3 sentences using dynamic data:
+- Club count answer: mention indoor/outdoor split and top club names
+- Lesson cost: mention that PadelTrainer.ai lets you compare prices
+- Indoor question: use actual indoor count
+- Racket question: mention club names that offer rental
+- Best trainer: mention number of active trainers
 
-## SEO Implementation
+## 5. Add hero stats (indoor/outdoor/trainers)
+**File**: `src/pages/marketing/CityLanding.tsx`
 
-- **Title**: "Padel in [City] — Courts, Clubs & Coaches | PadelTrainer.ai"
-- **Meta description**: "Find [X] padel clubs and coaches in [City]. Compare courts, book lessons and start playing padel today."
-- **Structured data**: `FAQPage` + `BreadcrumbList` (Home > Padel > [City]) + `LocalBusiness` for each club (if lat/lng available)
-- **Hreflang**: All 5 languages pointing to `/[lang]/padel/[city]`
-- **Canonical**: Self-referencing per locale
-- **Internal linking**: Nearby cities link to `/padel/[other-city]`, clubs link to `/locations/[slug]`, trainers link to `/trainer/[slug]`
+Expand the hero stats row from `Clubs | Coaches` to `Clubs | Indoor | Outdoor | Trainers`. Compute indoor/outdoor counts from locations data.
 
-## Design
+Add new i18n keys: `indoor`, `outdoor` across all 5 locales.
 
-- Matches existing design language: white background, clean cards, orange accents
-- Mobile-first layout with stacking sections
-- Club/trainer cards use the same `LocationCard` and trainer card patterns already in use
-- Lazy load trainer and club grids below the fold
-- Hero is clean typography on white/light gray — no full-bleed image
+## 6. Link blog posts section
+**File**: `src/pages/marketing/CityLanding.tsx`
 
-## What stays unchanged
+Add a "More about padel" section before the FAQ with 2-3 learning article cards fetched from Sanity via `getLearningArticles()`. Show as simple linked cards with title and excerpt. Only render if articles are found.
 
-- `/trainers/[city]` remains as-is (trainer-focused directory)
-- `/locations/[slug]` individual club pages remain unchanged
-- No database changes needed — all data already exists
+Add i18n key: `moreAboutPadel` across all 5 locales.
+
+## 7. Club card enhancements
+**File**: `src/components/locations/LocationCard.tsx`
+
+- Add explicit "View club" link text at the bottom of each card (visible text, not just clickable card)
+- The MapPin icon is already there — no change needed
+
+Add i18n key: `viewClub` to common translations.
+
+## 8. City-specific OG image
+**File**: `src/pages/marketing/CityLanding.tsx`
+
+For now, set a dynamic OG title + description per city (already done). For the image, construct a dynamic OG image URL using a simple text-on-background approach — create a small edge function `og-image` that generates a branded PNG with "Padel in [City] — [X] clubs" text overlay on the PadelTrainer.ai branded background. Pass city and count as query params.
+
+**File**: `supabase/functions/og-image/index.ts` — new edge function that generates a simple branded OG image using canvas/SVG-to-PNG.
+
+## Files Changed Summary
+
+| File | Change |
+|------|--------|
+| `src/pages/marketing/CityLanding.tsx` | Nearby cities casing fix, always-show trainers section, club intro paragraph, expanded hero stats, blog posts section, OG image URL |
+| `src/lib/cityContent.ts` | Expanded intro/lessons templates, new `generateClubIntro()`, enriched FAQ answers with location data |
+| `src/components/locations/LocationCard.tsx` | Add "View club" link text |
+| `src/i18n/locales/[en,nl,de,es,fr]/marketing.json` | New keys: `noTrainersMessage`, `becomeTrainer`, `indoor`, `outdoor`, `moreAboutPadel`, `clubIntro` |
+| `src/i18n/locales/[en,nl,de,es,fr]/common.json` | New key: `viewClub` |
+| `supabase/functions/og-image/index.ts` | New edge function for dynamic OG images |
 
