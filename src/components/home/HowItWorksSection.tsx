@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import { CalendarPlus, Share2, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -68,33 +67,22 @@ export function HowItWorksSection() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="how-it-works" className="py-20 md:py-28">
-      <div className="max-w-6xl mx-auto px-4 md:px-6">
-        <motion.h2
-          className="text-3xl md:text-4xl font-bold mb-14 max-w-lg"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-        >
+    <section id="how-it-works" className="py-24 md:py-32">
+      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
+        <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] mb-14 max-w-lg text-[hsl(var(--brand-navy))]">
           {t('homev2.howItWorks.headline')}
-        </motion.h2>
+        </h2>
 
         <div className="grid md:grid-cols-3 gap-12">
-          {steps.map((s, i) => (
-            <motion.div
-              key={s.key}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.1 }}
-              transition={{ delay: i * 0.12 }}
-            >
-              <span className="text-5xl font-bold text-primary/20 mb-3 block">{s.num}</span>
+          {steps.map((s) => (
+            <div key={s.key}>
+              <span className="text-7xl md:text-8xl font-extrabold text-primary/10 mb-3 block leading-none">{s.num}</span>
               <div className="mb-4 h-[52px] flex items-center">
                 <s.Visual />
               </div>
               <h3 className="text-xl font-semibold mb-2">{t(`homev2.howItWorks.${s.key}_title`)}</h3>
               <p className="text-muted-foreground leading-relaxed">{t(`homev2.howItWorks.${s.key}_desc`)}</p>
-            </motion.div>
+            </div>
           ))}
         </div>
       </div>

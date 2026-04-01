@@ -132,3 +132,15 @@ All colors MUST be HSL.
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* Homepage section utilities */
+.section-alt {
+  background-color: #F8F8F6;
+}
+
+.card-elevated {
+  @apply bg-card rounded-xl shadow-sm transition-shadow duration-200;
+}
+.card-elevated:hover {
+  @apply shadow-lg;
+}

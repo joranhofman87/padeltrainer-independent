@@ -27,33 +27,33 @@ export function SocialProofStrip() {
   ];
 
   const metrics = [
-    { key: 'hours', icon: Clock },
-    { key: 'slots', icon: CalendarPlus },
-    { key: 'noshows', icon: TrendingDown },
+    { key: 'hours' },
+    { key: 'slots' },
+    { key: 'noshows' },
   ];
 
   return (
-    <section className="border-y bg-muted/30">
-      <div className="max-w-6xl mx-auto px-4 md:px-6 py-14">
-        <h2 className="text-center text-lg font-medium text-muted-foreground mb-8">
+    <section className="py-16 md:py-24">
+      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
+        <h2 className="text-center text-lg font-medium text-muted-foreground mb-10">
           {t('homev2.socialProof.headline')}
         </h2>
 
         {/* Testimonials */}
-        <div className="grid md:grid-cols-2 gap-6 mb-12">
+        <div className="grid md:grid-cols-2 gap-6 mb-14">
           {testimonials.map((item) => (
-            <Card key={item.key} className="h-full">
-              <CardContent className="p-6">
-                <div className="flex gap-0.5 mb-3">
+            <Card key={item.key} className="h-full shadow-md border-0 rounded-xl">
+              <CardContent className="p-8">
+                <div className="flex gap-0.5 mb-4">
                   {Array.from({ length: item.rating }).map((_, j) => (
-                    <Star key={j} className="h-3.5 w-3.5 fill-primary text-primary" />
+                    <Star key={j} className="h-4 w-4 fill-primary text-primary" />
                   ))}
                 </div>
-                <p className="text-foreground mb-4 italic">
+                <p className="text-foreground mb-5 italic text-lg leading-relaxed">
                   "{t(`homev2.socialProof.testimonial${item.key}`)}"
                 </p>
                 <div className="flex items-center gap-3">
-                  <Avatar className="h-10 w-10">
+                  <Avatar className="h-14 w-14">
                     <AvatarImage
                       src={item.photo}
                       alt={t(`homev2.socialProof.author${item.key}`)}
@@ -65,7 +65,7 @@ export function SocialProofStrip() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">
+                    <p className="text-sm font-semibold text-foreground">
                       {t(`homev2.socialProof.author${item.key}`)}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -75,11 +75,11 @@ export function SocialProofStrip() {
                   <img
                     src={item.logo}
                     alt=""
-                    className="h-6 object-contain opacity-60"
+                    className="h-7 object-contain opacity-60"
                     loading="lazy"
                     decoding="async"
                     width={80}
-                    height={24}
+                    height={28}
                   />
                 </div>
               </CardContent>
@@ -87,25 +87,21 @@ export function SocialProofStrip() {
           ))}
         </div>
 
-        {/* Metrics */}
-        <div className="flex flex-wrap justify-center gap-8 md:gap-14 text-center mb-4">
-          {metrics.map(m => {
-            const Icon = m.icon;
-            return (
-              <div
-                key={m.key}
-                className="flex flex-col items-center gap-1"
-              >
-                <Icon className="h-5 w-5 text-primary mb-1" />
-                <span className="text-2xl font-bold text-foreground">
-                  {t(`homev2.socialProof.metric_${m.key}_value`)}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {t(`homev2.socialProof.metric_${m.key}_label`)}
-                </span>
-              </div>
-            );
-          })}
+        {/* Metrics — big bold numbers */}
+        <div className="flex flex-wrap justify-center gap-12 md:gap-20 text-center mb-4">
+          {metrics.map(m => (
+            <div
+              key={m.key}
+              className="flex flex-col items-center gap-1"
+            >
+              <span className="text-4xl md:text-5xl font-extrabold text-[hsl(var(--brand-navy))]">
+                {t(`homev2.socialProof.metric_${m.key}_value`)}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {t(`homev2.socialProof.metric_${m.key}_label`)}
+              </span>
+            </div>
+          ))}
         </div>
         <p className="text-center text-xs text-muted-foreground">
           {t('homev2.socialProof.disclaimer')}

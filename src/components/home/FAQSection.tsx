@@ -1,5 +1,4 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
 const FAQ_KEYS = [
@@ -30,29 +29,24 @@ export function FAQSection() {
   };
 
   return (
-    <section id="faq" className="py-20 md:py-28">
-      <div className="max-w-6xl mx-auto px-4 md:px-6">
+    <section id="faq" className="py-24 md:py-32">
+      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
         />
 
-        <motion.h2
-          className="text-3xl md:text-4xl font-bold text-center mb-10"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-        >
+        <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] text-center mb-12 text-[hsl(var(--brand-navy))]">
           {t('homev2.faq.headline')}
-        </motion.h2>
+        </h2>
 
-        <Accordion type="single" collapsible className="w-full">
+        <Accordion type="single" collapsible className="w-full divide-y">
           {faqItems.map((item, i) => (
-            <AccordionItem key={i} value={`faq-${i}`}>
-              <AccordionTrigger className="text-left text-base">
+            <AccordionItem key={i} value={`faq-${i}`} className="border-b-0">
+              <AccordionTrigger className="text-left text-base py-5">
                 {item.question}
               </AccordionTrigger>
-              <AccordionContent className="text-muted-foreground">
+              <AccordionContent className="text-muted-foreground pb-5">
                 {item.answer}
               </AccordionContent>
             </AccordionItem>

@@ -1,10 +1,9 @@
-import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
 /* Mini Tailwind-built illustrations for each value prop */
 
 function MiniCalendarGrid() {
-  const slots = [1,1,0,1,1, 0,1,1,1,0, 1,0,1,1,1]; // 1=filled
+  const slots = [1,1,0,1,1, 0,1,1,1,0, 1,0,1,1,1];
   return (
     <div className="grid grid-cols-5 gap-1 w-fit" aria-hidden>
       {slots.map((filled, i) => (
@@ -31,7 +30,6 @@ function MiniChecklist() {
     </div>
   );
 }
-
 
 function MiniPhoneBooking() {
   return (
@@ -72,40 +70,31 @@ export function SolutionOverview() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="features" className="py-20 md:py-28 bg-muted/30">
-      <div className="max-w-6xl mx-auto px-4 md:px-6">
-        <motion.div
-          className="mb-14 max-w-2xl"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-        >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+    <section id="features" className="py-24 md:py-32 section-alt">
+      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
+        <div className="mb-14 max-w-2xl">
+          <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] mb-4 text-[hsl(var(--brand-navy))]">
             {t('homev2.solution.headline')}
           </h2>
           <p className="text-lg text-muted-foreground">
             {t('homev2.solution.category')}
           </p>
-        </motion.div>
+        </div>
 
         <div className="grid sm:grid-cols-2 gap-6">
-          {values.map((v, i) => (
-            <motion.div
+          {values.map((v) => (
+            <div
               key={v.key}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.08 }}
-              className="rounded-xl border bg-card p-6 flex items-start gap-5"
+              className="card-elevated p-8 flex items-start gap-5"
             >
-              <div className="shrink-0">
+              <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
                 <v.Visual />
               </div>
               <div>
-                <h3 className="font-semibold mb-1">{t(`homev2.solution.value_${v.key}_title`)}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{t(`homev2.solution.value_${v.key}_desc`)}</p>
+                <h3 className="font-semibold text-base mb-1">{t(`homev2.solution.value_${v.key}_title`)}</h3>
+                <p className="text-muted-foreground leading-relaxed">{t(`homev2.solution.value_${v.key}_desc`)}</p>
               </div>
-            </motion.div>
+            </div>
           ))}
         </div>
       </div>

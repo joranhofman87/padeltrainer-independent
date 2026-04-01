@@ -1,5 +1,4 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { motion } from 'framer-motion';
 import { GraduationCap, User, Building2, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -18,35 +17,28 @@ export function JobsToBeDoneSection() {
   const getPath = useLocalizedPathFn();
 
   return (
-    <section className="py-20 md:py-28 bg-muted/30">
-      <div className="max-w-6xl mx-auto px-4 md:px-6">
-        <motion.div
-          className="mb-12 max-w-2xl"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-        >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+    <section className="py-24 md:py-32 section-alt">
+      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
+        <div className="mb-12 max-w-2xl">
+          <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] mb-4 text-[hsl(var(--brand-navy))]">
             {t('homev2.jtbd.headline')}
           </h2>
           <p className="text-lg text-muted-foreground">
             {t('homev2.jtbd.intro')}
           </p>
-        </motion.div>
+        </div>
 
         <div className="grid sm:grid-cols-3 gap-6">
-          {personas.map((p, i) => (
-            <motion.div
-              key={p.key}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <Card className={`h-full flex flex-col transition-shadow ${p.featured ? 'border-primary/40 shadow-lg' : 'hover:shadow-md'}`}>
-                <CardContent className="p-6 flex flex-col flex-1">
+          {personas.map((p) => (
+            <div key={p.key}>
+              <Card className={`h-full flex flex-col transition-all duration-200 border-0 ${
+                p.featured
+                  ? 'scale-[1.02] shadow-lg border-2 border-primary'
+                  : 'shadow-sm hover:shadow-md'
+              }`}>
+                <CardContent className="p-8 flex flex-col flex-1">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${p.featured ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${p.featured ? 'bg-primary text-primary-foreground' : 'bg-primary/10'}`}>
                       <p.icon className="h-5 w-5" />
                     </div>
                   </div>
@@ -61,7 +53,7 @@ export function JobsToBeDoneSection() {
                     ))}
                   </ul>
                   <Button
-                    className="w-full mt-auto"
+                    className="w-full mt-auto rounded-lg"
                     variant={p.featured ? 'default' : 'outline'}
                     onClick={() => navigate(getPath('/trainer/signup'))}
                   >
@@ -69,7 +61,7 @@ export function JobsToBeDoneSection() {
                   </Button>
                 </CardContent>
               </Card>
-            </motion.div>
+            </div>
           ))}
         </div>
       </div>

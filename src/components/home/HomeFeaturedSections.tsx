@@ -350,7 +350,7 @@ function FeaturedAcademiesSection({ academies, getInitials, localizePath, naviga
                             <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
                           )}
                         </div>
-                        {academy.description && (
+                        {academy.description && academy.description.length > 15 && !/great academy/i.test(academy.description) && (
                           <p className="text-sm text-muted-foreground line-clamp-2">
                             {academy.description}
                           </p>

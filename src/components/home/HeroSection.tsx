@@ -79,8 +79,6 @@ function MockRegistration({ t }: { t: (k: string, opts?: Record<string, unknown>
         <UserPlus className="h-5 w-5 text-primary" />
         <span className="font-semibold text-sm">{t('homev2.hero.mock_reg_title')}</span>
       </div>
-
-      {/* Stats highlight */}
       <div className="flex items-center gap-4">
         <div className="flex-1 rounded-xl border bg-primary/5 border-primary/20 p-4 text-center">
           <div className="text-3xl font-bold text-primary">52</div>
@@ -91,8 +89,6 @@ function MockRegistration({ t }: { t: (k: string, opts?: Record<string, unknown>
           <div className="text-xs text-muted-foreground mt-1">{t('homev2.hero.mock_reg_groups')}</div>
         </div>
       </div>
-
-      {/* Recent registrations */}
       <div className="space-y-2">
         {[
           { name: 'Sarah van Dijk', time: '2 min ago', level: 'Intermediate' },
@@ -109,8 +105,6 @@ function MockRegistration({ t }: { t: (k: string, opts?: Record<string, unknown>
           </div>
         ))}
       </div>
-
-      {/* AI auto-plan */}
       <div className="flex items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
         <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
         <span className="text-xs text-primary font-medium">{t('homev2.hero.mock_reg_ai')}</span>
@@ -182,8 +176,6 @@ function MockProfile({ t }: { t: (k: string, opts?: Record<string, unknown>) => 
           <div className="text-[10px] text-primary/80">{t('homev2.hero.mock_profile_slots', { count: '8' })}</div>
         </div>
       </div>
-
-      {/* Open slots grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {[
           { day: 'Mon', time: '09:00' },
@@ -201,7 +193,6 @@ function MockProfile({ t }: { t: (k: string, opts?: Record<string, unknown>) => 
           </div>
         ))}
       </div>
-
       <div className="h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
         {t('homev2.hero.mock_profile_cta')}
       </div>
@@ -222,27 +213,25 @@ export function HeroSection() {
 
   return (
     <section className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-background pointer-events-none" />
-
-      <div className="relative max-w-5xl mx-auto px-4 md:px-6 py-16 md:py-24">
+      <div className="relative max-w-[1200px] mx-auto px-4 md:px-6 py-20 md:py-32">
         {/* Centered copy */}
         <div className="text-center animate-fade-in max-w-3xl mx-auto">
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.1] mb-6">
+          <h1 className="text-4xl md:text-5xl lg:text-[64px] font-bold tracking-[-0.02em] leading-[1.1] mb-6 text-[hsl(var(--brand-navy))]">
             {t('homev2.hero.h1')}
           </h1>
 
-          <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
+          <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
             {t('homev2.hero.subheadline')}
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-4">
-            <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
+            <Button size="lg" className="text-lg px-8 py-4 h-14 rounded-lg bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all" asChild>
               <Link to={getAppUrl('/signup/trainer')} onClick={() => trackEvent('cta_clicked', { location: 'hero' })}>
                 {t('homev2.cta.startTrial')}
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Link>
             </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8 h-14 border-2" asChild>
+            <Button size="lg" variant="outline" className="text-lg px-8 h-14 rounded-lg border-2 hover:bg-muted/50 transition-all" asChild>
               <a href="#how-it-works">
                 <Play className="mr-2 h-4 w-4" />
                 {t('homev2.cta.watchDemo')}
@@ -250,18 +239,18 @@ export function HeroSection() {
             </Button>
           </div>
 
-          <p className="text-sm text-muted-foreground mb-12">
+          <p className="text-sm text-muted-foreground mb-14">
             {t('homev2.cta.trustMicrocopy')}
           </p>
         </div>
 
-        {/* Interactive product showcase */}
+        {/* Interactive product showcase with floating effect */}
         <div
           className="animate-fade-in max-w-3xl mx-auto"
           style={{ animationDelay: '200ms', animationFillMode: 'backwards' }}
         >
-          {/* Tabs */}
-          <div className="flex gap-1 overflow-x-auto pb-1 mb-0 scrollbar-hide justify-center">
+          {/* Tabs with underline indicator */}
+          <div className="flex gap-1 overflow-x-auto pb-0 mb-0 scrollbar-hide justify-center border-b border-border">
             {TABS.map(tab => {
               const Icon = TAB_ICONS[tab];
               const isActive = tab === activeTab;
@@ -272,21 +261,26 @@ export function HeroSection() {
                     setActiveTab(tab);
                     trackEvent('hero_tab_clicked', { tab });
                   }}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-t-lg whitespace-nowrap transition-colors ${
+                  className={`relative flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
                     isActive
-                      ? 'bg-card text-foreground border border-b-0 border-border shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
                   <span className="hidden sm:inline">{t(`homev2.hero.tab_${tab}`)}</span>
+                  {isActive && (
+                    <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
+                  )}
                 </button>
               );
             })}
           </div>
 
-          {/* Mock screen container — clean card, no browser chrome */}
-          <div className="relative rounded-xl rounded-tl-none border-2 border-border bg-card shadow-2xl overflow-hidden">
+          {/* Mock screen container with floating shadow */}
+          <div className="relative rounded-b-xl rounded-t-none border-2 border-t-0 border-border bg-card shadow-2xl overflow-hidden">
+            {/* Subtle blur backdrop */}
+            <div className="absolute -inset-4 bg-primary/5 blur-3xl -z-10 rounded-3xl" />
             <div className="relative min-h-[320px] md:min-h-[340px]">
               {TABS.map(tab => (
                 <div
