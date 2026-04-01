@@ -653,7 +653,10 @@ export default function AcademyInvoices() {
                           <p className="font-mono text-sm font-medium">{inv.invoice_number}</p>
                           <p className="text-sm text-muted-foreground">{inv.player_name}</p>
                         </div>
-                        {getStatusBadge(inv)}
+                        <div className="flex items-center gap-1.5">
+                          {getStatusBadge(inv)}
+                          {inv.forwarded_at && <Mail className="h-3.5 w-3.5 text-muted-foreground" />}
+                        </div>
                       </div>
                       <div className="flex items-center justify-between text-sm mb-3">
                         <span className="text-muted-foreground">
