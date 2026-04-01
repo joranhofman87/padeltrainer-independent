@@ -369,7 +369,7 @@ export function CreateInvoiceDialog({
                         <Input
                           type="number"
                           min="1"
-                          value={item.quantity}
+                          value={item.quantity || ''}
                           onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 1)}
                         />
                       </div>
