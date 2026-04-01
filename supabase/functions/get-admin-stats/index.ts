@@ -227,6 +227,15 @@ serve(async (req) => {
       });
     }
 
+    // Guest player / registration stats
+    const guestRegistrations = {
+      totalGuests: guestPlayers.length,
+      convertedToAccount: guestPlayers.filter(g => g.linked_profile_id).length,
+      hasTrained: guestPlayers.filter(g => g.has_trained).length,
+      thisMonth: guestPlayers.filter(g => g.created_at && new Date(g.created_at) >= thisMonthStart).length,
+      lastMonth: guestPlayers.filter(g => g.created_at && new Date(g.created_at) >= lastMonthStart && new Date(g.created_at) <= lastMonthEnd).length,
+    };
+
     const response = {
       overview: {
         totalGMV,
