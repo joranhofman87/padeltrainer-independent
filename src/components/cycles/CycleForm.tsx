@@ -141,6 +141,7 @@ export default function CycleForm({
   const isEdit = !!cycle?.id;
   const isRegistration = formType === 'registration';
   const isEvent = formType === 'event';
+  const customEndDateRef = useRef(false);
 
   useEffect(() => {
     getRatingSystems().then(setRatingSystems);
