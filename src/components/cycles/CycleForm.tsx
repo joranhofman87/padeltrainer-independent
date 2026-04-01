@@ -291,6 +291,16 @@ export default function CycleForm({
   const watchedEndTime = form.watch('end_time');
   const watchedWeeks = form.watch('number_of_weeks');
   const watchedAssignedTrainer = form.watch('assigned_trainer_id');
+  const watchedStartDate = form.watch('start_date');
+
+  // Auto-sync end_date from start_date + weeks (for non-event types)
+  useEffect(() => {
+    if (isEvent || customEndDateRef.current) return;
+    if (watchedStartDate && watchedWeeks && watchedWeeks > 0) {
+      const computed = addWeeks(watchedStartDate, watchedWeeks);
+      form.setValue('end_date', computed);
+    }
+  }, [watchedStartDate, watchedWeeks, isEvent]);
 
   useEffect(() => {
     if (isRegistration || !watchedStartTime || !watchedEndTime || !watchedWeeks) return;
