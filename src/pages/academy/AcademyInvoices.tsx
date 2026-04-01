@@ -555,16 +555,29 @@ export default function AcademyInvoices() {
             <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({unpaidInvoices.length})</TabsTrigger>
             <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
           </TabsList>
-          <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 flex-1 flex-wrap">
             {trainers.length > 0 && (
               <Select value={trainerFilter} onValueChange={setTrainerFilter}>
                 <SelectTrigger className="w-48">
-                  <SelectValue placeholder={t("invoices.allTrainers", "All trainers")} />
+                  <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("invoices.allTrainers", "All trainers")}</SelectItem>
+                  <SelectItem value="all">{t("invoices.allTrainers", "Alle trainers")}</SelectItem>
                   {trainers.map((tr: any) => (
                     <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {academyLocations.length > 0 && (
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("invoices.allLocations", "Alle locaties")}</SelectItem>
+                  {academyLocations.map((loc: any) => (
+                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -572,7 +585,7 @@ export default function AcademyInvoices() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder={t("invoices.searchPlaceholder", "Search player name...")}
+                placeholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 w-64"
