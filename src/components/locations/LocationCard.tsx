@@ -1,4 +1,4 @@
-import { MapPin, Users, CheckCircle, Home, Sun, Building2 } from 'lucide-react';
+import { MapPin, Users, CheckCircle, Home, Sun, Building2, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
