@@ -207,10 +207,14 @@ export default function AcademyInvoices() {
     },
   });
 
-  // Filter by trainer
+  // Filter by trainer, then by location
   const trainerFiltered = trainerFilter === "all"
     ? invoices
     : invoices.filter(i => (i as any).trainer_id === trainerFilter);
+
+  const locationFiltered = locationFilter === "all"
+    ? trainerFiltered
+    : trainerFiltered.filter(i => (invoiceLocationMap as Record<string, string>)[i.id] === locationFilter);
 
   const unpaidInvoices = trainerFiltered.filter((i) => i.status !== "paid" && i.status !== "cancelled");
   const paidInvoices = trainerFiltered.filter((i) => i.status === "paid");
