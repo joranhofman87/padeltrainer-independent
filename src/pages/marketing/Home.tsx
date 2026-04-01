@@ -7,25 +7,22 @@ import { HeroSection } from '@/components/home/HeroSection';
 import { SocialProofStrip } from '@/components/home/SocialProofStrip';
 import { BannerZone } from '@/components/sponsors/BannerZone';
 
-
 // Lazy-load below-fold sections to reduce initial JS parsing on mobile
-const PlayerBanner = lazy(() => import('@/components/home/PlayerBanner').then(m => ({ default: m.PlayerBanner })));
+const PainStoriesSection = lazy(() => import('@/components/home/PainStoriesSection').then(m => ({ default: m.PainStoriesSection })));
 const SolutionOverview = lazy(() => import('@/components/home/SolutionOverview').then(m => ({ default: m.SolutionOverview })));
 const HowItWorksSection = lazy(() => import('@/components/home/HowItWorksSection').then(m => ({ default: m.HowItWorksSection })));
-const PadelRealitiesSection = lazy(() => import('@/components/home/PadelRealitiesSection').then(m => ({ default: m.PadelRealitiesSection })));
 const JobsToBeDoneSection = lazy(() => import('@/components/home/JobsToBeDoneSection').then(m => ({ default: m.JobsToBeDoneSection })));
+const PlayerBanner = lazy(() => import('@/components/home/PlayerBanner').then(m => ({ default: m.PlayerBanner })));
 const PricingPreview = lazy(() => import('@/components/home/PricingPreview').then(m => ({ default: m.PricingPreview })));
 const FAQSection = lazy(() => import('@/components/home/FAQSection').then(m => ({ default: m.FAQSection })));
 const FinalCTASection = lazy(() => import('@/components/home/FinalCTASection').then(m => ({ default: m.FinalCTASection })));
 const HomeFeaturedSections = lazy(() => import('@/components/home/HomeFeaturedSections').then(m => ({ default: m.HomeFeaturedSections })));
-const DualCTABanner = lazy(() => import('@/components/home/DualCTABanner').then(m => ({ default: m.DualCTABanner })));
 
 export default function Home() {
   const { t } = useTranslation('marketing');
 
   useEffect(() => {
     trackEvent('home_page_viewed');
-    // Prefetch high-traffic route chunks while user is idle on landing page
     const prefetch = () => {
       import('@/pages/Trainers');
       import('@/pages/TrainerProfile');
@@ -77,16 +74,15 @@ export default function Home() {
       <SocialProofStrip />
       <BannerZone zone="homepage-hero" className="container mx-auto px-4 py-6" />
       <Suspense fallback={null}>
-        <PlayerBanner />
-        <PadelRealitiesSection />
+        <PainStoriesSection />
         <SolutionOverview />
         <HowItWorksSection />
         <JobsToBeDoneSection />
+        <PlayerBanner />
         <PricingPreview />
         <FAQSection />
         <FinalCTASection />
         <HomeFeaturedSections />
-        <DualCTABanner />
       </Suspense>
     </MarketingLayout>
   );
