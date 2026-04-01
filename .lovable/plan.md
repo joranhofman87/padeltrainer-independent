@@ -1,77 +1,55 @@
 
 
-# Revamp Academy Invoices Overview
+# Fix Trainer Names & Add Location Filter to Invoices
 
-## Summary
-Restructure the invoices page with trainer/location filters, default to unpaid view, and reorganize row actions into a share dropdown and move destructive/management actions into the edit dialog.
+## Problem
+1. **Trainer names show "Trainer"** — the filter fetches `business_name` from `trainer_profiles`, which is often empty. Need to fall back to `profiles.full_name` via `trainer_profiles.user_id`.
+2. **No location filter** — invoices don't have a `location_id` column. Need to derive location from `booking_ids` → `bookings` → `availability_slots` → `location_id`, and add a filter dropdown.
 
 ## Changes
 
-### 1. `AcademyInvoices.tsx` — Filters and Tabs
+### 1. Fix trainer names in filter (`AcademyInvoices.tsx`)
 
-**Add filter dropdowns above the table:**
-- **Trainer filter**: Fetch trainers from `academy_trainers` joined with `trainer_profiles` for names. Show a Select/Combobox with "All trainers" default. Filter invoices by `trainer_id`.
-- **Location filter**: Since invoices don't have a `location_id`, we can derive location from the line items or bookings. However, this is complex. Instead, skip location filter for now unless you confirm invoices should track location.
+The current query only fetches `trainer_profiles.business_name`. Since there's no FK from `trainer_profiles.user_id` to `profiles`, we need a two-step fetch:
+- Fetch `academy_trainers` with `trainer_profiles(id, business_name, user_id)`
+- Fetch `profiles` for all those `user_id`s to get `full_name`
+- Use `business_name || full_name || "Trainer"` as display name
 
-**Change tabs from** `All | Draft | Sent/Overdue | Paid` **to:**
-- `Unpaid` (default) — all invoices where status !== "paid" (draft + sent + overdue)
-- `Paid` — status === "paid"
+### 2. Add location filter (`AcademyInvoices.tsx`)
 
-Set `activeTab` default to `"unpaid"`.
-
-### 2. `AcademyInvoices.tsx` — Row Actions Restructure
-
-**Keep on row (desktop):**
-- **Share dropdown** (Share2 icon) with a DropdownMenu containing:
-  - "Copy link" — copies payment URL
-  - "Send via email" — triggers email send (existing logic)
-  - "Mark as sent" — updates status to "sent" and sets `sent_at` without sending email
-
-**Move to EditInvoiceDialog:**
-- Delete / Cancel invoice
-- Download PDF
-- Mark as paid
-
-**Remove from row:** Edit pencil (clicking the row or a single edit button opens the dialog), Delete, Download, Mark as paid, individual Send.
-
-### 3. `EditInvoiceDialog.tsx` — Add action buttons
-
-Add a footer section or action bar inside the edit dialog with:
-- Download PDF button
-- Mark as paid button (if not already paid)
-- Delete/Cancel button (destructive, with confirmation)
-
-### 4. Mark as Sent logic
-
-New mutation: update invoice `status` to "sent" and `sent_at` to current timestamp, without invoking `send-invoice-email`. Toast confirmation.
-
-### 5. Mobile cards
-
-Apply same pattern: Share dropdown, tap card to open edit dialog with all actions inside.
-
-## Technical Details
-
-**Trainer filter query:**
+**Fetch academy locations:**
 ```typescript
-const { data: trainers } = await supabase
-  .from('academy_trainers')
-  .select('trainer_profile_id, trainer_profile:trainer_profiles(id, business_name)')
-  .eq('academy_profile_id', activeAcademy.id);
+const { data: locations } = useQuery({
+  queryKey: ["academy-locations-filter", activeAcademy?.id],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from("academy_locations")
+      .select("location_id, locations(id, name)")
+      .eq("academy_profile_id", activeAcademy.id)
+      .eq("is_active", true);
+    return data;
+  },
+});
 ```
 
-**Mark as sent mutation:**
-```typescript
-await supabase.from("invoices")
-  .update({ status: "sent", sent_at: new Date().toISOString() })
-  .eq("id", invoiceId);
-```
+**Resolve invoice → location mapping:**
+- When invoices load, collect all `booking_ids` from all invoices
+- Batch-fetch bookings with their `slot_id`, then batch-fetch slots with `location_id`
+- Build a map: `invoiceId → locationId`
+- Use this map to filter invoices when a location is selected
 
-**Share dropdown uses** `DropdownMenu` from existing UI components.
+**Add location filter dropdown** next to the trainer filter.
+
+### 3. State & filtering
+
+Add `locationFilter` state (default `"all"`). Chain the filter after trainer filter:
+```
+trainerFiltered → locationFiltered → tab filtered → search filtered
+```
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `AcademyInvoices.tsx` | Add trainer filter Select, change tabs to Unpaid/Paid (default Unpaid), replace row actions with Share dropdown, remove inline edit/delete/download/mark-paid buttons, add mark-as-sent mutation |
-| `EditInvoiceDialog.tsx` | Add Download PDF, Mark as paid, Delete/Cancel buttons inside the dialog |
+| `src/pages/academy/AcademyInvoices.tsx` | Fix trainer name resolution (two-step query with profiles fallback); add location filter dropdown; resolve invoice-to-location via booking_ids→bookings→slots; filter by location |
 
