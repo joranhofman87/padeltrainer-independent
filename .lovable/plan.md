@@ -1,44 +1,38 @@
 
 
-# Add Missing Fields to CSV Export
-
-## Summary
-The CSV export is missing several fields that players fill out during registration. These fields exist in the database and are already fetched — they just need to be added to the CSV output.
-
-## Missing Fields
-
-| Field | In DB | In CSV | Action |
-|-------|-------|--------|--------|
-| Birth Date | ✅ `birth_date` | ❌ | Add column |
-| Location | ✅ `location_id` | ❌ | Add column (resolve name from cycles/locations) |
-| Selected Package | ✅ `metadata.selected_cyclus_option` | ❌ | Add column (label + price) |
-| Preferred Weeks | ✅ `metadata.preferred_number_of_weeks` | ❌ | Add column |
-
-All other form fields (name, email, phone, rating, rating system, lesson type, duration, sessions/week, preferred trainer, notes, availability days) are already in the CSV.
+# Hide Number Spinners Globally & Add Column Headers to Line Items
 
 ## Changes
 
-**File: `src/lib/cycles.ts`** — `exportIntakeRequestsToCsv`
+### 1. `src/index.css` — Hide number input spinners globally
+Add CSS rules in `@layer base` to remove the up/down arrows from all `input[type="number"]` fields across the entire app:
 
-Add 4 new columns to the headers and row mapping:
-- **"Birth Date"** — formatted from `r.birth_date`
-- **"Location"** — resolved from `location_id` (pass location map as parameter, or extract from metadata)
-- **"Package"** — from `r.metadata?.selected_cyclus_option?.label`
-- **"Preferred Weeks"** — from `r.metadata?.preferred_number_of_weeks`
+```css
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+```
 
-**Files: `AcademyIntakeRequests.tsx` + `TrainerIntakeRequests.tsx`**
+### 2. `src/components/invoices/CreateCustomInvoiceDialog.tsx` — Add column headers
+Above the line items rows (before the `.map()`), add a header row matching the grid layout `grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem]` with labels: **Omschrijving**, **Aantal**, **Prijs**, **BTW**, **Totaal**, and an empty cell for the delete button.
 
-Pass a location name map (built from the cycles' location data already loaded) to the export function.
+### 3. `src/components/trainer/CreateInvoiceDialog.tsx` — Add column headers
+Same approach: add a header row above the line item cards with labels for **Omschrijving**, **Datum**, **Aantal**, **Prijs** matching the existing grid layout.
 
-**File: `src/lib/cycles.ts`** — `IntakeRequest` interface
-
-Add `birth_date: string | null` to the interface so TypeScript is aware of it (it's already returned at runtime).
+### 4. Check `EditInvoiceDialog.tsx` for same issues
+Search for the edit invoice dialog and apply the same header row pattern if it has line items without headers.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/lib/cycles.ts` | Add `birth_date` to interface; add 4 new CSV columns; accept optional `locationMap` param |
-| `AcademyIntakeRequests.tsx` | Pass location map to export |
-| `TrainerIntakeRequests.tsx` | Pass location map to export |
+| `src/index.css` | Global CSS to hide number input spinners |
+| `CreateCustomInvoiceDialog.tsx` | Add column header row above line items |
+| `CreateInvoiceDialog.tsx` | Add column header row above line items |
+| `EditInvoiceDialog.tsx` | Add column header row if applicable |
 
