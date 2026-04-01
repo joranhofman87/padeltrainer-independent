@@ -56,6 +56,7 @@ export default function AcademyInvoices() {
   const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
   const [trainerFilter, setTrainerFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
