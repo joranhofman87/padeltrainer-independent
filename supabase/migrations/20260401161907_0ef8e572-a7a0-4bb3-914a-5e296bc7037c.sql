@@ -1,0 +1,1 @@
+ALTER TABLE public.invoices ADD COLUMN forwarded_at TIMESTAMPTZ NULL;

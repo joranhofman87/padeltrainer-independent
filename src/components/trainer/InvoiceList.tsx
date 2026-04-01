@@ -52,6 +52,7 @@ interface Invoice {
   pdf_url: string | null;
   sent_at: string | null;
   paid_at: string | null;
+  forwarded_at: string | null;
   line_items: any;
   booking_ids: string[] | null;
   notes: string | null;
@@ -424,6 +425,12 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                     {invoice.paid_at && (
                       <span className="text-green-600">
                         Betaald: {format(parseISO(invoice.paid_at), 'd MMM yyyy', { locale: nl })}
+                      </span>
+                    )}
+                    {invoice.forwarded_at && (
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <Mail className="h-3 w-3" />
+                        Doorgestuurd: {format(parseISO(invoice.forwarded_at), 'd MMM yyyy', { locale: nl })}
                       </span>
                     )}
                   </div>

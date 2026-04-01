@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -32,6 +33,7 @@ interface Invoice {
   status: string;
   sent_at: string | null;
   paid_at: string | null;
+  forwarded_at: string | null;
   pdf_url: string | null;
   mollie_payment_url: string | null;
   mollie_payment_id: string | null;
@@ -598,7 +600,21 @@ export default function AcademyInvoices() {
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
-                          <TableCell>{getStatusBadge(inv)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              {getStatusBadge(inv)}
+                              {inv.forwarded_at && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Doorgestuurd op {format(new Date(inv.forwarded_at), "dd MMM yyyy HH:mm", { locale: dateFnsLocale })}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
                             <div className="flex justify-end gap-1">
                               {inv.status !== "paid" && inv.status !== "cancelled" && (
@@ -637,7 +653,10 @@ export default function AcademyInvoices() {
                           <p className="font-mono text-sm font-medium">{inv.invoice_number}</p>
                           <p className="text-sm text-muted-foreground">{inv.player_name}</p>
                         </div>
-                        {getStatusBadge(inv)}
+                        <div className="flex items-center gap-1.5">
+                          {getStatusBadge(inv)}
+                          {inv.forwarded_at && <Mail className="h-3.5 w-3.5 text-muted-foreground" />}
+                        </div>
                       </div>
                       <div className="flex items-center justify-between text-sm mb-3">
                         <span className="text-muted-foreground">
