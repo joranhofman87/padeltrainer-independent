@@ -611,7 +611,8 @@ export default function CycleForm({
                 />
               </div>
             ) : (
-              /* Registration / Cyclus: start date + number of weeks */
+              /* Registration / Cyclus: start date + number of weeks + end date */
+              <>
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -705,6 +706,7 @@ export default function CycleForm({
                   </FormItem>
                 )}
               />
+              </>
             )}
 
             {/* Timeframe - only for cyclus */}
