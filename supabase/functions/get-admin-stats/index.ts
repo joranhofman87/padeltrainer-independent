@@ -74,6 +74,7 @@ serve(async (req) => {
       playersResult,
       mollieAccountsResult,
       clubsResult,
+      guestPlayersResult,
     ] = await Promise.all([
       supabase
         .from("bookings")
@@ -90,6 +91,9 @@ serve(async (req) => {
       supabase
         .from("club_profiles")
         .select("id, is_verified, subscription_status, subscription_tier, trial_ends_at"),
+      supabase
+        .from("guest_players")
+        .select("id, linked_profile_id, has_trained, created_at"),
     ]);
 
     const bookings = bookingsResult.data || [];
