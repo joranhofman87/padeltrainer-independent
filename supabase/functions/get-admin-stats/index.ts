@@ -101,6 +101,7 @@ serve(async (req) => {
     const players = playersResult.data || [];
     const mollieAccounts = mollieAccountsResult.data || [];
     const clubs = clubsResult.data || [];
+    const guestPlayers = guestPlayersResult.data || [];
 
     logStep("Data fetched", {
       bookings: bookings.length,
@@ -108,6 +109,7 @@ serve(async (req) => {
       players: players.length,
       mollieAccounts: mollieAccounts.length,
       clubs: clubs.length,
+      guestPlayers: guestPlayers.length,
     });
 
     // Calculate signup trends (this month vs last month)
