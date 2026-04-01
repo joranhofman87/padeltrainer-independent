@@ -495,6 +495,23 @@ export default function AcademyInvoices() {
         </Card>
       </div>
 
+      {/* Action Buttons */}
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          onClick={() => setCreateDialogOpen(true)}
+        >
+          <PlusCircle className="h-4 w-4 mr-2" />
+          {t("invoices.createInvoice", "Nieuwe factuur")}
+        </Button>
+        <Link to="/app/academy/settings">
+          <Button variant="outline" size="sm">
+            <Settings className="h-4 w-4 mr-2" />
+            {t("invoices.editSettings", "Factuur instellingen")}
+          </Button>
+        </Link>
+      </div>
+
       {/* Bulk Actions */}
       {draftInvoices.length > 0 && (
         <div className="flex gap-2">
