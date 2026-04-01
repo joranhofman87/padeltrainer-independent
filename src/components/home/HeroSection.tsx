@@ -11,7 +11,7 @@ type Tab = typeof TABS[number];
 
 const TAB_ICONS: Record<Tab, React.ElementType> = {
   booking: Calendar,
-  registration: UserPlus,
+  players: UserPlus,
   payments: CreditCard,
   profile: User,
 };
