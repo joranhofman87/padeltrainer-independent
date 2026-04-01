@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MapPin, Users, Star, ChevronRight, ChevronDown, ArrowRight } from 'lucide-react';
+import { MapPin, Users, Star, ChevronRight, ChevronDown, ArrowRight, Home, Sun } from 'lucide-react';
 import { getActiveLocations, getLocationTrainerCounts, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { getCitiesWithTrainers, type CityWithTrainerCount } from '@/lib/cities';
 import { LocationCard } from '@/components/locations/LocationCard';
@@ -16,9 +16,10 @@ import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { logger } from '@/lib/logger';
-import { generateCityIntro, generateLessonsText, generateFAQs } from '@/lib/cityContent';
+import { generateCityIntro, generateClubIntro, generateLessonsText, generateFAQs } from '@/lib/cityContent';
 import { getBatchTrainerRatings } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
+import { getLearningArticles, type LearningArticleSummary } from '@/lib/learningArticles';
 import { Helmet } from 'react-helmet-async';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 
@@ -38,6 +39,13 @@ interface TrainerWithProfile {
   reviewCount: number;
 }
 
+function toTitleCase(str: string): string {
+  return str
+    .split(/[\s-]+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 export default function CityLanding() {
   const { city } = useParams<{ city: string }>();
   const [locations, setLocations] = useState<Location[]>([]);
@@ -45,18 +53,17 @@ export default function CityLanding() {
   const [trainerCounts, setTrainerCounts] = useState<Record<string, number>>({});
   const [claimedLocationIds, setClaimedLocationIds] = useState<Set<string>>(new Set());
   const [nearbyCities, setNearbyCities] = useState<CityWithTrainerCount[]>([]);
+  const [articles, setArticles] = useState<LearningArticleSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAllClubs, setShowAllClubs] = useState(false);
   const { t } = useTranslation('marketing');
+  const { t: tc } = useTranslation('common');
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
 
   const displayCity = useMemo(() => {
     if (!city) return '';
-    return decodeURIComponent(city)
-      .split('-')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
+    return toTitleCase(decodeURIComponent(city));
   }, [city]);
 
   useEffect(() => {
@@ -66,11 +73,12 @@ export default function CityLanding() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [allLocations, allTrainerCounts, allClaimedIds, allCities] = await Promise.all([
+      const [allLocations, allTrainerCounts, allClaimedIds, allCities, learningArticles] = await Promise.all([
         getActiveLocations(),
         getLocationTrainerCounts(),
         getClaimedLocationIds(),
         getCitiesWithTrainers(),
+        getLearningArticles(currentLang).catch(() => [] as LearningArticleSummary[]),
       ]);
 
       const cityLocations = allLocations.filter(
@@ -79,6 +87,7 @@ export default function CityLanding() {
       setLocations(cityLocations);
       setTrainerCounts(allTrainerCounts);
       setClaimedLocationIds(allClaimedIds);
+      setArticles(learningArticles.slice(0, 3));
 
       // Nearby cities
       const currentSlug = city?.toLowerCase();
@@ -144,9 +153,16 @@ export default function CityLanding() {
 
   const visibleLocations = showAllClubs ? locations : locations.slice(0, 6);
   const totalTrainers = locations.reduce((sum, l) => sum + (trainerCounts[l.id] || 0), 0);
+  const indoorClubs = locations.filter(l => (l.indoor_courts ?? 0) > 0).length;
+  const outdoorClubs = locations.filter(l => (l.outdoor_courts ?? 0) > 0).length;
 
   const cityIntro = useMemo(
     () => generateCityIntro(displayCity, locations, trainerCounts, currentLang),
+    [displayCity, locations, trainerCounts, currentLang]
+  );
+
+  const clubIntro = useMemo(
+    () => generateClubIntro(displayCity, locations, trainerCounts, currentLang),
     [displayCity, locations, trainerCounts, currentLang]
   );
 
@@ -156,8 +172,8 @@ export default function CityLanding() {
   );
 
   const faqs = useMemo(
-    () => generateFAQs(displayCity, locations.length, currentLang),
-    [displayCity, locations.length, currentLang]
+    () => generateFAQs(displayCity, locations, trainerCounts, currentLang),
+    [displayCity, locations, trainerCounts, currentLang]
   );
 
   // SEO structured data
@@ -207,6 +223,7 @@ export default function CityLanding() {
 
   const metaTitle = t('cityLanding.metaTitle', { city: displayCity });
   const metaDescription = t('cityLanding.metaDescription', { city: displayCity, count: locations.length });
+  const ogImageUrl = `https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/og-image?city=${encodeURIComponent(displayCity)}&count=${locations.length}`;
 
   if (loading) {
     return (
@@ -225,6 +242,7 @@ export default function CityLanding() {
         description={metaDescription}
         url={`/padel/${city}`}
         structuredData={[faqSchema, breadcrumbSchema, ...localBusinessSchemas]}
+        image={ogImageUrl}
       />
 
       {/* Breadcrumb */}
@@ -258,13 +276,25 @@ export default function CityLanding() {
             </Button>
           </div>
 
-          {/* Quick stats */}
+          {/* Quick stats - expanded */}
           {(locations.length > 0 || totalTrainers > 0) && (
-            <div className="flex justify-center gap-8 mt-10">
+            <div className="flex justify-center gap-6 md:gap-8 mt-10 flex-wrap">
               {locations.length > 0 && (
                 <div className="text-center">
                   <div className="text-2xl font-bold text-primary">{locations.length}</div>
                   <div className="text-sm text-muted-foreground">{t('cityLanding.clubs')}</div>
+                </div>
+              )}
+              {indoorClubs > 0 && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">{indoorClubs}</div>
+                  <div className="text-sm text-muted-foreground">{t('cityLanding.indoor')}</div>
+                </div>
+              )}
+              {outdoorClubs > 0 && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">{outdoorClubs}</div>
+                  <div className="text-sm text-muted-foreground">{t('cityLanding.outdoor')}</div>
                 </div>
               )}
               {totalTrainers > 0 && (
@@ -289,9 +319,10 @@ export default function CityLanding() {
       {locations.length > 0 && (
         <section id="clubs" className="py-16">
           <div className="container mx-auto px-4">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-4">
               {t('cityLanding.clubsHeading', { city: displayCity })}
             </h2>
+            <p className="text-base text-muted-foreground mb-8 max-w-3xl">{clubIntro}</p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {visibleLocations.map(location => (
                 <LocationCard
@@ -315,68 +346,85 @@ export default function CityLanding() {
         </section>
       )}
 
-      {/* Trainers section */}
-      {trainers.length > 0 && (
-        <section id="trainers" className="py-16 bg-muted/30">
-          <div className="container mx-auto px-4">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
-              {t('cityLanding.trainersHeading', { city: displayCity })}
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {trainers.slice(0, 6).map(trainer => (
-                <LocalizedLink
-                  key={trainer.id}
-                  to={`/trainer/${trainer.slug || trainer.user_id}`}
-                  className="block"
-                >
-                  <Card className="hover:shadow-lg transition-shadow hover:border-primary/50 h-full">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start gap-3">
-                        <Avatar className="h-12 w-12 shrink-0">
-                          <AvatarImage src={trainer.profile?.avatar_url || undefined} alt={trainer.profile?.full_name || ''} />
-                          <AvatarFallback className="bg-primary/10 text-primary">
-                            {(trainer.profile?.full_name || '?').slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <CardTitle className="text-lg">{trainer.profile?.full_name || t('cityLanding.unknownTrainer')}</CardTitle>
-                          {trainer.averageRating > 0 && (
-                            <div className="flex items-center gap-1 mt-1">
-                              <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-                              <span className="text-sm font-medium">{trainer.averageRating.toFixed(1)}</span>
-                              <span className="text-xs text-muted-foreground">({trainer.reviewCount})</span>
-                            </div>
-                          )}
+      {/* Trainers section - always show */}
+      <section id="trainers" className="py-16 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
+            {t('cityLanding.trainersHeading', { city: displayCity })}
+          </h2>
+          {trainers.length > 0 ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {trainers.slice(0, 6).map(trainer => (
+                  <LocalizedLink
+                    key={trainer.id}
+                    to={`/trainer/${trainer.slug || trainer.user_id}`}
+                    className="block"
+                  >
+                    <Card className="hover:shadow-lg transition-shadow hover:border-primary/50 h-full">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start gap-3">
+                          <Avatar className="h-12 w-12 shrink-0">
+                            <AvatarImage src={trainer.profile?.avatar_url || undefined} alt={trainer.profile?.full_name || ''} />
+                            <AvatarFallback className="bg-primary/10 text-primary">
+                              {(trainer.profile?.full_name || '?').slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <CardTitle className="text-lg">{trainer.profile?.full_name || t('cityLanding.unknownTrainer')}</CardTitle>
+                            {trainer.averageRating > 0 && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                                <span className="text-sm font-medium">{trainer.averageRating.toFixed(1)}</span>
+                                <span className="text-xs text-muted-foreground">({trainer.reviewCount})</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      {trainer.profile?.bio && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">{trainer.profile.bio}</p>
-                      )}
-                      {trainer.specializations && trainer.specializations.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {trainer.specializations.slice(0, 3).map(spec => (
-                            <Badge key={spec} variant="secondary" className="text-xs">{spec}</Badge>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </LocalizedLink>
-              ))}
-            </div>
-            <div className="mt-6 text-center">
-              <Button variant="outline" asChild>
-                <LocalizedLink to={`/trainers/${city}`}>
-                  {t('cityLanding.viewAllTrainers', { city: displayCity })}
+                      </CardHeader>
+                      <CardContent>
+                        {trainer.profile?.bio && (
+                          <p className="text-sm text-muted-foreground line-clamp-2">{trainer.profile.bio}</p>
+                        )}
+                        {trainer.specializations && trainer.specializations.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {trainer.specializations.slice(0, 3).map(spec => (
+                              <Badge key={spec} variant="secondary" className="text-xs">{spec}</Badge>
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-sm text-primary font-medium mt-3 flex items-center gap-1">
+                          {t('cityLanding.viewProfile')} <ArrowRight className="h-3 w-3" />
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </LocalizedLink>
+                ))}
+              </div>
+              <div className="mt-6 text-center">
+                <Button variant="outline" asChild>
+                  <LocalizedLink to={`/trainers/${city}`}>
+                    {t('cityLanding.viewAllTrainers', { city: displayCity })}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </LocalizedLink>
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground mb-4">
+                {t('cityLanding.noTrainersMessage', { city: displayCity })}
+              </p>
+              <Button asChild>
+                <LocalizedLink to="/for-trainers">
+                  {t('cityLanding.becomeTrainer')}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </LocalizedLink>
               </Button>
             </div>
-          </div>
-        </section>
-      )}
+          )}
+        </div>
+      </section>
 
       {/* Padel lessons section */}
       <section className="py-16">
@@ -394,8 +442,36 @@ export default function CityLanding() {
         </div>
       </section>
 
+      {/* More about padel - blog posts */}
+      {articles.length > 0 && (
+        <section className="py-16 bg-muted/30">
+          <div className="container mx-auto px-4">
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
+              {t('cityLanding.moreAboutPadel')}
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {articles.map(article => (
+                <LocalizedLink key={article._id} to={`/learn/${article.slug}`} className="block">
+                  <Card className="hover:shadow-lg transition-shadow hover:border-primary/50 h-full">
+                    <CardHeader>
+                      <CardTitle className="text-base">{article.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{article.intro}</p>
+                      <p className="text-sm text-primary font-medium mt-3 flex items-center gap-1">
+                        {tc('learnMore')} <ArrowRight className="h-3 w-3" />
+                      </p>
+                    </CardContent>
+                  </Card>
+                </LocalizedLink>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* FAQ section */}
-      <section className="py-16 bg-muted/30">
+      <section className={`py-16 ${articles.length > 0 ? '' : 'bg-muted/30'}`}>
         <div className="container mx-auto px-4 max-w-3xl">
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
             {t('cityLanding.faqHeading', { city: displayCity })}
@@ -424,7 +500,7 @@ export default function CityLanding() {
                   className="inline-flex"
                 >
                   <Badge variant="outline" className="hover:bg-primary/10 transition-colors cursor-pointer px-3 py-1.5">
-                    Padel in {nc.city}
+                    Padel in {toTitleCase(nc.city)}
                   </Badge>
                 </LocalizedLink>
               ))}

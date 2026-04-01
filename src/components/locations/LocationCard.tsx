@@ -1,4 +1,4 @@
-import { MapPin, Users, CheckCircle, Home, Sun, Building2 } from 'lucide-react';
+import { MapPin, Users, CheckCircle, Home, Sun, Building2, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -90,6 +90,10 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, lo
             </Badge>
           )}
         </div>
+
+        <p className="text-sm text-primary font-medium mt-2 flex items-center gap-1">
+          {t('viewClub')} <ArrowRight className="h-3 w-3" />
+        </p>
       </CardContent>
     </Card>
   );

@@ -1037,6 +1037,12 @@
     "viewAllTrainers": "Bekijk alle trainers in {{city}}",
     "startTrial": "Start je gratis proefperiode",
     "nearbyCities": "Ook populair",
-    "unknownTrainer": "Trainer"
+    "unknownTrainer": "Trainer",
+    "indoor": "Indoor",
+    "outdoor": "Outdoor",
+    "noTrainersMessage": "Er zijn nog geen trainers beschikbaar in {{city}}. Ben jij padeltrainer? Meld je aan en begin met coachen.",
+    "becomeTrainer": "Word trainer",
+    "moreAboutPadel": "Meer over padel",
+    "viewProfile": "Bekijk profiel"
   }
 }
