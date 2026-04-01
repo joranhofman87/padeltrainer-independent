@@ -2117,6 +2117,7 @@ export type Database = {
           booking_ids: string[] | null
           created_at: string
           due_date: string
+          forwarded_at: string | null
           guest_player_id: string | null
           id: string
           invoice_date: string
@@ -2149,6 +2150,7 @@ export type Database = {
           booking_ids?: string[] | null
           created_at?: string
           due_date: string
+          forwarded_at?: string | null
           guest_player_id?: string | null
           id?: string
           invoice_date?: string
@@ -2181,6 +2183,7 @@ export type Database = {
           booking_ids?: string[] | null
           created_at?: string
           due_date?: string
+          forwarded_at?: string | null
           guest_player_id?: string | null
           id?: string
           invoice_date?: string
