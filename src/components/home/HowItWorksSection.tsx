@@ -45,13 +45,13 @@ function MiniShareLink() {
 
 function MiniNotification() {
   return (
-    <div className="rounded-xl border bg-card px-4 py-3 flex items-center gap-3 w-fit shadow-sm" aria-hidden>
-      <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-        <Sparkles className="h-4 w-4 text-primary" />
+    <div className="rounded-xl border bg-card px-5 py-4 flex items-center gap-3 w-fit shadow-sm" aria-hidden>
+      <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+        <Sparkles className="h-5 w-5 text-primary" />
       </div>
       <div>
-        <p className="text-xs font-semibold text-foreground">New booking!</p>
-        <p className="text-[10px] text-muted-foreground">Ana M. — Thu 18:00</p>
+        <p className="text-sm font-semibold text-foreground">New booking!</p>
+        <p className="text-xs text-muted-foreground">Ana M. — Thu 18:00</p>
       </div>
     </div>
   );
