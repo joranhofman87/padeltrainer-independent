@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield, UserPlus } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield, UserPlus, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { AdminStats } from "@/lib/admin";
 
