@@ -466,43 +466,11 @@ export default function AcademyInvoices() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{t("invoices.title", "Invoices")}</h1>
-          <p className="text-muted-foreground text-sm">
-            {t("invoices.description", "Manage invoices for your academy")}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            onClick={() => setCreateDialogOpen(true)}
-          >
-            <PlusCircle className="h-4 w-4 mr-2" />
-            {t("invoices.createInvoice", "Create invoice")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => backfillMutation.mutate()}
-            disabled={backfillMutation.isPending}
-          >
-            {backfillMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4 mr-2" />
-            )}
-            {backfillMutation.isPending
-              ? t("invoices.generating", "Generating...")
-              : t("invoices.generateMissing", "Generate missing invoices")}
-          </Button>
-          <Link to="/app/academy/settings">
-            <Button variant="outline" size="sm">
-              <Settings className="h-4 w-4 mr-2" />
-              {t("invoices.editSettings", "Invoice Settings")}
-            </Button>
-          </Link>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold">{t("invoices.title", "Facturen")}</h1>
+        <p className="text-muted-foreground text-sm">
+          {t("invoices.description", "Beheer facturen voor je academy")}
+        </p>
       </div>
 
       {/* Stats */}
