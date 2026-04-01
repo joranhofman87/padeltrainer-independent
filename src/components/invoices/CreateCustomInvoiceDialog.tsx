@@ -315,6 +315,14 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
               </div>
             </div>
             <div className="space-y-2">
+              <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
+                <span>Omschrijving</span>
+                <span>Aantal</span>
+                <span>Prijs</span>
+                <span>BTW %</span>
+                <span>Totaal</span>
+                <span></span>
+              </div>
               {lineItems.map((li, i) => (
                 <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
                   <Input
