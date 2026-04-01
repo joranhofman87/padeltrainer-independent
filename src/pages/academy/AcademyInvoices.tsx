@@ -67,23 +67,108 @@ export default function AcademyInvoices() {
   const formatEuro = (amount: number) =>
     amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // Fetch trainers for filter
+  // Fetch trainers for filter (two-step: get user_ids, then profiles for names)
   const { data: trainers = [] } = useQuery({
     queryKey: ["academy-trainers-filter", activeAcademy?.id],
     queryFn: async () => {
       if (!activeAcademy?.id) return [];
       const { data, error } = await supabase
         .from("academy_trainers")
-        .select("trainer_profile_id, trainer_profiles(id, business_name)")
+        .select("trainer_profile_id, trainer_profiles(id, business_name, user_id)")
         .eq("academy_profile_id", activeAcademy.id)
         .eq("status", "active");
       if (error) throw error;
+      
+      // Collect user_ids to fetch full_name from profiles
+      const userIds = (data || [])
+        .map((t: any) => t.trainer_profiles?.user_id)
+        .filter(Boolean);
+      
+      let profileMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("user_id, full_name")
+          .in("user_id", userIds);
+        profileMap = (profiles || []).reduce((acc: Record<string, string>, p: any) => {
+          acc[p.user_id] = p.full_name || "";
+          return acc;
+        }, {});
+      }
+      
       return (data || []).map((t: any) => ({
         id: t.trainer_profile_id,
-        name: t.trainer_profiles?.business_name || "Trainer",
+        name: t.trainer_profiles?.business_name || profileMap[t.trainer_profiles?.user_id] || "Trainer",
       }));
     },
     enabled: !!activeAcademy?.id,
+  });
+
+  // Fetch academy locations for filter
+  const { data: academyLocations = [] } = useQuery({
+    queryKey: ["academy-locations-filter", activeAcademy?.id],
+    queryFn: async () => {
+      if (!activeAcademy?.id) return [];
+      const { data, error } = await supabase
+        .from("academy_locations")
+        .select("location_id, locations(id, name)")
+        .eq("academy_profile_id", activeAcademy.id)
+        .eq("is_active", true);
+      if (error) throw error;
+      return (data || []).map((l: any) => ({
+        id: l.location_id,
+        name: l.locations?.name || "Location",
+      }));
+    },
+    enabled: !!activeAcademy?.id,
+  });
+
+  // Build invoice → location map from booking_ids → bookings → slots
+  const { data: invoiceLocationMap = {} } = useQuery({
+    queryKey: ["invoice-location-map", invoices.map(i => i.id).join(",")],
+    queryFn: async () => {
+      const allBookingIds = invoices
+        .flatMap(i => i.booking_ids || [])
+        .filter(Boolean);
+      if (allBookingIds.length === 0) return {};
+      
+      // Fetch bookings with their slot_id
+      const { data: bookings } = await supabase
+        .from("bookings")
+        .select("id, slot_id")
+        .in("id", allBookingIds);
+      if (!bookings?.length) return {};
+      
+      const slotIds = [...new Set(bookings.map(b => b.slot_id))];
+      const { data: slots } = await supabase
+        .from("availability_slots")
+        .select("id, location_id")
+        .in("id", slotIds);
+      if (!slots?.length) return {};
+      
+      const slotLocationMap = slots.reduce((acc: Record<string, string>, s: any) => {
+        if (s.location_id) acc[s.id] = s.location_id;
+        return acc;
+      }, {});
+      
+      const bookingLocationMap = bookings.reduce((acc: Record<string, string>, b: any) => {
+        if (slotLocationMap[b.slot_id]) acc[b.id] = slotLocationMap[b.slot_id];
+        return acc;
+      }, {});
+      
+      // Map invoice → location (use first booking's location)
+      const map: Record<string, string> = {};
+      for (const inv of invoices) {
+        for (const bid of (inv.booking_ids || [])) {
+          if (bookingLocationMap[bid]) {
+            map[inv.id] = bookingLocationMap[bid];
+            break;
+          }
+        }
+      }
+      return map;
+    },
+    enabled: invoices.length > 0,
   });
 
   const { data: invoices = [], isLoading } = useQuery({
