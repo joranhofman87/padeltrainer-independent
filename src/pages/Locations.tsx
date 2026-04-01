@@ -272,7 +272,7 @@ export default function Locations() {
         type="website"
         structuredData={structuredData}
       />
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+      <div className="min-h-screen bg-background">
         {/* Hero Section */}
         <div className="bg-gradient-to-r from-primary/10 to-primary/5 border-b">
           <div className="container mx-auto px-4 py-12">
