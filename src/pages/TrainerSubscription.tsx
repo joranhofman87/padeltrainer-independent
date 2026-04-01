@@ -225,7 +225,7 @@ export default function TrainerSubscription() {
 
       <main className="container mx-auto px-4 py-8">
         {/* Current Plan Banner */}
-        <Card className="mb-8 border-primary/20 bg-gradient-to-r from-primary/5 to-primary/10">
+        <Card className="mb-8 border-primary/20">
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">

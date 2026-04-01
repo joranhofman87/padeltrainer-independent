@@ -90,7 +90,7 @@ export default function VideoTips() {
       />
 
       {/* Hero */}
-      <section className="py-16 bg-gradient-to-b from-background to-accent/20">
+      <section className="py-16 bg-background">
         <div className="container mx-auto px-4">
           <motion.div className="text-center max-w-3xl mx-auto" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary rounded-full px-4 py-1.5 text-sm font-medium mb-6">

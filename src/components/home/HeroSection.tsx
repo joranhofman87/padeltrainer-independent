@@ -222,9 +222,7 @@ export function HeroSection() {
 
   return (
     <section className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-secondary/5 pointer-events-none" />
-      <div className="absolute top-20 right-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-20 left-10 w-56 h-56 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute inset-0 bg-background pointer-events-none" />
 
       <div className="relative max-w-5xl mx-auto px-4 md:px-6 py-16 md:py-24">
         {/* Centered copy */}

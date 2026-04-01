@@ -121,7 +121,7 @@ export default function Blog() {
         structuredData={structuredData}
       />
       {/* Hero */}
-      <section className="py-16 bg-gradient-to-b from-background to-accent/20">
+      <section className="py-16 bg-background">
         <div className="container mx-auto px-4">
           <motion.div className="text-center max-w-3xl mx-auto" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-4xl md:text-5xl font-bold mb-4">{t('blog.title')}</h1>

@@ -274,7 +274,7 @@ export default function Locations() {
       />
       <div className="min-h-screen bg-background">
         {/* Hero Section */}
-        <div className="bg-gradient-to-r from-primary/10 to-primary/5 border-b">
+        <div className="bg-background border-b">
           <div className="container mx-auto px-4 py-12">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-3 bg-primary/10 rounded-xl">

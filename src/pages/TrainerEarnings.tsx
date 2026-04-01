@@ -504,7 +504,7 @@ export default function TrainerEarnings() {
 
         {/* Mollie Connect Card - only show when NOT using manual invoicing and NOT an academy trainer */}
         {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && !connectStatusLoading && connectStatus && !connectStatus.chargesEnabled && (
-          <Card className="mb-8 border-primary/50 bg-gradient-to-r from-primary/5 to-primary/10">
+          <Card className="mb-8 border-primary/50">
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-full bg-primary/10">

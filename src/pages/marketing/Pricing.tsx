@@ -117,7 +117,7 @@ export default function Pricing() {
             viewport={{ once: true }}
             className="max-w-2xl mx-auto"
           >
-            <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+            <Card className="border-2 border-primary/20">
               <CardHeader className="text-center pb-4">
                 <Badge className="w-fit mx-auto mb-2">{t('pricing.players.badge')}</Badge>
                 <CardTitle className="text-2xl">{t('pricing.players.title')}</CardTitle>

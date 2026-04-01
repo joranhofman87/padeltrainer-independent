@@ -66,7 +66,7 @@ export default function About() {
         structuredData={structuredData}
       />
       {/* Hero */}
-      <section className="py-20 bg-gradient-to-b from-background to-accent/20">
+      <section className="py-20 bg-background">
         <div className="container mx-auto px-4">
           <motion.div
             className="text-center max-w-3xl mx-auto"

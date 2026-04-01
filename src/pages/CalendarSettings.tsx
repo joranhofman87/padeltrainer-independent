@@ -158,7 +158,7 @@ export default function CalendarSettings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
+    <div className="min-h-screen bg-background">
       <div className="container max-w-2xl py-8 px-4">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">

@@ -67,7 +67,7 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4" data-testid="page-forgot-password">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="page-forgot-password">
       <Card className="w-full max-w-md" data-testid="form-forgot-password">
         <CardHeader className="text-center">
           <Link 

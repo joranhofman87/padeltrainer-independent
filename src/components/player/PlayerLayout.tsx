@@ -53,7 +53,7 @@ export default function PlayerLayout() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
+      <div className="flex min-h-screen w-full bg-background">
         <PlayerSidebar />
         <main className="flex-1 overflow-auto">
           {/* Mobile header */}

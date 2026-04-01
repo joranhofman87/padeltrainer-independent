@@ -103,7 +103,7 @@ export default function TrainerLayout() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+      <div className="flex min-h-screen w-full bg-background">
         <TrainerSidebar isExpired={!!(isSubscriptionExpired && !hasAcademy)} />
         <main className="flex-1 overflow-auto">
           {/* Mobile header */}
