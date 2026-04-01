@@ -129,6 +129,7 @@ const AdminBlogEditor = lazy(() => import('@/pages/admin/AdminBlogEditor'));
 const AdminBlogTopics = lazy(() => import('@/pages/admin/AdminBlogTopics'));
 const AdminBlogSources = lazy(() => import('@/pages/admin/AdminBlogSources'));
 const AdminBackups = lazy(() => import('@/pages/admin/AdminBackups'));
+const AdminGuestPlayers = lazy(() => import('@/pages/admin/AdminGuestPlayers'));
 
 // Club pages
 const ClubDashboard = lazy(() => import('@/pages/club/ClubDashboard'));
