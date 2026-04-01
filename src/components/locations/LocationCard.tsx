@@ -92,7 +92,7 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, lo
         </div>
 
         <p className="text-sm text-primary font-medium mt-2 flex items-center gap-1">
-          {t('locations.viewClub')} <ArrowRight className="h-3 w-3" />
+          {t('viewClub')} <ArrowRight className="h-3 w-3" />
         </p>
       </CardContent>
     </Card>
