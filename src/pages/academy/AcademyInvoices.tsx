@@ -32,6 +32,7 @@ interface Invoice {
   status: string;
   sent_at: string | null;
   paid_at: string | null;
+  forwarded_at: string | null;
   pdf_url: string | null;
   mollie_payment_url: string | null;
   mollie_payment_id: string | null;
