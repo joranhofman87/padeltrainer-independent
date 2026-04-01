@@ -242,6 +242,7 @@ export default function CityLanding() {
         description={metaDescription}
         url={`/padel/${city}`}
         structuredData={[faqSchema, breadcrumbSchema, ...localBusinessSchemas]}
+        image={ogImageUrl}
       />
 
       {/* Breadcrumb */}
