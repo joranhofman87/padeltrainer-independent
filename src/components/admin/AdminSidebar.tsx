@@ -48,6 +48,7 @@ import {
   FileText,
   ListTodo,
   Database,
+  UserPlus,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -60,6 +61,7 @@ const mainNavItems = [
   { title: "Player Ratings", url: "/app/admin/player-ratings", icon: Star },
   { title: "Trainers", url: "/app/admin/trainers", icon: GraduationCap },
   { title: "Academies", url: "/app/admin/academies", icon: School },
+  { title: "Registrations", url: "/app/admin/guest-players", icon: UserPlus },
 ];
 
 const contentNavItems = [

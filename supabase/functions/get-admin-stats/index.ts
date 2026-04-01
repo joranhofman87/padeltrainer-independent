@@ -74,6 +74,7 @@ serve(async (req) => {
       playersResult,
       mollieAccountsResult,
       clubsResult,
+      guestPlayersResult,
     ] = await Promise.all([
       supabase
         .from("bookings")
@@ -90,6 +91,9 @@ serve(async (req) => {
       supabase
         .from("club_profiles")
         .select("id, is_verified, subscription_status, subscription_tier, trial_ends_at"),
+      supabase
+        .from("guest_players")
+        .select("id, linked_profile_id, has_trained, created_at"),
     ]);
 
     const bookings = bookingsResult.data || [];
@@ -97,6 +101,7 @@ serve(async (req) => {
     const players = playersResult.data || [];
     const mollieAccounts = mollieAccountsResult.data || [];
     const clubs = clubsResult.data || [];
+    const guestPlayers = guestPlayersResult.data || [];
 
     logStep("Data fetched", {
       bookings: bookings.length,
@@ -104,6 +109,7 @@ serve(async (req) => {
       players: players.length,
       mollieAccounts: mollieAccounts.length,
       clubs: clubs.length,
+      guestPlayers: guestPlayers.length,
     });
 
     // Calculate signup trends (this month vs last month)
@@ -221,6 +227,15 @@ serve(async (req) => {
       });
     }
 
+    // Guest player / registration stats
+    const guestRegistrations = {
+      totalGuests: guestPlayers.length,
+      convertedToAccount: guestPlayers.filter(g => g.linked_profile_id).length,
+      hasTrained: guestPlayers.filter(g => g.has_trained).length,
+      thisMonth: guestPlayers.filter(g => g.created_at && new Date(g.created_at) >= thisMonthStart).length,
+      lastMonth: guestPlayers.filter(g => g.created_at && new Date(g.created_at) >= lastMonthStart && new Date(g.created_at) <= lastMonthEnd).length,
+    };
+
     const response = {
       overview: {
         totalGMV,
@@ -249,6 +264,7 @@ serve(async (req) => {
       trainersByTier: trainerTiers,
       clubStats,
       monthlyStats,
+      registrations: guestRegistrations,
     };
 
     logStep("Response prepared", { totalGMV, platformFees: estimatedTotalFees });

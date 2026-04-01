@@ -154,6 +154,13 @@ export interface AdminStats {
     fees: number;
     bookings: number;
   }>;
+  registrations: {
+    totalGuests: number;
+    convertedToAccount: number;
+    hasTrained: number;
+    thisMonth: number;
+    lastMonth: number;
+  };
 }
 
 export async function getAdminStats(): Promise<AdminStats> {

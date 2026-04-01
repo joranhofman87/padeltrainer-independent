@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield, UserPlus } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield, UserPlus, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { AdminStats } from "@/lib/admin";
 
@@ -117,6 +117,22 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: `${stats.overview.pendingAccounts} pending onboarding`,
       icon: CreditCard,
       color: "text-orange-500",
+    },
+    {
+      title: "Registrations",
+      customValue: (
+        <TrendBadge
+          trend={stats.registrations?.lastMonth > 0
+            ? ((stats.registrations.thisMonth - stats.registrations.lastMonth) / stats.registrations.lastMonth) * 100
+            : stats.registrations?.thisMonth > 0 ? 100 : 0}
+          thisMonth={stats.registrations?.thisMonth || 0}
+          lastMonth={stats.registrations?.lastMonth || 0}
+        />
+      ),
+      description: `${stats.registrations?.totalGuests || 0} total, ${stats.registrations?.convertedToAccount || 0} converted`,
+      icon: ClipboardList,
+      color: "text-pink-500",
+      onClick: () => navigate("/app/admin/guest-players"),
     },
   ];
 
