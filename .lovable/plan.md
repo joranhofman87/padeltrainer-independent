@@ -1,33 +1,43 @@
 
 
-# Track Bookkeeper Forwarding Status on Invoices
+# Add End Date Override to Registration/Cyclus Form
 
-## Summary
-Add a `forwarded_at` timestamp column to the `invoices` table. Set it when the `forward-invoice` function successfully sends emails. Display this status in the UI so trainers/academies can see which invoices have been forwarded to the bookkeeper.
+## Problem
+Currently, the end date is auto-calculated as `start_date + number_of_weeks`. If lessons run Monday–Friday and a cycle is 9 weeks starting on a Monday, the computed end date lands on a Monday — but the trainer wants to show it ending on the Friday (last lesson day of that final week).
+
+## Solution
+Add an **end date picker** next to the "Number of weeks" field. It auto-fills based on `start_date + weeks` but can be manually overridden. When the user picks a custom end date, it takes precedence over the computed one.
 
 ## Changes
 
-### 1. Database Migration
-Add `forwarded_at TIMESTAMPTZ NULL` column to `invoices` table.
+### `src/components/cycles/CycleForm.tsx`
 
-### 2. `supabase/functions/forward-invoice/index.ts`
-After successful email send (line ~185), update the invoice:
-```sql
-UPDATE invoices SET forwarded_at = now() WHERE id = invoice.id
+1. **Schema**: The `end_date` field already exists in the schema as optional. Make it always available for registration/cyclus types (not just events).
+
+2. **UI**: Replace the current 2-column grid (`start_date` | `number_of_weeks`) with a 3-column layout or a 2-row layout:
+   - Row 1: **Start Date** | **Number of weeks**
+   - Row 2: **End Date** (calendar picker, pre-filled with computed date, editable)
+   - Keep the "Ends on [date]" hint below number_of_weeks, but now it reflects the actual `end_date` field value.
+
+3. **Auto-sync logic**: 
+   - When `start_date` or `number_of_weeks` changes → auto-update `end_date` (unless user has manually set it).
+   - Track a `customEndDate` flag via `useRef` to know if user manually picked an end date.
+   - When user picks an end date manually, set the flag and stop auto-updating.
+
+4. **Submit logic** (lines ~374-382): For non-event types, use `values.end_date` if set, otherwise fall back to `addWeeks(start_date, number_of_weeks)`.
+
+### Layout sketch
+```text
+Start Date              Number of weeks
+[May 4th, 2026  📅]     [9              ]
+
+End Date
+[July 4th, 2026 📅]     ← auto-filled, but editable
 ```
-
-### 3. `src/pages/academy/AcademyInvoices.tsx`
-Show a small indicator (e.g., mail icon or badge) on invoices where `forwarded_at` is set. Tooltip showing the forwarded date. This gives the academy manager instant visibility into which invoices the bookkeeper has received.
-
-### 4. `src/components/trainer/InvoiceList.tsx`
-Same indicator for the trainer view — show forwarded status on each invoice row.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| Migration | Add `forwarded_at` column to `invoices` |
-| `forward-invoice/index.ts` | Set `forwarded_at` after successful send |
-| `AcademyInvoices.tsx` | Show forwarded indicator on invoice rows |
-| `InvoiceList.tsx` | Show forwarded indicator on invoice rows |
+| `src/components/cycles/CycleForm.tsx` | Add end date picker for registration/cyclus; auto-sync from weeks; use manual override on submit |
 
