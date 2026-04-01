@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { logger } from '@/lib/logger';
 import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import { useTranslation } from 'react-i18next';
@@ -141,6 +141,7 @@ export default function CycleForm({
   const isEdit = !!cycle?.id;
   const isRegistration = formType === 'registration';
   const isEvent = formType === 'event';
+  const customEndDateRef = useRef(false);
 
   useEffect(() => {
     getRatingSystems().then(setRatingSystems);
@@ -290,6 +291,16 @@ export default function CycleForm({
   const watchedEndTime = form.watch('end_time');
   const watchedWeeks = form.watch('number_of_weeks');
   const watchedAssignedTrainer = form.watch('assigned_trainer_id');
+  const watchedStartDate = form.watch('start_date');
+
+  // Auto-sync end_date from start_date + weeks (for non-event types)
+  useEffect(() => {
+    if (isEvent || customEndDateRef.current) return;
+    if (watchedStartDate && watchedWeeks && watchedWeeks > 0) {
+      const computed = addWeeks(watchedStartDate, watchedWeeks);
+      form.setValue('end_date', computed);
+    }
+  }, [watchedStartDate, watchedWeeks, isEvent]);
 
   useEffect(() => {
     if (isRegistration || !watchedStartTime || !watchedEndTime || !watchedWeeks) return;
@@ -373,7 +384,7 @@ export default function CycleForm({
 
       // Calculate end date
       let endDate: string;
-      if (isEvent && values.end_date) {
+      if (values.end_date) {
         endDate = format(values.end_date, 'yyyy-MM-dd');
       } else if (isEvent) {
         endDate = format(values.start_date, 'yyyy-MM-dd');
@@ -600,7 +611,8 @@ export default function CycleForm({
                 />
               </div>
             ) : (
-              /* Registration / Cyclus: start date + number of weeks */
+              /* Registration / Cyclus: start date + number of weeks + end date */
+              <>
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -640,26 +652,61 @@ export default function CycleForm({
                 <FormField
                   control={form.control}
                   name="number_of_weeks"
-                  render={({ field }) => {
-                    const startDate = form.watch('start_date');
-                    const computedEnd = startDate && field.value ? addWeeks(startDate, field.value) : null;
-                    return (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>{t('form.numberOfWeeks')}</FormLabel>
-                        <FormControl>
-                          <Input type="number" min={1} max={52} {...field} />
-                        </FormControl>
-                        {computedEnd && (
-                          <p className="text-xs text-muted-foreground">
-                            {t('form.endsOn', { date: format(computedEnd, 'PPP') })}
-                          </p>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>{t('form.numberOfWeeks')}</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={1} max={52} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
+
+              {/* End Date picker — auto-filled but manually overridable */}
+              <FormField
+                control={form.control}
+                name="end_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>{t('form.endDate', 'End Date')}</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              'w-full pl-3 text-left font-normal',
+                              !field.value && 'text-muted-foreground'
+                            )}
+                          >
+                            {field.value ? format(field.value, 'PPP') : t('form.pickDate', 'Pick date')}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={(date) => {
+                            customEndDateRef.current = true;
+                            field.onChange(date);
+                          }}
+                          initialFocus
+                          className="pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <p className="text-xs text-muted-foreground">
+                      {t('form.endDateHint', 'Automatically set based on weeks. Override to set a specific end date (e.g. last Friday of the cycle).')}
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              </>
             )}
 
             {/* Timeframe - only for cyclus */}
