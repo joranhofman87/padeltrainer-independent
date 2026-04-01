@@ -500,7 +500,7 @@ async function renderTrainerProfile(supabase: any, slug: string, lang: string): 
   return htmlDoc({ title, description, url: `/trainer/${trainerSlug}`, lang, image: profile?.avatar_url, structuredData, body });
 }
 
-async function renderCityPage(supabase: any, citySlug: string, lang: string): Promise<string> {
+async function renderCityTrainersPage(supabase: any, citySlug: string, lang: string): Promise<string> {
   const displayCity = decodeURIComponent(citySlug)
     .split('-')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
