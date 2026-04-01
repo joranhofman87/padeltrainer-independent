@@ -607,7 +607,7 @@
   "homev2": {
     "hero": {
       "h1": "Jij coacht. Wij regelen de rest.",
-      "subheadline": "PadelTrainer.ai regelt boekingen, betalingen en annuleringen — zodat jij kunt stoppen met WhatsApp-groepen beheren en je agenda kunt vullen.",
+      "subheadline": "Boekingen, betalingen, annuleringen en je agenda op de automatische piloot. Zodat jij op de baan staat, niet op je telefoon.",
       "tab_booking": "Boekingen",
       "tab_payments": "Betalingen",
       "tab_profile": "Jouw profielpagina",
@@ -637,7 +637,7 @@
       "testimonial1": "Ik heb mijn avonden terug. Geen lesplanning meer via WhatsApp.",
       "author1": "Bram Meijer",
       "author1role": "Hoofdtrainer, Bramos Padel Academy",
-      "testimonial2": "Spelers boeken nu zelf. Ik hoef nauwelijks meer achter betalingen aan.",
+      "testimonial2": "Spelers boeken nu zelf. Geen betalingen meer najagen.",
       "author2": "René Lindenbergh",
       "author2role": "Oprichter, RL Padel Performance",
       "metric_hours_value": "10u/maand",
@@ -782,7 +782,7 @@
       "gdpr_a": "Ja."
     },
     "finalCta": {
-      "headline": "Klaar om te stoppen met admin tussen de lessen door?",
+      "headline": "Klaar om te stoppen met admin tussen je lessen?",
       "body": "Opzetten duurt 10 minuten. Je eerste boeking kan vandaag nog binnenkomen."
     },
     "playerBanner": {
@@ -797,7 +797,7 @@
       "blogDesc": "Tips, gidsen & nieuws"
     },
     "dualCta": {
-      "headline": "Klaar om te stoppen met admin tussen de lessen door?",
+      "headline": "Klaar om te stoppen met admin tussen je lessen?",
       "body": "Opzetten duurt 10 minuten. Je eerste boeking kan vandaag nog binnenkomen.",
       "trainerCta": "Start gratis proefperiode",
       "playerCta": "Aanmelden als speler",

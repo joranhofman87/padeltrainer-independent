@@ -607,7 +607,7 @@
   "homev2": {
     "hero": {
       "h1": "Vous coachez. On s'occupe du reste.",
-      "subheadline": "Un seul endroit pour gérer vos séances, être payé et remplir votre agenda.",
+      "subheadline": "Réservations, paiements, annulations et votre agenda en pilote automatique. Pour être sur le terrain, pas sur votre téléphone.",
       "tab_booking": "Réservation facile",
       "tab_registration": "Inscription ouverte",
       "tab_payments": "Paiements automatiques",
@@ -637,7 +637,7 @@
       "testimonial1": "J'ai récupéré mes soirées. Plus besoin de coordonner les cours par WhatsApp.",
       "author1": "Bram Meijer",
       "author1role": "Entraîneur Principal, Bramos Padel Academy",
-      "testimonial2": "Les joueurs réservent eux-mêmes maintenant. Je cours bien moins après les paiements.",
+      "testimonial2": "Les joueurs réservent eux-mêmes maintenant. Fini de courir après les paiements.",
       "author2": "René Lindenbergh",
       "author2role": "Fondateur, RL Padel Performance",
       "metric_hours_value": "10h/mois",
@@ -782,7 +782,7 @@
       "gdpr_a": "Oui. Les données sont stockées dans l'UE. Consultez notre politique de confidentialité pour les détails."
     },
     "finalCta": {
-      "headline": "Prêt à arrêter de faire de l'admin entre les séances ?",
+      "headline": "Prêt à arrêter de faire de l'admin entre vos séances ?",
       "body": "La mise en place prend 10 minutes. Votre première réservation pourrait arriver aujourd'hui."
     },
     "playerBanner": {
@@ -797,7 +797,7 @@
       "blogDesc": "Conseils, guides & actus"
     },
     "dualCta": {
-      "headline": "La seule plateforme de réservation conçue pour le padel.",
+      "headline": "Prêt à arrêter de faire de l'admin entre vos séances ?",
       "body": "Les entraîneurs obtiennent un système qui remplit les séances et gère les paiements. Les joueurs trouvent et réservent facilement.",
       "trainerCta": "Essai gratuit",
       "playerCta": "S'inscrire comme joueur",

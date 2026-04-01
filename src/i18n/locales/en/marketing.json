@@ -607,7 +607,7 @@
   "homev2": {
     "hero": {
       "h1": "You coach. We handle the rest.",
-      "subheadline": "PadelTrainer.ai handles bookings, payments, and cancellations — so you can stop managing WhatsApp groups and start filling your schedule.",
+      "subheadline": "Bookings, payments, cancellations, and your schedule on autopilot. So you're on the court, not on your phone.",
       "tab_booking": "Bookings",
       "tab_payments": "Payments",
       "tab_profile": "Your profile page",
@@ -637,7 +637,7 @@
       "testimonial1": "I have my evenings back. No more lesson planning over WhatsApp.",
       "author1": "Bram Meijer",
       "author1role": "Head Trainer, Bramos Padel Academy",
-      "testimonial2": "Players book themselves now. I barely chase payments anymore.",
+      "testimonial2": "Players book themselves now. No more chasing payments.",
       "author2": "René Lindenbergh",
       "author2role": "Founder, RL Padel Performance",
       "metric_hours_value": "10h/month",
@@ -782,7 +782,7 @@
       "gdpr_a": "Yes."
     },
     "finalCta": {
-      "headline": "Ready to stop doing admin between lessons?",
+      "headline": "Ready to stop doing admin between your lessons?",
       "body": "Set up takes 10 minutes. Your first booking can come in today."
     },
     "playerBanner": {
@@ -797,7 +797,7 @@
       "blogDesc": "Tips, guides & news"
     },
     "dualCta": {
-      "headline": "Ready to stop doing admin between lessons?",
+      "headline": "Ready to stop doing admin between your lessons?",
       "body": "Set up takes 10 minutes. Your first booking can come in today.",
       "trainerCta": "Start free trial",
       "playerCta": "Sign up as player",

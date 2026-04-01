@@ -85,7 +85,7 @@ export function HowItWorksSection() {
               key={s.key}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: true, amount: 0.1 }}
               transition={{ delay: i * 0.12 }}
             >
               <span className="text-5xl font-bold text-primary/20 mb-3 block">{s.num}</span>

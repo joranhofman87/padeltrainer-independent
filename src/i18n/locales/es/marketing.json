@@ -607,7 +607,7 @@
   "homev2": {
     "hero": {
       "h1": "Tú entrenas. Nosotros nos encargamos del resto.",
-      "subheadline": "Un solo lugar para gestionar sesiones, cobrar y llenar tu agenda.",
+      "subheadline": "Reservas, pagos, cancelaciones y tu agenda en piloto automático. Para que estés en la pista, no en el teléfono.",
       "tab_booking": "Reserva fácil",
       "tab_registration": "Inscripción abierta",
       "tab_payments": "Pagos automáticos",
@@ -637,7 +637,7 @@
       "testimonial1": "Recuperé mis tardes. No más coordinar clases por WhatsApp.",
       "author1": "Bram Meijer",
       "author1role": "Entrenador Jefe, Bramos Padel Academy",
-      "testimonial2": "Los jugadores ahora reservan solos. Persigo mucho menos los pagos.",
+      "testimonial2": "Los jugadores ahora reservan solos. Se acabó perseguir pagos.",
       "author2": "René Lindenbergh",
       "author2role": "Fundador, RL Padel Performance",
       "metric_hours_value": "10h/mes",
@@ -782,7 +782,7 @@
       "gdpr_a": "Sí. Los datos se almacenan en la UE. Consulta nuestra política de privacidad para los detalles."
     },
     "finalCta": {
-      "headline": "¿Listo para dejar de hacer admin entre sesiones?",
+      "headline": "¿Listo para dejar de hacer admin entre tus sesiones?",
       "body": "La configuración lleva 10 minutos. Tu primera reserva podría llegar hoy."
     },
     "playerBanner": {
@@ -797,7 +797,7 @@
       "blogDesc": "Consejos, guías y noticias"
     },
     "dualCta": {
-      "headline": "La única plataforma de reservas hecha para pádel.",
+      "headline": "¿Listo para dejar de hacer admin entre tus sesiones?",
       "body": "Los entrenadores consiguen un sistema que llena sesiones y gestiona pagos. Los jugadores encuentran y reservan fácilmente.",
       "trainerCta": "Prueba gratis",
       "playerCta": "Registrarse como jugador",

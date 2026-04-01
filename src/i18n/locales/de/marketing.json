@@ -607,7 +607,7 @@
   "homev2": {
     "hero": {
       "h1": "Du coachst. Wir erledigen den Rest.",
-      "subheadline": "Ein Ort, um Stunden zu verwalten, bezahlt zu werden und deinen Kalender zu füllen.",
+      "subheadline": "Buchungen, Zahlungen, Stornierungen und dein Kalender auf Autopilot. Damit du auf dem Platz stehst, nicht am Handy.",
       "tab_booking": "Einfach buchen",
       "tab_registration": "Offene Anmeldung",
       "tab_payments": "Automatische Zahlungen",
@@ -637,7 +637,7 @@
       "testimonial1": "Ich habe meine Abende zurück. Kein Koordinieren von Stunden über WhatsApp mehr.",
       "author1": "Bram Meijer",
       "author1role": "Cheftrainer, Bramos Padel Academy",
-      "testimonial2": "Spieler buchen jetzt selbst. Ich muss Zahlungen viel weniger hinterherlaufen.",
+      "testimonial2": "Spieler buchen jetzt selbst. Kein Zahlungen mehr hinterherlaufen.",
       "author2": "René Lindenbergh",
       "author2role": "Gründer, RL Padel Performance",
       "metric_hours_value": "10h/Monat",
@@ -782,7 +782,7 @@
       "gdpr_a": "Ja. Daten werden in der EU gespeichert. Siehe unsere Datenschutzerklärung für Details."
     },
     "finalCta": {
-      "headline": "Bereit, zwischen den Stunden keine Verwaltung mehr zu machen?",
+      "headline": "Bereit, zwischen deinen Stunden keine Verwaltung mehr zu machen?",
       "body": "Die Einrichtung dauert 10 Minuten. Deine erste Buchung könnte heute kommen."
     },
     "playerBanner": {
@@ -797,7 +797,7 @@
       "blogDesc": "Tipps, Guides & News"
     },
     "dualCta": {
-      "headline": "Die einzige Buchungsplattform, die für Padel gebaut wurde.",
+      "headline": "Bereit, zwischen deinen Stunden keine Verwaltung mehr zu machen?",
       "body": "Trainer bekommen ein System, das Stunden füllt und Zahlungen abwickelt. Spieler finden und buchen ganz einfach.",
       "trainerCta": "Kostenlos testen",
       "playerCta": "Als Spieler anmelden",
