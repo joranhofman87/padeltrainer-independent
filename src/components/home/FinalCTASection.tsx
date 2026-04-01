@@ -32,7 +32,7 @@ export function FinalCTASection() {
             </Button>
           </div>
           <p className="text-sm text-primary-foreground/60 mt-4">
-            {t('homev2.cta.trustMicrocopy')}
+            {t('homev2.dualCta.microcopy')}
           </p>
         </motion.div>
       </div>
