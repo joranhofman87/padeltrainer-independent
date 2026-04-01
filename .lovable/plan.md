@@ -1,46 +1,47 @@
 
 
-# Remove All Gradient Backgrounds — Clean White Everywhere
+# Fix Stale Mollie Payment URL Reuse
 
 ## Summary
-Replace all gradient backgrounds across the entire app with clean `bg-background` (white in light mode, dark in dark mode). This affects ~37 files.
+Move the existing-payment-URL reuse check to **after** token resolution, and verify the payment is still `open` via Mollie API before reusing. Include `?testmode=true` when applicable.
 
-## Categories of Changes
+## Changes — `supabase/functions/create-invoice-payment/index.ts`
 
-### 1. Layout-level gradients (3 files)
-- **`TrainerLayout.tsx`** — `bg-gradient-to-br from-orange-50 via-background to-orange-100/30 ...` → `bg-background`
-- **`PlayerLayout.tsx`** — `bg-gradient-to-br from-blue-50 via-background to-blue-100/30 ...` → `bg-background`
-- **`AcademyLayout.tsx`** — already `bg-background` ✓
+### 1. Remove early return (lines ~131-136)
+Delete the block that blindly returns `mollie_payment_url` if status isn't `paid`.
 
-### 2. Auth & onboarding pages (~8 files)
-Replace `bg-gradient-to-br from-primary/10 via-background to-secondary/10` → `bg-background` in:
-- `Auth.tsx`, `TrainerSignup.tsx`, `PlayerSignup.tsx`, `AcademySignup.tsx`, `AcademyOnboarding.tsx`, `Onboarding.tsx`, `ForgotPassword.tsx`, `ResetPassword.tsx`, `VerificationPending.tsx`
+### 2. Add verified reuse check after token resolution (~line 190, after `accessToken` is resolved)
+```typescript
+// Check if existing payment is still usable
+if (invoice.mollie_payment_url && invoice.mollie_payment_id && invoice.status !== "paid") {
+  try {
+    const testParam = isTestMode ? "?testmode=true" : "";
+    const checkResp = await fetch(
+      `https://api.mollie.com/v2/payments/${invoice.mollie_payment_id}${testParam}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (checkResp.ok) {
+      const existing = await checkResp.json();
+      if (existing.status === "open") {
+        return new Response(JSON.stringify({ paymentUrl: invoice.mollie_payment_url, existing: true }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+    // Stale — clear stored URL
+    await supabase.from("invoices")
+      .update({ mollie_payment_url: null, mollie_payment_id: null })
+      .eq("id", invoice.id);
+    logStep("Cleared stale payment URL", { oldPaymentId: invoice.mollie_payment_id });
+  } catch { /* proceed to create new */ }
+}
+```
 
-### 3. Public/marketing pages (~8 files)
-- **`Trainers.tsx`** — page gradient → `bg-background`
-- **`Locations.tsx`** — page gradient + hero gradient → `bg-background`
-- **`BookLesson.tsx`** — page gradient → `bg-background`
-- **`EditProfile.tsx`** — page gradient → `bg-background`
-- **Marketing pages** (Pricing, Blog, VideoTips, Rules, About, etc.) — hero section `bg-gradient-to-b from-background to-accent/20` → `bg-background`
+Note: `isTestMode` is already derived from `mollieApiKey` earlier in the function.
 
-### 4. Component-level decorative gradients (~10+ files)
-- **`FeaturedSection.tsx`** — `bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5` → light border/background instead
-- **Cards with gradient backgrounds** (e.g. TrainerProfile academy card, Pricing card) — `bg-gradient-to-br from-primary/5 to-transparent` → plain card styling
-- **Landing page hero** — gradient overlays → `bg-background`
+## Files Changed
 
-### 5. Gradient badges/buttons — Keep as-is
-Small UI elements like `FeaturedBadge` (amber-to-orange gradient on a tiny badge) and CTA buttons stay — these are accent elements, not backgrounds.
-
-## Approach
-Simple find-and-replace across all files. Each page/layout wrapper div gets `bg-background` instead of its gradient classes. Hero sections use `bg-background` or `bg-muted/30` for subtle separation.
-
-## Files Changed (~25-30 files)
-
-| Category | Files | Change |
-|----------|-------|--------|
-| Layouts | `TrainerLayout.tsx`, `PlayerLayout.tsx` | Remove gradient, use `bg-background` |
-| Auth | `Auth.tsx`, `*Signup.tsx`, `Onboarding.tsx`, `ForgotPassword.tsx`, `ResetPassword.tsx`, `VerificationPending.tsx` | Same |
-| Public | `Trainers.tsx`, `Locations.tsx`, `BookLesson.tsx`, `EditProfile.tsx`, `TrainerProfile.tsx` | Same |
-| Marketing | `Pricing.tsx`, `Blog.tsx`, `VideoTips.tsx`, `Rules.tsx`, `About.tsx`, landing sections | Hero gradients → `bg-background` |
-| Components | `FeaturedSection.tsx`, various cards | Remove gradient tints |
+| File | Change |
+|------|--------|
+| `supabase/functions/create-invoice-payment/index.ts` | Remove blind URL reuse; add Mollie status check after token resolution; clear stale URLs |
 
