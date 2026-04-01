@@ -127,13 +127,7 @@ serve(async (req) => {
       });
     }
 
-    // If already has a payment URL that's not paid, return it
-    if (invoice.mollie_payment_url && invoice.status !== "paid") {
-      return new Response(JSON.stringify({ paymentUrl: invoice.mollie_payment_url, existing: true }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Note: existing payment URL check moved to after token resolution
 
     // Resolve Mollie access token — prefer academy, fall back to trainer
     let accessToken: string | null = null;
