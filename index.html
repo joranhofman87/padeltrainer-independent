@@ -11,12 +11,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://ppkbhdiiqdusdeatgdft.supabase.co" />
     <link rel="dns-prefetch" href="https://ppkbhdiiqdusdeatgdft.supabase.co" />
-    <link rel="preconnect" href="https://cdn.sanity.io" />
+    <link rel="dns-prefetch" href="https://cdn.sanity.io" />
     <!-- All dynamic meta tags (title, description, OG, Twitter) are managed by react-helmet-async per page -->
     <!-- Reditus affiliate tracking is loaded deferred in main.tsx -->
+    <style>
+      /* Inline critical styles for instant FCP before React hydrates */
+      #root-loader{display:flex;align-items:center;justify-content:center;height:100vh;background:#fff}
+      #root-loader svg{width:48px;height:48px;animation:spin .8s linear infinite}
+      @keyframes spin{to{transform:rotate(360deg)}}
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="root-loader"><svg viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
