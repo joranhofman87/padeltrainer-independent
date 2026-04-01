@@ -33,22 +33,17 @@ export function PlayerBanner() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
+          <div className="flex flex-wrap gap-2 md:gap-3">
             {playerLinks.map((link) => (
               <LocalizedLink
                 key={link.to}
                 to={link.to}
-                className="group flex flex-col items-start gap-2 rounded-xl border bg-card p-4 md:p-5 transition-all hover:shadow-md hover:border-primary/30 h-full"
+                className="group flex items-center gap-2 rounded-lg border bg-card px-3 py-2 transition-all hover:shadow-sm hover:border-primary/30"
               >
-                <link.icon className="h-5 w-5 text-primary shrink-0" />
-                <div>
-                  <span className="block text-sm font-medium text-foreground">
-                    {t(link.labelKey)}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground leading-snug">
-                    {t(link.descKey)}
-                  </span>
-                </div>
+                <link.icon className="h-4 w-4 text-primary shrink-0" />
+                <span className="text-sm font-medium text-foreground whitespace-nowrap">
+                  {t(link.labelKey)}
+                </span>
               </LocalizedLink>
             ))}
           </div>
