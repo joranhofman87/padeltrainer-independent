@@ -184,6 +184,35 @@ serve(async (req) => {
 
     const isTestMode = mollieApiKey.startsWith("test_");
 
+    // Check if existing payment is still usable before creating a new one
+    if (invoice.mollie_payment_url && invoice.mollie_payment_id && invoice.status !== "paid") {
+      try {
+        const testParam = isTestMode ? "?testmode=true" : "";
+        const checkResp = await fetch(
+          `https://api.mollie.com/v2/payments/${invoice.mollie_payment_id}${testParam}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (checkResp.ok) {
+          const existing = await checkResp.json();
+          if (existing.status === "open") {
+            logStep("Reusing existing open payment", { paymentId: invoice.mollie_payment_id });
+            return new Response(JSON.stringify({ paymentUrl: invoice.mollie_payment_url, existing: true }), {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          logStep("Existing payment no longer open", { paymentId: invoice.mollie_payment_id, status: existing.status });
+        }
+        // Stale — clear stored URL so a fresh payment is created
+        await supabase.from("invoices")
+          .update({ mollie_payment_url: null, mollie_payment_id: null })
+          .eq("id", invoice.id);
+        logStep("Cleared stale payment URL", { oldPaymentId: invoice.mollie_payment_id });
+      } catch {
+        logStep("Error checking existing payment, will create new");
+      }
+    }
+
     // Fetch Mollie profile ID (required for OAuth payments)
     let mollieProfileId: string | null = null;
     try {
