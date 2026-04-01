@@ -67,7 +67,7 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
       if (field === 'description') {
         item.description = value as string;
       } else if (field === 'quantity') {
-        item.quantity = Math.max(1, parseInt(String(value)) || 1);
+        item.quantity = value === '' || value === 0 ? 0 : (parseInt(String(value)) || 0);
       } else if (field === 'unit_price') {
         item.unit_price = Number(value) || 0;
       } else if (field === 'vat_rate') {
