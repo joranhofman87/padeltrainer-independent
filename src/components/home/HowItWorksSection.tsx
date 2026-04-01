@@ -67,7 +67,7 @@ export function HowItWorksSection() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="how-it-works" className="py-24 md:py-32">
+    <section id="how-it-works" className="py-16 md:py-24">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
         <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] mb-14 max-w-lg text-[hsl(var(--brand-navy))]">
           {t('homev2.howItWorks.headline')}

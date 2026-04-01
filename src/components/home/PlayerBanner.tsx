@@ -33,7 +33,7 @@ export function PlayerBanner() {
               <LocalizedLink
                 key={link.to}
                 to={link.to}
-                className="inline-flex items-center gap-2 rounded-full bg-card border px-4 py-2 text-sm font-medium text-foreground transition-all hover:shadow-sm hover:border-primary/30"
+                className="inline-flex items-center gap-2 rounded-full bg-card border px-3 py-2 text-sm font-medium text-foreground transition-all hover:shadow-sm hover:border-primary/30"
               >
                 <link.icon className="h-4 w-4 text-primary shrink-0" />
                 {t(link.labelKey)}

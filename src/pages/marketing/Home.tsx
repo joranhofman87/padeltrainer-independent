@@ -82,7 +82,6 @@ export default function Home() {
         <PricingPreview />
         <FAQSection />
         <FinalCTASection />
-        <HomeFeaturedSections />
       </Suspense>
     </MarketingLayout>
   );

@@ -85,7 +85,7 @@ export function SolutionOverview() {
           {values.map((v) => (
             <div
               key={v.key}
-              className="card-elevated p-8 flex items-start gap-5"
+              className="card-elevated p-8 flex items-start gap-5 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200"
             >
               <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
                 <v.Visual />
