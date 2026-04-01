@@ -1020,5 +1020,23 @@
     "retakeQuiz": "Opnieuw doen",
     "shareText": "Ik ben niveau {{level}} in padel ({{title}})! 🎾 wat is jouw niveau?",
     "linkCopied": "Link gekopieerd!"
+  },
+  "cityLanding": {
+    "metaTitle": "Padel in {{city}}",
+    "metaDescription": "Vind {{count}} padelclubs en trainers in {{city}}. Vergelijk banen, boek een les en start vandaag nog met padel.",
+    "heroSubtitle": "Vind padelbanen, clubs en coaches in {{city}}. Boek een les of vind de dichtstbijzijnde baan.",
+    "findCourt": "Vind een baan",
+    "bookCoach": "Boek een coach",
+    "clubs": "Clubs",
+    "coaches": "Trainers",
+    "clubsHeading": "Padelclubs in {{city}}",
+    "trainersHeading": "Padeltrainers in {{city}}",
+    "lessonsHeading": "Padelles in {{city}}",
+    "faqHeading": "Veelgestelde vragen over padel in {{city}}",
+    "showAllClubs": "Toon alle {{count}} clubs",
+    "viewAllTrainers": "Bekijk alle trainers in {{city}}",
+    "startTrial": "Start je gratis proefperiode",
+    "nearbyCities": "Ook populair",
+    "unknownTrainer": "Trainer"
   }
 }
