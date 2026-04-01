@@ -4,29 +4,20 @@ import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Download, Loader2, AlertCircle, Share2, Search, Pencil, Mail, PlusCircle, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
 import { CreateCustomInvoiceDialog } from "@/components/invoices/CreateCustomInvoiceDialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { nl, enUS } from "date-fns/locale";
 
 interface Invoice {
@@ -55,24 +46,44 @@ interface Invoice {
   player_btw_number?: string;
   booking_ids?: string[] | null;
   notes?: string | null;
+  trainer_id?: string | null;
 }
 
 export default function AcademyInvoices() {
   const { t, i18n } = useTranslation("academy");
   const { activeAcademy } = useAcademyContext();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
+  const [trainerFilter, setTrainerFilter] = useState("all");
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
   const formatEuro = (amount: number) =>
     amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Fetch trainers for filter
+  const { data: trainers = [] } = useQuery({
+    queryKey: ["academy-trainers-filter", activeAcademy?.id],
+    queryFn: async () => {
+      if (!activeAcademy?.id) return [];
+      const { data, error } = await supabase
+        .from("academy_trainers")
+        .select("trainer_profile_id, trainer_profiles(id, business_name)")
+        .eq("academy_profile_id", activeAcademy.id)
+        .eq("status", "active");
+      if (error) throw error;
+      return (data || []).map((t: any) => ({
+        id: t.trainer_profile_id,
+        name: t.trainer_profiles?.business_name || "Trainer",
+      }));
+    },
+    enabled: !!activeAcademy?.id,
+  });
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["academy-invoices", activeAcademy?.id],
@@ -112,36 +123,34 @@ export default function AcademyInvoices() {
     },
   });
 
-  const draftInvoices = invoices.filter((i) => !i.sent_at && i.status !== "paid");
-  const sentInvoices = invoices.filter((i) => i.sent_at && i.status !== "paid");
-  const paidInvoices = invoices.filter((i) => i.status === "paid");
+  // Filter by trainer
+  const trainerFiltered = trainerFilter === "all"
+    ? invoices
+    : invoices.filter(i => (i as any).trainer_id === trainerFilter);
 
-  const tabFiltered =
-    activeTab === "draft" ? draftInvoices :
-    activeTab === "sent" ? sentInvoices :
-    activeTab === "paid" ? paidInvoices :
-    invoices;
+  const unpaidInvoices = trainerFiltered.filter((i) => i.status !== "paid" && i.status !== "cancelled");
+  const paidInvoices = trainerFiltered.filter((i) => i.status === "paid");
+  const draftInvoices = trainerFiltered.filter((i) => !i.sent_at && i.status !== "paid" && i.status !== "cancelled");
+
+  const tabFiltered = activeTab === "paid" ? paidInvoices : unpaidInvoices;
 
   const filteredInvoices = tabFiltered.filter(i =>
     !searchQuery || i.player_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const totalUnpaid = sentInvoices.reduce((sum, i) => sum + i.total, 0) + draftInvoices.reduce((sum, i) => sum + i.total, 0);
+  const totalUnpaid = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
 
   // Send single invoice (with email)
   const sendInvoiceMutation = useMutation({
     mutationFn: async (invoice: Invoice) => {
-      // Try sending email
       const { data } = await supabase.functions.invoke("send-invoice-email", {
         body: { invoiceId: invoice.id },
       });
 
       if (data?.error === "no_email") {
-        // Return special marker so onSuccess can handle the dialog
         return { noEmail: true, invoice };
       }
 
-      // Mark as sent
       const { error } = await supabase
         .from("invoices")
         .update({ sent_at: new Date().toISOString(), status: "sent" })
@@ -190,14 +199,12 @@ export default function AcademyInvoices() {
           failed++;
         }
 
-        // Mark as sent regardless
         await supabase
           .from("invoices")
           .update({ sent_at: new Date().toISOString(), status: "sent" })
           .eq("id", inv.id);
       } catch {
         failed++;
-        // Still mark as sent
         await supabase
           .from("invoices")
           .update({ sent_at: new Date().toISOString(), status: "sent" })
@@ -223,12 +230,10 @@ export default function AcademyInvoices() {
       await supabase.from("guest_players").update({ email }).eq("id", guestPlayerId);
     }
 
-    // Retry sending email
     await supabase.functions.invoke("send-invoice-email", {
       body: { invoiceId },
     });
 
-    // Mark as sent
     await supabase.from("invoices").update({ 
       sent_at: new Date().toISOString(), 
       status: "sent" 
@@ -237,6 +242,21 @@ export default function AcademyInvoices() {
     queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
     toast.success(`Factuur verzonden naar ${email}`);
   };
+
+  // Mark as sent (without email)
+  const markAsSentMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { error } = await supabase
+        .from("invoices")
+        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .eq("id", invoiceId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+      toast.success(t("invoices.markedAsSent", "Invoice marked as sent"));
+    },
+  });
 
   // Mark as paid mutation
   const markPaidMutation = useMutation({
@@ -323,6 +343,38 @@ export default function AcademyInvoices() {
     return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Draft")}</Badge>;
   };
 
+  const getPaymentUrl = (inv: Invoice) =>
+    `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
+
+  const ShareDropdown = ({ invoice }: { invoice: Invoice }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost">
+          <Share2 className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => {
+          navigator.clipboard.writeText(getPaymentUrl(invoice));
+          toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
+        }}>
+          <Link2 className="h-4 w-4 mr-2" />
+          {t("invoices.copyLink", "Copy link")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => sendInvoiceMutation.mutate(invoice)}>
+          <Mail className="h-4 w-4 mr-2" />
+          {t("invoices.sendViaEmail", "Send via email")}
+        </DropdownMenuItem>
+        {invoice.status !== "sent" && !invoice.sent_at && (
+          <DropdownMenuItem onClick={() => markAsSentMutation.mutate(invoice.id)}>
+            <CheckCheck className="h-4 w-4 mr-2" />
+            {t("invoices.markAsSent", "Mark as sent")}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
@@ -366,7 +418,7 @@ export default function AcademyInvoices() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Unpaid")}</p>
@@ -375,14 +427,8 @@ export default function AcademyInvoices() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">{t("invoices.draft", "Draft")}</p>
-            <p className="text-2xl font-bold">{draftInvoices.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">{t("invoices.sent", "Sent")}</p>
-            <p className="text-2xl font-bold">{sentInvoices.length}</p>
+            <p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open invoices")}</p>
+            <p className="text-2xl font-bold">{unpaidInvoices.length}</p>
           </CardContent>
         </Card>
         <Card>
@@ -414,23 +460,36 @@ export default function AcademyInvoices() {
         </div>
       )}
 
-      {/* Tabs + Table */}
+      {/* Tabs + Filters + Table */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <TabsList>
-            <TabsTrigger value="all">{t("invoices.all", "All")} ({invoices.length})</TabsTrigger>
-          <TabsTrigger value="draft">{t("invoices.draft", "Draft")} ({draftInvoices.length})</TabsTrigger>
-          <TabsTrigger value="sent">{t("invoices.sentOverdue", "Sent / Overdue")} ({sentInvoices.length})</TabsTrigger>
+            <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({unpaidInvoices.length})</TabsTrigger>
             <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
           </TabsList>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t("invoices.searchPlaceholder", "Search player name...")}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 w-64"
-            />
+          <div className="flex items-center gap-2 flex-1">
+            {trainers.length > 0 && (
+              <Select value={trainerFilter} onValueChange={setTrainerFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder={t("invoices.allTrainers", "All trainers")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("invoices.allTrainers", "All trainers")}</SelectItem>
+                  {trainers.map((tr: any) => (
+                    <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={t("invoices.searchPlaceholder", "Search player name...")}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 w-64"
+              />
+            </div>
           </div>
         </div>
 
@@ -465,124 +524,37 @@ export default function AcademyInvoices() {
                     </TableHeader>
                     <TableBody>
                       {filteredInvoices.map((inv) => (
-                        <TableRow key={inv.id}>
+                        <TableRow
+                          key={inv.id}
+                          className="cursor-pointer"
+                          onClick={() => setEditInvoice(inv)}
+                        >
                           <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                           <TableCell>{inv.player_name}</TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
                           <TableCell>{getStatusBadge(inv)}</TableCell>
-                          <TableCell>
-                            <TooltipProvider delayDuration={0}>
-                              <div className="flex justify-end gap-1">
-                                {inv.status !== "paid" && (
-                                  <>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => {
-                                            const url = `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
-                                            navigator.clipboard.writeText(url);
-                                            toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
-                                          }}
-                                        >
-                                          <Share2 className="h-4 w-4" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>{t("invoices.shareLink", "Share invoice link")}</TooltipContent>
-                                    </Tooltip>
-                                    {!inv.sent_at && (
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => sendInvoiceMutation.mutate(inv)}
-                                            disabled={sendInvoiceMutation.isPending}
-                                          >
-                                            <Send className="h-4 w-4" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>{t("invoices.send", "Send invoice")}</TooltipContent>
-                                      </Tooltip>
-                                    )}
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => markPaidMutation.mutate(inv.id)}
-                                          disabled={markPaidMutation.isPending}
-                                        >
-                                          <CheckCircle className="h-4 w-4" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>{t("invoices.markPaid", "Mark paid")}</TooltipContent>
-                                    </Tooltip>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => setEditInvoice(inv)}
-                                        >
-                                          <Pencil className="h-4 w-4" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>{t("invoices.edit", "Edit")}</TooltipContent>
-                                    </Tooltip>
-                                  </>
-                                )}
-                                {inv.status === "paid" && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => handleForwardInvoice(inv.id)}
-                                        disabled={forwardingId === inv.id}
-                                      >
-                                        {forwardingId === inv.id ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                          <Mail className="h-4 w-4" />
-                                        )}
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>{t("invoices.forwardToBookkeeper", "Forward to bookkeeper")}</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {inv.status !== "cancelled" && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => setDeleteConfirm({ open: true, invoice: inv })}
-                                        disabled={deleteMutation.isPending}
-                                      >
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>{inv.status === "draft" ? t("invoices.delete", "Delete") : t("invoices.cancel", "Cancel")}</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => handleDownloadPdf(inv)}
-                                    >
-                                      <Download className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>{t("invoices.downloadPdf", "Download PDF")}</TooltipContent>
-                                </Tooltip>
-                              </div>
-                            </TooltipProvider>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-end gap-1">
+                              {inv.status !== "paid" && inv.status !== "cancelled" && (
+                                <ShareDropdown invoice={inv} />
+                              )}
+                              {inv.status === "paid" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleForwardInvoice(inv.id)}
+                                  disabled={forwardingId === inv.id}
+                                >
+                                  {forwardingId === inv.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Mail className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -594,7 +566,7 @@ export default function AcademyInvoices() {
               {/* Mobile Cards */}
               <div className="md:hidden space-y-3">
                 {filteredInvoices.map((inv) => (
-                  <Card key={inv.id}>
+                  <Card key={inv.id} className="cursor-pointer" onClick={() => setEditInvoice(inv)}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-2">
                         <div>
@@ -609,28 +581,9 @@ export default function AcademyInvoices() {
                         </span>
                         <span className="font-bold text-lg">€{formatEuro(inv.total)}</span>
                       </div>
-                      <div className="flex gap-2 flex-wrap">
-                        {inv.status !== "paid" && (
-                          <>
-                            <Button size="sm" variant="outline" onClick={() => {
-                              const url = `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
-                              navigator.clipboard.writeText(url);
-                              toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
-                            }}>
-                              <Share2 className="h-4 w-4 mr-1" />{t("invoices.shareLink", "Share")}
-                            </Button>
-                            {!inv.sent_at && (
-                              <Button size="sm" variant="outline" onClick={() => sendInvoiceMutation.mutate(inv)}>
-                                <Send className="h-4 w-4 mr-1" />{t("invoices.send", "Send")}
-                              </Button>
-                            )}
-                            <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
-                              <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => setEditInvoice(inv)}>
-                              <Pencil className="h-4 w-4 mr-1" />{t("invoices.edit", "Edit")}
-                            </Button>
-                          </>
+                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        {inv.status !== "paid" && inv.status !== "cancelled" && (
+                          <ShareDropdown invoice={inv} />
                         )}
                         {inv.status === "paid" && (
                           <Button size="sm" variant="outline" onClick={() => handleForwardInvoice(inv.id)} disabled={forwardingId === inv.id}>
@@ -638,14 +591,6 @@ export default function AcademyInvoices() {
                             {t("invoices.forwardToBookkeeper", "Forward")}
                           </Button>
                         )}
-                        {inv.status !== "cancelled" && (
-                          <Button size="sm" variant="outline" onClick={() => setDeleteConfirm({ open: true, invoice: inv })}>
-                            <Trash2 className="h-4 w-4 mr-1" />{inv.status === "draft" ? t("invoices.delete", "Delete") : t("invoices.cancel", "Cancel")}
-                          </Button>
-                        )}
-                        <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv)}>
-                          <Download className="h-4 w-4 mr-1" />PDF
-                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -669,6 +614,16 @@ export default function AcademyInvoices() {
         invoice={editInvoice}
         onSaved={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
         academyProfileId={activeAcademy?.id}
+        onDownloadPdf={editInvoice ? () => handleDownloadPdf(editInvoice) : undefined}
+        onMarkPaid={editInvoice && editInvoice.status !== "paid" ? () => {
+          markPaidMutation.mutate(editInvoice.id);
+          setEditInvoice(null);
+        } : undefined}
+        onDelete={editInvoice && editInvoice.status !== "cancelled" ? () => {
+          deleteMutation.mutate(editInvoice);
+          setEditInvoice(null);
+        } : undefined}
+        invoiceStatus={editInvoice?.status}
       />
 
       {activeAcademy?.id && (
@@ -679,36 +634,6 @@ export default function AcademyInvoices() {
           onCreated={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
         />
       )}
-
-      <AlertDialog open={deleteConfirm.open} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, invoice: null })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteConfirm.invoice?.status === 'draft' ? 'Factuur verwijderen' : 'Factuur annuleren'}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteConfirm.invoice?.status === 'draft'
-                ? `Weet je zeker dat je factuur ${deleteConfirm.invoice?.invoice_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
-                : `Weet je zeker dat je factuur ${deleteConfirm.invoice?.invoice_number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.`
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                if (deleteConfirm.invoice) {
-                  deleteMutation.mutate(deleteConfirm.invoice);
-                  setDeleteConfirm({ open: false, invoice: null });
-                }
-              }}
-            >
-              {deleteConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

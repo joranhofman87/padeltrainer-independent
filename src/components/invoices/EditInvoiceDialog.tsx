@@ -10,12 +10,22 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { Loader2, CalendarIcon, Plus, Trash2 } from 'lucide-react';
+import { Loader2, CalendarIcon, Plus, Trash2, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface LineItem {
   description: string;
@@ -46,6 +56,10 @@ interface EditInvoiceDialogProps {
   onSaved: () => void;
   trainerId?: string | null;
   academyProfileId?: string | null;
+  onDownloadPdf?: () => void;
+  onMarkPaid?: () => void;
+  onDelete?: () => void;
+  invoiceStatus?: string;
 }
 
 function parseAddress(address?: string | null): { street: string; zipCode: string; city: string } {
@@ -58,7 +72,7 @@ function parseAddress(address?: string | null): { street: string; zipCode: strin
   };
 }
 
-export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId }: EditInvoiceDialogProps) {
+export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId, onDownloadPdf, onMarkPaid, onDelete, invoiceStatus }: EditInvoiceDialogProps) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [vatRate, setVatRate] = useState(21);
   const [dueDate, setDueDate] = useState<Date | undefined>();
@@ -66,6 +80,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
   const [syncToBookings, setSyncToBookings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   // Receiver details
   const [playerName, setPlayerName] = useState('');
@@ -241,265 +256,317 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
 
   if (!invoice) return null;
 
+  const isDraft = invoiceStatus === 'draft';
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Factuur bewerken</DialogTitle>
-          <DialogDescription>Pas ontvanger, regelitems, BTW, vervaldatum of notities aan.</DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Factuur bewerken</DialogTitle>
+            <DialogDescription>Pas ontvanger, regelitems, BTW, vervaldatum of notities aan.</DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-          {/* Receiver details */}
-          <div>
-            <Label className="text-sm font-medium mb-2 block">Ontvanger</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                placeholder="Naam"
-                className="text-sm"
-              />
-              <Input
-                value={playerBusinessName}
-                onChange={(e) => setPlayerBusinessName(e.target.value)}
-                placeholder="Bedrijfsnaam (optioneel)"
-                className="text-sm"
-              />
-              <Input
-                value={playerStreet}
-                onChange={(e) => setPlayerStreet(e.target.value)}
-                placeholder="Straat + huisnummer"
-                className="text-sm col-span-2"
-              />
-              <Input
-                value={playerZipCode}
-                onChange={(e) => setPlayerZipCode(e.target.value)}
-                placeholder="Postcode"
-                className="text-sm"
-              />
-              <Input
-                value={playerCity}
-                onChange={(e) => setPlayerCity(e.target.value)}
-                placeholder="Plaats"
-                className="text-sm"
-              />
-              <Input
-                value={playerBtwNumber}
-                onChange={(e) => setPlayerBtwNumber(e.target.value)}
-                placeholder="BTW-nummer (optioneel)"
-                className="text-sm col-span-2"
-              />
-            </div>
-          </div>
-
-          {/* Line items */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-sm font-medium">Regelitems</Label>
-              <div className="flex items-center gap-1">
-                <ExtraCostPresetPicker
-                  trainerId={trainerId}
-                  academyProfileId={academyProfileId}
-                  onSelect={(cost) => {
-                    setLineItems(prev => [...prev, {
-                      description: cost.description,
-                      quantity: 1,
-                      unit_price: cost.price,
-                      amount: cost.price,
-                      vat_rate: cost.vat_rate,
-                    }]);
-                  }}
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            {/* Receiver details */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">Ontvanger</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Naam"
+                  className="text-sm"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    setLineItems(prev => [...prev, {
-                      description: '',
-                      quantity: 1,
-                      unit_price: 0,
-                      amount: 0,
-                      vat_rate: vatRate,
-                    }]);
-                  }}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Regel toevoegen
-                </Button>
+                <Input
+                  value={playerBusinessName}
+                  onChange={(e) => setPlayerBusinessName(e.target.value)}
+                  placeholder="Bedrijfsnaam (optioneel)"
+                  className="text-sm"
+                />
+                <Input
+                  value={playerStreet}
+                  onChange={(e) => setPlayerStreet(e.target.value)}
+                  placeholder="Straat + huisnummer"
+                  className="text-sm col-span-2"
+                />
+                <Input
+                  value={playerZipCode}
+                  onChange={(e) => setPlayerZipCode(e.target.value)}
+                  placeholder="Postcode"
+                  className="text-sm"
+                />
+                <Input
+                  value={playerCity}
+                  onChange={(e) => setPlayerCity(e.target.value)}
+                  placeholder="Plaats"
+                  className="text-sm"
+                />
+                <Input
+                  value={playerBtwNumber}
+                  onChange={(e) => setPlayerBtwNumber(e.target.value)}
+                  placeholder="BTW-nummer (optioneel)"
+                  className="text-sm col-span-2"
+                />
               </div>
             </div>
-            <div className="space-y-2">
-              <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
-                <span>Omschrijving</span>
-                <span>Aantal</span>
-                <span>Prijs</span>
-                <span>BTW %</span>
-                <span>Totaal</span>
-                <span></span>
-              </div>
-              {lineItems.map((li, i) => (
-                <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
-                  <Input
-                    value={li.description}
-                    onChange={(e) => updateLineItem(i, 'description', e.target.value)}
-                    placeholder="Omschrijving"
-                    className="text-sm"
-                  />
-                  <Input
-                    type="number"
-                    value={li.quantity === 0 ? '' : li.quantity}
-                    onChange={(e) => updateLineItem(i, 'quantity', e.target.value)}
-                    onBlur={() => {
-                      if (!li.quantity || li.quantity < 1) {
-                        updateLineItem(i, 'quantity', 1);
-                      }
+
+            {/* Line items */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm font-medium">Regelitems</Label>
+                <div className="flex items-center gap-1">
+                  <ExtraCostPresetPicker
+                    trainerId={trainerId}
+                    academyProfileId={academyProfileId}
+                    onSelect={(cost) => {
+                      setLineItems(prev => [...prev, {
+                        description: cost.description,
+                        quantity: 1,
+                        unit_price: cost.price,
+                        amount: cost.price,
+                        vat_rate: cost.vat_rate,
+                      }]);
                     }}
-                    placeholder="Aantal"
-                    className="text-sm"
-                    min={1}
                   />
-                  <Input
-                    type="number"
-                    value={li.unit_price || ''}
-                    onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
-                    placeholder="Prijs"
-                    className="text-sm"
-                    step="0.01"
-                    min={0}
-                  />
-                  <div className="relative">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setLineItems(prev => [...prev, {
+                        description: '',
+                        quantity: 1,
+                        unit_price: 0,
+                        amount: 0,
+                        vat_rate: vatRate,
+                      }]);
+                    }}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Regel toevoegen
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
+                  <span>Omschrijving</span>
+                  <span>Aantal</span>
+                  <span>Prijs</span>
+                  <span>BTW %</span>
+                  <span>Totaal</span>
+                  <span></span>
+                </div>
+                {lineItems.map((li, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
+                    <Input
+                      value={li.description}
+                      onChange={(e) => updateLineItem(i, 'description', e.target.value)}
+                      placeholder="Omschrijving"
+                      className="text-sm"
+                    />
                     <Input
                       type="number"
-                      value={li.vat_rate || ''}
-                      onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)}
-                      className="text-sm pr-5"
+                      value={li.quantity === 0 ? '' : li.quantity}
+                      onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
+                      onBlur={() => {
+                        if (!li.quantity || li.quantity < 1) {
+                          updateLineItem(i, 'quantity', 1);
+                        }
+                      }}
+                      placeholder="Aantal"
+                      className="text-sm"
+                      min={1}
+                    />
+                    <Input
+                      type="number"
+                      value={li.unit_price || ''}
+                      onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
+                      placeholder="Prijs"
+                      className="text-sm"
+                      step="0.01"
+                      min={0}
+                    />
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        value={li.vat_rate || ''}
+                        onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)}
+                        className="text-sm pr-5"
+                        min={0}
+                        max={100}
+                        step={1}
+                      />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                    </div>
+                    <div className="text-right text-sm font-medium py-2">
+                      €{(li.quantity * li.unit_price).toFixed(2)}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => removeLineItem(i)}
+                      disabled={lineItems.length <= 1}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Prices include VAT toggle */}
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Prijzen zijn inclusief BTW</Label>
+              <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
+            </div>
+
+            {/* Totals */}
+            <div className="border-t pt-3 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Subtotaal</span>
+                <span>€{subtotal.toFixed(2)}</span>
+              </div>
+              {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
+                Object.entries(vatBreakdown)
+                  .sort(([a], [b]) => Number(a) - Number(b))
+                  .map(([rate, data]) => (
+                    <div key={rate} className="flex justify-between">
+                      <span className="text-muted-foreground">BTW {rate}%</span>
+                      <span>€{data.vat.toFixed(2)}</span>
+                    </div>
+                  ))
+              ) : (
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    BTW
+                    <Input
+                      type="number"
+                      value={vatRate}
+                      onChange={(e) => setVatRate(Number(e.target.value) || 0)}
+                      className="w-16 h-7 text-sm inline"
                       min={0}
                       max={100}
                       step={1}
                     />
-                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                  </div>
-                  <div className="text-right text-sm font-medium py-2">
-                    €{(li.quantity * li.unit_price).toFixed(2)}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => removeLineItem(i)}
-                    disabled={lineItems.length <= 1}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
+                    %
+                  </span>
+                  <span>€{vatAmount.toFixed(2)}</span>
                 </div>
-              ))}
+              )}
+              <div className="flex justify-between font-bold text-base border-t pt-2">
+                <span>Totaal</span>
+                <span>€{total.toFixed(2)}</span>
+              </div>
             </div>
-          </div>
 
-          {/* Prices include VAT toggle */}
-          <div className="flex items-center justify-between">
-            <Label className="text-sm">Prijzen zijn inclusief BTW</Label>
-            <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
-          </div>
-
-          {/* Totals */}
-          <div className="border-t pt-3 space-y-1 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotaal</span>
-              <span>€{subtotal.toFixed(2)}</span>
-            </div>
-            {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
-              Object.entries(vatBreakdown)
-                .sort(([a], [b]) => Number(a) - Number(b))
-                .map(([rate, data]) => (
-                  <div key={rate} className="flex justify-between">
-                    <span className="text-muted-foreground">BTW {rate}%</span>
-                    <span>€{data.vat.toFixed(2)}</span>
-                  </div>
-                ))
-            ) : (
-              <div className="flex justify-between items-center gap-2">
-                <span className="text-muted-foreground flex items-center gap-2">
-                  BTW
-                  <Input
-                    type="number"
-                    value={vatRate}
-                    onChange={(e) => setVatRate(Number(e.target.value) || 0)}
-                    className="w-16 h-7 text-sm inline"
-                    min={0}
-                    max={100}
-                    step={1}
+            {/* Due date */}
+            <div className="flex items-center gap-4">
+              <Label className="text-sm whitespace-nowrap">Vervaldatum</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !dueDate && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dueDate ? format(dueDate, 'd MMM yyyy', { locale: nl }) : 'Selecteer datum'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dueDate}
+                    onSelect={setDueDate}
+                    className={cn("p-3 pointer-events-auto")}
                   />
-                  %
-                </span>
-                <span>€{vatAmount.toFixed(2)}</span>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <Label className="text-sm mb-1 block">Notities</Label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optionele notities op de factuur..."
+                rows={2}
+              />
+            </div>
+
+            {/* Sync checkbox */}
+            {hasPriceChanges && hasBookings && (
+              <div className="flex items-center space-x-2 bg-muted/50 p-3 rounded-md">
+                <Checkbox
+                  id="sync-bookings"
+                  checked={syncToBookings}
+                  onCheckedChange={(v) => setSyncToBookings(v === true)}
+                />
+                <Label htmlFor="sync-bookings" className="text-sm cursor-pointer">
+                  Ook prijswijzigingen doorvoeren naar boekingen
+                </Label>
               </div>
             )}
-            <div className="flex justify-between font-bold text-base border-t pt-2">
-              <span>Totaal</span>
-              <span>€{total.toFixed(2)}</span>
-            </div>
           </div>
 
-          {/* Due date */}
-          <div className="flex items-center gap-4">
-            <Label className="text-sm whitespace-nowrap">Vervaldatum</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !dueDate && "text-muted-foreground")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dueDate ? format(dueDate, 'd MMM yyyy', { locale: nl }) : 'Selecteer datum'}
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {/* Management actions on the left */}
+            <div className="flex gap-2 mr-auto">
+              {onDownloadPdf && (
+                <Button type="button" variant="outline" size="sm" onClick={onDownloadPdf}>
+                  <Download className="h-4 w-4 mr-2" />
+                  PDF
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={dueDate}
-                  onSelect={setDueDate}
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <Label className="text-sm mb-1 block">Notities</Label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optionele notities op de factuur..."
-              rows={2}
-            />
-          </div>
-
-          {/* Sync checkbox */}
-          {hasPriceChanges && hasBookings && (
-            <div className="flex items-center space-x-2 bg-muted/50 p-3 rounded-md">
-              <Checkbox
-                id="sync-bookings"
-                checked={syncToBookings}
-                onCheckedChange={(v) => setSyncToBookings(v === true)}
-              />
-              <Label htmlFor="sync-bookings" className="text-sm cursor-pointer">
-                Ook prijswijzigingen doorvoeren naar boekingen
-              </Label>
+              )}
+              {onMarkPaid && (
+                <Button type="button" variant="outline" size="sm" onClick={onMarkPaid}>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Betaald
+                </Button>
+              )}
+              {onDelete && (
+                <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteConfirmOpen(true)}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {isDraft ? 'Verwijderen' : 'Annuleren'}
+                </Button>
+              )}
             </div>
-          )}
-        </div>
+            {/* Save / Cancel on the right */}
+            <Button variant="outline" onClick={onClose} disabled={saving}>Annuleren</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Opslaan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Annuleren</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Opslaan
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{isDraft ? 'Factuur verwijderen' : 'Factuur annuleren'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {isDraft
+                ? 'Weet je zeker dat je deze factuur wilt verwijderen? Dit kan niet ongedaan worden gemaakt.'
+                : 'Weet je zeker dat je deze factuur wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Terug</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                onDelete?.();
+                setDeleteConfirmOpen(false);
+              }}
+            >
+              {isDraft ? 'Verwijderen' : 'Annuleren'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
