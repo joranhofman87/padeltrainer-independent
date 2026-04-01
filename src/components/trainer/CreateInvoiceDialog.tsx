@@ -379,7 +379,7 @@ export function CreateInvoiceDialog({
                           type="number"
                           step="0.01"
                           min="0"
-                          value={item.unit_price}
+                          value={item.unit_price || ''}
                           onChange={(e) => updateLineItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
                         />
                       </div>
