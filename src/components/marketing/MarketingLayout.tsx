@@ -159,14 +159,12 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
           </div>
 
           {/* Mobile Menu */}
-          <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="md:hidden py-4 border-t"
-            >
+          <div
+            className={`md:hidden overflow-hidden transition-all duration-200 ease-in-out ${
+              mobileMenuOpen ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            <div className="py-4 border-t">
               <nav className="flex flex-col gap-4">
                 <MegaMenuMobile label={t('nav.players', 'Players')} columns={playersColumns} onNavigate={closeMobile} />
                 <MegaMenuMobile label={t('megamenu.forTrainersNav', 'For Trainers')} columns={trainersColumns} onNavigate={closeMobile} />
@@ -204,9 +202,8 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                   )}
                 </div>
               </nav>
-            </motion.div>
-          )}
-          </AnimatePresence>
+            </div>
+          </div>
         </div>
       </header>
 
