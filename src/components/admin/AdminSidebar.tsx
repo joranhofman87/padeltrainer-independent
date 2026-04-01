@@ -61,6 +61,7 @@ const mainNavItems = [
   { title: "Player Ratings", url: "/app/admin/player-ratings", icon: Star },
   { title: "Trainers", url: "/app/admin/trainers", icon: GraduationCap },
   { title: "Academies", url: "/app/admin/academies", icon: School },
+  { title: "Registrations", url: "/app/admin/guest-players", icon: UserPlus },
 ];
 
 const contentNavItems = [

@@ -118,6 +118,22 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       icon: CreditCard,
       color: "text-orange-500",
     },
+    {
+      title: "Registrations",
+      customValue: (
+        <TrendBadge
+          trend={stats.registrations?.lastMonth > 0
+            ? ((stats.registrations.thisMonth - stats.registrations.lastMonth) / stats.registrations.lastMonth) * 100
+            : stats.registrations?.thisMonth > 0 ? 100 : 0}
+          thisMonth={stats.registrations?.thisMonth || 0}
+          lastMonth={stats.registrations?.lastMonth || 0}
+        />
+      ),
+      description: `${stats.registrations?.totalGuests || 0} total, ${stats.registrations?.convertedToAccount || 0} converted`,
+      icon: ClipboardList,
+      color: "text-pink-500",
+      onClick: () => navigate("/app/admin/guest-players"),
+    },
   ];
 
   return (

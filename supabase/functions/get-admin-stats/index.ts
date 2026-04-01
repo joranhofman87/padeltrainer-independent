@@ -264,6 +264,7 @@ serve(async (req) => {
       trainersByTier: trainerTiers,
       clubStats,
       monthlyStats,
+      registrations: guestRegistrations,
     };
 
     logStep("Response prepared", { totalGMV, platformFees: estimatedTotalFees });
