@@ -1,66 +1,70 @@
 
 
-# Homepage Performance Optimization
+# City Landing Pages for SEO — `/padel/[city]`
 
-## Current State (What's Already Good)
-- Below-fold sections are already lazy-loaded via `React.lazy()` + `Suspense`
-- Third-party scripts (PostHog, Reditus) already load deferred via `requestIdleCallback`
-- Vite already handles code-splitting, tree-shaking, content-hashed filenames, and CSS purging
-- Tailwind v3 purges unused CSS automatically
-- `loading="lazy"` already on testimonial images
-- Hero section uses no external images (pure JSX/SVG mockups) so LCP is text-based and fast
-- Viewport meta tag already present in `index.html`
-- No framer-motion on any active homepage component (old unused components still import it but aren't loaded)
+## Approach
 
-## Changes Needed
+Rather than enriching the existing `/trainers/[city]` page (which is trainer-focused), create a new dedicated city landing page at `/padel/[city-slug]`. This keeps the trainer directory page intact while giving us a broader, keyword-rich page targeting "padel [city]" queries.
 
-### 1. Hero animation delays LCP — remove `animate-fade-in` with `animationDelay`
-**`HeroSection.tsx`**: The hero text wrapper has `animate-fade-in` and the mockup has a 200ms `animationDelay` with `animationFillMode: 'backwards'` (which means it starts invisible). This delays LCP.
-- Remove `animate-fade-in` from the hero text `div`
-- Remove `animate-fade-in`, `animationDelay`, and `animationFillMode` from the product mockup wrapper
-- Both should render instantly at full opacity
+The existing `TrainersCity.tsx` already fetches all the data we need (locations, trainers, academies, nearby cities). The new page will reuse the same data-fetching logic but present it in the richer layout described in the prompt.
 
-### 2. Testimonial images — add explicit dimensions to prevent CLS
-**`SocialProofStrip.tsx`**: Avatar images inside `AvatarImage` lack `width`/`height` attributes. The logo images already have `width={80} height={28}`.
-- Add `width={56} height={56}` to the `AvatarImage` elements (matching the `h-14 w-14` avatar container)
+## New Files
 
-### 3. Preconnect to Google Fonts (if used) or confirm no external fonts
-No `@font-face` or font preloads exist. The app appears to use system fonts via Tailwind defaults. No action needed — this is already optimal (no font requests to block rendering).
+### 1. `src/pages/marketing/CityLanding.tsx`
+New page component with these sections:
+- **Hero**: H1 "Padel in [City]", subtitle, two anchor CTAs ("Find a court" / "Book a coach")
+- **City intro**: Template-generated 200-300 word paragraph using city data (club count, trainer count, top club names, indoor/outdoor availability). Generated client-side from a helper function — no CMS needed for v1
+- **Clubs section** (H2): Grid of `LocationCard` components, show 6 initially with "Show all" expand
+- **Trainers section** (H2): Grid of trainer cards (reuse pattern from `TrainersCity.tsx`), CTA linking to `/trainers/[city]`
+- **Padel lessons section** (H2): Template paragraph targeting "padel les [city]", group vs private, CTA to signup
+- **FAQ section** (H2): 5 city-specific FAQs with `FAQPage` structured data
+- **Nearby cities strip**: Horizontal scroll of city links to `/padel/[city]`
 
-### 4. Sponsor banner images — add dimensions and lazy loading
-**`BannerAd.tsx`**: The `<img>` already has `loading="lazy"` and `decoding="async"` but lacks `width`/`height` attributes, which causes CLS.
-- Add `width` and `height` attributes to the banner image (use a standard aspect ratio like `width={728} height={90}` for leaderboard banners, with CSS override for responsive)
+Data fetching reuses existing functions: `getActiveLocations()`, `getLocationTrainerCounts()`, `getClaimedLocationIds()`, `getCitiesWithTrainers()`, plus the same trainer-fetching logic from `TrainersCity.tsx`.
 
-### 5. Dead homepage components — verify they're not in the bundle
-Files like `ChaosPainSection.tsx`, `PadelRealitiesSection.tsx`, `CriticalEventsSection.tsx`, `ImpactSection.tsx`, `WhyPadelTrainerSection.tsx`, `DualCTABanner.tsx` import `framer-motion` but are NOT imported in `Home.tsx`. Vite tree-shakes them out. However, they add noise — optionally delete them to keep the codebase clean and prevent accidental future imports pulling in framer-motion.
+### 2. `src/lib/cityContent.ts`
+Helper that generates the city intro paragraph and lessons paragraph from template strings using city data variables (city name, club count, trainer count, indoor/outdoor counts, top club names, province). Returns localized text per language.
 
-### 6. DNS prefetch for Sanity CDN
-Already present in `index.html`: `<link rel="preconnect" href="https://cdn.sanity.io" />`. Good.
+## Modified Files
 
-### 7. Add `fetchpriority="high"` to hero LCP element
-The hero's LCP element is the `<h1>` text (no image). No further action needed — text renders from the initial HTML/CSS without waiting for additional resources.
+### 3. `src/components/DomainRouter.tsx`
+Add route: `<Route path="padel/:city" element={<CityLanding />} />`
 
-### 8. Compression and cache headers
-These are handled at the infrastructure level (Cloudflare Worker proxy). Cloudflare automatically applies Brotli/gzip and Vite's content-hashed filenames enable long-term caching. No code changes needed.
+### 4. Translation files (all 5 locales)
+Add `cityLanding` namespace with:
+- Page title/meta description templates
+- Hero headline/subtitle
+- Section headings (clubs, trainers, lessons, FAQ)
+- FAQ question/answer templates
+- CTA button labels
+- Lessons section copy template
 
-## Summary of Actual Code Changes
+### 5. `supabase/functions/sitemap/index.ts`
+In the `cities` section, generate entries for `/padel/[city]` in addition to (or instead of) `/trainers/[city]`. Both URL patterns will be in the sitemap.
 
-| File | Change |
-|------|--------|
-| `src/components/home/HeroSection.tsx` | Remove `animate-fade-in` and `animationDelay` from hero elements to eliminate LCP delay |
-| `src/components/home/SocialProofStrip.tsx` | Add `width={56} height={56}` to avatar images for CLS prevention |
-| `src/components/sponsors/BannerAd.tsx` | Add `width` and `height` attributes to banner `<img>` |
-| Delete 6 unused files | `ChaosPainSection.tsx`, `PadelRealitiesSection.tsx`, `CriticalEventsSection.tsx`, `ImpactSection.tsx`, `WhyPadelTrainerSection.tsx`, `DualCTABanner.tsx` — dead code importing framer-motion |
+### 6. `supabase/functions/render-page/index.ts`
+Add `/padel/:city` to the pre-rendering paths so bots get server-rendered HTML with proper OG tags.
 
-## What's NOT Needed (Already Handled)
-- **Code splitting**: Already done via `React.lazy()`
-- **CSS purging**: Tailwind v3 does this automatically
-- **Font optimization**: No external fonts loaded
-- **Third-party script deferral**: Already deferred
-- **Image lazy loading**: Already on below-fold images
-- **Compression/caching**: Cloudflare handles this
-- **Viewport meta**: Already present
-- **Tree-shaking**: Vite handles this
+## SEO Implementation
 
-This is a focused, low-risk optimization — the homepage is already well-structured. The main win is removing the hero animation delay that artificially pushes LCP later.
+- **Title**: "Padel in [City] — Courts, Clubs & Coaches | PadelTrainer.ai"
+- **Meta description**: "Find [X] padel clubs and coaches in [City]. Compare courts, book lessons and start playing padel today."
+- **Structured data**: `FAQPage` + `BreadcrumbList` (Home > Padel > [City]) + `LocalBusiness` for each club (if lat/lng available)
+- **Hreflang**: All 5 languages pointing to `/[lang]/padel/[city]`
+- **Canonical**: Self-referencing per locale
+- **Internal linking**: Nearby cities link to `/padel/[other-city]`, clubs link to `/locations/[slug]`, trainers link to `/trainer/[slug]`
+
+## Design
+
+- Matches existing design language: white background, clean cards, orange accents
+- Mobile-first layout with stacking sections
+- Club/trainer cards use the same `LocationCard` and trainer card patterns already in use
+- Lazy load trainer and club grids below the fold
+- Hero is clean typography on white/light gray — no full-bleed image
+
+## What stays unchanged
+
+- `/trainers/[city]` remains as-is (trainer-focused directory)
+- `/locations/[slug]` individual club pages remain unchanged
+- No database changes needed — all data already exists
 
