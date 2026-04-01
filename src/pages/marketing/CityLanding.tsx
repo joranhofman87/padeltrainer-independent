@@ -223,6 +223,7 @@ export default function CityLanding() {
 
   const metaTitle = t('cityLanding.metaTitle', { city: displayCity });
   const metaDescription = t('cityLanding.metaDescription', { city: displayCity, count: locations.length });
+  const ogImageUrl = `https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/og-image?city=${encodeURIComponent(displayCity)}&count=${locations.length}`;
 
   if (loading) {
     return (
