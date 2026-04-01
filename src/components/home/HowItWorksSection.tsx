@@ -33,12 +33,12 @@ function MiniWeekCalendar() {
 
 function MiniShareLink() {
   return (
-    <div className="rounded-xl border bg-card px-4 py-3 flex items-center gap-2.5 w-fit shadow-sm" aria-hidden>
-      <div className="h-5 w-5 rounded bg-primary/20 flex items-center justify-center">
-        <Share2 className="h-3 w-3 text-primary" />
+    <div className="rounded-xl border bg-card px-5 py-4 flex items-center gap-3 w-fit shadow-sm" aria-hidden>
+      <div className="h-7 w-7 rounded bg-primary/20 flex items-center justify-center">
+        <Share2 className="h-4 w-4 text-primary" />
       </div>
-      <span className="text-xs text-muted-foreground font-mono">padeltrainer.ai/</span>
-      <span className="text-xs text-primary font-mono font-medium">your-name</span>
+      <span className="text-sm text-muted-foreground font-mono">padeltrainer.ai/</span>
+      <span className="text-sm text-primary font-mono font-medium">your-name</span>
     </div>
   );
 }
