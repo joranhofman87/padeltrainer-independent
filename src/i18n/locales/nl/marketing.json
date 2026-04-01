@@ -691,7 +691,7 @@
       "step1_title": "Voeg je beschikbaarheid toe",
       "step1_desc": "Stel je tijden, locaties, groepsgroottes en prijzen in. Duurt zo'n 10 minuten.",
       "step2_title": "Deel je link",
-      "step2_desc": "padeltrainer.ai/jouw-naam — zet hem in je WhatsApp-bio, Instagram, of stuur hem direct naar spelers.",
+      "step2_desc": "padeltrainer.ai/jouw-naam. Zet hem in je WhatsApp-bio, Instagram, of stuur hem direct naar spelers.",
       "step3_title": "Coach. Wij regelen de rest.",
       "step3_desc": "Boekingen, bevestigingen, betalingen, herinneringen, annuleringen. Het werkt gewoon."
     },
@@ -763,7 +763,7 @@
     "faq": {
       "headline": "Heb je vragen?",
       "onlyPadel_q": "Is dit alleen voor padel?",
-      "onlyPadel_a": "Ja. We hebben het specifiek gebouwd voor padelcoaches, academies en clubs. Daarom handelt het dingen als groepslessen, baantypes en annuleringen goed af — in tegenstelling tot generieke boekingstools.",
+      "onlyPadel_a": "Ja. We hebben het specifiek gebouwd voor padelcoaches, academies en clubs. Daarom handelt het dingen als groepslessen, baantypes en annuleringen goed af, in tegenstelling tot generieke boekingstools.",
       "playersFree_q": "Is het echt gratis voor spelers?",
       "playersFree_a": "Ja. Spelers betalen nooit voor het platform. Ze betalen alleen voor de lessen die ze boeken.",
       "trialHow_q": "Hoe werkt de gratis proefperiode?",
@@ -805,7 +805,7 @@
     },
     "pain": {
       "headline": "Herkenbaar?",
-      "whatsapp_story": "Je telefoon zoemt om 22:00 — \"Kan ik naar donderdag switchen?\" Je opent WhatsApp, checkt je notities, scrollt door drie groepschats, en beseft dat je niet meer weet wie er morgen komt.",
+      "whatsapp_story": "Je telefoon zoemt om 22:00. \"Kan ik naar donderdag switchen?\" Je opent WhatsApp, checkt je notities, scrollt door drie groepschats, en beseft dat je niet meer weet wie er morgen komt.",
       "whatsapp_solution": "Met PadelTrainer.ai: spelers boeken en wijzigen zelf. Jij coacht gewoon.",
       "cancellation_story": "Een speler annuleert 2 uur voor de les. De plek blijft leeg. Je verliest het inkomen, en drie andere spelers die die plek graag hadden gewild wisten niet eens dat hij beschikbaar was.",
       "cancellation_solution": "Met PadelTrainer.ai: volgers krijgen direct een melding. Lege plekken vullen zichzelf.",

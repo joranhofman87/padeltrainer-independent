@@ -691,7 +691,7 @@
       "step1_title": "Add your availability",
       "step1_desc": "Set your times, locations, group sizes, and prices. Takes about 10 minutes.",
       "step2_title": "Share your link",
-      "step2_desc": "padeltrainer.ai/your-name — put it in your WhatsApp bio, Instagram, or send it directly to players.",
+      "step2_desc": "padeltrainer.ai/your-name. Put it in your WhatsApp bio, Instagram, or send it directly to players.",
       "step3_title": "Coach. We handle the rest.",
       "step3_desc": "Bookings, confirmations, payments, reminders, cancellations. It just works."
     },
@@ -763,7 +763,7 @@
     "faq": {
       "headline": "Got questions?",
       "onlyPadel_q": "Is this only for padel?",
-      "onlyPadel_a": "Yes. We built it specifically for padel coaches, academies, and clubs. That's why it handles things like group lessons, court types, and cancellations properly — unlike generic booking tools.",
+      "onlyPadel_a": "Yes. We built it specifically for padel coaches, academies, and clubs. That's why it handles things like group lessons, court types, and cancellations properly, unlike generic booking tools.",
       "playersFree_q": "Is it really free for players?",
       "playersFree_a": "Yes. Players never pay for the platform. They only pay for the lessons they book.",
       "trialHow_q": "How does the free trial work?",
@@ -805,7 +805,7 @@
     },
     "pain": {
       "headline": "Sound familiar?",
-      "whatsapp_story": "Your phone buzzes at 22:00 — \"Can I switch to Thursday?\" You open WhatsApp, check your notes, scroll back through three group chats, and realize you've lost track of who's confirmed for tomorrow.",
+      "whatsapp_story": "Your phone buzzes at 22:00. \"Can I switch to Thursday?\" You open WhatsApp, check your notes, scroll back through three group chats, and realize you've lost track of who's confirmed for tomorrow.",
       "whatsapp_solution": "With PadelTrainer.ai: Players book and reschedule themselves. You just coach.",
       "cancellation_story": "A player cancels 2 hours before the session. The slot stays empty. You lose the income, and three other players who would've loved that spot never even knew it was available.",
       "cancellation_solution": "With PadelTrainer.ai: Followers get notified instantly. Empty slots fill themselves.",

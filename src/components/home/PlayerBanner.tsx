@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import { Dumbbell, MapPin, BookOpen, Video, PenLine, Target } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
@@ -16,15 +15,10 @@ export function PlayerBanner() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section className="py-12 md:py-16">
-      <div className="max-w-6xl mx-auto px-4 md:px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="rounded-2xl border border-primary/20 bg-primary/5 p-6 md:p-10"
-        >
-          <div className="mb-8">
+    <section className="py-12 md:py-16 section-alt">
+      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
+        <div className="rounded-2xl border border-primary/20 bg-card p-6 md:p-10">
+          <div className="mb-6">
             <h2 className="text-2xl md:text-3xl font-bold mb-1">
               {t('homev2.playerBanner.headline')}
             </h2>
@@ -47,7 +41,7 @@ export function PlayerBanner() {
               </LocalizedLink>
             ))}
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

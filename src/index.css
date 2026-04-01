@@ -8,8 +8,8 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* PadelTrainer.ai - Energetic Orange/Coral with Deep Navy */
-    --background: 30 20% 98%;
+    /* PadelTrainer.ai - Clean white with navy & coral accents */
+    --background: 0 0% 100%;
     --foreground: 220 40% 13%;
 
     --card: 0 0% 100%;
@@ -111,6 +111,8 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    font-size: 16px;
+    line-height: 1.6;
   }
 
   /* Hide number input spinners globally */
@@ -129,4 +131,16 @@ All colors MUST be HSL.
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
   }
+}
+
+/* Homepage section utilities */
+.section-alt {
+  background-color: #F8F8F6;
+}
+
+.card-elevated {
+  @apply bg-card rounded-xl shadow-sm transition-shadow duration-200;
+}
+.card-elevated:hover {
+  @apply shadow-lg;
 }
