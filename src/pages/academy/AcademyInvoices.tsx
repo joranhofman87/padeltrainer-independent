@@ -184,28 +184,6 @@ export default function AcademyInvoices() {
     enabled: invoices.length > 0,
   });
 
-  // Backfill mutation
-  const backfillMutation = useMutation({
-    mutationFn: async () => {
-      if (!activeAcademy?.id) throw new Error("No academy");
-      const { data, error } = await supabase.functions.invoke("backfill-invoices", {
-        body: { academyProfileId: activeAcademy.id },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-      if (data?.created > 0) {
-        toast.success(t("invoices.backfillSuccess", "{{count}} draft invoices created", { count: data.created }));
-      } else {
-        toast.info(t("invoices.backfillNone", "All bookings are already invoiced"));
-      }
-    },
-    onError: () => {
-      toast.error(t("invoices.backfillError", "Failed to generate invoices"));
-    },
-  });
 
   // Filter by trainer, then by location
   const trainerFiltered = trainerFilter === "all"
