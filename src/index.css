@@ -8,8 +8,8 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* PadelTrainer.ai - Energetic Orange/Coral with Deep Navy */
-    --background: 30 20% 98%;
+    /* PadelTrainer.ai - Clean white with navy & coral accents */
+    --background: 0 0% 100%;
     --foreground: 220 40% 13%;
 
     --card: 0 0% 100%;
