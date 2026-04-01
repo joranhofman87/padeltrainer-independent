@@ -123,6 +123,21 @@ export default function AcademyInvoices() {
     enabled: !!activeAcademy?.id,
   });
 
+  const { data: invoices = [], isLoading } = useQuery({
+    queryKey: ["academy-invoices", activeAcademy?.id],
+    queryFn: async () => {
+      if (!activeAcademy?.id) return [];
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("academy_profile_id", activeAcademy.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as Invoice[];
+    },
+    enabled: !!activeAcademy?.id,
+  });
+
   // Build invoice → location map from booking_ids → bookings → slots
   const { data: invoiceLocationMap = {} } = useQuery({
     queryKey: ["invoice-location-map", invoices.map(i => i.id).join(",")],
@@ -132,7 +147,6 @@ export default function AcademyInvoices() {
         .filter(Boolean);
       if (allBookingIds.length === 0) return {};
       
-      // Fetch bookings with their slot_id
       const { data: bookings } = await supabase
         .from("bookings")
         .select("id, slot_id")
@@ -156,7 +170,6 @@ export default function AcademyInvoices() {
         return acc;
       }, {});
       
-      // Map invoice → location (use first booking's location)
       const map: Record<string, string> = {};
       for (const inv of invoices) {
         for (const bid of (inv.booking_ids || [])) {
@@ -169,21 +182,6 @@ export default function AcademyInvoices() {
       return map;
     },
     enabled: invoices.length > 0,
-  });
-
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ["academy-invoices", activeAcademy?.id],
-    queryFn: async () => {
-      if (!activeAcademy?.id) return [];
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("*")
-        .eq("academy_profile_id", activeAcademy.id)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data || []) as Invoice[];
-    },
-    enabled: !!activeAcademy?.id,
   });
 
   // Backfill mutation
