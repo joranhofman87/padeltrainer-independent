@@ -87,7 +87,7 @@ export function HowItWorksSection() {
           {steps.map((s) => (
             <div key={s.key} className="relative z-10 bg-card rounded-xl shadow-sm p-8 border border-border/50">
               <span className="text-7xl md:text-8xl font-extrabold text-primary/15 mb-2 block leading-none">{s.num}</span>
-              <div className="mb-5 min-h-[60px] flex items-center">
+              <div className="mb-5 min-h-[80px] flex items-center">
                 <s.Visual />
               </div>
               <h3 className="text-xl font-semibold mb-2">{t(`homev2.howItWorks.${s.key}_title`)}</h3>
