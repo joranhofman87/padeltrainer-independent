@@ -75,57 +75,52 @@ export function MegaMenu({ label, columns, onNavigate }: MegaMenuProps) {
         <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <>
-            {/* Invisible bridge so mouse doesn't lose hover between trigger and panel */}
-            <div className="absolute left-0 top-full h-3 w-full" />
-            <motion.div
-              ref={panelRef}
-              initial={{ opacity: 0, y: 8, x: 0 }}
-              animate={{ opacity: 1, y: 0, x: panelShiftX }}
-              exit={{ opacity: 0, y: 8, x: panelShiftX }}
-              transition={{ duration: 0.15 }}
-              className="absolute left-0 top-[calc(100%+0.75rem)] z-50"
-            >
-              <div className="rounded-xl border bg-popover p-6 shadow-xl">
-                <div className={`grid gap-10 ${columns.length >= 3 ? 'grid-cols-3 min-w-[680px]' : columns.length === 2 ? 'grid-cols-2 min-w-[520px]' : 'grid-cols-1 min-w-[280px]'}`}>
-                  {columns.map((col) => (
-                    <div key={col.title}>
-                      <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                        {col.title}
-                      </h4>
-                      <div className="flex flex-col gap-1">
-                        {col.items.map((item) => (
-                          <LocalizedLink
-                            key={item.to}
-                            to={item.to}
-                            onClick={() => {
-                              setOpen(false);
-                              onNavigate?.();
-                            }}
-                            className="group flex items-start gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-accent/10"
-                          >
-                            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
-                              {item.icon}
-                            </span>
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium text-foreground">{item.label}</span>
-                              {item.description && (
-                                <span className="text-xs text-muted-foreground">{item.description}</span>
-                              )}
-                            </div>
-                          </LocalizedLink>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+      <div
+        className={`transition-all duration-150 ease-in-out ${open ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none'}`}
+      >
+        {/* Invisible bridge so mouse doesn't lose hover between trigger and panel */}
+        <div className="absolute left-0 top-full h-3 w-full" />
+        <div
+          ref={panelRef}
+          style={{ transform: `translateX(${panelShiftX}px)` }}
+          className={`absolute left-0 top-[calc(100%+0.75rem)] z-50 transition-all duration-150 ${open ? 'translate-y-0' : 'translate-y-2'}`}
+        >
+          <div className="rounded-xl border bg-popover p-6 shadow-xl">
+            <div className={`grid gap-10 ${columns.length >= 3 ? 'grid-cols-3 min-w-[680px]' : columns.length === 2 ? 'grid-cols-2 min-w-[520px]' : 'grid-cols-1 min-w-[280px]'}`}>
+              {columns.map((col) => (
+                <div key={col.title}>
+                  <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                    {col.title}
+                  </h4>
+                  <div className="flex flex-col gap-1">
+                    {col.items.map((item) => (
+                      <LocalizedLink
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => {
+                          setOpen(false);
+                          onNavigate?.();
+                        }}
+                        className="group flex items-start gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-accent/10"
+                      >
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                          {item.icon}
+                        </span>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-foreground">{item.label}</span>
+                          {item.description && (
+                            <span className="text-xs text-muted-foreground">{item.description}</span>
+                          )}
+                        </div>
+                      </LocalizedLink>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
