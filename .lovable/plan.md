@@ -1,51 +1,117 @@
 
+# Fix the rating download properly
 
-# Fix WhatsApp Share Preview for Rating Cards
+## Root cause
+The previous fix only replaced the chart drawing inside `RatingShareCard`, but the export still depends on `html-to-image` capturing an off-screen DOM node (`position: absolute; left: -9999`). The latest screenshot is consistent with a Safari/iOS-style failure where the capture returns only the background and drops the rest of the content.
 
-## Two Problems
+So the real issue is no longer the chart library. It is the export strategy.
 
-### 1. Web Share API leaks local file paths into the message
-When `navigator.share()` is called with both `files` and `url`, WhatsApp concatenates the local file path with the URL in the message text — producing the garbled URL you see in the screenshot (`/Users/joranhofman/Library/...WebShare/rating-progress.png`).
+## Best fix
+Stop using DOM screenshot capture for the downloadable share image.
 
-**Fix**: When sharing with files, do NOT include the `url` parameter. Instead, put the URL inside the `text` field. This keeps the message clean.
+Instead, generate the share card as a deterministic image payload:
+- build the card from the rating data as **SVG markup**
+- convert that SVG to a PNG blob in the browser for download/share
+- reuse the same card layout logic for the public preview / OG image as much as possible
 
-### 2. OG preview shows generic PadelTrainer.ai metadata
-WhatsApp's crawler fetches the URL to generate the preview. The `render-page` edge function correctly generates personalized OG tags for `/rating/:profileId`, but this only works if the `padeltrainer.ai` domain proxies crawler requests to the edge function. 
-
-Since the app is an SPA hosted on Lovable, WhatsApp's crawler likely gets the SPA's `index.html` (with generic OG tags) instead of the server-rendered page. The `PublicRatingCard.tsx` page does set `<Helmet>` meta tags, but WhatsApp's crawler doesn't execute JavaScript — it only reads the initial HTML.
-
-**Fix**: The `PublicRatingCard.tsx` page already has correct `<Helmet>` OG tags, but they won't work for crawlers. We need to ensure the published domain (`padeltrainer.ai`) routes `/rating/*` requests from crawlers through the `render-page` edge function. This likely requires a proxy/rewrite rule at the hosting level.
-
-Since we can't control Lovable's hosting proxy, the pragmatic fix is to make the shareable URL point directly to the `render-page` edge function (which returns full HTML with OG tags), with a client-side redirect to the SPA for human visitors. Or: use the edge function URL as the canonical share URL.
-
-Actually, looking at the existing setup — other marketing pages (trainers, locations, blog) presumably work with OG tags. Let me check if there's a Cloudflare Worker or similar proxy handling this.
+This is much more reliable for:
+- iPhone / Safari
+- WhatsApp sharing
+- hidden/off-screen rendering
+- consistent branding output
 
 ## Changes
 
-### `src/components/player/RatingHistoryChart.tsx`
+### 1. Replace `html-to-image` export in `src/components/player/RatingHistoryChart.tsx`
+Remove the `toPng`-based `captureShareCard()` flow and replace it with:
+- `buildRatingShareSvg(...)`
+- `svgToPngBlob(...)`
+- download/share from that PNG blob
 
-1. **Fix `handleNativeShare`**: When sharing with files, omit `url` param and include the link in `text` instead:
-```ts
-await navigator.share({
-  title: `${firstName}'s Padel Rating Progress`,
-  text: `Check out my padel rating progress on PadelTrainer.ai! ${shareUrl}`,
-  files: [file],
-});
-```
+This keeps the buttons the same, but changes the engine behind them.
 
-2. **Fix text-only share fallback**: Same pattern — URL in text, not as separate param (WhatsApp handles this better).
+### 2. Refactor `src/components/player/RatingShareCard.tsx`
+Use this file as the visual/source-of-truth for the share card content, but move the reusable logic out so it can power SVG generation too:
+- rating stats
+- improvement text
+- best rating
+- badges
+- chart point generation
+- date labels
+- colors/layout constants
 
-### `src/pages/marketing/PublicRatingCard.tsx`
+Then either:
+- keep `RatingShareCard.tsx` only for on-screen preview and export from shared helpers, or
+- convert it into a pure SVG-rendering component
 
-The Helmet OG tags are already correct. The real issue is server-side rendering for crawlers — which the `render-page` function already handles. If the existing marketing pages' OG tags work (trainers, blog, etc.), then the rating page should too once deployed to production. The preview domain won't have this proxy.
+### 3. Add a shared generator module
+Create a helper like:
+- `src/lib/ratingShareCard.ts`
 
-No changes needed here if the production proxy is already configured for other routes.
+It should expose:
+- normalized share-card data builder
+- chart point builder
+- SVG string generator for 1080x1350 export
 
-## Summary
+This avoids duplicating logic between:
+- player download/share
+- public rating page
+- OG image function
 
-The main actionable fix is in `RatingHistoryChart.tsx` — stop passing both `files` and `url` to `navigator.share()`, which causes WhatsApp to mangle the URL with local file paths.
+### 4. Update the OG/public rendering path for consistency
+`supabase/functions/rating-og-image/index.ts` already builds SVG manually. Align its logic and copy with the new shared design so:
+- downloaded image
+- WhatsApp preview image
+- public share page
+all tell the same visual story
+
+The OG image can stay separate in the function, but it should mirror:
+- stat labels
+- celebration logic
+- chart direction
+- best/current/start handling
+
+### 5. Optional cleanup on public page
+`src/pages/marketing/PublicRatingCard.tsx` still uses Recharts. That page is fine for browser rendering, but if the goal is visual consistency, switch it to the same chart style/logic as the export card.
+
+Not required for the bug fix, but recommended.
+
+## Files to update
 
 | File | Change |
 |------|--------|
-| `src/components/player/RatingHistoryChart.tsx` | Fix Web Share API call to avoid URL mangling |
+| `src/components/player/RatingHistoryChart.tsx` | Replace `html-to-image` export with SVG→PNG export |
+| `src/components/player/RatingShareCard.tsx` | Refactor to share layout/data logic or render pure SVG |
+| `src/lib/ratingShareCard.ts` | New shared helper for share-card data + SVG generation |
+| `supabase/functions/rating-og-image/index.ts` | Align visual/data logic with the new export |
+| `src/pages/marketing/PublicRatingCard.tsx` | Optional consistency cleanup |
 
+## Why this is the right approach
+This fixes the actual weak point instead of patching around it again.
+
+`html-to-image` on a hidden DOM card is fragile. A generated SVG/PNG export is:
+- more reliable
+- faster
+- easier to make pixel-perfect
+- better for SEO/share consistency because the same design can drive OG previews too
+
+## Technical details
+```text
+Current:
+hidden div -> html-to-image -> png
+              fragile on Safari / off-screen capture
+
+Proposed:
+rating data -> SVG string -> PNG blob -> download/share
+               deterministic and browser-safe
+```
+
+Implementation direction:
+```text
+1. Build share-card data from history
+2. Generate SVG string for 1080x1350
+3. Create Blob("image/svg+xml")
+4. Draw onto canvas/ImageBitmap
+5. Export PNG blob
+6. Use same blob for Download + Web Share API
+```
