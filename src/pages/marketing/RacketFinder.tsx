@@ -245,7 +245,6 @@ export default function RacketFinder() {
     ],
   };
 
-  return (
   const breadcrumbListSD = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
