@@ -136,8 +136,7 @@ export function RatingHistoryChart({
       try {
         await navigator.share({
           title: `${playerName || 'My'} Padel Rating Progress`,
-          text: `Check out my padel rating progress on PadelTrainer.ai!`,
-          url: shareUrl,
+          text: `Check out my padel rating progress on PadelTrainer.ai! ${shareUrl}`,
           files: [file],
         });
       } catch (err) {
@@ -147,8 +146,7 @@ export function RatingHistoryChart({
       try {
         await navigator.share({
           title: `${playerName || 'My'} Padel Rating Progress`,
-          text: `Check out my padel rating progress on PadelTrainer.ai!`,
-          url: shareUrl,
+          text: `Check out my padel rating progress on PadelTrainer.ai! ${shareUrl}`,
         });
       } catch (err) {
         // User cancelled
