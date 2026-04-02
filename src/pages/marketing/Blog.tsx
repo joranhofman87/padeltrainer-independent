@@ -205,8 +205,8 @@ export default function Blog() {
                             <Clock className="h-4 w-4" />
                             {calculateReadTime(featuredPost.bodySections, featuredPost.content)}
                           </span>
-                          {featuredPost.authorName && (
-                            <span>by {featuredPost.authorName}</span>
+                          {(
+                             <span>by {featuredPost.authorName || 'Padel Trainer AI'}</span>
                           )}
                         </div>
                       </CardContent>
