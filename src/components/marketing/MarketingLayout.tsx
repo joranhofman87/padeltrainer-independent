@@ -113,6 +113,21 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Announcement Banner */}
+      {!bannerDismissed && (
+        <div className="bg-primary text-primary-foreground text-center text-sm py-2 px-4 relative">
+          <Link to={`/${currentLang}/founding-trainers`} className="hover:underline font-medium">
+            🎾 {t('foundingTrainers.bannerText', 'Founding 100 Trainers — Get a FREE premium racket worth €275+')}
+          </Link>
+          <button
+            onClick={dismissBanner}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-primary-foreground/80 hover:text-primary-foreground"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {/* Navigation */}
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4">
