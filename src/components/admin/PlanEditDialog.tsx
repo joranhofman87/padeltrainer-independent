@@ -32,10 +32,8 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
     monthly_price: plan.monthly_price,
     yearly_price: plan.yearly_price,
     platform_fee_flat: plan.platform_fee_flat ?? 1.00,
-    mollie_plan_id_monthly: plan.mollie_plan_id_monthly || "",
-    mollie_plan_id_yearly: plan.mollie_plan_id_yearly || "",
-    mollie_product_id_monthly: plan.mollie_product_id_monthly || "",
-    mollie_product_id_yearly: plan.mollie_product_id_yearly || "",
+    stripe_price_id_monthly: plan.stripe_price_id_monthly || "",
+    stripe_price_id_yearly: plan.stripe_price_id_yearly || "",
     is_highlighted: plan.is_highlighted,
     badge: plan.badge || "",
     features: plan.features || [],
@@ -49,10 +47,8 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
       await updatePlan.mutateAsync({
         id: plan.id,
         ...formData,
-        mollie_plan_id_monthly: formData.mollie_plan_id_monthly || null,
-        mollie_plan_id_yearly: formData.mollie_plan_id_yearly || null,
-        mollie_product_id_monthly: formData.mollie_product_id_monthly || null,
-        mollie_product_id_yearly: formData.mollie_product_id_yearly || null,
+        stripe_price_id_monthly: formData.stripe_price_id_monthly || null,
+        stripe_price_id_yearly: formData.stripe_price_id_yearly || null,
         badge: formData.badge || null,
         description: formData.description || null,
       });
@@ -99,7 +95,7 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="pricing">Pricing</TabsTrigger>
-              <TabsTrigger value="mollie">Mollie</TabsTrigger>
+              <TabsTrigger value="stripe">Stripe</TabsTrigger>
             </TabsList>
 
             <TabsContent value="general" className="space-y-4 mt-4">
@@ -233,56 +229,32 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
 
             </TabsContent>
 
-            <TabsContent value="mollie" className="space-y-4 mt-4">
+            <TabsContent value="stripe" className="space-y-4 mt-4">
               <div className="p-4 bg-muted rounded-lg text-sm text-muted-foreground mb-4">
-                <strong>Note:</strong> Mollie plan and product IDs are used for subscription management.
+                <strong>Note:</strong> Stripe price IDs are used for subscription billing.
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="mollie_plan_monthly">Mollie Plan ID (Monthly)</Label>
+                <Label htmlFor="stripe_price_monthly">Stripe Price ID (Monthly)</Label>
                 <Input
-                  id="mollie_plan_monthly"
-                  value={formData.mollie_plan_id_monthly}
+                  id="stripe_price_monthly"
+                  value={formData.stripe_price_id_monthly}
                   onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, mollie_plan_id_monthly: e.target.value }))
+                    setFormData((prev) => ({ ...prev, stripe_price_id_monthly: e.target.value }))
                   }
-                  placeholder="plan_xxx"
+                  placeholder="price_xxx"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="mollie_plan_yearly">Mollie Plan ID (Yearly)</Label>
+                <Label htmlFor="stripe_price_yearly">Stripe Price ID (Yearly)</Label>
                 <Input
-                  id="mollie_plan_yearly"
-                  value={formData.mollie_plan_id_yearly}
+                  id="stripe_price_yearly"
+                  value={formData.stripe_price_id_yearly}
                   onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, mollie_plan_id_yearly: e.target.value }))
+                    setFormData((prev) => ({ ...prev, stripe_price_id_yearly: e.target.value }))
                   }
-                  placeholder="plan_xxx"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="mollie_product_monthly">Mollie Product ID (Monthly)</Label>
-                <Input
-                  id="mollie_product_monthly"
-                  value={formData.mollie_product_id_monthly}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, mollie_product_id_monthly: e.target.value }))
-                  }
-                  placeholder="prod_xxx"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="mollie_product_yearly">Mollie Product ID (Yearly)</Label>
-                <Input
-                  id="mollie_product_yearly"
-                  value={formData.mollie_product_id_yearly}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, mollie_product_id_yearly: e.target.value }))
-                  }
-                  placeholder="prod_xxx"
+                  placeholder="price_xxx"
                 />
               </div>
             </TabsContent>
