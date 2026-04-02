@@ -352,7 +352,7 @@ export function RatingHistoryChart({
               tickLine={false}
               axisLine={false}
               domain={['auto', 'auto']}
-              reversed={lowerIsBetter}
+              
               className="fill-muted-foreground"
               width={35}
               tickFormatter={(val) => val.toFixed(1)}

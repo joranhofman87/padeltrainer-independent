@@ -83,11 +83,7 @@ Deno.serve(async (req) => {
     const points = ratings.map((r, i) => {
       const x = chartX + (i / Math.max(ratings.length - 1, 1)) * chartWidth;
       let y: number;
-      if (lowerIsBetter) {
-        y = chartY + ((r - minR) / range) * chartHeight;
-      } else {
-        y = chartY + chartHeight - ((r - minR) / range) * chartHeight;
-      }
+      y = chartY + chartHeight - ((r - minR) / range) * chartHeight;
       return `${x},${y}`;
     }).join(' ');
 

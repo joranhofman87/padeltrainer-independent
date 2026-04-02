@@ -63,7 +63,7 @@ export const RatingShareCard = forwardRef<HTMLDivElement, RatingShareCardProps>(
     const svgPoints = history.map((e, i) => {
       const x = pad + (i * (chartW - pad * 2)) / Math.max(history.length - 1, 1);
       const t = (e.rating - minR) / range;
-      const y = lowerIsBetter ? pad + t * (chartH - pad * 2) : chartH - pad - t * (chartH - pad * 2);
+      const y = chartH - pad - t * (chartH - pad * 2);
       return `${x},${y}`;
     }).join(' ');
     const areaPoints = `${pad},${chartH - pad} ${svgPoints} ${chartW - pad},${chartH - pad}`;
