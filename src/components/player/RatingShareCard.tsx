@@ -1,5 +1,4 @@
 import { forwardRef } from 'react';
-import { AreaChart, Area, XAxis, YAxis } from 'recharts';
 import { format, differenceInMonths } from 'date-fns';
 import logoLight from '@/assets/logo-light.svg';
 
