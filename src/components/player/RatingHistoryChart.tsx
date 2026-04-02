@@ -10,11 +10,10 @@ import { supabase } from '@/lib/supabaseClient';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { getRatingSystemByCode, RatingSystemConfig } from '@/lib/ratingSystems';
-import { toPng } from 'html-to-image';
 import { toast } from 'sonner';
 import { Logo } from '@/components/Logo';
-import { RatingShareCard } from './RatingShareCard';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+import { buildShareCardData, buildShareCardSvg, svgToPngBlob } from '@/lib/ratingShareCard';
 
 interface RatingHistoryEntry {
   id: string;
@@ -50,7 +49,6 @@ export function RatingHistoryChart({
   const [systemConfig, setSystemConfig] = useState<RatingSystemConfig | null>(null);
   const [copied, setCopied] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const shareCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchHistory();
@@ -86,30 +84,32 @@ export function RatingHistoryChart({
     }
   };
 
+  const lowerIsBetter = systemConfig?.lower_is_better ?? (ratingSystem === 'knltb');
+
   const getShareableUrl = () => {
     const lang = i18n.language || 'nl';
     return `${MARKETING_DOMAIN}/${lang}/rating/${profileId}`;
   };
 
-  const captureShareCard = async (): Promise<Blob | null> => {
-    if (!shareCardRef.current) return null;
+  const generatePngBlob = async (): Promise<Blob | null> => {
+    const data = buildShareCardData(
+      playerName,
+      history,
+      systemConfig?.name || ratingSystem.toUpperCase(),
+      lowerIsBetter,
+    );
+    if (!data) return null;
     try {
-      const dataUrl = await toPng(shareCardRef.current, {
-        backgroundColor: '#1a1a2e',
-        pixelRatio: 2,
-        width: 1080,
-        height: 1350,
-      });
-      const res = await fetch(dataUrl);
-      return await res.blob();
+      const svg = buildShareCardSvg(data);
+      return await svgToPngBlob(svg);
     } catch (err) {
-      logger.error('Failed to capture share card', err instanceof Error ? err : new Error(String(err)));
+      logger.error('Failed to generate share card', err instanceof Error ? err : new Error(String(err)));
       return null;
     }
   };
 
   const handleDownloadPng = async () => {
-    const blob = await captureShareCard();
+    const blob = await generatePngBlob();
     if (!blob) {
       toast.error(t('ratingHistory.downloadError', 'Failed to download image'));
       return;
@@ -124,7 +124,7 @@ export function RatingHistoryChart({
   };
 
   const handleNativeShare = async () => {
-    const blob = await captureShareCard();
+    const blob = await generatePngBlob();
     if (!blob) {
       toast.error('Failed to generate image');
       return;
@@ -176,8 +176,6 @@ export function RatingHistoryChart({
     const text = `Check out my padel rating progress on @PadelTrainerAI!`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
   };
-
-  const lowerIsBetter = systemConfig?.lower_is_better ?? (ratingSystem === 'knltb');
 
   // Calculate stats
   const firstRating = history.length > 0 ? history[0].rating : null;
@@ -246,157 +244,145 @@ export function RatingHistoryChart({
   }
 
   return (
-    <>
-      {/* Off-screen social card for PNG export */}
-      <RatingShareCard
-        ref={shareCardRef}
-        playerName={playerName}
-        history={history}
-        ratingSystem={ratingSystem}
-        systemName={systemConfig?.name || ratingSystem.toUpperCase()}
-        lowerIsBetter={lowerIsBetter}
-      />
-
-      <Card ref={cardRef}>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg flex items-center gap-2">
-                {hasImproved ? (
-                  <TrendingUp className="h-5 w-5 text-green-500" />
-                ) : hasDeclined ? (
-                  <TrendingDown className="h-5 w-5 text-red-500" />
-                ) : (
-                  <Minus className="h-5 w-5 text-muted-foreground" />
-                )}
-                {t('ratingHistory.title', 'Rating Progress')}
-                {systemConfig && (
-                  <span className="text-sm font-normal text-muted-foreground">
-                    ({systemConfig.name})
-                  </span>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {t('ratingHistory.trackingDescription', 'Tracking your padel improvement over time')}
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleDownloadPng}>
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">{t('ratingHistory.downloadImage', 'Download')}</span>
-              </Button>
-              {canNativeShare ? (
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={handleNativeShare}>
-                  <Share2 className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t('ratingHistory.share', 'Share')}</span>
-                </Button>
+    <Card ref={cardRef}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              {hasImproved ? (
+                <TrendingUp className="h-5 w-5 text-green-500" />
+              ) : hasDeclined ? (
+                <TrendingDown className="h-5 w-5 text-red-500" />
               ) : (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-1.5">
-                      <Share2 className="h-4 w-4" />
-                      <span className="hidden sm:inline">{t('ratingHistory.share', 'Share')}</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={handleCopyLink}>
-                      {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                      {copied ? 'Copied!' : 'Copy link'}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareWhatsApp}>
-                      WhatsApp
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareX}>
-                      X / Twitter
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Minus className="h-5 w-5 text-muted-foreground" />
               )}
-            </div>
+              {t('ratingHistory.title', 'Rating Progress')}
+              {systemConfig && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({systemConfig.name})
+                </span>
+              )}
+            </CardTitle>
+            <CardDescription>
+              {t('ratingHistory.trackingDescription', 'Tracking your padel improvement over time')}
+            </CardDescription>
           </div>
-        </CardHeader>
-        <CardContent>
-          {/* Stats row */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
-              <p className="text-xs text-muted-foreground">{t('ratingHistory.started', 'Started')}</p>
-              <p className="text-lg font-bold font-mono">{formatRating(firstRating)}</p>
-            </div>
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
-              <p className="text-xs text-muted-foreground">{t('ratingHistory.current', 'Current')}</p>
-              <p className="text-lg font-bold font-mono">
-                {formatRating(latestRating)}
-                {improvement !== 0 && (
-                  <span className={`ml-1.5 text-xs font-semibold ${hasImproved ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {improvement > 0 ? '+' : ''}{improvement.toFixed(1)}
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="text-center p-3 bg-primary/10 rounded-lg">
-              <p className="text-xs text-muted-foreground">{t('ratingHistory.best', 'Best')}</p>
-              <p className="text-lg font-bold font-mono text-primary">{formatRating(bestRating)}</p>
-            </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleDownloadPng}>
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('ratingHistory.downloadImage', 'Download')}</span>
+            </Button>
+            {canNativeShare ? (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleNativeShare}>
+                <Share2 className="h-4 w-4" />
+                <span className="hidden sm:inline">{t('ratingHistory.share', 'Share')}</span>
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <Share2 className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t('ratingHistory.share', 'Share')}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleCopyLink}>
+                    {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                    {copied ? 'Copied!' : 'Copy link'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShareWhatsApp}>
+                    WhatsApp
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShareX}>
+                    X / Twitter
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <p className="text-xs text-muted-foreground">{t('ratingHistory.started', 'Started')}</p>
+            <p className="text-lg font-bold font-mono">{formatRating(firstRating)}</p>
+          </div>
+          <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <p className="text-xs text-muted-foreground">{t('ratingHistory.current', 'Current')}</p>
+            <p className="text-lg font-bold font-mono">
+              {formatRating(latestRating)}
+              {improvement !== 0 && (
+                <span className={`ml-1.5 text-xs font-semibold ${hasImproved ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {improvement > 0 ? '+' : ''}{improvement.toFixed(1)}
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="text-center p-3 bg-primary/10 rounded-lg">
+            <p className="text-xs text-muted-foreground">{t('ratingHistory.best', 'Best')}</p>
+            <p className="text-lg font-bold font-mono text-primary">{formatRating(bestRating)}</p>
+          </div>
+        </div>
 
-          {/* Chart */}
-          <ChartContainer config={chartConfig} className="h-64 w-full">
-            <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 30 }}>
-              <defs>
-                <linearGradient id="ratingGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-              <XAxis 
-                dataKey="date" 
-                fontSize={11} 
-                tickLine={false}
-                axisLine={false}
-                className="fill-muted-foreground"
-                interval="preserveStartEnd"
-                angle={-45}
-                textAnchor="end"
-                height={50}
-              />
-              <YAxis 
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                domain={['auto', 'auto']}
-                reversed={lowerIsBetter}
-                className="fill-muted-foreground"
-                width={35}
-                tickFormatter={(val) => val.toFixed(1)}
-              />
-              <ChartTooltip 
-                content={<ChartTooltipContent />}
-                labelFormatter={(value, payload) => {
-                  if (payload && payload[0]) {
-                    return `${payload[0].payload.fullDate}`;
-                  }
-                  return value;
-                }}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="rating" 
-                stroke="hsl(var(--primary))" 
-                strokeWidth={2.5}
-                fill="url(#ratingGradient)"
-                dot={false}
-                activeDot={{ r: 5, fill: 'hsl(var(--primary))', strokeWidth: 2, stroke: 'hsl(var(--background))' }}
-              />
-            </AreaChart>
-          </ChartContainer>
+        {/* Chart */}
+        <ChartContainer config={chartConfig} className="h-64 w-full">
+          <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 30 }}>
+            <defs>
+              <linearGradient id="ratingGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+            <XAxis 
+              dataKey="date" 
+              fontSize={11} 
+              tickLine={false}
+              axisLine={false}
+              className="fill-muted-foreground"
+              interval="preserveStartEnd"
+              angle={-45}
+              textAnchor="end"
+              height={50}
+            />
+            <YAxis 
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              domain={['auto', 'auto']}
+              reversed={lowerIsBetter}
+              className="fill-muted-foreground"
+              width={35}
+              tickFormatter={(val) => val.toFixed(1)}
+            />
+            <ChartTooltip 
+              content={<ChartTooltipContent />}
+              labelFormatter={(value, payload) => {
+                if (payload && payload[0]) {
+                  return `${payload[0].payload.fullDate}`;
+                }
+                return value;
+              }}
+            />
+            <Area 
+              type="monotone" 
+              dataKey="rating" 
+              stroke="hsl(var(--primary))" 
+              strokeWidth={2.5}
+              fill="url(#ratingGradient)"
+              dot={false}
+              activeDot={{ r: 5, fill: 'hsl(var(--primary))', strokeWidth: 2, stroke: 'hsl(var(--background))' }}
+            />
+          </AreaChart>
+        </ChartContainer>
 
-          {/* Logo watermark for exported image */}
-          <div className="flex justify-end mt-3 opacity-60">
-            <Logo className="h-5" />
-          </div>
-        </CardContent>
-      </Card>
-    </>
+        {/* Logo watermark for exported image */}
+        <div className="flex justify-end mt-3 opacity-60">
+          <Logo className="h-5" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
