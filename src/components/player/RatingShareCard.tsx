@@ -16,7 +16,7 @@ interface RatingShareCardProps {
 }
 
 function getCelebrationText(improvement: number, isAtBest: boolean): { emoji: string; text: string } {
-  if (isAtBest && improvement > 0) return { emoji: '🏆', text: 'All-time best rating!' };
+  if (isAtBest && improvement > 0) return { emoji: '🏆', text: 'All-time beste rating!' };
   if (improvement >= 3) return { emoji: '🚀', text: `Ongelofelijk! ${improvement.toFixed(1)} punten verbeterd` };
   if (improvement >= 1) return { emoji: '📈', text: `Stijgende lijn! +${improvement.toFixed(1)} punten` };
   if (improvement > 0) return { emoji: '💪', text: 'Stap voor stap beter' };
@@ -100,7 +100,7 @@ export const RatingShareCard = forwardRef<HTMLDivElement, RatingShareCardProps>(
             {firstName}
           </div>
           <div style={{ fontSize: 22, color: '#94A3B8', fontWeight: 500 }}>
-            Padel Rating Journey · {systemName}
+            Padel Rating Voortgang · {systemName}
           </div>
         </div>
 
