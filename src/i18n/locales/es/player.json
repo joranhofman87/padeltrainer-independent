@@ -37,8 +37,13 @@
     "trackingDescription": "Sigue tu mejora en pádel a lo largo del tiempo",
     "started": "Inicio",
     "current": "Actual",
+    "best": "Mejor",
     "improvement": "Mejora",
-    "knltbNote": "En KNLTB, una clasificación más baja significa mejor rendimiento"
+    "knltbNote": "En KNLTB, una clasificación más baja significa mejor rendimiento",
+    "downloadImage": "Descargar",
+    "downloadSuccess": "Imagen descargada",
+    "downloadError": "Error al descargar",
+    "share": "Compartir"
   },
   "dashboard": {
     "welcome": "¡Bienvenido de nuevo, {{name}}! 👋",
