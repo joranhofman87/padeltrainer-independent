@@ -208,6 +208,13 @@ const handler = async (req: Request): Promise<Response> => {
         .eq('user_id', user.id);
     }
 
+    // Assign role server-side if provided (closes the gap when frontend onboarding is skipped)
+    if (signupRole) {
+      await supabaseAdmin
+        .from('user_roles')
+        .upsert({ user_id: user.id, role: signupRole }, { onConflict: 'user_id,role' });
+    }
+
     // Generate a welcome link
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
