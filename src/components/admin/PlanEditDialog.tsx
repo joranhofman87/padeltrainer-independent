@@ -95,7 +95,7 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="pricing">Pricing</TabsTrigger>
-              <TabsTrigger value="mollie">Mollie</TabsTrigger>
+              <TabsTrigger value="stripe">Stripe</TabsTrigger>
             </TabsList>
 
             <TabsContent value="general" className="space-y-4 mt-4">
