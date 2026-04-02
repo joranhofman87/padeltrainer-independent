@@ -30,6 +30,9 @@ interface MarketingLayoutProps {
 export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(() => {
+    try { return localStorage.getItem('founding-banner-dismissed') === 'true'; } catch { return false; }
+  });
   const { t } = useTranslation('marketing');
   const { user, role, loading: authLoading } = useAuth();
   const dashboardUrl = getAppUrl(getDashboardPath(role));
