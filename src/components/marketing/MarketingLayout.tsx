@@ -8,6 +8,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPath } from '@/hooks/useLocalizedPath';
+import { useParams } from 'react-router-dom';
 import { getAppUrl } from '@/lib/domains';
 import { useAuth } from '@/hooks/useAuth';
 import { Logo } from '@/components/Logo';
