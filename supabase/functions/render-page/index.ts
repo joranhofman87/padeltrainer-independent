@@ -141,6 +141,11 @@ Deno.serve(async (req) => {
       const cycleId = cleanPath.match(/^\/register\/([^/]+)$/)![1];
       html = await renderCycleRegistration(supabase, cycleId, lang, cleanPath);
       cacheMaxAge = 1800;
+    // ─── Rating progress page ───
+    } else if (/^\/rating\/([^/]+)$/.test(cleanPath)) {
+      const ratingProfileId = cleanPath.match(/^\/rating\/([^/]+)$/)![1];
+      html = await renderRatingPage(supabase, ratingProfileId, lang);
+      cacheMaxAge = 1800;
     // ─── Other static pages ───
     } else if (cleanPath === '/partner') {
       html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');
