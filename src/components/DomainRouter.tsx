@@ -58,6 +58,7 @@ const RacketListing = lazy(() => import('@/pages/marketing/RacketListing'));
 const RacketDetail = lazy(() => import('@/pages/marketing/RacketDetail'));
 const PadelLevelTest = lazy(() => import('@/pages/marketing/PadelLevelTest'));
 const CityLanding = lazy(() => import('@/pages/marketing/CityLanding'));
+const PublicRatingCard = lazy(() => import('@/pages/marketing/PublicRatingCard'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
