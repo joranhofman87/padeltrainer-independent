@@ -69,8 +69,13 @@
     "trackingDescription": "Tracking your padel improvement over time",
     "started": "Started",
     "current": "Current",
+    "best": "Best",
     "improvement": "Improvement",
-    "knltbNote": "In KNLTB, a lower rating means better performance"
+    "knltbNote": "In KNLTB, a lower rating means better performance",
+    "downloadImage": "Download",
+    "downloadSuccess": "Image downloaded",
+    "downloadError": "Failed to download image",
+    "share": "Share"
   },
   "dashboard": {
     "welcome": "Welcome back, {{name}}! 👋",

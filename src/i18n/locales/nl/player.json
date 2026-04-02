@@ -68,8 +68,13 @@
     "trackingDescription": "Volg je padel verbetering over tijd",
     "started": "Gestart",
     "current": "Huidig",
+    "best": "Beste",
     "improvement": "Verbetering",
-    "knltbNote": "Bij KNLTB betekent een lagere rating betere prestaties"
+    "knltbNote": "Bij KNLTB betekent een lagere rating betere prestaties",
+    "downloadImage": "Download",
+    "downloadSuccess": "Afbeelding gedownload",
+    "downloadError": "Downloaden mislukt",
+    "share": "Delen"
   },
   "dashboard": {
     "welcome": "Welkom terug, {{name}}! 👋",
