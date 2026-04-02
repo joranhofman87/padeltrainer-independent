@@ -11,6 +11,7 @@ import { VideoTipCard, type VideoTip } from '@/components/sanity/VideoTipCard';
 import { motion } from 'framer-motion';
 import { Video, X, ArrowRight } from 'lucide-react';
 import { sanityClient, VIDEO_TIPS_LIST_QUERY } from '@/lib/sanity';
+import { parseVideoUrl } from '@/lib/videoEmbed';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { useTranslation } from 'react-i18next';
 
@@ -34,16 +35,29 @@ export default function VideoTips() {
     ],
   };
 
-  const videoObjectsSD = videos.slice(0, 20).map(v => ({
-    "@context": "https://schema.org",
-    "@type": "VideoObject",
-    "name": v.title,
-    "description": v.shortSummary || v.title,
-    "thumbnailUrl": v.thumbnailUrl || undefined,
-    "uploadDate": (v as any).datePublished || undefined,
-    "contentUrl": v.videoUrl,
-    ...(v.trainer ? { "author": { "@type": "Person", "name": v.trainer.name } } : {}),
-  }));
+  const videoObjectsSD = videos.slice(0, 20).map(v => {
+    const embedInfo = v.videoUrl ? parseVideoUrl(v.videoUrl) : null;
+    const thumb = v.thumbnailUrl || embedInfo?.thumbnailUrl || undefined;
+    return {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": v.title,
+      "description": v.shortSummary || v.title,
+      "thumbnailUrl": thumb,
+      "uploadDate": (v as any).datePublished || undefined,
+      "contentUrl": v.videoUrl,
+      ...(embedInfo?.embedUrl ? { "embedUrl": embedInfo.embedUrl } : {}),
+      ...(v.trainer ? { "author": { "@type": "Person", "name": v.trainer.name } } : {}),
+      "publisher": {
+        "@type": "Organization",
+        "name": "PadelTrainer.ai",
+        "logo": {
+          "@type": "ImageObject",
+          "url": `${MARKETING_DOMAIN}/favicon.png`
+        }
+      }
+    };
+  });
 
   const itemListSD = videos.length > 0 ? {
     "@context": "https://schema.org",

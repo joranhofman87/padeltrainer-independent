@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
       cacheMaxAge = 3600;
     // ─── Video Tips routes ───
     } else if (cleanPath === '/video-tips') {
-      html = renderStaticPage('Padel Video Tips — Watch & Learn from Top Coaches', 'Watch curated padel video tips from top coaches. Improve your technique with visual guides for every skill level.', lang, '/video-tips');
+      html = renderStaticPage('Padel Video Tips & Tutorials | PadelTrainer.ai', 'Watch expert padel coaching videos. Learn strokes, tactics, and techniques from certified coaches with short, focused video lessons for every level.', lang, '/video-tips');
       cacheMaxAge = 86400;
     } else if (/^\/video-tips\/([^/]+)$/.test(cleanPath)) {
       const slug = cleanPath.match(/^\/video-tips\/([^/]+)$/)![1];
