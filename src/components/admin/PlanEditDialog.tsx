@@ -47,10 +47,8 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
       await updatePlan.mutateAsync({
         id: plan.id,
         ...formData,
-        mollie_plan_id_monthly: formData.mollie_plan_id_monthly || null,
-        mollie_plan_id_yearly: formData.mollie_plan_id_yearly || null,
-        mollie_product_id_monthly: formData.mollie_product_id_monthly || null,
-        mollie_product_id_yearly: formData.mollie_product_id_yearly || null,
+        stripe_price_id_monthly: formData.stripe_price_id_monthly || null,
+        stripe_price_id_yearly: formData.stripe_price_id_yearly || null,
         badge: formData.badge || null,
         description: formData.description || null,
       });
