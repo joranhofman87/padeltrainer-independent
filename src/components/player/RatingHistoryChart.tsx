@@ -2,14 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, Download, Share2, Link2, Check } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabaseClient';
 import { format } from 'date-fns';
@@ -17,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { getRatingSystemByCode, RatingSystemConfig } from '@/lib/ratingSystems';
 import { toPng } from 'html-to-image';
 import { toast } from 'sonner';
+import { Logo } from '@/components/Logo';
 
 interface RatingHistoryEntry {
   id: string;
@@ -48,7 +43,6 @@ export function RatingHistoryChart({
   const [history, setHistory] = useState<RatingHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [systemConfig, setSystemConfig] = useState<RatingSystemConfig | null>(null);
-  const [copied, setCopied] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,37 +97,22 @@ export function RatingHistoryChart({
     }
   };
 
-  const handleShare = async () => {
-    const shareUrl = window.location.origin;
-    const shareData = {
-      title: t('ratingHistory.shareTitle', 'My Padel Rating Progress'),
-      text: t('ratingHistory.shareText', 'Check out my padel rating progress on PadelTrainer.ai!'),
-      url: shareUrl,
-    };
+  const lowerIsBetter = systemConfig?.lower_is_better ?? (ratingSystem === 'knltb');
 
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch {
-        // User cancelled — ignore
-      }
-    } else {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      toast.success(t('ratingHistory.linkCopied', 'Link copied to clipboard'));
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  // Calculate improvement based on rating system direction
+  // Calculate stats
   const firstRating = history.length > 0 ? history[0].rating : null;
   const latestRating = history.length > 0 ? history[history.length - 1].rating : currentRating;
   const rawDifference = firstRating && latestRating ? Number((firstRating - latestRating).toFixed(2)) : 0;
-  
-  const lowerIsBetter = systemConfig?.lower_is_better ?? (ratingSystem === 'knltb');
   const improvement = lowerIsBetter ? rawDifference : -rawDifference;
   const hasImproved = improvement > 0;
   const hasDeclined = improvement < 0;
+
+  // Best rating
+  const bestRating = history.length > 0
+    ? (lowerIsBetter
+        ? Math.min(...history.map(e => e.rating))
+        : Math.max(...history.map(e => e.rating)))
+    : null;
 
   const formatRating = (val: number | null) => {
     if (val === null) return '—';
@@ -210,24 +189,10 @@ export function RatingHistoryChart({
               {t('ratingHistory.trackingDescription', 'Tracking your padel improvement over time')}
             </CardDescription>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Share2 className="h-4 w-4" />
-                <span className="hidden sm:inline">{t('ratingHistory.share', 'Share')}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleDownloadPng} className="gap-2">
-                <Download className="h-4 w-4" />
-                {t('ratingHistory.downloadImage', 'Download as image')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleShare} className="gap-2">
-                {copied ? <Check className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
-                {t('ratingHistory.shareProgress', 'Share progress')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={handleDownloadPng}>
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('ratingHistory.downloadImage', 'Download image')}</span>
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -239,20 +204,18 @@ export function RatingHistoryChart({
           </div>
           <div className="text-center p-3 bg-muted/50 rounded-lg">
             <p className="text-xs text-muted-foreground">{t('ratingHistory.current', 'Current')}</p>
-            <p className="text-lg font-bold font-mono">{formatRating(latestRating)}</p>
-          </div>
-          <div className={`text-center p-3 rounded-lg ${
-            hasImproved ? 'bg-green-100 dark:bg-green-900/30' : 
-            hasDeclined ? 'bg-red-100 dark:bg-red-900/30' : 
-            'bg-muted/50'
-          }`}>
-            <p className="text-xs text-muted-foreground">{t('ratingHistory.improvement', 'Improvement')}</p>
-            <p className={`text-lg font-bold font-mono ${
-              hasImproved ? 'text-green-600 dark:text-green-400' : 
-              hasDeclined ? 'text-red-600 dark:text-red-400' : ''
-            }`}>
-              {improvement !== 0 ? (improvement > 0 ? '+' : '') + improvement.toFixed(1) : '—'}
+            <p className="text-lg font-bold font-mono">
+              {formatRating(latestRating)}
+              {improvement !== 0 && (
+                <span className={`ml-1.5 text-xs font-semibold ${hasImproved ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {improvement > 0 ? '+' : ''}{improvement.toFixed(1)}
+                </span>
+              )}
             </p>
+          </div>
+          <div className="text-center p-3 bg-primary/10 rounded-lg">
+            <p className="text-xs text-muted-foreground">{t('ratingHistory.best', 'Best')}</p>
+            <p className="text-lg font-bold font-mono text-primary">{formatRating(bestRating)}</p>
           </div>
         </div>
 
@@ -308,15 +271,9 @@ export function RatingHistoryChart({
           </AreaChart>
         </ChartContainer>
 
-        <div className="flex flex-col items-center gap-1 mt-3">
-          {lowerIsBetter && (
-            <p className="text-xs text-muted-foreground">
-              {t('ratingHistory.knltbNote', `In ${systemConfig?.name || 'this system'}, a lower rating means better performance`)}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            {t('ratingHistory.updateSchedule', 'Ratings are updated every 15th of the month')}
-          </p>
+        {/* Logo watermark for exported image */}
+        <div className="flex justify-end mt-3 opacity-60">
+          <Logo className="h-5" />
         </div>
       </CardContent>
     </Card>
