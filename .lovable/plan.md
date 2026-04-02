@@ -1,68 +1,63 @@
 
 
-# Rating History Chart — UI Polish + Share/Download
+# Fix Casper's missing bookings and linked data
 
-## Problems from screenshot
-1. **X-axis is cluttered** — too many date labels crammed together ("Apr 1 Jun 1 Jul 1 Aug 1 Oct 1 Dec 1 Feb 1 Apr 1..."), overlapping and unreadable
-2. **Chart too short** — `h-48` (192px) is cramped for 2+ years of data points
-3. **Y-axis values are sparse** — hard to read the scale
-4. **No share/download option** — players can't share their progress
-5. **Dots on every data point** — with 20+ entries, every-dot rendering adds visual noise
+## Root cause
+
+Casper's `guest_players` record has **no email** (it's NULL). The `link_guest_invoices_on_signup` trigger matches by email — so when Casper created his account, nothing got linked:
+
+| Record | Status |
+|--------|--------|
+| `guest_players.linked_profile_id` | NULL (not linked) |
+| `guest_players.email` | NULL (no email to match) |
+| 16 bookings: `player_id` | All NULL |
+| 16 bookings: `guest_player_id` | Set correctly |
+| `trainer_followers` | No record exists |
+
+The player dashboard queries `bookings.player_id = profileId`, so it finds zero bookings.
 
 ## Changes
 
-### 1. Clean up the chart (`src/components/player/RatingHistoryChart.tsx`)
+### 1. Data migration — link Casper's records
 
-- **Increase chart height** from `h-48` to `h-64` for breathing room
-- **X-axis**: Format dates as `MMM ''yy` (e.g. "Jan '24") and add `interval="preserveStartEnd"` + `angle={-45}` with proper bottom margin so labels don't overlap
-- **Hide dots** on the line by default (`dot={false}`), only show on hover via `activeDot`
-- **Add gradient fill** under the line (using `<defs>` + `<LinearGradient>` + `<Area>`) for a modern, polished look — switch from `LineChart` to `AreaChart`
-- **Smooth the line** with `type="monotone"` (already set) and increase stroke width slightly
-- **Add padding** to Y-axis domain so the line doesn't touch edges
+Single SQL migration to:
+- Set `guest_players.linked_profile_id` to Casper's profile ID
+- Set `guest_players.email` to his actual email
+- Update all 16 bookings to set `player_id = profile.id`
+- Insert a `trainer_followers` record linking Casper to Rene
 
-### 2. Share/Download button
+```sql
+-- Link guest player to profile
+UPDATE guest_players
+SET linked_profile_id = 'cd8536c5-a604-4645-a898-7ed629bcef55',
+    email = 'caspermaassen2006@gmail.com'
+WHERE id = 'a6926e39-f9c0-41fc-ae44-6e90a34ef73d';
 
-Add a dropdown button in the card header with two options:
-- **Download as PNG** — use `html-to-image` (already commonly available, or use the native canvas approach via recharts' `toDataURL` — but simplest is wrapping the card in a ref and using `html2canvas` pattern). Use `html-to-image`'s `toPng` to capture the entire card including stats.
-- **Share** — use the Web Share API (`navigator.share`) when available (mobile), falling back to "Copy link" which copies the player's dashboard URL. This is SEO-friendly because it drives traffic back to the platform.
+-- Link bookings
+UPDATE bookings
+SET player_id = 'cd8536c5-a604-4645-a898-7ed629bcef55'
+WHERE guest_player_id = 'a6926e39-f9c0-41fc-ae44-6e90a34ef73d'
+  AND player_id IS NULL;
 
-For SEO: The share generates a link to a public profile page (if exists) or the platform URL, not just an image. This drives backlinks.
+-- Follow trainer
+INSERT INTO trainer_followers (player_id, trainer_id)
+VALUES ('cd8536c5-a604-4645-a898-7ed629bcef55', 'c0497580-1e4e-4376-93d1-5b90e9d7ca1d')
+ON CONFLICT DO NOTHING;
+```
 
-### 3. Stats row refinement
-- Use `font-mono` on the rating numbers for consistent alignment
-- Show ratings to 1 decimal place consistently (e.g. "8.0" not "8")
+### 2. Improve the signup trigger — also match by linked guest_player_id
+
+Update `link_guest_invoices_on_signup` to handle the case where a guest player has no email but was manually linked (via admin). Currently it only matches by email. Add a secondary pass that also links bookings for any `guest_players` where `linked_profile_id = NEW.id` (set by admin or other flows).
+
+### 3. Auto-follow trainer on guest link
+
+Update the trigger to also insert a `trainer_followers` record when linking a guest player who has a `trainer_id`, so the player automatically follows their trainer.
 
 ## Files changed
 
 | File | Change |
 |------|--------|
-| `src/components/player/RatingHistoryChart.tsx` | Major refactor: AreaChart with gradient, cleaned X-axis, taller chart, share/download dropdown, dot cleanup |
-| `package.json` | Add `html-to-image` dependency for PNG export |
+| DB migration | Fix Casper's data + improve trigger |
 
-## Implementation detail
-
-```text
-┌─────────────────────────────────────────────┐
-│ 📈 Rating Progress (KNLTB)     [↗ Share ▾] │
-│ Tracking your padel improvement over time   │
-│                                              │
-│ ┌─ Started ─┐ ┌─ Current ─┐ ┌─ Change ──┐  │
-│ │    8.0     │ │    4.2    │ │   +3.8    │  │
-│ └───────────┘ └──────────┘ └───────────┘  │
-│                                              │
-│  ▲                                    ╱──   │
-│  │                              ╱────╱      │
-│  │                    ╱────────╱             │
-│  │        ╱──────────╱                       │
-│  │  ╱────╱   (gradient fill underneath)      │
-│  └──────────────────────────────────────▶   │
-│   Jan'23  Jul'23  Jan'24  Jul'24  Jan'25    │
-│                                              │
-│  ℹ Lower = better · Updated monthly         │
-└─────────────────────────────────────────────┘
-```
-
-The share dropdown:
-- "Download as image" → captures the card as PNG
-- "Share progress" → Web Share API on mobile, copy-link fallback on desktop
+No frontend code changes needed — the player dashboard already queries by `player_id`, which will now be correctly set.
 
