@@ -369,6 +369,7 @@ export function DomainRouter() {
           <Route path="gear/rackets/:slug" element={<RacketDetail />} />
           <Route path="tools/padel-level-test" element={<PadelLevelTest />} />
           <Route path="padel/:city" element={<CityLanding />} />
+          <Route path="rating/:profileId" element={<PublicRatingCard />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />
