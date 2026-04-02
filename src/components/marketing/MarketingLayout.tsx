@@ -35,7 +35,14 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   });
   const { t } = useTranslation('marketing');
   const { user, role, loading: authLoading } = useAuth();
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
   const dashboardUrl = getAppUrl(getDashboardPath(role));
+
+  const dismissBanner = () => {
+    setBannerDismissed(true);
+    try { localStorage.setItem('founding-banner-dismissed', 'true'); } catch {}
+  };
 
   useEffect(() => {
     captureUtmParams();
