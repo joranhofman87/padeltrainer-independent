@@ -1,117 +1,41 @@
 
-# Fix the rating download properly
 
-## Root cause
-The previous fix only replaced the chart drawing inside `RatingShareCard`, but the export still depends on `html-to-image` capturing an off-screen DOM node (`position: absolute; left: -9999`). The latest screenshot is consistent with a Safari/iOS-style failure where the capture returns only the background and drops the rest of the content.
+# Fix Chart Direction + Add Real Logo to Share Card
 
-So the real issue is no longer the chart library. It is the export strategy.
-
-## Best fix
-Stop using DOM screenshot capture for the downloadable share image.
-
-Instead, generate the share card as a deterministic image payload:
-- build the card from the rating data as **SVG markup**
-- convert that SVG to a PNG blob in the browser for download/share
-- reuse the same card layout logic for the public preview / OG image as much as possible
-
-This is much more reliable for:
-- iPhone / Safari
-- WhatsApp sharing
-- hidden/off-screen rendering
-- consistent branding output
+## Problems
+1. **Chart is inverted for KNLTB** — currently, the `lowerIsBetter` logic flips the Y-axis so a rating drop (8.0→4.2) renders as an upward line. The user wants the natural plot: high values at top, low values at bottom, so the line goes **down** (which IS the improvement for KNLTB).
+2. **Share card uses text "PADELTRAINER.AI" instead of the actual logo** — need to embed the real SVG logo.
 
 ## Changes
 
-### 1. Replace `html-to-image` export in `src/components/player/RatingHistoryChart.tsx`
-Remove the `toPng`-based `captureShareCard()` flow and replace it with:
-- `buildRatingShareSvg(...)`
-- `svgToPngBlob(...)`
-- download/share from that PNG blob
+### 1. `src/lib/ratingShareCard.ts` — Fix chart direction + embed logo
 
-This keeps the buttons the same, but changes the engine behind them.
+**Chart fix**: Remove the `lowerIsBetter` Y-axis flip. Always plot naturally (high values at top, low at bottom):
+```ts
+// Line 79: change from conditional to always natural
+const y = chartH - pad - t * (chartH - pad * 2);
+```
 
-### 2. Refactor `src/components/player/RatingShareCard.tsx`
-Use this file as the visual/source-of-truth for the share card content, but move the reusable logic out so it can power SVG generation too:
-- rating stats
-- improvement text
-- best rating
-- badges
-- chart point generation
-- date labels
-- colors/layout constants
+**Logo**: Read `src/assets/logo-light.svg` content and embed it inline in the SVG markup (as an `<image>` element with a data URI or inline SVG paths), replacing the `<text>PADELTRAINER.AI</text>` placeholder at line 146.
 
-Then either:
-- keep `RatingShareCard.tsx` only for on-screen preview and export from shared helpers, or
-- convert it into a pure SVG-rendering component
+### 2. `src/components/player/RatingHistoryChart.tsx` — Fix dashboard chart direction
 
-### 3. Add a shared generator module
-Create a helper like:
-- `src/lib/ratingShareCard.ts`
+Remove `reversed={lowerIsBetter}` from the Recharts `<YAxis>` (line 355). This makes the dashboard chart also show values naturally — high at top, low at bottom.
 
-It should expose:
-- normalized share-card data builder
-- chart point builder
-- SVG string generator for 1080x1350 export
+### 3. `src/components/player/RatingShareCard.tsx` — Fix chart direction
 
-This avoids duplicating logic between:
-- player download/share
-- public rating page
-- OG image function
+Same fix as the shared helper: remove the `lowerIsBetter` conditional in the Y coordinate calculation (line ~73). Always use `chartH - pad - t * (chartH - pad * 2)`.
 
-### 4. Update the OG/public rendering path for consistency
-`supabase/functions/rating-og-image/index.ts` already builds SVG manually. Align its logic and copy with the new shared design so:
-- downloaded image
-- WhatsApp preview image
-- public share page
-all tell the same visual story
+### 4. `supabase/functions/rating-og-image/index.ts` — Align OG image
 
-The OG image can stay separate in the function, but it should mirror:
-- stat labels
-- celebration logic
-- chart direction
-- best/current/start handling
+Apply the same natural Y-axis logic so the OG preview image matches.
 
-### 5. Optional cleanup on public page
-`src/pages/marketing/PublicRatingCard.tsx` still uses Recharts. That page is fine for browser rendering, but if the goal is visual consistency, switch it to the same chart style/logic as the export card.
-
-Not required for the bug fix, but recommended.
-
-## Files to update
+## Files changed
 
 | File | Change |
 |------|--------|
-| `src/components/player/RatingHistoryChart.tsx` | Replace `html-to-image` export with SVG→PNG export |
-| `src/components/player/RatingShareCard.tsx` | Refactor to share layout/data logic or render pure SVG |
-| `src/lib/ratingShareCard.ts` | New shared helper for share-card data + SVG generation |
-| `supabase/functions/rating-og-image/index.ts` | Align visual/data logic with the new export |
-| `src/pages/marketing/PublicRatingCard.tsx` | Optional consistency cleanup |
+| `src/lib/ratingShareCard.ts` | Remove Y-flip for lowerIsBetter, embed actual logo SVG |
+| `src/components/player/RatingHistoryChart.tsx` | Remove `reversed={lowerIsBetter}` from YAxis |
+| `src/components/player/RatingShareCard.tsx` | Remove Y-flip for lowerIsBetter |
+| `supabase/functions/rating-og-image/index.ts` | Align chart direction |
 
-## Why this is the right approach
-This fixes the actual weak point instead of patching around it again.
-
-`html-to-image` on a hidden DOM card is fragile. A generated SVG/PNG export is:
-- more reliable
-- faster
-- easier to make pixel-perfect
-- better for SEO/share consistency because the same design can drive OG previews too
-
-## Technical details
-```text
-Current:
-hidden div -> html-to-image -> png
-              fragile on Safari / off-screen capture
-
-Proposed:
-rating data -> SVG string -> PNG blob -> download/share
-               deterministic and browser-safe
-```
-
-Implementation direction:
-```text
-1. Build share-card data from history
-2. Generate SVG string for 1080x1350
-3. Create Blob("image/svg+xml")
-4. Draw onto canvas/ImageBitmap
-5. Export PNG blob
-6. Use same blob for Download + Web Share API
-```
