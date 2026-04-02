@@ -100,7 +100,7 @@ export const RatingShareCard = forwardRef<HTMLDivElement, RatingShareCardProps>(
             {firstName}
           </div>
           <div style={{ fontSize: 22, color: '#94A3B8', fontWeight: 500 }}>
-            Padel Rating Journey · {systemName}
+            Padel Rating Voortgang · {systemName}
           </div>
         </div>
 

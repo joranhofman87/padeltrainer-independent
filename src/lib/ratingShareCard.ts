@@ -160,7 +160,7 @@ export function buildShareCardSvg(data: ShareCardData): string {
 
   <rect x="720" y="240" width="280" height="130" rx="16" fill="rgba(249,115,22,0.12)"/>
   <text x="860" y="310" fill="#F97316" font-size="52" font-weight="800" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">${bestRating.toFixed(1)}</text>
-  <text x="860" y="345" fill="#F97316" font-size="16" font-weight="500" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Best</text>
+  <text x="860" y="345" fill="#F97316" font-size="16" font-weight="500" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Beste</text>
 
   <!-- Improvement badge -->
   ${improvementBadgeSvg}
