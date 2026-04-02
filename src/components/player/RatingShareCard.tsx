@@ -91,7 +91,9 @@ export const RatingShareCard = forwardRef<HTMLDivElement, RatingShareCardProps>(
       >
         {/* Logo */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 50 }}>
-          <img src={logoLight} alt="PadelTrainer.ai" style={{ height: 40, objectFit: 'contain' }} />
+          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2, color: '#ffffff' }}>
+            PADELTRAINER<span style={{ color: '#F97316' }}>.</span><span style={{ color: '#f45d25' }}>AI</span>
+          </div>
         </div>
 
         {/* Player name + subtitle */}
