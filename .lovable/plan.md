@@ -1,63 +1,50 @@
 
 
-# Fix Casper's missing bookings and linked data
-
-## Root cause
-
-Casper's `guest_players` record has **no email** (it's NULL). The `link_guest_invoices_on_signup` trigger matches by email — so when Casper created his account, nothing got linked:
-
-| Record | Status |
-|--------|--------|
-| `guest_players.linked_profile_id` | NULL (not linked) |
-| `guest_players.email` | NULL (no email to match) |
-| 16 bookings: `player_id` | All NULL |
-| 16 bookings: `guest_player_id` | Set correctly |
-| `trainer_followers` | No record exists |
-
-The player dashboard queries `bookings.player_id = profileId`, so it finds zero bookings.
+# Rating Chart — Clean Up + Best Rating + Shareable Download
 
 ## Changes
 
-### 1. Data migration — link Casper's records
+### `src/components/player/RatingHistoryChart.tsx`
 
-Single SQL migration to:
-- Set `guest_players.linked_profile_id` to Casper's profile ID
-- Set `guest_players.email` to his actual email
-- Update all 16 bookings to set `player_id = profile.id`
-- Insert a `trainer_followers` record linking Casper to Rene
+1. **Add "Best" rating to stats row** — compute the best rating (min for lower-is-better, max otherwise) and show it as a 4th stat or replace the "Started" stat with a "Best" highlight on the left side of the card. Since 4 columns gets cramped on mobile, add a prominent best rating display on the left side above the stats row — a large number with "Best rating" label.
 
-```sql
--- Link guest player to profile
-UPDATE guest_players
-SET linked_profile_id = 'cd8536c5-a604-4645-a898-7ed629bcef55',
-    email = 'caspermaassen2006@gmail.com'
-WHERE id = 'a6926e39-f9c0-41fc-ae44-6e90a34ef73d';
+2. **Remove bottom text** — delete the footer with "lower rating = better" note and "updated every 15th" text (lines 311-320).
 
--- Link bookings
-UPDATE bookings
-SET player_id = 'cd8536c5-a604-4645-a898-7ed629bcef55'
-WHERE guest_player_id = 'a6926e39-f9c0-41fc-ae44-6e90a34ef73d'
-  AND player_id IS NULL;
+3. **Simplify share button** — replace the dropdown with a single "Download image" button (no share/copy link). Remove the `DropdownMenu` import and related share logic.
 
--- Follow trainer
-INSERT INTO trainer_followers (player_id, trainer_id)
-VALUES ('cd8536c5-a604-4645-a898-7ed629bcef55', 'c0497580-1e4e-4376-93d1-5b90e9d7ca1d')
-ON CONFLICT DO NOTHING;
+4. **Make the downloaded image shareable** — the `toPng` capture already grabs the whole card. Add the PadelTrainer.ai logo inside the card (visible in the exported image). Add a small logo + "PadelTrainer.ai" watermark at the bottom-right of the card content area so it appears in the PNG export. Use the existing `Logo` component or import the logo SVG directly.
+
+5. **Best rating highlight** — show the best rating number prominently (large text) on the left side of the stats section, with a label like "Best" and the rating system name.
+
+## Layout
+
+```text
+┌──────────────────────────────────────────────┐
+│ 📈 Rating Progress (KNLTB)    [📥 Download] │
+│ Tracking your improvement                    │
+│                                              │
+│ ┌─Started─┐ ┌─Current─┐ ┌─Best──┐ ┌─Change─┐│
+│ │  8.0    │ │  4.2   │ │ 4.2  │ │ +3.8  ││
+│ └────────┘ └────────┘ └──────┘ └───────┘│
+│                                              │
+│  [chart area]                                │
+│                                              │
+│                        padeltrainer.ai logo  │
+└──────────────────────────────────────────────┘
 ```
 
-### 2. Improve the signup trigger — also match by linked guest_player_id
+Actually, 4 columns is tight on mobile. Better approach: keep 3 stats (Started / Current / Best) and move the improvement into the header area as a badge. Or: keep the 3-col grid but swap "Improvement" for "Best" and show improvement as a small badge next to "Current".
 
-Update `link_guest_invoices_on_signup` to handle the case where a guest player has no email but was manually linked (via admin). Currently it only matches by email. Add a secondary pass that also links bookings for any `guest_players` where `linked_profile_id = NEW.id` (set by admin or other flows).
-
-### 3. Auto-follow trainer on guest link
-
-Update the trigger to also insert a `trainer_followers` record when linking a guest player who has a `trainer_id`, so the player automatically follows their trainer.
+Final layout — keep it simple:
+- **3-column stats**: Started | Current | Best
+- **Improvement shown as a small badge** next to "Current" value (e.g. "+3.8" in green)
+- **Single download button** (no dropdown)
+- **Logo watermark** at bottom-right of card for PNG branding
+- **No footer text**
 
 ## Files changed
 
 | File | Change |
 |------|--------|
-| DB migration | Fix Casper's data + improve trigger |
-
-No frontend code changes needed — the player dashboard already queries by `player_id`, which will now be correctly set.
+| `src/components/player/RatingHistoryChart.tsx` | Add best rating stat, remove footer text, simplify to download-only button, add logo watermark for exports |
 
