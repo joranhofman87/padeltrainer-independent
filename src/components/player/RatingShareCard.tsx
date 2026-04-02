@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import { format, differenceInMonths } from 'date-fns';
-import logoLight from '@/assets/logo-light.svg';
+
 
 interface RatingHistoryEntry {
   rating: number;
