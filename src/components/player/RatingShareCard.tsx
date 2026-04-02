@@ -152,54 +152,33 @@ export const RatingShareCard = forwardRef<HTMLDivElement, RatingShareCardProps>(
           </div>
         )}
 
-        {/* Chart */}
+        {/* Chart — pure SVG for reliable image capture */}
         <div style={{
           flex: 1,
           background: 'rgba(255,255,255,0.04)',
           borderRadius: 16,
           padding: '30px 20px 20px',
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           justifyContent: 'center',
           marginBottom: 30,
         }}>
-          <AreaChart data={chartData} width={920} height={360} margin={{ top: 10, right: 20, left: 20, bottom: 30 }}>
+          <svg viewBox={`0 0 ${chartW} ${chartH}`} width="100%" height={360} style={{ overflow: 'visible' }}>
             <defs>
               <linearGradient id="shareGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#F97316" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#F97316" stopOpacity={0.02} />
+                <stop offset="0%" stopColor="#F97316" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis
-              dataKey="date"
-              fontSize={14}
-              tickLine={false}
-              axisLine={false}
-              stroke="#475569"
-              interval="preserveStartEnd"
-              angle={-45}
-              textAnchor="end"
-              height={45}
-            />
-            <YAxis
-              fontSize={14}
-              tickLine={false}
-              axisLine={false}
-              stroke="#475569"
-              domain={['auto', 'auto']}
-              reversed={lowerIsBetter}
-              width={40}
-              tickFormatter={(val) => val.toFixed(1)}
-            />
-            <Area
-              type="monotone"
-              dataKey="rating"
-              stroke="#F97316"
-              strokeWidth={3}
-              fill="url(#shareGradient)"
-              dot={false}
-            />
-          </AreaChart>
+            <polygon points={areaPoints} fill="url(#shareGradient)" />
+            <polyline points={svgPoints} fill="none" stroke="#F97316" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />
+            {/* X-axis labels */}
+            <text x={pad} y={chartH - 2} fill="#475569" fontSize={13} textAnchor="start" fontFamily="system-ui, sans-serif">{firstDateLabel}</text>
+            <text x={chartW - pad} y={chartH - 2} fill="#475569" fontSize={13} textAnchor="end" fontFamily="system-ui, sans-serif">{lastDateLabel}</text>
+            {/* Y-axis labels */}
+            <text x={pad - 4} y={lowerIsBetter ? pad + 4 : chartH - pad + 4} fill="#475569" fontSize={13} textAnchor="end" fontFamily="system-ui, sans-serif">{minR.toFixed(1)}</text>
+            <text x={pad - 4} y={lowerIsBetter ? chartH - pad + 4 : pad + 4} fill="#475569" fontSize={13} textAnchor="end" fontFamily="system-ui, sans-serif">{maxR.toFixed(1)}</text>
+          </svg>
         </div>
 
         {/* Milestone badges */}
