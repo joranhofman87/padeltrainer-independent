@@ -97,7 +97,16 @@ export default function Blog() {
   const recentPosts = articles.filter(a => a !== featuredPost);
   const dateLocale = i18n.language === 'nl' ? 'nl-NL' : i18n.language === 'de' ? 'de-DE' : i18n.language === 'es' ? 'es-ES' : i18n.language === 'fr' ? 'fr-FR' : 'en-US';
 
-  const structuredData = articles.length > 0 ? {
+  const breadcrumbListSD = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: t('nav.home', 'Home'), item: `${MARKETING_DOMAIN}/${lang}` },
+      { '@type': 'ListItem', position: 2, name: t('blog.title', 'Blog') },
+    ],
+  };
+
+  const blogSD = articles.length > 0 ? {
     '@context': 'https://schema.org',
     '@type': 'Blog',
     name: t('blog.title'),
@@ -108,9 +117,12 @@ export default function Blog() {
       headline: a.title,
       description: a.excerpt,
       datePublished: a.datePublished,
-      url: `${MARKETING_DOMAIN}/blog/${a.slug}`
+      ...(a.authorName ? { author: { '@type': 'Person', name: a.authorName } } : {}),
+      url: `${MARKETING_DOMAIN}/${lang}/blog/${a.slug}`
     }))
   } : undefined;
+
+  const structuredData = [breadcrumbListSD, ...(blogSD ? [blogSD] : [])];
 
   return (
     <MarketingLayout>
@@ -123,6 +135,9 @@ export default function Blog() {
       {/* Hero */}
       <section className="py-16 bg-background">
         <div className="container mx-auto px-4">
+          <Breadcrumbs items={[
+            { label: t('blog.title', 'Blog') },
+          ]} />
           <motion.div className="text-center max-w-3xl mx-auto" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-4xl md:text-5xl font-bold mb-4">{t('blog.title')}</h1>
             <p className="text-xl text-muted-foreground">{t('blog.subtitle')}</p>
