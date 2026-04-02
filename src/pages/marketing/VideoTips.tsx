@@ -11,6 +11,7 @@ import { VideoTipCard, type VideoTip } from '@/components/sanity/VideoTipCard';
 import { motion } from 'framer-motion';
 import { Video, X, ArrowRight } from 'lucide-react';
 import { sanityClient, VIDEO_TIPS_LIST_QUERY } from '@/lib/sanity';
+import { parseVideoUrl } from '@/lib/videoEmbed';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { useTranslation } from 'react-i18next';
 
