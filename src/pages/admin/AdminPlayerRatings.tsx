@@ -279,7 +279,7 @@ export default function AdminPlayerRatings() {
                           {isEditing ? (
                             <Input
                               type="number"
-                              step="0.0001"
+                              step="0.01"
                               min="0.1"
                               max="12"
                               value={editValue}
@@ -294,7 +294,7 @@ export default function AdminPlayerRatings() {
                               onClick={() => handleCellClick(player.id, m)}
                               className="w-full h-8 flex items-center justify-center rounded hover:bg-muted/50 transition-colors cursor-pointer font-mono text-sm"
                             >
-                              {entry ? entry.rating.toFixed(4) : "—"}
+                              {entry ? entry.rating.toFixed(2) : "—"}
                             </button>
                           )}
                         </TableCell>
