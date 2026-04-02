@@ -1,32 +1,51 @@
 
 
-# Fix: Downloaded share card is blank
+# Fix WhatsApp Share Preview for Rating Cards
 
-## Root cause
+## Two Problems
 
-`html-to-image` (`toPng`) cannot properly render Recharts SVG components when the container is positioned off-screen (`left: -9999`). Recharts relies on DOM measurements for rendering, so the chart never actually draws — resulting in a blank dark image.
+### 1. Web Share API leaks local file paths into the message
+When `navigator.share()` is called with both `files` and `url`, WhatsApp concatenates the local file path with the URL in the message text — producing the garbled URL you see in the screenshot (`/Users/joranhofman/Library/...WebShare/rating-progress.png`).
 
-## Fix
+**Fix**: When sharing with files, do NOT include the `url` parameter. Instead, put the URL inside the `text` field. This keeps the message clean.
 
-Replace the Recharts `<AreaChart>` in `RatingShareCard.tsx` with a **pure inline SVG** `<polyline>` + `<polygon>` (same approach as the `rating-og-image` edge function). This removes the Recharts dependency from the share card entirely, making it reliably capturable by `html-to-image`.
+### 2. OG preview shows generic PadelTrainer.ai metadata
+WhatsApp's crawler fetches the URL to generate the preview. The `render-page` edge function correctly generates personalized OG tags for `/rating/:profileId`, but this only works if the `padeltrainer.ai` domain proxies crawler requests to the edge function. 
 
-### `src/components/player/RatingShareCard.tsx`
+Since the app is an SPA hosted on Lovable, WhatsApp's crawler likely gets the SPA's `index.html` (with generic OG tags) instead of the server-rendered page. The `PublicRatingCard.tsx` page does set `<Helmet>` meta tags, but WhatsApp's crawler doesn't execute JavaScript — it only reads the initial HTML.
 
-1. Remove `AreaChart, Area, XAxis, YAxis` imports from recharts
-2. Compute chart points manually from the history array:
-   - Map ratings to x/y coordinates within a fixed viewBox (e.g. 920x300)
-   - Respect `lowerIsBetter` for y-axis direction
-3. Replace the Recharts chart with a simple inline `<svg>` containing:
-   - A `<polygon>` for the gradient fill area
-   - A `<polyline>` for the orange line
-   - A `<linearGradient>` definition for the fill
-   - Optional: a few tick labels on x-axis (first/last date) and y-axis (min/max rating)
+**Fix**: The `PublicRatingCard.tsx` page already has correct `<Helmet>` OG tags, but they won't work for crawlers. We need to ensure the published domain (`padeltrainer.ai`) routes `/rating/*` requests from crawlers through the `render-page` edge function. This likely requires a proxy/rewrite rule at the hosting level.
 
-This is the same pattern already used in `supabase/functions/rating-og-image/index.ts` — just ported to JSX.
+Since we can't control Lovable's hosting proxy, the pragmatic fix is to make the shareable URL point directly to the `render-page` edge function (which returns full HTML with OG tags), with a client-side redirect to the SPA for human visitors. Or: use the edge function URL as the canonical share URL.
 
-## Files changed
+Actually, looking at the existing setup — other marketing pages (trainers, locations, blog) presumably work with OG tags. Let me check if there's a Cloudflare Worker or similar proxy handling this.
+
+## Changes
+
+### `src/components/player/RatingHistoryChart.tsx`
+
+1. **Fix `handleNativeShare`**: When sharing with files, omit `url` param and include the link in `text` instead:
+```ts
+await navigator.share({
+  title: `${firstName}'s Padel Rating Progress`,
+  text: `Check out my padel rating progress on PadelTrainer.ai! ${shareUrl}`,
+  files: [file],
+});
+```
+
+2. **Fix text-only share fallback**: Same pattern — URL in text, not as separate param (WhatsApp handles this better).
+
+### `src/pages/marketing/PublicRatingCard.tsx`
+
+The Helmet OG tags are already correct. The real issue is server-side rendering for crawlers — which the `render-page` function already handles. If the existing marketing pages' OG tags work (trainers, blog, etc.), then the rating page should too once deployed to production. The preview domain won't have this proxy.
+
+No changes needed here if the production proxy is already configured for other routes.
+
+## Summary
+
+The main actionable fix is in `RatingHistoryChart.tsx` — stop passing both `files` and `url` to `navigator.share()`, which causes WhatsApp to mangle the URL with local file paths.
 
 | File | Change |
 |------|--------|
-| `src/components/player/RatingShareCard.tsx` | Replace Recharts with pure SVG polyline for reliable image capture |
+| `src/components/player/RatingHistoryChart.tsx` | Fix Web Share API call to avoid URL mangling |
 
