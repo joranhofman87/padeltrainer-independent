@@ -147,7 +147,7 @@ export function buildShareCardSvg(data: ShareCardData): string {
 
   <!-- Player name -->
   <text x="540" y="160" fill="#ffffff" font-size="48" font-weight="800" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" letter-spacing="-0.5">${esc(firstName)}</text>
-  <text x="540" y="200" fill="#94A3B8" font-size="22" font-weight="500" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Padel Rating Journey · ${esc(systemName)}</text>
+  <text x="540" y="200" fill="#94A3B8" font-size="22" font-weight="500" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Padel Rating Voortgang · ${esc(systemName)}</text>
 
   <!-- Stats boxes -->
   <rect x="80" y="240" width="280" height="130" rx="16" fill="rgba(255,255,255,0.08)"/>
