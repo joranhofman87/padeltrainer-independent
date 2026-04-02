@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import { motion } from 'framer-motion';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import QuizQuestion from '@/components/racketfinder/QuizQuestion';
@@ -245,13 +246,22 @@ export default function RacketFinder() {
     ],
   };
 
+  const breadcrumbListSD = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: t('nav.home', 'Home'), item: `${MARKETING_DOMAIN}/${lang}` },
+      { '@type': 'ListItem', position: 2, name: t('quiz.seo.breadcrumb', 'Racket Finder') },
+    ],
+  };
+
   return (
     <MarketingLayout>
       <SEO
         title={t('quiz.seo.title', 'Padel Racket Finder — Find Your Perfect Racket')}
         description={t('quiz.seo.description', "Answer 5 quick questions and we'll recommend the perfect padel racket for your level, playing style, and budget.")}
         url={`/${lang}/racket-finder`}
-        structuredData={structuredData}
+        structuredData={[breadcrumbListSD, structuredData]}
       />
 
       <div className="container max-w-2xl mx-auto px-4 py-12 sm:py-20">
