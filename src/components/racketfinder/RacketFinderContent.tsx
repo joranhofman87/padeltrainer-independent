@@ -79,6 +79,31 @@ export default function RacketFinderContent() {
         </div>
       </motion.section>
 
+      {/* Related Resources */}
+      <motion.section
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+      >
+        <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-6">
+          {t('quiz.relatedResources.title', 'Related Resources')}
+        </h2>
+        <div className="space-y-3">
+          <a href={`/${lang}/blog`} className="flex items-center gap-2 p-4 rounded-lg border hover:border-primary/20 hover:bg-accent/50 transition-colors">
+            <span className="text-primary">→</span>
+            <span className="font-medium text-foreground">{t('quiz.relatedResources.blog', 'Read the Latest Padel Blog Posts')}</span>
+          </a>
+          <a href={`/${lang}/padel-strokes`} className="flex items-center gap-2 p-4 rounded-lg border hover:border-primary/20 hover:bg-accent/50 transition-colors">
+            <span className="text-primary">→</span>
+            <span className="font-medium text-foreground">{t('quiz.relatedResources.strokes', 'Master Padel Strokes & Techniques')}</span>
+          </a>
+          <a href={`/${lang}/video-tips`} className="flex items-center gap-2 p-4 rounded-lg border hover:border-primary/20 hover:bg-accent/50 transition-colors">
+            <span className="text-primary">→</span>
+            <span className="font-medium text-foreground">{t('quiz.relatedResources.videoTips', 'Watch Video Tips & Tutorials')}</span>
+          </a>
+        </div>
+      </motion.section>
+
       {/* Browse All */}
       <div className="text-center">
         <a
