@@ -1,58 +1,111 @@
 
-Fix the logo by changing the export strategy, not by tweaking the current size again.
 
-## Root cause
-The logo is being embedded in `src/lib/ratingShareCard.ts` as a base64 `<image>` that points to the full `src/assets/logo-light.svg`. That SVG is not a clean icon asset:
-- it uses `viewBox="0 660 1500 180"` instead of a normalized origin
-- it contains many transformed path groups from a design export
-- it is being rendered as a nested SVG image inside another generated SVG, then converted again to PNG
+# SEO & UX Improvements Across 5 Marketing Pages
 
-That combination is exactly the kind of thing that gets clipped/chopped during SVG-to-canvas export. The screenshot matches that failure.
+This is a large scope touching 5 pages. I recommend implementing in 4 phases as outlined in the prompt, focusing on highest SEO impact first.
 
-## Best fix
-Use a dedicated export-safe logo for share cards instead of embedding the app logo file directly.
+## Phase 1: Quick Fixes + Intro Paragraphs + BreadcrumbList Schemas
 
-## Changes
+### 1.1 Rules page (`src/pages/marketing/Rules.tsx`)
+- **Fix whitespace**: The CTA section uses `bg-accent/30` with `py-16` — the gap is likely between the content section and CTA. Inspect and tighten spacing.
+- **Update meta description** to: "Learn the official padel court rules, serving regulations, and scoring system. Master the fundamentals every player needs to know."
+- **Add intro paragraph** below hero h1/subtitle, above cards.
+- **Add BreadcrumbList** structured data (Home > Learn > Padel Rules).
+- **Add FAQPage** structured data with 5-6 common padel rules questions.
+- **Add "Related Learning"** internal links section at the bottom (link to strokes + blog posts).
 
-### 1. Add a simplified share-logo asset
-Create a new export-specific logo asset with a normalized viewBox starting at `0 0`, sized for wide horizontal use on dark backgrounds.
+### 1.2 Strokes page (`src/pages/marketing/Strokes.tsx`)
+- **Null description fallback**: If `shortDescription` is null, show a generic fallback string.
+- **Add intro paragraph** above the stroke grid.
+- **Add BreadcrumbList** structured data.
 
-Best options:
-- preferred: a clean `logo-share-light.svg` built from the existing wordmark paths but re-exported with a proper viewBox
-- fallback: a text-based wordmark styled to match the brand if we want maximum rendering reliability
+### 1.3 Video Tips page (`src/pages/marketing/VideoTips.tsx`)
+- **Add intro paragraph** below hero.
+- **Add VideoObject** structured data for each video.
+- **Add BreadcrumbList** structured data.
+- **Add "Want More?" CTA** section at the bottom.
 
-This avoids nesting the current problematic SVG as-is.
+### 1.4 Blog page (`src/pages/marketing/Blog.tsx`)
+- **Fix subtitle** i18n key — change from "Tips, insights, and stories from the Dutch padel community" to "Tips, tactics, and insights for padel players at every level".
+- **Show author name**: Already partially implemented (line 194), ensure fallback to "Padel Trainer AI".
+- **Fix date display**: The `datePublished` field is already rendered from Sanity — likely a Sanity data issue (all posts have same date). No code fix needed if Sanity data is correct.
+- **Add BreadcrumbList** structured data.
 
-### 2. Update `src/lib/ratingShareCard.ts`
-Replace the current base64 `<image ... href="data:image/svg+xml;base64,...">` approach with one of these safer patterns:
-- inline normalized SVG markup directly in the generated share-card SVG, or
-- embed the new simplified logo asset instead of `logo-light.svg`
+### 1.5 Racket Finder page (`src/pages/marketing/RacketFinder.tsx`)
+- Already has FAQPage structured data and SEO content section (`RacketFinderContent`).
+- **Add BreadcrumbList** structured data.
+- **Add "Related Resources"** internal links section at the bottom of `RacketFinderContent.tsx`.
 
-Also slightly increase the top spacing so the logo has more breathing room and cannot appear visually cramped.
+## Phase 2: Filtering & UI Components
 
-### 3. Keep branding consistent in the UI preview
-Update `src/components/player/RatingShareCard.tsx` to use the same export-safe logo asset so the on-screen preview matches the downloaded PNG.
+### 2.1 Strokes — Difficulty filter tabs
+- Add "All | Beginner | Intermediate | Advanced" tabs above the grid.
+- Filter strokes by `difficulty` field.
+- Store in URL query param (`?level=beginner`).
 
-### 4. Align OG image branding too
-Update `supabase/functions/rating-og-image/index.ts` to use the same cleaned branding treatment instead of the plain text placeholder. That way:
-- download image
-- public share preview
-- WhatsApp/OG preview
-all use the same stable logo rendering path.
+### 2.2 Strokes — "Start Here" beginner section
+- Visual banner with 5 essential strokes (Forehand, Backhand, Serve, Return, Volley).
+- Orange accent styling, hide when filtering by intermediate/advanced.
 
-## Files to update
+### 2.3 Strokes — Category grouping toggle
+- "Group by Category" toggle button (already groups by category by default — add an "All" flat view and a grouped view toggle).
+- Store preference in localStorage.
 
-| File | Change |
-|------|--------|
-| `src/assets/logo-share-light.svg` | New normalized export-safe logo asset |
-| `src/lib/ratingShareCard.ts` | Replace nested base64 app logo with export-safe logo rendering |
-| `src/components/player/RatingShareCard.tsx` | Use same logo asset for consistency |
-| `supabase/functions/rating-og-image/index.ts` | Reuse same cleaned logo treatment |
+### 2.4 Video Tips — Coach card improvements
+- Make coach avatar/name more prominent on cards.
+- The coach filter already exists (line 149-163) — just improve the visual presentation.
 
-## Implementation note
-Do not keep adjusting width/height on the current embedded logo. The issue is the source asset/rendering method, not just the dimensions.
+### 2.5 Blog — Featured section
+- Show `isFeatured` posts in a highlighted row at top (already partially done — line 174-203 shows featured post, just enhance with orange accent border).
 
-## Expected result
-- no more chopped logo in downloads
-- cleaner top branding
-- same logo treatment across dashboard preview, downloaded image, and share preview
+## Phase 3: Structured Data Enhancements
+
+### 3.1 Video Tips — VideoObject schema per video
+- Add `VideoObject` JSON-LD for each video (name, description, thumbnailUrl, uploadDate, contentUrl, author).
+
+### 3.2 Blog — Already has Blog structured data — no additional work.
+
+### 3.3 Racket Finder — Already has FAQPage — just add BreadcrumbList.
+
+## Phase 4: Polish
+
+### 4.1 Racket Finder — "Popular Picks" section
+- Show 3-4 top rackets below SEO content.
+- Query from Sanity racket database.
+
+### 4.2 Racket Finder — Social proof
+- "Trusted by X+ players" stat banner.
+
+### 4.3 Video Tips — "Want More?" CTA
+- Links to `/trainers` and external submission form.
+
+## i18n Keys to Add
+
+All new intro paragraphs, labels, and CTAs need keys in all 5 locale files (`en`, `nl`, `de`, `es`, `fr`) under the `marketing` namespace. Key groups:
+- `rules.introText`, `rules.faq.*`, `rules.relatedLearning`
+- `strokes.introText`, `strokes.filterAll`, `strokes.filterBeginner`, etc., `strokes.startHere.*`
+- `videoTips.introText`, `videoTips.wantMore.*`
+- `blog.subtitle` (update existing)
+- `racketFinder.relatedResources.*`
+
+## Files Changed (All Phases)
+
+| File | Changes |
+|------|---------|
+| `src/pages/marketing/Rules.tsx` | Intro, meta desc, BreadcrumbList + FAQPage structured data, related links, spacing fix |
+| `src/pages/marketing/Strokes.tsx` | Intro, null fallback, BreadcrumbList, filter tabs, "Start Here" section, category toggle |
+| `src/pages/marketing/VideoTips.tsx` | Intro, VideoObject structured data, BreadcrumbList, CTA section, coach card improvements |
+| `src/pages/marketing/Blog.tsx` | Subtitle fix, author fallback, BreadcrumbList |
+| `src/pages/marketing/RacketFinder.tsx` | BreadcrumbList |
+| `src/components/racketfinder/RacketFinderContent.tsx` | Related resources links, popular picks |
+| `src/components/sanity/VideoTipCard.tsx` | Enhanced coach attribution |
+| `src/i18n/locales/en/marketing.json` | New keys |
+| `src/i18n/locales/nl/marketing.json` | New keys (Dutch) |
+| `src/i18n/locales/de/marketing.json` | New keys (German) |
+| `src/i18n/locales/es/marketing.json` | New keys (Spanish) |
+| `src/i18n/locales/fr/marketing.json` | New keys (French) |
+
+## Recommendation
+
+Given the size, I suggest implementing **Phase 1 first** (highest SEO impact with least complexity), then proceeding phase by phase. Want me to start with Phase 1, or implement everything at once?
+
