@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
+import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowRight, FileText } from 'lucide-react';
 import { getPublishedArticles, getAllCategories, calculateReadTime } from '@/lib/blog';
@@ -14,7 +15,6 @@ import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { useState } from 'react';
 import { BannerZone } from '@/components/sponsors/BannerZone';
-
 function BlogPostCardSkeleton() {
   return (
     <Card className="h-full">
