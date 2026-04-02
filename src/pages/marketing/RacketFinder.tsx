@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import { motion } from 'framer-motion';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import QuizQuestion from '@/components/racketfinder/QuizQuestion';
