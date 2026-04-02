@@ -561,40 +561,43 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Allow the trainer, the player, AND academy managers to access the invoice
-    const isTrainer = trainerProfile?.user_id === user.id;
-    let isPlayer = invoice.player_id === user.id;
-    let isAcademyManager = false;
+    // Service role calls (from auto-create-invoice) skip authorization
+    if (!isServiceRole) {
+      const isTrainer = trainerProfile?.user_id === user?.id;
+      let isPlayer = invoice.player_id === user?.id;
+      let isAcademyManager = false;
 
-    // player_id may reference profiles.id rather than auth user id, so check via profiles table
-    if (!isPlayer && invoice.player_id) {
-      const { data: playerProfile } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('id', invoice.player_id)
-        .single();
-      if (playerProfile?.user_id === user.id) {
-        isPlayer = true;
+      // player_id may reference profiles.id rather than auth user id, so check via profiles table
+      if (!isPlayer && invoice.player_id) {
+        const { data: playerProfile } = await supabase
+          .from('profiles')
+          .select('user_id')
+          .eq('id', invoice.player_id)
+          .single();
+        if (playerProfile?.user_id === user?.id) {
+          isPlayer = true;
+        }
       }
-    }
 
-    // Check if user is an academy manager for this invoice's academy
-    if (!isTrainer && !isPlayer && invoice.academy_profile_id) {
-      const { data: managerCheck } = await supabase
-        .from('academy_managers')
-        .select('id')
-        .eq('academy_profile_id', invoice.academy_profile_id)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (managerCheck) {
-        isAcademyManager = true;
+      // Check if user is an academy manager for this invoice's academy
+      if (!isTrainer && !isPlayer && invoice.academy_profile_id) {
+        const { data: managerCheck } = await supabase
+          .from('academy_managers')
+          .select('id')
+          .eq('academy_profile_id', invoice.academy_profile_id)
+          .eq('user_id', user?.id)
+          .maybeSingle();
+        if (managerCheck) {
+          isAcademyManager = true;
+        }
       }
-    }
 
-    if (!isTrainer && !isPlayer && !isAcademyManager) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      if (!isTrainer && !isPlayer && !isAcademyManager) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
     }
 
     // Use academy details when available, fall back to trainer profile
