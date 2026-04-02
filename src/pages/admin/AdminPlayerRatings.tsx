@@ -279,7 +279,7 @@ export default function AdminPlayerRatings() {
                           {isEditing ? (
                             <Input
                               type="number"
-                              step="0.0001"
+                              step="0.01"
                               min="0.1"
                               max="12"
                               value={editValue}
