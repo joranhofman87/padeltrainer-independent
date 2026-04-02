@@ -1,41 +1,35 @@
 
 
-# Fix Chart Direction + Add Real Logo to Share Card
+# Fix Share Card: Logo Rendering + Language Consistency
 
 ## Problems
-1. **Chart is inverted for KNLTB** — currently, the `lowerIsBetter` logic flips the Y-axis so a rating drop (8.0→4.2) renders as an upward line. The user wants the natural plot: high values at top, low values at bottom, so the line goes **down** (which IS the improvement for KNLTB).
-2. **Share card uses text "PADELTRAINER.AI" instead of the actual logo** — need to embed the real SVG logo.
+1. **Logo is cut off** — The SVG logo asset has `viewBox="0 660 1500 180"` which crops tightly. The `<image>` element in the share card uses `width="400" height="70"` which distorts the aspect ratio. The logo's native ratio is ~8.3:1, but 400:70 is ~5.7:1, causing clipping.
+2. **Mixed Dutch/English** — "Padel Rating Journey" (English) alongside "Nu", "punten verbeterd", "jaar actief", "maanden progressie" (Dutch). Should be all Dutch.
 
 ## Changes
 
-### 1. `src/lib/ratingShareCard.ts` — Fix chart direction + embed logo
+### `src/lib/ratingShareCard.ts`
 
-**Chart fix**: Remove the `lowerIsBetter` Y-axis flip. Always plot naturally (high values at top, low at bottom):
-```ts
-// Line 79: change from conditional to always natural
-const y = chartH - pad - t * (chartH - pad * 2);
-```
+1. **Fix logo dimensions**: Change `<image>` from `width="400" height="70"` to `width="600" height="72"` and re-center (`x` from 340 to 240). This matches the logo's ~8.3:1 aspect ratio so nothing gets clipped.
 
-**Logo**: Read `src/assets/logo-light.svg` content and embed it inline in the SVG markup (as an `<image>` element with a data URI or inline SVG paths), replacing the `<text>PADELTRAINER.AI</text>` placeholder at line 146.
+2. **Dutch-only text**:
+   - Line 150: `"Padel Rating Journey"` → `"Padel Rating Voortgang"`
+   - Line 155: `"Start"` → keep (same in Dutch)
+   - Line 159: `"Nu"` → keep
+   - Line 163: `"Best"` → `"Beste"`
+   - Line 191: `"Track jouw rating op"` → keep
+   - Line 30: `"All-time best rating!"` → `"All-time beste rating!"`
 
-### 2. `src/components/player/RatingHistoryChart.tsx` — Fix dashboard chart direction
+### `src/components/player/RatingShareCard.tsx`
 
-Remove `reversed={lowerIsBetter}` from the Recharts `<YAxis>` (line 355). This makes the dashboard chart also show values naturally — high at top, low at bottom.
-
-### 3. `src/components/player/RatingShareCard.tsx` — Fix chart direction
-
-Same fix as the shared helper: remove the `lowerIsBetter` conditional in the Y coordinate calculation (line ~73). Always use `chartH - pad - t * (chartH - pad * 2)`.
-
-### 4. `supabase/functions/rating-og-image/index.ts` — Align OG image
-
-Apply the same natural Y-axis logic so the OG preview image matches.
+Same language fixes:
+- Line 19: `"All-time best rating!"` → `"All-time beste rating!"`
+- Line 103: `"Padel Rating Journey"` → `"Padel Rating Voortgang"`
 
 ## Files changed
 
 | File | Change |
 |------|--------|
-| `src/lib/ratingShareCard.ts` | Remove Y-flip for lowerIsBetter, embed actual logo SVG |
-| `src/components/player/RatingHistoryChart.tsx` | Remove `reversed={lowerIsBetter}` from YAxis |
-| `src/components/player/RatingShareCard.tsx` | Remove Y-flip for lowerIsBetter |
-| `supabase/functions/rating-og-image/index.ts` | Align chart direction |
+| `src/lib/ratingShareCard.ts` | Fix logo size/position, Dutch-only text |
+| `src/components/player/RatingShareCard.tsx` | Dutch-only text |
 
