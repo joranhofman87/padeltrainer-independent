@@ -141,6 +141,11 @@ Deno.serve(async (req) => {
       const cycleId = cleanPath.match(/^\/register\/([^/]+)$/)![1];
       html = await renderCycleRegistration(supabase, cycleId, lang, cleanPath);
       cacheMaxAge = 1800;
+    // ─── Rating progress page ───
+    } else if (/^\/rating\/([^/]+)$/.test(cleanPath)) {
+      const ratingProfileId = cleanPath.match(/^\/rating\/([^/]+)$/)![1];
+      html = await renderRatingPage(supabase, ratingProfileId, lang);
+      cacheMaxAge = 1800;
     // ─── Other static pages ───
     } else if (cleanPath === '/partner') {
       html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');
@@ -1385,4 +1390,63 @@ async function renderCycleRegistration(supabase: any, cycleId: string, lang: str
   `;
 
   return htmlDoc({ title, description, url: cleanPath, lang, body });
+}
+
+// ─── Rating Progress Page ─────────────────────────────────────────
+
+async function renderRatingPage(supabase: any, profileId: string, lang: string): Promise<string> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, rating_system')
+    .eq('id', profileId)
+    .single();
+
+  if (!profile) {
+    return renderStaticPage('Rating Progress — PadelTrainer.ai', 'Track your padel rating progress on PadelTrainer.ai', lang, `/rating/${profileId}`);
+  }
+
+  const ratingSystem = profile.rating_system || 'knltb';
+  const { data: history } = await supabase
+    .from('player_rating_history')
+    .select('rating, scraped_at')
+    .eq('profile_id', profileId)
+    .eq('rating_system', ratingSystem)
+    .order('scraped_at', { ascending: true });
+
+  const { data: systemData } = await supabase
+    .from('rating_systems')
+    .select('name, lower_is_better')
+    .eq('code', ratingSystem)
+    .single();
+
+  const lowerIsBetter = systemData?.lower_is_better ?? (ratingSystem === 'knltb');
+  const systemName = systemData?.name || ratingSystem.toUpperCase();
+  const firstName = profile.full_name?.split(' ')[0] || 'Player';
+
+  if (!history || history.length === 0) {
+    return renderStaticPage(`${firstName}'s Rating — PadelTrainer.ai`, 'No rating history available yet.', lang, `/rating/${profileId}`);
+  }
+
+  const firstRating = history[0].rating;
+  const latestRating = history[history.length - 1].rating;
+  const rawDiff = Number((firstRating - latestRating).toFixed(2));
+  const improvement = lowerIsBetter ? rawDiff : -rawDiff;
+
+  const title = `${firstName}'s Padel Rating: ${latestRating.toFixed(1)} (${improvement > 0 ? '↑' : '↓'}${Math.abs(improvement).toFixed(1)}) — PadelTrainer.ai`;
+  const description = lang === 'nl'
+    ? `Van ${firstRating.toFixed(1)} naar ${latestRating.toFixed(1)} op ${systemName}. Track jouw rating op PadelTrainer.ai`
+    : `From ${firstRating.toFixed(1)} to ${latestRating.toFixed(1)} on ${systemName}. Track your rating on PadelTrainer.ai`;
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const ogImage = `${supabaseUrl}/functions/v1/rating-og-image?profileId=${profileId}`;
+
+  const body = `
+    <h1>${escHtml(firstName)}'s Padel Rating Progress</h1>
+    <p>${escHtml(systemName)} · ${escHtml(firstRating.toFixed(1))} → ${escHtml(latestRating.toFixed(1))}</p>
+    <p>${improvement > 0 ? '↑' : '↓'} ${Math.abs(improvement).toFixed(1)} ${lang === 'nl' ? 'punten' : 'points'}</p>
+    <p><a href="${SITE_URL}/${lang}/rating/${profileId}">${lang === 'nl' ? 'Bekijk volledige voortgang' : 'View full progress'}</a></p>
+    <p>${lang === 'nl' ? 'Track jouw padel rating op' : 'Track your padel rating on'} <a href="${SITE_URL}/${lang}">PadelTrainer.ai</a></p>
+  `;
+
+  return htmlDoc({ title, description, url: `/rating/${profileId}`, lang, image: ogImage, body });
 }

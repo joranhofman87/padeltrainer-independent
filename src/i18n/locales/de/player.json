@@ -37,8 +37,13 @@
     "trackingDescription": "Verfolge deine Padel-Verbesserung über die Zeit",
     "started": "Gestartet",
     "current": "Aktuell",
+    "best": "Beste",
     "improvement": "Verbesserung",
-    "knltbNote": "Bei KNLTB bedeutet eine niedrigere Bewertung eine bessere Leistung"
+    "knltbNote": "Bei KNLTB bedeutet eine niedrigere Bewertung eine bessere Leistung",
+    "downloadImage": "Download",
+    "downloadSuccess": "Bild heruntergeladen",
+    "downloadError": "Download fehlgeschlagen",
+    "share": "Teilen"
   },
   "dashboard": {
     "welcome": "Willkommen zurück, {{name}}! 👋",

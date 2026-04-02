@@ -305,10 +305,11 @@ export default function PlayerDashboard() {
 
       {/* Rating History Chart */}
       {profile?.id && (
-        <RatingHistoryChart
+      <RatingHistoryChart
           profileId={profile.id}
           currentRating={profile.skill_rating ?? null}
           ratingSystem={(profile as any)?.rating_system || 'knltb'}
+          playerName={profile.full_name || ''}
         />
       )}
 
