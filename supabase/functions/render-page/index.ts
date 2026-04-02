@@ -146,6 +146,10 @@ Deno.serve(async (req) => {
       const ratingProfileId = cleanPath.match(/^\/rating\/([^/]+)$/)![1];
       html = await renderRatingPage(supabase, ratingProfileId, lang);
       cacheMaxAge = 1800;
+    // ─── Founding Trainers ───
+    } else if (cleanPath === '/founding-trainers') {
+      html = renderStaticPage('Founding 100 Trainers — Free Premium Racket | PadelTrainer.ai', 'Be one of the first 100 padel coaches on PadelTrainer.ai and receive a free premium racket worth €275+. Sign up for the Founding Trainer Annual plan at €349/year.', lang, '/founding-trainers');
+      cacheMaxAge = 86400;
     // ─── Other static pages ───
     } else if (cleanPath === '/partner') {
       html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');

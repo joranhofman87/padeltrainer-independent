@@ -59,6 +59,7 @@ const RacketDetail = lazy(() => import('@/pages/marketing/RacketDetail'));
 const PadelLevelTest = lazy(() => import('@/pages/marketing/PadelLevelTest'));
 const CityLanding = lazy(() => import('@/pages/marketing/CityLanding'));
 const PublicRatingCard = lazy(() => import('@/pages/marketing/PublicRatingCard'));
+const FoundingTrainers = lazy(() => import('@/pages/marketing/FoundingTrainers'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
@@ -370,6 +371,7 @@ export function DomainRouter() {
           <Route path="tools/padel-level-test" element={<PadelLevelTest />} />
           <Route path="padel/:city" element={<CityLanding />} />
           <Route path="rating/:profileId" element={<PublicRatingCard />} />
+          <Route path="founding-trainers" element={<FoundingTrainers />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />
