@@ -1,43 +1,36 @@
 
 
-# Fix Video Tips Page — Empty Title + Enhanced Schema
+# Founding 100 Trainers — Updated Plan
 
-## Root Cause
+## Change from previous plan
 
-The `videoTips.*` i18n keys are **completely missing** from all 5 locale marketing.json files. When `t('videoTips.title')` is called, i18next returns an empty string despite the inline fallback — resulting in an empty `<title>` tag.
+**Remove the signup form section entirely** from the campaign page. Instead, all CTAs ("Claim Your Spot →", "Become a Founding Trainer") link directly to the existing trainer signup page at `/app/signup/trainer`.
 
-## Changes
+To preserve campaign attribution, append a query parameter: `/app/signup/trainer?ref=founding100`. This lets you track signups originating from this campaign.
 
-### 1. Add i18n keys to all 5 locale files
+## Updated page structure
 
-Add `videoTips` section to `src/i18n/locales/{en,nl,de,es,fr}/marketing.json` with all keys used in VideoTips.tsx:
-- `title`, `metaDescription`, `subtitle`, `introText`, `badge`
-- `breadcrumbLearn`, `filterStroke`, `filterLevel`, `filterCoach`, `filterTags`, `clearFilters`
-- `noMatch`, `empty`, `adjustFilters`, `emptyDescription`, `matchingFilters`
-- `wantMore`, `wantMoreDescription`, `findCoach`
+1. **Hero** — badge, headline, subheadline, progress bar, CTA button → links to `/app/signup/trainer?ref=founding100`
+2. **What You Get** — 3 value cards
+3. **How It Works** — 4 steps (step 1 now says "Sign up on our platform" instead of "fill in the form below")
+4. **Value Breakdown** — comparison table
+5. **Who Is This For** — 4 bullet points
+6. **FAQ Accordion** — 6 items
+7. **Final CTA section** (replaces the signup form) — headline "Ready to Become a Founding Trainer?", subtext with remaining spots, single button → `/app/signup/trainer?ref=founding100`
 
-Updated meta description (EN): `"Watch expert padel coaching videos. Learn strokes, tactics, and techniques from certified coaches with short, focused video lessons for every level."`
+No `id="signup"` form. No new database table. The hero CTA and bottom CTA both navigate to the existing trainer signup.
 
-### 2. Enhance VideoObject schema in `VideoTips.tsx`
+## Everything else unchanged
 
-Current schema is minimal. Add:
-- `embedUrl` (derived from `parseVideoUrl`)
-- `thumbnailUrl` auto-generated from YouTube ID when not set in Sanity
-- `publisher` block with org name + logo
-- Fallback `description` to title when `shortSummary` is null
+Route, i18n, announcement banner, structured data, render-page update — all remain as previously planned.
 
-### 3. No structural changes needed
+## Files
 
-BreadcrumbList is already present (lines 27-35). The SEO component already handles title/description/OG tags correctly — the issue was purely missing i18n keys.
-
-## Files changed
-
-| File | Change |
+| File | Action |
 |------|--------|
-| `src/i18n/locales/en/marketing.json` | Add `videoTips` section |
-| `src/i18n/locales/nl/marketing.json` | Add `videoTips` section (Dutch) |
-| `src/i18n/locales/de/marketing.json` | Add `videoTips` section (German) |
-| `src/i18n/locales/es/marketing.json` | Add `videoTips` section (Spanish) |
-| `src/i18n/locales/fr/marketing.json` | Add `videoTips` section (French) |
-| `src/pages/marketing/VideoTips.tsx` | Enhance VideoObject schema with embedUrl, publisher, better thumbnailUrl |
+| `src/pages/marketing/FoundingTrainers.tsx` | **New** — campaign page without embedded form; CTAs link to `/app/signup/trainer?ref=founding100` |
+| `src/components/DomainRouter.tsx` | Add route |
+| `src/components/marketing/MarketingLayout.tsx` | Dismissible announcement banner |
+| `src/i18n/locales/{en,nl,de,es,fr}/marketing.json` | Add `foundingTrainers.*` keys |
+| `supabase/functions/render-page/index.ts` | Add path for bot pre-rendering |
 
