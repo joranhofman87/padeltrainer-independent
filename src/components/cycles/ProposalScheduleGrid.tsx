@@ -1296,8 +1296,6 @@ export default function ProposalScheduleGrid({
             slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString(),
             overlappingSlot.id, oldTrainerId, oldStart, oldEnd,
           );
-        } else {
-          toast.warning(t('proposals.slotOverlap', 'Cannot move here — overlaps with an existing slot'));
         }
         return;
       }
