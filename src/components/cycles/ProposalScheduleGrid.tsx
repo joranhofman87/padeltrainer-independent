@@ -156,13 +156,14 @@ function isRatingOutOfRange(
 }
 
 function DraggablePlayerChip({
-  assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating,
+  assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating, searchQuery,
 }: {
   assignment: Assignment;
   slotId: string;
   onPlayerClick?: (id: string) => void;
   slotMinRating?: number | null;
   slotMaxRating?: number | null;
+  searchQuery?: string;
 }) {
   const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -178,6 +179,7 @@ function DraggablePlayerChip({
       : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
 
   const outOfRange = isRatingOutOfRange(assignment.player_rating, slotMinRating, slotMaxRating);
+  const isSearchMatch = searchQuery && searchQuery.trim().length > 0 && assignment.player_name.toLowerCase().includes(searchQuery.toLowerCase());
 
   return (
     <div
@@ -186,6 +188,7 @@ function DraggablePlayerChip({
         'flex items-center gap-1 rounded-md pl-1.5 pr-2 py-1 text-xs transition-colors',
         outOfRange ? 'bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-400/50' : 'bg-muted',
         isDragging ? 'opacity-30' : 'hover:bg-accent',
+        isSearchMatch && 'ring-2 ring-orange-400 dark:ring-orange-500 bg-orange-50 dark:bg-orange-950/30 z-10',
       )}
     >
       <button
@@ -480,7 +483,7 @@ function SlotEditPopover({
 
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
-  trainerAvailabilityWindows, selectedDay, daySlots, onMoveSlot, onDeleteSlot,
+  trainerAvailabilityWindows, selectedDay, daySlots, onMoveSlot, onDeleteSlot, searchQuery,
 }: {
   slot: SlotWithOccupancy;
   onPlayerClick?: (id: string) => void;
@@ -490,6 +493,7 @@ function DraggableSlotCard({
   daySlots: SlotWithOccupancy[];
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
+  searchQuery?: string;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `slot-drag-${slot.id}`,
@@ -576,6 +580,7 @@ function DraggableSlotCard({
                 onPlayerClick={onPlayerClick}
                 slotMinRating={slot.min_rating}
                 slotMaxRating={slot.max_rating}
+                searchQuery={searchQuery}
               />
             ))}
           </div>
@@ -851,6 +856,22 @@ export default function ProposalScheduleGrid({
     return unplacedPlayers.filter(p => p.full_name.toLowerCase().includes(q));
   }, [unplacedPlayers, searchQuery]);
 
+  // Compute which days have placed players matching the search query
+  const daysWithSearchMatches = useMemo(() => {
+    if (!searchQuery.trim()) return new Map<string, number>();
+    const q = searchQuery.toLowerCase();
+    const matches = new Map<string, number>();
+    slots.forEach(slot => {
+      const day = getDayKey(slot.start_time);
+      slot.current_assignments.forEach(a => {
+        if (a.player_name.toLowerCase().includes(q)) {
+          matches.set(day, (matches.get(day) || 0) + 1);
+        }
+      });
+    });
+    return matches;
+  }, [slots, searchQuery]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
@@ -893,6 +914,18 @@ export default function ProposalScheduleGrid({
       setSelectedDay(availableDays[0]);
     }
   }, [availableDays, selectedDay]);
+
+  // Auto-switch to the day with search matches (only when exactly one day matches)
+  const prevSearchRef = useRef(searchQuery);
+  useEffect(() => {
+    if (searchQuery.trim() && searchQuery !== prevSearchRef.current) {
+      const matchingDays = Array.from(daysWithSearchMatches.keys());
+      if (matchingDays.length === 1 && matchingDays[0] !== selectedDay) {
+        setSelectedDay(matchingDays[0]);
+      }
+    }
+    prevSearchRef.current = searchQuery;
+  }, [searchQuery, daysWithSearchMatches, selectedDay]);
 
   const daySlots = useMemo(() => dayGroups.get(selectedDay) || [], [dayGroups, selectedDay]);
 
@@ -1228,24 +1261,38 @@ export default function ProposalScheduleGrid({
 
   return (
     <div className="space-y-4">
-      {/* Day tabs + Undo button */}
-      <div className="flex items-center justify-between gap-3">
-        <Tabs value={selectedDay} onValueChange={setSelectedDay} className="flex-1">
-          <TabsList className="flex-wrap h-auto gap-1">
-            {availableDays.map(day => {
-              const dayS = dayGroups.get(day) || [];
-              const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
-              return (
-                <TabsTrigger key={day} value={day} className="text-xs sm:text-sm">
-                  {getLocalizedDayName(day, dateFnsLocale)}
-                  <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
-                    {playerCount}
-                  </Badge>
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
-        </Tabs>
+      {/* Search + Day tabs + Undo button */}
+      <div className="flex flex-col gap-3">
+        <div className="relative max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('proposals.searchPlayers', { defaultValue: 'Search players...' })}
+            className="h-8 text-xs pl-8"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <Tabs value={selectedDay} onValueChange={setSelectedDay} className="flex-1">
+            <TabsList className="flex-wrap h-auto gap-1">
+              {availableDays.map(day => {
+                const dayS = dayGroups.get(day) || [];
+                const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
+                const matchCount = daysWithSearchMatches.get(day) || 0;
+                return (
+                  <TabsTrigger key={day} value={day} className="text-xs sm:text-sm relative">
+                    {getLocalizedDayName(day, dateFnsLocale)}
+                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
+                      {playerCount}
+                    </Badge>
+                    {matchCount > 0 && (
+                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-orange-400 dark:bg-orange-500 border border-background" />
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
 
         {undoStack.length > 0 && onUndo && (
           <Button
@@ -1259,6 +1306,7 @@ export default function ProposalScheduleGrid({
             <span className="text-muted-foreground text-[10px]">({undoStack[undoStack.length - 1].label})</span>
           </Button>
         )}
+        </div>
       </div>
 
       {/* Time-row × Trainer-column grid + Sidebar */}
@@ -1349,6 +1397,7 @@ export default function ProposalScheduleGrid({
                                 daySlots={daySlots}
                                 onMoveSlot={onMoveSlot}
                                 onDeleteSlot={onDeleteSlot}
+                                searchQuery={searchQuery}
                               />
                             ) : null}
                           </DroppableCell>
@@ -1369,7 +1418,7 @@ export default function ProposalScheduleGrid({
             )}>
               {sidebarOpen ? (
                 <Card className="h-[calc(100vh-200px)] flex flex-col">
-                  <div className="p-3 border-b border-border space-y-2">
+                  <div className="p-3 border-b border-border">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <UserCircle className="h-4 w-4 text-muted-foreground" />
@@ -1388,15 +1437,6 @@ export default function ProposalScheduleGrid({
                       >
                         <PanelRightClose className="h-3.5 w-3.5" />
                       </Button>
-                    </div>
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                      <Input
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder={t('proposals.searchPlayers', { defaultValue: 'Search...' })}
-                        className="h-7 text-xs pl-7"
-                      />
                     </div>
                   </div>
                   <DroppableUnplacedPool>
