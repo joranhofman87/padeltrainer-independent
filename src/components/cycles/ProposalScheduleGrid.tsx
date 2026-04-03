@@ -248,6 +248,8 @@ function SlotEditPopover({
   trainerAvailabilityWindows,
   selectedDay,
   daySlots,
+  allSlots,
+  availableDays,
   onMoveSlot,
   onDeleteSlot,
   onPlayerClick,
@@ -256,6 +258,8 @@ function SlotEditPopover({
   trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
   selectedDay: string;
   daySlots: SlotWithOccupancy[];
+  allSlots: SlotWithOccupancy[];
+  availableDays: string[];
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
   onPlayerClick?: (intakeRequestId: string) => void;
