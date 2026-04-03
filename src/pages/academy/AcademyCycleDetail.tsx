@@ -496,7 +496,7 @@ export default function AcademyCycleDetail() {
                     </>
                   )}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate(`/app/academy/cycles/${cycleId}?step=waitinglist` as any)}>
+                <DropdownMenuItem onClick={() => setActiveStep('waitinglist')}>
                   <Clock className="h-4 w-4 mr-2" />
                   {t('nav.waitingList', 'Waiting List')}
                 </DropdownMenuItem>
