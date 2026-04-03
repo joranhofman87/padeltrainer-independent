@@ -333,7 +333,7 @@ export default function AddIntakeRequestDialog({
                       <SelectContent>
                         {cycles.map((cycle) => (
                           <SelectItem key={cycle.id} value={cycle.id}>
-                            {cycle.name}
+                            {cycle.name}{cycle.location?.name ? ` — ${cycle.location.name}` : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>
