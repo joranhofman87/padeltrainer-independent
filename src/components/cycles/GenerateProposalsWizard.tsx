@@ -486,7 +486,7 @@ export function GenerateProposalsWizard({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {TIME_OPTIONS.map(t => (
+                          {TIME_OPTIONS_END.map(t => (
                             <SelectItem key={t} value={t}>{t}</SelectItem>
                           ))}
                         </SelectContent>
