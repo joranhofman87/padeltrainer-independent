@@ -1,35 +1,52 @@
 
 
-# Consolidate Proposal Info in Drawer
+# Fix: Stop Full Page Reload on Every Schedule Change
 
 ## Problem
-The drawer shows proposal-related content in two separate places — a "Decline proposal" button at the top and a full Proposal Card (with its own Approve/Reject/Reassign buttons) at the bottom. This is confusing and redundant.
+Every time you move a player, swap slots, or assign someone, the app makes **multiple full database round-trips** that cause the entire grid to re-render with a loading state:
+
+1. `movePlayerAssignment()` / `assignPlayerToSlot()` — writes to DB
+2. `getAvailableSlotsForCycle()` — re-fetches ALL slots from DB
+3. `refreshData()` — re-fetches the cycle AND all requests
+
+This triple hit causes the visible "reload" flicker after every drag-and-drop.
 
 ## Approach
-Merge everything into **one place**: keep the Proposal Card at the bottom as the single source of proposal info and actions. Remove the "Decline proposal" button from the top action bar.
+Apply **optimistic local state updates** for move/assign/swap actions. Update `scheduleSlots` in memory immediately, then sync to DB in the background. Only do a full refetch if the DB write fails (to rollback).
 
-The ProposalCard already has Approve, Reject (which declines), and Reassign — it's the complete set. We just need to make "Reject" clearer by relabeling it to "Decline proposal" so the intent is obvious.
+### For `onMovePlayer` (drag player between slots)
+- Move the assignment from source slot to target slot in `scheduleSlots` state immediately
+- Call `movePlayerAssignment()` in background
+- On error: rollback to previous state
 
-## Changes
+### For `onAssignPlayer` (assign from unplaced)
+- Add player to the target slot's `current_assignments` locally
+- Call `assignPlayerToSlot()` in background
+- Call `refreshData()` only on success (to update unplaced list), but **don't** re-fetch slots
 
-### `src/components/cycles/IntakeRequestDetailSheet.tsx`
-- **Remove** the `proposal && proposal.status === 'proposed'` branch (lines 273-284) from the top action bar — no more "Decline proposal" button at the top
-- The top action bar will always show the registration-level actions (Edit, Confirm, Waitlist, Reject) regardless of whether a proposal exists — these are about the registration, not the proposal
-- The bottom ProposalCard handles all proposal-specific actions
+### For `onUnassignPlayer` (remove from slot)
+- Remove from slot's `current_assignments` locally
+- Call `unassignPlayer()` in background
+- Call `refreshData()` only on success
 
-### `src/components/cycles/ProposalCard.tsx`
-- Rename the Reject button label from the X icon to "Decline proposal" text so it's clear what it does
-- Keep Approve and Reassign as they are
+### For `onMoveSlot` / `onSwapSlots`
+- Already handled well by the grid's drag logic — just stop calling `getAvailableSlotsForCycle` after the write. Update the slot times/positions locally instead.
+
+### For `onDeleteSlot`
+- Remove slot from local state immediately
+- Call `deleteSlot()` in background
+
+The key pattern: save previous state → update locally → write to DB → on error, restore previous state and show error toast.
 
 ## Result
-- **Top of drawer**: Edit + registration status actions (always the same)
-- **Bottom of drawer**: Proposal Card with Approve / Reassign / Decline proposal — one clear place for all proposal actions
-- No more duplication or confusion
+- Drag-and-drop feels instant — no loading spinner, no grid flash
+- DB writes happen silently in the background
+- Errors rollback the UI and show a toast
+- `refreshData()` is only called when the unplaced player list needs updating (assign/unassign)
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Remove "Decline proposal" from top action bar; always show registration actions |
-| `src/components/cycles/ProposalCard.tsx` | Rename Reject button to "Decline proposal" for clarity |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Replace refetch-after-write pattern with optimistic local state updates for all schedule handlers |
 
