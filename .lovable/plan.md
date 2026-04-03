@@ -1,54 +1,49 @@
 
 
-# Make Intake Requests Table Horizontally Scrollable + Column Visibility Toggle
+# Auto-Suggest Player Links from Notes
 
 ## Problem
-The table hides columns on smaller screens (`hidden md:table-cell`, `hidden lg:table-cell`, `hidden sm:table-cell`), and some data fields (phone, notes, sessions/week, preferred duration, birth date, location) are never shown at all.
+Players often write in their notes who they want to train with (e.g., "Ik wil graag samen met Angelique, Ingrid, en Christel"). Trainers currently have to read every note manually and then search for those players to link them. This is tedious with 77+ registrations.
+
+## Solution
+Add a "Suggested links" section in the `IntakeRequestDetailSheet`, between the Notes card and the "Samen trainen" (linked players) card. When a player has notes, we fuzzy-match names mentioned in the notes against all other registrations in the same cycle. Matches appear as clickable suggestions that can be linked with one click.
+
+## How it works
+
+1. **Name extraction + fuzzy matching** — For each request with notes, compare every other player's `full_name` against the notes text using a simple substring/token match:
+   - Split the other player's name into parts (first name, last name)
+   - Check if the last name (or a significant portion of the full name) appears in the notes text (case-insensitive)
+   - Require at least the last name to match (to avoid false positives on common first names like "Noor")
+   - Skip players already linked to this request
+
+2. **UI** — Show suggested matches as a highlighted card with a lightbulb icon:
+   - Each suggestion shows the player name + a "Link" button
+   - Clicking "Link" calls the existing `linkPlayers()` function
+   - A "Link all" button links all suggestions at once
+   - The section only appears when there are unlinked suggestions
+
+3. **No AI needed** — This is pure string matching. The notes are in Dutch but names are proper nouns, so direct substring matching works well. We normalize diacritics and case.
 
 ## Changes
 
-### `src/components/cycles/IntakeRequestsTable.tsx`
+### `src/components/cycles/IntakeRequestDetailSheet.tsx`
+- Add a `useMemo` that computes `suggestedLinks` by scanning `request.notes` against `allRequests[].full_name`
+- Render a "Suggested links" card above the existing "Samen trainen" card when suggestions exist
+- Each suggestion has a quick-link button that calls `handleLinkPlayer`
+- Add a "Link all suggested" button when there are multiple matches
 
-1. **Horizontal scroll**: Remove all `hidden md:table-cell` / `hidden lg:table-cell` / `hidden sm:table-cell` responsive hiding classes. Wrap the table in a container with `overflow-x-auto` so all columns are always rendered and the user scrolls horizontally on smaller screens.
+### Matching logic (inside the component)
+```text
+For each otherRequest in allRequests (same cycle, not self, not already linked):
+  - Normalize notes and otherRequest.full_name (lowercase, remove diacritics)
+  - Split full_name into tokens
+  - If the last name token (≥3 chars) appears in normalized notes → suggest
+  - If 2+ name tokens appear in notes → also suggest (handles partial names)
+```
 
-2. **Column visibility dropdown**: Add a `DropdownMenu` button (using the existing `Settings2` or `Columns` icon) above/beside the table that lists all available columns with checkboxes. Store visible columns in component state (default: current columns visible). When unchecked, the column header and cells are not rendered.
-
-3. **Add missing data columns** (hidden by default):
-   - Phone
-   - Sessions/week
-   - Duration (preferred_duration_minutes)
-   - Birth date
-   - Notes
-   - Location
-
-### Column list with defaults
-
-| Column | Default visible |
-|--------|----------------|
-| Player | Yes (always, not toggleable) |
-| Lesson Type | Yes |
-| Rating | Yes |
-| Availability | Yes |
-| Pref. Trainer | Yes |
-| Status | Yes |
-| Linked | Yes |
-| Proposed Assignments | Yes |
-| Applied | Yes |
-| Phone | No |
-| Sessions/week | No |
-| Duration | No |
-| Birth date | No |
-| Notes | No |
-
-### Implementation
-- Use `useState` with a `Set<string>` of visible column keys
-- Persist preference in `localStorage` under a key like `intake-table-columns`
-- Render column toggle as a `DropdownMenu` with `DropdownMenuCheckboxItem` for each column
-- Place the toggle button in a small toolbar row above the table (or pass it up to the parent — but keeping it self-contained in the component is simpler)
-
-### Files changed
+## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/IntakeRequestsTable.tsx` | Add horizontal scroll, column visibility toggle, new optional columns |
+| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Add suggested links section with fuzzy name matching |
 
