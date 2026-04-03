@@ -288,19 +288,13 @@ export default function TrainerIntakeRequests() {
 
       {/* Workflow Steps (always visible, includes cycle selector as step 1) */}
       <ProposalWorkflowSteps
-        cycles={cycles}
-        selectedCycleId={selectedCycleId}
-        onCycleChange={handleCycleChange}
+        activeStep={proposedCount > 0 ? 'review-edit' : (selectedCycleId !== 'all' ? 'generate' : 'registrations')}
+        onStepClick={() => {}}
+        registrationsCount={allCount}
+        pendingLinkActions={0}
         newCount={newCount}
         proposedCount={proposedCount}
         confirmedCount={confirmedCount}
-        onGenerate={() => setShowWizard(true)}
-        onApproveAll={() => {}}
-        onReset={() => setShowResetConfirm(true)}
-        onAddManual={() => setShowAddDialog(true)}
-        onShowOverview={() => navigate('/app/trainer/intake-requests/overview', { state: { slots: scheduleSlots, cycleId: selectedCycleId, backPath: '/app/trainer/intake-requests' } })}
-        isGenerating={isGenerating}
-        isResetting={isResetting}
       />
 
       {/* Status Filter Tabs + View Toggle */}

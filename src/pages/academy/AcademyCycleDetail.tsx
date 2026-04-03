@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { format, differenceInWeeks } from 'date-fns';
+import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,14 +31,15 @@ import {
   UserPlus,
   Download,
   Settings,
-  Users,
-  ClipboardList,
+  Sparkles,
+  RotateCcw,
+  Eye,
+  Clock,
 } from 'lucide-react';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getMarketingUrl } from '@/lib/domains';
 import {
   getCycle,
-  getCycles,
   getIntakeRequestsWithProposals,
   getAvailableSlotsForCycle,
   generateProposals,
@@ -62,7 +64,7 @@ import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
-import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
+import ProposalWorkflowSteps, { type WorkflowStep } from '@/components/cycles/ProposalWorkflowSteps';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import CycleForm from '@/components/cycles/CycleForm';
 import WaitingListTable from '@/components/waitingList/WaitingListTable';
@@ -79,10 +81,12 @@ export default function AcademyCycleDetail() {
   const { activeAcademy } = useAcademyContext();
   const locale = i18n.language === 'nl' ? nl : enUS;
 
-  // Active tab from URL
-  const activeTab = searchParams.get('tab') || 'registrations';
-  const setActiveTab = (tab: string) => {
-    setSearchParams({ tab }, { replace: true });
+  // Active step from URL
+  const rawStep = searchParams.get('step') || 'registrations';
+  const activeStep: WorkflowStep = (['registrations', 'review-links', 'generate', 'review-edit', 'approve'].includes(rawStep) ? rawStep : 'registrations') as WorkflowStep;
+  const isWaitingList = rawStep === 'waitinglist';
+  const setActiveStep = (step: string) => {
+    setSearchParams({ step }, { replace: true });
   };
 
   // Data state
@@ -100,8 +104,9 @@ export default function AcademyCycleDetail() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
-  // Settings tab data
+  // Settings data
   const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string; city: string }[]>([]);
   const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
@@ -203,23 +208,16 @@ export default function AcademyCycleDetail() {
     setFilteredRequests(filtered);
   }, [requests, statusFilter]);
 
-  // Load schedule slots when in schedule view OR on proposals tab
+  // Load schedule slots when needed
   useEffect(() => {
-    if ((viewMode === 'schedule' || activeTab === 'proposals') && cycleId) {
+    if ((viewMode === 'schedule' || activeStep === 'review-edit' || activeStep === 'approve') && cycleId) {
       getAvailableSlotsForCycle(cycleId)
         .then(setScheduleSlots)
         .catch(() => setScheduleSlots([]));
     } else {
       setScheduleSlots([]);
     }
-  }, [viewMode, activeTab, cycleId, requests]);
-
-  // Auto-switch to schedule view when viewing proposals
-  useEffect(() => {
-    if (statusFilter === 'proposed' && filteredRequests.some(r => r.status === 'proposed')) {
-      setViewMode('schedule');
-    }
-  }, [statusFilter, filteredRequests]);
+  }, [viewMode, activeStep, cycleId, requests]);
 
   // Counts
   const allCount = requests.length;
@@ -228,7 +226,7 @@ export default function AcademyCycleDetail() {
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
   const confirmedCount = requests.filter(r => r.status === 'confirmed').length;
 
-  // Compute pending link actions for the workflow step
+  // Pending link actions
   const pendingLinkActions = useMemo(() => {
     const dismissed = getDismissedSuggestions();
     const dismissedUn = getDismissedUnmatched();
@@ -285,6 +283,7 @@ export default function AcademyCycleDetail() {
         toast.success(t('proposals.generated', { count: result.generated }));
       }
       setShowWizard(false);
+      setActiveStep('review-edit');
       refreshData();
     } catch (error: any) {
       toast.error(error.message);
@@ -300,6 +299,7 @@ export default function AcademyCycleDetail() {
       const result = await resetProposals(cycleId);
       toast.success(t('proposals.resetSuccess', { count: result.reset, defaultValue: `Reset ${result.reset} proposals` }));
       setShowResetConfirm(false);
+      setActiveStep('generate');
       refreshData();
     } catch (error: any) {
       toast.error(error.message);
@@ -343,6 +343,81 @@ export default function AcademyCycleDetail() {
         {t(`status.${status}`)}
       </Badge>
     );
+  };
+
+  // Schedule grid event handlers (shared between steps)
+  const scheduleGridHandlers = {
+    onPlayerClick: (intakeRequestId: string) => {
+      const req = requests.find(r => r.id === intakeRequestId);
+      if (req) setSelectedRequest(req);
+    },
+    onMovePlayer: async (assignmentId: string, newSlotId: string) => {
+      try {
+        await movePlayerAssignment(assignmentId, newSlotId);
+        toast.success(t('proposals.playerMoved', 'Player moved successfully'));
+        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
+        setScheduleSlots(updatedSlots);
+      } catch (error: any) {
+        toast.error(error.message);
+      }
+    },
+    onMoveSlot: async (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => {
+      try {
+        await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
+        toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
+        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
+        setScheduleSlots(updatedSlots);
+      } catch (error: any) {
+        toast.error(error.message);
+      }
+    },
+    onSwapSlots: async (slotAId: string, slotATrainer: string, slotAStart: string, slotAEnd: string, slotBId: string, slotBTrainer: string, slotBStart: string, slotBEnd: string) => {
+      try {
+        await swapSlots(slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd);
+        toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
+        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
+        setScheduleSlots(updatedSlots);
+      } catch (error: any) {
+        toast.error(error.message);
+      }
+    },
+    onDeleteSlot: async (slotId: string) => {
+      try {
+        await deleteSlot(slotId);
+        toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
+        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
+        setScheduleSlots(updatedSlots);
+        refreshData();
+      } catch (error: any) {
+        toast.error(error.message);
+      }
+    },
+    onUndo: (previousSlots: SlotWithOccupancy[]) => {
+      setScheduleSlots(previousSlots);
+      toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
+    },
+    onAssignPlayer: async (intakeRequestId: string, slotId: string) => {
+      try {
+        await assignPlayerToSlot(intakeRequestId, slotId);
+        toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
+        refreshData();
+        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
+        setScheduleSlots(updatedSlots);
+      } catch (error: any) {
+        toast.error(error.message);
+      }
+    },
+    onUnassignPlayer: async (assignmentId: string) => {
+      try {
+        await unassignPlayer(assignmentId);
+        toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
+        refreshData();
+        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
+        setScheduleSlots(updatedSlots);
+      } catch (error: any) {
+        toast.error(error.message);
+      }
+    },
   };
 
   if (isLoading) {
@@ -393,6 +468,9 @@ export default function AcademyCycleDetail() {
               <ExternalLink className="h-4 w-4 mr-1" />
               {t('actions.shareLink')}
             </Button>
+            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setShowSettings(true)}>
+              <Settings className="h-4 w-4" />
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" className="h-9 w-9">
@@ -418,37 +496,33 @@ export default function AcademyCycleDetail() {
                     </>
                   )}
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setActiveStep('waitinglist')}>
+                  <Clock className="h-4 w-4 mr-2" />
+                  {t('nav.waitingList', 'Waiting List')}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="registrations">
-            <Users className="h-4 w-4 mr-1.5" />
-            {t('nav.registrations', 'Registrations')}
-            {allCount > 0 && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{allCount}</Badge>}
-          </TabsTrigger>
-          <TabsTrigger value="proposals">
-            <ClipboardList className="h-4 w-4 mr-1.5" />
-            {t('nav.proposals', 'Proposals')}
-          </TabsTrigger>
-          <TabsTrigger value="settings">
-            <Settings className="h-4 w-4 mr-1.5" />
-            {t('nav.settings', 'Settings')}
-          </TabsTrigger>
-          <TabsTrigger value="waitinglist">
-            <CalendarDays className="h-4 w-4 mr-1.5" />
-            {t('nav.waitingList', 'Waiting List')}
-          </TabsTrigger>
-        </TabsList>
+      {/* Workflow Steps Navigation */}
+      {!isWaitingList && (
+        <ProposalWorkflowSteps
+          activeStep={activeStep as WorkflowStep}
+          onStepClick={setActiveStep}
+          registrationsCount={allCount}
+          pendingLinkActions={pendingLinkActions}
+          newCount={newCount}
+          proposedCount={proposedCount}
+          confirmedCount={confirmedCount}
+        />
+      )}
 
-        {/* ==================== REGISTRATIONS TAB ==================== */}
-        <TabsContent value="registrations" className="space-y-4">
-          {/* Status Filter Tabs + View Toggle */}
+      {/* ==================== STEP 1: REGISTRATIONS ==================== */}
+      {activeStep === 'registrations' && (
+        <div className="space-y-4">
+          {/* Status Filter + Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
@@ -534,7 +608,7 @@ export default function AcademyCycleDetail() {
             </Alert>
           )}
 
-          {/* Requests Table or Schedule Grid */}
+          {/* Table or Schedule */}
           {viewMode === 'list' ? (
             <IntakeRequestsTable
               requests={filteredRequests}
@@ -549,226 +623,154 @@ export default function AcademyCycleDetail() {
             <ProposalScheduleGrid
               slots={scheduleSlots}
               trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
-              onPlayerClick={(intakeRequestId) => {
-                const req = requests.find(r => r.id === intakeRequestId);
-                if (req) setSelectedRequest(req);
-              }}
-              onMovePlayer={async (assignmentId, newSlotId) => {
-                try {
-                  await movePlayerAssignment(assignmentId, newSlotId);
-                  toast.success(t('proposals.playerMoved', 'Player moved successfully'));
-                  const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                  setScheduleSlots(updatedSlots);
-                } catch (error: any) {
-                  toast.error(error.message);
-                }
-              }}
-              onMoveSlot={async (slotId, newTrainerId, newStartTime, newEndTime) => {
-                try {
-                  await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
-                  toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
-                  const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                  setScheduleSlots(updatedSlots);
-                } catch (error: any) {
-                  toast.error(error.message);
-                }
-              }}
-              onSwapSlots={async (slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd) => {
-                try {
-                  await swapSlots(slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd);
-                  toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
-                  const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                  setScheduleSlots(updatedSlots);
-                } catch (error: any) {
-                  toast.error(error.message);
-                }
-              }}
-              onDeleteSlot={async (slotId) => {
-                try {
-                  await deleteSlot(slotId);
-                  toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
-                  const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                  setScheduleSlots(updatedSlots);
-                  refreshData();
-                } catch (error: any) {
-                  toast.error(error.message);
-                }
-              }}
-              onUndo={(previousSlots) => {
-                setScheduleSlots(previousSlots);
-                toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
-              }}
+              {...scheduleGridHandlers}
               unplacedPlayers={unplacedPlayers}
-              onAssignPlayer={async (intakeRequestId, slotId) => {
-                try {
-                  await assignPlayerToSlot(intakeRequestId, slotId);
-                  toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
-                  refreshData();
-                  const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                  setScheduleSlots(updatedSlots);
-                } catch (error: any) {
-                  toast.error(error.message);
-                }
-              }}
-              onUnassignPlayer={async (assignmentId) => {
-                try {
-                  await unassignPlayer(assignmentId);
-                  toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
-                  refreshData();
-                  const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                  setScheduleSlots(updatedSlots);
-                } catch (error: any) {
-                  toast.error(error.message);
-                }
-              }}
             />
           )}
-        </TabsContent>
+        </div>
+      )}
 
-        {/* ==================== PROPOSALS TAB ==================== */}
-        <TabsContent value="proposals" className="space-y-6">
-          <ProposalWorkflowSteps
-            cycles={[cycle]}
-            selectedCycleId={cycle.id}
-            onCycleChange={() => {}}
-            newCount={newCount}
-            proposedCount={proposedCount}
-            confirmedCount={confirmedCount}
-            onGenerate={() => setShowWizard(true)}
-            onApproveAll={() => {}}
-            onReset={() => setShowResetConfirm(true)}
-            onAddManual={() => setShowAddDialog(true)}
-            onShowOverview={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?tab=proposals` } })}
-            isGenerating={isGenerating}
-            isResetting={isResetting}
-            hideCycleSelector
-            pendingLinkActions={pendingLinkActions}
-            isLinksReviewed={pendingLinkActions === 0}
+      {/* ==================== STEP 2: REVIEW LINKS ==================== */}
+      {activeStep === 'review-links' && (
+        <div className="space-y-4">
+          <PreGenerationReview
+            requests={requests}
+            playerLinks={playerLinksData}
+            onLinkChanged={refreshData}
+            onPlayerClick={(requestId) => {
+              const req = requests.find(r => r.id === requestId);
+              if (req) setSelectedRequest(req);
+            }}
           />
-
-          {/* Pre-generation review: show when there are new requests */}
-          {newCount > 0 && (
-            <PreGenerationReview
-              requests={requests}
-              playerLinks={playerLinksData}
-              onLinkChanged={refreshData}
-              onPlayerClick={(requestId) => {
-                const req = requests.find(r => r.id === requestId);
-                if (req) setSelectedRequest(req);
-              }}
-            />
+          {pendingLinkActions === 0 && (
+            <div className="flex justify-end">
+              <Button onClick={() => setActiveStep('generate')}>
+                {t('workflow.continueToGenerate', { defaultValue: 'Continue to Generate' })}
+              </Button>
+            </div>
           )}
+        </div>
+      )}
 
-          {/* Inline schedule grid for proposals */}
-          {proposedCount > 0 && (
-            <div className="space-y-3">
+      {/* ==================== STEP 3: GENERATE ==================== */}
+      {activeStep === 'generate' && (
+        <div className="space-y-4">
+          {proposedCount > 0 ? (
+            <div className="text-center py-8 space-y-3">
+              <p className="text-muted-foreground">
+                {t('workflow.alreadyGenerated', { defaultValue: 'Proposals have been generated. You can review them or reset to regenerate.' })}
+              </p>
+              <div className="flex gap-2 justify-center">
+                <Button variant="outline" onClick={() => setShowResetConfirm(true)}>
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  {t('proposals.reset', { defaultValue: 'Reset' })}
+                </Button>
+                <Button onClick={() => setActiveStep('review-edit')}>
+                  <Eye className="h-4 w-4 mr-1" />
+                  {t('workflow.continueToReview', { defaultValue: 'Review proposals' })}
+                </Button>
+              </div>
+            </div>
+          ) : newCount === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">
+                {t('workflow.noNewRequests', { defaultValue: 'No new requests to generate proposals for.' })}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <p className="text-muted-foreground text-center max-w-md">
+                {t('workflow.generateIntro', { defaultValue: 'Generate proposals for {{count}} registrations. Configure matching preferences in the wizard.', count: newCount })}
+              </p>
+              <Button size="lg" onClick={() => setShowWizard(true)}>
+                <Sparkles className="h-4 w-4 mr-2" />
+                {t('proposals.generateAll', { defaultValue: 'Generate proposals' })}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== STEP 4: REVIEW & EDIT ==================== */}
+      {activeStep === 'review-edit' && (
+        <div className="space-y-4">
+          {proposedCount > 0 ? (
+            <>
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">{t('proposals.schedulePreview', 'Schedule Preview')}</h3>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowResetConfirm(true)}>
+                    <RotateCcw className="h-4 w-4 mr-1" />
+                    {t('proposals.reset', { defaultValue: 'Reset' })}
+                  </Button>
+                  <Button size="sm" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve` } })}>
+                    <Eye className="h-4 w-4 mr-1" />
+                    {t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
+                  </Button>
+                </div>
               </div>
               <ProposalScheduleGrid
                 slots={scheduleSlots}
                 trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
-                onPlayerClick={(intakeRequestId) => {
-                  const req = requests.find(r => r.id === intakeRequestId);
-                  if (req) setSelectedRequest(req);
-                }}
-                onMovePlayer={async (assignmentId, newSlotId) => {
-                  try {
-                    await movePlayerAssignment(assignmentId, newSlotId);
-                    toast.success(t('proposals.playerMoved', 'Player moved successfully'));
-                    const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                    setScheduleSlots(updatedSlots);
-                  } catch (error: any) {
-                    toast.error(error.message);
-                  }
-                }}
-                onMoveSlot={async (slotId, newTrainerId, newStartTime, newEndTime) => {
-                  try {
-                    await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
-                    toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
-                    const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                    setScheduleSlots(updatedSlots);
-                  } catch (error: any) {
-                    toast.error(error.message);
-                  }
-                }}
-                onSwapSlots={async (slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd) => {
-                  try {
-                    await swapSlots(slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd);
-                    toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
-                    const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                    setScheduleSlots(updatedSlots);
-                  } catch (error: any) {
-                    toast.error(error.message);
-                  }
-                }}
-                onDeleteSlot={async (slotId) => {
-                  try {
-                    await deleteSlot(slotId);
-                    toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
-                    const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                    setScheduleSlots(updatedSlots);
-                    refreshData();
-                  } catch (error: any) {
-                    toast.error(error.message);
-                  }
-                }}
-                onUndo={(previousSlots) => {
-                  setScheduleSlots(previousSlots);
-                }}
+                {...scheduleGridHandlers}
                 unplacedPlayers={unplacedPlayers}
-                onAssignPlayer={async (intakeRequestId, slotId) => {
-                  try {
-                    await assignPlayerToSlot(intakeRequestId, slotId);
-                    toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
-                    refreshData();
-                    const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                    setScheduleSlots(updatedSlots);
-                  } catch (error: any) {
-                    toast.error(error.message);
-                  }
-                }}
-                onUnassignPlayer={async (assignmentId) => {
-                  try {
-                    await unassignPlayer(assignmentId);
-                    toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
-                    refreshData();
-                    const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-                    setScheduleSlots(updatedSlots);
-                  } catch (error: any) {
-                    toast.error(error.message);
-                  }
-                }}
               />
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">
+                {t('workflow.noProposalsYet', { defaultValue: 'No proposals generated yet. Go back to the Generate step.' })}
+              </p>
+              <Button variant="outline" className="mt-3" onClick={() => setActiveStep('generate')}>
+                {t('workflow.backToGenerate', { defaultValue: 'Back to Generate' })}
+              </Button>
             </div>
           )}
-        </TabsContent>
+        </div>
+      )}
 
-        {/* ==================== SETTINGS TAB ==================== */}
-        <TabsContent value="settings">
-          <div className="max-w-2xl">
-            <CycleForm
-              cycle={cycle}
-              ownerType="academy"
-              ownerId={activeAcademy!.id}
-              onSuccess={() => {
-                toast.success(t('common:saved', 'Saved'));
-                fetchCycle();
-              }}
-              onCancel={() => setActiveTab('registrations')}
-              formType={cycle.type === 'event' ? 'event' : 'registration'}
-              locations={locations}
-              trainers={trainers}
-              trainerLocationMap={trainerLocationMap}
-            />
+      {/* ==================== STEP 5: APPROVE & BOOK ==================== */}
+      {activeStep === 'approve' && (
+        <div className="space-y-4">
+          {proposedCount > 0 || confirmedCount > 0 ? (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <p className="text-muted-foreground text-center max-w-md">
+                {confirmedCount > 0
+                  ? t('workflow.approvedSummary', { defaultValue: '{{count}} bookings confirmed.', count: confirmedCount })
+                  : t('workflow.approveIntro', { defaultValue: 'Review the overview and approve proposals to create bookings.' })
+                }
+              </p>
+              <Button size="lg" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve` } })}>
+                <Eye className="h-4 w-4 mr-2" />
+                {t('workflow.viewOverview', { defaultValue: 'View overview' })}
+              </Button>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">
+                {t('workflow.noProposalsYet', { defaultValue: 'No proposals generated yet. Go back to the Generate step.' })}
+              </p>
+              <Button variant="outline" className="mt-3" onClick={() => setActiveStep('generate')}>
+                {t('workflow.backToGenerate', { defaultValue: 'Back to Generate' })}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== WAITING LIST (secondary) ==================== */}
+      {isWaitingList && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">{t('nav.waitingList', 'Waiting List')}</h3>
+            <Button variant="outline" size="sm" onClick={() => setActiveStep('registrations')}>
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              {t('workflow.backToWorkflow', { defaultValue: 'Back to workflow' })}
+            </Button>
           </div>
-        </TabsContent>
-
-        {/* ==================== WAITING LIST TAB ==================== */}
-        <TabsContent value="waitinglist">
           <WaitingListTable ownerType="academy" ownerId={activeAcademy!.id} />
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
 
       {/* Detail Sheet */}
       <IntakeRequestDetailSheet
@@ -806,6 +808,32 @@ export default function AcademyCycleDetail() {
           refreshData();
         }}
       />
+
+      {/* Settings Sheet */}
+      <Sheet open={showSettings} onOpenChange={setShowSettings}>
+        <SheetContent side="right" className="sm:max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{t('nav.settings', 'Settings')}</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6">
+            <CycleForm
+              cycle={cycle}
+              ownerType="academy"
+              ownerId={activeAcademy!.id}
+              onSuccess={() => {
+                toast.success(t('common:saved', 'Saved'));
+                fetchCycle();
+                setShowSettings(false);
+              }}
+              onCancel={() => setShowSettings(false)}
+              formType={cycle.type === 'event' ? 'event' : 'registration'}
+              locations={locations}
+              trainers={trainers}
+              trainerLocationMap={trainerLocationMap}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Reset Proposals Confirmation */}
       <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
