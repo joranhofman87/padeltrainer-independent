@@ -137,10 +137,10 @@ export default function ProposalOverviewPage() {
         groupMap.set(slot.trainer_id, group);
       }
 
-      const dateKey = getDateKey(slot.start_time);
+      const dateKey = getDateKey(slot.start_time, tz);
       let day = group.days.get(dateKey);
       if (!day) {
-        day = { label: formatDayLabel(slot.start_time, i18n.language), slots: [] };
+        day = { label: formatDayLabel(slot.start_time, i18n.language, tz), slots: [] };
         group.days.set(dateKey, day);
       }
       day.slots.push(slot);
