@@ -152,6 +152,8 @@ export default function IntakeRequestDetailSheet({
     const normalizedNotes = normalize(request.notes);
     const alreadyLinkedIds = new Set([request.id, ...linkedRequestIds]);
     
+    const particles = new Set(['van', 'de', 'den', 'der', 'het', 'ter', 'ten', 'een']);
+    
     return allRequests.filter(other => {
       if (other.cycle_id !== request.cycle_id) return false;
       if (alreadyLinkedIds.has(other.id)) return false;
@@ -159,13 +161,10 @@ export default function IntakeRequestDetailSheet({
       const tokens = normalize(other.full_name).split(/\s+/).filter(t => t.length >= 2);
       if (tokens.length === 0) return false;
       
-      const lastName = tokens[tokens.length - 1];
-      if (lastName.length >= 3 && normalizedNotes.includes(lastName)) return true;
+      const significantTokens = tokens.filter(t => !particles.has(t));
+      if (significantTokens.length === 0) return false;
       
-      const matchCount = tokens.filter(t => normalizedNotes.includes(t)).length;
-      if (matchCount >= 2) return true;
-      
-      return false;
+      return significantTokens.every(t => t.length >= 3 && normalizedNotes.includes(t));
     });
   }, [request, allRequests, linkedRequestIds]);
 
