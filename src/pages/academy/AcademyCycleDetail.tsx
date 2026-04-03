@@ -672,17 +672,16 @@ export default function AcademyCycleDetail() {
                 {t('workflow.noNewRequests', { defaultValue: 'No new requests to generate proposals for.' })}
               </p>
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <p className="text-muted-foreground text-center max-w-md">
-                {t('workflow.generateIntro', { defaultValue: 'Generate proposals for {{count}} registrations. Configure matching preferences in the wizard.', count: newCount })}
-              </p>
-              <Button size="lg" onClick={() => setShowWizard(true)}>
-                <Sparkles className="h-4 w-4 mr-2" />
-                {t('proposals.generateAll', { defaultValue: 'Generate proposals' })}
-              </Button>
-            </div>
-          )}
+          ) : cycle ? (
+            <GenerateProposalsWizard
+              inline
+              cycle={cycle}
+              onGenerate={handleGenerateProposals}
+              isGenerating={isGenerating}
+              ownerType="academy"
+              ownerId={activeAcademy!.id}
+            />
+          ) : null}
         </div>
       )}
 
