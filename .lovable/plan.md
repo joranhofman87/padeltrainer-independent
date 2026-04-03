@@ -1,61 +1,49 @@
 
 
-# Timezone Setting for Academies & Trainers
+# Auto-Detect Timezone on Signup
 
 ## Problem
-The edge function creates slots using `setHours()` in UTC. A trainer in Amsterdam (UTC+2) setting 18:00 gets slots stored as `18:00 UTC`, which displays as `20:00` locally — or conversely, slots appear at midnight when they shouldn't. There's no timezone setting anywhere in the system; `Europe/Amsterdam` is hardcoded only in the Google Calendar sync.
+Trainers and academy owners currently default to `Europe/Amsterdam`. If they sign up from a different timezone, they'd need to manually go to settings to change it. We want to capture their browser timezone at signup and save it automatically.
 
 ## Approach
+Detect the browser timezone via `Intl.DateTimeFormat().resolvedOptions().timeZone` at signup time and pass it through to the profile creation code. The timezone is set once on signup and never auto-changed again — users can update it manually in settings.
 
-### 1. Database: Add `timezone` column to both `trainer_profiles` and `academy_profiles`
-- `ALTER TABLE trainer_profiles ADD COLUMN timezone text NOT NULL DEFAULT 'Europe/Amsterdam';`
-- `ALTER TABLE academy_profiles ADD COLUMN timezone text NOT NULL DEFAULT 'Europe/Amsterdam';`
-- Default to `Europe/Amsterdam` since this is a Dutch padel platform
+## Changes
 
-### 2. Settings UI: Add timezone picker
-- **Trainer Settings** (`TrainerSettings.tsx`): Add a timezone selector card (similar to the language card) with common European timezones + a full IANA list
-- **Academy Settings** (`AcademySettings.tsx`): Same timezone picker for the academy level
+### 1. `src/lib/auth.ts` — Accept `timezone` param in `signUpWithEmail` and `setUserRole`
+- Add `timezone` parameter to `signUpWithEmail()`, pass it to the `signup-user` edge function body
+- Add `timezone` parameter to `setUserRole()`. When creating `trainer_profiles`, include the timezone value (falling back to `'Europe/Amsterdam'`)
 
-Common options shown first: `Europe/Amsterdam`, `Europe/London`, `Europe/Madrid`, `Europe/Berlin`, `Europe/Paris`, `Europe/Rome`, `America/New_York`, etc. Full list available via search.
+### 2. `supabase/functions/signup-user/index.ts` — Save timezone on profile creation
+- Accept `timezone` from the request body
+- After user creation, include `timezone` in the `profiles` table update (alongside `phone`, `preferred_language`, `stripe_customer_id`)
 
-### 3. Generate Proposals: Use timezone for slot creation
-- **`src/lib/cycles.ts`**: Pass `timezone` to the edge function (fetch from trainer/academy profile)
-- **`src/components/cycles/GenerateProposalsWizard.tsx`**: Fetch and pass the timezone
-- **`supabase/functions/generate-proposals/index.ts`**: Accept `timezone` param. Instead of `setHours(h, m)` (which is UTC), compute the UTC offset for the target timezone on that specific date (handles DST), then store `(localHour - offset)` as UTC. This way `18:00 Amsterdam` stores as `16:00 UTC` in summer, `17:00 UTC` in winter.
+### 3. Signup pages — Detect and pass browser timezone
+- **`src/pages/TrainerSignup.tsx`** (or equivalent), **`src/pages/AcademySignup.tsx`**, **`src/pages/PlayerSignup.tsx`**, **`src/pages/ClubSignup.tsx`**: Detect `Intl.DateTimeFormat().resolvedOptions().timeZone` and pass it to `signUpWithEmail()`
 
-### 4. Display: Consistent timezone-aware formatting
-- **`src/pages/ProposalOverviewPage.tsx`**: Update `formatTime()` and `formatDayLabel()` to accept and use the cycle's timezone via `toLocaleTimeString([], { timeZone })`. This ensures times display correctly regardless of the viewer's local timezone.
-- Same approach for any other place that renders slot times from proposals.
+### 4. `src/lib/academy.ts` — `createAcademy()`: Include timezone
+- When inserting into `academy_profiles`, detect and include the browser timezone
 
-### 5. Player-facing clarity
-- On registration forms and booking confirmations, display the timezone label next to times (e.g. "18:00 CET" or "18:00 (Amsterdam time)")
+### 5. `src/pages/TrainerOnboarding.tsx` — Set timezone on trainer profile
+- When `setUserRole` is called during onboarding, pass the detected browser timezone
 
-## Technical Detail: UTC Offset Calculation in Edge Function
+## Database
+No migration needed — the `timezone` column already exists on both `trainer_profiles` and `academy_profiles` with a default of `'Europe/Amsterdam'`. We also don't need a `timezone` column on `profiles` since it's role-specific.
 
-```typescript
-// Get UTC offset for a timezone on a specific date
-function getTimezoneOffsetMinutes(date: Date, tz: string): number {
-  const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
-  const tzStr = date.toLocaleString('en-US', { timeZone: tz });
-  return (new Date(utcStr).getTime() - new Date(tzStr).getTime()) / 60000;
-}
-
-// When creating a slot at localHour:localMin in target timezone:
-const offsetMin = getTimezoneOffsetMinutes(currentDate, timezone);
-startDateTime.setUTCHours(localHour, localMin + offsetMin, 0, 0);
-```
-
-This handles DST automatically — the offset is calculated per-date.
+## Result
+- New trainers get their timezone auto-detected from the browser at signup
+- New academies get their timezone auto-detected when the academy is created
+- The value is set once and never changed automatically
+- Users can always override it in Settings
 
 ## Files
 
 | File | Change |
 |------|--------|
-| Migration | Add `timezone` column to `trainer_profiles` and `academy_profiles` |
-| `src/pages/TrainerSettings.tsx` | Add timezone picker card |
-| `src/pages/academy/AcademySettings.tsx` | Add timezone picker card |
-| `src/lib/cycles.ts` | Fetch timezone from profile, pass to edge function |
-| `src/components/cycles/GenerateProposalsWizard.tsx` | Include timezone in generation config |
-| `supabase/functions/generate-proposals/index.ts` | Accept timezone, apply offset when creating slot times |
-| `src/pages/ProposalOverviewPage.tsx` | Use timezone-aware formatting for slot display |
+| `src/lib/auth.ts` | Add `timezone` param to `signUpWithEmail` and `setUserRole` |
+| `src/pages/TrainerOnboarding.tsx` | Pass detected timezone to `setUserRole` |
+| `src/lib/academy.ts` | Include detected timezone in `createAcademy` insert |
+| `src/pages/AcademySignup.tsx` | Detect and pass timezone |
+| `src/pages/PlayerSignup.tsx` | Detect and pass timezone (for future use) |
+| `src/pages/ClubSignup.tsx` | Detect and pass timezone (for future use) |
 
