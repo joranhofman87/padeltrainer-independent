@@ -397,29 +397,37 @@ export default function AcademyCycleDetail() {
       }
     },
     onMoveSlot: async (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => {
-      const prev = [...scheduleSlots];
+      const prev = deepCloneSlots();
       setScheduleSlots(slots => slots.map(s => s.id === slotId ? { ...s, trainer_id: newTrainerId, start_time: newStartTime, end_time: newEndTime } : s));
+      pendingMutationsRef.current++;
       try {
         await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
         toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
+      } finally {
+        pendingMutationsRef.current--;
+        safeInvalidateSlots();
       }
     },
     onSwapSlots: async (slotAId: string, slotATrainer: string, slotAStart: string, slotAEnd: string, slotBId: string, slotBTrainer: string, slotBStart: string, slotBEnd: string) => {
-      const prev = [...scheduleSlots];
+      const prev = deepCloneSlots();
       setScheduleSlots(slots => slots.map(s => {
         if (s.id === slotAId) return { ...s, trainer_id: slotATrainer, start_time: slotAStart, end_time: slotAEnd };
         if (s.id === slotBId) return { ...s, trainer_id: slotBTrainer, start_time: slotBStart, end_time: slotBEnd };
         return s;
       }));
+      pendingMutationsRef.current++;
       try {
         await swapSlots(slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd);
         toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
+      } finally {
+        pendingMutationsRef.current--;
+        safeInvalidateSlots();
       }
     },
     onDeleteSlot: async (slotId: string) => {
