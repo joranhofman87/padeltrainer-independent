@@ -624,7 +624,7 @@ export default function IntakeRequestsTable({
                   {isVisible('status') && <TableHead>{t('intakeRequests.table.status')}</TableHead>}
                   {isVisible('linked') && <SortableTableHead sortKey="_isLinked" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' })}</SortableTableHead>}
                   {isVisible('proposal') && <TableHead>{t('proposals.title')}</TableHead>}
-                  {isVisible('applied') && <TableHead>{t('intakeRequests.table.applied')}</TableHead>}
+                  {isVisible('applied') && <SortableTableHead sortKey="created_at" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.table.applied')}</SortableTableHead>}
                   {isVisible('phone') && <TableHead>{t('intakeRequests.table.phone', { defaultValue: 'Phone' })}</TableHead>}
                   {isVisible('sessionsPerWeek') && <TableHead>{t('intakeRequests.table.sessionsPerWeek', { defaultValue: 'Sessions/wk' })}</TableHead>}
                   {isVisible('duration') && <TableHead>{t('intakeRequests.table.duration', { defaultValue: 'Duration' })}</TableHead>}
