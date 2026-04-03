@@ -170,12 +170,4 @@ export function getUnmatchedMentions(
 
   return unmatched;
 }
-  requestId: string,
-  playerLinks: PlayerLink[],
-): string[] {
-  const link = playerLinks.find(pl => pl.intake_request_id === requestId);
-  if (!link) return [];
-  return playerLinks
-    .filter(pl => pl.link_group === link.link_group && pl.intake_request_id !== requestId)
-    .map(pl => pl.intake_request_id);
 }
