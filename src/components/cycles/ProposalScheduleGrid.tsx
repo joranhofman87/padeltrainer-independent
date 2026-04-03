@@ -1623,7 +1623,7 @@ export default function ProposalScheduleGrid({
                   <DroppableUnplacedPool>
                     {filteredUnplaced.length === 0 ? (
                       <p className="text-xs text-muted-foreground text-center py-4 italic">
-                        {searchQuery
+                        {(searchQuery || unplacedSearch)
                           ? t('proposals.noSearchResults', { defaultValue: 'No players found' })
                           : t('proposals.allPlaced', { defaultValue: 'All players are placed' })
                         }
