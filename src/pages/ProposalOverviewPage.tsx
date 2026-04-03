@@ -266,7 +266,55 @@ export default function ProposalOverviewPage() {
     return { trainerGroups: sorted, totalSlots, totalAssigned, totalEmpty, warnings };
   }, [cycleSlots, i18n.language, t]);
 
-  const handleBack = () => {
+  // --- Holiday helpers ---
+  const totalWeeks = useMemo(() => {
+    if (!cycle) return 0;
+    return differenceInWeeks(parseISO(cycle.end_date), parseISO(cycle.start_date));
+  }, [cycle]);
+
+  const handleAddHoliday = useCallback(async (date: Date | undefined) => {
+    if (!date || !cycleId || !cycle) return;
+    const dateStr = format(date, 'yyyy-MM-dd');
+    if (excludedDates.includes(dateStr)) return;
+    const newDates = [...excludedDates, dateStr].sort();
+    setExcludedDates(newDates);
+    setHolidayPickerOpen(false);
+    try {
+      await updateCycleSettings(cycleId, { ...cycle.settings, excluded_dates: newDates });
+    } catch (err) {
+      console.error('Failed to save excluded dates', err);
+      setExcludedDates(excludedDates); // rollback
+      toast.error('Failed to save holiday date');
+    }
+  }, [cycleId, cycle, excludedDates]);
+
+  const handleRemoveHoliday = useCallback(async (dateStr: string) => {
+    if (!cycleId || !cycle) return;
+    const newDates = excludedDates.filter(d => d !== dateStr);
+    setExcludedDates(newDates);
+    try {
+      await updateCycleSettings(cycleId, { ...cycle.settings, excluded_dates: newDates });
+    } catch (err) {
+      console.error('Failed to save excluded dates', err);
+      setExcludedDates(excludedDates); // rollback
+      toast.error('Failed to save holiday date');
+    }
+  }, [cycleId, cycle, excludedDates]);
+
+  /** Count effective sessions for a slot's weekday, given excluded dates */
+  const getEffectiveSessions = useCallback((slotStartTime: string) => {
+    if (!cycle) return { total: totalWeeks, effective: totalWeeks, excluded: 0 };
+    const start = parseISO(cycle.start_date);
+    const end = parseISO(cycle.end_date);
+    const slotDay = new Date(slotStartTime).getDay(); // 0=Sun ... 6=Sat
+    const matchingHolidays = excludedDates.filter(d => {
+      const hDate = parseISO(d);
+      return hDate.getDay() === slotDay && hDate >= start && hDate <= end;
+    }).length;
+    return { total: totalWeeks, effective: totalWeeks - matchingHolidays, excluded: matchingHolidays };
+  }, [cycle, excludedDates, totalWeeks]);
+
+
     if (typeof backPath === 'string') {
       navigate(backPath);
     } else {
