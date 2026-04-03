@@ -42,7 +42,8 @@ import {
   Loader2,
   Mail,
 } from 'lucide-react';
-import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, type SlotWithOccupancy } from '@/lib/cycles';
+import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, type SlotWithOccupancy } from '@/lib/cycles';
+import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
 // --- Helpers ---
