@@ -57,6 +57,7 @@ import {
   Link2,
   Plus,
   X,
+  Lightbulb,
 } from 'lucide-react';
 import { 
   type IntakeRequestWithProposal, 
@@ -140,6 +141,33 @@ export default function IntakeRequestDetailSheet({
       .map(id => allRequests.find(r => r.id === id))
       .filter(Boolean) as IntakeRequestWithProposal[];
   }, [linkedRequestIds, allRequests]);
+
+  // Normalize text: lowercase + remove diacritics
+  const normalize = (text: string) =>
+    text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // Auto-suggest links from notes
+  const suggestedLinks = useMemo(() => {
+    if (!request?.notes || !allRequests.length) return [];
+    const normalizedNotes = normalize(request.notes);
+    const alreadyLinkedIds = new Set([request.id, ...linkedRequestIds]);
+    
+    return allRequests.filter(other => {
+      if (other.cycle_id !== request.cycle_id) return false;
+      if (alreadyLinkedIds.has(other.id)) return false;
+      
+      const tokens = normalize(other.full_name).split(/\s+/).filter(t => t.length >= 2);
+      if (tokens.length === 0) return false;
+      
+      const lastName = tokens[tokens.length - 1];
+      if (lastName.length >= 3 && normalizedNotes.includes(lastName)) return true;
+      
+      const matchCount = tokens.filter(t => normalizedNotes.includes(t)).length;
+      if (matchCount >= 2) return true;
+      
+      return false;
+    });
+  }, [request, allRequests, linkedRequestIds]);
 
   // Available requests to link (same cycle, not already linked to this group, not self)
   const availableToLink = useMemo(() => {
@@ -386,6 +414,61 @@ export default function IntakeRequestDetailSheet({
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                   {request.notes}
                 </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Suggested Links from Notes */}
+          {suggestedLinks.length > 0 && (
+            <Card className="border-accent bg-accent/10">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2 text-accent-foreground">
+                  <Lightbulb className="h-4 w-4" />
+                  {t('intakeRequests.links.suggestedLinks', { defaultValue: 'Voorgestelde koppelingen' })}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-muted-foreground mb-2">
+                  {t('intakeRequests.links.suggestedLinksDescription', { defaultValue: 'Op basis van de notities van deze speler' })}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedLinks.map(sl => (
+                    <Badge key={sl.id} variant="outline" className="flex items-center gap-1 pr-1">
+                      <span>{sl.full_name}</span>
+                      <button
+                        onClick={() => handleLinkPlayer(sl.id)}
+                        disabled={isLinking}
+                        className="ml-1 rounded-full hover:bg-accent p-0.5"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+                {suggestedLinks.length > 1 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs mt-1"
+                    disabled={isLinking}
+                    onClick={async () => {
+                      setIsLinking(true);
+                      try {
+                        const allIds = [request.id, ...linkedRequestIds, ...suggestedLinks.map(s => s.id)];
+                        await linkPlayers([...new Set(allIds)]);
+                        toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
+                        onLinkChanged?.();
+                      } catch (error: any) {
+                        toast.error(error.message);
+                      } finally {
+                        setIsLinking(false);
+                      }
+                    }}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    {t('intakeRequests.links.linkAll', { defaultValue: 'Allemaal koppelen' })}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )}
