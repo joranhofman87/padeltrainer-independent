@@ -58,6 +58,7 @@ import {
   Plus,
   X,
   Lightbulb,
+  AlertTriangle,
 } from 'lucide-react';
 import { 
   type IntakeRequestWithProposal, 
@@ -69,7 +70,7 @@ import {
   linkPlayers,
   unlinkPlayer,
 } from '@/lib/cycles';
-import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion } from '@/lib/suggestLinks';
+import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getUnmatchedMentions, getDismissedUnmatched, dismissUnmatchedMention } from '@/lib/suggestLinks';
 import ProposalCard from './ProposalCard';
 import EditIntakeRequestDialog from './EditIntakeRequestDialog';
 
@@ -164,6 +165,14 @@ export default function IntakeRequestDetailSheet({
     return getSuggestedLinks(request, allRequests, new Set(linkedRequestIds), currentDismissed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request, allRequests, linkedRequestIds, dismissVersion]);
+
+  // Compute unmatched mentions
+  const unmatchedMentions = useMemo(() => {
+    if (!request) return [];
+    const dismissed = getDismissedUnmatched();
+    return getUnmatchedMentions(request, allRequests, dismissed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request, allRequests, dismissVersion]);
 
   // Available requests to link (same cycle, not already linked to this group, not self)
   const availableToLink = useMemo(() => {
@@ -483,7 +492,40 @@ export default function IntakeRequestDetailSheet({
             </Card>
           )}
 
-          {/* Linked Players */}
+          {/* Unmatched Names Warning */}
+          {unmatchedMentions.length > 0 && (
+            <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  {t('intakeRequests.links.unmatchedMentions', { defaultValue: 'Names not found in registrations' })}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-muted-foreground mb-2">
+                  {t('intakeRequests.links.unmatchedDescription', { defaultValue: 'These names were mentioned in the notes but no matching registration was found.' })}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {unmatchedMentions.map((name, i) => (
+                    <Badge key={i} variant="outline" className="flex items-center gap-1 pr-1 border-orange-300">
+                      <span>{name}</span>
+                      <button
+                        onClick={() => {
+                          dismissUnmatchedMention(request!.id, name);
+                          setDismissVersion(v => v + 1);
+                        }}
+                        className="rounded-full hover:bg-destructive/20 p-0.5"
+                        title={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss' })}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">

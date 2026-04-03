@@ -29,6 +29,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   FileText, 
   AlertCircle, 
+  AlertTriangle,
   Calendar,
   CheckCircle2,
   Clock,
@@ -47,7 +48,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getLinkedIdsForRequest } from '@/lib/suggestLinks';
+import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getLinkedIdsForRequest, getUnmatchedMentions, getDismissedUnmatched, dismissUnmatchedMention } from '@/lib/suggestLinks';
 import { toast } from 'sonner';
 
 interface TrainerOption {
@@ -167,6 +168,21 @@ export default function IntakeRequestsTable({
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests, allRequests, playerLinks, dismissVersion]);
+
+  // Compute unmatched mentions for all requests
+  const unmatchedMap = useMemo(() => {
+    if (!allRequests.length) return new Map<string, string[]>();
+    const dismissed = getDismissedUnmatched();
+    const map = new Map<string, string[]>();
+    for (const req of requests) {
+      const unmatched = getUnmatchedMentions(req, allRequests, dismissed);
+      if (unmatched.length > 0) {
+        map.set(req.id, unmatched);
+      }
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requests, allRequests, dismissVersion]);
 
   const handleLinkFromTable = async (requestId: string, suggestedId: string) => {
     setLinkingId(suggestedId);
@@ -355,6 +371,7 @@ export default function IntakeRequestsTable({
     const requestId = request.id;
     const groupId = linkGroupMap.get(requestId);
     const suggestions = suggestionsMap.get(requestId) || [];
+    const unmatchedMentions = unmatchedMap.get(requestId) || [];
 
     const linkedContent = (() => {
       if (!groupId) return null;
@@ -467,7 +484,53 @@ export default function IntakeRequestsTable({
       </Popover>
     ) : null;
 
-    if (!linkedContent && !suggestionIndicator) {
+    const unmatchedIndicator = unmatchedMentions.length > 0 ? (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="relative inline-flex items-center gap-1 text-orange-500 hover:text-orange-600 transition-colors"
+            title={t('intakeRequests.links.unmatchedMentions', { defaultValue: 'Unmatched names' })}
+          >
+            <AlertTriangle className="h-4 w-4" />
+            <span className="text-xs font-medium">{unmatchedMentions.length}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-72 p-3"
+          align="start"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-xs font-medium mb-1">
+            {t('intakeRequests.links.unmatchedMentions', { defaultValue: 'Names not found in registrations' })}
+          </p>
+          <p className="text-xs text-muted-foreground mb-2">
+            {t('intakeRequests.links.unmatchedDescription', { defaultValue: 'These names were mentioned in the notes but no matching registration was found.' })}
+          </p>
+          <div className="space-y-1.5">
+            {unmatchedMentions.map((name, i) => (
+              <div key={i} className="flex items-center justify-between gap-2">
+                <span className="text-sm truncate">{name}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => {
+                    dismissUnmatchedMention(requestId, name);
+                    setDismissVersion(v => v + 1);
+                  }}
+                  title={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss' })}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    ) : null;
+
+    if (!linkedContent && !suggestionIndicator && !unmatchedIndicator) {
       return <span className="text-muted-foreground text-xs">—</span>;
     }
 
@@ -475,6 +538,7 @@ export default function IntakeRequestsTable({
       <div className="flex items-center gap-2">
         {linkedContent}
         {suggestionIndicator}
+        {unmatchedIndicator}
       </div>
     );
   };
