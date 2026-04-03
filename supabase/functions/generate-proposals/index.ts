@@ -973,27 +973,6 @@ Deno.serve(async (req) => {
       });
 
       scoredSlots.sort((a, b) => b.score - a.score);
-      const bestMatch = scoredSlots[0];
-
-      if (!bestMatch || bestMatch.score === 0) {
-        skipped++;
-        const allFull = scoredSlots.every(s => 
-          s.rationale.find(r => r.type === 'capacity_available')?.score === 0
-        );
-        const ratingSpreadIssue = scoredSlots.every(s => 
-          s.rationale.find(r => r.type === 'level_compatible')?.score === 0
-        );
-        
-        let skipReason = "no_matching_slots";
-        if (allFull) skipReason = "all_slots_full";
-        else if (ratingSpreadIssue) skipReason = "rating_spread_exceeded";
-        
-        await supabase
-          .from("intake_requests")
-          .update({ skip_reason: skipReason })
-          .eq("id", request.id);
-        continue;
-      }
 
       // Assign player to multiple slots if sessions_per_week > 1
       const sessionsNeeded = request.sessions_per_week || 1;
