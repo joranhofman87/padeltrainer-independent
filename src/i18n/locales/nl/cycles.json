@@ -329,7 +329,8 @@
       "waitlist": "Naar wachtlijst",
       "viewProposal": "Voorstel bekijken",
       "delete": "Verwijderen",
-      "deleteSuccess": "Aanmelding verwijderd"
+      "deleteSuccess": "Aanmelding verwijderd",
+      "declineProposal": "Voorstel afwijzen"
     },
     "delete": {
       "title": "Aanmelding verwijderen?",

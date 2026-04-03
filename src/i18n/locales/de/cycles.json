@@ -282,7 +282,8 @@
       "waitlist": "Auf Warteliste setzen",
       "viewProposal": "Vorschlag anzeigen",
       "delete": "Löschen",
-      "deleteSuccess": "Bewerbung gelöscht"
+      "deleteSuccess": "Bewerbung gelöscht",
+      "declineProposal": "Vorschlag ablehnen"
     },
     "delete": {
       "title": "Bewerbung löschen?",

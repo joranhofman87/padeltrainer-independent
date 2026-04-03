@@ -303,7 +303,8 @@
       "waitlist": "Move to Waitlist",
       "viewProposal": "View Proposal",
       "delete": "Delete",
-      "deleteSuccess": "Application deleted"
+      "deleteSuccess": "Application deleted",
+      "declineProposal": "Decline proposal"
     },
     "delete": {
       "title": "Delete Application?",
