@@ -347,6 +347,7 @@ export type Database = {
           subscription_id: string | null
           subscription_status: string | null
           subscription_tier: string | null
+          timezone: string
           trial_ends_at: string | null
           updated_at: string
           waiting_list_enabled: boolean
@@ -394,6 +395,7 @@ export type Database = {
           subscription_id?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
+          timezone?: string
           trial_ends_at?: string | null
           updated_at?: string
           waiting_list_enabled?: boolean
@@ -441,6 +443,7 @@ export type Database = {
           subscription_id?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
+          timezone?: string
           trial_ends_at?: string | null
           updated_at?: string
           waiting_list_enabled?: boolean
@@ -3918,6 +3921,7 @@ export type Database = {
           subscription_id: string | null
           subscription_status: string | null
           subscription_tier: string | null
+          timezone: string
           trainer_rating_system: string | null
           trial_ends_at: string | null
           trial_started_at: string | null
@@ -3976,6 +3980,7 @@ export type Database = {
           subscription_id?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
+          timezone?: string
           trainer_rating_system?: string | null
           trial_ends_at?: string | null
           trial_started_at?: string | null
@@ -4034,6 +4039,7 @@ export type Database = {
           subscription_id?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
+          timezone?: string
           trainer_rating_system?: string | null
           trial_ends_at?: string | null
           trial_started_at?: string | null

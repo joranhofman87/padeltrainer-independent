@@ -1,0 +1,2 @@
+ALTER TABLE public.trainer_profiles ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'Europe/Amsterdam';
+ALTER TABLE public.academy_profiles ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'Europe/Amsterdam';
