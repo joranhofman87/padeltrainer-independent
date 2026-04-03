@@ -115,7 +115,7 @@ export default function AcademyCycles() {
         <CyclesTable
           cycles={cycles}
           locations={locations}
-          onEdit={(c) => navigate(`/app/academy/cycles/${c.id}/edit`)}
+          onEdit={(c) => navigate(`/app/academy/cycles/${c.id}`)}
           onDuplicate={(c) => navigate(`/app/academy/cycles/new?type=registration&duplicateFrom=${c.id}`)}
           onDeleted={fetchCycles}
           ownerType="academy"

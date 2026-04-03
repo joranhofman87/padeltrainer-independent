@@ -153,6 +153,7 @@ const AcademySettings = lazy(() => import('@/pages/academy/AcademySettings'));
 const AcademyTrainers = lazy(() => import('@/pages/academy/AcademyTrainers'));
 const AcademyLocations = lazy(() => import('@/pages/academy/AcademyLocations'));
 const AcademyCycles = lazy(() => import('@/pages/academy/AcademyCycles'));
+const AcademyCycleDetail = lazy(() => import('@/pages/academy/AcademyCycleDetail'));
 const AcademyCalendar = lazy(() => import('@/pages/academy/AcademyCalendar'));
 const AcademyIntakeRequests = lazy(() => import('@/pages/academy/AcademyIntakeRequests'));
 const AcademySubscription = lazy(() => import('@/pages/academy/AcademySubscription'));
@@ -301,7 +302,8 @@ export function DomainRouter() {
           <Route path="locations" element={<AcademyLocations />} />
           <Route path="cycles" element={<AcademyCycles />} />
           <Route path="cycles/new" element={<CycleFormPage ownerType="academy" />} />
-          <Route path="cycles/:cycleId/edit" element={<CycleFormPage ownerType="academy" />} />
+          <Route path="cycles/:cycleId" element={<AcademyCycleDetail />} />
+          <Route path="cycles/:cycleId/edit" element={<AcademyCycleDetail />} />
           <Route path="calendar" element={<AcademyCalendar />} />
           <Route path="intake-requests" element={<AcademyIntakeRequests />} />
           <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />

@@ -30,6 +30,8 @@ interface ProposalWorkflowStepsProps {
   onShowOverview: () => void;
   isGenerating?: boolean;
   isResetting?: boolean;
+  /** When true, hides the cycle selector (step 1) — used when already scoped to a single cycle */
+  hideCycleSelector?: boolean;
 }
 
 export default function ProposalWorkflowSteps({
@@ -46,35 +48,47 @@ export default function ProposalWorkflowSteps({
   onShowOverview,
   isGenerating,
   isResetting,
+  hideCycleSelector,
 }: ProposalWorkflowStepsProps) {
   const { t } = useTranslation('cycles');
 
-  const cycleSelected = selectedCycleId !== 'all';
+  const cycleSelected = hideCycleSelector || selectedCycleId !== 'all';
 
   // Determine step statuses based on data state
-  const getStepStatuses = (): [StepStatus, StepStatus, StepStatus, StepStatus] => {
+  const getStepStatuses = () => {
     if (!cycleSelected) {
-      return ['active', 'upcoming', 'upcoming', 'upcoming'];
+      return hideCycleSelector
+        ? ['active', 'upcoming', 'upcoming'] as StepStatus[]
+        : ['active', 'upcoming', 'upcoming', 'upcoming'] as StepStatus[];
     }
     if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
-      return ['completed', 'completed', 'completed', 'completed'];
+      return hideCycleSelector
+        ? ['completed', 'completed', 'completed'] as StepStatus[]
+        : ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
     }
     if (proposedCount > 0) {
-      return ['completed', 'completed', 'active', 'upcoming'];
+      return hideCycleSelector
+        ? ['completed', 'active', 'upcoming'] as StepStatus[]
+        : ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
     }
-    return ['completed', 'active', 'upcoming', 'upcoming'];
+    return hideCycleSelector
+      ? ['active', 'upcoming', 'upcoming'] as StepStatus[]
+      : ['completed', 'active', 'upcoming', 'upcoming'] as StepStatus[];
   };
 
-  const [s1, s2, s3, s4] = getStepStatuses();
+  const statuses = getStepStatuses();
 
-  const steps: Step[] = [
-    {
-      number: 1,
+  const steps: Step[] = [];
+  let stepNum = 1;
+
+  if (!hideCycleSelector) {
+    steps.push({
+      number: stepNum++,
       label: t('workflow.selectCycle', { defaultValue: 'Select registration' }),
       description: cycleSelected
         ? cycles.find(c => c.id === selectedCycleId)?.name || ''
         : t('workflow.selectCycleDesc', { defaultValue: 'Choose a registration period' }),
-      status: s1,
+      status: statuses[steps.length],
       action: (
         <Select value={selectedCycleId} onValueChange={onCycleChange}>
           <SelectTrigger className="w-[200px] h-8 text-xs">
@@ -88,69 +102,73 @@ export default function ProposalWorkflowSteps({
           </SelectContent>
         </Select>
       ),
-    },
-    {
-      number: 2,
-      label: t('workflow.generate', { defaultValue: 'Generate' }),
-      description: t('workflow.generateDesc', { defaultValue: '{{count}} new requests', count: newCount }),
-      status: s2,
-      action: (
+    });
+  }
+
+  steps.push({
+    number: stepNum++,
+    label: t('workflow.generate', { defaultValue: 'Generate' }),
+    description: t('workflow.generateDesc', { defaultValue: '{{count}} new requests', count: newCount }),
+    status: statuses[steps.length],
+    action: (
+      <Button
+        size="sm"
+        onClick={onGenerate}
+        disabled={!cycleSelected || newCount === 0}
+        className="h-7 text-xs"
+      >
+        <Sparkles className="h-3 w-3 mr-1" />
+        {t('proposals.generateAll', { defaultValue: 'Generate' })}
+      </Button>
+    ),
+  });
+
+  steps.push({
+    number: stepNum++,
+    label: t('workflow.review', { defaultValue: 'Review & Edit' }),
+    description: t('workflow.reviewDesc', { defaultValue: '{{count}} proposals', count: proposedCount }),
+    status: statuses[steps.length],
+    action: proposedCount > 0 ? (
+      <div className="flex gap-1.5">
         <Button
           size="sm"
-          onClick={onGenerate}
-          disabled={!cycleSelected || newCount === 0}
+          variant="outline"
+          onClick={onReset}
+          disabled={isResetting}
           className="h-7 text-xs"
         >
-          <Sparkles className="h-3 w-3 mr-1" />
-          {t('proposals.generateAll', { defaultValue: 'Generate' })}
+          <RotateCcw className="h-3 w-3 mr-1" />
+          {t('proposals.reset', { defaultValue: 'Reset' })}
         </Button>
-      ),
-    },
-    {
-      number: 3,
-      label: t('workflow.review', { defaultValue: 'Review & Edit' }),
-      description: t('workflow.reviewDesc', { defaultValue: '{{count}} proposals', count: proposedCount }),
-      status: s3,
-      action: proposedCount > 0 ? (
-        <div className="flex gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onReset}
-            disabled={isResetting}
-            className="h-7 text-xs"
-          >
-            <RotateCcw className="h-3 w-3 mr-1" />
-            {t('proposals.reset', { defaultValue: 'Reset' })}
-          </Button>
-          <Button
-            size="sm"
-            onClick={onShowOverview}
-            className="h-7 text-xs"
-          >
-            <Eye className="h-3 w-3 mr-1" />
-            {t('workflow.continueToOverview', { defaultValue: 'Continue' })}
-          </Button>
-        </div>
-      ) : undefined,
-    },
-    {
-      number: 4,
-      label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
-      description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
-      status: s4,
-      action: s4 === 'active' && proposedCount > 0 ? (
         <Button
           size="sm"
           onClick={onShowOverview}
           className="h-7 text-xs"
         >
-          <ClipboardList className="h-3 w-3 mr-1" />
-          {t('workflow.viewOverview', { defaultValue: 'View overview' })}
+          <Eye className="h-3 w-3 mr-1" />
+          {t('workflow.continueToOverview', { defaultValue: 'Continue' })}
         </Button>
-      ) : undefined,
-    },
-  ];
+      </div>
+    ) : undefined,
+  });
+
+  const approveStatus = statuses[steps.length];
+  steps.push({
+    number: stepNum++,
+    label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
+    description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
+    status: approveStatus,
+    action: approveStatus === 'active' && proposedCount > 0 ? (
+      <Button
+        size="sm"
+        onClick={onShowOverview}
+        className="h-7 text-xs"
+      >
+        <ClipboardList className="h-3 w-3 mr-1" />
+        {t('workflow.viewOverview', { defaultValue: 'View overview' })}
+      </Button>
+    ) : undefined,
+  });
 
   return (
     <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-start">
