@@ -128,12 +128,49 @@ export async function signUpWithEmail(email: string, password: string, fullName:
   }
 }
 
+async function attemptSignIn(email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+  return { data, error };
+}
+
+function isRetryableAuthError(error: any): boolean {
+  if (!error) return false;
+  const status = error.status;
+  const name = error.name || '';
+  const message = (error.message || '').toLowerCase();
+  return (
+    status === 503 || status === 504 || status === 429 ||
+    name === 'AuthRetryableFetchError' ||
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('fetch failed') ||
+    message.includes('load failed')
+  );
+}
+
 export async function signInWithEmail(email: string, password: string) {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { data, error } = await attemptSignIn(email, password);
+
+    if (error && isRetryableAuthError(error)) {
+      logger.error('Sign in retryable error, retrying in 2s', error as Error, {
+        component: 'auth',
+        action: 'signInWithEmailRetry',
+        status: error.status,
+      });
+      // Wait 2 seconds and retry once
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const retry = await attemptSignIn(email, password);
+      if (retry.error) {
+        const normalizedError = normalizeAuthError(retry.error, 'Login is temporarily unavailable. Please try again in a moment.');
+        logger.error('Sign in retry also failed', normalizedError as Error, { component: 'auth', action: 'signInWithEmailRetryFailed' });
+        return { data: retry.data, error: normalizedError as any };
+      }
+      return { data: retry.data, error: null };
+    }
 
     if (error) {
       const normalizedError = normalizeAuthError(error, 'Unable to sign in. Please check your email and password and try again.');
@@ -149,6 +186,14 @@ export async function signInWithEmail(email: string, password: string) {
 
     return { data, error: null };
   } catch (err: any) {
+    // Catch-level: also retry once on network failures
+    if (isRetryableAuthError(err)) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retry = await attemptSignIn(email, password);
+        if (!retry.error) return { data: retry.data, error: null };
+      } catch (_) { /* fall through */ }
+    }
     const normalizedError = normalizeAuthError(err, 'Login is temporarily unavailable. Please try again in a moment.');
     logger.error('Sign-in network failure', normalizedError as Error, {
       component: 'auth',

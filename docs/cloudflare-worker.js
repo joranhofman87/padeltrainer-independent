@@ -113,6 +113,17 @@ function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
   return null;
 }
 
+/**
+ * Build a cache key for a pre-rendered page.
+ * We use a fake URL under the worker's own origin so Cloudflare's Cache API
+ * can store it (the Cache API requires same-origin keys by default).
+ */
+function prerenderCacheKey(url, pathname) {
+  return new Request(`${url.origin}/__prerender${pathname}`, { method: 'GET' });
+}
+
+const PRERENDER_CACHE_TTL = 3600; // 1 hour
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -148,6 +159,23 @@ export default {
     
     // Only intercept GET requests from bots on marketing pages
     if (request.method === 'GET' && isBot(userAgent) && shouldPrerender(url.pathname)) {
+      // --- Check Cloudflare Cache first ---
+      const cache = caches.default;
+      const cacheKey = prerenderCacheKey(url, url.pathname);
+      
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        return new Response(cachedResponse.body, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': cachedResponse.headers.get('Cache-Control') || `public, max-age=${PRERENDER_CACHE_TTL}`,
+            'X-Rendered-By': 'padeltrainer-prerender',
+            'X-Cache': 'HIT',
+          },
+        });
+      }
+
       try {
         // Call the render-page Edge Function
         const renderUrl = `${env.RENDER_FUNCTION_URL}?path=${encodeURIComponent(url.pathname)}`;
@@ -161,14 +189,20 @@ export default {
         if (response.ok) {
           // Return the pre-rendered HTML with proper headers
           const html = await response.text();
-          return new Response(html, {
+          const responseToCache = new Response(html, {
             status: 200,
             headers: {
               'Content-Type': 'text/html; charset=utf-8',
-              'Cache-Control': response.headers.get('Cache-Control') || 'public, max-age=3600',
+              'Cache-Control': `public, max-age=${PRERENDER_CACHE_TTL}`,
               'X-Rendered-By': 'padeltrainer-prerender',
+              'X-Cache': 'MISS',
             },
           });
+
+          // Store in cache (non-blocking)
+          ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+
+          return responseToCache;
         }
         
         // If render fails, fall through to origin
