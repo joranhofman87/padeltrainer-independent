@@ -172,8 +172,20 @@ export default function AcademyCycleDetail() {
 
   const isFirstLoad = cycleLoading && !cycle;
 
+  // Schedule slots from TanStack Query — cached, no local state
+  const shouldLoadSlots = viewMode === 'schedule' || activeStep === 'review-edit' || activeStep === 'approve';
+  const { data: scheduleSlots = [] } = useScheduleSlotsQuery(cycleId, shouldLoadSlots);
+  const queryClient = useQueryClient();
+  const slotsQueryKey = ['proposal-slots', cycleId];
+
+  const setScheduleSlots = (updater: SlotWithOccupancy[] | ((prev: SlotWithOccupancy[]) => SlotWithOccupancy[])) => {
+    queryClient.setQueryData<SlotWithOccupancy[]>(slotsQueryKey, old => {
+      const prev = old ?? [];
+      return typeof updater === 'function' ? updater(prev) : updater;
+    });
+  };
+
   // Local state
-  const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -189,17 +201,6 @@ export default function AcademyCycleDetail() {
       return requests.find(r => r.id === prev.id) ?? null;
     });
   }, [requests]);
-
-  // Load schedule slots — decoupled from requests
-  useEffect(() => {
-    if ((viewMode === 'schedule' || activeStep === 'review-edit' || activeStep === 'approve') && cycleId) {
-      getAvailableSlotsForCycle(cycleId)
-        .then(setScheduleSlots)
-        .catch(() => setScheduleSlots([]));
-    } else {
-      setScheduleSlots([]);
-    }
-  }, [viewMode, activeStep, cycleId]);
 
   // Filter requests by status
   const filteredRequests = useMemo(() => {
