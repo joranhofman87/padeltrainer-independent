@@ -219,7 +219,8 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
                 onClick={handleReject}
                 disabled={isUpdating}
               >
-                <XCircle className="h-4 w-4" />
+                <XCircle className="h-4 w-4 mr-1" />
+                {t('proposals.actions.decline', { defaultValue: 'Decline' })}
               </Button>
             </div>
           )}

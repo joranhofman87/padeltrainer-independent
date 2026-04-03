@@ -270,55 +270,38 @@ export default function IntakeRequestDetailSheet({
               <Pencil className="h-4 w-4 mr-1" />
               {t('intakeRequests.actions.edit', { defaultValue: 'Edit' })}
             </Button>
-            {proposal && proposal.status === 'proposed' ? (
-              /* During proposal review: only show Decline proposal */
-              <Button
-                variant="outline"
+            {request.status !== 'confirmed' && (
+              <Button 
+                size="sm" 
+                onClick={() => handleStatusChange('confirmed')}
+                disabled={isUpdating}
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1" />
+                {t('intakeRequests.actions.confirm')}
+              </Button>
+            )}
+            {request.status !== 'waitlist' && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleStatusChange('waitlist')}
+                disabled={isUpdating}
+              >
+                <Clock3 className="h-4 w-4 mr-1" />
+                {t('intakeRequests.actions.waitlist')}
+              </Button>
+            )}
+            {request.status !== 'rejected' && (
+              <Button 
+                variant="outline" 
                 size="sm"
                 className="text-destructive hover:text-destructive"
-                onClick={handleRemoveProposal}
+                onClick={() => handleStatusChange('rejected')}
                 disabled={isUpdating}
               >
                 <XCircle className="h-4 w-4 mr-1" />
-                {t('intakeRequests.actions.declineProposal', { defaultValue: 'Decline proposal' })}
+                {t('intakeRequests.actions.reject')}
               </Button>
-            ) : (
-              /* Registration view: show full status actions */
-              <>
-                {request.status !== 'confirmed' && (
-                  <Button 
-                    size="sm" 
-                    onClick={() => handleStatusChange('confirmed')}
-                    disabled={isUpdating}
-                  >
-                    <CheckCircle2 className="h-4 w-4 mr-1" />
-                    {t('intakeRequests.actions.confirm')}
-                  </Button>
-                )}
-                {request.status !== 'waitlist' && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleStatusChange('waitlist')}
-                    disabled={isUpdating}
-                  >
-                    <Clock3 className="h-4 w-4 mr-1" />
-                    {t('intakeRequests.actions.waitlist')}
-                  </Button>
-                )}
-                {request.status !== 'rejected' && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => handleStatusChange('rejected')}
-                    disabled={isUpdating}
-                  >
-                    <XCircle className="h-4 w-4 mr-1" />
-                    {t('intakeRequests.actions.reject')}
-                  </Button>
-                )}
-              </>
             )}
           </div>
           {/* Contact Info */}
