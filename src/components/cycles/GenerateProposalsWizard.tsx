@@ -86,6 +86,7 @@ export function GenerateProposalsWizard({
   isGenerating = false,
   ownerType,
   ownerId,
+  inline = false,
 }: GenerateProposalsWizardProps) {
   const { t } = useTranslation('cycles');
   const [step, setStep] = useState(1);
