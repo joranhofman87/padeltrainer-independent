@@ -1043,7 +1043,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
   // 4. Fetch all proposed_assignments for intake_requests in this cycle
   const { data: requests } = await supabase
     .from('intake_requests')
-    .select('id, full_name, rating, rating_system')
+    .select('id, full_name, rating, rating_system, sessions_per_week')
     .eq('cycle_id', cycleId);
 
   const requestMap = new Map((requests || []).map(r => [r.id, r]));
