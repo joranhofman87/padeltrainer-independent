@@ -856,6 +856,34 @@ export default function ProposalScheduleGrid({
     return unplacedPlayers.filter(p => p.full_name.toLowerCase().includes(q));
   }, [unplacedPlayers, searchQuery]);
 
+  // Compute which days have placed players matching the search query
+  const daysWithSearchMatches = useMemo(() => {
+    if (!searchQuery.trim()) return new Map<string, number>();
+    const q = searchQuery.toLowerCase();
+    const matches = new Map<string, number>();
+    slots.forEach(slot => {
+      const day = getDayKey(slot.start_time);
+      slot.current_assignments.forEach(a => {
+        if (a.player_name.toLowerCase().includes(q)) {
+          matches.set(day, (matches.get(day) || 0) + 1);
+        }
+      });
+    });
+    return matches;
+  }, [slots, searchQuery]);
+
+  // Auto-switch to the day with search matches (only when exactly one day matches)
+  const prevSearchRef = useRef(searchQuery);
+  useEffect(() => {
+    if (searchQuery.trim() && searchQuery !== prevSearchRef.current) {
+      const matchingDays = Array.from(daysWithSearchMatches.keys());
+      if (matchingDays.length === 1 && matchingDays[0] !== selectedDay) {
+        setSelectedDay(matchingDays[0]);
+      }
+    }
+    prevSearchRef.current = searchQuery;
+  }, [searchQuery, daysWithSearchMatches, selectedDay]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
