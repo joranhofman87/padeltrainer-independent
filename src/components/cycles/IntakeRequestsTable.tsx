@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   FileText, 
@@ -28,15 +33,20 @@ import {
   CheckCircle2,
   Clock,
   Link2,
+  Lightbulb,
+  Plus,
+  X,
   Settings2,
 } from 'lucide-react';
-import { type IntakeRequestWithProposal, type PlayerLink } from '@/lib/cycles';
+import { type IntakeRequestWithProposal, type PlayerLink, linkPlayers } from '@/lib/cycles';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getLinkedIdsForRequest } from '@/lib/suggestLinks';
+import { toast } from 'sonner';
 
 interface TrainerOption {
   id: string;
@@ -45,11 +55,13 @@ interface TrainerOption {
 
 interface IntakeRequestsTableProps {
   requests: IntakeRequestWithProposal[];
+  allRequests?: IntakeRequestWithProposal[];
   trainers?: TrainerOption[];
   onRowClick: (request: IntakeRequestWithProposal) => void;
   emptyMessage?: string;
   emptyDescription?: string;
   playerLinks?: PlayerLink[];
+  onLinkChanged?: () => void;
 }
 
 const LINK_COLORS = [
