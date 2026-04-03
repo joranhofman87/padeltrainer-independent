@@ -443,5 +443,13 @@
     "reviewDesc": "{{count}} proposals",
     "approve": "Approve & Book",
     "approveDesc": "{{count}} confirmed"
+  },
+  "overview": {
+    "period": "Period",
+    "weeks": "Weeks",
+    "holidayDates": "Holiday dates",
+    "addDate": "Add date",
+    "noHolidays": "No holiday dates set. All weeks will have sessions.",
+    "sessions": "Sessions"
   }
 }
