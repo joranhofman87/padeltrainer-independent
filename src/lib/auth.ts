@@ -121,11 +121,15 @@ export async function signInWithEmail(email: string, password: string) {
     return { data, error };
   } catch (err: any) {
     // CORS or network failure — the request never completed
-    logger.error('Sign-in network failure', err as Error, { component: 'auth' });
+    const msg = err?.message || '';
+    const isCors = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS');
+    logger.error('Sign-in network failure', err as Error, { component: 'auth', isCors });
     return {
       data: { user: null, session: null },
       error: {
-        message: 'Login is temporarily unavailable. Please try again in a moment.',
+        message: isCors
+          ? 'Unable to reach the login server. If you are on a custom domain, please try again or use the main site.'
+          : 'Login is temporarily unavailable. Please try again in a moment.',
         name: 'NetworkError',
       } as any,
     };
@@ -142,11 +146,15 @@ export async function signInWithGoogle() {
     });
     return { data, error };
   } catch (err: any) {
-    logger.error('Google sign-in network failure', err as Error, { component: 'auth' });
+    const msg = err?.message || '';
+    const isCors = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS');
+    logger.error('Google sign-in network failure', err as Error, { component: 'auth', isCors });
     return {
       data: null,
       error: {
-        message: 'Google sign-in is temporarily unavailable. Please try again.',
+        message: isCors
+          ? 'Unable to reach the login server. If you are on a custom domain, please try again or use the main site.'
+          : 'Google sign-in is temporarily unavailable. Please try again.',
         name: 'NetworkError',
       } as any,
     };

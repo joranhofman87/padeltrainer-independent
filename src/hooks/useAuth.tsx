@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         await Promise.race([
           fetchUserData(nextSession.user.id),
-          new Promise((resolve) => setTimeout(resolve, 3000)),
+          new Promise((resolve) => setTimeout(resolve, 8000)),
         ]);
 
         if (
@@ -231,11 +231,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const safetyTimeout = setTimeout(() => {
       setLoading((current) => {
         if (current) {
-          logger.warn('Auth loading safety timeout triggered after 5s', { component: 'useAuth' });
+          logger.warn('Auth loading safety timeout triggered after 10s', { component: 'useAuth' });
         }
         return false;
       });
-    }, 5_000);
+    }, 10_000);
 
     const bootstrapAuth = async () => {
       try {
