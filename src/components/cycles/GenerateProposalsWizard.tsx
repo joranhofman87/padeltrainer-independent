@@ -305,6 +305,7 @@ export function GenerateProposalsWizard({
       additionalCriteria,
       linkStrategy,
       fillIncompleteGroups,
+      maxGroupSize,
     });
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   };
