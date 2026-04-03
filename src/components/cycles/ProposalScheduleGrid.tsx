@@ -225,6 +225,11 @@ function DraggablePlayerChip({
             </TooltipContent>
           </Tooltip>
         )}
+        {assignment.sessions_per_week > 1 && (
+          <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0 border-primary/40 text-primary">
+            {assignment.sessions_per_week}×
+          </Badge>
+        )}
         {confScore > 0 && (
           <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', confClass)}>
             {confScore}%
