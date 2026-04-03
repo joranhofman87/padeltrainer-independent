@@ -82,8 +82,10 @@ export default function AcademyCycleDetail() {
   const locale = i18n.language === 'nl' ? nl : enUS;
 
   // Active step from URL
-  const activeStep = (searchParams.get('step') as WorkflowStep) || 'registrations';
-  const setActiveStep = (step: WorkflowStep) => {
+  const rawStep = searchParams.get('step') || 'registrations';
+  const activeStep: WorkflowStep = (['registrations', 'review-links', 'generate', 'review-edit', 'approve'].includes(rawStep) ? rawStep : 'registrations') as WorkflowStep;
+  const isWaitingList = rawStep === 'waitinglist';
+  const setActiveStep = (step: string) => {
     setSearchParams({ step }, { replace: true });
   };
 
