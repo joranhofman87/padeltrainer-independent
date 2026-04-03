@@ -69,45 +69,50 @@ export default function TrainerSignup() {
     if (!validateForm()) return;
     if (isSuspicious()) return;
     
-    trackEvent('signup_started', { role: 'trainer', method: 'email', ...getUtmParams() });
+    try { trackEvent('signup_started', { role: 'trainer', method: 'email', ...getUtmParams() }); } catch {}
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, i18n.language);
+    try {
+      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, i18n.language);
 
-    if (error) {
-      logger.error('Trainer signup failed', error, { component: 'TrainerSignup', action: 'signUp' });
+      if (error) {
+        logger.error('Trainer signup failed', error, { component: 'TrainerSignup', action: 'signUp' });
+        toast({
+          title: t('signUp.error', 'Error'),
+          description: error.message,
+          variant: 'destructive',
+        });
+      } else if (data?.session) {
+        try { trackEvent('signup_completed', { role: 'trainer', method: 'email' }); } catch {}
+        localStorage.setItem('pendingRole', 'trainer');
+        const redirectUrl = searchParams.get('redirect');
+        if (redirectUrl) {
+          localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+        }
+        toast({
+          title: t('signUp.success'),
+          description: t('signUp.successDescription'),
+        });
+        navigate('/app/onboarding/trainer');
+      } else {
+        try { trackEvent('signup_completed', { role: 'trainer', method: 'email' }); } catch {}
+        localStorage.setItem('pendingRole', 'trainer');
+        const redirectUrl = searchParams.get('redirect');
+        if (redirectUrl) {
+          localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+        }
+        setShowVerification(true);
+      }
+    } catch (err) {
+      logger.error('Unexpected signup error', err as Error, { component: 'TrainerSignup' });
       toast({
         title: t('signUp.error', 'Error'),
-        description: error.message,
+        description: t('signIn.genericError', 'Something went wrong. Please try again.'),
         variant: 'destructive',
       });
-    } else if (data?.session) {
-      // Session is immediately available (auto-confirm enabled for dev)
-      trackEvent('signup_completed', { role: 'trainer', method: 'email' });
-      localStorage.setItem('pendingRole', 'trainer');
-      // Store redirect URL if present
-      const redirectUrl = searchParams.get('redirect');
-      if (redirectUrl) {
-        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
-      }
-      toast({
-        title: t('signUp.success'),
-        description: t('signUp.successDescription'),
-      });
-      navigate('/app/onboarding/trainer');
-    } else {
-      // No immediate session - email verification required
-      trackEvent('signup_completed', { role: 'trainer', method: 'email' });
-      localStorage.setItem('pendingRole', 'trainer');
-      // Store redirect URL if present
-      const redirectUrl = searchParams.get('redirect');
-      if (redirectUrl) {
-        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
-      }
-      setShowVerification(true);
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
