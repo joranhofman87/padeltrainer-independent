@@ -49,6 +49,7 @@ export default function PreGenerationReview({
   requests,
   playerLinks,
   onLinkChanged,
+  onPlayerClick,
 }: PreGenerationReviewProps) {
   const { t } = useTranslation('cycles');
   const [isOpen, setIsOpen] = useState(true);
