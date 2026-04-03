@@ -132,7 +132,7 @@ export async function signOut() {
 }
 
 export async function getUserRole(userId: string): Promise<UserRole | null> {
-  const roles = await getUserRoles(userId);
+  const { data: roles } = await getUserRoles(userId);
   if (roles.length === 0) return null;
   
   // Return primary role based on priority: admin > trainer > club > player
@@ -143,14 +143,27 @@ export async function getUserRole(userId: string): Promise<UserRole | null> {
   return null;
 }
 
-export async function getUserRoles(userId: string): Promise<UserRole[]> {
-  const { data, error } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', userId);
-  
-  if (error || !data) return [];
-  return data.map(d => d.role as UserRole);
+export interface FetchResult<T> {
+  data: T;
+  failed: boolean;
+}
+
+export async function getUserRoles(userId: string): Promise<FetchResult<UserRole[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId);
+    
+    if (error) {
+      logger.error('Error fetching user roles', error as any, { component: 'auth' });
+      return { data: [], failed: true };
+    }
+    return { data: (data || []).map(d => d.role as UserRole), failed: false };
+  } catch (err) {
+    logger.error('Exception fetching user roles', err as Error, { component: 'auth' });
+    return { data: [], failed: true };
+  }
 }
 
 export async function setUserRole(userId: string, role: UserRole, timezone?: string) {
@@ -185,15 +198,25 @@ export async function setUserRole(userId: string, role: UserRole, timezone?: str
   return data;
 }
 
-export async function getProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-  
-  if (error || !data) return null;
-  return data as UserProfile;
+export async function getProfile(userId: string): Promise<FetchResult<UserProfile | null>> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    if (error) {
+      // PGRST116 = no rows found — that's a valid "no profile" result, not a failure
+      if (error.code === 'PGRST116') return { data: null, failed: false };
+      logger.error('Error fetching profile', error as any, { component: 'auth' });
+      return { data: null, failed: true };
+    }
+    return { data: data as UserProfile, failed: false };
+  } catch (err) {
+    logger.error('Exception fetching profile', err as Error, { component: 'auth' });
+    return { data: null, failed: true };
+  }
 }
 
 export async function updateProfile(userId: string, updates: Partial<UserProfile>) {

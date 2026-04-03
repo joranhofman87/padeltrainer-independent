@@ -195,19 +195,25 @@ export async function getUserAcademyProfiles(userId: string): Promise<(AcademyPr
 }
 
 // Check if user is an academy manager
-export async function isUserAcademyManager(userId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('academy_managers')
-    .select('id')
-    .eq('user_id', userId)
-    .limit(1);
+// Returns { data, failed } so callers can distinguish fetch errors from "not a manager"
+export async function isUserAcademyManager(userId: string): Promise<{ data: boolean; failed: boolean }> {
+  try {
+    const { data, error } = await supabase
+      .from('academy_managers')
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1);
 
-  if (error) {
-    logger.error('Error checking academy manager status', undefined, { error });
-    return false;
+    if (error) {
+      logger.error('Error checking academy manager status', undefined, { error });
+      return { data: false, failed: true };
+    }
+
+    return { data: (data?.length || 0) > 0, failed: false };
+  } catch (err) {
+    logger.error('Exception checking academy manager status', err as Error);
+    return { data: false, failed: true };
   }
-
-  return (data?.length || 0) > 0;
 }
 
 // Get academy by slug (for public profile)

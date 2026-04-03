@@ -22,7 +22,7 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { user, role, loading, refreshAuth } = useAuth();
+  const { user, role, loading, profileReady, profileFetchFailed, refreshAuth } = useAuth();
   const { t } = useTranslation('auth');
 
   // Detect and handle magic link tokens in URL hash (for impersonation)
@@ -33,10 +33,8 @@ export default function Auth() {
     const providerToken = hashParams.get('provider_token');
     
     // Only handle magic link tokens, NOT OAuth callbacks
-    // OAuth callbacks include provider_token and are handled by Supabase automatically
     if (accessToken && refreshToken && !providerToken) {
       setIsProcessingMagicLink(true);
-      // Explicitly set the session with tokens from URL hash - this overrides any existing session
       supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
@@ -49,11 +47,9 @@ export default function Auth() {
             variant: 'destructive',
           });
         }
-        // Clear the hash from URL for cleaner UX
         window.history.replaceState(null, '', window.location.pathname);
         setIsProcessingMagicLink(false);
       }).catch(() => {
-        // Safety: ensure we never hang on magic link processing
         setIsProcessingMagicLink(false);
       });
     }
@@ -66,7 +62,6 @@ export default function Auth() {
     const errorDescription = searchParams.get('error_description');
     
     if (error) {
-      // Handle verification errors (e.g., expired/reused link)
       toast({
         title: t('verification.error', 'Verification Error'),
         description: errorDescription || t('verification.linkExpired', 'This verification link has expired or was already used.'),
@@ -83,14 +78,25 @@ export default function Auth() {
   const hasCheckedRoles = useRef(false);
 
   useEffect(() => {
-    if (!loading && user && !isProcessingMagicLink) {
+    if (!loading && user && !isProcessingMagicLink && profileReady) {
       const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+
+      // If profile fetch failed, do NOT assume new user — show error and let user retry
+      if (profileFetchFailed && !role) {
+        toast({
+          title: t('signIn.error', 'Error'),
+          description: t('signIn.fetchFailed', 'Could not load your account data. Please try again.'),
+          variant: 'destructive',
+        });
+        // Reset the check flag so a retry can work
+        hasCheckedRoles.current = false;
+        return;
+      }
       
       if (role) {
         // Existing user with role - clear any stale pendingRole and redirect
         localStorage.removeItem('pendingRole');
         
-        // Check for post-onboarding redirect (e.g. player signed up from a trainer profile CTA)
         const onboardingRedirect = localStorage.getItem('redirectAfterOnboarding');
         
         if (redirectUrl) {
@@ -111,67 +117,104 @@ export default function Auth() {
           }
         }
       } else if (!hasCheckedRoles.current) {
-        // Role is null - check DB once to distinguish race condition from new user
+        // Role is null and fetch didn't fail — check DB once to confirm truly new user
         hasCheckedRoles.current = true;
         const checkExistingRoles = async () => {
-          const { data } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', user.id)
-            .limit(1);
-          
-          if (data && data.length > 0) {
-            localStorage.removeItem('pendingRole');
-            await refreshAuth();
-          } else {
-            if (redirectUrl) {
-              sessionStorage.removeItem('redirectAfterLogin');
+          try {
+            const { data, error } = await supabase
+              .from('user_roles')
+              .select('role')
+              .eq('user_id', user.id)
+              .limit(1);
+            
+            // If the query itself failed, do NOT route to onboarding
+            if (error) {
+              logger.error('Role check query failed', error as any, { component: 'Auth' });
+              toast({
+                title: t('signIn.error', 'Error'),
+                description: t('signIn.fetchFailed', 'Could not load your account data. Please try again.'),
+                variant: 'destructive',
+              });
+              hasCheckedRoles.current = false; // Allow retry
+              return;
             }
-            const pendingRole = localStorage.getItem('pendingRole');
-            if (pendingRole) {
+            
+            if (data && data.length > 0) {
               localStorage.removeItem('pendingRole');
-              navigate(`/app/onboarding/${pendingRole}`);
+              await refreshAuth();
             } else {
-              navigate('/app/onboarding/player');
+              // Positively confirmed: no roles in DB — this is a new user
+              if (redirectUrl) {
+                sessionStorage.removeItem('redirectAfterLogin');
+              }
+              const pendingRole = localStorage.getItem('pendingRole');
+              if (pendingRole) {
+                localStorage.removeItem('pendingRole');
+                navigate(`/app/onboarding/${pendingRole}`);
+              } else {
+                navigate('/app/onboarding/player');
+              }
             }
+          } catch (err) {
+            logger.error('Role check failed', err as Error, { component: 'Auth' });
+            toast({
+              title: t('signIn.error', 'Error'),
+              description: t('signIn.fetchFailed', 'Could not load your account data. Please try again.'),
+              variant: 'destructive',
+            });
+            hasCheckedRoles.current = false;
           }
         };
         checkExistingRoles();
       }
     }
-  }, [user, role, loading, navigate]);
+  }, [user, role, loading, profileReady, profileFetchFailed, navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    const { error } = await signInWithEmail(email, password);
+    try {
+      const { error } = await signInWithEmail(email, password);
 
-    if (error) {
-      logger.error('Sign in failed', error, { component: 'Auth', action: 'signIn' });
+      if (error) {
+        logger.error('Sign in failed', error, { component: 'Auth', action: 'signIn' });
+        toast({
+          title: t('signIn.error', 'Error'),
+          description: error.message,
+          variant: 'destructive',
+        });
+      } else {
+        try { trackEvent('login', { method: 'email' }); } catch { /* analytics must not break login */ }
+      }
+    } catch (err) {
+      logger.error('Unexpected sign in error', err as Error, { component: 'Auth' });
       toast({
         title: t('signIn.error', 'Error'),
-        description: error.message,
+        description: t('signIn.genericError', 'Something went wrong. Please try again.'),
         variant: 'destructive',
       });
-    } else {
-      trackEvent('login', { method: 'email' });
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
-    trackEvent('login', { method: 'google' });
-    const { error } = await signInWithGoogle();
+    try {
+      try { trackEvent('login', { method: 'google' }); } catch { /* analytics must not break login */ }
+      const { error } = await signInWithGoogle();
 
-    if (error) {
-      toast({
-        title: t('signIn.error', 'Error'),
-        description: error.message,
-        variant: 'destructive',
-      });
+      if (error) {
+        toast({
+          title: t('signIn.error', 'Error'),
+          description: error.message,
+          variant: 'destructive',
+        });
+        setIsLoading(false);
+      }
+    } catch (err) {
+      logger.error('Unexpected Google sign in error', err as Error, { component: 'Auth' });
       setIsLoading(false);
     }
   };

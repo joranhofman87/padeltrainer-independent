@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, createContext, useContext, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
-import { getUserRole, getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
+import { getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
 import { SubscriptionInfo, SubscriptionTier } from '@/lib/subscription';
 import { isUserClubManager } from '@/lib/club';
 import { logger } from '@/lib/logger';
@@ -19,6 +19,10 @@ interface AuthContextType {
   isAcademyManager: boolean;
   subscription: SubscriptionInfo | null;
   loading: boolean;
+  /** True once we positively fetched user data (or confirmed no user). False while still loading profile/roles. */
+  profileReady: boolean;
+  /** True if the last profile/role fetch failed due to network/auth errors */
+  profileFetchFailed: boolean;
   refreshAuth: () => Promise<void>;
   refreshSubscription: () => Promise<void>;
 }
@@ -33,6 +37,8 @@ const AuthContext = createContext<AuthContextType>({
   isAcademyManager: false,
   subscription: null,
   loading: true,
+  profileReady: false,
+  profileFetchFailed: false,
   refreshAuth: async () => {},
   refreshSubscription: async () => {},
 });
@@ -47,18 +53,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAcademyManager, setIsAcademyManager] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileReady, setProfileReady] = useState(false);
+  const [profileFetchFailed, setProfileFetchFailed] = useState(false);
   const lastFetchedRef = useRef<string | null>(null);
 
   const fetchUserData = async (userId: string) => {
     try {
-      const [userRoles, userProfile, clubManagerStatus, academyManagerStatus] = await Promise.all([
+      const [rolesResult, profileResult, clubResult, academyResult] = await Promise.all([
         getUserRoles(userId),
         getProfile(userId),
         isUserClubManager(userId),
         isUserAcademyManager(userId),
       ]);
+
+      // Check if any critical fetch failed
+      const anyFailed = rolesResult.failed || profileResult.failed || clubResult.failed || academyResult.failed;
       
       // Determine primary role based on priority: admin > trainer > club > player
+      const userRoles = rolesResult.data;
       const primaryRole = userRoles.includes('admin') ? 'admin'
         : userRoles.includes('trainer') ? 'trainer'
         : userRoles.includes('club') ? 'club'
@@ -67,23 +79,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       setRoles(userRoles);
       setRole(primaryRole);
-      setIsClubManager(clubManagerStatus);
-      setIsAcademyManager(academyManagerStatus);
-      setProfile(userProfile);
+      setIsClubManager(clubResult.data);
+      setIsAcademyManager(academyResult.data);
+      setProfile(profileResult.data);
+      setProfileFetchFailed(anyFailed);
+      setProfileReady(true);
 
       // Apply saved language preference
+      const userProfile = profileResult.data;
       if (userProfile?.preferred_language && userProfile.preferred_language !== i18n.language) {
         i18n.changeLanguage(userProfile.preferred_language);
       }
 
       // Link anonymous browsing history to this user in PostHog
-      identifyUser(userId, {
-        role: primaryRole,
-        email: userProfile?.email ?? null,
-        created_at: userProfile?.created_at ?? null,
-      });
+      try {
+        identifyUser(userId, {
+          role: primaryRole,
+          email: userProfile?.email ?? null,
+          created_at: userProfile?.created_at ?? null,
+        });
+      } catch {
+        // Analytics must never break auth
+      }
     } catch (err) {
       logger.error('Failed to fetch user data', err as Error, { component: 'useAuth' });
+      setProfileFetchFailed(true);
+      setProfileReady(true);
     }
   };
 
@@ -139,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshAuth = async () => {
     if (user) {
+      setProfileFetchFailed(false);
       await fetchUserData(user.id);
     }
   };
@@ -163,6 +185,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (nextSession?.user && lastFetchedRef.current !== nextSession.user.id) {
         lastFetchedRef.current = nextSession.user.id;
+        setProfileReady(false);
+        setProfileFetchFailed(false);
 
         await Promise.race([
           fetchUserData(nextSession.user.id),
@@ -194,6 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsClubManager(false);
         setIsAcademyManager(false);
         setSubscription(null);
+        setProfileReady(false);
+        setProfileFetchFailed(false);
         resetUser();
       }
 
@@ -213,10 +239,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const bootstrapAuth = async () => {
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        
+        // If session restoration fails, clear stale local auth state
+        if (error) {
+          logger.warn('Failed to restore session, clearing local auth', { component: 'useAuth', error });
+          await supabase.auth.signOut();
+          if (isActive) setLoading(false);
+          return;
+        }
+        
         await applySessionState(initialSession, 'bootstrap');
       } catch (err) {
         logger.warn('Failed to bootstrap auth session', { component: 'useAuth', err });
+        // Clear potentially corrupted local state
+        try { await supabase.auth.signOut(); } catch { /* ignore */ }
         if (isActive) setLoading(false);
       }
     };
@@ -273,6 +310,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAcademyManager,
       subscription,
       loading, 
+      profileReady,
+      profileFetchFailed,
       refreshAuth,
       refreshSubscription,
     }}>
