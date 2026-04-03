@@ -115,14 +115,18 @@ function loadColumns(): Set<string> {
 
 export default function IntakeRequestsTable({
   requests,
+  allRequests = [],
   trainers = [],
   onRowClick,
   emptyMessage = 'No requests',
   emptyDescription = 'Applications will appear here when players sign up',
   playerLinks = [],
+  onLinkChanged,
 }: IntakeRequestsTableProps) {
   const { t } = useTranslation('cycles');
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(loadColumns);
+  const [dismissVersion, setDismissVersion] = useState(0);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleColumns]));
@@ -138,6 +142,45 @@ export default function IntakeRequestsTable({
   };
 
   const isVisible = (key: string) => visibleColumns.has(key);
+
+  // Compute suggestions for all requests
+  const suggestionsMap = useMemo(() => {
+    if (!allRequests.length) return new Map<string, IntakeRequestWithProposal[]>();
+    const dismissed = getDismissedSuggestions();
+    const map = new Map<string, IntakeRequestWithProposal[]>();
+    for (const req of requests) {
+      const linkedIds = new Set(getLinkedIdsForRequest(req.id, playerLinks));
+      const suggestions = getSuggestedLinks(req, allRequests, linkedIds, dismissed);
+      if (suggestions.length > 0) {
+        map.set(req.id, suggestions);
+      }
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requests, allRequests, playerLinks, dismissVersion]);
+
+  const handleLinkFromTable = async (requestId: string, suggestedId: string) => {
+    setLinkingId(suggestedId);
+    try {
+      const linkedIds = getLinkedIdsForRequest(requestId, playerLinks);
+      if (linkedIds.length > 0) {
+        await linkPlayers([requestId, ...linkedIds, suggestedId]);
+      } else {
+        await linkPlayers([requestId, suggestedId]);
+      }
+      toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
+      onLinkChanged?.();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setLinkingId(null);
+    }
+  };
+
+  const handleDismissFromTable = (requestId: string, suggestedId: string) => {
+    dismissSuggestion(requestId, suggestedId);
+    setDismissVersion(v => v + 1);
+  };
 
   // Build link group map
   const linkGroupMap = new Map<string, string>();
