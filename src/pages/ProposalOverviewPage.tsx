@@ -47,16 +47,26 @@ import { toast } from 'sonner';
 
 // --- Helpers ---
 
-function formatTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatTime(dateStr: string, tz?: string) {
+  const opts: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+  if (tz) opts.timeZone = tz;
+  return new Date(dateStr).toLocaleTimeString([], opts);
 }
 
-function formatDayLabel(dateStr: string, locale: string) {
+function formatDayLabel(dateStr: string, locale: string, tz?: string) {
   const d = new Date(dateStr);
-  return d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' });
+  const opts: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'short' };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleDateString(locale, opts);
 }
 
-function getDateKey(dateStr: string) {
+function getDateKey(dateStr: string, tz?: string) {
+  if (tz) {
+    // Format date in the target timezone to get the correct calendar date
+    const d = new Date(dateStr);
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    return parts; // returns YYYY-MM-DD
+  }
   return new Date(dateStr).toISOString().slice(0, 10);
 }
 
