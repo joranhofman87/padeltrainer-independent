@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -92,23 +93,67 @@ export function GenerateProposalsWizard({
   inline = false,
 }: GenerateProposalsWizardProps) {
   const { t } = useTranslation('cycles');
-  const [step, setStep] = useState(1);
+  const STORAGE_KEY = `generate-proposals-draft-${cycle.id}`;
+  const restoredRef = useRef(false);
   const totalSteps = 3;
 
+  // Try to restore from localStorage
+  const getSavedDraft = useCallback(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  }, [STORAGE_KEY]);
+
+  const draft = restoredRef.current ? null : getSavedDraft();
+
+  const [step, setStep] = useState(draft?.step || 1);
+
   // Step 1: Schedule
-  const [startDate, setStartDate] = useState<Date>(new Date(cycle.start_date));
+  const [startDate, setStartDate] = useState<Date>(
+    draft?.startDate ? new Date(draft.startDate) : new Date(cycle.start_date)
+  );
   const [availableTrainers, setAvailableTrainers] = useState<TrainerOption[]>([]);
-  const [trainerConfigs, setTrainerConfigs] = useState<TrainerAvailabilityConfig[]>([]);
+  const [trainerConfigs, setTrainerConfigs] = useState<TrainerAvailabilityConfig[]>(
+    draft?.trainerConfigs || []
+  );
 
   // Step 2: Weights
   const [weights, setWeights] = useState<ScoringWeights>(
-    cycle.settings?.scoring_weights || DEFAULT_SCORING_WEIGHTS
+    draft?.weights || cycle.settings?.scoring_weights || DEFAULT_SCORING_WEIGHTS
   );
 
   // Step 3: Additional criteria
-  const [additionalCriteria, setAdditionalCriteria] = useState('');
-  const [linkStrategy, setLinkStrategy] = useState<LinkStrategy>('prefer');
-  const [fillIncompleteGroups, setFillIncompleteGroups] = useState(true);
+  const [additionalCriteria, setAdditionalCriteria] = useState(draft?.additionalCriteria || '');
+  const [linkStrategy, setLinkStrategy] = useState<LinkStrategy>(draft?.linkStrategy || 'prefer');
+  const [fillIncompleteGroups, setFillIncompleteGroups] = useState(draft?.fillIncompleteGroups ?? true);
+
+  // Show toast if draft was restored
+  useEffect(() => {
+    if (!restoredRef.current && draft) {
+      restoredRef.current = true;
+      toast.info(t('proposals.wizard.draftRestored', { defaultValue: 'Your previous configuration was restored' }));
+    } else {
+      restoredRef.current = true;
+    }
+  }, []);
+
+  // Persist state to localStorage on every change
+  useEffect(() => {
+    const data = {
+      step,
+      startDate: startDate.toISOString(),
+      trainerConfigs,
+      weights,
+      additionalCriteria,
+      linkStrategy,
+      fillIncompleteGroups,
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {}
+  }, [step, startDate, trainerConfigs, weights, additionalCriteria, linkStrategy, fillIncompleteGroups, STORAGE_KEY]);
 
   // Load trainers
   useEffect(() => {
@@ -173,19 +218,21 @@ export function GenerateProposalsWizard({
 
     setAvailableTrainers(trainers);
 
-    // Pre-select only trainers explicitly saved in cycle settings
-    const applicableIds = cycle.settings?.applicable_trainer_ids || [];
-    const preSelected = applicableIds.length > 0
-      ? trainers.filter(t => applicableIds.includes(t.id))
-      : [];
+    // Only pre-select if we don't have a restored draft with trainer configs
+    if (trainerConfigs.length === 0) {
+      const applicableIds = cycle.settings?.applicable_trainer_ids || [];
+      const preSelected = applicableIds.length > 0
+        ? trainers.filter(t => applicableIds.includes(t.id))
+        : [];
 
-    setTrainerConfigs(preSelected.map(t => ({
-      trainerId: t.id,
-      trainerName: t.name,
-      windows: [{ day: 'monday', start: '09:00', end: '17:00' }],
-      minRating: t.preferredMinRating,
-      maxRating: t.preferredMaxRating,
-    })));
+      setTrainerConfigs(preSelected.map(t => ({
+        trainerId: t.id,
+        trainerName: t.name,
+        windows: [{ day: 'monday', start: '09:00', end: '17:00' }],
+        minRating: t.preferredMinRating,
+        maxRating: t.preferredMaxRating,
+      })));
+    }
   };
 
   const toggleTrainer = (trainer: TrainerOption) => {
@@ -256,6 +303,7 @@ export function GenerateProposalsWizard({
       linkStrategy,
       fillIncompleteGroups,
     });
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
   };
 
   const canProceedStep1 = trainerConfigs.length > 0 && trainerConfigs.some(c => c.windows.length > 0);
