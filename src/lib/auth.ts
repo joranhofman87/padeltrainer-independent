@@ -129,13 +129,24 @@ export async function signInWithEmail(email: string, password: string) {
 }
 
 export async function signInWithGoogle() {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: getAuthRedirectUrl('/app/auth'),
-    },
-  });
-  return { data, error };
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: getAuthRedirectUrl('/app/auth'),
+      },
+    });
+    return { data, error };
+  } catch (err: any) {
+    logger.error('Google sign-in network failure', err as Error, { component: 'auth' });
+    return {
+      data: null,
+      error: {
+        message: 'Google sign-in is temporarily unavailable. Please try again.',
+        name: 'NetworkError',
+      } as any,
+    };
+  }
 }
 
 export async function signOut() {
