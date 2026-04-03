@@ -73,11 +73,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
     location.pathname.includes("/app/academy/calendar") ||
     location.pathname.includes("/app/academy/open-slots")
   );
-  const [registrationOpen, setRegistrationOpen] = useState(
-    location.pathname.includes("/app/academy/cycles") ||
-    location.pathname.includes("/app/academy/intake-requests") ||
-    location.pathname.includes("/app/academy/waiting-list")
-  );
+  const [registrationOpen, setRegistrationOpen] = useState(false); // No longer a collapsible group
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/academy/settings") ||
     location.pathname.includes("/app/academy/subscription") ||
