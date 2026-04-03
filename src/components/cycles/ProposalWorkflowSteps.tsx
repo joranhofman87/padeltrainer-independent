@@ -33,6 +33,10 @@ interface ProposalWorkflowStepsProps {
   isResetting?: boolean;
   /** When true, hides the cycle selector (step 1) — used when already scoped to a single cycle */
   hideCycleSelector?: boolean;
+  /** Number of pending link review actions */
+  pendingLinkActions?: number;
+  /** Whether links have been reviewed */
+  isLinksReviewed?: boolean;
 }
 
 export default function ProposalWorkflowSteps({
