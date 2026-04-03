@@ -99,7 +99,7 @@ export default function AcademyCycleDetail() {
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<string>('list');
-  const [showWizard, setShowWizard] = useState(false);
+  const [showWizard, setShowWizard] = useState(false); // kept for potential dialog usage
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
