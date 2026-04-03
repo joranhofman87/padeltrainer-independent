@@ -60,6 +60,7 @@ export interface GenerateProposalsConfig {
   additionalCriteria: string;
   linkStrategy: LinkStrategy;
   fillIncompleteGroups: boolean;
+  maxGroupSize: number;
 }
 
 interface TrainerOption {
