@@ -778,18 +778,6 @@ export default function AcademyCycleDetail() {
         onLinkChanged={refreshData}
       />
 
-      {/* Generate Proposals Wizard */}
-      {cycle && (
-        <GenerateProposalsWizard
-          open={showWizard}
-          onOpenChange={setShowWizard}
-          cycle={cycle}
-          onGenerate={handleGenerateProposals}
-          isGenerating={isGenerating}
-          ownerType="academy"
-          ownerId={activeAcademy!.id}
-        />
-      )}
 
       {/* Add Registration Dialog */}
       <AddIntakeRequestDialog
