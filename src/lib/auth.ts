@@ -2,6 +2,26 @@ import { supabase } from "@/lib/supabaseClient";
 import { getAuthRedirectUrl } from "@/lib/domains";
 import { logger } from '@/lib/logger';
 
+function normalizeAuthError(error: any, fallbackMessage: string) {
+  const message = typeof error?.message === 'string' ? error.message.trim() : '';
+  const name = typeof error?.name === 'string' ? error.name : '';
+  const status = typeof error?.status === 'number' ? error.status : undefined;
+  const code = typeof error?.code === 'string' ? error.code : undefined;
+
+  const isRetryable = name === 'AuthRetryableFetchError';
+  const isServiceUnavailable = status === 503 || status === 504 || message.includes('503') || message.includes('504');
+  const isNetworkLike = isRetryable || message.includes('Failed to fetch') || message.includes('NetworkError') || message.includes('fetch failed') || message.includes('Load failed');
+
+  return {
+    ...error,
+    name: name || 'AuthError',
+    status,
+    code,
+    message: isServiceUnavailable || isNetworkLike
+      ? 'Login is temporarily unavailable. Please try again in a moment.'
+      : message || fallbackMessage,
+  };
+}
 export type UserRole = 'player' | 'trainer' | 'admin' | 'club';
 
 export interface UserProfile {
@@ -114,24 +134,32 @@ export async function signInWithEmail(email: string, password: string) {
       email,
       password,
     });
-    // Supabase may return error objects without a message on 503/504 responses
-    if (error && !error.message) {
-      error.message = 'Login is temporarily unavailable. Please try again in a moment.';
+
+    if (error) {
+      const normalizedError = normalizeAuthError(error, 'Unable to sign in. Please check your email and password and try again.');
+      logger.error('Sign in failed', normalizedError as Error, {
+        component: 'auth',
+        action: 'signInWithEmail',
+        status: (normalizedError as any).status,
+        code: (normalizedError as any).code,
+        name: normalizedError.name,
+      });
+      return { data, error: normalizedError as any };
     }
-    return { data, error };
+
+    return { data, error: null };
   } catch (err: any) {
-    // CORS or network failure — the request never completed
-    const msg = err?.message || '';
-    const isCors = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS');
-    logger.error('Sign-in network failure', err as Error, { component: 'auth', isCors });
+    const normalizedError = normalizeAuthError(err, 'Login is temporarily unavailable. Please try again in a moment.');
+    logger.error('Sign-in network failure', normalizedError as Error, {
+      component: 'auth',
+      action: 'signInWithEmailCatch',
+      status: (normalizedError as any).status,
+      code: (normalizedError as any).code,
+      name: normalizedError.name,
+    });
     return {
       data: { user: null, session: null },
-      error: {
-        message: isCors
-          ? 'Unable to reach the login server. If you are on a custom domain, please try again or use the main site.'
-          : 'Login is temporarily unavailable. Please try again in a moment.',
-        name: 'NetworkError',
-      } as any,
+      error: normalizedError as any,
     };
   }
 }
@@ -144,19 +172,32 @@ export async function signInWithGoogle() {
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },
     });
-    return { data, error };
+
+    if (error) {
+      const normalizedError = normalizeAuthError(error, 'Google sign-in is temporarily unavailable. Please try again.');
+      logger.error('Google sign in failed', normalizedError as Error, {
+        component: 'auth',
+        action: 'signInWithGoogle',
+        status: (normalizedError as any).status,
+        code: (normalizedError as any).code,
+        name: normalizedError.name,
+      });
+      return { data, error: normalizedError as any };
+    }
+
+    return { data, error: null };
   } catch (err: any) {
-    const msg = err?.message || '';
-    const isCors = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS');
-    logger.error('Google sign-in network failure', err as Error, { component: 'auth', isCors });
+    const normalizedError = normalizeAuthError(err, 'Google sign-in is temporarily unavailable. Please try again.');
+    logger.error('Google sign-in network failure', normalizedError as Error, {
+      component: 'auth',
+      action: 'signInWithGoogleCatch',
+      status: (normalizedError as any).status,
+      code: (normalizedError as any).code,
+      name: normalizedError.name,
+    });
     return {
       data: null,
-      error: {
-        message: isCors
-          ? 'Unable to reach the login server. If you are on a custom domain, please try again or use the main site.'
-          : 'Google sign-in is temporarily unavailable. Please try again.',
-        name: 'NetworkError',
-      } as any,
+      error: normalizedError as any,
     };
   }
 }

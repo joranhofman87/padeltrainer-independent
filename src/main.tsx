@@ -34,24 +34,34 @@ window.addEventListener('unhandledrejection', (event) => {
 async function initDeferred() {
   const { initializePostHog } = await import('./lib/posthog');
   initializePostHog();
-  // Reditus affiliate tracking — deferred to avoid render-blocking
+
+  const isAuthRoute = /^\/app\/(auth|signup|forgot-password|reset-password)/.test(window.location.pathname);
+  if (isAuthRoute) return;
+
+  // Reditus affiliate tracking — deferred to avoid render-blocking and skipped on auth routes
   const s = document.createElement('script');
   s.async = true;
   s.src = 'https://script.getreditus.com/v2.js';
   s.onerror = () => { /* silently ignore third-party load failures */ };
   s.onload = () => {
     try {
-      (window as any).gr?.('initCustomer', '48a566a2-eb01-4562-932d-ef6886e0282e');
-      (window as any).gr?.('track', 'pageview');
+      const gr = (window as any).gr;
+      if (typeof gr !== 'function') return;
+      gr('initCustomer', '48a566a2-eb01-4562-932d-ef6886e0282e');
+      gr('track', 'pageview');
     } catch { /* silently ignore third-party errors */ }
   };
   document.head.appendChild(s);
 }
 
 if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-  (window as any).requestIdleCallback(initDeferred);
+  (window as any).requestIdleCallback(() => {
+    void initDeferred();
+  });
 } else {
-  setTimeout(initDeferred, 1000);
+  setTimeout(() => {
+    void initDeferred();
+  }, 1000);
 }
 
 createRoot(document.getElementById("root")!).render(
