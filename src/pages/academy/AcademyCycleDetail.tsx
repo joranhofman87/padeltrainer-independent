@@ -274,6 +274,7 @@ export default function AcademyCycleDetail() {
         additionalCriteria: config.additionalCriteria,
         linkStrategy: config.linkStrategy,
         fillIncompleteGroups: config.fillIncompleteGroups,
+        maxGroupSize: config.maxGroupSize,
       });
       if (result.skipped > 0) {
         toast.success(
