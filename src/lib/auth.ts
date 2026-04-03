@@ -143,14 +143,27 @@ export async function getUserRole(userId: string): Promise<UserRole | null> {
   return null;
 }
 
-export async function getUserRoles(userId: string): Promise<UserRole[]> {
-  const { data, error } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', userId);
-  
-  if (error || !data) return [];
-  return data.map(d => d.role as UserRole);
+export interface FetchResult<T> {
+  data: T;
+  failed: boolean;
+}
+
+export async function getUserRoles(userId: string): Promise<FetchResult<UserRole[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId);
+    
+    if (error) {
+      logger.error('Error fetching user roles', error as any, { component: 'auth' });
+      return { data: [], failed: true };
+    }
+    return { data: (data || []).map(d => d.role as UserRole), failed: false };
+  } catch (err) {
+    logger.error('Exception fetching user roles', err as Error, { component: 'auth' });
+    return { data: [], failed: true };
+  }
 }
 
 export async function setUserRole(userId: string, role: UserRole, timezone?: string) {
