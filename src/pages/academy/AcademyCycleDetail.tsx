@@ -255,6 +255,7 @@ export default function AcademyCycleDetail() {
         startDate: config.startDate,
         trainerAvailability: config.trainerAvailability,
         additionalCriteria: config.additionalCriteria,
+        keepCompleteGroups: config.keepCompleteGroups,
       });
       if (result.skipped > 0) {
         toast.success(
