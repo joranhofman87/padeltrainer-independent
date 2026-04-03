@@ -738,7 +738,7 @@ Deno.serve(async (req) => {
     const reservedSlots = new Set<string>(); // slots where remaining capacity is reserved (fillIncompleteGroups=false)
 
     if (linkStrategy === 'strict' || linkStrategy === 'prefer') {
-      const defaultMaxParticipants = cycle.settings?.max_group_size || 4;
+      const defaultMaxParticipants = inputMaxGroupSize || cycle.settings?.max_group_size || 4;
 
       for (const [groupId, memberIds] of Object.entries(linkGroupMembers)) {
         const groupRequests = memberIds
