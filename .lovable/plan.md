@@ -1,45 +1,44 @@
 
 
-# Redesign Registration Detail Sheet Actions
+# Add "Add Player" to Slot — Pick from All Registrations
 
 ## Problem
-1. Actions (Edit, Confirm, Waitlist, Reject, Delete) are at the bottom of the sheet — easy to miss and requires scrolling
-2. The "Delete" button deletes the **registration** (intake request), not the proposal — this is confusing and dangerous in the proposal review context
-3. Missing proposal-specific actions: no way to delete a proposal (move player back to unplaced) or reassign from within this sheet
+When a trainer wants to place someone a second time (e.g. for 2×/week decided via email, not in the form), there's no way to do it. The unplaced sidebar only shows players without any assignment. The trainer needs access to the full player list from within a slot.
+
+## Approach
+Add a small, subtle "+" button at the bottom of each slot card. Clicking it opens a compact popover/dialog with a searchable list of **all** registered players (not just unplaced). Selecting a player calls the existing `onAssignPlayer` handler. This keeps the feature discoverable but not distracting.
 
 ## Changes
 
-### `src/components/cycles/IntakeRequestDetailSheet.tsx`
+### `src/components/cycles/ProposalScheduleGrid.tsx`
 
-**Move actions to top**: Place a compact action bar right below the `SheetHeader` (before the contact info card). This keeps actions always visible without scrolling.
+1. **New prop**: `allPlayers?: UnplacedPlayer[]` — the full list of registered players (placed + unplaced), passed from the parent
+2. **"+" button on slot cards**: Add a small `UserPlus` icon button below the player chips in `DraggableSlotCard`. Only shown when `onAssignPlayer` and `allPlayers` are provided. Styled as a ghost button, subtle and compact.
+3. **Add Player Popover**: Clicking "+" opens a `Popover` with:
+   - A search input
+   - A scrollable list of all players (filtered by search), showing name + rating
+   - Players already in *this* slot are greyed out / disabled
+   - Clicking a player triggers `onAssignPlayer(player.id, slot.id)` and closes the popover
+4. Pass `allPlayers` and `onAssignPlayer` down to `DraggableSlotCard`
 
-**Remove the registration Delete button**: It's confusing and risky in this context. Registration management (including deletion) should happen in the registrations step, not while reviewing proposals.
+### Parent pages (pass `allPlayers`)
 
-**Add proposal-specific actions** (shown only when a proposal exists):
-- **Delete proposal** — calls `updateProposedAssignmentStatus(proposal.id, 'rejected')` or deletes the proposed_assignment row, effectively moving the player back to "unplaced". Label: "Remove proposal" with an Undo/X icon
-- **Change proposal** — opens the existing `ReassignPlayerDialog` (already used in `ProposalCard`). Label: "Reassign" with an Edit icon
+- `src/pages/academy/AcademyCycleDetail.tsx`: Create `allPlayers` from the full `requests` array (same shape as `unplacedPlayers` but without the status filter), pass as `allPlayers` prop
+- `src/pages/TrainerIntakeRequests.tsx`: Same
+- `src/pages/academy/AcademyIntakeRequests.tsx`: Same
 
-**Keep existing actions** (Edit registration, Confirm, Waitlist, Reject) in the top bar — these are still useful for managing the registration status.
-
-### Layout
-```text
-┌─ Sheet Header ─────────────────────────┐
-│ Registration Detail                     │
-│ Applied Mar 15, 2026                   │
-├─ Actions Bar ──────────────────────────┤
-│ [Edit] [Confirm] [Waitlist] [Reject]   │
-│ ── Proposal: [Remove Proposal] [Reassign] │
-├─────────────────────────────────────────┤
-│ Contact Info card                       │
-│ Preferences card                        │
-│ ...                                     │
-│ Proposal card                           │
-└─────────────────────────────────────────┘
-```
+## Result
+- Small "+" button at the bottom of each slot — easy to miss if you don't need it, but there when you do
+- Opens a searchable player picker showing everyone
+- Already-assigned players in that slot are disabled to prevent accidental duplicates within the same slot
+- Works with the existing `onAssignPlayer` handler — no new backend changes needed
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Move actions div from bottom (line 639-710) to right after SheetHeader; remove Delete registration button; add "Remove proposal" and "Reassign" buttons when proposal exists |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Add `allPlayers` prop, "+" button on slots, Add Player Popover |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Build and pass `allPlayers` from full `requests` list |
+| `src/pages/TrainerIntakeRequests.tsx` | Same |
+| `src/pages/academy/AcademyIntakeRequests.tsx` | Same |
 
