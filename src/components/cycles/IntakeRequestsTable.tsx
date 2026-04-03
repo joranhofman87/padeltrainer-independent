@@ -603,7 +603,7 @@ export default function IntakeRequestsTable({
 
                     {isVisible('linked') && (
                       <TableCell>
-                        {renderLinkedColumn(request.id)}
+                        {renderLinkedColumn(request)}
                       </TableCell>
                     )}
 
