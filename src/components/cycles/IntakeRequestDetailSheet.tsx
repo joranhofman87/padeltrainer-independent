@@ -10,17 +10,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +41,6 @@ import {
   Clock3,
   Sparkles,
   AlertCircle,
-  Trash2,
   Pencil,
   Link2,
   Plus,
@@ -65,13 +53,15 @@ import {
   type EnrichedProposedAssignment,
   type PlayerLink,
   updateIntakeRequestStatus,
+  updateProposedAssignmentStatus,
   getProposedAssignmentForRequest,
-  deleteIntakeRequest,
+  
   linkPlayers,
   unlinkPlayer,
 } from '@/lib/cycles';
 import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getUnmatchedMentions, getDismissedUnmatched, dismissUnmatchedMention } from '@/lib/suggestLinks';
 import ProposalCard from './ProposalCard';
+import ReassignPlayerDialog from './ReassignPlayerDialog';
 import EditIntakeRequestDialog from './EditIntakeRequestDialog';
 
 interface IntakeRequestDetailSheetProps {
@@ -100,7 +90,7 @@ export default function IntakeRequestDetailSheet({
   const [isLoadingProposal, setIsLoadingProposal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [showReassign, setShowReassign] = useState(false);
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [optimisticLinkedIds, setOptimisticLinkedIds] = useState<string[]>([]);
@@ -200,19 +190,18 @@ export default function IntakeRequestDetailSheet({
     }
   };
 
-  const handleDelete = async () => {
-    if (!request) return;
-
-    setIsDeleting(true);
+  const handleRemoveProposal = async () => {
+    if (!proposal) return;
+    setIsUpdating(true);
     try {
-      await deleteIntakeRequest(request.id);
-      toast.success(t('intakeRequests.actions.deleteSuccess'));
-      onOpenChange(false);
+      await updateProposedAssignmentStatus(proposal.id, 'rejected');
+      toast.success(t('proposals.reassign.removed', { defaultValue: 'Proposal removed — player moved to unplaced' }));
+      setProposal(null);
       onStatusChange?.();
     } catch (error: any) {
       toast.error(error.message);
     } finally {
-      setIsDeleting(false);
+      setIsUpdating(false);
     }
   };
 
@@ -271,6 +260,77 @@ export default function IntakeRequestDetailSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
+          {/* Actions Bar — always visible at top */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowEditDialog(true)}
+              >
+                <Pencil className="h-4 w-4 mr-1" />
+                {t('intakeRequests.actions.edit', { defaultValue: 'Bewerken' })}
+              </Button>
+              {request.status !== 'confirmed' && (
+                <Button 
+                  size="sm" 
+                  onClick={() => handleStatusChange('confirmed')}
+                  disabled={isUpdating}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-1" />
+                  {t('intakeRequests.actions.confirm')}
+                </Button>
+              )}
+              {request.status !== 'waitlist' && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handleStatusChange('waitlist')}
+                  disabled={isUpdating}
+                >
+                  <Clock3 className="h-4 w-4 mr-1" />
+                  {t('intakeRequests.actions.waitlist')}
+                </Button>
+              )}
+              {request.status !== 'rejected' && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => handleStatusChange('rejected')}
+                  disabled={isUpdating}
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  {t('intakeRequests.actions.reject')}
+                </Button>
+              )}
+            </div>
+
+            {/* Proposal-specific actions */}
+            {proposal && proposal.status === 'proposed' && (
+              <div className="flex flex-wrap gap-2 pt-1 border-t border-border">
+                <span className="text-xs text-muted-foreground self-center mr-1">{t('proposals.card.slot', { defaultValue: 'Proposal' })}:</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRemoveProposal}
+                  disabled={isUpdating}
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  {t('proposals.reassign.removeProposal', { defaultValue: 'Remove proposal' })}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowReassign(true)}
+                  disabled={!cycleId}
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  {t('proposals.reassign.change', { defaultValue: 'Reassign' })}
+                </Button>
+              </div>
+            )}
+          </div>
           {/* Contact Info */}
           <Card>
             <CardHeader className="pb-3">
@@ -634,80 +694,6 @@ export default function IntakeRequestDetailSheet({
             )}
           </div>
 
-          <Separator />
-
-          {/* Actions */}
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowEditDialog(true)}
-            >
-              <Pencil className="h-4 w-4 mr-1" />
-              {t('intakeRequests.actions.edit', { defaultValue: 'Bewerken' })}
-            </Button>
-            {request.status !== 'confirmed' && (
-              <Button 
-                size="sm" 
-                onClick={() => handleStatusChange('confirmed')}
-                disabled={isUpdating}
-              >
-                <CheckCircle2 className="h-4 w-4 mr-1" />
-                {t('intakeRequests.actions.confirm')}
-              </Button>
-            )}
-            {request.status !== 'waitlist' && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleStatusChange('waitlist')}
-                disabled={isUpdating}
-              >
-                <Clock3 className="h-4 w-4 mr-1" />
-                {t('intakeRequests.actions.waitlist')}
-              </Button>
-            )}
-            {request.status !== 'rejected' && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => handleStatusChange('rejected')}
-                disabled={isUpdating}
-              >
-                <XCircle className="h-4 w-4 mr-1" />
-                {t('intakeRequests.actions.reject')}
-              </Button>
-            )}
-
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button 
-                  variant="destructive" 
-                  size="sm"
-                  className="ml-auto"
-                  disabled={isDeleting}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  {t('intakeRequests.actions.delete')}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('intakeRequests.delete.title')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('intakeRequests.delete.description')}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('intakeRequests.delete.cancel')}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
-                    {t('intakeRequests.delete.confirm')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
         </div>
 
         {/* Edit Dialog */}
@@ -718,6 +704,23 @@ export default function IntakeRequestDetailSheet({
             request={request}
             onSuccess={() => {
               onStatusChange?.();
+            }}
+          />
+        )}
+
+        {/* Reassign Dialog */}
+        {cycleId && proposal && (
+          <ReassignPlayerDialog
+            open={showReassign}
+            onOpenChange={setShowReassign}
+            assignmentId={proposal.id}
+            currentSlotId={proposal.slot_id}
+            cycleId={cycleId}
+            playerName={request.full_name}
+            onReassigned={() => {
+              onStatusChange?.();
+              // Refresh proposal
+              getProposedAssignmentForRequest(request.id).then(setProposal);
             }}
           />
         )}
