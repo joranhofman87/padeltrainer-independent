@@ -1,37 +1,36 @@
 
 
-# Unmatched Mentions: Info-Only (Non-Blocking)
+# Make Review Links Step More Obvious + Always-Visible "Continue to Generate" Button
 
 ## Problem
-Unmatched mentions (names mentioned in notes but not registered) currently count as "pending actions" in the Review Links step. This blocks the workflow — trainers can't proceed without dismissing each one, even though most are informational and not actionable.
+The Review Links step content is too small and hidden behind collapsible sections. The "Continue to Generate" button only shows after all link suggestions are resolved, and there's no clear call-to-action guiding the trainer.
 
-## Change
-Make unmatched mentions purely informational. Only **link suggestions** (actual matchable players) count as pending actions. Unmatched mentions are still shown but don't block the step.
-
-## Implementation
-
-### `src/pages/academy/AcademyCycleDetail.tsx`
-- Remove `getUnmatchedMentions` from the `pendingLinkActions` count (line 242). Only link suggestions count.
+## Changes
 
 ### `src/components/cycles/PreGenerationReview.tsx`
-- Change the `totalActions` calculation to only count `suggestions.length` (not unmatched)
-- The "all clear" green card shows when there are no link suggestions (unmatched mentions may still exist)
-- Move the unmatched section into a separate collapsible info block with a softer style (no amber/orange warning — use a muted info style with a subtle icon)
-- Keep the dismiss X button so trainers can clean up the list if they want, but it's optional
+1. Add `onContinue` prop (callback to navigate to Generate step)
+2. Add `hasPendingLinks` prop (boolean, true when suggestions remain)
+3. Render a prominent "Continue to Generate" button at the **top** of the component, always visible:
+   - When `hasPendingLinks` is true: button is disabled, tooltip/text says "Resolve all link suggestions first"
+   - When false: button is enabled, primary green style
+4. Remove all `Collapsible` wrappers — show link suggestions and unmatched mentions directly (no collapse/expand)
+5. Keep the "All clear" green card but place it below the continue button
+6. Unmatched mentions always shown (no collapsible), keeping their muted info style
 
-### `src/components/cycles/ProposalWorkflowSteps.tsx`
-- No changes needed — it already uses `pendingLinkActions` which will now only reflect link suggestions
+### `src/pages/academy/AcademyCycleDetail.tsx`
+1. Remove the separate "Continue to Generate" button block (lines 645-651)
+2. Pass `onContinue={() => setActiveStep('generate')}` and `hasPendingLinks={pendingLinkActions > 0}` to `PreGenerationReview`
 
 ## Result
-- Step 2 shows "All clear" and is marked complete even with unmatched mentions present
-- Unmatched names are still visible as an informational section below the main actions
-- Trainers can proceed to Generate without being blocked
-- The X dismiss button remains for optional cleanup
+- Trainer lands on step 2 and immediately sees a big "Continue to Generate" button at top
+- If there are pending links, the button is greyed out with explanatory text
+- All suggestions and unmatched mentions are visible without clicking to expand
+- Clear, guided flow: resolve items → button becomes active → click to proceed
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyCycleDetail.tsx` | Remove unmatched mentions from `pendingLinkActions` count |
-| `src/components/cycles/PreGenerationReview.tsx` | Unmatched = info-only section, not counted in `totalActions` |
+| `src/components/cycles/PreGenerationReview.tsx` | Add continue button at top, remove collapsibles, add `onContinue`/`hasPendingLinks` props |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Pass new props, remove standalone continue button |
 
