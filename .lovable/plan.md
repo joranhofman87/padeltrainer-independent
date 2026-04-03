@@ -1,28 +1,39 @@
 
 
-# Fix: Deleted Slot Should Return Players to Unplaced
+# Add "Create Slot" to Proposal Schedule Grid
 
 ## Problem
-When you delete a slot, `deleteSlot()` removes the `proposed_assignments` but does **not** revert the linked `intake_requests` back to status `new`. The players end up with status `proposed` but no assignment — they disappear from both the grid and the unplaced sidebar.
+When a trainer deletes a slot (to unassign players), the slot itself is also removed. There's currently no way to add a new empty slot back to the grid from within the schedule view.
 
-## Fix
+## Approach
+Add a **"+ Add slot"** button that appears in empty grid cells, allowing the trainer to create a new empty availability slot for a specific trainer at a specific time. This is the natural interaction — click an empty cell to place a new slot there.
 
-### `src/lib/cycles.ts` — `deleteSlot()` function (line 1566)
+### How it works
+1. When hovering over an empty cell in the grid, show a subtle "+" button
+2. Clicking it creates a new `availability_slots` row with the cell's trainer and time, linked to the current cycle
+3. The slot appears instantly (optimistic) and syncs to DB in background
 
-Before deleting the proposed assignments, fetch them to get all `intake_request_id`s. After deleting assignments, for each intake request check if it has any remaining assignments elsewhere. If not, set its status back to `new` so it appears in the unplaced bucket.
+### Backend
+Add a `createProposalSlot()` function in `src/lib/cycles.ts` that inserts into `availability_slots` with:
+- `trainer_id` from the column
+- `start_time` / `end_time` based on clicked row (default duration: 60 min, matching cycle settings)
+- `cyclus_id` = current cycle ID
+- `max_participants` from cycle settings
+- `location_id` from cycle
+- `is_public: false`, `is_recurring: false`
 
-Updated logic:
-1. Fetch all `proposed_assignments` for the slot (get their `intake_request_id`s)
-2. Delete the `proposed_assignments`
-3. For each affected intake request, check if other assignments remain
-4. If none remain, update `intake_requests.status` to `new`
-5. Delete the slot
+### Grid UI
+In `ProposalScheduleGrid.tsx`, update empty `DroppableCell` to show a clickable "+" on hover. When clicked, call a new `onCreateSlot` callback.
 
-This mirrors the existing logic in `unassignPlayer()` which already does this correctly for individual removals.
+### Parent pages
+Wire up `onCreateSlot` in `AcademyCycleDetail.tsx` and `TrainerIntakeRequests.tsx` — optimistically add the new slot to local state, then persist via `createProposalSlot()`.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/lib/cycles.ts` | Update `deleteSlot()` to revert orphaned intake requests to `new` status |
+| `src/lib/cycles.ts` | Add `createProposalSlot(cycleId, trainerId, startTime, endTime)` function |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Add `onCreateSlot` prop; show "+" button on empty cells on hover |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Wire `onCreateSlot` with optimistic update |
+| `src/pages/TrainerIntakeRequests.tsx` | Wire `onCreateSlot` with optimistic update |
 
