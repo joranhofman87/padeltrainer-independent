@@ -227,6 +227,25 @@ export default function AcademyCycleDetail() {
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
   const confirmedCount = requests.filter(r => r.status === 'confirmed').length;
 
+  // Compute pending link actions for the workflow step
+  const pendingLinkActions = useMemo(() => {
+    const { getDismissedSuggestions, getSuggestedLinks, getLinkedIdsForRequest, getUnmatchedMentions, getDismissedUnmatched } = require('@/lib/suggestLinks');
+    const dismissed = getDismissedSuggestions();
+    const dismissedUnmatched = getDismissedUnmatched();
+    const seenPairs = new Set<string>();
+    let count = 0;
+    for (const req of requests) {
+      const linkedIds = new Set(getLinkedIdsForRequest(req.id, playerLinksData));
+      const matches = getSuggestedLinks(req, requests, linkedIds, dismissed);
+      for (const match of matches) {
+        const pairKey = [req.id, match.id].sort().join('::');
+        if (!seenPairs.has(pairKey)) { seenPairs.add(pairKey); count++; }
+      }
+      count += getUnmatchedMentions(req, requests, dismissedUnmatched).length;
+    }
+    return count;
+  }, [requests, playerLinksData]);
+
   const unplacedPlayers = requests
     .filter(r => r.status === 'new')
     .map(r => ({

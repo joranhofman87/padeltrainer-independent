@@ -29,6 +29,7 @@ interface PreGenerationReviewProps {
   requests: IntakeRequestWithProposal[];
   playerLinks: PlayerLink[];
   onLinkChanged: () => void;
+  onPlayerClick?: (requestId: string) => void;
 }
 
 interface SuggestionItem {
