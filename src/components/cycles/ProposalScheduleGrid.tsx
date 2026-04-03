@@ -1001,13 +1001,20 @@ export default function ProposalScheduleGrid({
     onUndo?.(last.previousSlots);
   }, [undoStack, onUndo]);
 
-  // Filter unplaced players by search query
+  // Filter unplaced players by global search query AND local sidebar search
   const filteredUnplaced = useMemo(() => {
     if (!unplacedPlayers) return [];
-    if (!searchQuery.trim()) return unplacedPlayers;
-    const q = searchQuery.toLowerCase();
-    return unplacedPlayers.filter(p => p.full_name.toLowerCase().includes(q));
-  }, [unplacedPlayers, searchQuery]);
+    let result = unplacedPlayers;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(p => p.full_name.toLowerCase().includes(q));
+    }
+    if (unplacedSearch.trim()) {
+      const q = unplacedSearch.toLowerCase();
+      result = result.filter(p => p.full_name.toLowerCase().includes(q));
+    }
+    return result;
+  }, [unplacedPlayers, searchQuery, unplacedSearch]);
 
   // Compute which days have placed players matching the search query
   const daysWithSearchMatches = useMemo(() => {
