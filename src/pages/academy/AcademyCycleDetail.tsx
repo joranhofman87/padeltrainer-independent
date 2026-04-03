@@ -282,7 +282,7 @@ export default function AcademyCycleDetail() {
       } else {
         toast.success(t('proposals.generated', { count: result.generated }));
       }
-      setShowWizard(false);
+      // wizard closes automatically in inline mode
       setActiveStep('review-edit');
       refreshData();
     } catch (error: any) {
