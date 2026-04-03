@@ -84,6 +84,7 @@ interface IntakeRequestDetailSheetProps {
   playerLinks?: PlayerLink[];
   allRequests?: IntakeRequestWithProposal[];
   onLinkChanged?: () => void;
+  allowDelete?: boolean;
 }
 
 export default function IntakeRequestDetailSheet({
