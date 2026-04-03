@@ -1,55 +1,34 @@
 
 
-# Linked Player Strategy: Replace Checkbox with Clear Options
+# Persist Generate Proposals Wizard State Across Navigation
 
-## Current State
-- A single `keepCompleteGroups` checkbox that only handles full groups (e.g. 4/4)
-- Partial groups (2-3 linked players) get a soft +25 cohesion bonus but can still be split
-- No control over what happens with incomplete linked groups
+## Problem
+All wizard state (start date, selected trainers, weights, criteria, link strategy) is stored in `useState` — it resets when the trainer navigates to a different step and comes back.
 
-## Proposed UX
-Replace the checkbox with a simple **"Linked players"** select dropdown with 3 clear options:
-
-| Option | Label | What it does |
-|--------|-------|-------------|
-| `strict` | **Always keep together** | Linked players are placed as a unit. Remaining spots filled with compatible players. If no slot fits the group, they're skipped (waitlisted). |
-| `prefer` (default) | **Try to keep together** | Strong preference (+50 cohesion bonus instead of +25). Can still split if no suitable slot exists. |
-| `ignore` | **Ignore links** | Treat everyone individually. No cohesion bonus. |
-
-Additionally, a secondary option appears when `strict` or `prefer` is selected:
-
-**"Fill incomplete groups?"** — Switch (default: on)
-- **On**: remaining spots in a group's slot are filled with other compatible players
-- **Off**: leave spots empty (the group trains alone or finds someone themselves)
+## Approach
+Persist the wizard configuration to `localStorage` keyed by `cycle.id`. On mount, restore saved state. On every change, save automatically. Clear the stored config when proposals are successfully generated.
 
 ## Changes
 
 ### `src/components/cycles/GenerateProposalsWizard.tsx`
-- Replace `keepCompleteGroups` boolean state with `linkStrategy: 'strict' | 'prefer' | 'ignore'` (default: `prefer`)
-- Add `fillIncompleteGroups: boolean` state (default: `true`)
-- Replace the checkbox UI with a Select dropdown + conditional Switch
-- Update `GenerateProposalsConfig` interface: remove `keepCompleteGroups`, add `linkStrategy` and `fillIncompleteGroups`
-- Update `handleGenerate` to pass new fields
+1. Create a `STORAGE_KEY` using the cycle ID: `generate-proposals-draft-${cycle.id}`
+2. On mount: check localStorage for saved config. If found, restore `step`, `startDate`, `trainerConfigs`, `weights`, `additionalCriteria`, `linkStrategy`, `fillIncompleteGroups`
+3. Add a `useEffect` that saves current state to localStorage whenever any config value changes (debounced or on every change — the data is small)
+4. After successful `onGenerate` call, clear the localStorage entry
+5. Add a small "Draft restored" toast or subtle indicator so the trainer knows their previous selections were loaded
 
-### `src/pages/academy/AcademyCycleDetail.tsx`
-- Update the config passthrough (replace `keepCompleteGroups` with new fields)
+### No other files change
+This is entirely internal to the wizard component. The parent page (`AcademyCycleDetail`) doesn't need modifications.
 
-### `src/lib/cycles.ts`
-- Update the `generateProposals` function signature to pass `linkStrategy` and `fillIncompleteGroups` instead of `keepCompleteGroups`
-
-### `supabase/functions/generate-proposals/index.ts`
-- Accept `linkStrategy` and `fillIncompleteGroups` from request body (with backward compat: treat `keepCompleteGroups: true` as `linkStrategy: 'strict'`)
-- **`strict` mode**: Place all linked groups (any size ≥ 2) as atomic units. If no slot fits, skip them. When `fillIncompleteGroups` is false, reserve the slot capacity (don't assign unlinked players to remaining spots).
-- **`prefer` mode**: Increase cohesion bonus from 25 → 50. Process complete groups first as atomic units (existing logic). Partial groups get the strong bonus but can be split.
-- **`ignore` mode**: Skip all group cohesion logic entirely.
-- When `fillIncompleteGroups` is false: after placing a linked group, mark remaining capacity in that slot as reserved (skip in individual scoring).
+## Result
+- Trainer configures step 3 partially, navigates away, comes back → picks up exactly where they left off
+- Sub-step number, selected trainers, time windows, weights, criteria — all preserved
+- Once proposals are generated, the draft is cleared automatically
+- No database changes needed — localStorage is sufficient for draft state
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/GenerateProposalsWizard.tsx` | Replace checkbox with Select + Switch, update config interface |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Pass new config fields |
-| `src/lib/cycles.ts` | Update function signature |
-| `supabase/functions/generate-proposals/index.ts` | Implement 3 strategy modes + fill toggle |
+| `src/components/cycles/GenerateProposalsWizard.tsx` | Add localStorage save/restore for all wizard state |
 
