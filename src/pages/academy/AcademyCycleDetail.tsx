@@ -69,6 +69,7 @@ import PreGenerationReview from '@/components/cycles/PreGenerationReview';
 import { getSuggestedLinks, getLinkedIdsForRequest, getDismissedSuggestions, getUnmatchedMentions, getDismissedUnmatched } from '@/lib/suggestLinks';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useCycleDetailQuery,
   useCycleRequestsQuery,
