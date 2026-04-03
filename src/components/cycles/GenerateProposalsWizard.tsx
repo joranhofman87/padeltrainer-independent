@@ -108,7 +108,7 @@ export function GenerateProposalsWizard({
 
   // Load trainers
   useEffect(() => {
-    if (!open) return;
+    if (!inline && !open) return;
     loadTrainers();
   }, [open, ownerType, ownerId]);
 
