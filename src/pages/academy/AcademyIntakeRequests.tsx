@@ -451,6 +451,7 @@ export default function AcademyIntakeRequests() {
             toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
           }}
           unplacedPlayers={unplacedPlayers}
+          allPlayers={allPlayersForGrid}
           onAssignPlayer={async (intakeRequestId, slotId) => {
             try {
               await assignPlayerToSlot(intakeRequestId, slotId);
