@@ -608,7 +608,7 @@ function AddPlayerToSlotPopover({
 
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
-  trainerAvailabilityWindows, selectedDay, daySlots, onMoveSlot, onDeleteSlot, searchQuery,
+  trainerAvailabilityWindows, selectedDay, daySlots, allSlots, availableDays, onMoveSlot, onDeleteSlot, searchQuery,
   allPlayers, onAssignPlayer,
 }: {
   slot: SlotWithOccupancy;
@@ -617,6 +617,8 @@ function DraggableSlotCard({
   trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
   selectedDay: string;
   daySlots: SlotWithOccupancy[];
+  allSlots: SlotWithOccupancy[];
+  availableDays: string[];
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
   searchQuery?: string;
