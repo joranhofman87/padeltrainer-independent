@@ -610,6 +610,8 @@ function AddPlayerToSlotPopover({
           )}
           {filtered.map(p => {
             const inSlot = currentAssignmentIds.has(p.id);
+            const match = getMatchScore(p);
+            const matchColor = match === 'full' ? 'bg-green-500' : match === 'partial' ? 'bg-orange-400' : match === 'mismatch' ? 'bg-red-400' : null;
             return (
               <button
                 key={p.id}
@@ -624,7 +626,10 @@ function AddPlayerToSlotPopover({
                   inSlot ? 'opacity-40 cursor-not-allowed' : 'hover:bg-accent cursor-pointer',
                 )}
               >
-                <span className="font-medium truncate">{p.full_name}</span>
+                <span className="flex items-center gap-1.5 font-medium truncate">
+                  {matchColor && <span className={cn('inline-block h-2 w-2 rounded-full shrink-0', matchColor)} />}
+                  {p.full_name}
+                </span>
                 {p.rating != null && (
                   <span className="text-[10px] text-muted-foreground shrink-0 ml-1">
                     {formatRating(p.rating)}
