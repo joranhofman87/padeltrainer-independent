@@ -701,7 +701,7 @@ export default function AcademyCycleDetail() {
                     <RotateCcw className="h-4 w-4 mr-1" />
                     {t('proposals.reset', { defaultValue: 'Reset' })}
                   </Button>
-                  <Button size="sm" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve` } })}>
+                  <Button size="sm" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone } })}>
                     <Eye className="h-4 w-4 mr-1" />
                     {t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
                   </Button>
