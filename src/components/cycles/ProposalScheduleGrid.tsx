@@ -1603,7 +1603,7 @@ export default function ProposalScheduleGrid({
           </div>
 
           {/* Unplaced Players Sidebar */}
-          {unplacedPlayers && unplacedPlayers.length > 0 && (
+          {unplacedPlayers && (
             <div className={cn(
               'shrink-0 sticky top-4 self-start transition-all',
               sidebarOpen ? 'w-[280px]' : 'w-10',
