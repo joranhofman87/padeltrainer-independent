@@ -212,13 +212,15 @@ export default function IntakeRequestDetailSheet({
     setIsLinking(true);
     try {
       if (currentLinkGroup && linkedRequestIds.length > 0) {
-        // Add to existing group: link current + all existing + new target
         await linkPlayers([request.id, ...linkedRequestIds, targetRequestId]);
       } else {
         await linkPlayers([request.id, targetRequestId]);
       }
+      // Optimistic: add to local linked IDs immediately
+      setOptimisticLinkedIds(prev => [...prev, targetRequestId]);
       toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
       setLinkPopoverOpen(false);
+      // Fire-and-forget background refresh
       onLinkChanged?.();
     } catch (error: any) {
       toast.error(error.message);
