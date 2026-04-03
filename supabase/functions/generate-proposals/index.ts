@@ -856,9 +856,15 @@ Deno.serve(async (req) => {
         console.log(`Request ${request.id} (${request.full_name}) prefers ${preferredWeeks} weeks`);
       }
 
+      const defaultMaxParticipantsIndiv = inputMaxGroupSize || cycle.settings?.max_group_size || 4;
       const matchingSlots = slots.filter((slot) => {
         // Skip reserved slots (fillIncompleteGroups=false)
         if (reservedSlots.has(slot.id)) return false;
+        // HARD CAP: skip slots that are already full
+        const maxP = slot.max_participants || defaultMaxParticipantsIndiv;
+        const currentBookings = bookingCounts[slot.id] || 0;
+        const currentAssignments = slotAssignments[slot.id]?.length || 0;
+        if (currentBookings + currentAssignments >= maxP) return false;
         return request.preferred_time_windows.some((tw) =>
           matchesTimeWindow(slot.start_time, tw)
         );

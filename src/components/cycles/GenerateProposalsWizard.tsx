@@ -524,6 +524,24 @@ export function GenerateProposalsWizard({
       {/* Step 3: Additional Criteria */}
       {step === 3 && (
         <div className="space-y-4 py-2">
+          {/* Max group size */}
+          <div className="space-y-2">
+            <Label>{t('proposals.wizard.maxGroupSize', { defaultValue: 'Max players per group' })}</Label>
+            <p className="text-sm text-muted-foreground">
+              {t('proposals.wizard.maxGroupSizeHelp', { defaultValue: 'Maximum number of players that can be assigned to a single time slot.' })}
+            </p>
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={maxGroupSize}
+              onChange={(e) => setMaxGroupSize(Math.max(1, parseInt(e.target.value) || 4))}
+              className="w-24"
+            />
+          </div>
+
+          <Separator />
+
           {/* Linked players strategy */}
           <div className="space-y-2">
             <Label>{t('proposals.wizard.linkStrategy', { defaultValue: 'Linked players' })}</Label>
