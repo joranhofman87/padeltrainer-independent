@@ -1115,6 +1115,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
           player_rating: req?.rating ?? null,
           player_rating_system: req?.rating_system ?? null,
           confidence_score: a.confidence_score,
+          sessions_per_week: req?.sessions_per_week ?? 1,
         };
       }),
     };
