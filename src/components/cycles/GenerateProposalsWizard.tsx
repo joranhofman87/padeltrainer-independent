@@ -35,12 +35,11 @@ import { ScoringWeightsPanel } from './ScoringWeightsPanel';
 
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const TIME_OPTIONS: string[] = [];
-for (let h = 6; h <= 22; h++) {
-  for (let m = 0; m < 60; m += 30) {
-    if (h === 22 && m > 0) break;
-    TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
-  }
+for (let h = 6; h <= 23; h++) {
+  TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:00`);
+  TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:30`);
 }
+TIME_OPTIONS.push('00:00');
 
 export interface TrainerAvailabilityConfig {
   trainerId: string;
