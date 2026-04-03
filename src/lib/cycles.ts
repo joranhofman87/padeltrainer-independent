@@ -1564,14 +1564,42 @@ export async function moveSlot(
 
 // Delete a slot and remove its proposal assignments (players return to unassigned pool)
 export async function deleteSlot(slotId: string): Promise<void> {
-  // First delete proposal assignments for this slot
+  // 1. Fetch assignments to get intake_request_ids before deleting
+  const { data: assignments, error: fetchErr } = await supabase
+    .from('proposed_assignments')
+    .select('id, intake_request_id')
+    .eq('slot_id', slotId);
+  if (fetchErr) throw fetchErr;
+
+  const affectedRequestIds = (assignments || [])
+    .map(a => a.intake_request_id)
+    .filter((id): id is string => !!id);
+
+  // 2. Delete proposal assignments for this slot
   const { error: assignError } = await supabase
     .from('proposed_assignments')
     .delete()
     .eq('slot_id', slotId);
   if (assignError) throw assignError;
 
-  // Then delete the slot itself
+  // 3. For each affected intake request, check if it still has assignments elsewhere
+  for (const requestId of affectedRequestIds) {
+    const { count, error: countErr } = await supabase
+      .from('proposed_assignments')
+      .select('id', { count: 'exact', head: true })
+      .eq('intake_request_id', requestId);
+    if (countErr) throw countErr;
+
+    if ((count ?? 0) === 0) {
+      const { error: updateErr } = await supabase
+        .from('intake_requests')
+        .update({ status: 'new' })
+        .eq('id', requestId);
+      if (updateErr) throw updateErr;
+    }
+  }
+
+  // 4. Delete the slot itself
   const { error } = await supabase
     .from('availability_slots')
     .delete()
