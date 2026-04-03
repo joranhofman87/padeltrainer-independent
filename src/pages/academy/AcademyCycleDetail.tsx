@@ -623,7 +623,22 @@ export default function AcademyCycleDetail() {
             isGenerating={isGenerating}
             isResetting={isResetting}
             hideCycleSelector
+            pendingLinkActions={pendingLinkActions}
+            isLinksReviewed={pendingLinkActions === 0}
           />
+
+          {/* Pre-generation review: show when there are new requests */}
+          {newCount > 0 && (
+            <PreGenerationReview
+              requests={requests}
+              playerLinks={playerLinksData}
+              onLinkChanged={refreshData}
+              onPlayerClick={(requestId) => {
+                const req = requests.find(r => r.id === requestId);
+                if (req) setSelectedRequest(req);
+              }}
+            />
+          )}
 
           {/* Inline schedule grid for proposals */}
           {proposedCount > 0 && (
