@@ -192,22 +192,6 @@ export default function IntakeRequestDetailSheet({
     }
   };
 
-  const handleDelete = async () => {
-    if (!request) return;
-
-    setIsDeleting(true);
-    try {
-      await deleteIntakeRequest(request.id);
-      toast.success(t('intakeRequests.actions.deleteSuccess'));
-      onOpenChange(false);
-      onStatusChange?.();
-    } catch (error: any) {
-      toast.error(error.message);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
   const handleRemoveProposal = async () => {
     if (!proposal) return;
     setIsUpdating(true);
