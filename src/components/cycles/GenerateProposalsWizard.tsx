@@ -255,6 +255,318 @@ export function GenerateProposalsWizard({
 
   const canProceedStep1 = trainerConfigs.length > 0 && trainerConfigs.some(c => c.windows.length > 0);
 
+  const subStepLabels = [
+    t('proposals.wizard.step1Label', { defaultValue: 'Schedule & Trainers' }),
+    t('proposals.wizard.step2Label', { defaultValue: 'Scoring Weights' }),
+    t('proposals.wizard.step3Label', { defaultValue: 'Additional Criteria' }),
+  ];
+
+  const stepContent = (
+    <>
+      {/* Sub-step indicators */}
+      {inline && (
+        <div className="flex items-center gap-2 mb-6">
+          {subStepLabels.map((label, idx) => {
+            const stepNum = idx + 1;
+            const isActive = step === stepNum;
+            const isCompleted = step > stepNum;
+            return (
+              <button
+                key={idx}
+                onClick={() => {
+                  if (isCompleted || isActive) setStep(stepNum);
+                }}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
+                  isActive && 'bg-primary text-primary-foreground',
+                  isCompleted && 'bg-primary/10 text-primary cursor-pointer',
+                  !isActive && !isCompleted && 'bg-muted text-muted-foreground'
+                )}
+                disabled={!isCompleted && !isActive}
+              >
+                <span className={cn(
+                  'flex items-center justify-center h-5 w-5 rounded-full text-xs font-bold',
+                  isActive && 'bg-primary-foreground text-primary',
+                  isCompleted && 'bg-primary text-primary-foreground',
+                  !isActive && !isCompleted && 'bg-muted-foreground/30 text-muted-foreground'
+                )}>
+                  {stepNum}
+                </span>
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Step 1: Schedule & Trainers */}
+      {step === 1 && (
+        <div className="space-y-6 py-2">
+          {/* Start date */}
+          <div className="space-y-2">
+            <Label>{t('proposals.wizard.startDate', { defaultValue: 'Start date' })}</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-start text-left font-normal">
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {format(startDate, 'PPP')}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={startDate}
+                  onSelect={(d) => d && setStartDate(d)}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <Separator />
+
+          {/* Trainer selection */}
+          <div className="space-y-3">
+            <Label>{t('proposals.wizard.selectTrainers', { defaultValue: 'Select trainers' })}</Label>
+            <div className="flex flex-wrap gap-2">
+              {availableTrainers.map(trainer => {
+                const isSelected = trainerConfigs.some(c => c.trainerId === trainer.id);
+                return (
+                  <Badge
+                    key={trainer.id}
+                    variant={isSelected ? 'default' : 'outline'}
+                    className="cursor-pointer"
+                    onClick={() => toggleTrainer(trainer)}
+                  >
+                    {trainer.name}
+                  </Badge>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Per-trainer availability */}
+          {trainerConfigs.map(config => (
+            <div key={config.trainerId} className="space-y-3 p-3 border rounded-lg">
+              <div className="flex items-center justify-between">
+                <Label className="font-semibold">{config.trainerName}</Label>
+              </div>
+
+              {/* Level range */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    {t('proposals.wizard.minRating', { defaultValue: 'Min rating' })}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={config.minRating ?? ''}
+                    onChange={(e) => updateTrainerRating(config.trainerId, 'minRating', e.target.value)}
+                    placeholder="Any"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    {t('proposals.wizard.maxRating', { defaultValue: 'Max rating' })}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={config.maxRating ?? ''}
+                    onChange={(e) => updateTrainerRating(config.trainerId, 'maxRating', e.target.value)}
+                    placeholder="Any"
+                  />
+                </div>
+              </div>
+
+              {/* Time windows */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  {t('proposals.wizard.availableWindows', { defaultValue: 'Available time windows' })}
+                </Label>
+                {config.windows.map((window, idx) => (
+                  <div key={idx} className="flex flex-col sm:flex-row gap-2">
+                    <Select
+                      value={window.day}
+                      onValueChange={(v) => updateWindow(config.trainerId, idx, 'day', v)}
+                    >
+                      <SelectTrigger className="w-full sm:w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WEEKDAYS.map(d => (
+                          <SelectItem key={d} value={d}>
+                            {d.charAt(0).toUpperCase() + d.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={window.start}
+                        onValueChange={(v) => updateWindow(config.trainerId, idx, 'start', v)}
+                      >
+                        <SelectTrigger className="flex-1 sm:w-[90px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIME_OPTIONS.map(t => (
+                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="text-muted-foreground">–</span>
+                      <Select
+                        value={window.end}
+                        onValueChange={(v) => updateWindow(config.trainerId, idx, 'end', v)}
+                      >
+                        <SelectTrigger className="flex-1 sm:w-[90px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIME_OPTIONS.map(t => (
+                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={() => removeWindow(config.trainerId, idx)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs self-start"
+                  onClick={() => addWindow(config.trainerId)}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  {t('proposals.wizard.addWindow', { defaultValue: 'Add time window' })}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Step 2: Scoring Weights */}
+      {step === 2 && (
+        <ScoringWeightsPanel
+          weights={weights}
+          onWeightsChange={setWeights}
+        />
+      )}
+
+      {/* Step 3: Additional Criteria */}
+      {step === 3 && (
+        <div className="space-y-4 py-2">
+          <div className="flex items-start space-x-3">
+            <Checkbox
+              id="keepCompleteGroups"
+              checked={keepCompleteGroups}
+              onCheckedChange={(checked) => setKeepCompleteGroups(!!checked)}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="keepCompleteGroups" className="font-medium cursor-pointer">
+                {t('proposals.wizard.keepCompleteGroups', { defaultValue: 'Keep complete groups together' })}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t('proposals.wizard.keepCompleteGroupsHelp', { defaultValue: 'When a linked group has enough players to fill a slot (e.g. 4), they will be placed together as a unit.' })}
+              </p>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label>{t('proposals.wizard.additionalCriteria', { defaultValue: 'Additional criteria' })}</Label>
+            <p className="text-sm text-muted-foreground">
+              {t('proposals.wizard.additionalCriteriaHelp', { defaultValue: 'Enter any extra rules in plain text. AI will interpret and apply them when generating proposals.' })}
+            </p>
+            <Textarea
+              value={additionalCriteria}
+              onChange={(e) => setAdditionalCriteria(e.target.value)}
+              placeholder="e.g. Kids lessons only during the day, in the evening always 4 players required"
+              rows={4}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const footerContent = (
+    <div className={cn("flex justify-between", inline ? "mt-6 pt-4 border-t" : "flex-row sm:justify-between")}>
+      <div>
+        {step > 1 && (
+          <Button variant="outline" onClick={() => setStep(s => s - 1)} disabled={isGenerating}>
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            {t('common:back', 'Back')}
+          </Button>
+        )}
+      </div>
+      <div className="flex gap-2">
+        {!inline && (
+          <Button variant="outline" onClick={() => onOpenChange?.(false)} disabled={isGenerating}>
+            {t('common:cancel', 'Cancel')}
+          </Button>
+        )}
+        {step < totalSteps ? (
+          <Button
+            onClick={() => setStep(s => s + 1)}
+            disabled={step === 1 && !canProceedStep1}
+          >
+            {t('common:next', 'Next')}
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        ) : (
+          <Button onClick={handleGenerate} disabled={isGenerating}>
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t('proposals.generating')}
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" />
+                {t('proposals.weights.generate')}
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
+  // Inline mode: render as Card
+  if (inline) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            {t('proposals.generateAll')}
+          </CardTitle>
+          <CardDescription>
+            {t('proposals.wizard.stepLabel', { step, total: totalSteps, defaultValue: `Step ${step} of ${totalSteps}` })}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {stepContent}
+          {footerContent}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Dialog mode (default)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
@@ -267,245 +579,9 @@ export function GenerateProposalsWizard({
             {t('proposals.wizard.stepLabel', { step, total: totalSteps, defaultValue: `Step ${step} of ${totalSteps}` })}
           </DialogDescription>
         </DialogHeader>
-
-        {/* Step 1: Schedule & Trainers */}
-        {step === 1 && (
-          <div className="space-y-6 py-2">
-            {/* Start date */}
-            <div className="space-y-2">
-              <Label>{t('proposals.wizard.startDate', { defaultValue: 'Start date' })}</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(startDate, 'PPP')}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={(d) => d && setStartDate(d)}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <Separator />
-
-            {/* Trainer selection */}
-            <div className="space-y-3">
-              <Label>{t('proposals.wizard.selectTrainers', { defaultValue: 'Select trainers' })}</Label>
-              <div className="flex flex-wrap gap-2">
-                {availableTrainers.map(trainer => {
-                  const isSelected = trainerConfigs.some(c => c.trainerId === trainer.id);
-                  return (
-                    <Badge
-                      key={trainer.id}
-                      variant={isSelected ? 'default' : 'outline'}
-                      className="cursor-pointer"
-                      onClick={() => toggleTrainer(trainer)}
-                    >
-                      {trainer.name}
-                    </Badge>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Per-trainer availability */}
-            {trainerConfigs.map(config => (
-              <div key={config.trainerId} className="space-y-3 p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <Label className="font-semibold">{config.trainerName}</Label>
-                </div>
-
-                {/* Level range */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">
-                      {t('proposals.wizard.minRating', { defaultValue: 'Min rating' })}
-                    </Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={config.minRating ?? ''}
-                      onChange={(e) => updateTrainerRating(config.trainerId, 'minRating', e.target.value)}
-                      placeholder="Any"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">
-                      {t('proposals.wizard.maxRating', { defaultValue: 'Max rating' })}
-                    </Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={config.maxRating ?? ''}
-                      onChange={(e) => updateTrainerRating(config.trainerId, 'maxRating', e.target.value)}
-                      placeholder="Any"
-                    />
-                  </div>
-                </div>
-
-                {/* Time windows */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">
-                    {t('proposals.wizard.availableWindows', { defaultValue: 'Available time windows' })}
-                  </Label>
-                  {config.windows.map((window, idx) => (
-                    <div key={idx} className="flex flex-col sm:flex-row gap-2">
-                      <Select
-                        value={window.day}
-                        onValueChange={(v) => updateWindow(config.trainerId, idx, 'day', v)}
-                      >
-                        <SelectTrigger className="w-full sm:w-[120px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {WEEKDAYS.map(d => (
-                            <SelectItem key={d} value={d}>
-                              {d.charAt(0).toUpperCase() + d.slice(1)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={window.start}
-                          onValueChange={(v) => updateWindow(config.trainerId, idx, 'start', v)}
-                        >
-                          <SelectTrigger className="flex-1 sm:w-[90px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TIME_OPTIONS.map(t => (
-                              <SelectItem key={t} value={t}>{t}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <span className="text-muted-foreground">–</span>
-                        <Select
-                          value={window.end}
-                          onValueChange={(v) => updateWindow(config.trainerId, idx, 'end', v)}
-                        >
-                          <SelectTrigger className="flex-1 sm:w-[90px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TIME_OPTIONS.map(t => (
-                              <SelectItem key={t} value={t}>{t}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0"
-                          onClick={() => removeWindow(config.trainerId, idx)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs self-start"
-                    onClick={() => addWindow(config.trainerId)}
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    {t('proposals.wizard.addWindow', { defaultValue: 'Add time window' })}
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Step 2: Scoring Weights */}
-        {step === 2 && (
-          <ScoringWeightsPanel
-            weights={weights}
-            onWeightsChange={setWeights}
-          />
-        )}
-
-        {/* Step 3: Additional Criteria */}
-        {step === 3 && (
-          <div className="space-y-4 py-2">
-            <div className="flex items-start space-x-3">
-              <Checkbox
-                id="keepCompleteGroups"
-                checked={keepCompleteGroups}
-                onCheckedChange={(checked) => setKeepCompleteGroups(!!checked)}
-              />
-              <div className="space-y-1">
-                <Label htmlFor="keepCompleteGroups" className="font-medium cursor-pointer">
-                  {t('proposals.wizard.keepCompleteGroups', { defaultValue: 'Keep complete groups together' })}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t('proposals.wizard.keepCompleteGroupsHelp', { defaultValue: 'When a linked group has enough players to fill a slot (e.g. 4), they will be placed together as a unit.' })}
-                </p>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <Label>{t('proposals.wizard.additionalCriteria', { defaultValue: 'Additional criteria' })}</Label>
-              <p className="text-sm text-muted-foreground">
-                {t('proposals.wizard.additionalCriteriaHelp', { defaultValue: 'Enter any extra rules in plain text. AI will interpret and apply them when generating proposals.' })}
-              </p>
-              <Textarea
-                value={additionalCriteria}
-                onChange={(e) => setAdditionalCriteria(e.target.value)}
-                placeholder="e.g. Kids lessons only during the day, in the evening always 4 players required"
-                rows={4}
-              />
-            </div>
-          </div>
-        )}
-
+        {stepContent}
         <DialogFooter className="flex-row justify-between sm:justify-between">
-          <div>
-            {step > 1 && (
-              <Button variant="outline" onClick={() => setStep(s => s - 1)} disabled={isGenerating}>
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                {t('common:back', 'Back')}
-              </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isGenerating}>
-              {t('common:cancel', 'Cancel')}
-            </Button>
-            {step < totalSteps ? (
-              <Button
-                onClick={() => setStep(s => s + 1)}
-                disabled={step === 1 && !canProceedStep1}
-              >
-                {t('common:next', 'Next')}
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            ) : (
-              <Button onClick={handleGenerate} disabled={isGenerating}>
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t('proposals.generating')}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    {t('proposals.weights.generate')}
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
+          {footerContent}
         </DialogFooter>
       </DialogContent>
     </Dialog>
