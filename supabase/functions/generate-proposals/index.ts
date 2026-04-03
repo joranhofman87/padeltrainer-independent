@@ -345,7 +345,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria } = body;
+    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups } = body;
 
     if (!cycleId) {
       return new Response(
