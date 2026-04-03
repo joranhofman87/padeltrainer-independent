@@ -1215,6 +1215,7 @@ export async function generateProposals(
     startDate?: string;
     trainerAvailability?: TrainerAvailabilityInput[];
     additionalCriteria?: string;
+    keepCompleteGroups?: boolean;
   }
 ): Promise<{ generated: number; skipped: number; errors?: string[] }> {
   // Persist trainer availability windows to cycle settings for the schedule grid
