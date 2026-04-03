@@ -1,39 +1,50 @@
 
 
-# Add Global Player Search to Schedule Preview
+# Support Multiple Sessions Per Week in Proposal Generation
 
 ## Problem
-The current search only filters the unplaced players sidebar. When a trainer wants to find where a specific player is placed (e.g. to move them from Friday to Monday), they have to manually click through each day tab and scan all slots.
+Players can request 2+ sessions per week (`sessions_per_week` field), but the algorithm only assigns each player to **one** slot. The `sessions_per_week` value is currently just a scoring factor — it doesn't actually place the player in multiple time slots.
 
 ## Approach
-Add a search input at the top of the schedule grid (near the day tabs). When a name is typed, two things happen:
-
-1. **Highlight matching players** in the grid — player badges that match get a visible highlight ring (e.g. orange border), so they stand out even in full slots
-2. **Auto-navigate to the correct day** — if the search matches a player who is only on one day, auto-switch to that day tab. If on multiple days, show a small indicator on each day tab (e.g. dot or count)
-3. **Filter unplaced sidebar too** — the existing sidebar search merges into this single global search
+After a player's first (best) slot assignment, loop and assign them to additional slots up to their requested `sessions_per_week` count. Each additional placement must be on a **different day** to avoid double-booking. The player appears multiple times in the schedule grid (once per assigned day).
 
 ## Changes
 
-### `src/components/cycles/ProposalScheduleGrid.tsx`
-- Move the search input from the unplaced sidebar to the top bar (next to day tabs and undo button)
-- When `searchQuery` is non-empty:
-  - Compute which days contain matching players (both placed and unplaced)
-  - Add a highlight dot/badge on day tabs that have matches
-  - Pass the query down to `DraggableSlotCard` so matching player badges get a highlight class (e.g. `ring-2 ring-orange-400`)
-- The unplaced sidebar still uses the same `searchQuery` for filtering (as it does now)
-- If matches exist on exactly one day that isn't the current tab, auto-switch to it
+### `supabase/functions/generate-proposals/index.ts`
+**Core logic change** — after the best slot is picked and assigned (line 998-1024), wrap in a loop:
 
-### Slot/Player card rendering (within same file)
-- `DraggableSlotCard` / player badge rendering: accept `searchQuery` prop, apply highlight styling when `player_name.toLowerCase().includes(query)`
+1. After assigning a player to their best slot, check if `request.sessions_per_week > 1`
+2. If yes, loop for remaining sessions needed (up to `sessions_per_week`):
+   - Filter `scoredSlots` to exclude slots on the same day as already-assigned slots
+   - Also exclude full slots (re-check capacity with updated `slotAssignments`)
+   - Pick the next best-scoring slot from the remaining options
+   - Insert another `proposed_assignment` row for the same `intake_request_id` but different `slot_id`
+   - Track all assigned days to prevent same-day duplicates
+3. If not enough different-day slots are available, assign as many as possible (partial fulfillment)
+
+### `src/components/cycles/ProposalScheduleGrid.tsx`
+- The grid already renders assignments from `proposed_assignments` — a player with 2 assignments will naturally appear in 2 slots on 2 different days
+- Add a small visual indicator (e.g. "2×/wk" badge) on player chips when the source request has `sessions_per_week > 1`, so it's clear this player trains multiple times
+- In the unplaced sidebar: show players as "partially placed" if they have fewer assignments than their requested sessions (e.g. wanted 2×, only placed 1×)
+
+### `src/components/cycles/ProposalScheduleGrid.tsx` — Search & drag
+- When searching, a multi-session player may appear on multiple days — the existing search highlight + day dot system handles this naturally
+- Dragging a player chip moves that specific assignment, not all of them
+
+## Edge Cases
+- **Linked groups with multi-session**: Each group member gets the same multi-session treatment. If a group of 4 wants 2×/week, the group is placed as a unit on 2 different days
+- **Not enough days available**: Player gets as many sessions as possible; remainder is surfaced as a note in rationale
+- **Same slot scored highest for both sessions**: Day-exclusion filter prevents this
 
 ## Result
-- Trainer types "sabine" → the Monday tab lights up, grid auto-switches to Monday, and Sabine's badge in the 18:00 slot gets an orange highlight ring
-- If "sabine" appears on multiple days, both day tabs show a dot, trainer can click between them
-- Single search bar serves both placed players in the grid and unplaced players in the sidebar
+- Player requests "2× per week" → appears in 2 slots on 2 different days
+- Partially placed players (1 of 2 sessions assigned) are flagged in the sidebar
+- Trainer can manually drag additional sessions if the algorithm couldn't find enough slots
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/ProposalScheduleGrid.tsx` | Move search to top bar, pass query to slot cards for highlighting, add match indicators on day tabs, auto-switch day |
+| `supabase/functions/generate-proposals/index.ts` | Loop assignment up to `sessions_per_week`, exclude same-day slots |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Show multi-session badge, handle partial placement in sidebar |
 
