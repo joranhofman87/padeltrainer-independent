@@ -783,11 +783,12 @@ function BlockedSlotCard({ slot }: { slot: SlotWithOccupancy }) {
 // ── Droppable Cell ──
 
 function DroppableCell({
-  cellId, children, hasSlot,
+  cellId, children, hasSlot, onCreateSlot,
 }: {
   cellId: string;
   children?: React.ReactNode;
   hasSlot: boolean;
+  onCreateSlot?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: cellId,
@@ -798,13 +799,22 @@ function DroppableCell({
     <div
       ref={setNodeRef}
       className={cn(
-        'h-full min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5',
+        'group/cell h-full min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5 relative',
         !hasSlot && 'border-border/30',
         isOver && !hasSlot && 'border-primary/50 bg-primary/5 scale-[1.01]',
         isOver && hasSlot && 'ring-1 ring-primary/30',
       )}
     >
       {children}
+      {!hasSlot && onCreateSlot && (
+        <button
+          onClick={onCreateSlot}
+          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity"
+          aria-label="Add slot"
+        >
+          <Plus className="h-4 w-4 text-muted-foreground" />
+        </button>
+      )}
     </div>
   );
 }
