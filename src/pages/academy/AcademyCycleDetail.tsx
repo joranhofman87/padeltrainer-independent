@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
