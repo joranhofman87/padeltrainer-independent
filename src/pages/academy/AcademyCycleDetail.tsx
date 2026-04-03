@@ -201,16 +201,16 @@ export default function AcademyCycleDetail() {
     setFilteredRequests(filtered);
   }, [requests, statusFilter]);
 
-  // Load schedule slots when in schedule view
+  // Load schedule slots when in schedule view OR on proposals tab
   useEffect(() => {
-    if (viewMode === 'schedule' && cycleId) {
+    if ((viewMode === 'schedule' || activeTab === 'proposals') && cycleId) {
       getAvailableSlotsForCycle(cycleId)
         .then(setScheduleSlots)
         .catch(() => setScheduleSlots([]));
     } else {
       setScheduleSlots([]);
     }
-  }, [viewMode, cycleId, requests]);
+  }, [viewMode, activeTab, cycleId, requests]);
 
   // Auto-switch to schedule view when viewing proposals
   useEffect(() => {
