@@ -449,10 +449,11 @@ export default function AcademyCycleDetail() {
         current_assignments: [...s.current_assignments, {
           id: `temp-${Date.now()}`,
           intake_request_id: intakeRequestId,
-          full_name: player?.full_name || '',
-          rating: player?.rating,
-          rating_system: player?.rating_system,
-          lesson_type: player?.lesson_type,
+          player_name: player?.full_name || '',
+          player_rating: player?.rating ?? null,
+          player_rating_system: player?.rating_system ?? null,
+          confidence_score: null,
+          sessions_per_week: player?.sessions_per_week ?? 1,
         }]
       } : s));
       try {
