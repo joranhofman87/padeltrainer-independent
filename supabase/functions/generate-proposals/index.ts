@@ -84,6 +84,7 @@ interface RequestBody {
   startDate?: string;
   trainerAvailability?: TrainerAvailabilityInput[];
   additionalCriteria?: string;
+  keepCompleteGroups?: boolean;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
