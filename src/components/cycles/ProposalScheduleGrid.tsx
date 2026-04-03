@@ -597,11 +597,16 @@ function DraggableSlotCard({
   const isFull = currentP >= maxP;
   const isEmpty = currentP === 0;
 
+  const currentAssignmentIds = useMemo(
+    () => new Set(slot.current_assignments.map(a => a.intake_request_id)),
+    [slot.current_assignments]
+  );
+
   return (
     <Card
       ref={setDragRef}
       className={cn(
-        'border-l-4 transition-all min-h-full',
+        'border-l-4 transition-all min-h-full group/slot',
         isEmpty ? 'border-l-border opacity-60' : getConfidenceBorder(avgConf),
         isDragging && 'opacity-30 scale-95',
       )}
@@ -630,10 +635,20 @@ function DraggableSlotCard({
               onPlayerClick={onPlayerClick}
             />
           </div>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
-            <Clock className="h-2.5 w-2.5" />
-            {duration}'
-          </Badge>
+          <div className="flex items-center gap-1">
+            {allPlayers && onAssignPlayer && (
+              <AddPlayerToSlotPopover
+                slotId={slot.id}
+                allPlayers={allPlayers}
+                currentAssignmentIds={currentAssignmentIds}
+                onAssignPlayer={onAssignPlayer}
+              />
+            )}
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
+              <Clock className="h-2.5 w-2.5" />
+              {duration}'
+            </Badge>
+          </div>
         </div>
 
         {/* Occupancy */}
