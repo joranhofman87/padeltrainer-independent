@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
@@ -48,7 +49,6 @@ import {
   assignPlayerToSlot,
   unassignPlayer,
   exportIntakeRequestsToCsv,
-  getAvailableSlotsForCycle,
   updateCycle,
   createProposalSlot,
   type Cycle,
@@ -69,11 +69,12 @@ import PreGenerationReview from '@/components/cycles/PreGenerationReview';
 import { getSuggestedLinks, getLinkedIdsForRequest, getDismissedSuggestions, getUnmatchedMentions, getDismissedUnmatched } from '@/lib/suggestLinks';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useCycleDetailQuery,
   useCycleRequestsQuery,
   useCyclePlayerLinksQuery,
+  useScheduleSlotsQuery,
   useInvalidateProposalData,
 } from '@/hooks/useProposalData';
 
@@ -171,8 +172,20 @@ export default function AcademyCycleDetail() {
 
   const isFirstLoad = cycleLoading && !cycle;
 
+  // Schedule slots from TanStack Query — cached, no local state
+  const shouldLoadSlots = viewMode === 'schedule' || activeStep === 'review-edit' || activeStep === 'approve';
+  const { data: scheduleSlots = [] } = useScheduleSlotsQuery(cycleId, shouldLoadSlots);
+  const queryClient = useQueryClient();
+  const slotsQueryKey = ['proposal-slots', cycleId];
+
+  const setScheduleSlots = (updater: SlotWithOccupancy[] | ((prev: SlotWithOccupancy[]) => SlotWithOccupancy[])) => {
+    queryClient.setQueryData<SlotWithOccupancy[]>(slotsQueryKey, old => {
+      const prev = old ?? [];
+      return typeof updater === 'function' ? updater(prev) : updater;
+    });
+  };
+
   // Local state
-  const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -188,17 +201,6 @@ export default function AcademyCycleDetail() {
       return requests.find(r => r.id === prev.id) ?? null;
     });
   }, [requests]);
-
-  // Load schedule slots — decoupled from requests
-  useEffect(() => {
-    if ((viewMode === 'schedule' || activeStep === 'review-edit' || activeStep === 'approve') && cycleId) {
-      getAvailableSlotsForCycle(cycleId)
-        .then(setScheduleSlots)
-        .catch(() => setScheduleSlots([]));
-    } else {
-      setScheduleSlots([]);
-    }
-  }, [viewMode, activeStep, cycleId]);
 
   // Filter requests by status
   const filteredRequests = useMemo(() => {
@@ -441,11 +443,8 @@ export default function AcademyCycleDetail() {
       try {
         await assignPlayerToSlot(intakeRequestId, slotId);
         toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
-        const [updatedSlots] = await Promise.all([
-          getAvailableSlotsForCycle(cycleId!),
-          refreshData(),
-        ]);
-        setScheduleSlots(updatedSlots);
+        invalidateSlots(cycleId!);
+        refreshData();
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);

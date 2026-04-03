@@ -2,7 +2,7 @@
  * Shared TanStack Query hooks for proposal/intake-request pages.
  * Provides cached data so navigating away and back is instant.
  */
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   getCycles,
   getCycle,
@@ -94,6 +94,7 @@ export function useScheduleSlotsQuery(cycleId: string | undefined, enabled: bool
     queryFn: () => (cycleId ? getAvailableSlotsForCycle(cycleId) : Promise.resolve([])),
     enabled: !!cycleId && enabled,
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 }
 
