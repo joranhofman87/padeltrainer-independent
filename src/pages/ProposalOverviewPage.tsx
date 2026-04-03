@@ -306,11 +306,11 @@ export default function ProposalOverviewPage() {
           </div>
         </div>
         <div className="hidden sm:flex gap-2">
-          {pageStatus === 'booked' && (
+          {(pageStatus === 'booked' || pageStatus === 'sending') && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" disabled={isProcessing}>
-                  {pageStatus === 'sending' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+                  {isProcessing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
                   {t('overview.sendEmails', { defaultValue: 'Send Schedule Emails' })}
                 </Button>
               </AlertDialogTrigger>
