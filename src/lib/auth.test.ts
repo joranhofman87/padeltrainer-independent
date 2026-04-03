@@ -323,24 +323,26 @@ describe('Auth module', () => {
       const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
       (supabase.from as Mock).mockReturnValue({ select: mockSelect });
 
-      const profile = await getProfile('user-123');
+      const result = await getProfile('user-123');
 
       expect(supabase.from).toHaveBeenCalledWith('profiles');
-      expect(profile?.full_name).toBe('John Doe');
+      expect(result?.data?.full_name).toBe('John Doe');
+      expect(result?.failed).toBe(false);
     });
 
-    it('returns null on error', async () => {
+    it('returns failed on error', async () => {
       const mockSingle = vi.fn().mockResolvedValue({
         data: null,
-        error: { message: 'Not found' },
+        error: { message: 'Not found', code: 'SOME_ERROR' },
       });
       const mockEq = vi.fn().mockReturnValue({ single: mockSingle });
       const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
       (supabase.from as Mock).mockReturnValue({ select: mockSelect });
 
-      const profile = await getProfile('user-123');
+      const result = await getProfile('user-123');
 
-      expect(profile).toBeNull();
+      expect(result?.data).toBeNull();
+      expect(result?.failed).toBe(true);
     });
   });
 
