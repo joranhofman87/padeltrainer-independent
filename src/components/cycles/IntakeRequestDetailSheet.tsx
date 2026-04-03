@@ -462,8 +462,10 @@ export default function IntakeRequestDetailSheet({
                     onClick={async () => {
                       setIsLinking(true);
                       try {
-                        const allIds = [request.id, ...linkedRequestIds, ...suggestedLinks.map(s => s.id)];
+                        const suggestedIds = suggestedLinks.map(s => s.id);
+                        const allIds = [request.id, ...linkedRequestIds, ...suggestedIds];
                         await linkPlayers([...new Set(allIds)]);
+                        setOptimisticLinkedIds(prev => [...prev, ...suggestedIds]);
                         toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
                         onLinkChanged?.();
                       } catch (error: any) {
