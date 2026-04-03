@@ -121,6 +121,25 @@ export default function ProposalWorkflowSteps({
     });
   }
 
+  // Review Links step (only in detail page mode)
+  if (hideCycleSelector) {
+    const reviewStatus = statuses[steps.length];
+    steps.push({
+      number: stepNum++,
+      label: t('workflow.reviewLinks', { defaultValue: 'Review Links' }),
+      description: pendingLinkActions > 0
+        ? t('workflow.reviewLinksDesc', { defaultValue: '{{count}} action(s) pending', count: pendingLinkActions })
+        : t('workflow.reviewLinksDone', { defaultValue: 'All clear' }),
+      status: reviewStatus,
+      action: pendingLinkActions > 0 && reviewStatus === 'active' ? (
+        <Badge variant="secondary" className="text-xs">
+          <Link2 className="h-3 w-3 mr-1" />
+          {pendingLinkActions}
+        </Badge>
+      ) : undefined,
+    });
+  }
+
   steps.push({
     number: stepNum++,
     label: t('workflow.generate', { defaultValue: 'Generate' }),
