@@ -979,6 +979,7 @@ export default function ProposalScheduleGrid({
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [unplacedSearch, setUnplacedSearch] = useState('');
 
   // Undo stack — stores previous slot snapshots
   const [undoStack, setUndoStack] = useState<UndoItem[]>([]);
