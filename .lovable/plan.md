@@ -1,29 +1,46 @@
 
 
-# Extend Time Options to 24:00 in Generate Proposals Wizard
+# Redesign: Registration Detail Page (Academy)
 
-## Problem
-The `TIME_OPTIONS` in `GenerateProposalsWizard.tsx` only goes up to 22:00. The `DayAvailabilityPicker` already goes to 00:00 (midnight), so the proposal wizard should match.
+## Overview
+Create a new tabbed detail page at `/app/academy/cycles/:cycleId` that consolidates everything related to a single registration into one view. The sidebar simplifies to a single "Registrations" link. Clicking a row in the registrations list navigates to this detail page instead of the edit form.
 
-## Change
+## What stays the same
+- Player-facing pages: no changes
+- Database: no changes
+- Trainer/Club flows: untouched in this phase (can be applied later)
+- `CycleFormPage` still works for `/cycles/new` and as a standalone fallback
+- `CycleForm.tsx` component already exists and is reusable — no extraction needed
 
-### `src/components/cycles/GenerateProposalsWizard.tsx`
-Update the `TIME_OPTIONS` generation (lines 37-43) to go up to 23:30 and include 00:00:
+## New file: `src/pages/academy/AcademyCycleDetail.tsx`
 
-```typescript
-const TIME_OPTIONS: string[] = [];
-for (let h = 6; h <= 23; h++) {
-  TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:00`);
-  TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:30`);
-}
-TIME_OPTIONS.push('00:00');
-```
+Route: `/app/academy/cycles/:cycleId`
 
-This adds 22:30, 23:00, 23:30, and 00:00 (midnight) as selectable end times, consistent with the player-facing `DayAvailabilityPicker`.
+**Structure:**
+- Fetch cycle by ID, intake requests for that cycle, player links, schedule slots
+- Header: cycle name, status badge, share link button, period dates, edit/duplicate dropdown
+- `Tabs` with URL search param persistence (`?tab=registrations`):
+  1. **Registrations** (default) — `IntakeRequestsTable` + `IntakeRequestDetailSheet`, scoped to this cycle. Includes status filter tabs, add manual button, CSV export, list/schedule view toggle — essentially the content from `AcademyIntakeRequests` but without the cycle selector
+  2. **Proposals** — `ProposalWorkflowSteps` (without step 1 cycle selector) + `GenerateProposalsWizard` rendered inline (not in a Dialog) + `ProposalScheduleGrid`. The wizard state persists because it's a real page section, not a modal
+  3. **Settings** — Embeds `CycleForm` component directly with the loaded cycle, same as the edit page but inline
+  4. **Waiting List** — `WaitingListTable` filtered for this cycle
 
-### Files
+## Changes to existing files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/GenerateProposalsWizard.tsx` | Extend `TIME_OPTIONS` to include times up to 00:00 |
+| `src/pages/academy/AcademyCycleDetail.tsx` | **New** — tabbed detail page |
+| `src/pages/academy/AcademyCycles.tsx` | Row click → `/app/academy/cycles/:cycleId` instead of `/edit` |
+| `src/components/DomainRouter.tsx` | Add route `cycles/:cycleId` → `AcademyCycleDetail` (before `cycles/:cycleId/edit`) |
+| `src/components/academy/AcademySidebar.tsx` | Replace Registration submenu (3 items) with single "Registrations" link to `/app/academy/cycles` |
+| `src/components/cycles/GenerateProposalsWizard.tsx` | Add `inline?: boolean` prop — when true, render content directly without `Dialog` wrapper |
+| `src/components/cycles/ProposalWorkflowSteps.tsx` | Add `hideCycleSelector?: boolean` prop — when true, skip rendering the cycle dropdown (step 1 becomes implicit) |
+
+## Technical details
+
+- Tab state stored in URL: `useSearchParams` to read/write `?tab=registrations|proposals|settings|waitinglist`
+- The detail page fetches all data once on mount and exposes `refreshData` for silent updates
+- `GenerateProposalsWizard` inline mode: when `inline={true}`, renders a `Card` instead of `Dialog`/`DialogContent` — same internal step logic, just different wrapper
+- `CyclesTable` `onEdit` callback changes from navigating to `/edit` to navigating to the detail page
+- Old `/cycles/:cycleId/edit` route stays as fallback (or redirects to `?tab=settings`)
 
