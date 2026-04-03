@@ -856,6 +856,8 @@ Deno.serve(async (req) => {
       }
 
       const matchingSlots = slots.filter((slot) => {
+        // Skip reserved slots (fillIncompleteGroups=false)
+        if (reservedSlots.has(slot.id)) return false;
         return request.preferred_time_windows.some((tw) =>
           matchesTimeWindow(slot.start_time, tw)
         );
