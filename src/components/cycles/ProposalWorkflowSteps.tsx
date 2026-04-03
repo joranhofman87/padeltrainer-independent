@@ -54,6 +54,8 @@ export default function ProposalWorkflowSteps({
   isGenerating,
   isResetting,
   hideCycleSelector,
+  pendingLinkActions = 0,
+  isLinksReviewed = false,
 }: ProposalWorkflowStepsProps) {
   const { t } = useTranslation('cycles');
 
