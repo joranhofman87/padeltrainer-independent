@@ -1507,6 +1507,8 @@ export default function ProposalScheduleGrid({
                                 onMoveSlot={onMoveSlot}
                                 onDeleteSlot={onDeleteSlot}
                                 searchQuery={searchQuery}
+                                allPlayers={allPlayers}
+                                onAssignPlayer={onAssignPlayer}
                               />
                             ) : null}
                           </DroppableCell>
