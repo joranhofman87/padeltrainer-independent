@@ -481,7 +481,7 @@ export default function AcademyIntakeRequests() {
         cycleId={selectedCycle?.id}
         playerLinks={playerLinksData}
         allRequests={requests}
-        onLinkChanged={fetchData}
+        onLinkChanged={refreshData}
       />
 
       {/* Generate Proposals Wizard */}

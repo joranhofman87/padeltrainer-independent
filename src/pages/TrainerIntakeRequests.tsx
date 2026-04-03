@@ -489,7 +489,7 @@ export default function TrainerIntakeRequests() {
         cycleId={selectedCycle?.id}
         playerLinks={playerLinksData}
         allRequests={requests}
-        onLinkChanged={fetchData}
+        onLinkChanged={refreshData}
       />
 
       {/* Generate Proposals Wizard */}
