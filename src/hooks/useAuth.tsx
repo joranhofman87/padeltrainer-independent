@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         await Promise.race([
           fetchUserData(nextSession.user.id),
-          new Promise((resolve) => setTimeout(resolve, 3000)),
+          new Promise((resolve) => setTimeout(resolve, 8000)),
         ]);
 
         if (
