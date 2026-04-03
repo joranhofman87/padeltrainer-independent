@@ -1265,7 +1265,7 @@ export default function ProposalScheduleGrid({
           return;
         }
         // If the overlapping slot is empty (no players), allow swap
-        if (overlappingSlot.current_assignments.length === 0 && onSwapSlots) {
+        if (onSwapSlots) {
           // #2: Duration validation on swap
           const overlappingDuration = getDurationMinutes(overlappingSlot.start_time, overlappingSlot.end_time);
           if (overlappingDuration !== duration) {
@@ -1296,8 +1296,6 @@ export default function ProposalScheduleGrid({
             slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString(),
             overlappingSlot.id, oldTrainerId, oldStart, oldEnd,
           );
-        } else {
-          toast.warning(t('proposals.slotOverlap', 'Cannot move here — overlaps with an existing slot'));
         }
         return;
       }
