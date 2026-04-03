@@ -54,6 +54,7 @@ export interface GenerateProposalsConfig {
   trainerAvailability: TrainerAvailabilityConfig[];
   weights: ScoringWeights;
   additionalCriteria: string;
+  keepCompleteGroups: boolean;
 }
 
 interface TrainerOption {
