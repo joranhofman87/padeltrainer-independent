@@ -280,12 +280,12 @@ function SlotEditPopover({
     }
   }, [open, slot.start_time, slot.end_time, selectedDay]);
 
-  // Get the trainer's availability bounds for the selected day
+  // Get the trainer's availability bounds for the target day
   const trainerBounds = useMemo(() => {
     if (!trainerAvailabilityWindows) return { min: 6 * 60, max: 23 * 60 };
     const tw = trainerAvailabilityWindows.find(w => w.trainerId === slot.trainer_id);
     if (!tw) return { min: 6 * 60, max: 23 * 60 };
-    const dayWindows = tw.windows.filter(w => w.day.toLowerCase() === selectedDay.toLowerCase());
+    const dayWindows = tw.windows.filter(w => w.day.toLowerCase() === targetDay.toLowerCase());
     if (dayWindows.length === 0) return { min: 6 * 60, max: 23 * 60 };
     let min = Infinity, max = -Infinity;
     dayWindows.forEach(w => {
@@ -295,7 +295,7 @@ function SlotEditPopover({
       max = Math.max(max, eh * 60 + (em || 0));
     });
     return { min, max };
-  }, [trainerAvailabilityWindows, slot.trainer_id, selectedDay]);
+  }, [trainerAvailabilityWindows, slot.trainer_id, targetDay]);
 
   // Generate time options in 30-min increments
   const timeOptions = useMemo(() => {
