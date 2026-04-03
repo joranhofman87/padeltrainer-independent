@@ -230,9 +230,20 @@ export default function AcademyCycleDetail() {
 
   // Compute pending link actions for the workflow step
   const pendingLinkActions = useMemo(() => {
-    const { getDismissedSuggestions, getSuggestedLinks, getLinkedIdsForRequest, getUnmatchedMentions, getDismissedUnmatched } = await import('@/lib/suggestLinks') as any;
-    // This is sync — the functions are already loaded
-    return 0;
+    const dismissed = getDismissedSuggestions();
+    const dismissedUn = getDismissedUnmatched();
+    const seenPairs = new Set<string>();
+    let count = 0;
+    for (const req of requests) {
+      const linkedIds = new Set(getLinkedIdsForRequest(req.id, playerLinksData));
+      const matches = getSuggestedLinks(req, requests, linkedIds, dismissed);
+      for (const match of matches) {
+        const pairKey = [req.id, match.id].sort().join('::');
+        if (!seenPairs.has(pairKey)) { seenPairs.add(pairKey); count++; }
+      }
+      count += getUnmatchedMentions(req, requests, dismissedUn).length;
+    }
+    return count;
   }, [requests, playerLinksData]);
 
   const unplacedPlayers = requests
