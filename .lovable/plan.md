@@ -1,40 +1,55 @@
 
 
-# Inline the Generate Wizard into Step 3
+# Linked Player Strategy: Replace Checkbox with Clear Options
 
-## Problem
-Step 3 (Generate) currently shows a button that opens a popup dialog. This is inconsistent with steps 1-2 which show content inline, and adds an unnecessary click.
+## Current State
+- A single `keepCompleteGroups` checkbox that only handles full groups (e.g. 4/4)
+- Partial groups (2-3 linked players) get a soft +25 cohesion bonus but can still be split
+- No control over what happens with incomplete linked groups
 
-## Approach
-Refactor `GenerateProposalsWizard` to support an `inline` mode that renders its 3 sub-steps (Schedule/Trainers, Scoring Weights, Additional Criteria) directly on the page inside a Card — no Dialog wrapper. The "Generate" button at the top follows the same pattern as step 2's "Continue to Generate" button.
+## Proposed UX
+Replace the checkbox with a simple **"Linked players"** select dropdown with 3 clear options:
+
+| Option | Label | What it does |
+|--------|-------|-------------|
+| `strict` | **Always keep together** | Linked players are placed as a unit. Remaining spots filled with compatible players. If no slot fits the group, they're skipped (waitlisted). |
+| `prefer` (default) | **Try to keep together** | Strong preference (+50 cohesion bonus instead of +25). Can still split if no suitable slot exists. |
+| `ignore` | **Ignore links** | Treat everyone individually. No cohesion bonus. |
+
+Additionally, a secondary option appears when `strict` or `prefer` is selected:
+
+**"Fill incomplete groups?"** — Switch (default: on)
+- **On**: remaining spots in a group's slot are filled with other compatible players
+- **Off**: leave spots empty (the group trains alone or finds someone themselves)
 
 ## Changes
 
 ### `src/components/cycles/GenerateProposalsWizard.tsx`
-- Add an `inline?: boolean` prop
-- When `inline={true}`: render content inside a `Card` instead of `Dialog/DialogContent`
-  - Sub-steps (1-3) shown as horizontal tabs or a simple stepper within the card
-  - Back/Next navigation at the bottom of the card (same as now, just not in a dialog footer)
-  - The final "Generate" button stays at the bottom of the last sub-step
-- When `inline={false}` (default): keep current Dialog behavior for backward compatibility
-- Remove `open`/`onOpenChange` requirement when inline (they become optional)
+- Replace `keepCompleteGroups` boolean state with `linkStrategy: 'strict' | 'prefer' | 'ignore'` (default: `prefer`)
+- Add `fillIncompleteGroups: boolean` state (default: `true`)
+- Replace the checkbox UI with a Select dropdown + conditional Switch
+- Update `GenerateProposalsConfig` interface: remove `keepCompleteGroups`, add `linkStrategy` and `fillIncompleteGroups`
+- Update `handleGenerate` to pass new fields
 
 ### `src/pages/academy/AcademyCycleDetail.tsx`
-- In the `activeStep === 'generate'` block, replace the "open wizard" button with `<GenerateProposalsWizard inline cycle={cycle} ... />`
-- Remove `showWizard` state and the Dialog-based wizard render
-- The wizard renders directly on the page, showing sub-step 1 immediately
-- When proposals already exist, keep the current "already generated" UI with reset/review buttons above the inline wizard
+- Update the config passthrough (replace `keepCompleteGroups` with new fields)
 
-## Result
-- Step 3 shows the wizard content directly on the page — no popup
-- Consistent with steps 1 and 2 (content inline, action buttons visible)
-- One fewer click to configure and generate proposals
-- The 3 internal wizard steps (trainers, weights, criteria) still navigate with Back/Next within the card
+### `src/lib/cycles.ts`
+- Update the `generateProposals` function signature to pass `linkStrategy` and `fillIncompleteGroups` instead of `keepCompleteGroups`
+
+### `supabase/functions/generate-proposals/index.ts`
+- Accept `linkStrategy` and `fillIncompleteGroups` from request body (with backward compat: treat `keepCompleteGroups: true` as `linkStrategy: 'strict'`)
+- **`strict` mode**: Place all linked groups (any size ≥ 2) as atomic units. If no slot fits, skip them. When `fillIncompleteGroups` is false, reserve the slot capacity (don't assign unlinked players to remaining spots).
+- **`prefer` mode**: Increase cohesion bonus from 25 → 50. Process complete groups first as atomic units (existing logic). Partial groups get the strong bonus but can be split.
+- **`ignore` mode**: Skip all group cohesion logic entirely.
+- When `fillIncompleteGroups` is false: after placing a linked group, mark remaining capacity in that slot as reserved (skip in individual scoring).
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/GenerateProposalsWizard.tsx` | Add `inline` prop, render Card instead of Dialog when true |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Replace wizard button + dialog with inline wizard render |
+| `src/components/cycles/GenerateProposalsWizard.tsx` | Replace checkbox with Select + Switch, update config interface |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Pass new config fields |
+| `src/lib/cycles.ts` | Update function signature |
+| `supabase/functions/generate-proposals/index.ts` | Implement 3 strategy modes + fill toggle |
 
