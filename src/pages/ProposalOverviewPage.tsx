@@ -471,7 +471,7 @@ export default function ProposalOverviewPage() {
                               return (
                                 <TableRow key={slot.id} className={hasIssue ? 'bg-yellow-500/5' : ''}>
                                   <TableCell className="py-2 text-sm tabular-nums">
-                                    {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
+                                    {formatTime(slot.start_time, tz)} – {formatTime(slot.end_time, tz)}
                                   </TableCell>
                                   <TableCell className="py-2">
                                     <div className="flex flex-wrap gap-1">
