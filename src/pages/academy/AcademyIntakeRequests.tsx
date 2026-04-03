@@ -379,7 +379,7 @@ export default function AcademyIntakeRequests() {
           emptyMessage={t('intakeRequests.noRequests')}
           emptyDescription={t('intakeRequests.noRequestsDescription')}
           playerLinks={playerLinksData}
-          onLinkChanged={fetchData}
+          onLinkChanged={refreshData}
         />
       ) : (
         <ProposalScheduleGrid
