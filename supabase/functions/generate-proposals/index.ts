@@ -88,6 +88,7 @@ interface RequestBody {
   linkStrategy?: 'strict' | 'prefer' | 'ignore';
   fillIncompleteGroups?: boolean;
   maxGroupSize?: number;
+  timezone?: string;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
