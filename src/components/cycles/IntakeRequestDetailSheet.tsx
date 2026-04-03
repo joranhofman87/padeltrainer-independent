@@ -239,6 +239,8 @@ export default function IntakeRequestDetailSheet({
   };
 
   const handleUnlinkPlayer = async (targetRequestId: string) => {
+    // Optimistic: remove from local linked IDs immediately
+    setOptimisticLinkedIds(prev => prev.filter(id => id !== targetRequestId));
     try {
       await unlinkPlayer(targetRequestId);
       toast.success(t('intakeRequests.links.unlinked', { defaultValue: 'Player unlinked' }));

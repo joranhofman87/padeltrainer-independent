@@ -108,6 +108,31 @@ export default function TrainerIntakeRequests() {
     }
   };
 
+  // Silent refresh: same as fetchData but without loading skeleton
+  const refreshData = async () => {
+    if (!trainerId) return;
+    try {
+      const [cyclesData, requestsData] = await Promise.all([
+        getCycles('trainer', trainerId),
+        getIntakeRequestsWithProposals('trainer', trainerId)
+      ]);
+      setCycles(cyclesData);
+      setRequests(requestsData);
+      setSelectedRequest(prev => {
+        if (!prev) return null;
+        return requestsData.find(r => r.id === prev.id) ?? null;
+      });
+      const allLinks: PlayerLink[] = [];
+      for (const c of cyclesData) {
+        const links = await getPlayerLinks(c.id);
+        allLinks.push(...links);
+      }
+      setPlayerLinksData(allLinks);
+    } catch (error: any) {
+      logger.error('Error refreshing intake requests', error as Error, { component: 'TrainerIntakeRequests', trainerId });
+    }
+  };
+
   useEffect(() => {
     if (trainerId) fetchData();
   }, [trainerId]);
