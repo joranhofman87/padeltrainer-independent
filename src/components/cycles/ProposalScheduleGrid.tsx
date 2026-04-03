@@ -1261,24 +1261,38 @@ export default function ProposalScheduleGrid({
 
   return (
     <div className="space-y-4">
-      {/* Day tabs + Undo button */}
-      <div className="flex items-center justify-between gap-3">
-        <Tabs value={selectedDay} onValueChange={setSelectedDay} className="flex-1">
-          <TabsList className="flex-wrap h-auto gap-1">
-            {availableDays.map(day => {
-              const dayS = dayGroups.get(day) || [];
-              const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
-              return (
-                <TabsTrigger key={day} value={day} className="text-xs sm:text-sm">
-                  {getLocalizedDayName(day, dateFnsLocale)}
-                  <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
-                    {playerCount}
-                  </Badge>
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
-        </Tabs>
+      {/* Search + Day tabs + Undo button */}
+      <div className="flex flex-col gap-3">
+        <div className="relative max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('proposals.searchPlayers', { defaultValue: 'Search players...' })}
+            className="h-8 text-xs pl-8"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <Tabs value={selectedDay} onValueChange={setSelectedDay} className="flex-1">
+            <TabsList className="flex-wrap h-auto gap-1">
+              {availableDays.map(day => {
+                const dayS = dayGroups.get(day) || [];
+                const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
+                const matchCount = daysWithSearchMatches.get(day) || 0;
+                return (
+                  <TabsTrigger key={day} value={day} className="text-xs sm:text-sm relative">
+                    {getLocalizedDayName(day, dateFnsLocale)}
+                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
+                      {playerCount}
+                    </Badge>
+                    {matchCount > 0 && (
+                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-orange-400 dark:bg-orange-500 border border-background" />
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
 
         {undoStack.length > 0 && onUndo && (
           <Button
