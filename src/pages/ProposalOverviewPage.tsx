@@ -118,6 +118,20 @@ export default function ProposalOverviewPage() {
     }
   }, [cycleId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fetch timezone from cycle's owner if not passed in state
+  useEffect(() => {
+    if (tz || !cycleId) return;
+    (async () => {
+      try {
+        const cycle = await getCycle(cycleId);
+        if (!cycle) return;
+        const table = cycle.owner_type === 'academy' ? 'academy_profiles' : 'trainer_profiles';
+        const { data } = await supabase.from(table).select('timezone').eq('id', cycle.owner_id).maybeSingle();
+        if ((data as any)?.timezone) setTz((data as any).timezone);
+      } catch {}
+    })();
+  }, [cycleId, tz]);
+
   const slots = stateSlots.length > 0 ? stateSlots : (fetchedSlots ?? []);
   const cycleSlots = useMemo(() => slots.filter(s => !s.is_blocked), [slots]);
 
