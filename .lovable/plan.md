@@ -1,38 +1,27 @@
 
 
-# Move Slot to a Different Day
+# Add Search Input to Unplaced Players Sidebar
 
 ## Problem
-The schedule grid is organized by day tabs. Drag-and-drop and the edit popover only work within the currently selected day. There's no way to move a group (slot with all its players) from Monday to Tuesday without deleting and recreating it.
+The unplaced sidebar has no dedicated search. The global search bar at the top filters both the grid and sidebar, but when you just want to find someone in the unplaced list, you need a quick local filter right there.
 
-## Approach
-Add a **day picker** to the existing `SlotEditPopover` (the popover that appears when clicking the edit/settings icon on a slot card). The backend `moveSlot` already supports changing the date — it just updates `start_time` and `end_time` to any new ISO timestamp. We only need to expose the day selection in the UI.
-
-## Changes
+## Change
 
 ### `src/components/cycles/ProposalScheduleGrid.tsx`
 
-**SlotEditPopover** (line 244):
-1. Add `availableDays` as a new prop (the list of days like `['Monday', 'Tuesday', ...]`)
-2. Add a day selector (small `Select` dropdown) above the start/end time pickers, initialized to the current `selectedDay`
-3. When a different day is chosen, recalculate the reference date: find the correct calendar date for that day of the week relative to the slot's current date (e.g., if slot is on Monday the 7th and user picks Tuesday, compute the 8th)
-4. In `handleApply`, use the selected day's date instead of always using `refDate` from the current slot — this shifts `start_time`/`end_time` to the new day while preserving the chosen times
-5. Update overlap detection to check against slots on the **target day**, not just `daySlots` (current day). Pass all `slots` to the popover so it can filter by target day.
+Add a small search input inside the unplaced sidebar header (between the title row and the `DroppableUnplacedPool`), around line 1595:
 
-**Wiring** (~line 630):
-- Pass `availableDays` and full `slots` array down to `SlotEditPopover`
+- Add a new `unplacedSearch` state (separate from the global `searchQuery`)
+- Insert a compact `Input` with a search icon, placeholder "Search players..."
+- Filter `filteredUnplaced` by both the global `searchQuery` AND the local `unplacedSearch`
+- The badge count updates to reflect the filtered result
+- Clear button (X) appears when text is entered
 
-No backend changes needed — `moveSlot` already handles arbitrary date/time updates.
-
-## Result
-- Trainer opens the edit popover on a Monday slot → sees a day dropdown defaulting to "Monday"
-- Changes it to "Tuesday", picks the desired time → clicks Apply
-- The entire group (slot + all assigned players) moves to Tuesday
-- The grid refreshes and shows the slot on the Tuesday tab
+This keeps the global search for cross-grid highlighting and the local search for quick sidebar filtering — they stack (both must match).
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/ProposalScheduleGrid.tsx` | Add day selector to `SlotEditPopover`; pass `availableDays` and all `slots` as props |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Add local search input in unplaced sidebar header; add `unplacedSearch` state; combine with existing filter |
 
