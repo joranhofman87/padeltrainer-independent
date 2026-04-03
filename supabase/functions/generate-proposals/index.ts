@@ -84,7 +84,9 @@ interface RequestBody {
   startDate?: string;
   trainerAvailability?: TrainerAvailabilityInput[];
   additionalCriteria?: string;
-  keepCompleteGroups?: boolean;
+  keepCompleteGroups?: boolean; // backward compat
+  linkStrategy?: 'strict' | 'prefer' | 'ignore';
+  fillIncompleteGroups?: boolean;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -345,7 +347,10 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups } = body;
+    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups, fillIncompleteGroups: fillIncomplete } = body;
+    // Resolve linkStrategy: new field takes precedence, fallback to keepCompleteGroups for backward compat
+    const linkStrategy: 'strict' | 'prefer' | 'ignore' = body.linkStrategy ?? (keepCompleteGroups === false ? 'ignore' : keepCompleteGroups === true ? 'strict' : 'prefer');
+    const fillIncompleteGroups = fillIncomplete ?? true;
 
     if (!cycleId) {
       return new Response(
@@ -727,42 +732,50 @@ Deno.serve(async (req) => {
       linkGroupMembers[pl.link_group].push(pl.intake_request_id);
     });
 
-    // ===== Handle complete groups as atomic units when keepCompleteGroups is true =====
+    // ===== Handle linked groups based on linkStrategy =====
     const processedRequestIds = new Set<string>();
+    const reservedSlots = new Set<string>(); // slots where remaining capacity is reserved (fillIncompleteGroups=false)
 
-    if (keepCompleteGroups !== false) {
-      // Find link groups where member count >= max_participants (typically 4)
+    if (linkStrategy === 'strict' || linkStrategy === 'prefer') {
       const defaultMaxParticipants = cycle.settings?.max_group_size || 4;
 
       for (const [groupId, memberIds] of Object.entries(linkGroupMembers)) {
-        // Only consider members that are in our current request set
         const groupRequests = memberIds
           .map(id => requests.find(r => r.id === id))
           .filter(Boolean) as IntakeRequest[];
 
-        if (groupRequests.length < defaultMaxParticipants) continue;
+        if (groupRequests.length < 2) continue;
 
-        console.log(`Complete group ${groupId}: ${groupRequests.length} members, placing as unit`);
+        // In 'prefer' mode, only handle complete groups as atomic units
+        if (linkStrategy === 'prefer' && groupRequests.length < defaultMaxParticipants) continue;
 
-        // Find the best slot for this group based on average scoring
+        console.log(`[${linkStrategy}] Group ${groupId}: ${groupRequests.length} members, placing as unit`);
+
         const groupMatchingSlots = slots.filter(slot => {
+          if (reservedSlots.has(slot.id)) return false;
           const maxP = slot.max_participants || defaultMaxParticipants;
           const currentBookings = bookingCounts[slot.id] || 0;
           const available = maxP - currentBookings - (slotAssignments[slot.id]?.length || 0);
           if (available < groupRequests.length) return false;
-
-          // At least one member must have a matching time window
           return groupRequests.some(req =>
             req.preferred_time_windows.some(tw => matchesTimeWindow(slot.start_time, tw))
           );
         });
 
         if (groupMatchingSlots.length === 0) {
-          console.log(`No slot fits complete group ${groupId}, falling back to individual scoring`);
+          if (linkStrategy === 'strict') {
+            console.log(`No slot fits group ${groupId} in strict mode — skipping/waitlisting`);
+            for (const req of groupRequests) {
+              skipped++;
+              await supabase.from("intake_requests").update({ skip_reason: "no_slot_for_group" }).eq("id", req.id);
+              processedRequestIds.add(req.id);
+            }
+          } else {
+            console.log(`No slot fits complete group ${groupId} in prefer mode, falling back to individual scoring`);
+          }
           continue;
         }
 
-        // Score each candidate slot by averaging time_match across members
         let bestSlot: AvailabilitySlot | null = null;
         let bestAvgScore = -1;
 
@@ -781,11 +794,10 @@ Deno.serve(async (req) => {
 
         if (!bestSlot) continue;
 
-        // Assign all members to this slot
         let groupSuccess = true;
         for (const req of groupRequests) {
           const rationale: RationaleItem[] = [
-            { type: "group_cohesion", score: 50, detail: `Complete group of ${groupRequests.length} placed together` },
+            { type: "group_cohesion", score: 50, detail: `Group of ${groupRequests.length} placed together (${linkStrategy})` },
             calculateTimeScore(bestSlot, req, normalizedWeights.time_match),
           ];
           const totalScore = rationale.reduce((sum, r) => sum + r.score, 0);
@@ -814,7 +826,11 @@ Deno.serve(async (req) => {
         }
 
         if (groupSuccess) {
-          console.log(`Complete group ${groupId} placed in slot ${bestSlot.id}`);
+          console.log(`Group ${groupId} placed in slot ${bestSlot.id}`);
+          // If fillIncompleteGroups is false, reserve remaining capacity
+          if (!fillIncompleteGroups) {
+            reservedSlots.add(bestSlot.id);
+          }
         }
       }
     }
@@ -840,6 +856,8 @@ Deno.serve(async (req) => {
       }
 
       const matchingSlots = slots.filter((slot) => {
+        // Skip reserved slots (fillIncompleteGroups=false)
+        if (reservedSlots.has(slot.id)) return false;
         return request.preferred_time_windows.some((tw) =>
           matchesTimeWindow(slot.start_time, tw)
         );
@@ -910,11 +928,11 @@ Deno.serve(async (req) => {
 
         // Group cohesion bonus: if this player is linked with others, boost slots where linked members are already placed
         const playerGroup = requestLinkGroup[request.id];
-        if (playerGroup) {
+        if (playerGroup && linkStrategy !== 'ignore') {
           const groupMemberIds = linkGroupMembers[playerGroup] || [];
           const linkedInSlot = existingPlayersInSlot.filter(p => groupMemberIds.includes(p.id));
           if (linkedInSlot.length > 0) {
-            const cohesionScore = 25; // Strong bonus to keep linked players together
+            const cohesionScore = linkStrategy === 'strict' ? 75 : 50;
             rationale.push({ type: "group_cohesion", score: cohesionScore, detail: `${linkedInSlot.length} linked player(s) already in this slot` });
           }
         }
