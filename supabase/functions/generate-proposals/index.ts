@@ -87,6 +87,7 @@ interface RequestBody {
   keepCompleteGroups?: boolean; // backward compat
   linkStrategy?: 'strict' | 'prefer' | 'ignore';
   fillIncompleteGroups?: boolean;
+  maxGroupSize?: number;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
