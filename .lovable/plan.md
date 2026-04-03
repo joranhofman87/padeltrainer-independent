@@ -1,37 +1,25 @@
 
 
-# Fix Slow/Flickering Link Action in Player Detail Sheet
+# Add Player Name Search to Intake Requests Table
 
-## Problem
-When clicking "Link" on a suggestion in the detail sheet, `onLinkChanged` triggers `fetchData()` in the parent page, which reloads all cycles, all requests, and all player links. This causes:
-1. A long loading period while all data refetches
-2. The `selectedRequest` object gets replaced with a new reference, causing the sheet to appear to close and reopen
-3. It feels "stuck" because the full data reload is slow with 78+ registrations
+## Change
 
-## Fix
+Add a search input above the table (next to the existing "Columns" button) that filters rows by player name in real time.
 
-### `src/components/cycles/IntakeRequestDetailSheet.tsx`
-- After linking, **don't call `onLinkChanged`** immediately. Instead, optimistically update the local state:
-  - Add the newly linked player to `linkedRequestIds` / `linkedRequests` locally
-  - Remove the linked player from `suggestedLinks`
-  - Show the success toast instantly
-- Call `onLinkChanged` in the background (non-blocking) so the parent table eventually refreshes, but the sheet stays open and responsive
+## Implementation
 
-Concretely:
-1. Add local state `optimisticLinkedIds` that starts from `linkedRequestIds` but can be extended
-2. After `linkPlayers()` succeeds, update `optimisticLinkedIds` and show toast — don't await `onLinkChanged`
-3. Fire `onLinkChanged?.()` without awaiting it (fire-and-forget) so the table updates in the background
-4. Same approach for "Link all" button
+### `src/components/cycles/IntakeRequestsTable.tsx`
 
-### `src/pages/TrainerIntakeRequests.tsx` + `src/pages/academy/AcademyIntakeRequests.tsx`
-- In `fetchData`, after reloading requests, **preserve `selectedRequest`** by re-finding the same ID:
-  - After `setRequests(requestsData)`, if `selectedRequest` is set, update it to the matching object from `requestsData` so the sheet doesn't flicker
+1. Add a `searchQuery` state (`useState('')`)
+2. Add a `Search` icon import from lucide-react and use the existing `Input` component
+3. Filter `requests` by `full_name` (case-insensitive includes) before rendering the table rows
+4. Place the search input in the toolbar row (line ~494), to the left of the Columns button, using a flex layout with the input taking available space
 
-## Files
+The search filters only the displayed rows — it does not affect suggestion computation or the empty state check (which stays based on unfiltered `requests.length`).
+
+### Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Optimistic local state update after linking; fire-and-forget `onLinkChanged` |
-| `src/pages/TrainerIntakeRequests.tsx` | Preserve `selectedRequest` identity across `fetchData` |
-| `src/pages/academy/AcademyIntakeRequests.tsx` | Same preservation |
+| `src/components/cycles/IntakeRequestsTable.tsx` | Add search state, input field in toolbar, filter rows by name |
 
