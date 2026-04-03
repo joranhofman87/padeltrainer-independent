@@ -1553,7 +1553,26 @@ export default function ProposalScheduleGrid({
                           }}
                           className="bg-background p-0.5"
                         >
-                          <DroppableCell cellId={cellId} hasSlot={!!slot}>
+                          <DroppableCell
+                            cellId={cellId}
+                            hasSlot={!!slot}
+                            onCreateSlot={!slot && onCreateSlot ? () => {
+                              // Build ISO timestamps from the selected day + rowMinute
+                              const refSlot = daySlots[0];
+                              if (!refSlot) return;
+                              const refDate = parseISO(refSlot.start_time);
+                              const dayMap: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+                              const currentDayNum = getDay(refDate);
+                              const targetDayNum = dayMap[selectedDay.toLowerCase()];
+                              const diff = ((targetDayNum - currentDayNum) + 7) % 7;
+                              const targetDate = diff === 0 ? refDate : addDays(refDate, diff);
+                              const startDate = new Date(targetDate);
+                              startDate.setHours(Math.floor(rowMinute / 60), rowMinute % 60, 0, 0);
+                              const endDate = new Date(startDate);
+                              endDate.setMinutes(endDate.getMinutes() + 60);
+                              onCreateSlot(trainer.id, startDate.toISOString(), endDate.toISOString());
+                            } : undefined}
+                          >
                             {slot && slot.is_blocked ? (
                               <BlockedSlotCard slot={slot} />
                             ) : slot ? (
