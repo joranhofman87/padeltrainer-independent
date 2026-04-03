@@ -102,6 +102,12 @@ export default function IntakeRequestDetailSheet({
   const [isDeleting, setIsDeleting] = useState(false);
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
+  const [optimisticLinkedIds, setOptimisticLinkedIds] = useState<string[]>([]);
+
+  // Reset optimistic state when request or playerLinks change from parent
+  useEffect(() => {
+    setOptimisticLinkedIds([]);
+  }, [playerLinks, request?.id]);
 
   useEffect(() => {
     const fetchProposal = async () => {
@@ -130,12 +136,18 @@ export default function IntakeRequestDetailSheet({
     return link?.link_group ?? null;
   }, [request, playerLinks]);
 
-  const linkedRequestIds = useMemo(() => {
+  const baseLinkedRequestIds = useMemo(() => {
     if (!currentLinkGroup) return [];
     return playerLinks
       .filter(pl => pl.link_group === currentLinkGroup && pl.intake_request_id !== request?.id)
       .map(pl => pl.intake_request_id);
   }, [currentLinkGroup, playerLinks, request]);
+
+  // Merge base linked IDs with optimistic additions
+  const linkedRequestIds = useMemo(() => {
+    const merged = new Set([...baseLinkedRequestIds, ...optimisticLinkedIds]);
+    return [...merged];
+  }, [baseLinkedRequestIds, optimisticLinkedIds]);
 
   const linkedRequests = useMemo(() => {
     return linkedRequestIds
@@ -200,13 +212,15 @@ export default function IntakeRequestDetailSheet({
     setIsLinking(true);
     try {
       if (currentLinkGroup && linkedRequestIds.length > 0) {
-        // Add to existing group: link current + all existing + new target
         await linkPlayers([request.id, ...linkedRequestIds, targetRequestId]);
       } else {
         await linkPlayers([request.id, targetRequestId]);
       }
+      // Optimistic: add to local linked IDs immediately
+      setOptimisticLinkedIds(prev => [...prev, targetRequestId]);
       toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
       setLinkPopoverOpen(false);
+      // Fire-and-forget background refresh
       onLinkChanged?.();
     } catch (error: any) {
       toast.error(error.message);
@@ -448,8 +462,10 @@ export default function IntakeRequestDetailSheet({
                     onClick={async () => {
                       setIsLinking(true);
                       try {
-                        const allIds = [request.id, ...linkedRequestIds, ...suggestedLinks.map(s => s.id)];
+                        const suggestedIds = suggestedLinks.map(s => s.id);
+                        const allIds = [request.id, ...linkedRequestIds, ...suggestedIds];
                         await linkPlayers([...new Set(allIds)]);
+                        setOptimisticLinkedIds(prev => [...prev, ...suggestedIds]);
                         toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
                         onLinkChanged?.();
                       } catch (error: any) {

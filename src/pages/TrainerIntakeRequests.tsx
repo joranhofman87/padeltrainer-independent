@@ -88,6 +88,12 @@ export default function TrainerIntakeRequests() {
       setCycles(cyclesData);
       setRequests(requestsData);
 
+      // Preserve selectedRequest identity across refresh
+      setSelectedRequest(prev => {
+        if (!prev) return null;
+        return requestsData.find(r => r.id === prev.id) ?? null;
+      });
+
       const allLinks: PlayerLink[] = [];
       for (const c of cyclesData) {
         const links = await getPlayerLinks(c.id);

@@ -73,6 +73,12 @@ export default function AcademyIntakeRequests() {
       setCycles(cyclesData);
       setRequests(requestsData);
 
+      // Preserve selectedRequest identity across refresh
+      setSelectedRequest(prev => {
+        if (!prev) return null;
+        return requestsData.find(r => r.id === prev.id) ?? null;
+      });
+
       // Fetch player links for all cycles
       const allLinks: PlayerLink[] = [];
       for (const c of cyclesData) {
