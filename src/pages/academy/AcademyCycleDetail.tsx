@@ -134,10 +134,12 @@ export default function AcademyCycleDetail() {
 
   const fetchSettingsData = useCallback(async () => {
     if (!activeAcademy) return;
-    const [academyTrainers, academyLocations] = await Promise.all([
+    const [academyTrainers, academyLocations, tzData] = await Promise.all([
       getAcademyTrainersWithProfiles(activeAcademy.id),
       getAcademyLocations(activeAcademy.id),
+      supabase.from('academy_profiles').select('timezone').eq('id', activeAcademy.id).maybeSingle(),
     ]);
+    if ((tzData.data as any)?.timezone) setAcademyTimezone((tzData.data as any).timezone);
 
     const trainerIds = academyTrainers.map(t => t.trainer_profile_id);
     let tlMap: Record<string, string[]> = {};
