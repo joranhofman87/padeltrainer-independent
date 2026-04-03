@@ -61,6 +61,8 @@ export default function AcademySettings() {
   const [savingTerms, setSavingTerms] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [savingWelcome, setSavingWelcome] = useState(false);
+  const [academyTimezone, setAcademyTimezone] = useState('Europe/Amsterdam');
+  const [updatingTimezone, setUpdatingTimezone] = useState(false);
   const termsEditor = useEditor({
     extensions: [
       StarterKit,
