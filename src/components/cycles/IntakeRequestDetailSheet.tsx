@@ -57,6 +57,7 @@ import {
   Link2,
   Plus,
   X,
+  Lightbulb,
 } from 'lucide-react';
 import { 
   type IntakeRequestWithProposal, 
