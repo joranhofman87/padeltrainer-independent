@@ -30,6 +30,8 @@ export default function TrainerSettings() {
   const [playerModeEnabled, setPlayerModeEnabled] = useState(false);
   const [updatingPlayerMode, setUpdatingPlayerMode] = useState(false);
   const [trainerSlug, setTrainerSlug] = useState<string | null>(null);
+  const [timezone, setTimezone] = useState('Europe/Amsterdam');
+  const [updatingTimezone, setUpdatingTimezone] = useState(false);
 
   // Auth is now handled by TrainerLayout
 
