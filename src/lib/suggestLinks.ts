@@ -122,7 +122,7 @@ export function getUnmatchedMentions(
   if (!request.notes || !allRequests.length) return [];
 
   const notes = request.notes;
-  
+
   // Build set of normalized names in the cycle
   const normalizedNames = new Set(
     allRequests
@@ -130,42 +130,62 @@ export function getUnmatchedMentions(
       .map(r => normalize(r.full_name))
   );
 
-  // Split notes by commas, "en", "and", newlines
-  const fragments = notes
-    .split(/,|\n|(?:\s+en\s+)|(?:\s+and\s+)/gi)
-    .map(f => f.trim())
-    .filter(f => f.length >= 3);
+  // Regex: find sequences of capitalized words, optionally connected by particles
+  // Matches: "Stefan Mols", "Els van der Meulen", "Angelique Mutsaers"
+  // Does NOT match: "Ik speel" (lowercase 2nd word), "Geen tennisachtergrond"
+  const PARTICLE_RE = '(?:van|de|den|der|het|ter|ten|een)';
+  const CAP_WORD = '[A-Z\u00C0-\u00FF][a-z\u00E0-\u00FF]+';
+  const NAME_RE = new RegExp(
+    `${CAP_WORD}(?:\\s+${PARTICLE_RE})*(?:\\s+${CAP_WORD})+`,
+    'g'
+  );
+
+  // Also match single capitalized words after "met" / "samen met"
+  const SINGLE_AFTER_MET = /(?:samen\s+)?met\s+([A-Z\u00C0-\u00FF][a-z\u00E0-\u00FF]{2,})/g;
+
+  const candidates = new Set<string>();
+
+  // Multi-word name candidates
+  for (const match of notes.matchAll(NAME_RE)) {
+    const candidate = match[0];
+    // Cap at 4 significant words (excluding particles)
+    const words = candidate.split(/\s+/);
+    const significant = words.filter(w => !PARTICLES.has(w.toLowerCase()));
+    if (significant.length <= 4) {
+      candidates.add(candidate);
+    }
+  }
+
+  // Single names after "met"
+  for (const match of notes.matchAll(SINGLE_AFTER_MET)) {
+    const word = match[1];
+    if (!FILLER_WORDS.has(word.toLowerCase()) && !PARTICLES.has(word.toLowerCase())) {
+      candidates.add(word);
+    }
+  }
 
   const unmatched: string[] = [];
-  
-  for (const fragment of fragments) {
-    const normalizedFragment = normalize(fragment);
-    
-    // Check if this fragment matches any registered player
-    const isMatched = [...normalizedNames].some(name => 
-      name === normalizedFragment || 
-      name.includes(normalizedFragment) || 
-      normalizedFragment.includes(name)
+
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalize(candidate);
+
+    // Skip if all significant words are filler
+    const words = normalizedCandidate.split(/\s+/).filter(w => w.length >= 2);
+    const meaningful = words.filter(w => !FILLER_WORDS.has(w) && !PARTICLES.has(w));
+    if (meaningful.length === 0) continue;
+
+    // Skip if it matches a registered player
+    const isMatched = [...normalizedNames].some(name =>
+      name === normalizedCandidate ||
+      name.includes(normalizedCandidate) ||
+      normalizedCandidate.includes(name)
     );
     if (isMatched) continue;
 
-    // Check if fragment looks like a name (not just filler words)
-    const words = normalizedFragment.split(/\s+/).filter(w => w.length >= 2);
-    const meaningfulWords = words.filter(w => !FILLER_WORDS.has(w) && !PARTICLES.has(w));
-    
-    // Need at least one meaningful word that starts with uppercase in original
-    const originalWords = fragment.split(/\s+/).filter(w => w.length >= 2);
-    const hasCapitalizedWord = originalWords.some(w => /^[A-Z\u00C0-\u00FF]/.test(w));
-    
-    if (meaningfulWords.length === 0 || !hasCapitalizedWord) continue;
-    
-    // Skip if all words are filler
-    if (meaningfulWords.length < 1) continue;
+    // Skip if dismissed
+    if (dismissed.has(`${request.id}::${normalizedCandidate}`)) continue;
 
-    // Check if dismissed
-    if (dismissed.has(`${request.id}::${normalizedFragment}`)) continue;
-    
-    unmatched.push(fragment);
+    unmatched.push(candidate);
   }
 
   return unmatched;
