@@ -21,6 +21,7 @@ import {
   unassignPlayer,
   exportIntakeRequestsToCsv,
   getAvailableSlotsForCycle,
+  createProposalSlot,
   type SlotWithOccupancy,
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
@@ -409,6 +410,34 @@ export default function AcademyIntakeRequests() {
               refreshData();
             } catch (error: any) {
               setScheduleSlots(prev);
+              toast.error(error.message);
+            }
+          }}
+          onCreateSlot={async (trainerId, startTime, endTime) => {
+            if (selectedCycleId === 'all') return;
+            const tempId = `temp-${Date.now()}`;
+            const newSlot: SlotWithOccupancy = {
+              id: tempId,
+              trainer_id: trainerId,
+              start_time: startTime,
+              end_time: endTime,
+              max_participants: (selectedCycle?.settings as any)?.max_participants ?? 4,
+              trainer_name: '',
+              trainer_avatar: null,
+              min_rating: null,
+              max_rating: null,
+              rating_system: null,
+              cyclus_name: selectedCycle?.name ?? null,
+              is_blocked: false,
+              current_assignments: [],
+            };
+            setScheduleSlots(prev => [...prev, newSlot]);
+            try {
+              const result = await createProposalSlot(selectedCycleId, trainerId, startTime, endTime);
+              setScheduleSlots(prev => prev.map(s => s.id === tempId ? { ...s, id: result.id } : s));
+              toast.success(t('proposals.slotCreated', { defaultValue: 'Slot created' }));
+            } catch (error: any) {
+              setScheduleSlots(prev => prev.filter(s => s.id !== tempId));
               toast.error(error.message);
             }
           }}

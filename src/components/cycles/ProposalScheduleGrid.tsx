@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle, UserPlus } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle, UserPlus, Plus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -45,6 +45,7 @@ interface ProposalScheduleGridProps {
     slotBId: string, slotBNewTrainerId: string, slotBNewStart: string, slotBNewEnd: string,
   ) => void;
   onDeleteSlot?: (slotId: string) => void;
+  onCreateSlot?: (trainerId: string, startTime: string, endTime: string) => void;
   onUndo?: (previousSlots: SlotWithOccupancy[]) => void;
   unplacedPlayers?: UnplacedPlayer[];
   allPlayers?: UnplacedPlayer[];
@@ -782,11 +783,12 @@ function BlockedSlotCard({ slot }: { slot: SlotWithOccupancy }) {
 // ── Droppable Cell ──
 
 function DroppableCell({
-  cellId, children, hasSlot,
+  cellId, children, hasSlot, onCreateSlot,
 }: {
   cellId: string;
   children?: React.ReactNode;
   hasSlot: boolean;
+  onCreateSlot?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: cellId,
@@ -797,13 +799,22 @@ function DroppableCell({
     <div
       ref={setNodeRef}
       className={cn(
-        'h-full min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5',
+        'group/cell h-full min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5 relative',
         !hasSlot && 'border-border/30',
         isOver && !hasSlot && 'border-primary/50 bg-primary/5 scale-[1.01]',
         isOver && hasSlot && 'ring-1 ring-primary/30',
       )}
     >
       {children}
+      {!hasSlot && onCreateSlot && (
+        <button
+          onClick={onCreateSlot}
+          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity"
+          aria-label="Add slot"
+        >
+          <Plus className="h-4 w-4 text-muted-foreground" />
+        </button>
+      )}
     </div>
   );
 }
@@ -966,7 +977,7 @@ function DroppableUnplacedPool({ children }: { children: React.ReactNode }) {
 // ── Main Grid ──
 
 export default function ProposalScheduleGrid({
-  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onUndo,
+  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onCreateSlot, onUndo,
   unplacedPlayers, allPlayers, onAssignPlayer, onUnassignPlayer,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
@@ -1542,7 +1553,26 @@ export default function ProposalScheduleGrid({
                           }}
                           className="bg-background p-0.5"
                         >
-                          <DroppableCell cellId={cellId} hasSlot={!!slot}>
+                          <DroppableCell
+                            cellId={cellId}
+                            hasSlot={!!slot}
+                            onCreateSlot={!slot && onCreateSlot ? () => {
+                              // Build ISO timestamps from the selected day + rowMinute
+                              const refSlot = daySlots[0];
+                              if (!refSlot) return;
+                              const refDate = parseISO(refSlot.start_time);
+                              const dayMap: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+                              const currentDayNum = getDay(refDate);
+                              const targetDayNum = dayMap[selectedDay.toLowerCase()];
+                              const diff = ((targetDayNum - currentDayNum) + 7) % 7;
+                              const targetDate = diff === 0 ? refDate : addDays(refDate, diff);
+                              const startDate = new Date(targetDate);
+                              startDate.setHours(Math.floor(rowMinute / 60), rowMinute % 60, 0, 0);
+                              const endDate = new Date(startDate);
+                              endDate.setMinutes(endDate.getMinutes() + 60);
+                              onCreateSlot(trainer.id, startDate.toISOString(), endDate.toISOString());
+                            } : undefined}
+                          >
                             {slot && slot.is_blocked ? (
                               <BlockedSlotCard slot={slot} />
                             ) : slot ? (
