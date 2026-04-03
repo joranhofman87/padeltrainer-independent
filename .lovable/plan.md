@@ -1,35 +1,61 @@
 
 
-# Fix: Midnight (00:00) Time Window Handling
+# Timezone Setting for Academies & Trainers
 
 ## Problem
-Two bugs caused by `00:00` in trainer availability windows:
+The edge function creates slots using `setHours()` in UTC. A trainer in Amsterdam (UTC+2) setting 18:00 gets slots stored as `18:00 UTC`, which displays as `20:00` locally — or conversely, slots appear at midnight when they shouldn't. There's no timezone setting anywhere in the system; `Europe/Amsterdam` is hardcoded only in the Google Calendar sync.
 
-1. **Edge function bug**: When a trainer sets a window like `17:00 – 00:00` (meaning "until midnight"), the code calculates `windowEndMinutes = 0`. Since `0 < 1020` (17:00), the slot generation loop never runs — those windows are silently skipped. No slots are created for that trainer/day.
+## Approach
 
-2. **Midnight slot bug**: If `00:00` is accidentally selected as a **start** time, the function creates slots at midnight (00:00–01:00), which is what you're seeing on Thursday and Friday.
+### 1. Database: Add `timezone` column to both `trainer_profiles` and `academy_profiles`
+- `ALTER TABLE trainer_profiles ADD COLUMN timezone text NOT NULL DEFAULT 'Europe/Amsterdam';`
+- `ALTER TABLE academy_profiles ADD COLUMN timezone text NOT NULL DEFAULT 'Europe/Amsterdam';`
+- Default to `Europe/Amsterdam` since this is a Dutch padel platform
 
-## Changes
+### 2. Settings UI: Add timezone picker
+- **Trainer Settings** (`TrainerSettings.tsx`): Add a timezone selector card (similar to the language card) with common European timezones + a full IANA list
+- **Academy Settings** (`AcademySettings.tsx`): Same timezone picker for the academy level
 
-### `supabase/functions/generate-proposals/index.ts`
-- After calculating `windowEndMinutes` (line 569), add: if `windowEndMinutes === 0` (i.e., end is `00:00`), treat it as `1440` (24:00 = end of day). This is the standard midnight-wrap fix.
-- This ensures windows like `17:00–00:00` correctly generate slots from 17:00 to 23:00.
+Common options shown first: `Europe/Amsterdam`, `Europe/London`, `Europe/Madrid`, `Europe/Berlin`, `Europe/Paris`, `Europe/Rome`, `America/New_York`, etc. Full list available via search.
 
-### `src/components/cycles/GenerateProposalsWizard.tsx`
-- Split `TIME_OPTIONS` into separate start and end lists:
-  - **Start options**: `06:00` to `23:30` (no `00:00` — you can't start a training at midnight)
-  - **End options**: `06:30` to `23:30` + `00:00` (midnight as "end of day" is valid)
-- Use the appropriate list for each dropdown
+### 3. Generate Proposals: Use timezone for slot creation
+- **`src/lib/cycles.ts`**: Pass `timezone` to the edge function (fetch from trainer/academy profile)
+- **`src/components/cycles/GenerateProposalsWizard.tsx`**: Fetch and pass the timezone
+- **`supabase/functions/generate-proposals/index.ts`**: Accept `timezone` param. Instead of `setHours(h, m)` (which is UTC), compute the UTC offset for the target timezone on that specific date (handles DST), then store `(localHour - offset)` as UTC. This way `18:00 Amsterdam` stores as `16:00 UTC` in summer, `17:00 UTC` in winter.
 
-## Result
-- Windows ending at midnight correctly generate slots until 23:00
-- Trainers can't accidentally create midnight start times
-- Existing localStorage drafts with `00:00` as end time will work correctly after the edge function fix
+### 4. Display: Consistent timezone-aware formatting
+- **`src/pages/ProposalOverviewPage.tsx`**: Update `formatTime()` and `formatDayLabel()` to accept and use the cycle's timezone via `toLocaleTimeString([], { timeZone })`. This ensures times display correctly regardless of the viewer's local timezone.
+- Same approach for any other place that renders slot times from proposals.
+
+### 5. Player-facing clarity
+- On registration forms and booking confirmations, display the timezone label next to times (e.g. "18:00 CET" or "18:00 (Amsterdam time)")
+
+## Technical Detail: UTC Offset Calculation in Edge Function
+
+```typescript
+// Get UTC offset for a timezone on a specific date
+function getTimezoneOffsetMinutes(date: Date, tz: string): number {
+  const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
+  const tzStr = date.toLocaleString('en-US', { timeZone: tz });
+  return (new Date(utcStr).getTime() - new Date(tzStr).getTime()) / 60000;
+}
+
+// When creating a slot at localHour:localMin in target timezone:
+const offsetMin = getTimezoneOffsetMinutes(currentDate, timezone);
+startDateTime.setUTCHours(localHour, localMin + offsetMin, 0, 0);
+```
+
+This handles DST automatically — the offset is calculated per-date.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-proposals/index.ts` | Treat `windowEndMinutes === 0` as 1440 (midnight wrap) |
-| `src/components/cycles/GenerateProposalsWizard.tsx` | Separate start/end time option lists; exclude `00:00` from start |
+| Migration | Add `timezone` column to `trainer_profiles` and `academy_profiles` |
+| `src/pages/TrainerSettings.tsx` | Add timezone picker card |
+| `src/pages/academy/AcademySettings.tsx` | Add timezone picker card |
+| `src/lib/cycles.ts` | Fetch timezone from profile, pass to edge function |
+| `src/components/cycles/GenerateProposalsWizard.tsx` | Include timezone in generation config |
+| `supabase/functions/generate-proposals/index.ts` | Accept timezone, apply offset when creating slot times |
+| `src/pages/ProposalOverviewPage.tsx` | Use timezone-aware formatting for slot display |
 
