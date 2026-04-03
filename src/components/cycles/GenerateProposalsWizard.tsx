@@ -472,21 +472,57 @@ export function GenerateProposalsWizard({
       {/* Step 3: Additional Criteria */}
       {step === 3 && (
         <div className="space-y-4 py-2">
-          <div className="flex items-start space-x-3">
-            <Checkbox
-              id="keepCompleteGroups"
-              checked={keepCompleteGroups}
-              onCheckedChange={(checked) => setKeepCompleteGroups(!!checked)}
-            />
-            <div className="space-y-1">
-              <Label htmlFor="keepCompleteGroups" className="font-medium cursor-pointer">
-                {t('proposals.wizard.keepCompleteGroups', { defaultValue: 'Keep complete groups together' })}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {t('proposals.wizard.keepCompleteGroupsHelp', { defaultValue: 'When a linked group has enough players to fill a slot (e.g. 4), they will be placed together as a unit.' })}
-              </p>
-            </div>
+          {/* Linked players strategy */}
+          <div className="space-y-2">
+            <Label>{t('proposals.wizard.linkStrategy', { defaultValue: 'Linked players' })}</Label>
+            <p className="text-sm text-muted-foreground">
+              {t('proposals.wizard.linkStrategyHelp', { defaultValue: 'How should players who want to train together be handled?' })}
+            </p>
+            <Select value={linkStrategy} onValueChange={(v) => setLinkStrategy(v as LinkStrategy)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="strict">
+                  {t('proposals.wizard.linkStrict', { defaultValue: 'Always keep together' })}
+                </SelectItem>
+                <SelectItem value="prefer">
+                  {t('proposals.wizard.linkPrefer', { defaultValue: 'Try to keep together (recommended)' })}
+                </SelectItem>
+                <SelectItem value="ignore">
+                  {t('proposals.wizard.linkIgnore', { defaultValue: 'Ignore links' })}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {linkStrategy === 'strict' && t('proposals.wizard.linkStrictHelp', { defaultValue: 'Linked players are placed as a unit. If no slot fits the group, they are skipped.' })}
+              {linkStrategy === 'prefer' && t('proposals.wizard.linkPreferHelp', { defaultValue: 'Strong preference to keep linked players together, but they can be split if needed.' })}
+              {linkStrategy === 'ignore' && t('proposals.wizard.linkIgnoreHelp', { defaultValue: 'All players are treated individually. Links are not considered.' })}
+            </p>
           </div>
+
+          {linkStrategy !== 'ignore' && (
+            <>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label className="font-medium">
+                    {t('proposals.wizard.fillIncompleteGroups', { defaultValue: 'Fill incomplete groups' })}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {fillIncompleteGroups
+                      ? t('proposals.wizard.fillIncompleteGroupsOnHelp', { defaultValue: 'Remaining spots are filled with other compatible players.' })
+                      : t('proposals.wizard.fillIncompleteGroupsOffHelp', { defaultValue: 'Spots are left empty — the group trains alone or finds someone themselves.' })
+                    }
+                  </p>
+                </div>
+                <Switch
+                  checked={fillIncompleteGroups}
+                  onCheckedChange={setFillIncompleteGroups}
+                />
+              </div>
+            </>
+          )}
 
           <Separator />
 
