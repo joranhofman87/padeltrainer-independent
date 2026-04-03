@@ -340,9 +340,17 @@ function SlotEditPopover({
   const handleApply = () => {
     if (!onMoveSlot || !canApply) return;
     const refDate = parseISO(slot.start_time);
-    const newStart = new Date(refDate);
+    let targetDate = refDate;
+    if (dayChanged) {
+      const dayMap: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+      const currentDayNum = getDay(refDate);
+      const targetDayNum = dayMap[targetDay.toLowerCase()];
+      const diff = (targetDayNum - currentDayNum + 7) % 7 || (targetDayNum === currentDayNum ? 0 : 7);
+      targetDate = addDays(refDate, diff);
+    }
+    const newStart = new Date(targetDate);
     newStart.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
-    const newEnd = new Date(refDate);
+    const newEnd = new Date(targetDate);
     newEnd.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
     onMoveSlot(slot.id, slot.trainer_id, newStart.toISOString(), newEnd.toISOString());
     setOpen(false);
