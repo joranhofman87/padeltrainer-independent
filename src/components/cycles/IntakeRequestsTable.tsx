@@ -342,41 +342,131 @@ export default function IntakeRequestsTable({
     return <span className="text-muted-foreground text-xs">—</span>;
   };
 
-  const renderLinkedColumn = (requestId: string) => {
+  const renderLinkedColumn = (request: IntakeRequestWithProposal) => {
+    const requestId = request.id;
     const groupId = linkGroupMap.get(requestId);
-    if (!groupId) return <span className="text-muted-foreground text-xs">—</span>;
+    const suggestions = suggestionsMap.get(requestId) || [];
 
-    const color = groupColors.get(groupId) || 'bg-muted';
-    const members = linkGroups.get(groupId) || [];
-    const memberNames = members
-      .filter(id => id !== requestId)
-      .map(id => requests.find(r => r.id === id)?.full_name)
-      .filter(Boolean);
+    const linkedContent = (() => {
+      if (!groupId) return null;
+      const color = groupColors.get(groupId) || 'bg-muted';
+      const members = linkGroups.get(groupId) || [];
+      const memberNames = members
+        .filter(id => id !== requestId)
+        .map(id => requests.find(r => r.id === id)?.full_name)
+        .filter(Boolean);
+      if (memberNames.length === 0) return null;
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1.5">
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${color} shrink-0`} />
+                <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                  {memberNames.length === 1 ? memberNames[0] : `${memberNames[0]} +${memberNames.length - 1}`}
+                </span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs font-medium mb-1">{t('intakeRequests.links.linkedWith', { defaultValue: 'Linked with' })}:</p>
+              <ul className="text-xs">
+                {memberNames.map((name, i) => (
+                  <li key={i}>{name}</li>
+                ))}
+              </ul>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    })();
 
-    if (memberNames.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+    const suggestionIndicator = suggestions.length > 0 ? (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="relative inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 transition-colors"
+            title={t('intakeRequests.links.suggestions', { defaultValue: 'Suggestions' })}
+          >
+            <Lightbulb className="h-4 w-4" />
+            <span className="text-xs font-medium">{suggestions.length}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-64 p-3"
+          align="start"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-xs font-medium mb-2">
+            {t('intakeRequests.links.suggestedLinks', { defaultValue: 'Suggested links' })}
+          </p>
+          <div className="space-y-1.5">
+            {suggestions.map(s => (
+              <div key={s.id} className="flex items-center justify-between gap-2">
+                <span className="text-sm truncate">{s.full_name}</span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    disabled={linkingId === s.id}
+                    onClick={() => handleLinkFromTable(requestId, s.id)}
+                    title={t('intakeRequests.links.link', { defaultValue: 'Link' })}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDismissFromTable(requestId, s.id)}
+                    title={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss' })}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {suggestions.length > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs mt-2 w-full"
+              disabled={linkingId !== null}
+              onClick={async () => {
+                setLinkingId('all');
+                try {
+                  const linkedIds = getLinkedIdsForRequest(requestId, playerLinks);
+                  const allIds = [requestId, ...linkedIds, ...suggestions.map(s => s.id)];
+                  await linkPlayers([...new Set(allIds)]);
+                  toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
+                  onLinkChanged?.();
+                } catch (error: any) {
+                  toast.error(error.message);
+                } finally {
+                  setLinkingId(null);
+                }
+              }}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              {t('intakeRequests.links.linkAll', { defaultValue: 'Link all' })}
+            </Button>
+          )}
+        </PopoverContent>
+      </Popover>
+    ) : null;
+
+    if (!linkedContent && !suggestionIndicator) {
+      return <span className="text-muted-foreground text-xs">—</span>;
+    }
 
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="flex items-center gap-1.5">
-              <span className={`inline-block h-2.5 w-2.5 rounded-full ${color} shrink-0`} />
-              <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-xs text-muted-foreground truncate max-w-[100px]">
-                {memberNames.length === 1 ? memberNames[0] : `${memberNames[0]} +${memberNames.length - 1}`}
-              </span>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="text-xs font-medium mb-1">{t('intakeRequests.links.linkedWith', { defaultValue: 'Linked with' })}:</p>
-            <ul className="text-xs">
-              {memberNames.map((name, i) => (
-                <li key={i}>{name}</li>
-              ))}
-            </ul>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <div className="flex items-center gap-2">
+        {linkedContent}
+        {suggestionIndicator}
+      </div>
     );
   };
 
