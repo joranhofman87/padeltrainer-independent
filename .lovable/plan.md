@@ -1,47 +1,38 @@
 
 
-# Simplify Proposal Drawer Actions
+# Move Slot to a Different Day
 
 ## Problem
-1. The drawer shows too many confusing buttons: Edit, Confirm, Waitlist, Reject (registration-level) AND Remove proposal, Reassign (proposal-level) — users don't understand the distinction
-2. "Remove proposal" sets status to `rejected` in the DB but the schedule grid's local state doesn't update immediately, causing inconsistent display until refresh
-3. Console shows 500 errors / timeouts when fetching proposals, adding to confusion
+The schedule grid is organized by day tabs. Drag-and-drop and the edit popover only work within the currently selected day. There's no way to move a group (slot with all its players) from Monday to Tuesday without deleting and recreating it.
 
 ## Approach
-When viewing the drawer **during the proposal review step** (Step 4 — when `proposal` exists), simplify to a single clear action:
-
-**"Decline proposal"** — removes the player from their assigned slot and moves them to the Unplaced sidebar.
-
-Keep the Edit button (it's useful for correcting player data). Remove Confirm, Waitlist, Reject, and Reassign from this context — those are registration-level actions that don't belong in the scheduling review phase. Reassign can be done by drag-and-drop or via the "+" button on slots.
+Add a **day picker** to the existing `SlotEditPopover` (the popover that appears when clicking the edit/settings icon on a slot card). The backend `moveSlot` already supports changing the date — it just updates `start_time` and `end_time` to any new ISO timestamp. We only need to expose the day selection in the UI.
 
 ## Changes
 
-### `src/components/cycles/IntakeRequestDetailSheet.tsx`
+### `src/components/cycles/ProposalScheduleGrid.tsx`
 
-1. **When a proposal exists**: Show only:
-   - "Edit" button (to edit player details)
-   - "Decline proposal" button (destructive style) — calls `handleRemoveProposal` which already sets `status = 'rejected'` and calls `onStatusChange`
-   
-2. **When no proposal exists** (viewing from Registrations tab): Keep existing buttons as-is (Edit, Confirm, Waitlist, Reject)
+**SlotEditPopover** (line 244):
+1. Add `availableDays` as a new prop (the list of days like `['Monday', 'Tuesday', ...]`)
+2. Add a day selector (small `Select` dropdown) above the start/end time pickers, initialized to the current `selectedDay`
+3. When a different day is chosen, recalculate the reference date: find the correct calendar date for that day of the week relative to the slot's current date (e.g., if slot is on Monday the 7th and user picks Tuesday, compute the 8th)
+4. In `handleApply`, use the selected day's date instead of always using `refDate` from the current slot — this shifts `start_time`/`end_time` to the new day while preserving the chosen times
+5. Update overlap detection to check against slots on the **target day**, not just `daySlots` (current day). Pass all `slots` to the popover so it can filter by target day.
 
-3. **Remove the separate "Proposal-specific actions" section** (lines 309-332) — merge into the main action bar logic
+**Wiring** (~line 630):
+- Pass `availableDays` and full `slots` array down to `SlotEditPopover`
 
-4. **Remove the Reassign button** from the drawer — users can reassign via drag-and-drop in the grid
-
-### Translation updates
-- Add `declineProposal` key: "Decline proposal" / "Voorstel afwijzen"
+No backend changes needed — `moveSlot` already handles arbitrary date/time updates.
 
 ## Result
-- Drawer in proposal review shows just Edit + "Decline proposal"
-- Declining moves player to Unplaced sidebar via `onStatusChange` callback
-- No more confusion between registration actions and proposal actions
+- Trainer opens the edit popover on a Monday slot → sees a day dropdown defaulting to "Monday"
+- Changes it to "Tuesday", picks the desired time → clicks Apply
+- The entire group (slot + all assigned players) moves to Tuesday
+- The grid refreshes and shows the slot on the Tuesday tab
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Condense action bar: show only Edit + "Decline proposal" when proposal exists; hide Confirm/Waitlist/Reject/Reassign |
-| `src/i18n/locales/en/cycles.json` | Add `declineProposal` translation |
-| `src/i18n/locales/nl/cycles.json` | Add `declineProposal` translation |
-| `src/i18n/locales/de/cycles.json` | Add `declineProposal` translation |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Add day selector to `SlotEditPopover`; pass `availableDays` and all `slots` as props |
 
