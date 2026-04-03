@@ -18,10 +18,14 @@ export function resetUser() {
   posthog.reset();
 }
 
-/** Capture a custom event with optional properties. */
+/** Capture a custom event with optional properties. Never throws. */
 export function trackEvent(
   event: string,
   properties?: Record<string, string | number | boolean | null | undefined>
 ) {
-  posthog.capture(event, properties);
+  try {
+    posthog.capture(event, properties);
+  } catch {
+    // Analytics must never break app functionality
+  }
 }

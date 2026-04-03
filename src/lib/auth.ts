@@ -198,15 +198,25 @@ export async function setUserRole(userId: string, role: UserRole, timezone?: str
   return data;
 }
 
-export async function getProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-  
-  if (error || !data) return null;
-  return data as UserProfile;
+export async function getProfile(userId: string): Promise<FetchResult<UserProfile | null>> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    if (error) {
+      // PGRST116 = no rows found — that's a valid "no profile" result, not a failure
+      if (error.code === 'PGRST116') return { data: null, failed: false };
+      logger.error('Error fetching profile', error as any, { component: 'auth' });
+      return { data: null, failed: true };
+    }
+    return { data: data as UserProfile, failed: false };
+  } catch (err) {
+    logger.error('Exception fetching profile', err as Error, { component: 'auth' });
+    return { data: null, failed: true };
+  }
 }
 
 export async function updateProfile(userId: string, updates: Partial<UserProfile>) {
