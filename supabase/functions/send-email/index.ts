@@ -1228,7 +1228,7 @@ const handler = async (req: Request): Promise<Response> => {
       "club_trainer_invitation", "club_trainer_invitation_accepted",
       "partner_inquiry", "location_request",
       "booking_approved_payment", "booking_approved_invoice", "booking_rejected",
-      "intake_registration_confirmation",
+      "intake_registration_confirmation", "schedule_notification",
     ];
 
     const prefColumn = TYPE_TO_PREF_COLUMN[type];
