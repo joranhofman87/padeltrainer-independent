@@ -566,7 +566,9 @@ Deno.serve(async (req) => {
           const [windowStartH, windowStartM] = window.start.split(":").map(Number);
           const [windowEndH, windowEndM] = window.end.split(":").map(Number);
           const windowStartMinutes = windowStartH * 60 + (windowStartM || 0);
-          const windowEndMinutes = windowEndH * 60 + (windowEndM || 0);
+          let windowEndMinutes = windowEndH * 60 + (windowEndM || 0);
+          // Treat 00:00 as end-of-day (midnight wrap)
+          if (windowEndMinutes === 0) windowEndMinutes = 1440;
 
           let current = new Date(effectiveStartDate);
           while (current.getDay() !== dayIndex) {
