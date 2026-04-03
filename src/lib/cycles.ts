@@ -114,6 +114,8 @@ export interface CycleSettings {
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   // Pre-selected days & time frames available for registration
   available_days?: Record<string, { start: string; end: string }[]>;
+  // Dates to exclude from recurring schedule (holidays, etc.)
+  excluded_dates?: string[];
   [key: string]: unknown; // Allow for Json compatibility
 }
 
