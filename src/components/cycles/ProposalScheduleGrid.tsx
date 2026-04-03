@@ -1306,6 +1306,7 @@ export default function ProposalScheduleGrid({
             <span className="text-muted-foreground text-[10px]">({undoStack[undoStack.length - 1].label})</span>
           </Button>
         )}
+        </div>
       </div>
 
       {/* Time-row × Trainer-column grid + Sidebar */}
