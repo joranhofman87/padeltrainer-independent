@@ -608,6 +608,15 @@ export default function AcademyCycleDetail() {
 
         {/* ==================== PROPOSALS TAB ==================== */}
         <TabsContent value="proposals" className="space-y-6">
+          {/* Pre-generation review: show when there are new requests */}
+          {newCount > 0 && (
+            <PreGenerationReview
+              requests={requests}
+              playerLinks={playerLinksData}
+              onLinkChanged={refreshData}
+            />
+          )}
+
           <ProposalWorkflowSteps
             cycles={[cycle]}
             selectedCycleId={cycle.id}
