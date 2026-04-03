@@ -105,6 +105,7 @@ export default function AcademyCycleDetail() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [academyTimezone, setAcademyTimezone] = useState<string>('Europe/Amsterdam');
 
   // Settings data
   const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
