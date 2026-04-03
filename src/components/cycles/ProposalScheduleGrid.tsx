@@ -530,11 +530,13 @@ function SlotEditPopover({
 
 function AddPlayerToSlotPopover({
   slotId,
+  slot,
   allPlayers,
   currentAssignmentIds,
   onAssignPlayer,
 }: {
   slotId: string;
+  slot: SlotWithOccupancy;
   allPlayers: UnplacedPlayer[];
   currentAssignmentIds: Set<string>;
   onAssignPlayer: (intakeRequestId: string, slotId: string) => void;
@@ -543,11 +545,43 @@ function AddPlayerToSlotPopover({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
+  const slotDay = useMemo(() => {
+    try { return format(new Date(slot.start_time), 'EEEE').toLowerCase(); } catch { return ''; }
+  }, [slot.start_time]);
+
+  const getMatchScore = (p: UnplacedPlayer): 'full' | 'partial' | 'mismatch' | null => {
+    const hasDayPref = p.preferred_days && p.preferred_days.length > 0;
+    const hasRatingRange = slot.min_rating != null || slot.max_rating != null;
+    if (!hasDayPref && !hasRatingRange) return null;
+
+    const dayOk = !hasDayPref || (p.preferred_days?.map(d => d.toLowerCase()).includes(slotDay) ?? false);
+    const ratingOk = !hasRatingRange || (
+      p.rating != null &&
+      (slot.min_rating == null || p.rating >= slot.min_rating) &&
+      (slot.max_rating == null || p.rating <= slot.max_rating)
+    );
+
+    if (dayOk && ratingOk) return 'full';
+    if (dayOk || ratingOk) return 'partial';
+    return 'mismatch';
+  };
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return allPlayers;
-    const q = search.toLowerCase();
-    return allPlayers.filter(p => p.full_name.toLowerCase().includes(q));
-  }, [allPlayers, search]);
+    let list = allPlayers;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(p => p.full_name.toLowerCase().includes(q));
+    }
+    return [...list].sort((a, b) => {
+      const order = { full: 0, partial: 1, mismatch: 2 } as const;
+      const sa = getMatchScore(a);
+      const sb = getMatchScore(b);
+      const oa = sa ? order[sa] : 1;
+      const ob = sb ? order[sb] : 1;
+      if (oa !== ob) return oa - ob;
+      return a.full_name.localeCompare(b.full_name);
+    });
+  }, [allPlayers, search, slotDay, slot.min_rating, slot.max_rating]);
 
   return (
     <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSearch(''); }}>
