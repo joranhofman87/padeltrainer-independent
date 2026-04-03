@@ -106,67 +106,69 @@ export default function ProposalWorkflowSteps({
   }
 
   steps.push({
-      number: 2,
-      label: t('workflow.generate', { defaultValue: 'Generate' }),
-      description: t('workflow.generateDesc', { defaultValue: '{{count}} new requests', count: newCount }),
-      status: s2,
-      action: (
+    number: stepNum++,
+    label: t('workflow.generate', { defaultValue: 'Generate' }),
+    description: t('workflow.generateDesc', { defaultValue: '{{count}} new requests', count: newCount }),
+    status: statuses[steps.length],
+    action: (
+      <Button
+        size="sm"
+        onClick={onGenerate}
+        disabled={!cycleSelected || newCount === 0}
+        className="h-7 text-xs"
+      >
+        <Sparkles className="h-3 w-3 mr-1" />
+        {t('proposals.generateAll', { defaultValue: 'Generate' })}
+      </Button>
+    ),
+  });
+
+  steps.push({
+    number: stepNum++,
+    label: t('workflow.review', { defaultValue: 'Review & Edit' }),
+    description: t('workflow.reviewDesc', { defaultValue: '{{count}} proposals', count: proposedCount }),
+    status: statuses[steps.length],
+    action: proposedCount > 0 ? (
+      <div className="flex gap-1.5">
         <Button
           size="sm"
-          onClick={onGenerate}
-          disabled={!cycleSelected || newCount === 0}
+          variant="outline"
+          onClick={onReset}
+          disabled={isResetting}
           className="h-7 text-xs"
         >
-          <Sparkles className="h-3 w-3 mr-1" />
-          {t('proposals.generateAll', { defaultValue: 'Generate' })}
+          <RotateCcw className="h-3 w-3 mr-1" />
+          {t('proposals.reset', { defaultValue: 'Reset' })}
         </Button>
-      ),
-    },
-    {
-      number: 3,
-      label: t('workflow.review', { defaultValue: 'Review & Edit' }),
-      description: t('workflow.reviewDesc', { defaultValue: '{{count}} proposals', count: proposedCount }),
-      status: s3,
-      action: proposedCount > 0 ? (
-        <div className="flex gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onReset}
-            disabled={isResetting}
-            className="h-7 text-xs"
-          >
-            <RotateCcw className="h-3 w-3 mr-1" />
-            {t('proposals.reset', { defaultValue: 'Reset' })}
-          </Button>
-          <Button
-            size="sm"
-            onClick={onShowOverview}
-            className="h-7 text-xs"
-          >
-            <Eye className="h-3 w-3 mr-1" />
-            {t('workflow.continueToOverview', { defaultValue: 'Continue' })}
-          </Button>
-        </div>
-      ) : undefined,
-    },
-    {
-      number: 4,
-      label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
-      description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
-      status: s4,
-      action: s4 === 'active' && proposedCount > 0 ? (
         <Button
           size="sm"
           onClick={onShowOverview}
           className="h-7 text-xs"
         >
-          <ClipboardList className="h-3 w-3 mr-1" />
-          {t('workflow.viewOverview', { defaultValue: 'View overview' })}
+          <Eye className="h-3 w-3 mr-1" />
+          {t('workflow.continueToOverview', { defaultValue: 'Continue' })}
         </Button>
-      ) : undefined,
-    },
-  ];
+      </div>
+    ) : undefined,
+  });
+
+  const approveStatus = statuses[steps.length];
+  steps.push({
+    number: stepNum++,
+    label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
+    description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
+    status: approveStatus,
+    action: approveStatus === 'active' && proposedCount > 0 ? (
+      <Button
+        size="sm"
+        onClick={onShowOverview}
+        className="h-7 text-xs"
+      >
+        <ClipboardList className="h-3 w-3 mr-1" />
+        {t('workflow.viewOverview', { defaultValue: 'View overview' })}
+      </Button>
+    ) : undefined,
+  });
 
   return (
     <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-start">
