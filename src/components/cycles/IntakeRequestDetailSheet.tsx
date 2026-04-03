@@ -219,6 +219,21 @@ export default function IntakeRequestDetailSheet({
     }
   };
 
+  const handleRemoveProposal = async () => {
+    if (!proposal) return;
+    setIsUpdating(true);
+    try {
+      await updateProposedAssignmentStatus(proposal.id, 'rejected');
+      toast.success(t('proposals.reassign.removed', { defaultValue: 'Proposal removed — player moved to unplaced' }));
+      setProposal(null);
+      onStatusChange?.();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleLinkPlayer = async (targetRequestId: string) => {
     if (!request) return;
     setIsLinking(true);
