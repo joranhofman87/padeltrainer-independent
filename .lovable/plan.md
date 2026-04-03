@@ -1,34 +1,37 @@
 
 
-# Fix: Allow Clicking "Review Links" Step
+# Unmatched Mentions: Info-Only (Non-Blocking)
 
 ## Problem
-When the active step is "Registrations" and there are registrations, the "Review Links" step is marked as `upcoming` (line 52), making it unclickable. The trainer can't advance to step 2.
+Unmatched mentions (names mentioned in notes but not registered) currently count as "pending actions" in the Review Links step. This blocks the workflow — trainers can't proceed without dismissing each one, even though most are informational and not actionable.
 
-## Fix
+## Change
+Make unmatched mentions purely informational. Only **link suggestions** (actual matchable players) count as pending actions. Unmatched mentions are still shown but don't block the step.
+
+## Implementation
+
+### `src/pages/academy/AcademyCycleDetail.tsx`
+- Remove `getUnmatchedMentions` from the `pendingLinkActions` count (line 242). Only link suggestions count.
+
+### `src/components/cycles/PreGenerationReview.tsx`
+- Change the `totalActions` calculation to only count `suggestions.length` (not unmatched)
+- The "all clear" green card shows when there are no link suggestions (unmatched mentions may still exist)
+- Move the unmatched section into a separate collapsible info block with a softer style (no amber/orange warning — use a muted info style with a subtle icon)
+- Keep the dismiss X button so trainers can clean up the list if they want, but it's optional
 
 ### `src/components/cycles/ProposalWorkflowSteps.tsx`
-Remove line 52 (`if (hasRegistrations && activeStep === 'registrations') return 'upcoming'`). The logic should be:
-- If no registrations → `upcoming`
-- If `activeStep === 'review-links'` → `active`
-- If links are reviewed and we're past this step → `completed`
-- Otherwise (has registrations, not yet reviewed) → `active` (clickable but not highlighted)
+- No changes needed — it already uses `pendingLinkActions` which will now only reflect link suggestions
 
-The corrected `review-links` case:
-```typescript
-case 'review-links':
-  if (!hasRegistrations) return 'upcoming';
-  if (linksReviewed && (hasProposals || activeStep === 'generate' || activeStep === 'review-edit' || activeStep === 'approve'))
-    return 'completed';
-  if (activeStep === 'review-links') return 'active';
-  return linksReviewed ? 'completed' : 'active';
-```
-
-This makes step 2 clickable as soon as there are registrations, which is the correct behavior.
+## Result
+- Step 2 shows "All clear" and is marked complete even with unmatched mentions present
+- Unmatched names are still visible as an informational section below the main actions
+- Trainers can proceed to Generate without being blocked
+- The X dismiss button remains for optional cleanup
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/ProposalWorkflowSteps.tsx` | Remove the guard that marks review-links as upcoming when on registrations step |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Remove unmatched mentions from `pendingLinkActions` count |
+| `src/components/cycles/PreGenerationReview.tsx` | Unmatched = info-only section, not counted in `totalActions` |
 
