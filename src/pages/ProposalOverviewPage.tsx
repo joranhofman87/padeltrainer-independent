@@ -143,7 +143,11 @@ export default function ProposalOverviewPage() {
       }
     }
 
-    const sorted = Array.from(groupMap.values()).sort((a, b) => a.trainerName.localeCompare(b.trainerName));
+    const sorted = Array.from(groupMap.values()).sort((a, b) => {
+      const aFirst = Array.from(a.days.keys()).sort()[0] ?? '';
+      const bFirst = Array.from(b.days.keys()).sort()[0] ?? '';
+      return aFirst.localeCompare(bFirst) || a.trainerName.localeCompare(b.trainerName);
+    });
     const totalSlots = cycleSlots.length;
     const totalAssigned = cycleSlots.reduce((sum, s) => sum + s.current_assignments.length, 0);
     const totalEmpty = cycleSlots.filter(s => s.current_assignments.length === 0).length;
