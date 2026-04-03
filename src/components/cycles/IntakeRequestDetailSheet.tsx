@@ -41,7 +41,6 @@ import {
   Clock3,
   Sparkles,
   AlertCircle,
-  Trash2,
   Pencil,
   Link2,
   Plus,
