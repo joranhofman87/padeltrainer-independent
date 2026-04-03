@@ -2,6 +2,26 @@ import { supabase } from "@/lib/supabaseClient";
 import { getAuthRedirectUrl } from "@/lib/domains";
 import { logger } from '@/lib/logger';
 
+function normalizeAuthError(error: any, fallbackMessage: string) {
+  const message = typeof error?.message === 'string' ? error.message.trim() : '';
+  const name = typeof error?.name === 'string' ? error.name : '';
+  const status = typeof error?.status === 'number' ? error.status : undefined;
+  const code = typeof error?.code === 'string' ? error.code : undefined;
+
+  const isRetryable = name === 'AuthRetryableFetchError';
+  const isServiceUnavailable = status === 503 || status === 504 || message.includes('503') || message.includes('504');
+  const isNetworkLike = isRetryable || message.includes('Failed to fetch') || message.includes('NetworkError') || message.includes('fetch failed') || message.includes('Load failed');
+
+  return {
+    ...error,
+    name: name || 'AuthError',
+    status,
+    code,
+    message: isServiceUnavailable || isNetworkLike
+      ? 'Login is temporarily unavailable. Please try again in a moment.'
+      : message || fallbackMessage,
+  };
+}
 export type UserRole = 'player' | 'trainer' | 'admin' | 'club';
 
 export interface UserProfile {
