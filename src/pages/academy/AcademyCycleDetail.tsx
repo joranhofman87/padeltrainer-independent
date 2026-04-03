@@ -641,14 +641,9 @@ export default function AcademyCycleDetail() {
               const req = requests.find(r => r.id === requestId);
               if (req) setSelectedRequest(req);
             }}
+            onContinue={() => setActiveStep('generate')}
+            hasPendingLinks={pendingLinkActions > 0}
           />
-          {pendingLinkActions === 0 && (
-            <div className="flex justify-end">
-              <Button onClick={() => setActiveStep('generate')}>
-                {t('workflow.continueToGenerate', { defaultValue: 'Continue to Generate' })}
-              </Button>
-            </div>
-          )}
         </div>
       )}
 

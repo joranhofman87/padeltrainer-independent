@@ -1,17 +1,15 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Lightbulb,
   AlertTriangle,
   Link2,
   X,
-  ChevronDown,
-  ChevronUp,
   CheckCircle2,
+  ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -30,6 +28,8 @@ interface PreGenerationReviewProps {
   playerLinks: PlayerLink[];
   onLinkChanged: () => void;
   onPlayerClick?: (requestId: string) => void;
+  onContinue: () => void;
+  hasPendingLinks: boolean;
 }
 
 interface SuggestionItem {
@@ -50,9 +50,10 @@ export default function PreGenerationReview({
   playerLinks,
   onLinkChanged,
   onPlayerClick,
+  onContinue,
+  hasPendingLinks,
 }: PreGenerationReviewProps) {
   const { t } = useTranslation('cycles');
-  const [isOpen, setIsOpen] = useState(true);
   const [dismissCounter, setDismissCounter] = useState(0);
   const [linkingIds, setLinkingIds] = useState<Set<string>>(new Set());
 
@@ -95,7 +96,6 @@ export default function PreGenerationReview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests, playerLinks, dismissCounter]);
 
-  // Only link suggestions count as blocking actions; unmatched mentions are info-only
   const totalActions = suggestions.length;
 
   const handleLink = useCallback(async (item: SuggestionItem) => {
@@ -126,24 +126,31 @@ export default function PreGenerationReview({
     setDismissCounter(c => c + 1);
   }, []);
 
-  if (totalActions === 0 && unmatchedMentions.length === 0) {
-    return (
-      <Card className="border-green-500/20 bg-green-500/5">
-        <CardContent className="py-4">
-          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-            <CheckCircle2 className="h-4 w-4" />
-            <span className="text-sm font-medium">
-              {t('preReview.allClear', { defaultValue: 'All clear — no pending link actions' })}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  return (
+    <div className="space-y-4">
+      {/* Continue button — always visible at top */}
+      <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+        <div className="text-sm text-muted-foreground">
+          {hasPendingLinks
+            ? t('preReview.resolveFirst', {
+                defaultValue: 'Resolve all link suggestions before continuing',
+              })
+            : t('preReview.readyToContinue', {
+                defaultValue: 'All links reviewed — ready to generate proposals',
+              })}
+        </div>
+        <Button
+          onClick={onContinue}
+          disabled={hasPendingLinks}
+          className={!hasPendingLinks ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+        >
+          {t('workflow.continueToGenerate', { defaultValue: 'Continue to Generate' })}
+          <ArrowRight className="h-4 w-4 ml-1" />
+        </Button>
+      </div>
 
-  if (totalActions === 0 && unmatchedMentions.length > 0) {
-    return (
-      <div className="space-y-3">
+      {/* All clear state */}
+      {totalActions === 0 && (
         <Card className="border-green-500/20 bg-green-500/5">
           <CardContent className="py-4">
             <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
@@ -154,16 +161,82 @@ export default function PreGenerationReview({
             </div>
           </CardContent>
         </Card>
-        <Collapsible>
-          <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+      )}
+
+      {/* Link suggestions */}
+      {suggestions.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
+            <Lightbulb className="h-3.5 w-3.5" />
+            {t('preReview.linkSuggestions', {
+              defaultValue: '{{count}} link suggestion(s)',
+              count: suggestions.length,
+            })}
+          </div>
+          <div className="space-y-1.5">
+            {suggestions.map((item) => {
+              const key = `${item.requestId}::${item.suggestedId}`;
+              const isLinking = linkingIds.has(key);
+              return (
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-2 p-2 rounded-md border bg-card text-sm"
+                >
+                  <span className="truncate">
+                    <button
+                      type="button"
+                      className="font-medium underline decoration-dotted hover:decoration-solid cursor-pointer hover:text-primary transition-colors"
+                      onClick={() => onPlayerClick?.(item.requestId)}
+                    >
+                      {item.requestName}
+                    </button>
+                    <span className="text-muted-foreground mx-1">→</span>
+                    <button
+                      type="button"
+                      className="font-medium underline decoration-dotted hover:decoration-solid cursor-pointer hover:text-primary transition-colors"
+                      onClick={() => onPlayerClick?.(item.suggestedId)}
+                    >
+                      {item.suggestedName}
+                    </button>
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => handleLink(item)}
+                      disabled={isLinking}
+                    >
+                      <Link2 className="h-3 w-3 mr-1" />
+                      {t('suggestions.link', { defaultValue: 'Link' })}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => handleDismissSuggestion(item)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Unmatched mentions — info only, always visible */}
+      {unmatchedMentions.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <AlertTriangle className="h-3 w-3" />
             {t('preReview.unmatchedInfo', {
               defaultValue: '{{count}} mentioned name(s) not found in registrations',
               count: unmatchedMentions.length,
             })}
-            <ChevronDown className="h-3 w-3" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2 space-y-1.5">
+          </div>
+          <div className="space-y-1.5">
             {unmatchedMentions.map((item, idx) => (
               <div
                 key={`${item.requestId}::${item.mentionedName}::${idx}`}
@@ -192,142 +265,9 @@ export default function PreGenerationReview({
                 </Button>
               </div>
             ))}
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
-    );
-  }
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card>
-        <CollapsibleTrigger asChild>
-          <CardHeader className="cursor-pointer py-4 hover:bg-muted/50 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-base">
-                  {t('preReview.title', { defaultValue: 'Review player links' })}
-                </CardTitle>
-                <Badge variant="secondary" className="text-xs">
-                  {totalActions} {totalActions === 1 ? 'action' : 'actions'}
-                </Badge>
-              </div>
-              {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-            </div>
-          </CardHeader>
-        </CollapsibleTrigger>
-
-        <CollapsibleContent>
-          <CardContent className="pt-0 space-y-4">
-            {/* Link suggestions */}
-            {suggestions.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
-                  <Lightbulb className="h-3.5 w-3.5" />
-                  {t('preReview.linkSuggestions', {
-                    defaultValue: '{{count}} link suggestion(s)',
-                    count: suggestions.length,
-                  })}
-                </div>
-                <div className="space-y-1.5">
-                  {suggestions.map((item) => {
-                    const key = `${item.requestId}::${item.suggestedId}`;
-                    const isLinking = linkingIds.has(key);
-                    return (
-                      <div
-                        key={key}
-                        className="flex items-center justify-between gap-2 p-2 rounded-md border bg-background text-sm"
-                      >
-                        <span className="truncate">
-                          <button
-                            type="button"
-                            className="font-medium underline decoration-dotted hover:decoration-solid cursor-pointer hover:text-primary transition-colors"
-                            onClick={() => onPlayerClick?.(item.requestId)}
-                          >
-                            {item.requestName}
-                          </button>
-                          <span className="text-muted-foreground mx-1">→</span>
-                          <button
-                            type="button"
-                            className="font-medium underline decoration-dotted hover:decoration-solid cursor-pointer hover:text-primary transition-colors"
-                            onClick={() => onPlayerClick?.(item.suggestedId)}
-                          >
-                            {item.suggestedName}
-                          </button>
-                        </span>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            onClick={() => handleLink(item)}
-                            disabled={isLinking}
-                          >
-                            <Link2 className="h-3 w-3 mr-1" />
-                            {t('suggestions.link', { defaultValue: 'Link' })}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0"
-                            onClick={() => handleDismissSuggestion(item)}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Unmatched mentions — info only, not blocking */}
-            {unmatchedMentions.length > 0 && (
-              <Collapsible>
-                <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-                  <AlertTriangle className="h-3 w-3" />
-                  {t('preReview.unmatchedInfo', {
-                    defaultValue: '{{count}} mentioned name(s) not found in registrations',
-                    count: unmatchedMentions.length,
-                  })}
-                  <ChevronDown className="h-3 w-3" />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 space-y-1.5">
-                  {unmatchedMentions.map((item, idx) => (
-                    <div
-                      key={`${item.requestId}::${item.mentionedName}::${idx}`}
-                      className="flex items-center justify-between gap-2 p-2 rounded-md border border-muted bg-muted/30 text-sm text-muted-foreground"
-                    >
-                      <span className="truncate">
-                        <button
-                          type="button"
-                          className="font-medium underline decoration-dotted hover:decoration-solid cursor-pointer hover:text-primary transition-colors"
-                          onClick={() => onPlayerClick?.(item.requestId)}
-                        >
-                          {item.requestName}
-                        </button>
-                        <span className="mx-1">
-                          {t('preReview.mentioned', { defaultValue: 'mentioned' })}
-                        </span>
-                        <span className="font-medium italic">{item.mentionedName}</span>
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 shrink-0"
-                        onClick={() => handleDismissUnmatched(item)}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
