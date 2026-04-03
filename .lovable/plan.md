@@ -1,39 +1,29 @@
 
 
-# Add "Create Slot" to Proposal Schedule Grid
+# Always Show Unplaced Sidebar as Drop Target
 
 ## Problem
-When a trainer deletes a slot (to unassign players), the slot itself is also removed. There's currently no way to add a new empty slot back to the grid from within the schedule view.
+The unplaced sidebar only renders when `unplacedPlayers.length > 0` (line 1606). When all players are placed, the sidebar disappears entirely — meaning there's no drop target to drag players back to. The drag-to-unplace logic already exists in `handleDragEnd` (lines 1403-1412), it just needs a visible drop zone.
 
-## Approach
-Add a **"+ Add slot"** button that appears in empty grid cells, allowing the trainer to create a new empty availability slot for a specific trainer at a specific time. This is the natural interaction — click an empty cell to place a new slot there.
+## Change
 
-### How it works
-1. When hovering over an empty cell in the grid, show a subtle "+" button
-2. Clicking it creates a new `availability_slots` row with the cell's trainer and time, linked to the current cycle
-3. The slot appears instantly (optimistic) and syncs to DB in background
+### `src/components/cycles/ProposalScheduleGrid.tsx`
 
-### Backend
-Add a `createProposalSlot()` function in `src/lib/cycles.ts` that inserts into `availability_slots` with:
-- `trainer_id` from the column
-- `start_time` / `end_time` based on clicked row (default duration: 60 min, matching cycle settings)
-- `cyclus_id` = current cycle ID
-- `max_participants` from cycle settings
-- `location_id` from cycle
-- `is_public: false`, `is_recurring: false`
+**Line 1606** — Remove the `unplacedPlayers.length > 0` condition so the sidebar always renders. The "All players are placed" empty state message (line 1658) already handles the case when the list is empty, so this just needs the outer condition relaxed.
 
-### Grid UI
-In `ProposalScheduleGrid.tsx`, update empty `DroppableCell` to show a clickable "+" on hover. When clicked, call a new `onCreateSlot` callback.
+Change:
+```tsx
+// Before
+{unplacedPlayers && unplacedPlayers.length > 0 && (
+// After
+{unplacedPlayers && (
+```
 
-### Parent pages
-Wire up `onCreateSlot` in `AcademyCycleDetail.tsx` and `TrainerIntakeRequests.tsx` — optimistically add the new slot to local state, then persist via `createProposalSlot()`.
+This ensures the `DroppableUnplacedPool` is always mounted as a valid drop target, so dragging a player chip from a slot onto the sidebar will trigger the existing unassign logic.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/lib/cycles.ts` | Add `createProposalSlot(cycleId, trainerId, startTime, endTime)` function |
-| `src/components/cycles/ProposalScheduleGrid.tsx` | Add `onCreateSlot` prop; show "+" button on empty cells on hover |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Wire `onCreateSlot` with optimistic update |
-| `src/pages/TrainerIntakeRequests.tsx` | Wire `onCreateSlot` with optimistic update |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Line 1606: remove `.length > 0` so sidebar always shows |
 
