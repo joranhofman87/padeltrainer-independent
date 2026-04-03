@@ -69,6 +69,7 @@ import {
   linkPlayers,
   unlinkPlayer,
 } from '@/lib/cycles';
+import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion } from '@/lib/suggestLinks';
 import ProposalCard from './ProposalCard';
 import EditIntakeRequestDialog from './EditIntakeRequestDialog';
 
@@ -142,31 +143,15 @@ export default function IntakeRequestDetailSheet({
       .filter(Boolean) as IntakeRequestWithProposal[];
   }, [linkedRequestIds, allRequests]);
 
-  // Normalize text: lowercase + remove diacritics
-  const normalize = (text: string) =>
-    text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-  // Auto-suggest links from notes
+  // Auto-suggest links from notes (using shared utility)
+  const dismissed = useMemo(() => getDismissedSuggestions(), []);
+  const [dismissVersion, setDismissVersion] = useState(0);
   const suggestedLinks = useMemo(() => {
-    if (!request?.notes || !allRequests.length) return [];
-    const normalizedNotes = normalize(request.notes);
-    const alreadyLinkedIds = new Set([request.id, ...linkedRequestIds]);
-    
-    const particles = new Set(['van', 'de', 'den', 'der', 'het', 'ter', 'ten', 'een']);
-    
-    return allRequests.filter(other => {
-      if (other.cycle_id !== request.cycle_id) return false;
-      if (alreadyLinkedIds.has(other.id)) return false;
-      
-      const tokens = normalize(other.full_name).split(/\s+/).filter(t => t.length >= 2);
-      if (tokens.length === 0) return false;
-      
-      const significantTokens = tokens.filter(t => !particles.has(t));
-      if (significantTokens.length === 0) return false;
-      
-      return significantTokens.every(t => t.length >= 3 && normalizedNotes.includes(t));
-    });
-  }, [request, allRequests, linkedRequestIds]);
+    if (!request) return [];
+    const currentDismissed = getDismissedSuggestions();
+    return getSuggestedLinks(request, allRequests, new Set(linkedRequestIds), currentDismissed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request, allRequests, linkedRequestIds, dismissVersion]);
 
   // Available requests to link (same cycle, not already linked to this group, not self)
   const availableToLink = useMemo(() => {
@@ -440,6 +425,16 @@ export default function IntakeRequestDetailSheet({
                         className="ml-1 rounded-full hover:bg-accent p-0.5"
                       >
                         <Plus className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          dismissSuggestion(request!.id, sl.id);
+                          setDismissVersion(v => v + 1);
+                        }}
+                        className="rounded-full hover:bg-destructive/20 p-0.5"
+                        title={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss suggestion' })}
+                      >
+                        <X className="h-3 w-3" />
                       </button>
                     </Badge>
                   ))}

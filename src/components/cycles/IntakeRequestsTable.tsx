@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   FileText, 
@@ -28,15 +33,20 @@ import {
   CheckCircle2,
   Clock,
   Link2,
+  Lightbulb,
+  Plus,
+  X,
   Settings2,
 } from 'lucide-react';
-import { type IntakeRequestWithProposal, type PlayerLink } from '@/lib/cycles';
+import { type IntakeRequestWithProposal, type PlayerLink, linkPlayers } from '@/lib/cycles';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getLinkedIdsForRequest } from '@/lib/suggestLinks';
+import { toast } from 'sonner';
 
 interface TrainerOption {
   id: string;
@@ -45,11 +55,13 @@ interface TrainerOption {
 
 interface IntakeRequestsTableProps {
   requests: IntakeRequestWithProposal[];
+  allRequests?: IntakeRequestWithProposal[];
   trainers?: TrainerOption[];
   onRowClick: (request: IntakeRequestWithProposal) => void;
   emptyMessage?: string;
   emptyDescription?: string;
   playerLinks?: PlayerLink[];
+  onLinkChanged?: () => void;
 }
 
 const LINK_COLORS = [
@@ -103,14 +115,18 @@ function loadColumns(): Set<string> {
 
 export default function IntakeRequestsTable({
   requests,
+  allRequests = [],
   trainers = [],
   onRowClick,
   emptyMessage = 'No requests',
   emptyDescription = 'Applications will appear here when players sign up',
   playerLinks = [],
+  onLinkChanged,
 }: IntakeRequestsTableProps) {
   const { t } = useTranslation('cycles');
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(loadColumns);
+  const [dismissVersion, setDismissVersion] = useState(0);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleColumns]));
@@ -126,6 +142,45 @@ export default function IntakeRequestsTable({
   };
 
   const isVisible = (key: string) => visibleColumns.has(key);
+
+  // Compute suggestions for all requests
+  const suggestionsMap = useMemo(() => {
+    if (!allRequests.length) return new Map<string, IntakeRequestWithProposal[]>();
+    const dismissed = getDismissedSuggestions();
+    const map = new Map<string, IntakeRequestWithProposal[]>();
+    for (const req of requests) {
+      const linkedIds = new Set(getLinkedIdsForRequest(req.id, playerLinks));
+      const suggestions = getSuggestedLinks(req, allRequests, linkedIds, dismissed);
+      if (suggestions.length > 0) {
+        map.set(req.id, suggestions);
+      }
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requests, allRequests, playerLinks, dismissVersion]);
+
+  const handleLinkFromTable = async (requestId: string, suggestedId: string) => {
+    setLinkingId(suggestedId);
+    try {
+      const linkedIds = getLinkedIdsForRequest(requestId, playerLinks);
+      if (linkedIds.length > 0) {
+        await linkPlayers([requestId, ...linkedIds, suggestedId]);
+      } else {
+        await linkPlayers([requestId, suggestedId]);
+      }
+      toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
+      onLinkChanged?.();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setLinkingId(null);
+    }
+  };
+
+  const handleDismissFromTable = (requestId: string, suggestedId: string) => {
+    dismissSuggestion(requestId, suggestedId);
+    setDismissVersion(v => v + 1);
+  };
 
   // Build link group map
   const linkGroupMap = new Map<string, string>();
@@ -287,41 +342,131 @@ export default function IntakeRequestsTable({
     return <span className="text-muted-foreground text-xs">—</span>;
   };
 
-  const renderLinkedColumn = (requestId: string) => {
+  const renderLinkedColumn = (request: IntakeRequestWithProposal) => {
+    const requestId = request.id;
     const groupId = linkGroupMap.get(requestId);
-    if (!groupId) return <span className="text-muted-foreground text-xs">—</span>;
+    const suggestions = suggestionsMap.get(requestId) || [];
 
-    const color = groupColors.get(groupId) || 'bg-muted';
-    const members = linkGroups.get(groupId) || [];
-    const memberNames = members
-      .filter(id => id !== requestId)
-      .map(id => requests.find(r => r.id === id)?.full_name)
-      .filter(Boolean);
+    const linkedContent = (() => {
+      if (!groupId) return null;
+      const color = groupColors.get(groupId) || 'bg-muted';
+      const members = linkGroups.get(groupId) || [];
+      const memberNames = members
+        .filter(id => id !== requestId)
+        .map(id => requests.find(r => r.id === id)?.full_name)
+        .filter(Boolean);
+      if (memberNames.length === 0) return null;
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1.5">
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${color} shrink-0`} />
+                <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                  {memberNames.length === 1 ? memberNames[0] : `${memberNames[0]} +${memberNames.length - 1}`}
+                </span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs font-medium mb-1">{t('intakeRequests.links.linkedWith', { defaultValue: 'Linked with' })}:</p>
+              <ul className="text-xs">
+                {memberNames.map((name, i) => (
+                  <li key={i}>{name}</li>
+                ))}
+              </ul>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    })();
 
-    if (memberNames.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+    const suggestionIndicator = suggestions.length > 0 ? (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="relative inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 transition-colors"
+            title={t('intakeRequests.links.suggestions', { defaultValue: 'Suggestions' })}
+          >
+            <Lightbulb className="h-4 w-4" />
+            <span className="text-xs font-medium">{suggestions.length}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-64 p-3"
+          align="start"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-xs font-medium mb-2">
+            {t('intakeRequests.links.suggestedLinks', { defaultValue: 'Suggested links' })}
+          </p>
+          <div className="space-y-1.5">
+            {suggestions.map(s => (
+              <div key={s.id} className="flex items-center justify-between gap-2">
+                <span className="text-sm truncate">{s.full_name}</span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    disabled={linkingId === s.id}
+                    onClick={() => handleLinkFromTable(requestId, s.id)}
+                    title={t('intakeRequests.links.link', { defaultValue: 'Link' })}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDismissFromTable(requestId, s.id)}
+                    title={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss' })}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {suggestions.length > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs mt-2 w-full"
+              disabled={linkingId !== null}
+              onClick={async () => {
+                setLinkingId('all');
+                try {
+                  const linkedIds = getLinkedIdsForRequest(requestId, playerLinks);
+                  const allIds = [requestId, ...linkedIds, ...suggestions.map(s => s.id)];
+                  await linkPlayers([...new Set(allIds)]);
+                  toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
+                  onLinkChanged?.();
+                } catch (error: any) {
+                  toast.error(error.message);
+                } finally {
+                  setLinkingId(null);
+                }
+              }}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              {t('intakeRequests.links.linkAll', { defaultValue: 'Link all' })}
+            </Button>
+          )}
+        </PopoverContent>
+      </Popover>
+    ) : null;
+
+    if (!linkedContent && !suggestionIndicator) {
+      return <span className="text-muted-foreground text-xs">—</span>;
+    }
 
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="flex items-center gap-1.5">
-              <span className={`inline-block h-2.5 w-2.5 rounded-full ${color} shrink-0`} />
-              <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-xs text-muted-foreground truncate max-w-[100px]">
-                {memberNames.length === 1 ? memberNames[0] : `${memberNames[0]} +${memberNames.length - 1}`}
-              </span>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="text-xs font-medium mb-1">{t('intakeRequests.links.linkedWith', { defaultValue: 'Linked with' })}:</p>
-            <ul className="text-xs">
-              {memberNames.map((name, i) => (
-                <li key={i}>{name}</li>
-              ))}
-            </ul>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <div className="flex items-center gap-2">
+        {linkedContent}
+        {suggestionIndicator}
+      </div>
     );
   };
 
@@ -458,7 +603,7 @@ export default function IntakeRequestsTable({
 
                     {isVisible('linked') && (
                       <TableCell>
-                        {renderLinkedColumn(request.id)}
+                        {renderLinkedColumn(request)}
                       </TableCell>
                     )}
 
