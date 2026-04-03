@@ -1,4 +1,12 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+/**
+ * render-page: Zero-DB-cost pre-rendering for SEO bots.
+ * 
+ * This function serves static HTML with appropriate meta tags based on URL patterns.
+ * It does NOT query the database at all — all content is derived from the URL path.
+ * 
+ * Auth: Requires Supabase anon key in Authorization header (sent by Cloudflare Worker).
+ * Direct bot hits without the key are rejected with 401.
+ */
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,175 +14,39 @@ const corsHeaders = {
 };
 
 const SITE_URL = 'https://padeltrainer.ai';
-
-// Rate limiting is now handled by the Cloudflare Worker.
-// This function focuses on rendering and returns Cache-Control headers
-// so both Cloudflare and Supabase CDN can cache responses.
+const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr'];
+const OG_LOCALE_MAP: Record<string, string> = {
+  en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR',
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Auth check: require anon key to block direct bot hits
+  const authHeader = req.headers.get('Authorization') || '';
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (anonKey && !authHeader.includes(anonKey)) {
+    return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+  }
+
   try {
     const url = new URL(req.url);
     const path = url.searchParams.get('path') || '/';
-    
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Strip language prefix (supports all 5 languages)
+    // Strip language prefix
     const langMatch = path.match(/^\/(en|nl|es|de|fr)/);
     const lang = langMatch ? langMatch[1] : 'en';
     const cleanPath = path.replace(/^\/(en|nl|es|de|fr)/, '') || '/';
 
-    // Route to the appropriate renderer
-    let html: string;
-    let cacheMaxAge = 3600; // default 1 hour
-
-    if (cleanPath === '/' || cleanPath === '') {
-      html = await renderHomepage(supabase, lang);
-      cacheMaxAge = 3600;
-    } else if (/^\/trainer\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/trainer\/([^/]+)$/)![1];
-      html = await renderTrainerProfile(supabase, slug, lang);
-      cacheMaxAge = 1800;
-    } else if (/^\/trainers\/([^/]+)$/.test(cleanPath)) {
-      const citySlug = cleanPath.match(/^\/trainers\/([^/]+)$/)![1];
-      html = await renderCityTrainersPage(supabase, citySlug, lang);
-      cacheMaxAge = 3600;
-    } else if (/^\/padel\/([^/]+)$/.test(cleanPath)) {
-      const citySlug = cleanPath.match(/^\/padel\/([^/]+)$/)![1];
-      html = await renderPadelCityPage(supabase, citySlug, lang);
-      cacheMaxAge = 3600;
-    } else if (/^\/locations\/([^/]+)$/.test(cleanPath)) {
-      const locSlug = cleanPath.match(/^\/locations\/([^/]+)$/)![1];
-      html = await renderLocationPage(supabase, locSlug, lang);
-      cacheMaxAge = 3600;
-    } else if (/^\/academies\/([^/]+)$/.test(cleanPath)) {
-      const acSlug = cleanPath.match(/^\/academies\/([^/]+)$/)![1];
-      html = await renderAcademyPage(supabase, acSlug, lang);
-      cacheMaxAge = 3600;
-    } else if (cleanPath === '/trainers') {
-      html = await renderTrainersDirectory(supabase, lang);
-      cacheMaxAge = 3600;
-    } else if (cleanPath === '/locations') {
-      html = await renderLocationsDirectory(supabase, lang);
-      cacheMaxAge = 3600;
-    } else if (cleanPath === '/about') {
-      html = renderStaticPage('About PadelTrainer.ai', 'PadelTrainer.ai is the leading platform for finding and booking padel trainers in the Netherlands. We connect players with certified trainers for personalized coaching.', lang, '/about');
-      cacheMaxAge = 86400;
-    } else if (cleanPath === '/pricing') {
-      html = renderStaticPage('Pricing - PadelTrainer.ai', 'Explore our flexible pricing plans for padel trainers and academies. Start with a free trial.', lang, '/pricing');
-      cacheMaxAge = 86400;
-    // ─── Blog routes ───
-    } else if (cleanPath === '/blog') {
-      html = await renderBlogListing(lang);
-      cacheMaxAge = 1800;
-    } else if (/^\/blog\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/blog\/([^/]+)$/)![1];
-      html = await renderSanityArticle('blogPost', slug, lang, '/blog');
-      cacheMaxAge = 1800;
-    // ─── Rules routes ───
-    } else if (cleanPath === '/padel-rules') {
-      html = renderStaticPage('Padel Rules — Complete Guide to the Rules of Padel', 'Learn all the official padel rules, scoring, serving, and match play. A complete guide for beginners and advanced players.', lang, '/padel-rules');
-      cacheMaxAge = 86400;
-    } else if (/^\/padel-rules\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/padel-rules\/([^/]+)$/)![1];
-      html = await renderSanityArticle('rulesArticle', slug, lang, '/padel-rules');
-      cacheMaxAge = 3600;
-    // ─── Strokes routes ───
-    } else if (cleanPath === '/padel-strokes') {
-      html = renderStaticPage('Padel Strokes — Master Every Shot in Padel', 'Explore all padel strokes and techniques. Learn the bandeja, vibora, smash, and more with tips from top coaches.', lang, '/padel-strokes');
-      cacheMaxAge = 86400;
-    } else if (/^\/padel-strokes\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/padel-strokes\/([^/]+)$/)![1];
-      html = await renderSanityArticle('stroke', slug, lang, '/padel-strokes');
-      cacheMaxAge = 3600;
-    // ─── Coaches routes ───
-    } else if (cleanPath === '/padel-coaches') {
-      html = renderStaticPage('Padel Coaches — Expert Coaching Tips & Techniques', 'Discover expert padel coaches and their training tips, techniques, and video lessons.', lang, '/padel-coaches');
-      cacheMaxAge = 86400;
-    } else if (/^\/padel-coaches\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/padel-coaches\/([^/]+)$/)![1];
-      html = await renderSanityArticle('trainer', slug, lang, '/padel-coaches');
-      cacheMaxAge = 3600;
-    // ─── Video Tips routes ───
-    } else if (cleanPath === '/video-tips') {
-      html = renderStaticPage('Padel Video Tips & Tutorials | PadelTrainer.ai', 'Watch expert padel coaching videos. Learn strokes, tactics, and techniques from certified coaches with short, focused video lessons for every level.', lang, '/video-tips');
-      cacheMaxAge = 86400;
-    } else if (/^\/video-tips\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/video-tips\/([^/]+)$/)![1];
-      html = await renderSanityArticle('videoTip', slug, lang, '/video-tips');
-      cacheMaxAge = 3600;
-    // ─── Learn routes ───
-    } else if (cleanPath === '/learn') {
-      html = renderStaticPage('Learn Padel — Guides, Tactics & Drills', 'Guides, tactics, drills, and everything you need to improve your padel game. From beginner to advanced.', lang, '/learn');
-      cacheMaxAge = 86400;
-    } else if (/^\/learn\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/learn\/([^/]+)$/)![1];
-      html = await renderSanityArticle('learningArticle', slug, lang, '/learn');
-      cacheMaxAge = 3600;
-    // ─── Topics routes ───
-    } else if (cleanPath === '/topics') {
-      html = await renderTopicsListing(lang);
-      cacheMaxAge = 3600;
-    } else if (/^\/topics\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/topics\/([^/]+)$/)![1];
-      html = await renderTopicPage(slug, lang);
-      cacheMaxAge = 3600;
-    // ─── Gear / Rackets routes ───
-    } else if (cleanPath === '/gear/rackets') {
-      html = renderStaticPage('Padel Rackets — Find Your Perfect Racket', 'Browse our curated selection of padel rackets. Compare specs, read reviews, and find the perfect racket for your playing style and level.', lang, '/gear/rackets');
-      cacheMaxAge = 3600;
-    } else if (/^\/gear\/rackets\/([^/]+)$/.test(cleanPath)) {
-      const slug = cleanPath.match(/^\/gear\/rackets\/([^/]+)$/)![1];
-      html = await renderProductPage(slug, lang);
-      cacheMaxAge = 3600;
-    // ─── Registration routes ───
-    } else if (/^\/academies\/([^/]+)\/register\/([^/]+)$/.test(cleanPath)) {
-      const m = cleanPath.match(/^\/academies\/([^/]+)\/register\/([^/]+)$/)!;
-      html = await renderCycleRegistration(supabase, m[2], lang, cleanPath);
-      cacheMaxAge = 1800;
-    } else if (/^\/clubs\/([^/]+)\/register\/([^/]+)$/.test(cleanPath)) {
-      const m = cleanPath.match(/^\/clubs\/([^/]+)\/register\/([^/]+)$/)!;
-      html = await renderCycleRegistration(supabase, m[2], lang, cleanPath);
-      cacheMaxAge = 1800;
-    } else if (/^\/register\/([^/]+)$/.test(cleanPath)) {
-      const cycleId = cleanPath.match(/^\/register\/([^/]+)$/)![1];
-      html = await renderCycleRegistration(supabase, cycleId, lang, cleanPath);
-      cacheMaxAge = 1800;
-    // ─── Rating progress page ───
-    } else if (/^\/rating\/([^/]+)$/.test(cleanPath)) {
-      const ratingProfileId = cleanPath.match(/^\/rating\/([^/]+)$/)![1];
-      html = await renderRatingPage(supabase, ratingProfileId, lang);
-      cacheMaxAge = 1800;
-    // ─── Founding Trainers ───
-    } else if (cleanPath === '/founding-trainers') {
-      html = renderStaticPage('Founding 100 Trainers — Free Premium Racket | PadelTrainer.ai', 'Be one of the first 100 padel coaches on PadelTrainer.ai and receive a free premium racket worth €275+. Sign up for the Founding Trainer Annual plan at €349/year.', lang, '/founding-trainers');
-      cacheMaxAge = 86400;
-    // ─── Other static pages ───
-    } else if (cleanPath === '/partner') {
-      html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');
-      cacheMaxAge = 86400;
-    } else if (cleanPath === '/privacy') {
-      html = renderStaticPage('Privacy Policy — PadelTrainer.ai', 'Read the PadelTrainer.ai privacy policy. Learn how we collect, use, and protect your personal data.', lang, '/privacy');
-      cacheMaxAge = 86400;
-    } else if (cleanPath === '/terms') {
-      html = renderStaticPage('Terms of Service — PadelTrainer.ai', 'Read the PadelTrainer.ai terms of service. Understand the rules and guidelines for using our platform.', lang, '/terms');
-      cacheMaxAge = 86400;
-    } else {
-      // Fallback: return minimal HTML with meta redirect to SPA
-      html = renderFallback(path, lang);
-      cacheMaxAge = 3600;
-    }
+    const html = renderPath(cleanPath, lang);
 
     return new Response(html, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': `public, max-age=${cacheMaxAge}`,
+        'Cache-Control': 'public, max-age=3600',
       },
     });
   } catch (error) {
@@ -186,1275 +58,328 @@ Deno.serve(async (req) => {
   }
 });
 
-// ─── HTML Helpers ───────────────────────────────────────────────
+// ─── Route Matching ─────────────────────────────────────────────
 
-function htmlDoc(opts: {
-  title: string;
-  description: string;
-  url: string;
-  lang: string;
-  image?: string;
-  structuredData?: object[];
-  body: string;
-}) {
-  const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr'];
-  const OG_LOCALE_MAP: Record<string, string> = {
-    en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR',
+function renderPath(cleanPath: string, lang: string): string {
+  // Homepage
+  if (cleanPath === '/' || cleanPath === '') {
+    return page(
+      lang === 'nl' ? 'PadelTrainer.ai - Vind & Boek Padel Trainers in Nederland' : 'PadelTrainer.ai - Find & Book Padel Trainers in the Netherlands',
+      lang === 'nl' ? 'Ontdek gecertificeerde padel trainers bij locaties door heel Nederland. Vergelijk tarieven, lees reviews en boek direct.' : 'Discover certified padel trainers at locations across the Netherlands. Compare rates, read reviews, and book lessons directly.',
+      '/', lang,
+      `<h1>${lang === 'nl' ? 'Vind Jouw Perfecte Padel Trainer' : 'Find Your Perfect Padel Trainer'}</h1>
+       <p>${lang === 'nl' ? 'Ontdek gecertificeerde padel trainers door heel Nederland.' : 'Discover certified padel trainers across the Netherlands.'}</p>`,
+      [websiteSchema(), organizationSchema()]
+    );
+  }
+
+  // Trainer profile: /trainer/:slug
+  const trainerMatch = cleanPath.match(/^\/trainer\/([^/]+)$/);
+  if (trainerMatch) {
+    const slug = trainerMatch[1];
+    const displayName = slugToDisplay(slug);
+    return page(
+      `${displayName} - Padel Trainer | PadelTrainer.ai`,
+      `Book padel lessons with ${displayName}. View profile, experience, rates, and reviews on PadelTrainer.ai.`,
+      `/trainer/${slug}`, lang,
+      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>`
+    );
+  }
+
+  // City trainers: /trainers/:city
+  const cityTrainersMatch = cleanPath.match(/^\/trainers\/([^/]+)$/);
+  if (cityTrainersMatch) {
+    const citySlug = cityTrainersMatch[1];
+    const city = slugToDisplay(citySlug);
+    return page(
+      `Padel Trainers in ${city} | Find & Book Lessons`,
+      `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`,
+      `/trainers/${citySlug}`, lang,
+      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>`
+    );
+  }
+
+  // Trainers directory
+  if (cleanPath === '/trainers') {
+    return page(
+      'Find Padel Trainers | PadelTrainer.ai',
+      'Browse all certified padel trainers in the Netherlands. Filter by location, level, and specialization.',
+      '/trainers', lang,
+      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers in the Netherlands.</p>`
+    );
+  }
+
+  // Padel city: /padel/:city
+  const padelCityMatch = cleanPath.match(/^\/padel\/([^/]+)$/);
+  if (padelCityMatch) {
+    const citySlug = padelCityMatch[1];
+    const city = slugToDisplay(citySlug);
+    return page(
+      `Padel in ${city} — Courts, Clubs & Coaches`,
+      `Find padel clubs and coaches in ${city}. Compare courts, book lessons and start playing padel today.`,
+      `/padel/${citySlug}`, lang,
+      `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>`
+    );
+  }
+
+  // Location: /locations/:slug
+  const locationMatch = cleanPath.match(/^\/locations\/([^/]+)$/);
+  if (locationMatch) {
+    const locSlug = locationMatch[1];
+    const displayName = slugToDisplay(locSlug);
+    return page(
+      `${displayName} — Padel Club | PadelTrainer.ai`,
+      `Discover ${displayName}. View courts, trainers, and book padel lessons at this club.`,
+      `/locations/${locSlug}`, lang,
+      `<h1>${esc(displayName)}</h1><p>Padel club on PadelTrainer.ai</p>`
+    );
+  }
+
+  // Locations directory
+  if (cleanPath === '/locations') {
+    return page(
+      'Padel Locations | PadelTrainer.ai',
+      'Browse all padel clubs and locations in the Netherlands. Find courts near you.',
+      '/locations', lang,
+      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations in the Netherlands.</p>`
+    );
+  }
+
+  // Academy: /academies/:slug
+  const academyMatch = cleanPath.match(/^\/academies\/([^/]+)$/);
+  if (academyMatch) {
+    const acSlug = academyMatch[1];
+    const displayName = slugToDisplay(acSlug);
+    return page(
+      `${displayName} — Padel Academy | PadelTrainer.ai`,
+      `Discover ${displayName}. View trainers, programs, and book padel lessons.`,
+      `/academies/${acSlug}`, lang,
+      `<h1>${esc(displayName)}</h1><p>Padel academy on PadelTrainer.ai</p>`
+    );
+  }
+
+  // Blog listing
+  if (cleanPath === '/blog') {
+    return page(
+      'Padel Blog — Tips, News & Training Advice | PadelTrainer.ai',
+      'Read the latest padel articles, training tips, match strategies, and industry news.',
+      '/blog', lang,
+      `<h1>Padel Blog</h1><p>Tips, news and training advice for padel players.</p>`
+    );
+  }
+
+  // Blog article: /blog/:slug
+  const blogMatch = cleanPath.match(/^\/blog\/([^/]+)$/);
+  if (blogMatch) {
+    const slug = blogMatch[1];
+    const title = slugToDisplay(slug);
+    return page(
+      `${title} | PadelTrainer.ai Blog`,
+      `Read "${title}" on the PadelTrainer.ai blog.`,
+      `/blog/${slug}`, lang,
+      `<h1>${esc(title)}</h1>`
+    );
+  }
+
+  // Learn
+  if (cleanPath === '/learn') {
+    return page('Learn Padel — Guides, Tactics & Drills', 'Guides, tactics, drills, and everything you need to improve your padel game.', '/learn', lang, `<h1>Learn Padel</h1>`);
+  }
+  const learnMatch = cleanPath.match(/^\/learn\/([^/]+)$/);
+  if (learnMatch) {
+    const title = slugToDisplay(learnMatch[1]);
+    return page(`${title} | Learn Padel`, `Learn about ${title.toLowerCase()} in padel.`, `/learn/${learnMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+  }
+
+  // Padel rules
+  if (cleanPath === '/padel-rules') {
+    return page('Padel Rules — Complete Guide', 'Learn all the official padel rules, scoring, serving, and match play.', '/padel-rules', lang, `<h1>Padel Rules</h1>`);
+  }
+  const rulesMatch = cleanPath.match(/^\/padel-rules\/([^/]+)$/);
+  if (rulesMatch) {
+    const title = slugToDisplay(rulesMatch[1]);
+    return page(`${title} | Padel Rules`, `Learn about ${title.toLowerCase()}.`, `/padel-rules/${rulesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+  }
+
+  // Padel strokes
+  if (cleanPath === '/padel-strokes') {
+    return page('Padel Strokes — Master Every Shot', 'Explore all padel strokes and techniques.', '/padel-strokes', lang, `<h1>Padel Strokes</h1>`);
+  }
+  const strokesMatch = cleanPath.match(/^\/padel-strokes\/([^/]+)$/);
+  if (strokesMatch) {
+    const title = slugToDisplay(strokesMatch[1]);
+    return page(`${title} | Padel Strokes`, `Master the ${title.toLowerCase()} in padel.`, `/padel-strokes/${strokesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+  }
+
+  // Padel coaches
+  if (cleanPath === '/padel-coaches') {
+    return page('Padel Coaches — Expert Coaching Tips', 'Discover expert padel coaches and their training tips.', '/padel-coaches', lang, `<h1>Padel Coaches</h1>`);
+  }
+  const coachesMatch = cleanPath.match(/^\/padel-coaches\/([^/]+)$/);
+  if (coachesMatch) {
+    const title = slugToDisplay(coachesMatch[1]);
+    return page(`${title} | Padel Coaches`, `Learn from ${title}.`, `/padel-coaches/${coachesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+  }
+
+  // Video tips
+  if (cleanPath === '/video-tips') {
+    return page('Padel Video Tips & Tutorials', 'Watch expert padel coaching videos.', '/video-tips', lang, `<h1>Padel Video Tips</h1>`);
+  }
+  const videoMatch = cleanPath.match(/^\/video-tips\/([^/]+)$/);
+  if (videoMatch) {
+    const title = slugToDisplay(videoMatch[1]);
+    return page(`${title} | Video Tips`, `Watch: ${title}`, `/video-tips/${videoMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+  }
+
+  // Topics
+  if (cleanPath === '/topics') {
+    return page('Padel Topics | PadelTrainer.ai', 'Explore padel topics from beginner to advanced.', '/topics', lang, `<h1>Padel Topics</h1>`);
+  }
+  const topicsMatch = cleanPath.match(/^\/topics\/([^/]+)$/);
+  if (topicsMatch) {
+    const title = slugToDisplay(topicsMatch[1]);
+    return page(`${title} | Padel Topics`, `Everything about ${title.toLowerCase()} in padel.`, `/topics/${topicsMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+  }
+
+  // Gear / Rackets
+  if (cleanPath === '/gear/rackets') {
+    return page('Padel Rackets — Find Your Perfect Racket', 'Browse padel rackets. Compare specs and find the perfect racket.', '/gear/rackets', lang, `<h1>Padel Rackets</h1>`);
+  }
+  const racketMatch = cleanPath.match(/^\/gear\/rackets\/([^/]+)$/);
+  if (racketMatch) {
+    const title = slugToDisplay(racketMatch[1]);
+    return page(`${title} | Padel Racket Review`, `Read the full review of the ${title} padel racket.`, `/gear/rackets/${racketMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+  }
+
+  // Registration routes (no DB needed — generic meta)
+  if (/^\/(academies|clubs)\/[^/]+\/register\/[^/]+$/.test(cleanPath) || /^\/register\/[^/]+$/.test(cleanPath)) {
+    return page(
+      'Register for Padel Training | PadelTrainer.ai',
+      'Sign up for padel training sessions. Book your spot in a group or private padel lesson.',
+      cleanPath, lang,
+      `<h1>Register for Padel Training</h1><p>Book your spot in a padel training session.</p>`
+    );
+  }
+
+  // Rating page: /rating/:id
+  if (/^\/rating\/[^/]+$/.test(cleanPath)) {
+    return page(
+      'Padel Rating Progress | PadelTrainer.ai',
+      'Track your padel rating improvement over time.',
+      cleanPath, lang,
+      `<h1>Padel Rating Progress</h1><p>Track your padel rating improvement on PadelTrainer.ai.</p>`
+    );
+  }
+
+  // Static pages
+  const staticPages: Record<string, { title: string; desc: string }> = {
+    '/about': { title: 'About PadelTrainer.ai', desc: 'PadelTrainer.ai is the leading platform for finding and booking padel trainers in the Netherlands.' },
+    '/pricing': { title: 'Pricing — PadelTrainer.ai', desc: 'Explore our flexible pricing plans for padel trainers and academies.' },
+    '/founding-trainers': { title: 'Founding 100 Trainers — Free Premium Racket', desc: 'Be one of the first 100 padel coaches on PadelTrainer.ai and receive a free premium racket.' },
+    '/partner': { title: 'Become a Partner — PadelTrainer.ai', desc: 'Partner with PadelTrainer.ai to reach thousands of padel players.' },
+    '/privacy': { title: 'Privacy Policy — PadelTrainer.ai', desc: 'Read the PadelTrainer.ai privacy policy.' },
+    '/terms': { title: 'Terms of Service — PadelTrainer.ai', desc: 'Read the PadelTrainer.ai terms of service.' },
+    '/racket-finder': { title: 'Padel Racket Finder | PadelTrainer.ai', desc: 'Find the perfect padel racket for your playing style and level.' },
   };
 
-  const canonicalUrl = `${SITE_URL}/${opts.lang}${opts.url}`;
-  const ogImage = opts.image || `${SITE_URL}/og-image.png`;
-  const ogLocale = OG_LOCALE_MAP[opts.lang] || 'en_US';
+  const staticMatch = staticPages[cleanPath];
+  if (staticMatch) {
+    return page(staticMatch.title, staticMatch.desc, cleanPath, lang, `<h1>${esc(staticMatch.title)}</h1>`);
+  }
+
+  // Fallback
+  return page(
+    'PadelTrainer.ai — Find & Book Padel Trainers',
+    'Find and book certified padel trainers near you.',
+    cleanPath, lang,
+    `<h1>PadelTrainer.ai</h1><p>Find and book certified padel trainers near you.</p>`
+  );
+}
+
+// ─── HTML Builder ───────────────────────────────────────────────
+
+function page(title: string, description: string, urlPath: string, lang: string, body: string, structuredData?: object[]): string {
+  const canonicalUrl = `${SITE_URL}/${lang}${urlPath}`;
+  const ogImage = `${SITE_URL}/og-image.png`;
+  const ogLocale = OG_LOCALE_MAP[lang] || 'en_US';
 
   const hreflangTags = SUPPORTED_LANGS
-    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${opts.url}">`)
+    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${urlPath}">`)
     .join('\n  ');
   const ogLocaleAlternates = SUPPORTED_LANGS
-    .filter(l => l !== opts.lang)
+    .filter(l => l !== lang)
     .map(l => `<meta property="og:locale:alternate" content="${OG_LOCALE_MAP[l]}">`)
     .join('\n  ');
 
-  const structuredDataScripts = (opts.structuredData || [])
+  const sdScripts = (structuredData || [])
     .map(sd => `<script type="application/ld+json">${JSON.stringify(sd)}</script>`)
     .join('\n');
 
   return `<!DOCTYPE html>
-<html lang="${opts.lang}">
+<html lang="${lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escHtml(opts.title)}</title>
-  <meta name="description" content="${escHtml(opts.description)}">
+  <title>${esc(title)}</title>
+  <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${canonicalUrl}">
   ${hreflangTags}
-  <link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${opts.url}">
+  <link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${urlPath}">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="${escHtml(opts.title)}">
-  <meta property="og:description" content="${escHtml(opts.description)}">
+  <meta property="og:title" content="${esc(title)}">
+  <meta property="og:description" content="${esc(description)}">
   <meta property="og:url" content="${canonicalUrl}">
   <meta property="og:image" content="${ogImage}">
   <meta property="og:site_name" content="PadelTrainer.ai">
   <meta property="og:locale" content="${ogLocale}">
   ${ogLocaleAlternates}
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="${escHtml(opts.title)}">
-  <meta name="twitter:description" content="${escHtml(opts.description)}">
+  <meta name="twitter:title" content="${esc(title)}">
+  <meta name="twitter:description" content="${esc(description)}">
   <meta name="twitter:image" content="${ogImage}">
   <link rel="icon" href="${SITE_URL}/favicon.ico">
-  ${structuredDataScripts}
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 0; color: #1a1a1a; background: #fff; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 2rem 1rem; }
-    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
-    h2 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 0.75rem; }
-    h3 { font-size: 1.2rem; margin-bottom: 0.5rem; }
-    p { line-height: 1.6; color: #444; }
-    a { color: #2563eb; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-    .badge { display: inline-block; background: #f0fdf4; color: #16a34a; padding: 2px 8px; border-radius: 4px; font-size: 0.875rem; }
-    .stats { display: flex; gap: 2rem; margin: 1rem 0; }
-    .stat { text-align: center; }
-    .stat-value { font-size: 1.5rem; font-weight: bold; color: #2563eb; }
-    .stat-label { font-size: 0.875rem; color: #666; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
-    .breadcrumb { font-size: 0.875rem; color: #666; margin-bottom: 1rem; }
-    .breadcrumb a { color: #666; }
-    .breadcrumb span { margin: 0 0.5rem; }
-    .faq { margin-top: 2rem; }
-    .faq-item { margin-bottom: 1.5rem; }
-    .faq-q { font-weight: 600; margin-bottom: 0.5rem; }
-    nav { background: #f8fafc; padding: 1rem 0; border-bottom: 1px solid #e5e7eb; }
-    nav .container { display: flex; align-items: center; justify-content: space-between; padding-top: 0; padding-bottom: 0; }
-    footer { background: #f8fafc; padding: 2rem 0; border-top: 1px solid #e5e7eb; margin-top: 3rem; text-align: center; color: #666; font-size: 0.875rem; }
-  </style>
+  ${sdScripts}
 </head>
 <body>
-  <nav>
-    <div class="container">
-      <a href="${SITE_URL}/${opts.lang}" style="font-weight: bold; font-size: 1.25rem; color: #1a1a1a;">PadelTrainer.ai</a>
-      <div>
-        <a href="${SITE_URL}/${opts.lang}/trainers" style="margin-right: 1rem;">Trainers</a>
-        <a href="${SITE_URL}/${opts.lang}/locations" style="margin-right: 1rem;">Locations</a>
-        <a href="${SITE_URL}/${opts.lang}/academies" style="margin-right: 1rem;">Academies</a>
-        <a href="${SITE_URL}/${opts.lang}/blog">Blog</a>
-      </div>
-    </div>
-  </nav>
-  <div class="container">
-    ${opts.body}
-  </div>
-  <footer>
-    <div class="container">
-      <p>&copy; ${new Date().getFullYear()} PadelTrainer.ai. All rights reserved.</p>
-      <p>
-        <a href="${SITE_URL}/${opts.lang}/about">About</a> &middot;
-        <a href="${SITE_URL}/${opts.lang}/pricing">Pricing</a> &middot;
-        <a href="${SITE_URL}/${opts.lang}/terms">Terms</a> &middot;
-        <a href="${SITE_URL}/${opts.lang}/privacy">Privacy</a>
-      </p>
-    </div>
+  <nav><a href="${SITE_URL}/${lang}" style="font-weight:bold;font-size:1.25rem;">PadelTrainer.ai</a></nav>
+  <main style="max-width:1200px;margin:0 auto;padding:2rem 1rem;">
+    ${body}
+  </main>
+  <footer style="text-align:center;padding:2rem;color:#666;font-size:0.875rem;">
+    <p>&copy; ${new Date().getFullYear()} PadelTrainer.ai</p>
   </footer>
 </body>
 </html>`;
 }
 
-function escHtml(s: string): string {
+// ─── Helpers ────────────────────────────────────────────────────
+
+function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function breadcrumb(items: { name: string; url?: string }[], lang: string): string {
-  return `<div class="breadcrumb">${items.map((item, i) => {
-    if (item.url) return `<a href="${SITE_URL}/${lang}${item.url}">${escHtml(item.name)}</a>`;
-    return `<strong>${escHtml(item.name)}</strong>`;
-  }).join('<span>›</span>')}</div>`;
-}
-
-function breadcrumbSchema(items: { name: string; url?: string }[], lang: string) {
-  return {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    "itemListElement": items.map((item, i) => ({
-      "@type": "ListItem",
-      "position": i + 1,
-      "name": item.name,
-      ...(item.url ? { "item": `${SITE_URL}/${lang}${item.url}` } : {})
-    }))
-  };
-}
-
-// ─── Page Renderers ─────────────────────────────────────────────
-
-async function renderHomepage(supabase: any, lang: string): Promise<string> {
-  const [trainerRes, locationRes, academyRes] = await Promise.all([
-    supabase.from('trainer_profiles').select('id', { count: 'exact', head: true }),
-    supabase.from('locations').select('id', { count: 'exact', head: true }).eq('is_active', true),
-    supabase.from('academy_profiles').select('id', { count: 'exact', head: true }).eq('is_verified', true).eq('is_public', true),
-  ]);
-
-  const trainerCount = trainerRes.count || 0;
-  const locationCount = locationRes.count || 0;
-  const academyCount = academyRes.count || 0;
-
-  // Fetch top cities
-  const { data: locations } = await supabase
-    .from('locations')
-    .select('city')
-    .eq('is_active', true);
-  
-  const cityCounts: Record<string, number> = {};
-  locations?.forEach((l: any) => {
-    cityCounts[l.city] = (cityCounts[l.city] || 0) + 1;
-  });
-  const topCities = Object.entries(cityCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 12);
-
-  const title = lang === 'nl' 
-    ? 'PadelTrainer.ai - Vind & Boek Padel Trainers in Nederland'
-    : 'PadelTrainer.ai - Find & Book Padel Trainers in the Netherlands';
-  const description = lang === 'nl'
-    ? `Ontdek ${trainerCount}+ gecertificeerde padel trainers bij ${locationCount}+ locaties. Vergelijk tarieven, lees reviews en boek direct.`
-    : `Discover ${trainerCount}+ certified padel trainers at ${locationCount}+ locations. Compare rates, read reviews, and book lessons directly.`;
-
-  const structuredData = [
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "PadelTrainer.ai",
-      "url": SITE_URL,
-      "description": description,
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": `${SITE_URL}/${lang}/trainers?search={search_term}`,
-        "query-input": "required name=search_term"
-      }
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "PadelTrainer.ai",
-      "url": SITE_URL,
-      "logo": `${SITE_URL}/favicon.png`,
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "contactType": "customer service",
-        "availableLanguage": ["Dutch", "English"]
-      }
-    }
-  ];
-
-  const citiesHtml = topCities.map(([city, count]) => {
-    const slug = encodeURIComponent(city.toLowerCase().replace(/\s+/g, '-'));
-    return `<div class="card"><a href="${SITE_URL}/${lang}/trainers/${slug}"><h3>${escHtml(city)}</h3><p>${count} padel clubs</p></a></div>`;
-  }).join('');
-
-  const body = `
-    <h1>${lang === 'nl' ? 'Vind Jouw Perfecte Padel Trainer' : 'Find Your Perfect Padel Trainer'}</h1>
-    <p>${description}</p>
-    <div class="stats">
-      <div class="stat"><div class="stat-value">${trainerCount}+</div><div class="stat-label">${lang === 'nl' ? 'Trainers' : 'Trainers'}</div></div>
-      <div class="stat"><div class="stat-value">${locationCount}+</div><div class="stat-label">${lang === 'nl' ? 'Locaties' : 'Locations'}</div></div>
-      <div class="stat"><div class="stat-value">${academyCount}</div><div class="stat-label">${lang === 'nl' ? 'Academies' : 'Academies'}</div></div>
-    </div>
-    <h2>${lang === 'nl' ? 'Populaire Steden' : 'Popular Cities'}</h2>
-    <div class="grid">${citiesHtml}</div>
-    <h2>${lang === 'nl' ? 'Hoe het werkt' : 'How it Works'}</h2>
-    <ol>
-      <li><strong>${lang === 'nl' ? 'Zoek een trainer' : 'Find a trainer'}</strong> - ${lang === 'nl' ? 'Zoek op locatie, niveau of specialisatie' : 'Search by location, level, or specialization'}</li>
-      <li><strong>${lang === 'nl' ? 'Vergelijk & kies' : 'Compare & choose'}</strong> - ${lang === 'nl' ? 'Lees reviews en vergelijk tarieven' : 'Read reviews and compare rates'}</li>
-      <li><strong>${lang === 'nl' ? 'Boek een les' : 'Book a lesson'}</strong> - ${lang === 'nl' ? 'Boek direct online' : 'Book directly online'}</li>
-    </ol>
-  `;
-
-  return htmlDoc({ title, description, url: '/', lang, structuredData, body });
-}
-
-async function renderTrainerProfile(supabase: any, slug: string, lang: string): Promise<string> {
-  // Try by slug first, then UUID
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
-  
-  let trainerQuery = supabase
-    .from('trainer_profiles')
-    .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, is_public, coaching_method');
-
-  if (isUUID) {
-    trainerQuery = trainerQuery.eq('id', slug);
-  } else {
-    trainerQuery = trainerQuery.eq('slug', slug);
-  }
-
-  const { data: trainer } = await trainerQuery.maybeSingle();
-  if (!trainer) return renderNotFound(lang);
-
-  // Fetch profile, locations, and reviews in parallel
-  const [profileRes, locationsRes, reviewsRes] = await Promise.all([
-    supabase.from('profiles').select('full_name, avatar_url, bio, location').eq('user_id', trainer.user_id).maybeSingle(),
-    supabase.from('trainer_locations').select('location:locations(name, city, slug)').eq('trainer_id', trainer.id),
-    supabase.from('reviews').select('rating').eq('trainer_id', trainer.id).eq('is_public', true),
-  ]);
-
-  const profile = profileRes.data;
-  const locations = locationsRes.data || [];
-  const reviews = reviewsRes.data || [];
-  
-  const name = profile?.full_name || 'Padel Trainer';
-  const city = profile?.location || locations[0]?.location?.city || '';
-  const citySlug = city.toLowerCase().replace(/\s+/g, '-');
-  const avgRating = reviews.length > 0 
-    ? (reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length).toFixed(1) 
-    : null;
-
-  const title = `${name} - Padel Trainer${city ? ` in ${city}` : ''}`;
-  const description = profile?.bio 
-    ? profile.bio.slice(0, 155)
-    : `Book padel lessons with ${name}${city ? ` in ${city}` : ''}. ${trainer.experience_years ? `${trainer.experience_years} years experience.` : ''} ${trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''}`;
-
-  const trainerSlug = trainer.slug || trainer.id;
-  const breadcrumbItems = [
-    { name: 'Home', url: '/' },
-    { name: 'Trainers', url: '/trainers' },
-    ...(city ? [{ name: city, url: `/trainers/${citySlug}` }] : []),
-    { name }
-  ];
-
-  const structuredData: object[] = [
-    breadcrumbSchema(breadcrumbItems, lang),
-    {
-      "@context": "https://schema.org",
-      "@type": "Person",
-      "name": name,
-      "jobTitle": "Padel Trainer",
-      "image": profile?.avatar_url,
-      "url": `${SITE_URL}/${lang}/trainer/${trainerSlug}`,
-      ...(city && { "address": { "@type": "PostalAddress", "addressLocality": city } }),
-      ...(avgRating && reviews.length > 0 && {
-        "aggregateRating": {
-          "@type": "AggregateRating",
-          "ratingValue": avgRating,
-          "reviewCount": reviews.length,
-          "bestRating": 5,
-          "worstRating": 1
-        }
-      })
-    }
-  ];
-
-  const locationsHtml = locations.map((l: any) => {
-    if (!l.location) return '';
-    return `<li><a href="${SITE_URL}/${lang}/locations/${l.location.slug}">${escHtml(l.location.name)}</a> - ${escHtml(l.location.city)}</li>`;
-  }).join('');
-
-  const specsHtml = trainer.specializations?.length 
-    ? `<p><strong>${lang === 'nl' ? 'Specialisaties' : 'Specializations'}:</strong> ${trainer.specializations.map(escHtml).join(', ')}</p>` 
-    : '';
-  const certsHtml = trainer.certifications?.length 
-    ? `<p><strong>${lang === 'nl' ? 'Certificeringen' : 'Certifications'}:</strong> ${trainer.certifications.map(escHtml).join(', ')}</p>` 
-    : '';
-
-  const body = `
-    ${breadcrumb(breadcrumbItems, lang)}
-    <h1>${escHtml(name)}</h1>
-    ${trainer.is_verified ? '<span class="badge">✓ Verified</span>' : ''}
-    <div class="stats">
-      ${trainer.hourly_rate ? `<div class="stat"><div class="stat-value">€${trainer.hourly_rate}</div><div class="stat-label">${lang === 'nl' ? 'per uur' : 'per hour'}</div></div>` : ''}
-      ${trainer.experience_years ? `<div class="stat"><div class="stat-value">${trainer.experience_years}</div><div class="stat-label">${lang === 'nl' ? 'jaar ervaring' : 'years experience'}</div></div>` : ''}
-      ${avgRating ? `<div class="stat"><div class="stat-value">${avgRating} ★</div><div class="stat-label">${reviews.length} ${reviews.length === 1 ? 'review' : 'reviews'}</div></div>` : ''}
-    </div>
-    ${city ? `<p>📍 ${escHtml(city)}</p>` : ''}
-    ${profile?.bio ? `<h2>${lang === 'nl' ? 'Over' : 'About'} ${escHtml(name)}</h2><p>${escHtml(profile.bio)}</p>` : ''}
-    ${trainer.coaching_method ? `<h2>${lang === 'nl' ? 'Coaching Methode' : 'Coaching Method'}</h2><p>${escHtml(trainer.coaching_method)}</p>` : ''}
-    ${specsHtml}
-    ${certsHtml}
-    ${locationsHtml ? `<h2>${lang === 'nl' ? 'Trainingslocaties' : 'Training Locations'}</h2><ul>${locationsHtml}</ul>` : ''}
-    ${city ? `<p><a href="${SITE_URL}/${lang}/trainers/${citySlug}">${lang === 'nl' ? `Bekijk alle trainers in ${city}` : `View all trainers in ${city}`} →</a></p>` : ''}
-  `;
-
-  return htmlDoc({ title, description, url: `/trainer/${trainerSlug}`, lang, image: profile?.avatar_url, structuredData, body });
-}
-
-async function renderCityTrainersPage(supabase: any, citySlug: string, lang: string): Promise<string> {
-  const displayCity = decodeURIComponent(citySlug)
+function slugToDisplay(slug: string): string {
+  return decodeURIComponent(slug)
     .split('-')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
-
-  // Fetch trainers in this city and locations
-  const [profilesRes, locationsRes] = await Promise.all([
-    supabase.from('profiles').select('user_id, full_name, location').ilike('location', `%${displayCity}%`),
-    supabase.from('locations').select('id, name, city, slug, indoor_courts, outdoor_courts').eq('is_active', true),
-  ]);
-
-  const profiles = profilesRes.data || [];
-  const allLocations = locationsRes.data || [];
-  const cityLocations = allLocations.filter((l: any) => 
-    l.city.toLowerCase().replace(/\s+/g, '-') === citySlug.toLowerCase()
-  );
-
-  // Fetch trainer profiles for these users
-  const userIds = profiles.map((p: any) => p.user_id);
-  let trainers: any[] = [];
-  if (userIds.length > 0) {
-    const { data } = await supabase
-      .from('trainer_profiles')
-      .select('id, user_id, slug, hourly_rate, experience_years, is_verified, specializations')
-      .in('user_id', userIds)
-      .eq('is_public', true);
-    trainers = data || [];
-  }
-
-  // Also get trainers linked to locations in this city
-  if (cityLocations.length > 0) {
-    const locIds = cityLocations.map((l: any) => l.id);
-    const { data: trainerLocs } = await supabase
-      .from('trainer_locations')
-      .select('trainer_id')
-      .in('location_id', locIds);
-    
-    const linkedTrainerIds = trainerLocs?.map((tl: any) => tl.trainer_id) || [];
-    if (linkedTrainerIds.length > 0) {
-      const { data: linkedTrainers } = await supabase
-        .from('trainer_profiles')
-        .select('id, user_id, slug, hourly_rate, experience_years, is_verified, specializations')
-        .in('id', linkedTrainerIds)
-        .eq('is_public', true);
-      
-      // Merge without duplicates
-      const existingIds = new Set(trainers.map((t: any) => t.id));
-      linkedTrainers?.forEach((t: any) => {
-        if (!existingIds.has(t.id)) trainers.push(t);
-      });
-
-      // Fetch names for newly added trainers
-      const newUserIds = linkedTrainers?.filter((t: any) => !existingIds.has(t.id)).map((t: any) => t.user_id) || [];
-      if (newUserIds.length > 0) {
-        const { data: newProfiles } = await supabase
-          .from('profiles')
-          .select('user_id, full_name, location')
-          .in('user_id', newUserIds);
-        if (newProfiles) profiles.push(...newProfiles);
-      }
-    }
-  }
-
-  const profileMap: Record<string, any> = {};
-  profiles.forEach((p: any) => { profileMap[p.user_id] = p; });
-
-  const rates = trainers.filter((t: any) => t.hourly_rate).map((t: any) => t.hourly_rate);
-  const minRate = rates.length > 0 ? Math.min(...rates) : 30;
-  const maxRate = rates.length > 0 ? Math.max(...rates) : 60;
-
-  const title = `Padel Trainers in ${displayCity} | Find & Book Lessons`;
-  const description = `Find ${trainers.length} certified padel trainers in ${displayCity}. Compare rates from €${minRate}/hour, read reviews, and book your first lesson today.`;
-
-  const faqQuestions = [
-    {
-      question: `How much do padel lessons cost in ${displayCity}?`,
-      answer: trainers.length > 0
-        ? `Padel lessons in ${displayCity} typically range from €${minRate} to €${maxRate} per hour. Prices vary based on trainer experience, certifications, and lesson type.`
-        : `Padel lesson prices in ${displayCity} vary based on trainer experience and qualifications. Contact trainers directly for current rates.`
-    },
-    {
-      question: `How do I find a padel trainer near me in ${displayCity}?`,
-      answer: `Browse our directory of ${trainers.length} certified padel trainers in ${displayCity}. Compare ratings, read reviews, and book lessons directly through PadelTrainer.ai.`
-    }
-  ];
-
-  const breadcrumbItems = [
-    { name: 'Home', url: '/' },
-    { name: 'Trainers', url: '/trainers' },
-    { name: displayCity }
-  ];
-
-  const structuredData = [
-    breadcrumbSchema(breadcrumbItems, lang),
-    {
-      "@context": "https://schema.org",
-      "@type": "ItemList",
-      "name": `Padel Trainers in ${displayCity}`,
-      "description": description,
-      "numberOfItems": trainers.length,
-      "itemListElement": trainers.slice(0, 10).map((t: any, i: number) => ({
-        "@type": "ListItem",
-        "position": i + 1,
-        "item": {
-          "@type": "Person",
-          "name": profileMap[t.user_id]?.full_name || "Padel Trainer",
-          "jobTitle": "Padel Trainer",
-          "url": `${SITE_URL}/${lang}/trainer/${t.slug || t.id}`,
-          "address": { "@type": "PostalAddress", "addressLocality": displayCity }
-        }
-      }))
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": faqQuestions.map(faq => ({
-        "@type": "Question",
-        "name": faq.question,
-        "acceptedAnswer": { "@type": "Answer", "text": faq.answer }
-      }))
-    }
-  ];
-
-  const trainersHtml = trainers.slice(0, 20).map((t: any) => {
-    const p = profileMap[t.user_id];
-    const trainerUrl = `${SITE_URL}/${lang}/trainer/${t.slug || t.id}`;
-    return `<div class="card">
-      <h3><a href="${trainerUrl}">${escHtml(p?.full_name || 'Padel Trainer')}</a></h3>
-      ${t.is_verified ? '<span class="badge">✓ Verified</span>' : ''}
-      ${t.hourly_rate ? `<p>€${t.hourly_rate}/hour</p>` : ''}
-      ${t.experience_years ? `<p>${t.experience_years} years experience</p>` : ''}
-      ${t.specializations?.length ? `<p>${t.specializations.join(', ')}</p>` : ''}
-    </div>`;
-  }).join('');
-
-  const locationsHtml = cityLocations.slice(0, 12).map((l: any) => {
-    const courts = [];
-    if (l.indoor_courts) courts.push(`${l.indoor_courts} indoor`);
-    if (l.outdoor_courts) courts.push(`${l.outdoor_courts} outdoor`);
-    return `<div class="card">
-      <h3><a href="${SITE_URL}/${lang}/locations/${l.slug}">${escHtml(l.name)}</a></h3>
-      ${courts.length > 0 ? `<p>${courts.join(', ')} courts</p>` : ''}
-    </div>`;
-  }).join('');
-
-  const faqHtml = faqQuestions.map(faq => `
-    <div class="faq-item">
-      <div class="faq-q">${escHtml(faq.question)}</div>
-      <p>${escHtml(faq.answer)}</p>
-    </div>
-  `).join('');
-
-  // Get nearby cities
-  const otherCities = new Map<string, number>();
-  allLocations.forEach((l: any) => {
-    if (l.city.toLowerCase().replace(/\s+/g, '-') !== citySlug.toLowerCase()) {
-      otherCities.set(l.city, (otherCities.get(l.city) || 0) + 1);
-    }
-  });
-  const nearbyCities = Array.from(otherCities.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8);
-
-  const nearbyCitiesHtml = nearbyCities.map(([city, count]) => {
-    const slug = encodeURIComponent(city.toLowerCase().replace(/\s+/g, '-'));
-    return `<a href="${SITE_URL}/${lang}/trainers/${slug}" style="display:inline-block; margin: 0.25rem; padding: 0.5rem 1rem; background: #f0f9ff; border-radius: 6px;">${escHtml(city)} (${count})</a>`;
-  }).join('');
-
-  const body = `
-    ${breadcrumb(breadcrumbItems, lang)}
-    <h1>Padel Trainers in ${escHtml(displayCity)}</h1>
-    <p>${escHtml(description)}</p>
-    <p>${trainers.length} trainer${trainers.length !== 1 ? 's' : ''} found in ${escHtml(displayCity)}</p>
-    <div class="grid">${trainersHtml}</div>
-    ${locationsHtml ? `<h2>Padel Clubs in ${escHtml(displayCity)}</h2><div class="grid">${locationsHtml}</div>` : ''}
-    <div class="faq"><h2>Frequently Asked Questions</h2>${faqHtml}</div>
-    ${nearbyCitiesHtml ? `<h2>Explore Other Cities</h2><div>${nearbyCitiesHtml}</div>` : ''}
-  `;
-
-  return htmlDoc({ title, description, url: `/trainers/${citySlug}`, lang, image: `${SITE_URL}/og-trainers.png`, structuredData, body });
 }
 
-async function renderPadelCityPage(supabase: any, citySlug: string, lang: string): Promise<string> {
-  const displayCity = decodeURIComponent(citySlug)
-    .split('-')
-    .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
-
-  const { data: locations } = await supabase
-    .from('locations')
-    .select('id, name, slug, city, street_address, postal_code, indoor_courts, outdoor_courts')
-    .eq('is_active', true);
-
-  const cityLocations = (locations || []).filter((l: any) =>
-    l.city.toLowerCase().replace(/\s+/g, '-') === citySlug.toLowerCase()
-  );
-
-  const clubCount = cityLocations.length;
-  const title = `Padel in ${displayCity} — Courts, Clubs & Coaches`;
-  const description = `Find ${clubCount} padel clubs and coaches in ${displayCity}. Compare courts, book lessons and start playing padel today.`;
-
-  const clubListHtml = cityLocations.slice(0, 6).map((l: any) =>
-    `<div class="card"><h3><a href="${SITE_URL}/${lang}/locations/${l.slug}">${escHtml(l.name)}</a></h3>` +
-    `<p>${escHtml(l.street_address || '')} ${escHtml(l.postal_code || '')} ${escHtml(l.city)}</p>` +
-    (l.indoor_courts ? `<span class="badge">${l.indoor_courts} indoor</span> ` : '') +
-    (l.outdoor_courts ? `<span class="badge">${l.outdoor_courts} outdoor</span>` : '') +
-    `</div>`
-  ).join('');
-
-  const faqItems = [
-    { q: `How many padel clubs are there in ${displayCity}?`, a: `There are currently ${clubCount} active padel clubs in and around ${displayCity}.` },
-    { q: `What does a padel lesson cost in ${displayCity}?`, a: `Group lessons typically cost 25 to 50 euros per hour. Private coaching costs 40 to 80 euros per hour.` },
-    { q: `Can I play padel indoors in ${displayCity}?`, a: `Yes, most clubs in ${displayCity} offer indoor courts so you can play year-round.` },
-  ];
-
-  const faqHtml = faqItems.map(f => `<div class="faq-item"><div class="faq-q">${escHtml(f.q)}</div><p>${escHtml(f.a)}</p></div>`).join('');
-
-  const structuredData = [
-    breadcrumbSchema([
-      { name: 'Home', url: '/' },
-      { name: `Padel in ${displayCity}` },
-    ], lang),
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": faqItems.map(f => ({
-        "@type": "Question",
-        "name": f.q,
-        "acceptedAnswer": { "@type": "Answer", "text": f.a },
-      })),
-    },
-  ];
-
-  const body = `
-    ${breadcrumb([{ name: 'Home', url: '/' }, { name: `Padel in ${displayCity}` }], lang)}
-    <h1>Padel in ${escHtml(displayCity)}</h1>
-    <p>Find padel courts, clubs and coaches in ${escHtml(displayCity)}. Book a lesson or find your nearest court.</p>
-    ${clubCount > 0 ? `<h2>Padel clubs in ${escHtml(displayCity)}</h2><div class="grid">${clubListHtml}</div>` : ''}
-    <h2>Padel coaches in ${escHtml(displayCity)}</h2>
-    <p><a href="${SITE_URL}/${lang}/trainers/${citySlug}">View all coaches in ${escHtml(displayCity)}</a></p>
-    <h2>Frequently asked questions</h2>
-    <div class="faq">${faqHtml}</div>
-  `;
-
-  return htmlDoc({ title, description, url: `/padel/${citySlug}`, lang, structuredData, body });
-}
-
-async function renderLocationPage(supabase: any, slug: string, lang: string): Promise<string> {
-  const { data: location } = await supabase
-    .from('locations')
-    .select('id, name, city, slug, street_address, postal_code, indoor_courts, outdoor_courts, number_of_courts, website_url, description, logo_url')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .maybeSingle();
-
-  if (!location) return renderNotFound(lang);
-
-  // Fetch trainers and club profile
-  const [trainerLocsRes, clubRes] = await Promise.all([
-    supabase.from('trainer_locations').select('trainer_id, trainer_profiles:trainer_profiles(slug, user_id)').eq('location_id', location.id),
-    supabase.from('club_profiles').select('description, logo_url, banner_url').eq('location_id', location.id).maybeSingle(),
-  ]);
-
-  const trainerLocs = trainerLocsRes.data || [];
-  const clubProfile = clubRes.data;
-
-  // Fetch trainer names
-  const trainerUserIds = trainerLocs.map((tl: any) => tl.trainer_profiles?.user_id).filter(Boolean);
-  let trainerNames: Record<string, string> = {};
-  if (trainerUserIds.length > 0) {
-    const { data: profiles } = await supabase.from('profiles').select('user_id, full_name').in('user_id', trainerUserIds);
-    profiles?.forEach((p: any) => { trainerNames[p.user_id] = p.full_name; });
-  }
-
-  const displayDesc = clubProfile?.description || location.description || '';
-  const displayLogo = clubProfile?.logo_url || location.logo_url;
-  const citySlug = location.city.toLowerCase().replace(/\s+/g, '-');
-
-  const title = `${location.name} - Padel Training in ${location.city}`;
-  const description = displayDesc
-    ? displayDesc.slice(0, 155)
-    : `Book padel lessons at ${location.name} in ${location.city}. ${trainerLocs.length} certified trainers available.`;
-
-  const breadcrumbItems = [
-    { name: 'Home', url: '/' },
-    { name: 'Locations', url: '/locations' },
-    { name: location.name }
-  ];
-
-  const structuredData = [
-    breadcrumbSchema(breadcrumbItems, lang),
-    {
-      "@context": "https://schema.org",
-      "@type": "SportsClub",
-      "name": location.name,
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": location.street_address,
-        "addressLocality": location.city,
-        "postalCode": location.postal_code,
-        "addressCountry": "NL"
-      },
-      "url": location.website_url,
-      "sport": "Padel",
-      ...(location.number_of_courts && { "numberOfRooms": location.number_of_courts }),
-      ...(displayDesc && { "description": displayDesc }),
-      ...(displayLogo && { "image": displayLogo })
-    }
-  ];
-
-  const courts = [];
-  if (location.indoor_courts) courts.push(`${location.indoor_courts} indoor`);
-  if (location.outdoor_courts) courts.push(`${location.outdoor_courts} outdoor`);
-
-  const trainersHtml = trainerLocs.map((tl: any) => {
-    const tp = tl.trainer_profiles;
-    if (!tp) return '';
-    const name = trainerNames[tp.user_id] || 'Trainer';
-    return `<li><a href="${SITE_URL}/${lang}/trainer/${tp.slug || tp.user_id}">${escHtml(name)}</a></li>`;
-  }).filter(Boolean).join('');
-
-  const body = `
-    ${breadcrumb(breadcrumbItems, lang)}
-    <h1>${escHtml(location.name)}</h1>
-    <p>📍 ${escHtml([location.street_address, location.postal_code, location.city].filter(Boolean).join(', '))}</p>
-    ${courts.length > 0 ? `<p>🏟️ ${courts.join(', ')} courts</p>` : ''}
-    ${displayDesc ? `<h2>${lang === 'nl' ? 'Over deze locatie' : 'About this location'}</h2><p>${escHtml(displayDesc)}</p>` : ''}
-    ${trainersHtml ? `<h2>${lang === 'nl' ? 'Trainers op deze locatie' : 'Trainers at this location'} (${trainerLocs.length})</h2><ul>${trainersHtml}</ul>` : ''}
-    ${location.website_url ? `<p><a href="${location.website_url}" target="_blank" rel="noopener">${lang === 'nl' ? 'Bezoek website' : 'Visit website'} →</a></p>` : ''}
-    <p><a href="${SITE_URL}/${lang}/trainers/${citySlug}">${lang === 'nl' ? `Vind meer trainers in ${location.city}` : `Find more trainers in ${location.city}`} →</a></p>
-  `;
-
-  return htmlDoc({ title, description, url: `/locations/${slug}`, lang, image: displayLogo || `${SITE_URL}/og-locations.png`, structuredData, body });
-}
-
-async function renderAcademyPage(supabase: any, slug: string, lang: string): Promise<string> {
-  const { data: academy } = await supabase
-    .from('academy_profiles')
-    .select('id, name, slug, description, logo_url, banner_url, website_url, is_verified, is_public')
-    .eq('slug', slug)
-    .eq('is_public', true)
-    .maybeSingle();
-
-  if (!academy) return renderNotFound(lang);
-
-  // Fetch trainers and locations
-  const [trainersRes, locsRes] = await Promise.all([
-    supabase.from('academy_trainers').select('trainer_profile_id, trainer_profiles:trainer_profiles(slug, user_id)').eq('academy_profile_id', academy.id).eq('status', 'active'),
-    supabase.from('academy_locations').select('location:locations(name, city, slug)').eq('academy_profile_id', academy.id).eq('is_active', true),
-  ]);
-
-  const trainers = trainersRes.data || [];
-  const locations = locsRes.data || [];
-
-  // Fetch trainer names
-  const userIds = trainers.map((t: any) => t.trainer_profiles?.user_id).filter(Boolean);
-  let names: Record<string, string> = {};
-  if (userIds.length > 0) {
-    const { data } = await supabase.from('profiles').select('user_id, full_name').in('user_id', userIds);
-    data?.forEach((p: any) => { names[p.user_id] = p.full_name; });
-  }
-
-  const title = `${academy.name} - Padel Academy`;
-  const description = academy.description
-    ? academy.description.slice(0, 155)
-    : `${academy.name} - Professional padel training academy with ${trainers.length} certified trainers at ${locations.length} locations.`;
-
-  const breadcrumbItems = [
-    { name: 'Home', url: '/' },
-    { name: 'Academies', url: '/academies' },
-    { name: academy.name }
-  ];
-
-  const structuredData = [
-    breadcrumbSchema(breadcrumbItems, lang),
-    {
-      "@context": "https://schema.org",
-      "@type": "EducationalOrganization",
-      "name": academy.name,
-      "description": academy.description,
-      "url": `${SITE_URL}/${lang}/academies/${slug}`,
-      "logo": academy.logo_url,
-      "numberOfEmployees": trainers.length,
-      "member": trainers.slice(0, 5).map((t: any) => ({
-        "@type": "Person",
-        "name": names[t.trainer_profiles?.user_id] || 'Trainer',
-        "jobTitle": "Padel Trainer"
-      }))
-    }
-  ];
-
-  const trainersHtml = trainers.map((t: any) => {
-    const tp = t.trainer_profiles;
-    if (!tp) return '';
-    const name = names[tp.user_id] || 'Trainer';
-    return `<li><a href="${SITE_URL}/${lang}/trainer/${tp.slug || tp.user_id}">${escHtml(name)}</a></li>`;
-  }).filter(Boolean).join('');
-
-  const locationsHtml = locations.map((l: any) => {
-    if (!l.location) return '';
-    return `<li><a href="${SITE_URL}/${lang}/locations/${l.location.slug}">${escHtml(l.location.name)}</a> - ${escHtml(l.location.city)}</li>`;
-  }).filter(Boolean).join('');
-
-  const body = `
-    ${breadcrumb(breadcrumbItems, lang)}
-    <h1>${escHtml(academy.name)}</h1>
-    ${academy.is_verified ? '<span class="badge">✓ Verified Academy</span>' : ''}
-    <div class="stats">
-      <div class="stat"><div class="stat-value">${trainers.length}</div><div class="stat-label">Trainers</div></div>
-      <div class="stat"><div class="stat-value">${locations.length}</div><div class="stat-label">Locations</div></div>
-    </div>
-    ${academy.description ? `<h2>${lang === 'nl' ? 'Over de academie' : 'About the Academy'}</h2><p>${escHtml(academy.description)}</p>` : ''}
-    ${trainersHtml ? `<h2>${lang === 'nl' ? 'Onze Trainers' : 'Our Trainers'}</h2><ul>${trainersHtml}</ul>` : ''}
-    ${locationsHtml ? `<h2>${lang === 'nl' ? 'Locaties' : 'Locations'}</h2><ul>${locationsHtml}</ul>` : ''}
-    ${academy.website_url ? `<p><a href="${academy.website_url}" target="_blank" rel="noopener">${lang === 'nl' ? 'Bezoek website' : 'Visit website'} →</a></p>` : ''}
-  `;
-
-  return htmlDoc({ title, description, url: `/academies/${slug}`, lang, image: academy.logo_url || academy.banner_url, structuredData, body });
-}
-
-async function renderTrainersDirectory(supabase: any, lang: string): Promise<string> {
-  // Get all cities with trainer counts
-  const { data: locations } = await supabase
-    .from('locations')
-    .select('city')
-    .eq('is_active', true);
-
-  const cityCounts: Record<string, number> = {};
-  locations?.forEach((l: any) => {
-    cityCounts[l.city] = (cityCounts[l.city] || 0) + 1;
-  });
-
-  const cities = Object.entries(cityCounts)
-    .sort((a, b) => b[1] - a[1]);
-
-  const { count: trainerCount } = await supabase
-    .from('trainer_profiles')
-    .select('id', { count: 'exact', head: true })
-    .eq('is_public', true);
-
-  const title = lang === 'nl' 
-    ? 'Padel Trainers in Nederland | PadelTrainer.ai'
-    : 'Padel Trainers in the Netherlands | PadelTrainer.ai';
-  const description = `Browse ${trainerCount || 0}+ certified padel trainers across ${cities.length} cities in the Netherlands. Find the perfect trainer near you.`;
-
-  const citiesHtml = cities.map(([city, count]) => {
-    const slug = encodeURIComponent(city.toLowerCase().replace(/\s+/g, '-'));
-    return `<div class="card"><a href="${SITE_URL}/${lang}/trainers/${slug}"><h3>${escHtml(city)}</h3><p>${count} padel clubs</p></a></div>`;
-  }).join('');
-
-  const body = `
-    <h1>${lang === 'nl' ? 'Padel Trainers in Nederland' : 'Padel Trainers in the Netherlands'}</h1>
-    <p>${escHtml(description)}</p>
-    <h2>${lang === 'nl' ? 'Kies een stad' : 'Choose a City'} (${cities.length})</h2>
-    <div class="grid">${citiesHtml}</div>
-  `;
-
-  return htmlDoc({ title, description, url: '/trainers', lang, image: `${SITE_URL}/og-trainers.png`, body });
-}
-
-async function renderLocationsDirectory(supabase: any, lang: string): Promise<string> {
-  const { data: locations } = await supabase
-    .from('locations')
-    .select('name, city, slug, indoor_courts, outdoor_courts')
-    .eq('is_active', true)
-    .order('city')
-    .limit(100);
-
-  const title = lang === 'nl'
-    ? 'Padel Locaties in Nederland | PadelTrainer.ai'
-    : 'Padel Locations in the Netherlands | PadelTrainer.ai';
-  const description = `Browse padel clubs and locations across the Netherlands. Find courts near you and book lessons with certified trainers.`;
-
-  const locationsHtml = (locations || []).map((l: any) => {
-    const courts = [];
-    if (l.indoor_courts) courts.push(`${l.indoor_courts} indoor`);
-    if (l.outdoor_courts) courts.push(`${l.outdoor_courts} outdoor`);
-    return `<div class="card">
-      <h3><a href="${SITE_URL}/${lang}/locations/${l.slug}">${escHtml(l.name)}</a></h3>
-      <p>${escHtml(l.city)}${courts.length > 0 ? ` · ${courts.join(', ')} courts` : ''}</p>
-    </div>`;
-  }).join('');
-
-  const body = `
-    <h1>${lang === 'nl' ? 'Padel Locaties' : 'Padel Locations'}</h1>
-    <p>${escHtml(description)}</p>
-    <div class="grid">${locationsHtml}</div>
-  `;
-
-  return htmlDoc({ title, description, url: '/locations', lang, image: `${SITE_URL}/og-locations.png`, body });
-}
-
-function renderStaticPage(title: string, description: string, lang: string, url: string): string {
-  return htmlDoc({ title, description, url, lang, body: `<h1>${escHtml(title)}</h1><p>${escHtml(description)}</p>` });
-}
-
-function renderNotFound(lang: string): string {
-  return htmlDoc({
-    title: 'Page Not Found - PadelTrainer.ai',
-    description: 'The page you are looking for does not exist.',
-    url: '/404',
-    lang,
-    body: `<h1>${lang === 'nl' ? 'Pagina niet gevonden' : 'Page Not Found'}</h1><p><a href="${SITE_URL}/${lang}">${lang === 'nl' ? 'Terug naar home' : 'Back to home'}</a></p>`
-  });
-}
-
-function renderFallback(path: string, lang: string): string {
-  return htmlDoc({
-    title: 'PadelTrainer.ai',
-    description: 'Find and book padel trainers in the Netherlands.',
-    url: path,
-    lang,
-    body: `<h1>PadelTrainer.ai</h1><p>Find and book padel trainers in the Netherlands.</p><p><a href="${SITE_URL}/${lang}">Go to homepage</a></p>`
-  });
-}
-
-// ─── Sanity CMS Helpers ─────────────────────────────────────────
-
-const SANITY_PROJECT_ID = 'ru3aqhjn';
-const SANITY_DATASET = 'production';
-
-async function sanityFetch(query: string, params: Record<string, string> = {}): Promise<any> {
-  const qs = new URLSearchParams({ query });
-  for (const [k, v] of Object.entries(params)) {
-    qs.set(`$${k}`, `"${v}"`);
-  }
-  const url = `https://${SANITY_PROJECT_ID}.api.sanity.io/v2024-01-01/data/query/${SANITY_DATASET}?${qs.toString()}`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const json = await res.json();
-  return json.result;
-}
-
-async function renderSanityArticle(type: string, slug: string, lang: string, basePath: string): Promise<string> {
-  // Build a flexible query that works for all content types
-  const nameField = type === 'trainer' ? 'name' : 'title';
-  const descFields: Record<string, string> = {
-    blogPost: 'excerpt',
-    rulesArticle: 'intro',
-    stroke: 'shortDescription',
-    trainer: 'bio',
-    videoTip: 'shortSummary',
-    learningArticle: 'intro',
+function websiteSchema() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "PadelTrainer.ai",
+    "url": SITE_URL,
   };
-  const descField = descFields[type] || 'excerpt';
-
-  const query = `*[_type == "${type}" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
-    ${nameField},
-    h1,
-    ${descField},
-    seo,
-    "slug": slug.current
-  }`;
-
-  const doc = await sanityFetch(query, { slug });
-  if (!doc) return renderNotFound(lang);
-
-  const title = doc.seo?.titleTag || doc.h1 || doc[nameField] || slug;
-  const description = doc.seo?.metaDescription || doc[descField] || `Learn about ${title} on PadelTrainer.ai`;
-
-  const body = `
-    <div class="breadcrumb">
-      <a href="${SITE_URL}/${lang}">Home</a><span>›</span>
-      <a href="${SITE_URL}/${lang}${basePath}">${escHtml(basePath.replace(/^\//, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</a><span>›</span>
-      <strong>${escHtml(title)}</strong>
-    </div>
-    <h1>${escHtml(title)}</h1>
-    <p>${escHtml(typeof description === 'string' ? description : '')}</p>
-  `;
-
-  return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `${basePath}/${slug}`, lang, body });
 }
 
-async function renderBlogListing(lang: string): Promise<string> {
-  const query = `*[_type == "blogPost" && !(_id in path("drafts.**"))] | order(datePublished desc) [0...10] {
-    title, "slug": slug.current, excerpt, category, datePublished
-  }`;
-  const posts = await sanityFetch(query) || [];
-
-  const title = 'Padel Blog — Tips, Guides & Training Advice';
-  const description = 'Read the latest padel tips, training guides, and expert advice. Improve your game with insights from top coaches and players.';
-
-  const postsHtml = posts.map((p: any) => `
-    <div class="card">
-      <h3><a href="${SITE_URL}/${lang}/blog/${p.slug}">${escHtml(p.title)}</a></h3>
-      ${p.category ? `<span class="badge">${escHtml(p.category)}</span>` : ''}
-      ${p.excerpt ? `<p>${escHtml(p.excerpt.slice(0, 120))}</p>` : ''}
-    </div>
-  `).join('');
-
-  const body = `
-    <h1>Padel Blog</h1>
-    <p>${escHtml(description)}</p>
-    <div class="grid">${postsHtml}</div>
-  `;
-
-  return htmlDoc({ title, description, url: '/blog', lang, body });
-}
-
-async function renderTopicsListing(lang: string): Promise<string> {
-  const query = `*[_type == "topic" && isIndexable != false && !(_id in path("drafts.**"))] | order(title asc) {
-    title, "slug": slug.current, description
-  }`;
-  const topics = await sanityFetch(query) || [];
-
-  const title = 'Padel Topics — Explore All Topics';
-  const description = 'Browse padel topics including serve, volley, tactics, drills, and more. Find guides, rules, strokes, video tips, and expert coaching.';
-
-  const topicsHtml = topics.map((t: any) => `
-    <div class="card">
-      <h3><a href="${SITE_URL}/${lang}/topics/${t.slug}">${escHtml(t.title)}</a></h3>
-      ${t.description ? `<p>${escHtml(t.description.slice(0, 120))}</p>` : ''}
-    </div>
-  `).join('');
-
-  const structuredData = [
-    {
-      "@context": "https://schema.org",
-      "@type": "CollectionPage",
-      "name": title,
-      "description": description,
-      "url": `${SITE_URL}/${lang}/topics`,
-      "mainEntity": {
-        "@type": "ItemList",
-        "itemListElement": topics.map((t: any, i: number) => ({
-          "@type": "ListItem",
-          "position": i + 1,
-          "url": `${SITE_URL}/${lang}/topics/${t.slug}`,
-          "name": t.title,
-        })),
-      },
-    },
-    breadcrumbSchema([{ name: 'Home', url: '/' }, { name: 'Topics' }], lang),
-  ];
-
-  const body = `
-    ${breadcrumb([{ name: 'Home', url: '/' }, { name: 'Topics' }], lang)}
-    <h1>Padel Topics</h1>
-    <p>${escHtml(description)}</p>
-    <div class="grid">${topicsHtml}</div>
-  `;
-
-  return htmlDoc({ title, description, url: '/topics', lang, structuredData, body });
-}
-
-async function renderTopicPage(slug: string, lang: string): Promise<string> {
-  const query = `*[_type == "topic" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
-    title, h1, "slug": slug.current, description, intro, seo,
-    "isIndexable": coalesce(isIndexable, true),
-    "featuredGuides": featuredGuides[]-> { title, "slug": slug.current },
-    "featuredRules": featuredRules[]-> { title, "slug": slug.current },
-    "featuredStrokes": featuredStrokes[]-> { title, "slug": slug.current },
-    "featuredVideoTips": featuredVideoTips[]-> { title, "slug": slug.current },
-    "featuredTrainers": featuredTrainers[]-> { name, "slug": slug.current },
-    "relatedTopics": relatedTopics[]-> { title, "slug": slug.current }
-  }`;
-
-  const topic = await sanityFetch(query, { slug });
-  if (!topic) return renderNotFound(lang);
-
-  const title = topic.seo?.titleTag || topic.h1 || topic.title || slug;
-  const description = topic.seo?.metaDescription || topic.description || topic.intro || `Learn about ${title} on PadelTrainer.ai`;
-  const noIndex = topic.isIndexable === false;
-
-  const breadcrumbItems = [
-    { name: 'Home', url: '/' },
-    { name: 'Topics', url: '/topics' },
-    { name: topic.title || slug },
-  ];
-
-  const structuredData = [
-    breadcrumbSchema(breadcrumbItems, lang),
-    {
-      "@context": "https://schema.org",
-      "@type": "CollectionPage",
-      "name": title,
-      "description": typeof description === 'string' ? description : '',
-      "url": `${SITE_URL}/${lang}/topics/${slug}`,
-    },
-  ];
-
-  const linkSection = (heading: string, items: any[] | null, basePath: string, nameField = 'title') => {
-    if (!items || items.length === 0) return '';
-    const links = items.map((item: any) =>
-      `<li><a href="${SITE_URL}/${lang}${basePath}/${item.slug}">${escHtml(item[nameField])}</a></li>`
-    ).join('');
-    return `<h2>${escHtml(heading)}</h2><ul>${links}</ul>`;
+function organizationSchema() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "PadelTrainer.ai",
+    "url": SITE_URL,
+    "logo": `${SITE_URL}/favicon.png`,
   };
-
-  const body = `
-    ${breadcrumb(breadcrumbItems, lang)}
-    ${noIndex ? '<meta name="robots" content="noindex, nofollow">' : ''}
-    <h1>${escHtml(topic.h1 || topic.title || slug)}</h1>
-    ${topic.intro ? `<p>${escHtml(topic.intro)}</p>` : ''}
-    ${linkSection('Guides', topic.featuredGuides, '/learn')}
-    ${linkSection('Rules', topic.featuredRules, '/padel-rules')}
-    ${linkSection('Strokes', topic.featuredStrokes, '/padel-strokes')}
-    ${linkSection('Video Tips', topic.featuredVideoTips, '/video-tips')}
-    ${linkSection('Coaches', topic.featuredTrainers, '/padel-coaches', 'name')}
-    ${linkSection('Related Topics', topic.relatedTopics, '/topics')}
-  `;
-
-  return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `/topics/${slug}`, lang, structuredData, body });
-}
-
-// ─── Product / Racket Renderer ──────────────────────────────────
-
-async function renderProductPage(slug: string, lang: string): Promise<string> {
-  const query = `*[_type == "product" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
-    name,
-    h1,
-    shortDescription,
-    "slug": slug.current,
-    language,
-    seo,
-    brand,
-    level,
-    playingStyle,
-    shape,
-    priceRange,
-    isAvailable,
-    "imageUrl": mainImage.asset->url,
-    "translations": *[_type == "product" && (
-      translationOf._ref == ^._id ||
-      _id == ^.translationOf._ref ||
-      (translationOf._ref == ^.translationOf._ref && defined(^.translationOf._ref))
-    ) && !(_id in path("drafts.**"))] {
-      language,
-      "slug": slug.current
-    }
-  }`;
-
-  const doc = await sanityFetch(query, { slug });
-  if (!doc) return renderNotFound(lang);
-
-  const title = doc.seo?.titleTag || doc.h1 || doc.name || slug;
-  const description = doc.seo?.metaDescription || doc.shortDescription || `${title} - Padel racket on PadelTrainer.ai`;
-
-  const structuredData: object[] = [
-    breadcrumbSchema([
-      { name: 'Home', url: '/' },
-      { name: 'Gear', url: '/gear/rackets' },
-      { name: 'Rackets', url: '/gear/rackets' },
-      { name: title },
-    ], lang),
-    {
-      "@context": "https://schema.org",
-      "@type": "Product",
-      "name": title,
-      "description": typeof description === 'string' ? description : '',
-      ...(doc.brand ? { "brand": { "@type": "Brand", "name": doc.brand } } : {}),
-      "category": "Padel Racket",
-      ...(doc.imageUrl ? { "image": doc.imageUrl } : {}),
-      ...(doc.priceRange ? {
-        "offers": {
-          "@type": "AggregateOffer",
-          "priceCurrency": "EUR",
-          ...(doc.priceRange.match(/€(\d+)/) ? { "lowPrice": doc.priceRange.match(/€(\d+)/)[1] } : {}),
-          ...(doc.priceRange.match(/€\d+[–\-]€?(\d+)/) ? { "highPrice": doc.priceRange.match(/€\d+[–\-]€?(\d+)/)[1] } : {}),
-          "availability": doc.isAvailable !== false ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-        }
-      } : {}),
-    }
-  ];
-
-  // Build hreflang-aware HTML
-  const allVersions = [{ lang: doc.language || lang, slug: doc.slug }];
-  if (doc.translations) {
-    for (const t of doc.translations) {
-      if (t.slug && t.language) allVersions.push({ lang: t.language, slug: t.slug });
-    }
-  }
-
-  const specsHtml = [
-    doc.brand && `<li><strong>Brand:</strong> ${escHtml(doc.brand)}</li>`,
-    doc.level && `<li><strong>Level:</strong> ${escHtml(doc.level)}</li>`,
-    doc.playingStyle && `<li><strong>Style:</strong> ${escHtml(doc.playingStyle)}</li>`,
-    doc.shape && `<li><strong>Shape:</strong> ${escHtml(doc.shape)}</li>`,
-    doc.priceRange && `<li><strong>Price:</strong> ${escHtml(doc.priceRange)}</li>`,
-  ].filter(Boolean).join('');
-
-  const body = `
-    ${breadcrumb([
-      { name: 'Home', url: '/' },
-      { name: 'Rackets', url: '/gear/rackets' },
-      { name: title },
-    ], lang)}
-    <h1>${escHtml(title)}</h1>
-    ${doc.imageUrl ? `<img src="${doc.imageUrl}?w=600&h=400&fit=crop" alt="${escHtml(title)}" style="max-width:100%;border-radius:8px;margin-bottom:1rem;">` : ''}
-    <p>${escHtml(typeof description === 'string' ? description : '')}</p>
-    ${specsHtml ? `<h2>Specifications</h2><ul>${specsHtml}</ul>` : ''}
-  `;
-
-  // Build custom hreflang tags via htmlDoc with translated URL
-  return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `/gear/rackets/${slug}`, lang, image: doc.imageUrl, structuredData, body });
-}
-
-// ─── Cycle Registration Renderer ────────────────────────────────
-
-async function renderCycleRegistration(supabase: any, cycleId: string, lang: string, cleanPath: string): Promise<string> {
-  const { data: cycle } = await supabase
-    .from('cycles')
-    .select('name, start_date, end_date, owner_type, owner_id, location_id')
-    .eq('id', cycleId)
-    .maybeSingle();
-
-  if (!cycle) {
-    return renderStaticPage('Registration — PadelTrainer.ai', 'Register for padel training.', lang, cleanPath);
-  }
-
-  // Fetch owner name
-  let ownerName = '';
-  if (cycle.owner_type === 'academy') {
-    const { data: academy } = await supabase
-      .from('academy_profiles')
-      .select('name')
-      .eq('id', cycle.owner_id)
-      .maybeSingle();
-    ownerName = academy?.name || '';
-  } else if (cycle.owner_type === 'club') {
-    const { data: club } = await supabase
-      .from('club_profiles')
-      .select('location_id')
-      .eq('id', cycle.owner_id)
-      .maybeSingle();
-    if (club) {
-      const { data: loc } = await supabase
-        .from('locations')
-        .select('name')
-        .eq('id', club.location_id)
-        .maybeSingle();
-      ownerName = loc?.name || '';
-    }
-  } else if (cycle.owner_type === 'trainer') {
-    const { data: trainer } = await supabase
-      .from('trainer_profiles')
-      .select('user_id')
-      .eq('id', cycle.owner_id)
-      .maybeSingle();
-    if (trainer) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('user_id', trainer.user_id)
-        .maybeSingle();
-      ownerName = profile?.full_name || '';
-    }
-  }
-
-  // Fetch location
-  let locationStr = '';
-  if (cycle.location_id) {
-    const { data: loc } = await supabase
-      .from('locations')
-      .select('name, city')
-      .eq('id', cycle.location_id)
-      .maybeSingle();
-    if (loc) locationStr = `${loc.name}, ${loc.city}`;
-  }
-
-  const startDate = new Date(cycle.start_date).toLocaleDateString(lang === 'nl' ? 'nl-NL' : 'en-US', { day: 'numeric', month: 'short' });
-  const endDate = new Date(cycle.end_date).toLocaleDateString(lang === 'nl' ? 'nl-NL' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-
-  const titleParts = [cycle.name];
-  if (ownerName) titleParts.push(ownerName);
-  titleParts.push('PadelTrainer.ai');
-  const title = titleParts.join(' | ');
-
-  const descParts = [
-    lang === 'nl' ? `Schrijf je in voor ${cycle.name}` : `Register for ${cycle.name}`,
-    `${startDate} - ${endDate}`,
-  ];
-  if (locationStr) descParts.push(locationStr);
-  if (ownerName) descParts.push(ownerName);
-  const description = descParts.join(' · ');
-
-  const body = `
-    <h1>${escHtml(cycle.name)}</h1>
-    ${ownerName ? `<p>${lang === 'nl' ? 'Georganiseerd door' : 'Organized by'} <strong>${escHtml(ownerName)}</strong></p>` : ''}
-    <p>${startDate} - ${endDate}${locationStr ? ` · ${escHtml(locationStr)}` : ''}</p>
-    <p><a href="${SITE_URL}/${lang}${cleanPath}">${lang === 'nl' ? 'Bekijk details en schrijf je in' : 'View details and register'}</a></p>
-  `;
-
-  return htmlDoc({ title, description, url: cleanPath, lang, body });
-}
-
-// ─── Rating Progress Page ─────────────────────────────────────────
-
-async function renderRatingPage(supabase: any, profileId: string, lang: string): Promise<string> {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, rating_system')
-    .eq('id', profileId)
-    .single();
-
-  if (!profile) {
-    return renderStaticPage('Rating Progress — PadelTrainer.ai', 'Track your padel rating progress on PadelTrainer.ai', lang, `/rating/${profileId}`);
-  }
-
-  const ratingSystem = profile.rating_system || 'knltb';
-  const { data: history } = await supabase
-    .from('player_rating_history')
-    .select('rating, scraped_at')
-    .eq('profile_id', profileId)
-    .eq('rating_system', ratingSystem)
-    .order('scraped_at', { ascending: true });
-
-  const { data: systemData } = await supabase
-    .from('rating_systems')
-    .select('name, lower_is_better')
-    .eq('code', ratingSystem)
-    .single();
-
-  const lowerIsBetter = systemData?.lower_is_better ?? (ratingSystem === 'knltb');
-  const systemName = systemData?.name || ratingSystem.toUpperCase();
-  const firstName = profile.full_name?.split(' ')[0] || 'Player';
-
-  if (!history || history.length === 0) {
-    return renderStaticPage(`${firstName}'s Rating — PadelTrainer.ai`, 'No rating history available yet.', lang, `/rating/${profileId}`);
-  }
-
-  const firstRating = history[0].rating;
-  const latestRating = history[history.length - 1].rating;
-  const rawDiff = Number((firstRating - latestRating).toFixed(2));
-  const improvement = lowerIsBetter ? rawDiff : -rawDiff;
-
-  const title = `${firstName}'s Padel Rating: ${latestRating.toFixed(1)} (${improvement > 0 ? '↑' : '↓'}${Math.abs(improvement).toFixed(1)}) — PadelTrainer.ai`;
-  const description = lang === 'nl'
-    ? `Van ${firstRating.toFixed(1)} naar ${latestRating.toFixed(1)} op ${systemName}. Track jouw rating op PadelTrainer.ai`
-    : `From ${firstRating.toFixed(1)} to ${latestRating.toFixed(1)} on ${systemName}. Track your rating on PadelTrainer.ai`;
-
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const ogImage = `${supabaseUrl}/functions/v1/rating-og-image?profileId=${profileId}`;
-
-  const body = `
-    <h1>${escHtml(firstName)}'s Padel Rating Progress</h1>
-    <p>${escHtml(systemName)} · ${escHtml(firstRating.toFixed(1))} → ${escHtml(latestRating.toFixed(1))}</p>
-    <p>${improvement > 0 ? '↑' : '↓'} ${Math.abs(improvement).toFixed(1)} ${lang === 'nl' ? 'punten' : 'points'}</p>
-    <p><a href="${SITE_URL}/${lang}/rating/${profileId}">${lang === 'nl' ? 'Bekijk volledige voortgang' : 'View full progress'}</a></p>
-    <p>${lang === 'nl' ? 'Track jouw padel rating op' : 'Track your padel rating on'} <a href="${SITE_URL}/${lang}">PadelTrainer.ai</a></p>
-  `;
-
-  return htmlDoc({ title, description, url: `/rating/${profileId}`, lang, image: ogImage, body });
 }
