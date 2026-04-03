@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, differenceInWeeks } from 'date-fns';
@@ -67,6 +67,7 @@ import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import CycleForm from '@/components/cycles/CycleForm';
 import WaitingListTable from '@/components/waitingList/WaitingListTable';
 import PreGenerationReview from '@/components/cycles/PreGenerationReview';
+import { getSuggestedLinks, getLinkedIdsForRequest, getDismissedSuggestions, getUnmatchedMentions, getDismissedUnmatched } from '@/lib/suggestLinks';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
 
@@ -226,6 +227,24 @@ export default function AcademyCycleDetail() {
   const skippedCount = requests.filter(r => r.status === 'new' && r.skip_reason).length;
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
   const confirmedCount = requests.filter(r => r.status === 'confirmed').length;
+
+  // Compute pending link actions for the workflow step
+  const pendingLinkActions = useMemo(() => {
+    const dismissed = getDismissedSuggestions();
+    const dismissedUn = getDismissedUnmatched();
+    const seenPairs = new Set<string>();
+    let count = 0;
+    for (const req of requests) {
+      const linkedIds = new Set(getLinkedIdsForRequest(req.id, playerLinksData));
+      const matches = getSuggestedLinks(req, requests, linkedIds, dismissed);
+      for (const match of matches) {
+        const pairKey = [req.id, match.id].sort().join('::');
+        if (!seenPairs.has(pairKey)) { seenPairs.add(pairKey); count++; }
+      }
+      count += getUnmatchedMentions(req, requests, dismissedUn).length;
+    }
+    return count;
+  }, [requests, playerLinksData]);
 
   const unplacedPlayers = requests
     .filter(r => r.status === 'new')
@@ -608,15 +627,6 @@ export default function AcademyCycleDetail() {
 
         {/* ==================== PROPOSALS TAB ==================== */}
         <TabsContent value="proposals" className="space-y-6">
-          {/* Pre-generation review: show when there are new requests */}
-          {newCount > 0 && (
-            <PreGenerationReview
-              requests={requests}
-              playerLinks={playerLinksData}
-              onLinkChanged={refreshData}
-            />
-          )}
-
           <ProposalWorkflowSteps
             cycles={[cycle]}
             selectedCycleId={cycle.id}
@@ -632,7 +642,22 @@ export default function AcademyCycleDetail() {
             isGenerating={isGenerating}
             isResetting={isResetting}
             hideCycleSelector
+            pendingLinkActions={pendingLinkActions}
+            isLinksReviewed={pendingLinkActions === 0}
           />
+
+          {/* Pre-generation review: show when there are new requests */}
+          {newCount > 0 && (
+            <PreGenerationReview
+              requests={requests}
+              playerLinks={playerLinksData}
+              onLinkChanged={refreshData}
+              onPlayerClick={(requestId) => {
+                const req = requests.find(r => r.id === requestId);
+                if (req) setSelectedRequest(req);
+              }}
+            />
+          )}
 
           {/* Inline schedule grid for proposals */}
           {proposedCount > 0 && (
