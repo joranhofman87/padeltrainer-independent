@@ -1,53 +1,35 @@
 
 
-# Fix: App slowness and 500 errors caused by render-page bot traffic overload
+# Emergency: Kill render-page DB queries to stop connection drain
 
-## Root cause
-
-The render-page edge function is **still being hammered at 3-4 requests per second** by bots, despite the Cloudflare Worker caching we just deployed. Each invocation creates a new Supabase client and runs DB queries, exhausting the connection pool (max 60 connections, with auth getting only 10).
-
-This causes:
-- **Statement timeouts** ("canceling statement due to statement timeout") for academy locations queries
-- **500 errors** on subscription checks, profile fetches, and other edge functions
-- **CORS errors** as a side effect — when edge functions return 500, CORS headers are sometimes dropped
-
-The Cloudflare cache isn't effective because bots are likely hitting unique URLs (language variants, query params, different paths) that each miss the cache.
+## Situation after upgrade
+- Instance upgraded: auth requests now succeed (200) but take 3-15 seconds
+- render-page: **still 2-3 boot/shutdown cycles per second** — unchanged
+- The Cloudflare Worker rate limiting is not stopping this because bots are likely hitting the edge function URL directly (ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page), bypassing Cloudflare
 
 ## Plan
 
-### 1. Block bot traffic at the Cloudflare Worker level (highest impact)
+### 1. Make render-page zero-DB-cost (immediate relief)
+Strip all database queries from `render-page`. Instead of fetching real data from the DB for every bot request, serve pre-built static meta tags for all paths. This instantly eliminates the connection pool drain.
 
-The Cloudflare Worker currently forwards bot requests to render-page even on cache miss. We need to add **aggressive bot rate limiting at the Worker level** using Cloudflare's own infrastructure, and return a minimal static HTML fallback when the edge function is under pressure, instead of hitting the backend.
+The function will:
+- Parse the URL path to determine page type
+- Return appropriate static HTML with hardcoded OG tags per route pattern
+- No Supabase client creation, no DB queries at all
+- Keep the function working for SEO (bots still get structured HTML with titles/descriptions) but without any backend cost
 
-In `docs/cloudflare-worker.js`:
-- Add a per-IP rate limiter using a simple Map (Cloudflare Workers have ~128MB memory)
-- Limit bots to max 2 requests per 10 seconds per IP
-- When rate limited, return a minimal static HTML page with basic meta tags instead of calling the edge function
-- Add a global circuit breaker: if render-page returns 500/503/429 more than 3 times in 60 seconds, stop calling it entirely for 5 minutes and serve static fallback
-
-### 2. Add response caching inside the render-page edge function itself
-
-The in-memory rate limiter resets on every cold start (which happens every few seconds). Instead:
-
-In `supabase/functions/render-page/index.ts`:
-- Add `Cache-Control: public, max-age=3600` response headers so Supabase's own CDN can cache responses
-- Return early with a minimal static HTML for unknown/unrecognized paths instead of querying the DB
-- Reduce the scope — only query the DB for recognized marketing paths, return a generic meta tag page for everything else
-
-### 3. Upgrade compute instance (user action)
-
-The backend has a max pool of 60 connections and auth gets only 10. With this traffic volume, even fixing the bot issue may leave things tight. The user should consider upgrading their Lovable Cloud instance for more headroom.
-
-## Expected result
-- Bot traffic no longer saturates the DB connection pool
-- Edge functions stop returning 500s
-- CORS errors disappear (they were a symptom of 500s)
-- App becomes responsive again
+### 2. Add auth token verification to render-page
+Require the Supabase anon key in an Authorization header. The Cloudflare Worker already sends this. Direct bot hits without the key get rejected immediately with 401.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `docs/cloudflare-worker.js` | Add per-IP bot rate limiting, global circuit breaker, static HTML fallback |
-| `supabase/functions/render-page/index.ts` | Add Cache-Control headers, early return for unrecognized paths, remove in-memory rate limiter (moved to Worker) |
+| `supabase/functions/render-page/index.ts` | Remove all DB queries; return static HTML based on URL pattern; add auth header check |
+
+## Expected result
+- render-page stops consuming DB connections entirely
+- Auth and app queries get full connection pool access
+- App becomes responsive immediately
+- SEO still works (bots get reasonable meta tags, just not dynamic data)
 
