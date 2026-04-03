@@ -132,7 +132,7 @@ export async function signOut() {
 }
 
 export async function getUserRole(userId: string): Promise<UserRole | null> {
-  const roles = await getUserRoles(userId);
+  const { data: roles } = await getUserRoles(userId);
   if (roles.length === 0) return null;
   
   // Return primary role based on priority: admin > trainer > club > player
