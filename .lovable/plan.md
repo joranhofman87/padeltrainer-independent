@@ -1,46 +1,109 @@
 
-
-# Fix: Optimistic Changes Lost After Background Refetch
-
 ## Problem
-The schedule slots query has `staleTime: 60_000` (60 seconds). After 60s of editing, TanStack Query marks the data as stale and refetches from the database in the background. This background refetch **overwrites the optimistic cache** with whatever is in the DB at that moment.
+This is not just a slow login. There are two linked issues:
 
-If a DB write is still in-flight or if the user made rapid changes, the refetch returns stale data and wipes all pending optimistic updates -- making it look like "all my work is gone."
+1. The auth session is getting into a bad state and refresh calls start failing (`Failed to fetch` on the auth token refresh request).
+2. After that, the app treats an existing account as a brand new user because role/profile lookups fail and return “no role”.
+
+That explains both symptoms you saw:
+- long loading / stuck auth flow
+- then being sent into player onboarding as if you had just signed up
+
+## What I found
+From the current code and logs:
+
+- `useAuth` sets `user/session`, then immediately fetches roles/profile/club-manager/academy-manager data.
+- Those helper functions mostly swallow errors and return empty values (`[]`, `null`, `false`).
+- In `Auth.tsx`, if `user` exists but `role` is still null, it runs a one-time `user_roles` check.
+- If that check returns no data, it navigates to `/app/onboarding/player`.
+
+So a temporary auth/session failure currently looks identical to “this user has no role yet”.
+
+There is also an auth initialization risk:
+- `useAuth` bootstraps with `getSession()`
+- then subscribes to `onAuthStateChange`
+- and it awaits extra async work inside the auth flow
+
+That matches the known race pattern where auth-dependent queries run before the session is truly ready.
 
 ## Fix
+### 1. Make auth initialization deterministic
+In `src/hooks/useAuth.tsx`:
+- subscribe to auth changes first
+- bootstrap session separately
+- introduce an explicit auth-ready state
+- avoid awaiting app data fetches inside the auth listener
+- only run role/profile queries after auth is confirmed ready and a user exists
 
-### 1. Disable background refetch while actively editing (`useScheduleSlotsQuery`)
-Set `staleTime: Infinity` and `refetchOnWindowFocus: false` on the slots query. The data is already being kept up-to-date via optimistic `setQueryData` calls, so background refetching is not needed and actively harmful.
+This separates:
+- “is there a signed-in user?”
+from
+- “have we loaded their app profile data yet?”
 
-Only manually invalidate (via `invalidateSlots`) when we explicitly want fresh data (e.g. after generating proposals or resetting).
+### 2. Stop treating fetch failures as “new user”
+In `src/pages/Auth.tsx`:
+- change the `role === null` branch so it does **not** route to onboarding when the role lookup failed due to auth/network issues
+- only send users to onboarding when we positively know there are no roles
+- if role/profile fetch fails, show a toast and keep the user on auth (or retry auth refresh), instead of assuming signup flow
 
-### 2. Track in-flight mutations to prevent refetch clobbering (`AcademyCycleDetail.tsx`)
-Add a `pendingMutations` ref that increments before each DB write and decrements after. When `pendingMutations > 0`, skip any incoming query data updates by using a `select` function or guarding `setQueryData`.
+### 3. Make role/profile helpers return failure state, not silent empties
+In:
+- `src/lib/auth.ts`
+- `src/lib/club.ts`
+- `src/lib/academy.ts`
 
-### 3. Deep-copy `prev` snapshots for rollback
-Current rollback uses `[...scheduleSlots]` which is a shallow copy -- the `current_assignments` arrays inside each slot are still shared references. Use a proper deep clone so rollback restores the exact previous state.
+Update the helpers used by `useAuth` so auth/network errors can be distinguished from true “no data” cases.
 
-## Changes
+Right now:
+- auth error -> `[]` / `null` / `false`
+- real no-role user -> also `[]` / `null` / `false`
 
-### `src/hooks/useProposalData.ts`
-- Change `useScheduleSlotsQuery` to use `staleTime: Infinity` and `refetchOnWindowFocus: false` so the query never auto-refetches while the grid is mounted
+That is the core reason existing users get misclassified.
 
-### `src/pages/academy/AcademyCycleDetail.tsx`
-- Add a `pendingMutationsRef` (useRef counter) that tracks in-flight DB writes
-- In each handler: increment before the `await`, decrement in `finally`
-- Deep-clone `prev` snapshots: `JSON.parse(JSON.stringify(scheduleSlots))` instead of spread
-- After successful writes, only call `invalidateSlots` when `pendingMutationsRef.current === 0` (last mutation) to avoid mid-batch refetches overwriting other pending optimistic updates
+### 4. Recover from broken/stale stored sessions
+In `src/hooks/useAuth.tsx`:
+- detect refresh/session fetch failures
+- clear invalid local auth state by signing out locally
+- avoid leaving the app half-authenticated with `user` set but unusable token state
 
-## Result
-- Users can make many rapid changes without losing work
-- Background refetch never silently overwrites the cache
-- Failed writes still roll back correctly with deep-cloned snapshots
-- Fresh data is only fetched when explicitly requested
+This should eliminate the long “takes ages” behavior caused by repeated failing refresh attempts.
+
+### 5. Harden loading-state behavior on auth screens
+In `src/pages/Auth.tsx`:
+- wrap sign-in flow in `try/catch/finally`
+- ensure `setIsLoading(false)` always runs
+- keep analytics/non-essential side effects from affecting auth outcome
 
 ## Files
+- `src/hooks/useAuth.tsx`
+- `src/pages/Auth.tsx`
+- `src/lib/auth.ts`
+- `src/lib/club.ts`
+- `src/lib/academy.ts`
 
-| File | Change |
-|------|--------|
-| `src/hooks/useProposalData.ts` | Set `staleTime: Infinity`, `refetchOnWindowFocus: false` on slots query |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Add pending mutation counter; deep-clone prev snapshots; guard invalidation |
+## Expected result
+After this change:
+- existing users will no longer be redirected into player onboarding when auth/profile fetches glitch
+- login will fail cleanly or recover cleanly, instead of hanging for a long time
+- the app will only route to onboarding when it has confirmed the user is truly new
+- stale local sessions will be cleared instead of poisoning future logins
 
+## Technical details
+Main design adjustment:
+
+```text
+auth session ready
+  -> user exists?
+      -> yes: fetch app user data
+          -> success with role: go to dashboard
+          -> success with no role: go to onboarding
+          -> fetch/auth failure: stay in auth flow and recover/retry
+      -> no: stay logged out
+```
+
+Key rule:
+- “role is null” must no longer mean “new player”
+- it must first distinguish:
+  - no role exists
+  - role lookup failed
+  - auth token/session is broken
