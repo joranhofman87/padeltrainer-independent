@@ -492,8 +492,17 @@ export default function IntakeRequestsTable({
 
   return (
     <div className="space-y-2">
-      {/* Column visibility toggle */}
-      <div className="flex justify-end">
+      {/* Search + Column visibility toggle */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t('intakeRequests.table.searchPlayer', { defaultValue: 'Search player...' })}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 h-9"
+          />
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-1.5">
