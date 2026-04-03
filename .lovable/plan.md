@@ -1,100 +1,95 @@
 
-# Fix live-site login failure on `padeltrainer.ai`
+## Fix: Live-site login is still blocked by backend CORS, not the auth page
 
-## What the issue is
-This is now clearly a **live-site authentication CORS problem**, not just a slow-loading auth screen.
+### Do I know what the issue is?
+Yes.
 
-The key clue is the browser error:
+### What the problem actually is
+The screenshot confirms the real blocker is still this request:
+
 ```text
-Access to fetch at .../auth/v1/token?grant_type=password
-from origin https://padeltrainer.ai
-has been blocked by CORS policy
+POST https://ppkbhdiiqdusdeatgdft.supabase.co/auth/v1/token?grant_type=password
+Origin: https://padeltrainer.ai
+Blocked by CORS: No 'Access-Control-Allow-Origin' header
 ```
 
-That means the login request is being rejected **before** the app can even complete sign-in. So the role/profile logic is secondary here.
+So the login is failing before the app can complete sign-in.
 
-## Root cause
-The published custom domain (`https://padeltrainer.ai`) is not being accepted correctly by the backend auth service for password-token requests.
-
-There is also a secondary UX problem in the frontend:
-- stale auth refresh attempts keep retrying
-- auth bootstrap can linger while token refresh is failing
-- some auth flows still don’t fail fast enough with a clear message
+### What I confirmed in the code
+- `src/lib/supabaseClient.ts` sends auth requests directly to the backend URL, so browser CORS rules apply to the page origin.
+- `src/lib/domains.ts` builds auth redirects from `window.location.origin`, so when users are on `https://padeltrainer.ai`, all auth-related flows stay on that domain.
+- `src/hooks/useAuth.tsx` and `src/pages/Auth.tsx` are already defensive about bad sessions and failed lookups, but they cannot fix a browser-level CORS rejection.
+- The `v2.js` “reading 'q'” error is from the Reditus script loaded in `src/main.tsx`. It is noisy, but it is not the root cause of the login failure.
 
 ## Plan
 
-### 1. Fix backend auth domain/origin configuration
-Update the authentication configuration in Lovable Cloud so the live domain is explicitly allowed for auth requests.
+### 1. Fix backend auth origin / redirect configuration
+Update Lovable Cloud auth settings so the backend explicitly accepts:
+- `https://padeltrainer.ai`
+- `https://www.padeltrainer.ai` if that domain is used
+- the published fallback domain if needed: `https://padeltrainer.lovable.app`
 
-What to verify/configure:
-- published origin: `https://padeltrainer.ai`
-- `https://www.padeltrainer.ai` too, if that domain is ever used
-- valid auth redirect URLs for:
-  - `/app/auth`
-  - `/app/reset-password`
+Also verify auth redirect URLs include:
+- `/app/auth`
+- `/app/reset-password`
 
-This is the primary fix for the live-site CORS error.
+This is the primary fix. Without it, email/password login from `padeltrainer.ai` will keep failing regardless of frontend changes.
 
-### 2. Harden auth bootstrap so it stops looping on broken sessions
-In `src/hooks/useAuth.tsx`:
-- fail fast when session restore / token refresh throws fetch errors
-- clear stale local auth state immediately instead of letting refresh retries keep spinning
-- avoid waiting on extra user-data work during auth restoration
-- only fetch profile/roles after auth is confirmed usable
-
-This prevents the “takes ages / keeps loading” behavior when a stored session is broken.
-
-### 3. Make login failures explicit instead of looking stuck
-In `src/lib/auth.ts` and `src/pages/Auth.tsx`:
-- catch network/CORS auth failures and convert them into a clear login error
-- stop any onboarding redirect logic from running after auth transport failures
-- keep `setIsLoading(false)` guaranteed in every path
-- show a user-facing message like “Login is temporarily unavailable on this domain” instead of a vague generic failure
-
-### 4. Align the signup / Google auth flows with the same resilience
-In:
-- `src/pages/PlayerSignup.tsx`
-- `src/pages/TrainerSignup.tsx`
-- other signup pages using the same pattern
-
-Apply the same hardening:
-- `finally` for loading reset
-- no silent hangs
-- no follow-up onboarding routing after auth transport failure
-
-For Google specifically, switch to the Lovable Cloud OAuth pattern instead of direct `supabase.auth.signInWithOAuth(...)`, since this project uses Lovable Cloud.
-
-## Files involved
+### 2. Stop spending more time patching the login page as the main fix
+The current frontend code is already catching failures more safely than before. Further edits to:
+- `src/pages/Auth.tsx`
 - `src/hooks/useAuth.tsx`
 - `src/lib/auth.ts`
-- `src/pages/Auth.tsx`
-- `src/pages/PlayerSignup.tsx`
-- `src/pages/TrainerSignup.tsx`
-- other signup pages that reuse the same Google/email auth pattern
 
-## No database change
-No schema, table, or RLS change is needed for this fix.
+will improve messaging, but will not solve the blocked request itself.
+
+So implementation priority should be:
+1. backend auth configuration
+2. then only minimal frontend cleanup if needed
+
+### 3. Add one small frontend improvement after backend config
+After the backend CORS fix, make one small UX hardening pass:
+- keep the existing loading reset behavior
+- show a clearer “login unavailable on this domain” message when a network/CORS failure is detected
+- avoid retry loops on broken restored sessions
+
+This is a polish step, not the root fix.
+
+### 4. Optionally silence the unrelated Reditus script noise
+In `src/main.tsx`, make the Reditus loader more defensive or skip it on auth routes so the external `v2.js` error does not confuse debugging.
+
+This is optional and separate from login itself.
+
+## Files involved
+Primary fix:
+- backend auth configuration in Lovable Cloud
+
+Secondary optional cleanup:
+- `src/lib/auth.ts`
+- `src/pages/Auth.tsx`
+- `src/hooks/useAuth.tsx`
+- `src/main.tsx`
 
 ## Expected result
 After this:
-- email/password login works on the live site
-- stale/broken sessions no longer trap the app in long refresh loops
-- existing users are not misrouted to onboarding after auth transport failures
-- auth failures become immediate and understandable instead of looking frozen
+- email/password login works on `https://padeltrainer.ai`
+- users are no longer blocked by browser CORS before auth starts
+- any remaining auth errors become normal app errors instead of hard transport failures
+- console noise from Reditus can be reduced separately
 
-## Technical note
-The current code already improved role/profile failure handling, but this bug happens earlier in the chain:
+## Technical details
+Why this is the real issue:
 
 ```text
-click Sign In
--> POST /auth/v1/token?grant_type=password
--> blocked by CORS on live origin
--> no valid session created
--> refresh/bootstrap logic keeps trying
--> user experiences long loading / failed login
+padeltrainer.ai page
+  -> browser calls backend /auth/v1/token directly
+  -> backend does not allow origin https://padeltrainer.ai
+  -> browser blocks response
+  -> app only sees Failed to fetch
 ```
 
-So the implementation should prioritize:
-1. backend auth origin fix
-2. frontend stale-session recovery
-3. clearer auth failure behavior
+Key conclusion:
+- this is now primarily an auth-origin configuration problem
+- not a schedule-state issue
+- not a role-fetch issue
+- not something the current Auth page alone can solve
