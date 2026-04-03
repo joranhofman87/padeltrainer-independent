@@ -114,6 +114,10 @@ export async function signInWithEmail(email: string, password: string) {
       email,
       password,
     });
+    // Supabase may return error objects without a message on 503/504 responses
+    if (error && !error.message) {
+      error.message = 'Login is temporarily unavailable. Please try again in a moment.';
+    }
     return { data, error };
   } catch (err: any) {
     // CORS or network failure — the request never completed

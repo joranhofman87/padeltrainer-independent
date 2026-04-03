@@ -179,9 +179,10 @@ export default function Auth() {
 
       if (error) {
         logger.error('Sign in failed', error, { component: 'Auth', action: 'signIn' });
+        const errorMessage = error.message || error.msg || (typeof error === 'object' ? JSON.stringify(error) : String(error));
         toast({
           title: t('signIn.error', 'Error'),
-          description: error.message,
+          description: errorMessage || t('signIn.genericError', 'Something went wrong. Please try again.'),
           variant: 'destructive',
         });
       } else {
