@@ -80,8 +80,31 @@ export function ScoringWeightsPanel({ weights, onWeightsChange, showRatingSpread
   const selectedSystem = ratingSystems.find(s => s.code === ratingSpread.ratingSystem);
   const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
 
-  const updateWeight = (key: keyof ScoringWeights, value: number) => {
-    onWeightsChange({ ...weights, [key]: value });
+  const updateWeight = (key: keyof ScoringWeights, newValue: number) => {
+    const delta = newValue - weights[key];
+    if (delta === 0) return;
+
+    const otherKeys = Object.keys(weights).filter(k => k !== key) as (keyof ScoringWeights)[];
+    const otherSum = otherKeys.reduce((sum, k) => sum + weights[k as keyof ScoringWeights], 0);
+    const updated = { ...weights, [key]: newValue };
+
+    if (otherSum === 0) {
+      updated[key] = 100;
+    } else {
+      const scale = (otherSum - delta) / otherSum;
+      let remaining = 100 - newValue;
+      otherKeys.forEach((k, i) => {
+        if (i === otherKeys.length - 1) {
+          updated[k] = Math.max(0, remaining);
+        } else {
+          const adj = Math.max(0, Math.round(weights[k] * scale));
+          updated[k] = adj;
+          remaining -= adj;
+        }
+      });
+    }
+
+    onWeightsChange(updated);
     setActivePreset(null);
   };
 
