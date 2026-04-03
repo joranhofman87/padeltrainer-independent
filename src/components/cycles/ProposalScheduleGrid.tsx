@@ -379,11 +379,23 @@ function SlotEditPopover({
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0" align="start" side="right" onClick={(e) => e.stopPropagation()}>
-        {/* Time editing */}
+        {/* Day & Time editing */}
         <div className="p-3 space-y-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            {t('proposals.editTime', { defaultValue: 'Edit time' })}
+            {t('proposals.editSlot', { defaultValue: 'Edit slot' })}
           </p>
+          {availableDays.length > 1 && (
+            <Select value={targetDay} onValueChange={setTargetDay}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableDays.map(d => (
+                  <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <div className="flex items-center gap-2">
             <Select value={startTime} onValueChange={setStartTime}>
               <SelectTrigger className="h-8 text-xs flex-1">
