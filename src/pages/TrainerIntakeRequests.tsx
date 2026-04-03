@@ -431,6 +431,30 @@ export default function TrainerIntakeRequests() {
               toast.error(error.message);
             }
           }}
+          onCreateSlot={async (trainerId, startTime, endTime) => {
+            if (selectedCycleId === 'all') return;
+            const tempId = `temp-${Date.now()}`;
+            const newSlot: SlotWithOccupancy = {
+              id: tempId,
+              trainer_id: trainerId,
+              start_time: startTime,
+              end_time: endTime,
+              max_participants: (selectedCycle?.settings as any)?.max_participants ?? 4,
+              location_id: selectedCycle?.location_id ?? null,
+              is_blocked: false,
+              current_assignments: [],
+              cyclus_id: selectedCycleId,
+            };
+            setScheduleSlots(prev => [...prev, newSlot]);
+            try {
+              const result = await createProposalSlot(selectedCycleId, trainerId, startTime, endTime);
+              setScheduleSlots(prev => prev.map(s => s.id === tempId ? { ...s, id: result.id } : s));
+              toast.success(t('proposals.slotCreated', { defaultValue: 'Slot created' }));
+            } catch (error: any) {
+              setScheduleSlots(prev => prev.filter(s => s.id !== tempId));
+              toast.error(error.message);
+            }
+          }}
           onUndo={(previousSlots) => {
             setScheduleSlots(previousSlots);
             toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));

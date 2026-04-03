@@ -466,6 +466,30 @@ export default function AcademyCycleDetail() {
         toast.error(error.message);
       }
     },
+    onCreateSlot: async (trainerId: string, startTime: string, endTime: string) => {
+      if (!cycleId) return;
+      const tempId = `temp-${Date.now()}`;
+      const newSlot: SlotWithOccupancy = {
+        id: tempId,
+        trainer_id: trainerId,
+        start_time: startTime,
+        end_time: endTime,
+        max_participants: (cycle?.settings as any)?.max_participants ?? 4,
+        location_id: cycle?.location_id ?? null,
+        is_blocked: false,
+        current_assignments: [],
+        cyclus_id: cycleId,
+      };
+      setScheduleSlots(prev => [...prev, newSlot]);
+      try {
+        const result = await createProposalSlot(cycleId, trainerId, startTime, endTime);
+        setScheduleSlots(prev => prev.map(s => s.id === tempId ? { ...s, id: result.id } : s));
+        toast.success(t('proposals.slotCreated', { defaultValue: 'Slot created' }));
+      } catch (error: any) {
+        setScheduleSlots(prev => prev.filter(s => s.id !== tempId));
+        toast.error(error.message);
+      }
+    },
   };
 
   if (isFirstLoad) {
