@@ -35,10 +35,11 @@ export interface TrainerProfile {
   updated_at: string;
 }
 
-export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string, language?: string, role?: string) {
+export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string, language?: string, role?: string, timezone?: string) {
   // Use custom edge function to create user with Admin API
   // This bypasses Supabase's automatic email and sends our branded email instead
   try {
+    const detectedTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
     const { data: response, error: invokeError } = await supabase.functions.invoke('signup-user', {
       body: {
         email,
@@ -47,6 +48,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
         phone,
         language,
         role,
+        timezone: detectedTimezone,
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },
     });
@@ -151,7 +153,7 @@ export async function getUserRoles(userId: string): Promise<UserRole[]> {
   return data.map(d => d.role as UserRole);
 }
 
-export async function setUserRole(userId: string, role: UserRole) {
+export async function setUserRole(userId: string, role: UserRole, timezone?: string) {
   const { data, error } = await supabase
     .from('user_roles')
     .insert({ user_id: userId, role })
@@ -164,6 +166,7 @@ export async function setUserRole(userId: string, role: UserRole) {
   if (role === 'trainer') {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+    const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
     
     const { error: trainerError } = await supabase
       .from('trainer_profiles')
@@ -173,6 +176,7 @@ export async function setUserRole(userId: string, role: UserRole) {
         trial_ends_at: trialEnd.toISOString(),
         subscription_status: 'trial',
         is_public: false,
+        timezone: tz,
       });
     
     if (trainerError) throw trainerError;
