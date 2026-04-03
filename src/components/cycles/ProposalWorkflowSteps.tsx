@@ -2,7 +2,8 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sparkles, Eye, CheckCheck, CalendarDays, Check, RotateCcw, UserPlus, ClipboardList } from 'lucide-react';
+import { Sparkles, Eye, CheckCheck, CalendarDays, Check, RotateCcw, UserPlus, ClipboardList, Link2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Cycle } from '@/lib/cycles';
 
@@ -32,6 +33,10 @@ interface ProposalWorkflowStepsProps {
   isResetting?: boolean;
   /** When true, hides the cycle selector (step 1) — used when already scoped to a single cycle */
   hideCycleSelector?: boolean;
+  /** Number of pending link review actions */
+  pendingLinkActions?: number;
+  /** Whether links have been reviewed */
+  isLinksReviewed?: boolean;
 }
 
 export default function ProposalWorkflowSteps({
@@ -49,31 +54,42 @@ export default function ProposalWorkflowSteps({
   isGenerating,
   isResetting,
   hideCycleSelector,
+  pendingLinkActions = 0,
+  isLinksReviewed = false,
 }: ProposalWorkflowStepsProps) {
   const { t } = useTranslation('cycles');
 
   const cycleSelected = hideCycleSelector || selectedCycleId !== 'all';
 
   // Determine step statuses based on data state
+  // Steps when hideCycleSelector: Review Links → Generate → Review & Edit → Approve & Book
+  // Steps otherwise: Select Cycle → Generate → Review & Edit → Approve & Book
   const getStepStatuses = () => {
+    if (hideCycleSelector) {
+      // 4 steps: ReviewLinks, Generate, Review&Edit, Approve&Book
+      if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
+        return ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
+      }
+      if (proposedCount > 0) {
+        return ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
+      }
+      // Pre-generation: review links step first
+      const linksStatus: StepStatus = (pendingLinkActions === 0 || isLinksReviewed) ? 'completed' : 'active';
+      const generateStatus: StepStatus = linksStatus === 'completed' ? 'active' : 'upcoming';
+      return [linksStatus, generateStatus, 'upcoming', 'upcoming'] as StepStatus[];
+    }
+
+    // Standard flow (with cycle selector): 4 steps
     if (!cycleSelected) {
-      return hideCycleSelector
-        ? ['active', 'upcoming', 'upcoming'] as StepStatus[]
-        : ['active', 'upcoming', 'upcoming', 'upcoming'] as StepStatus[];
+      return ['active', 'upcoming', 'upcoming', 'upcoming'] as StepStatus[];
     }
     if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
-      return hideCycleSelector
-        ? ['completed', 'completed', 'completed'] as StepStatus[]
-        : ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
+      return ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
     }
     if (proposedCount > 0) {
-      return hideCycleSelector
-        ? ['completed', 'active', 'upcoming'] as StepStatus[]
-        : ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
+      return ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
     }
-    return hideCycleSelector
-      ? ['active', 'upcoming', 'upcoming'] as StepStatus[]
-      : ['completed', 'active', 'upcoming', 'upcoming'] as StepStatus[];
+    return ['completed', 'active', 'upcoming', 'upcoming'] as StepStatus[];
   };
 
   const statuses = getStepStatuses();
@@ -102,6 +118,25 @@ export default function ProposalWorkflowSteps({
           </SelectContent>
         </Select>
       ),
+    });
+  }
+
+  // Review Links step (only in detail page mode)
+  if (hideCycleSelector) {
+    const reviewStatus = statuses[steps.length];
+    steps.push({
+      number: stepNum++,
+      label: t('workflow.reviewLinks', { defaultValue: 'Review Links' }),
+      description: pendingLinkActions > 0
+        ? t('workflow.reviewLinksDesc', { defaultValue: '{{count}} action(s) pending', count: pendingLinkActions })
+        : t('workflow.reviewLinksDone', { defaultValue: 'All clear' }),
+      status: reviewStatus,
+      action: pendingLinkActions > 0 && reviewStatus === 'active' ? (
+        <Badge variant="secondary" className="text-xs">
+          <Link2 className="h-3 w-3 mr-1" />
+          {pendingLinkActions}
+        </Badge>
+      ) : undefined,
     });
   }
 

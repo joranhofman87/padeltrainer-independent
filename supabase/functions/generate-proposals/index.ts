@@ -84,6 +84,7 @@ interface RequestBody {
   startDate?: string;
   trainerAvailability?: TrainerAvailabilityInput[];
   additionalCriteria?: string;
+  keepCompleteGroups?: boolean;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -344,7 +345,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria } = body;
+    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups } = body;
 
     if (!cycleId) {
       return new Response(
@@ -726,8 +727,100 @@ Deno.serve(async (req) => {
       linkGroupMembers[pl.link_group].push(pl.intake_request_id);
     });
 
+    // ===== Handle complete groups as atomic units when keepCompleteGroups is true =====
+    const processedRequestIds = new Set<string>();
+
+    if (keepCompleteGroups !== false) {
+      // Find link groups where member count >= max_participants (typically 4)
+      const defaultMaxParticipants = cycle.settings?.max_group_size || 4;
+
+      for (const [groupId, memberIds] of Object.entries(linkGroupMembers)) {
+        // Only consider members that are in our current request set
+        const groupRequests = memberIds
+          .map(id => requests.find(r => r.id === id))
+          .filter(Boolean) as IntakeRequest[];
+
+        if (groupRequests.length < defaultMaxParticipants) continue;
+
+        console.log(`Complete group ${groupId}: ${groupRequests.length} members, placing as unit`);
+
+        // Find the best slot for this group based on average scoring
+        const groupMatchingSlots = slots.filter(slot => {
+          const maxP = slot.max_participants || defaultMaxParticipants;
+          const currentBookings = bookingCounts[slot.id] || 0;
+          const available = maxP - currentBookings - (slotAssignments[slot.id]?.length || 0);
+          if (available < groupRequests.length) return false;
+
+          // At least one member must have a matching time window
+          return groupRequests.some(req =>
+            req.preferred_time_windows.some(tw => matchesTimeWindow(slot.start_time, tw))
+          );
+        });
+
+        if (groupMatchingSlots.length === 0) {
+          console.log(`No slot fits complete group ${groupId}, falling back to individual scoring`);
+          continue;
+        }
+
+        // Score each candidate slot by averaging time_match across members
+        let bestSlot: AvailabilitySlot | null = null;
+        let bestAvgScore = -1;
+
+        for (const slot of groupMatchingSlots) {
+          let totalScore = 0;
+          for (const req of groupRequests) {
+            const timeResult = calculateTimeScore(slot, req, normalizedWeights.time_match);
+            totalScore += timeResult.score;
+          }
+          const avgScore = totalScore / groupRequests.length;
+          if (avgScore > bestAvgScore) {
+            bestAvgScore = avgScore;
+            bestSlot = slot;
+          }
+        }
+
+        if (!bestSlot) continue;
+
+        // Assign all members to this slot
+        let groupSuccess = true;
+        for (const req of groupRequests) {
+          const rationale: RationaleItem[] = [
+            { type: "group_cohesion", score: 50, detail: `Complete group of ${groupRequests.length} placed together` },
+            calculateTimeScore(bestSlot, req, normalizedWeights.time_match),
+          ];
+          const totalScore = rationale.reduce((sum, r) => sum + r.score, 0);
+
+          const { error: insertError } = await supabase
+            .from("proposed_assignments")
+            .insert({
+              intake_request_id: req.id,
+              slot_id: bestSlot.id,
+              trainer_id: bestSlot.trainer_id,
+              confidence_score: Math.round(totalScore),
+              rationale,
+              status: "proposed",
+            });
+
+          if (insertError) {
+            console.error(`Failed to assign group member ${req.id}:`, insertError);
+            groupSuccess = false;
+          } else {
+            if (!slotAssignments[bestSlot.id]) slotAssignments[bestSlot.id] = [];
+            slotAssignments[bestSlot.id].push(req);
+            await supabase.from("intake_requests").update({ status: "proposed" }).eq("id", req.id);
+            processedRequestIds.add(req.id);
+            generated++;
+          }
+        }
+
+        if (groupSuccess) {
+          console.log(`Complete group ${groupId} placed in slot ${bestSlot.id}`);
+        }
+      }
+    }
+
     // Sort requests: linked players first (grouped together), then the rest
-    const sortedRequests = [...requests];
+    const sortedRequests = [...requests].filter(r => !processedRequestIds.has(r.id));
     sortedRequests.sort((a, b) => {
       const aGroup = requestLinkGroup[a.id];
       const bGroup = requestLinkGroup[b.id];

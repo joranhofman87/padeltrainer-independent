@@ -66,6 +66,7 @@ import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import CycleForm from '@/components/cycles/CycleForm';
 import WaitingListTable from '@/components/waitingList/WaitingListTable';
+import PreGenerationReview from '@/components/cycles/PreGenerationReview';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
 
@@ -254,6 +255,7 @@ export default function AcademyCycleDetail() {
         startDate: config.startDate,
         trainerAvailability: config.trainerAvailability,
         additionalCriteria: config.additionalCriteria,
+        keepCompleteGroups: config.keepCompleteGroups,
       });
       if (result.skipped > 0) {
         toast.success(
@@ -606,6 +608,15 @@ export default function AcademyCycleDetail() {
 
         {/* ==================== PROPOSALS TAB ==================== */}
         <TabsContent value="proposals" className="space-y-6">
+          {/* Pre-generation review: show when there are new requests */}
+          {newCount > 0 && (
+            <PreGenerationReview
+              requests={requests}
+              playerLinks={playerLinksData}
+              onLinkChanged={refreshData}
+            />
+          )}
+
           <ProposalWorkflowSteps
             cycles={[cycle]}
             selectedCycleId={cycle.id}
