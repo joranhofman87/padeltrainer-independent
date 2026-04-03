@@ -95,7 +95,8 @@ export default function PreGenerationReview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests, playerLinks, dismissCounter]);
 
-  const totalActions = suggestions.length + unmatchedMentions.length;
+  // Only link suggestions count as blocking actions; unmatched mentions are info-only
+  const totalActions = suggestions.length;
 
   const handleLink = useCallback(async (item: SuggestionItem) => {
     const key = `${item.requestId}::${item.suggestedId}`;
@@ -125,7 +126,7 @@ export default function PreGenerationReview({
     setDismissCounter(c => c + 1);
   }, []);
 
-  if (totalActions === 0) {
+  if (totalActions === 0 && unmatchedMentions.length === 0) {
     return (
       <Card className="border-green-500/20 bg-green-500/5">
         <CardContent className="py-4">
@@ -137,6 +138,63 @@ export default function PreGenerationReview({
           </div>
         </CardContent>
       </Card>
+    );
+  }
+
+  if (totalActions === 0 && unmatchedMentions.length > 0) {
+    return (
+      <div className="space-y-3">
+        <Card className="border-green-500/20 bg-green-500/5">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle2 className="h-4 w-4" />
+              <span className="text-sm font-medium">
+                {t('preReview.allClear', { defaultValue: 'All clear — no pending link actions' })}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+        <Collapsible>
+          <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+            <AlertTriangle className="h-3 w-3" />
+            {t('preReview.unmatchedInfo', {
+              defaultValue: '{{count}} mentioned name(s) not found in registrations',
+              count: unmatchedMentions.length,
+            })}
+            <ChevronDown className="h-3 w-3" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2 space-y-1.5">
+            {unmatchedMentions.map((item, idx) => (
+              <div
+                key={`${item.requestId}::${item.mentionedName}::${idx}`}
+                className="flex items-center justify-between gap-2 p-2 rounded-md border border-muted bg-muted/30 text-sm text-muted-foreground"
+              >
+                <span className="truncate">
+                  <button
+                    type="button"
+                    className="font-medium underline decoration-dotted hover:decoration-solid cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => onPlayerClick?.(item.requestId)}
+                  >
+                    {item.requestName}
+                  </button>
+                  <span className="mx-1">
+                    {t('preReview.mentioned', { defaultValue: 'mentioned' })}
+                  </span>
+                  <span className="font-medium italic">{item.mentionedName}</span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0 shrink-0"
+                  onClick={() => handleDismissUnmatched(item)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
     );
   }
 
@@ -224,21 +282,22 @@ export default function PreGenerationReview({
               </div>
             )}
 
-            {/* Unmatched mentions */}
+            {/* Unmatched mentions — info only, not blocking */}
             {unmatchedMentions.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-sm font-medium text-orange-600 dark:text-orange-400">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  {t('preReview.unmatchedMentions', {
-                    defaultValue: '{{count}} unmatched name(s)',
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                  <AlertTriangle className="h-3 w-3" />
+                  {t('preReview.unmatchedInfo', {
+                    defaultValue: '{{count}} mentioned name(s) not found in registrations',
                     count: unmatchedMentions.length,
                   })}
-                </div>
-                <div className="space-y-1.5">
+                  <ChevronDown className="h-3 w-3" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-1.5">
                   {unmatchedMentions.map((item, idx) => (
                     <div
                       key={`${item.requestId}::${item.mentionedName}::${idx}`}
-                      className="flex items-center justify-between gap-2 p-2 rounded-md border bg-background text-sm"
+                      className="flex items-center justify-between gap-2 p-2 rounded-md border border-muted bg-muted/30 text-sm text-muted-foreground"
                     >
                       <span className="truncate">
                         <button
@@ -248,13 +307,10 @@ export default function PreGenerationReview({
                         >
                           {item.requestName}
                         </button>
-                        <span className="text-muted-foreground mx-1">
+                        <span className="mx-1">
                           {t('preReview.mentioned', { defaultValue: 'mentioned' })}
                         </span>
                         <span className="font-medium italic">{item.mentionedName}</span>
-                        <span className="text-muted-foreground ml-1">
-                          — {t('preReview.notRegistered', { defaultValue: 'not registered' })}
-                        </span>
                       </span>
                       <Button
                         size="sm"
@@ -266,8 +322,8 @@ export default function PreGenerationReview({
                       </Button>
                     </div>
                   ))}
-                </div>
-              </div>
+                </CollapsibleContent>
+              </Collapsible>
             )}
           </CardContent>
         </CollapsibleContent>
