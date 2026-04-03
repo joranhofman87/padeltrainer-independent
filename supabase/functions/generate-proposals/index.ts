@@ -87,6 +87,7 @@ interface RequestBody {
   keepCompleteGroups?: boolean; // backward compat
   linkStrategy?: 'strict' | 'prefer' | 'ignore';
   fillIncompleteGroups?: boolean;
+  maxGroupSize?: number;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -347,7 +348,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups, fillIncompleteGroups: fillIncomplete } = body;
+    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups, fillIncompleteGroups: fillIncomplete, maxGroupSize: inputMaxGroupSize } = body;
     // Resolve linkStrategy: new field takes precedence, fallback to keepCompleteGroups for backward compat
     const linkStrategy: 'strict' | 'prefer' | 'ignore' = body.linkStrategy ?? (keepCompleteGroups === false ? 'ignore' : keepCompleteGroups === true ? 'strict' : 'prefer');
     const fillIncompleteGroups = fillIncomplete ?? true;
@@ -599,7 +600,7 @@ Deno.serve(async (req) => {
                   is_public: false,
                   is_recurring: false,
                   cyclus_id: cycleId,
-                  max_participants: cycle.settings?.max_group_size || 4,
+                  max_participants: inputMaxGroupSize || cycle.settings?.max_group_size || 4,
                   min_participants: cycle.settings?.min_group_size || null,
                   academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
                   location_id: cycle.location_id || null,
@@ -737,7 +738,7 @@ Deno.serve(async (req) => {
     const reservedSlots = new Set<string>(); // slots where remaining capacity is reserved (fillIncompleteGroups=false)
 
     if (linkStrategy === 'strict' || linkStrategy === 'prefer') {
-      const defaultMaxParticipants = cycle.settings?.max_group_size || 4;
+      const defaultMaxParticipants = inputMaxGroupSize || cycle.settings?.max_group_size || 4;
 
       for (const [groupId, memberIds] of Object.entries(linkGroupMembers)) {
         const groupRequests = memberIds
@@ -855,9 +856,15 @@ Deno.serve(async (req) => {
         console.log(`Request ${request.id} (${request.full_name}) prefers ${preferredWeeks} weeks`);
       }
 
+      const defaultMaxParticipantsIndiv = inputMaxGroupSize || cycle.settings?.max_group_size || 4;
       const matchingSlots = slots.filter((slot) => {
         // Skip reserved slots (fillIncompleteGroups=false)
         if (reservedSlots.has(slot.id)) return false;
+        // HARD CAP: skip slots that are already full
+        const maxP = slot.max_participants || defaultMaxParticipantsIndiv;
+        const currentBookings = bookingCounts[slot.id] || 0;
+        const currentAssignments = slotAssignments[slot.id]?.length || 0;
+        if (currentBookings + currentAssignments >= maxP) return false;
         return request.preferred_time_windows.some((tw) =>
           matchesTimeWindow(slot.start_time, tw)
         );

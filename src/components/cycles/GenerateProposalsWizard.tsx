@@ -60,6 +60,7 @@ export interface GenerateProposalsConfig {
   additionalCriteria: string;
   linkStrategy: LinkStrategy;
   fillIncompleteGroups: boolean;
+  maxGroupSize: number;
 }
 
 interface TrainerOption {
@@ -128,6 +129,7 @@ export function GenerateProposalsWizard({
   const [additionalCriteria, setAdditionalCriteria] = useState(draft?.additionalCriteria || '');
   const [linkStrategy, setLinkStrategy] = useState<LinkStrategy>(draft?.linkStrategy || 'prefer');
   const [fillIncompleteGroups, setFillIncompleteGroups] = useState(draft?.fillIncompleteGroups ?? true);
+  const [maxGroupSize, setMaxGroupSize] = useState<number>(draft?.maxGroupSize ?? cycle.settings?.max_group_size ?? 4);
 
   // Show toast if draft was restored
   useEffect(() => {
@@ -149,11 +151,12 @@ export function GenerateProposalsWizard({
       additionalCriteria,
       linkStrategy,
       fillIncompleteGroups,
+      maxGroupSize,
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {}
-  }, [step, startDate, trainerConfigs, weights, additionalCriteria, linkStrategy, fillIncompleteGroups, STORAGE_KEY]);
+  }, [step, startDate, trainerConfigs, weights, additionalCriteria, linkStrategy, fillIncompleteGroups, maxGroupSize, STORAGE_KEY]);
 
   // Load trainers
   useEffect(() => {
@@ -302,6 +305,7 @@ export function GenerateProposalsWizard({
       additionalCriteria,
       linkStrategy,
       fillIncompleteGroups,
+      maxGroupSize,
     });
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   };
@@ -520,6 +524,24 @@ export function GenerateProposalsWizard({
       {/* Step 3: Additional Criteria */}
       {step === 3 && (
         <div className="space-y-4 py-2">
+          {/* Max group size */}
+          <div className="space-y-2">
+            <Label>{t('proposals.wizard.maxGroupSize', { defaultValue: 'Max players per group' })}</Label>
+            <p className="text-sm text-muted-foreground">
+              {t('proposals.wizard.maxGroupSizeHelp', { defaultValue: 'Maximum number of players that can be assigned to a single time slot.' })}
+            </p>
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={maxGroupSize}
+              onChange={(e) => setMaxGroupSize(Math.max(1, parseInt(e.target.value) || 4))}
+              className="w-24"
+            />
+          </div>
+
+          <Separator />
+
           {/* Linked players strategy */}
           <div className="space-y-2">
             <Label>{t('proposals.wizard.linkStrategy', { defaultValue: 'Linked players' })}</Label>
