@@ -1758,3 +1758,31 @@ export function exportIntakeRequestsToCsv(
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+// Finalize proposals: confirm assignments and create bookings
+export async function finalizeProposals(cycleId: string): Promise<{ booked: number; bookings_created: number; errors: string[] }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Authentication required');
+
+  const { data, error } = await supabase.functions.invoke('finalize-proposals', {
+    body: { cycle_id: cycleId },
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+
+  if (error) throw error;
+  return data as { booked: number; bookings_created: number; errors: string[] };
+}
+
+// Send schedule notification emails to booked players
+export async function sendScheduleNotifications(cycleId: string): Promise<{ sent: number; errors: string[] }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Authentication required');
+
+  const { data, error } = await supabase.functions.invoke('send-schedule-notifications', {
+    body: { cycle_id: cycleId },
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+
+  if (error) throw error;
+  return data as { sent: number; errors: string[] };
+}

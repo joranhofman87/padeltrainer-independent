@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation" | "schedule_notification";
   to: string;
   userId?: string;
   language?: string;
@@ -891,6 +891,63 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
       };
     }
 
+    case "schedule_notification": {
+      const scheduleEntries = (data as any).scheduleEntries || [];
+      const formatDate = (d: string) => {
+        try { return new Date(d + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }); } catch { return d; }
+      };
+
+      const scheduleRows = scheduleEntries.map((entry: any) => `
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${entry.day}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${entry.time}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${entry.trainerName}</td>
+          ${entry.location ? `<td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${entry.location}</td>` : ''}
+        </tr>
+      `).join('');
+
+      const hasLocation = scheduleEntries.some((e: any) => e.location);
+
+      return {
+        subject: `Je trainingsschema is klaar! 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Je trainingsschema is klaar! 🎾</h1>
+            <p>Hoi ${data.playerName || 'speler'},</p>
+            <p>Goed nieuws! Je bent ingedeeld voor <strong>${data.cycleName || 'de trainingen'}</strong>.</p>
+            ${data.startDate || data.endDate ? `
+              <p style="color: #6b7280;">Periode: ${data.startDate ? formatDate(data.startDate) : ''} ${data.startDate && data.endDate ? 't/m' : ''} ${data.endDate ? formatDate(data.endDate) : ''}</p>
+            ` : ''}
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0; overflow-x: auto;">
+              <h3 style="margin-top: 0; margin-bottom: 12px;">Jouw schema</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <thead>
+                  <tr style="background: #e5e7eb;">
+                    <th style="padding: 8px 12px; text-align: left;">Dag</th>
+                    <th style="padding: 8px 12px; text-align: left;">Tijd</th>
+                    <th style="padding: 8px 12px; text-align: left;">Trainer</th>
+                    ${hasLocation ? '<th style="padding: 8px 12px; text-align: left;">Locatie</th>' : ''}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${scheduleRows}
+                </tbody>
+              </table>
+            </div>
+            <p><strong>Maak je account aan</strong> om je schema altijd terug te vinden, betalingen te beheren en meer:</p>
+            <p style="margin-top: 16px;">
+              <a href="https://padeltrainer.ai/app/signup/player" style="background: ${BRAND_ORANGE}; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">Account aanmaken</a>
+            </p>
+            <p style="background: #fef3c7; padding: 12px; border-radius: 6px; color: #92400e; margin-top: 20px;">
+              <strong>Belangrijk:</strong> Gebruik hetzelfde e-mailadres (${data.playerEmail || (data as any).to || ''}) bij het aanmaken van je account, zodat je schema automatisch zichtbaar is.
+            </p>
+            <p style="margin-top: 24px;">Met sportieve groet,<br>${data.ownerName || 'PadelTrainer.ai Team'}</p>
+          </div>
+        `,
+      };
+    }
+
     default:
       return {
         subject: "PadelTrainer.ai Notification",
@@ -1171,7 +1228,7 @@ const handler = async (req: Request): Promise<Response> => {
       "club_trainer_invitation", "club_trainer_invitation_accepted",
       "partner_inquiry", "location_request",
       "booking_approved_payment", "booking_approved_invoice", "booking_rejected",
-      "intake_registration_confirmation",
+      "intake_registration_confirmation", "schedule_notification",
     ];
 
     const prefColumn = TYPE_TO_PREF_COLUMN[type];
