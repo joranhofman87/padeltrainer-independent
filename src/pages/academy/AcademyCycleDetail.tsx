@@ -49,7 +49,6 @@ import {
   assignPlayerToSlot,
   unassignPlayer,
   exportIntakeRequestsToCsv,
-  getAvailableSlotsForCycle,
   updateCycle,
   createProposalSlot,
   type Cycle,
