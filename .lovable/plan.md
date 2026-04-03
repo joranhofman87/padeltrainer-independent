@@ -1,28 +1,29 @@
 
 
-# Fix White Screen Flash When Linking/Unlinking Players
+# Extend Time Options to 24:00 in Generate Proposals Wizard
 
 ## Problem
-`onLinkChanged` calls `fetchData()` in the parent page, which sets `setIsLoading(true)` — causing the entire page to render a skeleton loader and the drawer to disappear momentarily.
+The `TIME_OPTIONS` in `GenerateProposalsWizard.tsx` only goes up to 22:00. The `DayAvailabilityPicker` already goes to 00:00 (midnight), so the proposal wizard should match.
 
-## Fix
+## Change
 
-### `src/pages/TrainerIntakeRequests.tsx`
-1. Create a separate `refreshData()` function that does the same work as `fetchData()` but does **not** set `setIsLoading(true)`. It silently refreshes requests and player links in the background.
-2. Pass `refreshData` (instead of `fetchData`) as the `onLinkChanged` callback to both `IntakeRequestDetailSheet` and `IntakeRequestsTable`.
-3. Keep `fetchData` (with loading skeleton) only for the initial load.
+### `src/components/cycles/GenerateProposalsWizard.tsx`
+Update the `TIME_OPTIONS` generation (lines 37-43) to go up to 23:30 and include 00:00:
 
-### `src/pages/academy/AcademyIntakeRequests.tsx`
-Same change — add a silent `refreshData` and pass it as `onLinkChanged`.
+```typescript
+const TIME_OPTIONS: string[] = [];
+for (let h = 6; h <= 23; h++) {
+  TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:00`);
+  TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:30`);
+}
+TIME_OPTIONS.push('00:00');
+```
 
-### `src/components/cycles/IntakeRequestDetailSheet.tsx`
-In `handleUnlinkPlayer`, add optimistic removal: filter `optimisticLinkedIds` to remove the unlinked player immediately, same pattern as linking already uses. This makes unlink feel instant too.
+This adds 22:30, 23:00, 23:30, and 00:00 (midnight) as selectable end times, consistent with the player-facing `DayAvailabilityPicker`.
 
-## Files
+### Files
 
 | File | Change |
 |------|--------|
-| `src/pages/TrainerIntakeRequests.tsx` | Add silent `refreshData`, use it for `onLinkChanged` |
-| `src/pages/academy/AcademyIntakeRequests.tsx` | Same |
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Optimistic unlink removal |
+| `src/components/cycles/GenerateProposalsWizard.tsx` | Extend `TIME_OPTIONS` to include times up to 00:00 |
 
