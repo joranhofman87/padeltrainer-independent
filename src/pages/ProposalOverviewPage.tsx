@@ -658,6 +658,17 @@ export default function ProposalOverviewPage() {
                                       <span className="text-muted-foreground">/{slot.max_participants}</span>
                                     )}
                                   </TableCell>
+                                  {cycle && (() => {
+                                    const sess = getEffectiveSessions(slot.start_time);
+                                    return (
+                                      <TableCell className="py-2 text-sm text-right tabular-nums">
+                                        <span className="font-medium">{sess.effective}</span>
+                                        {sess.excluded > 0 && (
+                                          <span className="text-muted-foreground text-xs ml-0.5">/{sess.total}</span>
+                                        )}
+                                      </TableCell>
+                                    );
+                                  })()}
                                 </TableRow>
                               );
                             })}
