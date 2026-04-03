@@ -50,12 +50,15 @@ export interface TrainerAvailabilityConfig {
   maxRating: number | null;
 }
 
+export type LinkStrategy = 'strict' | 'prefer' | 'ignore';
+
 export interface GenerateProposalsConfig {
   startDate: string;
   trainerAvailability: TrainerAvailabilityConfig[];
   weights: ScoringWeights;
   additionalCriteria: string;
-  keepCompleteGroups: boolean;
+  linkStrategy: LinkStrategy;
+  fillIncompleteGroups: boolean;
 }
 
 interface TrainerOption {
