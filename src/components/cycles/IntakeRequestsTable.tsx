@@ -549,7 +549,7 @@ export default function IntakeRequestsTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {requests.map((request) => (
+                {displayedRequests.map((request) => (
                   <TableRow 
                     key={request.id} 
                     className="cursor-pointer hover:bg-muted/50"
