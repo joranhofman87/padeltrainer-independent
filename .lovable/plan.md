@@ -1,46 +1,53 @@
 
 
-# Fix: Login fails on padeltrainer.ai but works on www
+# Fix: App slowness and 500 errors caused by render-page bot traffic overload
 
 ## Root cause
-The backend is overloaded. Evidence:
-- The Supabase metadata query itself timed out during this session
-- The `render-page` edge function logs show **dozens of boot/shutdown cycles per second** -- bots are hammering it continuously
-- Each render-page invocation likely queries the database, saturating the connection pool
-- Auth requests then get 503 "context deadline exceeded" because no DB connections are available
 
-The reason `www` works intermittently is likely timing -- the backend has brief windows of availability between bot traffic spikes.
+The render-page edge function is **still being hammered at 3-4 requests per second** by bots, despite the Cloudflare Worker caching we just deployed. Each invocation creates a new Supabase client and runs DB queries, exhausting the connection pool (max 60 connections, with auth getting only 10).
+
+This causes:
+- **Statement timeouts** ("canceling statement due to statement timeout") for academy locations queries
+- **500 errors** on subscription checks, profile fetches, and other edge functions
+- **CORS errors** as a side effect — when edge functions return 500, CORS headers are sometimes dropped
+
+The Cloudflare cache isn't effective because bots are likely hitting unique URLs (language variants, query params, different paths) that each miss the cache.
 
 ## Plan
 
-### 1. Reduce render-page load (primary fix)
-The Cloudflare Worker should **cache** bot-rendered pages instead of hitting the edge function on every request. Add `Cache-Control` headers and use Cloudflare's Cache API so repeated bot crawls of the same URL don't re-invoke the function.
+### 1. Block bot traffic at the Cloudflare Worker level (highest impact)
+
+The Cloudflare Worker currently forwards bot requests to render-page even on cache miss. We need to add **aggressive bot rate limiting at the Worker level** using Cloudflare's own infrastructure, and return a minimal static HTML fallback when the edge function is under pressure, instead of hitting the backend.
 
 In `docs/cloudflare-worker.js`:
-- Use Cloudflare's `caches.default` to cache render-page responses for 1 hour
-- Check cache before calling the edge function
-- This alone should dramatically reduce backend load
+- Add a per-IP rate limiter using a simple Map (Cloudflare Workers have ~128MB memory)
+- Limit bots to max 2 requests per 10 seconds per IP
+- When rate limited, return a minimal static HTML page with basic meta tags instead of calling the edge function
+- Add a global circuit breaker: if render-page returns 500/503/429 more than 3 times in 60 seconds, stop calling it entirely for 5 minutes and serve static fallback
 
-### 2. Add rate limiting to render-page edge function
+### 2. Add response caching inside the render-page edge function itself
+
+The in-memory rate limiter resets on every cold start (which happens every few seconds). Instead:
+
 In `supabase/functions/render-page/index.ts`:
-- Add a simple in-memory rate limiter or early-return for excessive requests
-- Return cached/stale HTML when under pressure rather than querying DB
+- Add `Cache-Control: public, max-age=3600` response headers so Supabase's own CDN can cache responses
+- Return early with a minimal static HTML for unknown/unrecognized paths instead of querying the DB
+- Reduce the scope — only query the DB for recognized marketing paths, return a generic meta tag page for everything else
 
-### 3. Frontend: add retry with backoff for auth 503s
-In `src/lib/auth.ts`:
-- When `signInWithEmail` gets a 503/retryable error, retry once after 2 seconds before showing the error
-- This handles transient overload gracefully
+### 3. Upgrade compute instance (user action)
+
+The backend has a max pool of 60 connections and auth gets only 10. With this traffic volume, even fixing the bot issue may leave things tight. The user should consider upgrading their Lovable Cloud instance for more headroom.
+
+## Expected result
+- Bot traffic no longer saturates the DB connection pool
+- Edge functions stop returning 500s
+- CORS errors disappear (they were a symptom of 500s)
+- App becomes responsive again
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `docs/cloudflare-worker.js` | Add Cloudflare Cache API caching for render-page responses |
-| `supabase/functions/render-page/index.ts` | Add basic rate limiting / early cache response |
-| `src/lib/auth.ts` | Add single retry with 2s delay on 503 errors |
-
-## Expected result
-- Bot traffic no longer saturates the DB connection pool
-- Auth endpoint becomes reliably available
-- Login works consistently on both `padeltrainer.ai` and `www.padeltrainer.ai`
+| `docs/cloudflare-worker.js` | Add per-IP bot rate limiting, global circuit breaker, static HTML fallback |
+| `supabase/functions/render-page/index.ts` | Add Cache-Control headers, early return for unrecognized paths, remove in-memory rate limiter (moved to Worker) |
 
