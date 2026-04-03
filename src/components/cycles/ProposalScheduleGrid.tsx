@@ -979,6 +979,7 @@ export default function ProposalScheduleGrid({
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [unplacedSearch, setUnplacedSearch] = useState('');
 
   // Undo stack — stores previous slot snapshots
   const [undoStack, setUndoStack] = useState<UndoItem[]>([]);
@@ -1000,13 +1001,20 @@ export default function ProposalScheduleGrid({
     onUndo?.(last.previousSlots);
   }, [undoStack, onUndo]);
 
-  // Filter unplaced players by search query
+  // Filter unplaced players by global search query AND local sidebar search
   const filteredUnplaced = useMemo(() => {
     if (!unplacedPlayers) return [];
-    if (!searchQuery.trim()) return unplacedPlayers;
-    const q = searchQuery.toLowerCase();
-    return unplacedPlayers.filter(p => p.full_name.toLowerCase().includes(q));
-  }, [unplacedPlayers, searchQuery]);
+    let result = unplacedPlayers;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(p => p.full_name.toLowerCase().includes(q));
+    }
+    if (unplacedSearch.trim()) {
+      const q = unplacedSearch.toLowerCase();
+      result = result.filter(p => p.full_name.toLowerCase().includes(q));
+    }
+    return result;
+  }, [unplacedPlayers, searchQuery, unplacedSearch]);
 
   // Compute which days have placed players matching the search query
   const daysWithSearchMatches = useMemo(() => {
@@ -1593,10 +1601,29 @@ export default function ProposalScheduleGrid({
                       </Button>
                     </div>
                   </div>
+                  <div className="px-2 pb-2">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        value={unplacedSearch}
+                        onChange={(e) => setUnplacedSearch(e.target.value)}
+                        placeholder={t('proposals.searchPlayers', { defaultValue: 'Search players...' })}
+                        className="h-7 text-xs pl-7 pr-7"
+                      />
+                      {unplacedSearch && (
+                        <button
+                          onClick={() => setUnplacedSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <span className="text-xs">✕</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <DroppableUnplacedPool>
                     {filteredUnplaced.length === 0 ? (
                       <p className="text-xs text-muted-foreground text-center py-4 italic">
-                        {searchQuery
+                        {(searchQuery || unplacedSearch)
                           ? t('proposals.noSearchResults', { defaultValue: 'No players found' })
                           : t('proposals.allPlaced', { defaultValue: 'All players are placed' })
                         }
