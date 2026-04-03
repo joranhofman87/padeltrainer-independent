@@ -210,7 +210,10 @@ export default {
       try {
         const renderUrl = `${env.RENDER_FUNCTION_URL}?path=${encodeURIComponent(url.pathname)}`;
         const response = await fetch(renderUrl, {
-          headers: { 'User-Agent': userAgent },
+          headers: {
+            'User-Agent': userAgent,
+            'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}`,
+          },
         });
         
         if (response.ok) {
