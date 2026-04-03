@@ -218,19 +218,21 @@ export function GenerateProposalsWizard({
 
     setAvailableTrainers(trainers);
 
-    // Pre-select only trainers explicitly saved in cycle settings
-    const applicableIds = cycle.settings?.applicable_trainer_ids || [];
-    const preSelected = applicableIds.length > 0
-      ? trainers.filter(t => applicableIds.includes(t.id))
-      : [];
+    // Only pre-select if we don't have a restored draft with trainer configs
+    if (trainerConfigs.length === 0) {
+      const applicableIds = cycle.settings?.applicable_trainer_ids || [];
+      const preSelected = applicableIds.length > 0
+        ? trainers.filter(t => applicableIds.includes(t.id))
+        : [];
 
-    setTrainerConfigs(preSelected.map(t => ({
-      trainerId: t.id,
-      trainerName: t.name,
-      windows: [{ day: 'monday', start: '09:00', end: '17:00' }],
-      minRating: t.preferredMinRating,
-      maxRating: t.preferredMaxRating,
-    })));
+      setTrainerConfigs(preSelected.map(t => ({
+        trainerId: t.id,
+        trainerName: t.name,
+        windows: [{ day: 'monday', start: '09:00', end: '17:00' }],
+        minRating: t.preferredMinRating,
+        maxRating: t.preferredMaxRating,
+      })));
+    }
   };
 
   const toggleTrainer = (trainer: TrainerOption) => {
