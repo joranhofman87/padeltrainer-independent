@@ -600,7 +600,7 @@ Deno.serve(async (req) => {
                   is_public: false,
                   is_recurring: false,
                   cyclus_id: cycleId,
-                  max_participants: cycle.settings?.max_group_size || 4,
+                  max_participants: inputMaxGroupSize || cycle.settings?.max_group_size || 4,
                   min_participants: cycle.settings?.min_group_size || null,
                   academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
                   location_id: cycle.location_id || null,
