@@ -69,6 +69,7 @@ import {
   linkPlayers,
   unlinkPlayer,
 } from '@/lib/cycles';
+import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion } from '@/lib/suggestLinks';
 import ProposalCard from './ProposalCard';
 import EditIntakeRequestDialog from './EditIntakeRequestDialog';
 
