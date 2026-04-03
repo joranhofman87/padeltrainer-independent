@@ -723,80 +723,6 @@ export default function IntakeRequestDetailSheet({
             )}
           </div>
 
-          <Separator />
-
-          {/* Actions */}
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowEditDialog(true)}
-            >
-              <Pencil className="h-4 w-4 mr-1" />
-              {t('intakeRequests.actions.edit', { defaultValue: 'Bewerken' })}
-            </Button>
-            {request.status !== 'confirmed' && (
-              <Button 
-                size="sm" 
-                onClick={() => handleStatusChange('confirmed')}
-                disabled={isUpdating}
-              >
-                <CheckCircle2 className="h-4 w-4 mr-1" />
-                {t('intakeRequests.actions.confirm')}
-              </Button>
-            )}
-            {request.status !== 'waitlist' && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleStatusChange('waitlist')}
-                disabled={isUpdating}
-              >
-                <Clock3 className="h-4 w-4 mr-1" />
-                {t('intakeRequests.actions.waitlist')}
-              </Button>
-            )}
-            {request.status !== 'rejected' && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => handleStatusChange('rejected')}
-                disabled={isUpdating}
-              >
-                <XCircle className="h-4 w-4 mr-1" />
-                {t('intakeRequests.actions.reject')}
-              </Button>
-            )}
-
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button 
-                  variant="destructive" 
-                  size="sm"
-                  className="ml-auto"
-                  disabled={isDeleting}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  {t('intakeRequests.actions.delete')}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('intakeRequests.delete.title')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('intakeRequests.delete.description')}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('intakeRequests.delete.cancel')}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
-                    {t('intakeRequests.delete.confirm')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
         </div>
 
         {/* Edit Dialog */}
@@ -807,6 +733,23 @@ export default function IntakeRequestDetailSheet({
             request={request}
             onSuccess={() => {
               onStatusChange?.();
+            }}
+          />
+        )}
+
+        {/* Reassign Dialog */}
+        {cycleId && proposal && (
+          <ReassignPlayerDialog
+            open={showReassign}
+            onOpenChange={setShowReassign}
+            assignmentId={proposal.id}
+            currentSlotId={proposal.slot_id}
+            cycleId={cycleId}
+            playerName={request.full_name}
+            onReassigned={() => {
+              onStatusChange?.();
+              // Refresh proposal
+              getProposedAssignmentForRequest(request.id).then(setProposal);
             }}
           />
         )}
