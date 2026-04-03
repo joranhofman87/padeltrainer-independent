@@ -65,6 +65,7 @@ export interface GenerateProposalsConfig {
   linkStrategy: LinkStrategy;
   fillIncompleteGroups: boolean;
   maxGroupSize: number;
+  timezone?: string;
 }
 
 interface TrainerOption {

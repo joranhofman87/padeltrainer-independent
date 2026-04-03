@@ -580,14 +580,32 @@ Deno.serve(async (req) => {
 
           // Generate uniform 60-min slots for the FULL trainer availability window
           {
+            // Helper: compute UTC offset in minutes for a given date and timezone
+            function getTimezoneOffsetMs(date: Date, tz: string): number {
+              const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
+              const tzStr = date.toLocaleString('en-US', { timeZone: tz });
+              return new Date(utcStr).getTime() - new Date(tzStr).getTime();
+            }
+
             let slotStartMinutes = windowStartMinutes;
             while (slotStartMinutes + SLOT_DURATION <= windowEndMinutes) {
+              // Create slot in local timezone by computing UTC offset for this specific date
+              const localHour = Math.floor(slotStartMinutes / 60);
+              const localMin = slotStartMinutes % 60;
+
+              // Build a date at the local time first, then adjust for timezone
               const startDateTime = new Date(current);
-              startDateTime.setHours(Math.floor(slotStartMinutes / 60), slotStartMinutes % 60, 0, 0);
+              startDateTime.setUTCHours(localHour, localMin, 0, 0);
+              // Apply timezone offset: shift from "naive local" to correct UTC
+              const offsetMs = getTimezoneOffsetMs(startDateTime, timezone);
+              startDateTime.setTime(startDateTime.getTime() + offsetMs);
 
               const endMinutes = slotStartMinutes + SLOT_DURATION;
+              const endLocalHour = Math.floor(endMinutes / 60);
+              const endLocalMin = endMinutes % 60;
               const endDateTime = new Date(current);
-              endDateTime.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+              endDateTime.setUTCHours(endLocalHour, endLocalMin, 0, 0);
+              endDateTime.setTime(endDateTime.getTime() + offsetMs);
 
               // Check for conflicts with existing non-cycle slots
               const startMs = startDateTime.getTime();
