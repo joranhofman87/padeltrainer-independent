@@ -926,11 +926,11 @@ Deno.serve(async (req) => {
 
         // Group cohesion bonus: if this player is linked with others, boost slots where linked members are already placed
         const playerGroup = requestLinkGroup[request.id];
-        if (playerGroup) {
+        if (playerGroup && linkStrategy !== 'ignore') {
           const groupMemberIds = linkGroupMembers[playerGroup] || [];
           const linkedInSlot = existingPlayersInSlot.filter(p => groupMemberIds.includes(p.id));
           if (linkedInSlot.length > 0) {
-            const cohesionScore = 25; // Strong bonus to keep linked players together
+            const cohesionScore = linkStrategy === 'strict' ? 75 : 50;
             rationale.push({ type: "group_cohesion", score: cohesionScore, detail: `${linkedInSlot.length} linked player(s) already in this slot` });
           }
         }

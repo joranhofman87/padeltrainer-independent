@@ -272,7 +272,8 @@ export default function AcademyCycleDetail() {
         startDate: config.startDate,
         trainerAvailability: config.trainerAvailability,
         additionalCriteria: config.additionalCriteria,
-        keepCompleteGroups: config.keepCompleteGroups,
+        linkStrategy: config.linkStrategy,
+        fillIncompleteGroups: config.fillIncompleteGroups,
       });
       if (result.skipped > 0) {
         toast.success(

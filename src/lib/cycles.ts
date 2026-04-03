@@ -1215,7 +1215,8 @@ export async function generateProposals(
     startDate?: string;
     trainerAvailability?: TrainerAvailabilityInput[];
     additionalCriteria?: string;
-    keepCompleteGroups?: boolean;
+    linkStrategy?: 'strict' | 'prefer' | 'ignore';
+    fillIncompleteGroups?: boolean;
   }
 ): Promise<{ generated: number; skipped: number; errors?: string[] }> {
   // Persist trainer availability windows to cycle settings for the schedule grid
@@ -1246,7 +1247,8 @@ export async function generateProposals(
       startDate: options?.startDate,
       trainerAvailability: options?.trainerAvailability,
       additionalCriteria: options?.additionalCriteria,
-      keepCompleteGroups: options?.keepCompleteGroups ?? true,
+      linkStrategy: options?.linkStrategy ?? 'prefer',
+      fillIncompleteGroups: options?.fillIncompleteGroups ?? true,
     }
   });
 
