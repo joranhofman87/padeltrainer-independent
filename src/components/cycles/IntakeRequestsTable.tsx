@@ -47,7 +47,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getLinkedIdsForRequest } from '@/lib/suggestLinks';
+import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getLinkedIdsForRequest, getUnmatchedMentions, getDismissedUnmatched, dismissUnmatchedMention } from '@/lib/suggestLinks';
 import { toast } from 'sonner';
 
 interface TrainerOption {
