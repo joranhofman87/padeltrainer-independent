@@ -117,6 +117,20 @@ export default function ProposalOverviewPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [pageStatus, setPageStatus] = useState<PageStatus>('idle');
   const [tz, setTz] = useState<string | undefined>(stateTimezone);
+  const [cycle, setCycle] = useState<Cycle | null>(null);
+  const [excludedDates, setExcludedDates] = useState<string[]>([]);
+  const [holidayPickerOpen, setHolidayPickerOpen] = useState(false);
+
+  // Fetch cycle data
+  useEffect(() => {
+    if (!cycleId) return;
+    getCycle(cycleId).then(c => {
+      if (c) {
+        setCycle(c);
+        setExcludedDates(c.settings?.excluded_dates ?? []);
+      }
+    }).catch(console.error);
+  }, [cycleId]);
 
   // If no slots were passed via state, fetch them using cycleId
   useEffect(() => {
