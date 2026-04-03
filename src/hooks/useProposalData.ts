@@ -94,6 +94,7 @@ export function useScheduleSlotsQuery(cycleId: string | undefined, enabled: bool
     queryFn: () => (cycleId ? getAvailableSlotsForCycle(cycleId) : Promise.resolve([])),
     enabled: !!cycleId && enabled,
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 }
 
