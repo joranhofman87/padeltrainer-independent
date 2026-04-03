@@ -1,52 +1,36 @@
 
 
-# Surface "Unmatched Names" from Notes
+# Fix Unmatched Mentions: Actually Detect Names, Not Sentences
 
 ## Problem
-Players mention names in their notes (e.g., "I want to train with Angelique, Ingrid, and Christel"), but some of those names don't match any registration. Trainers currently have no way to know this without reading every note manually. These are potential new registrations — low-hanging fruit for growing the group.
+The current `getUnmatchedMentions` splits notes by commas/newlines and treats each fragment as a potential name. This means entire sentences like "Ik speel nu zo'n 4 a 5 jaar" or "Geen tennisachtergrond" show up as "unmatched names." Only actual name-like phrases (e.g., "Stefan Mols", "Angelique Mutsaers", "Els van der Meulen") should be surfaced.
 
-## Approach
+## Root cause
+The splitting approach is too coarse — it produces sentence-length fragments. The "capitalized word" check isn't enough because Dutch sentences naturally start with capitals ("Ik speel...").
 
-### 1. Extract mentioned names that don't match (`src/lib/suggestLinks.ts`)
-Add a new function `getUnmatchedMentions` that:
-- Takes a request's notes and the list of all requests in the same cycle
-- Extracts name-like tokens/phrases from the notes (split by commas, "en"/"and", newlines)
-- For each extracted phrase, checks if it matches any registration's `full_name` (using the same normalization logic)
-- Returns the list of phrases that did NOT match any registration — these are the "unmatched mentions"
-- Also filters out already-dismissed unmatched mentions (reuse the localStorage dismissal pattern with a separate key like `dismissed-unmatched-mentions`)
+## Fix — `src/lib/suggestLinks.ts` → `getUnmatchedMentions`
 
-### 2. Show warning indicator in the table (`src/components/cycles/IntakeRequestsTable.tsx`)
-Next to the existing lightbulb (matched suggestions), show an `AlertTriangle` icon (orange/amber) with a count when there are unmatched mentions. Clicking opens a popover showing:
-- Each unmatched name phrase
-- A dismiss button (X) per name to mark it as "handled" (persisted in localStorage)
-- Brief explanation: "These names were mentioned but not found in registrations"
+Replace the fragment-based approach with a name-pattern extraction:
 
-### 3. Show in detail sheet (`src/components/cycles/IntakeRequestDetailSheet.tsx`)
-In the existing suggestions section, add an "Unmatched names" subsection below the matched suggestions, showing the same unmatched names with dismiss buttons.
+1. **Extract candidate names using a regex** that finds sequences of 2-4 capitalized words (optionally connected by particles like "van", "de", "der"):
+   ```
+   /\b([A-Z\u00C0-\u00FF][a-z\u00E0-\u00FF]+(?:\s+(?:van|de|den|der|het|ter|ten)\s+)?[A-Z\u00C0-\u00FF][a-z\u00E0-\u00FF]+(?:\s+[A-Za-z\u00C0-\u00FF][a-z\u00E0-\u00FF]+)*)/g
+   ```
+   This matches things like "Stefan Mols", "Els van der Meulen", "Angelique Mutsaers" but NOT "Ik speel" (lowercase second word) or "Geen tennisachtergrond" (second word lowercase).
 
-## Technical detail
+2. **Also match single capitalized words** that appear right after name-indicating phrases like "met ", "samen met ", "zijn ", "voorkeuren zijn " — but only if the word isn't a common Dutch/filler word.
 
-### Name extraction heuristic
-Notes like `"Ik wil graag samen met Angelique Bakker, Ingrid de Vries en Christel"` get split by:
-1. Common Dutch/English conjunctions: `, `, ` en `, ` and `
-2. Each fragment is trimmed and checked against all registrations' normalized `full_name`
-3. Fragments that are too short (< 3 chars) or are common Dutch filler words are ignored
-4. Fragments that match a registration are excluded (those are already handled by the existing suggestion system)
+3. **Cap fragment length**: reject any candidate longer than ~4 words (excluding particles). Real names are 2-4 words max.
 
-### Dismissal
-- New localStorage key: `dismissed-unmatched-mentions`
-- Store as `requestId::normalizedPhrase` pairs
-- Same pattern as existing `dismissed-link-suggestions`
+4. **Filter against registrations** (same as now) — if the candidate matches an existing registration, skip it.
 
-### Computing in the table
-- Add a `unmatchedMap` alongside the existing `suggestionsMap`, computed in a `useMemo`
-- The `renderLinkedColumn` function renders the warning icon when unmatched mentions exist
+5. **Filter against filler words** — if all significant words in the candidate are filler, skip it.
+
+This dramatically reduces false positives: sentences, descriptions, and single filler words won't pass the capitalization pattern.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/lib/suggestLinks.ts` | Add `getUnmatchedMentions`, `dismissUnmatchedMention`, `getDismissedUnmatched` |
-| `src/components/cycles/IntakeRequestsTable.tsx` | Compute unmatched mentions per row, show `AlertTriangle` indicator + popover with dismiss |
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Show unmatched names section below existing suggestions |
+| `src/lib/suggestLinks.ts` | Rewrite `getUnmatchedMentions` to use regex-based name extraction instead of fragment splitting |
 
