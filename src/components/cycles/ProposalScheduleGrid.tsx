@@ -268,6 +268,7 @@ function SlotEditPopover({
   const [open, setOpen] = useState(false);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [targetDay, setTargetDay] = useState(selectedDay);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
