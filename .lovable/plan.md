@@ -1,58 +1,32 @@
 
 
-# Fix: Enforce Max Group Size + Add Configurable Setting
+# Keep Wizard Draft When Resetting Proposals
 
 ## Problem
-1. **Critical bug**: The individual assignment loop (line 858-994) never filters out full slots. Capacity is only a *scoring factor* — a slot at 10/4 still gets a positive score from time, trainer, level, etc. and players keep getting assigned.
-2. **No configurable max group size** in the wizard. It defaults to `cycle.settings?.max_group_size || 4` but trainers can't change it per generation run.
+When resetting proposals, the localStorage draft for the Generate wizard is cleared (because generation succeeded previously). After reset, the trainer returns to step 3 but has to re-enter all settings (trainers, times, weights, etc.) from scratch.
 
-## Fix 1: Hard capacity filter in the edge function
+## Fix
+Only clear the localStorage draft on **successful generation**, not on reset. Currently, `localStorage.removeItem` is called inside `handleGenerate` in the wizard — this is correct and stays. The issue is that the draft was already cleared from the *previous* successful generation. On reset, the trainer goes back to step 3 with no draft.
 
-### `supabase/functions/generate-proposals/index.ts`
-In the individual scoring loop (~line 858), add a hard filter that excludes slots where current assignments + bookings >= max_participants:
+Actually, the real fix is simpler: the draft IS cleared after generation succeeds (line 310). When the trainer resets and goes back to step 3, there's no draft because it was removed after the last generation. The solution is to **not clear the draft on successful generation** — instead, only clear it when the user **leaves the cycle detail page entirely** or when the cycle changes. This way, after reset, the draft is still available.
 
-```typescript
-const matchingSlots = slots.filter((slot) => {
-  if (reservedSlots.has(slot.id)) return false;
-  // HARD CAP: skip slots that are already full
-  const maxP = slot.max_participants || defaultMaxParticipants;
-  const currentBookings = bookingCounts[slot.id] || 0;
-  const currentAssignments = slotAssignments[slot.id]?.length || 0;
-  if (currentBookings + currentAssignments >= maxP) return false;
-  // Time window match
-  return request.preferred_time_windows.some((tw) =>
-    matchesTimeWindow(slot.start_time, tw)
-  );
-});
-```
+Wait — that would mean the draft persists forever even after proposals are accepted. Better approach: **keep clearing on generation, but re-save the draft immediately before resetting proposals**. The reset handler in `AcademyCycleDetail.tsx` can snapshot the current wizard state back to localStorage before calling reset.
 
-Also add `defaultMaxParticipants` at the top of the handler (it's currently only defined inside the linked-groups block).
+Simplest approach: In `GenerateProposalsWizard.tsx`, **don't clear localStorage on successful generation**. The draft naturally gets overwritten on every change anyway. Only clear it when the component unmounts AND proposals exist (i.e., the workflow moved past generation). This way after reset, the last config is still there.
 
-## Fix 2: Add "Max group size" input to the wizard
+Even simpler: Just remove the `localStorage.removeItem(STORAGE_KEY)` call from `handleGenerate`. The draft stays until the trainer changes it. When they come back after reset, everything is pre-filled. When they eventually move past the generate step for good, the draft just sits harmlessly in localStorage.
+
+## Change
 
 ### `src/components/cycles/GenerateProposalsWizard.tsx`
-- Add `maxGroupSize` state (default from `cycle.settings?.max_group_size || 4`), persisted in localStorage draft
-- Show a number input in Step 3 (Additional Criteria) labeled "Max players per group"
-- Pass it through `GenerateProposalsConfig`
+- Remove `localStorage.removeItem(STORAGE_KEY)` from `handleGenerate` (line 310)
+- The draft persists and is always available when returning to step 3
 
-### `src/lib/cycles.ts`
-- Add `maxGroupSize` to the config interface and pass it to the edge function
-
-### `supabase/functions/generate-proposals/index.ts`
-- Accept `maxGroupSize` from request body
-- Use it as `defaultMaxParticipants` instead of always reading from `cycle.settings`
-- Apply it when creating slots (line 602: `max_participants`) and when checking capacity
-
-## Result
-- Slots are never over-filled — hard cap enforced
-- Trainers can set max group size (default 4 for padel) per generation run
-- The setting is persisted in the wizard draft
+That's it — one line removal.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-proposals/index.ts` | Add hard capacity filter + accept `maxGroupSize` param |
-| `src/components/cycles/GenerateProposalsWizard.tsx` | Add max group size input in step 3 |
-| `src/lib/cycles.ts` | Add `maxGroupSize` to config interface |
+| `src/components/cycles/GenerateProposalsWizard.tsx` | Remove `localStorage.removeItem(STORAGE_KEY)` from handleGenerate |
 
