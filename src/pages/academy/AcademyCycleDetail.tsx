@@ -370,7 +370,7 @@ export default function AcademyCycleDetail() {
       if (req) setSelectedRequest(req);
     },
     onMovePlayer: async (assignmentId: string, newSlotId: string) => {
-      const prev = [...scheduleSlots];
+      const prev = deepCloneSlots();
       setScheduleSlots(slots => {
         let assignment: any = null;
         const updated = slots.map(s => {
@@ -384,12 +384,16 @@ export default function AcademyCycleDetail() {
         if (!assignment) return slots;
         return updated.map(s => s.id === newSlotId ? { ...s, current_assignments: [...s.current_assignments, assignment] } : s);
       });
+      pendingMutationsRef.current++;
       try {
         await movePlayerAssignment(assignmentId, newSlotId);
         toast.success(t('proposals.playerMoved', 'Player moved successfully'));
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
+      } finally {
+        pendingMutationsRef.current--;
+        safeInvalidateSlots();
       }
     },
     onMoveSlot: async (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => {
