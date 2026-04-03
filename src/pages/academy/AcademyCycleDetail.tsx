@@ -177,12 +177,21 @@ export default function AcademyCycleDetail() {
   const { data: scheduleSlots = [] } = useScheduleSlotsQuery(cycleId, shouldLoadSlots);
   const queryClient = useQueryClient();
   const slotsQueryKey = ['proposal-slots', cycleId];
+  const pendingMutationsRef = useRef(0);
 
   const setScheduleSlots = (updater: SlotWithOccupancy[] | ((prev: SlotWithOccupancy[]) => SlotWithOccupancy[])) => {
     queryClient.setQueryData<SlotWithOccupancy[]>(slotsQueryKey, old => {
       const prev = old ?? [];
       return typeof updater === 'function' ? updater(prev) : updater;
     });
+  };
+
+  const deepCloneSlots = () => JSON.parse(JSON.stringify(scheduleSlots)) as SlotWithOccupancy[];
+
+  const safeInvalidateSlots = () => {
+    if (pendingMutationsRef.current === 0 && cycleId) {
+      invalidateSlots(cycleId);
+    }
   };
 
   // Local state
