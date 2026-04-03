@@ -99,10 +99,12 @@ export default function ProposalOverviewPage() {
   const stateSlots: SlotWithOccupancy[] = (location.state as any)?.slots ?? [];
   const cycleId: string | undefined = (location.state as any)?.cycleId;
   const backPath: string = (location.state as any)?.backPath ?? -1;
+  const stateTimezone: string | undefined = (location.state as any)?.timezone;
 
   const [fetchedSlots, setFetchedSlots] = useState<SlotWithOccupancy[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [pageStatus, setPageStatus] = useState<PageStatus>('idle');
+  const [tz, setTz] = useState<string | undefined>(stateTimezone);
 
   // If no slots were passed via state, fetch them using cycleId
   useEffect(() => {
