@@ -35,10 +35,11 @@ export interface TrainerProfile {
   updated_at: string;
 }
 
-export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string, language?: string, role?: string) {
+export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string, language?: string, role?: string, timezone?: string) {
   // Use custom edge function to create user with Admin API
   // This bypasses Supabase's automatic email and sends our branded email instead
   try {
+    const detectedTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
     const { data: response, error: invokeError } = await supabase.functions.invoke('signup-user', {
       body: {
         email,
@@ -47,6 +48,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
         phone,
         language,
         role,
+        timezone: detectedTimezone,
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },
     });
