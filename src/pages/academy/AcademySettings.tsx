@@ -125,7 +125,7 @@ export default function AcademySettings() {
     const loadTermsAndWelcome = async () => {
       const { data } = await supabase
         .from('academy_profiles')
-        .select('general_terms, welcome_message')
+        .select('general_terms, welcome_message, timezone')
         .eq('id', activeAcademy.id)
         .maybeSingle();
       if (data?.general_terms) {
@@ -133,6 +133,9 @@ export default function AcademySettings() {
       }
       if (data?.welcome_message) {
         setWelcomeMessage(data.welcome_message);
+      }
+      if ((data as any)?.timezone) {
+        setAcademyTimezone((data as any).timezone);
       }
     };
     loadTermsAndWelcome();
