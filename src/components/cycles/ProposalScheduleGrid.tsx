@@ -924,7 +924,7 @@ function DroppableUnplacedPool({ children }: { children: React.ReactNode }) {
 
 export default function ProposalScheduleGrid({
   slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onUndo,
-  unplacedPlayers, onAssignPlayer, onUnassignPlayer,
+  unplacedPlayers, allPlayers, onAssignPlayer, onUnassignPlayer,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
