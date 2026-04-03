@@ -771,6 +771,11 @@ function DraggableUnplacedPlayer({
               {t(`skipReasons.${player.skip_reason}.short`, { defaultValue: 'Skipped' })}
             </Badge>
           )}
+          {(player.sessions_per_week ?? 1) > 1 && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 border-primary/40 text-primary">
+              {player.sessions_per_week}×/wk
+            </Badge>
+          )}
         </div>
         {player.preferred_days.length > 0 && (
           <span className="text-[10px] text-muted-foreground truncate">
