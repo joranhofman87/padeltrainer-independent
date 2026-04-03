@@ -263,9 +263,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       (event, nextSession) => {
         if (event === 'TOKEN_REFRESHED' && !nextSession) {
-          logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
+          logger.warn('Token refresh failed, clearing stale session', { component: 'useAuth' });
+          // Clear stale local storage immediately to stop retry loops
+          localStorage.removeItem('sb-ppkbhdiiqdusdeatgdft-auth-token');
+          setUser(null);
+          setSession(null);
           setLoading(false);
-          void supabase.auth.signOut();
+          lastFetchedRef.current = null;
+          setProfile(null);
+          setRole(null);
+          setRoles([]);
+          setIsClubManager(false);
+          setIsAcademyManager(false);
+          setSubscription(null);
+          setProfileReady(false);
+          setProfileFetchFailed(false);
           return;
         }
 

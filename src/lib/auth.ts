@@ -109,21 +109,44 @@ export async function signUpWithEmail(email: string, password: string, fullName:
 }
 
 export async function signInWithEmail(email: string, password: string) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-  return { data, error };
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { data, error };
+  } catch (err: any) {
+    // CORS or network failure — the request never completed
+    logger.error('Sign-in network failure', err as Error, { component: 'auth' });
+    return {
+      data: { user: null, session: null },
+      error: {
+        message: 'Login is temporarily unavailable. Please try again in a moment.',
+        name: 'NetworkError',
+      } as any,
+    };
+  }
 }
 
 export async function signInWithGoogle() {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: getAuthRedirectUrl('/app/auth'),
-    },
-  });
-  return { data, error };
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: getAuthRedirectUrl('/app/auth'),
+      },
+    });
+    return { data, error };
+  } catch (err: any) {
+    logger.error('Google sign-in network failure', err as Error, { component: 'auth' });
+    return {
+      data: null,
+      error: {
+        message: 'Google sign-in is temporarily unavailable. Please try again.',
+        name: 'NetworkError',
+      } as any,
+    };
+  }
 }
 
 export async function signOut() {

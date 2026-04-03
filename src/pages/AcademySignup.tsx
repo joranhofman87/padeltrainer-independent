@@ -69,54 +69,65 @@ export default function AcademySignup() {
     if (!validateForm()) return;
     if (isSuspicious()) return;
     
-    trackEvent('signup_started', { role: 'academy', method: 'email', ...getUtmParams() });
+    try { trackEvent('signup_started', { role: 'academy', method: 'email', ...getUtmParams() }); } catch {}
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Academy');
+    try {
+      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Academy');
 
-    if (error) {
-      logger.error('Academy signup failed', error, { component: 'AcademySignup', action: 'signUp' });
+      if (error) {
+        logger.error('Academy signup failed', error, { component: 'AcademySignup', action: 'signUp' });
+        toast({
+          title: t('signUp.error', 'Error'),
+          description: error.message,
+          variant: 'destructive',
+        });
+      } else if (data?.session) {
+        try { trackEvent('signup_completed', { role: 'academy', method: 'email' }); } catch {}
+        localStorage.setItem('pendingRole', 'academy');
+        if (data.user?.id) {
+          supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
+        }
+        toast({
+          title: t('signUp.success'),
+          description: t('signUp.successDescription'),
+        });
+        navigate('/academy/onboarding');
+      } else {
+        try { trackEvent('signup_completed', { role: 'academy', method: 'email' }); } catch {}
+        localStorage.setItem('pendingRole', 'academy');
+        setShowVerification(true);
+      }
+    } catch (err) {
+      logger.error('Unexpected signup error', err as Error, { component: 'AcademySignup' });
       toast({
         title: t('signUp.error', 'Error'),
-        description: error.message,
+        description: t('signIn.genericError', 'Something went wrong. Please try again.'),
         variant: 'destructive',
       });
-    } else if (data?.session) {
-      trackEvent('signup_completed', { role: 'academy', method: 'email' });
-      localStorage.setItem('pendingRole', 'academy');
-      // Save language preference (non-blocking)
-      if (data.user?.id) {
-        supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
-      }
-      // Slack notification handled server-side by signup-user
-      toast({
-        title: t('signUp.success'),
-        description: t('signUp.successDescription'),
-      });
-      navigate('/academy/onboarding');
-    } else {
-      trackEvent('signup_completed', { role: 'academy', method: 'email' });
-      localStorage.setItem('pendingRole', 'academy');
-      // Slack notification handled server-side by signup-user
-      setShowVerification(true);
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
-    trackEvent('signup_started', { role: 'academy', method: 'google', ...getUtmParams() });
-    localStorage.setItem('pendingRole', 'academy');
-    
-    const { error } = await signInWithGoogle();
+    try {
+      try { trackEvent('signup_started', { role: 'academy', method: 'google', ...getUtmParams() }); } catch {}
+      localStorage.setItem('pendingRole', 'academy');
+      
+      const { error } = await signInWithGoogle();
 
-    if (error) {
-      toast({
-        title: t('signUp.error', 'Error'),
-        description: error.message,
-        variant: 'destructive',
-      });
+      if (error) {
+        toast({
+          title: t('signUp.error', 'Error'),
+          description: error.message,
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      logger.error('Unexpected Google signup error', err as Error, { component: 'AcademySignup' });
+    } finally {
       setIsLoading(false);
     }
   };
