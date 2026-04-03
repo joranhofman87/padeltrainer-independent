@@ -722,6 +722,7 @@ function DraggableSlotCard({
             {allPlayers && onAssignPlayer && (
               <AddPlayerToSlotPopover
                 slotId={slot.id}
+                slot={slot}
                 allPlayers={allPlayers}
                 currentAssignmentIds={currentAssignmentIds}
                 onAssignPlayer={onAssignPlayer}
