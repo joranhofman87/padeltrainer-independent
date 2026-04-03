@@ -93,7 +93,8 @@ export function useScheduleSlotsQuery(cycleId: string | undefined, enabled: bool
     queryKey: ['proposal-slots', cycleId],
     queryFn: () => (cycleId ? getAvailableSlotsForCycle(cycleId) : Promise.resolve([])),
     enabled: !!cycleId && enabled,
-    staleTime: 60_000,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
   });
 }
