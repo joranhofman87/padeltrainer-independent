@@ -1,33 +1,26 @@
 
 
-# Enable Swapping Populated Slots
+# Show Full Player Names on Desktop
 
 ## Problem
-Currently, dragging a slot onto another slot only allows a swap if the target slot is **empty** (line 1268: `overlappingSlot.current_assignments.length === 0`). When both slots have players, the "Cannot move here — overlaps with an existing slot" error appears. The user wants to swap two full groups between time slots.
-
-## Fix
-Remove the empty-slot restriction. Allow swapping any two slots (with players) as long as:
-- Neither is blocked
-- Durations match
-- Both target positions are within trainer availability windows
-
-The existing `onSwapSlots` handler already updates both slots' times in the database — it doesn't care about player counts.
+Player names in slot cards are truncated with `max-w-[90px]` (line 208) and `truncate` class, cutting off names like "Wendy Brouw..." even on desktop where there's plenty of space.
 
 ## Change
 
 ### `src/components/cycles/ProposalScheduleGrid.tsx`
 
-In the `handleDragEnd` slot-drag section (~line 1261-1302):
+**Line 208** — the player name in `PlayerAssignmentChip` (used inside slot cards):
+- Change `truncate max-w-[90px]` to `truncate max-w-[90px] sm:max-w-none` so on desktop the name isn't width-constrained and shows in full. On mobile/tablet it stays truncated.
 
-1. Remove the `if (overlappingSlot.current_assignments.length === 0 && onSwapSlots)` condition — change it to just `if (onSwapSlots)`
-2. Remove the `else` branch that shows the overlap error (line 1299-1301)
-3. Keep all existing validations: blocked check, duration mismatch check, availability window check
+**Line 422** — player name in the expanded assignment list (detail view):
+- Already uses just `truncate` without a max-width, so the parent container controls it. Verify no extra constraint needed.
 
-This means any two non-blocked, same-duration slots can be swapped by drag and drop.
+**Line 553** — player name in the Add Player popover:
+- Same — just `truncate`, fine as-is.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/ProposalScheduleGrid.tsx` | Remove empty-slot requirement for swap; allow swapping populated slots |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Line 208: add `sm:max-w-none` to remove desktop truncation |
 
