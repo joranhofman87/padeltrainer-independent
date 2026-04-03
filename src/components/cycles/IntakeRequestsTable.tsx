@@ -618,7 +618,7 @@ export default function IntakeRequestsTable({
                 <TableRow>
                   <SortableTableHead sortKey="full_name" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="sticky left-0 z-10 bg-background">{t('intakeRequests.table.player')}</SortableTableHead>
                   {isVisible('lessonType') && <TableHead>{t('intakeRequests.table.lessonType')}</TableHead>}
-                  {isVisible('rating') && <TableHead>{t('intakeRequests.table.rating')}</TableHead>}
+                  {isVisible('rating') && <SortableTableHead sortKey="rating" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.table.rating')}</SortableTableHead>}
                   {isVisible('availability') && <TableHead>{t('intakeRequests.table.availability')}</TableHead>}
                   {isVisible('preferredTrainer') && <TableHead>{t('intakeRequests.table.preferredTrainer')}</TableHead>}
                   {isVisible('status') && <TableHead>{t('intakeRequests.table.status')}</TableHead>}
