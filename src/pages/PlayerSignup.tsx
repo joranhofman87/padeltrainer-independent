@@ -130,23 +130,26 @@ export default function PlayerSignup() {
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
-    // Store role preference before OAuth redirect
-    trackEvent('signup_started', { role: 'player', method: 'google', ...getUtmParams() });
-    localStorage.setItem('pendingRole', 'player');
-    // Store redirect URL if present
-    const redirectUrl = searchParams.get('redirect');
-    if (redirectUrl) {
-      localStorage.setItem('redirectAfterOnboarding', redirectUrl);
-    }
-    
-    const { error } = await signInWithGoogle();
+    try {
+      try { trackEvent('signup_started', { role: 'player', method: 'google', ...getUtmParams() }); } catch {}
+      localStorage.setItem('pendingRole', 'player');
+      const redirectUrl = searchParams.get('redirect');
+      if (redirectUrl) {
+        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+      }
+      
+      const { error } = await signInWithGoogle();
 
-    if (error) {
-      toast({
-        title: t('signUp.error', 'Error'),
-        description: error.message,
-        variant: 'destructive',
-      });
+      if (error) {
+        toast({
+          title: t('signUp.error', 'Error'),
+          description: error.message,
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      logger.error('Unexpected Google signup error', err as Error, { component: 'PlayerSignup' });
+    } finally {
       setIsLoading(false);
     }
   };
