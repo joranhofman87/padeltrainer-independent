@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useTableSort } from '@/hooks/useTableSort';
+import { SortableTableHead } from '@/components/admin/SortableTableHead';
 import {
   Table,
   TableBody,
