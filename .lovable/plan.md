@@ -1,49 +1,39 @@
 
 
-# Auto-Detect Timezone on Signup
+# Add Global Player Search to Schedule Preview
 
 ## Problem
-Trainers and academy owners currently default to `Europe/Amsterdam`. If they sign up from a different timezone, they'd need to manually go to settings to change it. We want to capture their browser timezone at signup and save it automatically.
+The current search only filters the unplaced players sidebar. When a trainer wants to find where a specific player is placed (e.g. to move them from Friday to Monday), they have to manually click through each day tab and scan all slots.
 
 ## Approach
-Detect the browser timezone via `Intl.DateTimeFormat().resolvedOptions().timeZone` at signup time and pass it through to the profile creation code. The timezone is set once on signup and never auto-changed again — users can update it manually in settings.
+Add a search input at the top of the schedule grid (near the day tabs). When a name is typed, two things happen:
+
+1. **Highlight matching players** in the grid — player badges that match get a visible highlight ring (e.g. orange border), so they stand out even in full slots
+2. **Auto-navigate to the correct day** — if the search matches a player who is only on one day, auto-switch to that day tab. If on multiple days, show a small indicator on each day tab (e.g. dot or count)
+3. **Filter unplaced sidebar too** — the existing sidebar search merges into this single global search
 
 ## Changes
 
-### 1. `src/lib/auth.ts` — Accept `timezone` param in `signUpWithEmail` and `setUserRole`
-- Add `timezone` parameter to `signUpWithEmail()`, pass it to the `signup-user` edge function body
-- Add `timezone` parameter to `setUserRole()`. When creating `trainer_profiles`, include the timezone value (falling back to `'Europe/Amsterdam'`)
+### `src/components/cycles/ProposalScheduleGrid.tsx`
+- Move the search input from the unplaced sidebar to the top bar (next to day tabs and undo button)
+- When `searchQuery` is non-empty:
+  - Compute which days contain matching players (both placed and unplaced)
+  - Add a highlight dot/badge on day tabs that have matches
+  - Pass the query down to `DraggableSlotCard` so matching player badges get a highlight class (e.g. `ring-2 ring-orange-400`)
+- The unplaced sidebar still uses the same `searchQuery` for filtering (as it does now)
+- If matches exist on exactly one day that isn't the current tab, auto-switch to it
 
-### 2. `supabase/functions/signup-user/index.ts` — Save timezone on profile creation
-- Accept `timezone` from the request body
-- After user creation, include `timezone` in the `profiles` table update (alongside `phone`, `preferred_language`, `stripe_customer_id`)
-
-### 3. Signup pages — Detect and pass browser timezone
-- **`src/pages/TrainerSignup.tsx`** (or equivalent), **`src/pages/AcademySignup.tsx`**, **`src/pages/PlayerSignup.tsx`**, **`src/pages/ClubSignup.tsx`**: Detect `Intl.DateTimeFormat().resolvedOptions().timeZone` and pass it to `signUpWithEmail()`
-
-### 4. `src/lib/academy.ts` — `createAcademy()`: Include timezone
-- When inserting into `academy_profiles`, detect and include the browser timezone
-
-### 5. `src/pages/TrainerOnboarding.tsx` — Set timezone on trainer profile
-- When `setUserRole` is called during onboarding, pass the detected browser timezone
-
-## Database
-No migration needed — the `timezone` column already exists on both `trainer_profiles` and `academy_profiles` with a default of `'Europe/Amsterdam'`. We also don't need a `timezone` column on `profiles` since it's role-specific.
+### Slot/Player card rendering (within same file)
+- `DraggableSlotCard` / player badge rendering: accept `searchQuery` prop, apply highlight styling when `player_name.toLowerCase().includes(query)`
 
 ## Result
-- New trainers get their timezone auto-detected from the browser at signup
-- New academies get their timezone auto-detected when the academy is created
-- The value is set once and never changed automatically
-- Users can always override it in Settings
+- Trainer types "sabine" → the Monday tab lights up, grid auto-switches to Monday, and Sabine's badge in the 18:00 slot gets an orange highlight ring
+- If "sabine" appears on multiple days, both day tabs show a dot, trainer can click between them
+- Single search bar serves both placed players in the grid and unplaced players in the sidebar
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/lib/auth.ts` | Add `timezone` param to `signUpWithEmail` and `setUserRole` |
-| `src/pages/TrainerOnboarding.tsx` | Pass detected timezone to `setUserRole` |
-| `src/lib/academy.ts` | Include detected timezone in `createAcademy` insert |
-| `src/pages/AcademySignup.tsx` | Detect and pass timezone |
-| `src/pages/PlayerSignup.tsx` | Detect and pass timezone (for future use) |
-| `src/pages/ClubSignup.tsx` | Detect and pass timezone (for future use) |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Move search to top bar, pass query to slot cards for highlighting, add match indicators on day tabs, auto-switch day |
 
