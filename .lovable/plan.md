@@ -1,67 +1,50 @@
 
 
-# Holiday Dates & Cycle Info on Approve & Book Screen
+# Fix: Slots Disappearing / Resetting to Empty
 
 ## Problem
-When approving proposals, the trainer/academy has no way to:
-1. Mark holiday dates to exclude from the recurring schedule (so those weeks don't generate bookings)
-2. See the cycle's start and end dates at a glance
-3. See the actual number of sessions per slot (adjusted for excluded holidays)
+The schedule slots are stored in **local component state** and loaded via a `useEffect` that depends on `viewMode`, `activeStep`, and `cycleId`. This causes two issues:
 
-## Approach
+1. **Clearing to empty**: The `else` branch explicitly calls `setScheduleSlots([])` whenever the step/view changes, causing a visible flash
+2. **Overwriting optimistic state**: After assign/unassign actions, the code re-fetches all slots from DB (`getAvailableSlotsForCycle`) and replaces local state — if this fetch races with another operation or returns stale data, players vanish from slots
+3. **No caching**: Navigating away and back triggers a full re-fetch starting from empty
 
-### 1. Add `excluded_dates` to CycleSettings
-Store an array of date strings (e.g. `["2026-07-20", "2026-08-03"]`) in `CycleSettings` so they persist with the cycle and can be used by the finalize-proposals edge function.
+## Fix
 
-### 2. Show Cycle Info Card on ProposalOverviewPage
-Above the summary cards, add a small info section showing:
-- Cycle name
-- Start date -- End date
-- Number of weeks
-- Excluded holiday dates (with add/remove UI)
-- Effective sessions count per slot (weeks minus holidays that fall on that slot's weekday)
+### Move schedule slots to TanStack Query with optimistic overlay
 
-### 3. Holiday Date Picker
-A simple date picker where the user can click dates to mark as holidays. Show them as removable chips/badges. When a date is added/removed, update the cycle's `settings.excluded_dates` in the DB.
+Instead of local state loaded by a `useEffect`, use the existing `useScheduleSlotsQuery` hook (already defined in `useProposalData.ts`) as the **source of truth**, with a local `optimisticOverrides` map layered on top for instant UI updates.
 
-### 4. Session Count Display
-For each slot in the overview table, show "X sessions" based on: total weeks between start_date and end_date, minus weeks where the slot's weekday falls on an excluded date. This gives the trainer a clear picture of actual sessions.
+**How it works:**
+- Use `useScheduleSlotsQuery(cycleId, shouldLoad)` — this caches data, keeps previous results during refetch, and doesn't flash empty
+- Remove the `useEffect` that loads/clears slots (lines 192-201)
+- Remove `scheduleSlots` local state (line 175)
+- Derive displayed slots from query data, applying any pending optimistic changes
+- After mutations, invalidate the query key instead of manually re-fetching and replacing state
+- Set `placeholderData: keepPreviousData` on the query so it never shows empty during refetch
 
-### 5. Pass excluded_dates to finalize-proposals
-The edge function should read `excluded_dates` from cycle settings and skip creating bookings for slots on those dates. (This is a future concern for when recurring bookings are generated -- for now, showing the count is the priority.)
+### Specific changes
+
+**`src/hooks/useProposalData.ts`**:
+- Add `placeholderData: keepPreviousData` to `useScheduleSlotsQuery` to prevent empty flash during refetch
+
+**`src/pages/academy/AcademyCycleDetail.tsx`**:
+- Replace `useState<SlotWithOccupancy[]>([])` + `useEffect` with `useScheduleSlotsQuery`
+- Remove the effect that clears slots on step change
+- In handlers (`onMovePlayer`, `onAssignPlayer`, etc.): use `queryClient.setQueryData` for optimistic updates instead of `setScheduleSlots`, with rollback via `queryClient.setQueryData(key, prev)` on error
+- Remove the `getAvailableSlotsForCycle` re-fetch in `onAssignPlayer` — just invalidate the query after the DB write succeeds
+- `onDeleteSlot`, `onUnassignPlayer`: same pattern — optimistic update via `setQueryData`, invalidate on success
+
+## Result
+- Switching tabs/steps no longer clears the grid — cached data stays visible
+- Optimistic updates work the same way but through the query cache, so they survive step changes
+- No more "everything went to 0" flash — `keepPreviousData` ensures old data stays visible until new data arrives
+- Navigating away and back shows cached data instantly
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/lib/cycles.ts` | Add `excluded_dates?: string[]` to `CycleSettings` |
-| `src/pages/ProposalOverviewPage.tsx` | Fetch cycle data; show start/end dates, holiday picker, and per-slot session counts |
-| `src/i18n/locales/en/cycles.json` | Add translations for holiday UI labels |
-| `src/i18n/locales/nl/cycles.json` | Add Dutch translations |
-| `src/i18n/locales/de/cycles.json` | Add German translations |
-
-## UI Detail
-
-```text
-┌─────────────────────────────────────────────┐
-│  Proposal Overview                          │
-│                                             │
-│  ┌─ Cycle Info ──────────────────────────┐  │
-│  │ Period: 1 Apr 2026 — 20 Jun 2026      │  │
-│  │ Weeks: 12                             │  │
-│  │                                       │  │
-│  │ Holiday dates:                        │  │
-│  │ [+ Add date]                          │  │
-│  │ [27 Apr 2026 ×] [1 Jun 2026 ×]       │  │
-│  │                                       │  │
-│  │ Sessions per group: 10 (12 weeks      │  │
-│  │  minus 2 holidays on matching days)   │  │
-│  └───────────────────────────────────────┘  │
-│                                             │
-│  [Summary cards: slots, players, etc.]      │
-│  [Trainer accordion...]                     │
-└─────────────────────────────────────────────┘
-```
-
-The session count is computed client-side by checking which excluded dates fall on the same weekday as each slot, giving per-slot accuracy.
+| `src/hooks/useProposalData.ts` | Add `placeholderData: keepPreviousData` to `useScheduleSlotsQuery` |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Replace local slots state + useEffect with `useScheduleSlotsQuery`; use `queryClient.setQueryData` for optimistic updates |
 
