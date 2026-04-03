@@ -1418,7 +1418,7 @@ export default function ProposalScheduleGrid({
             )}>
               {sidebarOpen ? (
                 <Card className="h-[calc(100vh-200px)] flex flex-col">
-                  <div className="p-3 border-b border-border space-y-2">
+                  <div className="p-3 border-b border-border">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <UserCircle className="h-4 w-4 text-muted-foreground" />
@@ -1437,15 +1437,6 @@ export default function ProposalScheduleGrid({
                       >
                         <PanelRightClose className="h-3.5 w-3.5" />
                       </Button>
-                    </div>
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                      <Input
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder={t('proposals.searchPlayers', { defaultValue: 'Search...' })}
-                        className="h-7 text-xs pl-7"
-                      />
                     </div>
                   </div>
                   <DroppableUnplacedPool>
