@@ -1,249 +1,174 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sparkles, Eye, CheckCheck, CalendarDays, Check, RotateCcw, UserPlus, ClipboardList, Link2 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Cycle } from '@/lib/cycles';
 
+export type WorkflowStep = 'registrations' | 'review-links' | 'generate' | 'review-edit' | 'approve';
 type StepStatus = 'completed' | 'active' | 'upcoming';
 
-interface Step {
-  number: number;
+interface StepDef {
+  id: WorkflowStep;
   label: string;
   description: string;
   status: StepStatus;
-  action?: React.ReactNode;
 }
 
 interface ProposalWorkflowStepsProps {
-  cycles: Cycle[];
-  selectedCycleId: string;
-  onCycleChange: (value: string) => void;
+  activeStep: WorkflowStep;
+  onStepClick: (step: WorkflowStep) => void;
+  registrationsCount: number;
+  pendingLinkActions: number;
   newCount: number;
   proposedCount: number;
   confirmedCount: number;
-  onGenerate: () => void;
-  onApproveAll: () => void;
-  onReset: () => void;
-  onAddManual: () => void;
-  onShowOverview: () => void;
-  isGenerating?: boolean;
-  isResetting?: boolean;
-  /** When true, hides the cycle selector (step 1) — used when already scoped to a single cycle */
-  hideCycleSelector?: boolean;
-  /** Number of pending link review actions */
-  pendingLinkActions?: number;
-  /** Whether links have been reviewed */
-  isLinksReviewed?: boolean;
 }
 
 export default function ProposalWorkflowSteps({
-  cycles,
-  selectedCycleId,
-  onCycleChange,
+  activeStep,
+  onStepClick,
+  registrationsCount,
+  pendingLinkActions,
   newCount,
   proposedCount,
   confirmedCount,
-  onGenerate,
-  onApproveAll,
-  onReset,
-  onAddManual,
-  onShowOverview,
-  isGenerating,
-  isResetting,
-  hideCycleSelector,
-  pendingLinkActions = 0,
-  isLinksReviewed = false,
 }: ProposalWorkflowStepsProps) {
   const { t } = useTranslation('cycles');
 
-  const cycleSelected = hideCycleSelector || selectedCycleId !== 'all';
+  const hasRegistrations = registrationsCount > 0;
+  const linksReviewed = pendingLinkActions === 0;
+  const hasProposals = proposedCount > 0;
+  const allConfirmed = confirmedCount > 0 && newCount === 0 && proposedCount === 0;
 
-  // Determine step statuses based on data state
-  // Steps when hideCycleSelector: Review Links → Generate → Review & Edit → Approve & Book
-  // Steps otherwise: Select Cycle → Generate → Review & Edit → Approve & Book
-  const getStepStatuses = () => {
-    if (hideCycleSelector) {
-      // 4 steps: ReviewLinks, Generate, Review&Edit, Approve&Book
-      if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
-        return ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
-      }
-      if (proposedCount > 0) {
-        return ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
-      }
-      // Pre-generation: review links step first
-      const linksStatus: StepStatus = (pendingLinkActions === 0 || isLinksReviewed) ? 'completed' : 'active';
-      const generateStatus: StepStatus = linksStatus === 'completed' ? 'active' : 'upcoming';
-      return [linksStatus, generateStatus, 'upcoming', 'upcoming'] as StepStatus[];
+  const getStatus = (step: WorkflowStep): StepStatus => {
+    switch (step) {
+      case 'registrations':
+        if (hasRegistrations) return activeStep === 'registrations' ? 'active' : 'completed';
+        return 'active';
+      case 'review-links':
+        if (!hasRegistrations) return 'upcoming';
+        if (linksReviewed && (hasProposals || activeStep === 'generate' || activeStep === 'review-edit' || activeStep === 'approve'))
+          return 'completed';
+        if (activeStep === 'review-links') return 'active';
+        if (hasRegistrations && activeStep === 'registrations') return 'upcoming';
+        return linksReviewed ? 'completed' : 'active';
+      case 'generate':
+        if (!hasRegistrations) return 'upcoming';
+        if (hasProposals || allConfirmed) return 'completed';
+        if (activeStep === 'generate') return 'active';
+        if (linksReviewed && !hasProposals) return activeStep === 'registrations' || activeStep === 'review-links' ? 'upcoming' : 'active';
+        return 'upcoming';
+      case 'review-edit':
+        if (allConfirmed) return 'completed';
+        if (hasProposals) return activeStep === 'review-edit' ? 'active' : (activeStep === 'approve' ? 'completed' : 'upcoming');
+        return 'upcoming';
+      case 'approve':
+        if (allConfirmed) return 'completed';
+        if (activeStep === 'approve') return 'active';
+        return 'upcoming';
+      default:
+        return 'upcoming';
     }
-
-    // Standard flow (with cycle selector): 4 steps
-    if (!cycleSelected) {
-      return ['active', 'upcoming', 'upcoming', 'upcoming'] as StepStatus[];
-    }
-    if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
-      return ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
-    }
-    if (proposedCount > 0) {
-      return ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
-    }
-    return ['completed', 'active', 'upcoming', 'upcoming'] as StepStatus[];
   };
 
-  const statuses = getStepStatuses();
-
-  const steps: Step[] = [];
-  let stepNum = 1;
-
-  if (!hideCycleSelector) {
-    steps.push({
-      number: stepNum++,
-      label: t('workflow.selectCycle', { defaultValue: 'Select registration' }),
-      description: cycleSelected
-        ? cycles.find(c => c.id === selectedCycleId)?.name || ''
-        : t('workflow.selectCycleDesc', { defaultValue: 'Choose a registration period' }),
-      status: statuses[steps.length],
-      action: (
-        <Select value={selectedCycleId} onValueChange={onCycleChange}>
-          <SelectTrigger className="w-[200px] h-8 text-xs">
-            <SelectValue placeholder={t('workflow.selectCyclePlaceholder', { defaultValue: 'Select...' })} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('intakeRequests.filters.all')} cycles</SelectItem>
-            {cycles.map(cycle => (
-              <SelectItem key={cycle.id} value={cycle.id}>{cycle.name}{cycle.location?.name ? ` — ${cycle.location.name}` : ''}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ),
-    });
-  }
-
-  // Review Links step (only in detail page mode)
-  if (hideCycleSelector) {
-    const reviewStatus = statuses[steps.length];
-    steps.push({
-      number: stepNum++,
+  const steps: StepDef[] = [
+    {
+      id: 'registrations',
+      label: t('workflow.registrations', { defaultValue: 'Registrations' }),
+      description: t('workflow.registrationsDesc', { defaultValue: '{{count}} registered', count: registrationsCount }),
+      status: getStatus('registrations'),
+    },
+    {
+      id: 'review-links',
       label: t('workflow.reviewLinks', { defaultValue: 'Review Links' }),
       description: pendingLinkActions > 0
         ? t('workflow.reviewLinksDesc', { defaultValue: '{{count}} action(s) pending', count: pendingLinkActions })
         : t('workflow.reviewLinksDone', { defaultValue: 'All clear' }),
-      status: reviewStatus,
-      action: pendingLinkActions > 0 && reviewStatus === 'active' ? (
-        <Badge variant="secondary" className="text-xs">
-          <Link2 className="h-3 w-3 mr-1" />
-          {pendingLinkActions}
-        </Badge>
-      ) : undefined,
-    });
-  }
+      status: getStatus('review-links'),
+    },
+    {
+      id: 'generate',
+      label: t('workflow.generate', { defaultValue: 'Generate' }),
+      description: t('workflow.generateDesc', { defaultValue: '{{count}} new requests', count: newCount }),
+      status: getStatus('generate'),
+    },
+    {
+      id: 'review-edit',
+      label: t('workflow.review', { defaultValue: 'Review & Edit' }),
+      description: t('workflow.reviewDesc', { defaultValue: '{{count}} proposals', count: proposedCount }),
+      status: getStatus('review-edit'),
+    },
+    {
+      id: 'approve',
+      label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
+      description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
+      status: getStatus('approve'),
+    },
+  ];
 
-  steps.push({
-    number: stepNum++,
-    label: t('workflow.generate', { defaultValue: 'Generate' }),
-    description: t('workflow.generateDesc', { defaultValue: '{{count}} new requests', count: newCount }),
-    status: statuses[steps.length],
-    action: (
-      <Button
-        size="sm"
-        onClick={onGenerate}
-        disabled={!cycleSelected || newCount === 0}
-        className="h-7 text-xs"
-      >
-        <Sparkles className="h-3 w-3 mr-1" />
-        {t('proposals.generateAll', { defaultValue: 'Generate' })}
-      </Button>
-    ),
-  });
-
-  steps.push({
-    number: stepNum++,
-    label: t('workflow.review', { defaultValue: 'Review & Edit' }),
-    description: t('workflow.reviewDesc', { defaultValue: '{{count}} proposals', count: proposedCount }),
-    status: statuses[steps.length],
-    action: proposedCount > 0 ? (
-      <div className="flex gap-1.5">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onReset}
-          disabled={isResetting}
-          className="h-7 text-xs"
-        >
-          <RotateCcw className="h-3 w-3 mr-1" />
-          {t('proposals.reset', { defaultValue: 'Reset' })}
-        </Button>
-        <Button
-          size="sm"
-          onClick={onShowOverview}
-          className="h-7 text-xs"
-        >
-          <Eye className="h-3 w-3 mr-1" />
-          {t('workflow.continueToOverview', { defaultValue: 'Continue' })}
-        </Button>
-      </div>
-    ) : undefined,
-  });
-
-  const approveStatus = statuses[steps.length];
-  steps.push({
-    number: stepNum++,
-    label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
-    description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
-    status: approveStatus,
-    action: approveStatus === 'active' && proposedCount > 0 ? (
-      <Button
-        size="sm"
-        onClick={onShowOverview}
-        className="h-7 text-xs"
-      >
-        <ClipboardList className="h-3 w-3 mr-1" />
-        {t('workflow.viewOverview', { defaultValue: 'View overview' })}
-      </Button>
-    ) : undefined,
-  });
+  const isClickable = (step: StepDef) => step.status !== 'upcoming';
 
   return (
-    <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-start">
-      {steps.map((step, idx) => (
-        <React.Fragment key={step.number}>
-          {/* Step content */}
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            {/* Circle */}
-            <div
-              className={cn(
-                'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors',
-                step.status === 'completed' && 'bg-primary border-primary text-primary-foreground',
-                step.status === 'active' && 'border-primary text-primary bg-primary/10',
-                step.status === 'upcoming' && 'border-muted-foreground/30 text-muted-foreground/50 bg-muted/50',
-              )}
-            >
-              {step.status === 'completed' ? <Check className="h-4 w-4" /> : step.number}
-            </div>
+    <nav className="w-full">
+      <ol className="flex flex-col sm:flex-row gap-0">
+        {steps.map((step, idx) => {
+          const clickable = isClickable(step);
+          const isActive = activeStep === step.id;
+          const stepNumber = idx + 1;
 
-            {/* Text + action */}
-            <div className="flex flex-col gap-1 min-w-0">
-              <span className={cn(
-                'text-sm font-medium leading-tight',
-                step.status === 'upcoming' && 'text-muted-foreground/60',
-              )}>
-                {step.label}
-              </span>
-              <span className="text-xs text-muted-foreground leading-tight">
-                {step.description}
-              </span>
-              {step.status !== 'upcoming' && step.action && (
-                <div className="mt-1">
-                  {step.action}
+          return (
+            <li key={step.id} className="flex-1 flex items-stretch">
+              <button
+                type="button"
+                onClick={() => clickable && onStepClick(step.id)}
+                disabled={!clickable}
+                className={cn(
+                  'flex items-center gap-3 w-full px-4 py-3 text-left transition-colors rounded-lg',
+                  isActive && 'bg-primary/5 ring-1 ring-primary/20',
+                  clickable && !isActive && 'hover:bg-muted/50',
+                  !clickable && 'opacity-50 cursor-not-allowed',
+                )}
+              >
+                {/* Circle */}
+                <div
+                  className={cn(
+                    'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors',
+                    step.status === 'completed' && 'bg-primary border-primary text-primary-foreground',
+                    step.status === 'active' && isActive && 'border-primary text-primary bg-primary/10',
+                    step.status === 'active' && !isActive && 'border-primary/60 text-primary/60 bg-primary/5',
+                    step.status === 'upcoming' && 'border-muted-foreground/30 text-muted-foreground/50 bg-muted/50',
+                  )}
+                >
+                  {step.status === 'completed' ? <Check className="h-4 w-4" /> : stepNumber}
+                </div>
+
+                {/* Text */}
+                <div className="flex flex-col min-w-0">
+                  <span className={cn(
+                    'text-sm font-medium leading-tight truncate',
+                    step.status === 'upcoming' && 'text-muted-foreground/60',
+                    isActive && 'text-primary',
+                  )}>
+                    {step.label}
+                  </span>
+                  <span className="text-xs text-muted-foreground leading-tight truncate">
+                    {step.description}
+                  </span>
+                </div>
+              </button>
+
+              {/* Connector line (hidden on last + on mobile) */}
+              {idx < steps.length - 1 && (
+                <div className="hidden sm:flex items-center px-1">
+                  <div className={cn(
+                    'w-6 h-px',
+                    steps[idx + 1].status !== 'upcoming' ? 'bg-primary/40' : 'bg-muted-foreground/20',
+                  )} />
                 </div>
               )}
-            </div>
-          </div>
-
-        </React.Fragment>
-      ))}
-    </div>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }
