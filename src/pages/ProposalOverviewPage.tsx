@@ -493,6 +493,72 @@ export default function ProposalOverviewPage() {
         </Alert>
       )}
 
+      {/* Cycle info & holidays */}
+      {cycle && (
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+            <div>
+              <span className="text-muted-foreground">{t('overview.period', { defaultValue: 'Period' })}:</span>{' '}
+              <span className="font-medium">
+                {format(parseISO(cycle.start_date), 'd MMM yyyy')} — {format(parseISO(cycle.end_date), 'd MMM yyyy')}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">{t('overview.weeks', { defaultValue: 'Weeks' })}:</span>{' '}
+              <span className="font-medium">{totalWeeks}</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <CalendarOff className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">{t('overview.holidayDates', { defaultValue: 'Holiday dates' })}</span>
+              <Popover open={holidayPickerOpen} onOpenChange={setHolidayPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                    <Plus className="h-3 w-3" />
+                    {t('overview.addDate', { defaultValue: 'Add date' })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    onSelect={handleAddHoliday}
+                    disabled={(date) => {
+                      const dateStr = format(date, 'yyyy-MM-dd');
+                      const start = parseISO(cycle.start_date);
+                      const end = parseISO(cycle.end_date);
+                      return date < start || date > end || excludedDates.includes(dateStr);
+                    }}
+                    defaultMonth={parseISO(cycle.start_date)}
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            {excludedDates.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {excludedDates.map(d => (
+                  <Badge key={d} variant="secondary" className="text-xs gap-1 pr-1">
+                    {format(parseISO(d), 'd MMM yyyy')}
+                    <button
+                      onClick={() => handleRemoveHoliday(d)}
+                      className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {t('overview.noHolidays', { defaultValue: 'No holiday dates set. All weeks will have sessions.' })}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryCard icon={Calendar} label={t('overview.totalSlots', { defaultValue: 'Total slots' })} value={totalSlots} />
