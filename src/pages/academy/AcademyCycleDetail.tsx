@@ -239,7 +239,7 @@ export default function AcademyCycleDetail() {
         const pairKey = [req.id, match.id].sort().join('::');
         if (!seenPairs.has(pairKey)) { seenPairs.add(pairKey); count++; }
       }
-      count += getUnmatchedMentions(req, requests, dismissedUn).length;
+      // Unmatched mentions are info-only, not counted as pending actions
     }
     return count;
   }, [requests, playerLinksData]);
