@@ -371,6 +371,7 @@ export default function IntakeRequestsTable({
     const requestId = request.id;
     const groupId = linkGroupMap.get(requestId);
     const suggestions = suggestionsMap.get(requestId) || [];
+    const unmatchedMentions = unmatchedMap.get(requestId) || [];
 
     const linkedContent = (() => {
       if (!groupId) return null;
