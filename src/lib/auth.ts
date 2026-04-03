@@ -134,24 +134,32 @@ export async function signInWithEmail(email: string, password: string) {
       email,
       password,
     });
-    // Supabase may return error objects without a message on 503/504 responses
-    if (error && !error.message) {
-      error.message = 'Login is temporarily unavailable. Please try again in a moment.';
+
+    if (error) {
+      const normalizedError = normalizeAuthError(error, 'Unable to sign in. Please check your email and password and try again.');
+      logger.error('Sign in failed', normalizedError as Error, {
+        component: 'auth',
+        action: 'signInWithEmail',
+        status: (normalizedError as any).status,
+        code: (normalizedError as any).code,
+        name: normalizedError.name,
+      });
+      return { data, error: normalizedError as any };
     }
-    return { data, error };
+
+    return { data, error: null };
   } catch (err: any) {
-    // CORS or network failure — the request never completed
-    const msg = err?.message || '';
-    const isCors = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS');
-    logger.error('Sign-in network failure', err as Error, { component: 'auth', isCors });
+    const normalizedError = normalizeAuthError(err, 'Login is temporarily unavailable. Please try again in a moment.');
+    logger.error('Sign-in network failure', normalizedError as Error, {
+      component: 'auth',
+      action: 'signInWithEmailCatch',
+      status: (normalizedError as any).status,
+      code: (normalizedError as any).code,
+      name: normalizedError.name,
+    });
     return {
       data: { user: null, session: null },
-      error: {
-        message: isCors
-          ? 'Unable to reach the login server. If you are on a custom domain, please try again or use the main site.'
-          : 'Login is temporarily unavailable. Please try again in a moment.',
-        name: 'NetworkError',
-      } as any,
+      error: normalizedError as any,
     };
   }
 }
