@@ -170,4 +170,3 @@ export function getUnmatchedMentions(
 
   return unmatched;
 }
-}
