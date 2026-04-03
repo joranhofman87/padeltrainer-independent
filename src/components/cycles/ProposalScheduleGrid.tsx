@@ -671,6 +671,8 @@ function DraggableSlotCard({
               trainerAvailabilityWindows={trainerAvailabilityWindows}
               selectedDay={selectedDay}
               daySlots={daySlots}
+              allSlots={allSlots}
+              availableDays={availableDays}
               onMoveSlot={onMoveSlot}
               onDeleteSlot={onDeleteSlot}
               onPlayerClick={onPlayerClick}
