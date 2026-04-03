@@ -511,11 +511,11 @@ export default function ProposalOverviewPage() {
             <ArrowLeft className="h-4 w-4 mr-1" />
             {t('overview.back', { defaultValue: 'Back' })}
           </Button>
-          {pageStatus === 'booked' ? (
+          {(pageStatus === 'booked' || pageStatus === 'sending') ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button className="flex-1" disabled={isProcessing}>
-                  {pageStatus === 'sending' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+                  {isProcessing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
                   {t('overview.sendEmails', { defaultValue: 'Send Emails' })}
                 </Button>
               </AlertDialogTrigger>
