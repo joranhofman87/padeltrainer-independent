@@ -1,32 +1,65 @@
 
 
-# Keep Wizard Draft When Resetting Proposals
+# Constrain Scoring Weights to Always Sum to 100
 
 ## Problem
-When resetting proposals, the localStorage draft for the Generate wizard is cleared (because generation succeeded previously). After reset, the trainer returns to step 3 but has to re-enter all settings (trainers, times, weights, etc.) from scratch.
+The weight sliders are independent — each goes 0-100, so the total can exceed 100. The presets all sum to 100 but manual adjustments break this. Since the algorithm uses relative weights, going over 100 isn't a bug, but it's confusing UX.
 
-## Fix
-Only clear the localStorage draft on **successful generation**, not on reset. Currently, `localStorage.removeItem` is called inside `handleGenerate` in the wizard — this is correct and stays. The issue is that the draft was already cleared from the *previous* successful generation. On reset, the trainer goes back to step 3 with no draft.
+## Approach
+Auto-normalize: when a slider changes, proportionally adjust the other sliders so the total always equals 100. This is how most "budget allocation" UIs work.
 
-Actually, the real fix is simpler: the draft IS cleared after generation succeeds (line 310). When the trainer resets and goes back to step 3, there's no draft because it was removed after the last generation. The solution is to **not clear the draft on successful generation** — instead, only clear it when the user **leaves the cycle detail page entirely** or when the cycle changes. This way, after reset, the draft is still available.
+When the user drags one slider up by N, reduce the others proportionally. When dragged down, increase the others. If all others are at 0, cap the active slider.
 
-Wait — that would mean the draft persists forever even after proposals are accepted. Better approach: **keep clearing on generation, but re-save the draft immediately before resetting proposals**. The reset handler in `AcademyCycleDetail.tsx` can snapshot the current wizard state back to localStorage before calling reset.
+## Changes
 
-Simplest approach: In `GenerateProposalsWizard.tsx`, **don't clear localStorage on successful generation**. The draft naturally gets overwritten on every change anyway. Only clear it when the component unmounts AND proposals exist (i.e., the workflow moved past generation). This way after reset, the last config is still there.
+### `src/components/cycles/ScoringWeightsPanel.tsx`
+Replace `updateWeight` with a normalizing version:
 
-Even simpler: Just remove the `localStorage.removeItem(STORAGE_KEY)` call from `handleGenerate`. The draft stays until the trainer changes it. When they come back after reset, everything is pre-filled. When they eventually move past the generate step for good, the draft just sits harmlessly in localStorage.
+```typescript
+const updateWeight = (key: keyof ScoringWeights, newValue: number) => {
+  const oldValue = weights[key];
+  const delta = newValue - oldValue;
+  if (delta === 0) return;
 
-## Change
+  const otherKeys = Object.keys(weights).filter(k => k !== key) as (keyof ScoringWeights)[];
+  const otherSum = otherKeys.reduce((sum, k) => sum + weights[k], 0);
 
-### `src/components/cycles/GenerateProposalsWizard.tsx`
-- Remove `localStorage.removeItem(STORAGE_KEY)` from `handleGenerate` (line 310)
-- The draft persists and is always available when returning to step 3
+  const updated = { ...weights, [key]: newValue };
 
-That's it — one line removal.
+  if (otherSum === 0) {
+    // Can't reduce others below 0 — cap this slider
+    updated[key] = 100;
+  } else {
+    // Distribute -delta proportionally among others
+    const scale = (otherSum - delta) / otherSum;
+    let remaining = 100 - newValue;
+    otherKeys.forEach((k, i) => {
+      if (i === otherKeys.length - 1) {
+        updated[k] = Math.max(0, remaining);
+      } else {
+        const adj = Math.max(0, Math.round(weights[k] * scale));
+        updated[k] = adj;
+        remaining -= adj;
+      }
+    });
+  }
+
+  onWeightsChange(updated);
+  setActivePreset(null);
+};
+```
+
+Also apply same logic in `ScoringWeightsDialog.tsx` if it has its own `updateWeight`.
+
+## Result
+- Total always shows 100
+- Dragging one slider automatically adjusts others proportionally
+- Presets still work as before (they already sum to 100)
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/GenerateProposalsWizard.tsx` | Remove `localStorage.removeItem(STORAGE_KEY)` from handleGenerate |
+| `src/components/cycles/ScoringWeightsPanel.tsx` | Replace `updateWeight` with normalizing version |
+| `src/components/cycles/ScoringWeightsDialog.tsx` | Same normalizing logic if it has independent `updateWeight` |
 
