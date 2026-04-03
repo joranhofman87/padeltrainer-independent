@@ -29,6 +29,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   FileText, 
   AlertCircle, 
+  AlertTriangle,
   Calendar,
   CheckCircle2,
   Clock,
