@@ -1246,6 +1246,7 @@ export async function generateProposals(
       startDate: options?.startDate,
       trainerAvailability: options?.trainerAvailability,
       additionalCriteria: options?.additionalCriteria,
+      keepCompleteGroups: options?.keepCompleteGroups ?? true,
     }
   });
 
