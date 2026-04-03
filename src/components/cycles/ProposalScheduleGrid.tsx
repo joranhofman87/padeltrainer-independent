@@ -45,6 +45,7 @@ interface ProposalScheduleGridProps {
     slotBId: string, slotBNewTrainerId: string, slotBNewStart: string, slotBNewEnd: string,
   ) => void;
   onDeleteSlot?: (slotId: string) => void;
+  onCreateSlot?: (trainerId: string, startTime: string, endTime: string) => void;
   onUndo?: (previousSlots: SlotWithOccupancy[]) => void;
   unplacedPlayers?: UnplacedPlayer[];
   allPlayers?: UnplacedPlayer[];

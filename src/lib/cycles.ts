@@ -1607,6 +1607,43 @@ export async function deleteSlot(slotId: string): Promise<void> {
   if (error) throw error;
 }
 
+// Create a new empty slot for the proposal schedule grid
+export async function createProposalSlot(
+  cycleId: string,
+  trainerId: string,
+  startTime: string,
+  endTime: string,
+): Promise<{ id: string }> {
+  // Get cycle defaults
+  const { data: cycle, error: cycleErr } = await supabase
+    .from('cycles')
+    .select('location_id, settings, owner_type, owner_id')
+    .eq('id', cycleId)
+    .single();
+  if (cycleErr) throw cycleErr;
+
+  const maxParticipants = (cycle.settings as any)?.max_participants ?? 4;
+  const academyProfileId = cycle.owner_type === 'academy' ? cycle.owner_id : null;
+
+  const { data, error } = await supabase
+    .from('availability_slots')
+    .insert({
+      trainer_id: trainerId,
+      start_time: startTime,
+      end_time: endTime,
+      cyclus_id: cycleId,
+      location_id: cycle.location_id,
+      max_participants: maxParticipants,
+      is_public: false,
+      is_recurring: false,
+      academy_profile_id: academyProfileId,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return { id: data.id };
+}
+
 // Assign an unplaced player to a slot (creates proposed_assignment, updates intake request status)
 export async function assignPlayerToSlot(intakeRequestId: string, slotId: string): Promise<void> {
   // Get the slot to find the trainer_id
