@@ -915,6 +915,18 @@ export default function ProposalScheduleGrid({
     }
   }, [availableDays, selectedDay]);
 
+  // Auto-switch to the day with search matches (only when exactly one day matches)
+  const prevSearchRef = useRef(searchQuery);
+  useEffect(() => {
+    if (searchQuery.trim() && searchQuery !== prevSearchRef.current) {
+      const matchingDays = Array.from(daysWithSearchMatches.keys());
+      if (matchingDays.length === 1 && matchingDays[0] !== selectedDay) {
+        setSelectedDay(matchingDays[0]);
+      }
+    }
+    prevSearchRef.current = searchQuery;
+  }, [searchQuery, daysWithSearchMatches, selectedDay]);
+
   const daySlots = useMemo(() => dayGroups.get(selectedDay) || [], [dayGroups, selectedDay]);
 
   // Get availability windows for the selected day
