@@ -315,7 +315,8 @@ export default function ProposalOverviewPage() {
   }, [cycle, excludedDates, totalWeeks]);
 
 
-    const handleBack = () => {
+  const handleBack = () => {
+    if (typeof backPath === 'string') {
       navigate(backPath);
     } else {
       navigate(-1);
