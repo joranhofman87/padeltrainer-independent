@@ -83,7 +83,7 @@ export default function ProposalWorkflowSteps({
           <SelectContent>
             <SelectItem value="all">{t('intakeRequests.filters.all')} cycles</SelectItem>
             {cycles.map(cycle => (
-              <SelectItem key={cycle.id} value={cycle.id}>{cycle.name}</SelectItem>
+              <SelectItem key={cycle.id} value={cycle.id}>{cycle.name}{cycle.location?.name ? ` — ${cycle.location.name}` : ''}</SelectItem>
             ))}
           </SelectContent>
         </Select>
