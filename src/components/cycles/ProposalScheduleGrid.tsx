@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle, UserPlus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -47,6 +47,7 @@ interface ProposalScheduleGridProps {
   onDeleteSlot?: (slotId: string) => void;
   onUndo?: (previousSlots: SlotWithOccupancy[]) => void;
   unplacedPlayers?: UnplacedPlayer[];
+  allPlayers?: UnplacedPlayer[];
   onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
   onUnassignPlayer?: (assignmentId: string) => void;
 }
@@ -485,11 +486,91 @@ function SlotEditPopover({
   );
 }
 
+// ── Add Player to Slot Popover ──
+
+function AddPlayerToSlotPopover({
+  slotId,
+  allPlayers,
+  currentAssignmentIds,
+  onAssignPlayer,
+}: {
+  slotId: string;
+  allPlayers: UnplacedPlayer[];
+  currentAssignmentIds: Set<string>;
+  onAssignPlayer: (intakeRequestId: string, slotId: string) => void;
+}) {
+  const { t } = useTranslation('cycles');
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return allPlayers;
+    const q = search.toLowerCase();
+    return allPlayers.filter(p => p.full_name.toLowerCase().includes(q));
+  }, [allPlayers, search]);
+
+  return (
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSearch(''); }}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 w-5 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover/slot:opacity-100 transition-opacity"
+        >
+          <UserPlus className="h-3 w-3" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-0" align="start" side="right" onClick={(e) => e.stopPropagation()}>
+        <div className="p-2">
+          <Input
+            placeholder={t('proposals.searchPlayer', { defaultValue: 'Search player…' })}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-7 text-xs"
+            autoFocus
+          />
+        </div>
+        <div className="max-h-48 overflow-y-auto px-1 pb-1">
+          {filtered.length === 0 && (
+            <p className="text-xs text-muted-foreground px-2 py-2">{t('proposals.noPlayersFound', { defaultValue: 'No players found' })}</p>
+          )}
+          {filtered.map(p => {
+            const inSlot = currentAssignmentIds.has(p.id);
+            return (
+              <button
+                key={p.id}
+                disabled={inSlot}
+                onClick={() => {
+                  onAssignPlayer(p.id, slotId);
+                  setOpen(false);
+                  setSearch('');
+                }}
+                className={cn(
+                  'flex items-center justify-between w-full rounded-md px-2 py-1.5 text-xs transition-colors',
+                  inSlot ? 'opacity-40 cursor-not-allowed' : 'hover:bg-accent cursor-pointer',
+                )}
+              >
+                <span className="font-medium truncate">{p.full_name}</span>
+                {p.rating != null && (
+                  <span className="text-[10px] text-muted-foreground shrink-0 ml-1">
+                    {formatRating(p.rating)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Draggable Slot Card ──
 
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
   trainerAvailabilityWindows, selectedDay, daySlots, onMoveSlot, onDeleteSlot, searchQuery,
+  allPlayers, onAssignPlayer,
 }: {
   slot: SlotWithOccupancy;
   onPlayerClick?: (id: string) => void;
@@ -500,6 +581,8 @@ function DraggableSlotCard({
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
   searchQuery?: string;
+  allPlayers?: UnplacedPlayer[];
+  onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `slot-drag-${slot.id}`,
@@ -514,11 +597,16 @@ function DraggableSlotCard({
   const isFull = currentP >= maxP;
   const isEmpty = currentP === 0;
 
+  const currentAssignmentIds = useMemo(
+    () => new Set(slot.current_assignments.map(a => a.intake_request_id)),
+    [slot.current_assignments]
+  );
+
   return (
     <Card
       ref={setDragRef}
       className={cn(
-        'border-l-4 transition-all min-h-full',
+        'border-l-4 transition-all min-h-full group/slot',
         isEmpty ? 'border-l-border opacity-60' : getConfidenceBorder(avgConf),
         isDragging && 'opacity-30 scale-95',
       )}
@@ -547,10 +635,20 @@ function DraggableSlotCard({
               onPlayerClick={onPlayerClick}
             />
           </div>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
-            <Clock className="h-2.5 w-2.5" />
-            {duration}'
-          </Badge>
+          <div className="flex items-center gap-1">
+            {allPlayers && onAssignPlayer && (
+              <AddPlayerToSlotPopover
+                slotId={slot.id}
+                allPlayers={allPlayers}
+                currentAssignmentIds={currentAssignmentIds}
+                onAssignPlayer={onAssignPlayer}
+              />
+            )}
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
+              <Clock className="h-2.5 w-2.5" />
+              {duration}'
+            </Badge>
+          </div>
         </div>
 
         {/* Occupancy */}
@@ -826,7 +924,7 @@ function DroppableUnplacedPool({ children }: { children: React.ReactNode }) {
 
 export default function ProposalScheduleGrid({
   slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onUndo,
-  unplacedPlayers, onAssignPlayer, onUnassignPlayer,
+  unplacedPlayers, allPlayers, onAssignPlayer, onUnassignPlayer,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
@@ -1409,6 +1507,8 @@ export default function ProposalScheduleGrid({
                                 onMoveSlot={onMoveSlot}
                                 onDeleteSlot={onDeleteSlot}
                                 searchQuery={searchQuery}
+                                allPlayers={allPlayers}
+                                onAssignPlayer={onAssignPlayer}
                               />
                             ) : null}
                           </DroppableCell>

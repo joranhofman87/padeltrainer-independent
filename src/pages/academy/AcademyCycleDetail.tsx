@@ -260,6 +260,18 @@ export default function AcademyCycleDetail() {
       sessions_per_week: r.sessions_per_week,
     }));
 
+  const allPlayersForGrid = requests
+    .map(r => ({
+      id: r.id,
+      full_name: r.full_name,
+      rating: r.rating,
+      rating_system: r.rating_system,
+      preferred_days: r.preferred_days,
+      lesson_type: r.lesson_type,
+      skip_reason: r.skip_reason,
+      sessions_per_week: r.sessions_per_week,
+    }));
+
   const skippedReasonCounts = statusFilter === 'skipped'
     ? filteredRequests.reduce((acc, r) => {
         const reason = r.skip_reason;
@@ -632,6 +644,7 @@ export default function AcademyCycleDetail() {
               trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
               {...scheduleGridHandlers}
               unplacedPlayers={unplacedPlayers}
+              allPlayers={allPlayersForGrid}
             />
           )}
         </div>
@@ -715,6 +728,7 @@ export default function AcademyCycleDetail() {
                 trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
                 {...scheduleGridHandlers}
                 unplacedPlayers={unplacedPlayers}
+                allPlayers={allPlayersForGrid}
               />
             </>
           ) : (
