@@ -151,11 +151,12 @@ export function GenerateProposalsWizard({
       additionalCriteria,
       linkStrategy,
       fillIncompleteGroups,
+      maxGroupSize,
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {}
-  }, [step, startDate, trainerConfigs, weights, additionalCriteria, linkStrategy, fillIncompleteGroups, STORAGE_KEY]);
+  }, [step, startDate, trainerConfigs, weights, additionalCriteria, linkStrategy, fillIncompleteGroups, maxGroupSize, STORAGE_KEY]);
 
   // Load trainers
   useEffect(() => {
