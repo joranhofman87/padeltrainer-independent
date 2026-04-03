@@ -310,19 +310,32 @@ function SlotEditPopover({
   const endMin = (() => { const [h, m] = endTime.split(':').map(Number); return h * 60 + (m || 0); })();
   const isValid = endMin > startMin;
 
+  // Get target day's slots for overlap checking
+  const targetDaySlots = useMemo(() => {
+    if (targetDay === selectedDay) return daySlots;
+    const dayMap: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    const targetDayNum = dayMap[targetDay.toLowerCase()];
+    return allSlots.filter(s => {
+      const d = parseISO(s.start_time);
+      return getDay(d) === targetDayNum;
+    });
+  }, [targetDay, selectedDay, daySlots, allSlots]);
+
   // Check for overlaps
   const hasOverlap = useMemo(() => {
     if (!isValid) return false;
-    return daySlots.some(other => {
+    return targetDaySlots.some(other => {
       if (other.id === slot.id) return false;
       if (other.trainer_id !== slot.trainer_id) return false;
       const otherStart = isoToMinutes(other.start_time);
       const otherEnd = otherStart + getDurationMinutes(other.start_time, other.end_time);
       return startMin < otherEnd && endMin > otherStart;
     });
-  }, [daySlots, slot.id, slot.trainer_id, startMin, endMin, isValid]);
+  }, [targetDaySlots, slot.id, slot.trainer_id, startMin, endMin, isValid]);
 
-  const canApply = isValid && !hasOverlap && (startTime !== format(parseISO(slot.start_time), 'HH:mm') || endTime !== format(parseISO(slot.end_time), 'HH:mm'));
+  const dayChanged = targetDay !== selectedDay;
+  const timeChanged = startTime !== format(parseISO(slot.start_time), 'HH:mm') || endTime !== format(parseISO(slot.end_time), 'HH:mm');
+  const canApply = isValid && !hasOverlap && (dayChanged || timeChanged);
 
   const handleApply = () => {
     if (!onMoveSlot || !canApply) return;
