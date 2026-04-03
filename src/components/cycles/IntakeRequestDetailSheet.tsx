@@ -92,7 +92,6 @@ export default function IntakeRequestDetailSheet({
   const [isUpdating, setIsUpdating] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showReassign, setShowReassign] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [optimisticLinkedIds, setOptimisticLinkedIds] = useState<string[]>([]);
