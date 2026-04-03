@@ -39,9 +39,6 @@ import {
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getMarketingUrl } from '@/lib/domains';
 import {
-  getCycle,
-  getIntakeRequestsWithProposals,
-  getAvailableSlotsForCycle,
   generateProposals,
   resetProposals,
   movePlayerAssignment,
@@ -51,12 +48,11 @@ import {
   assignPlayerToSlot,
   unassignPlayer,
   exportIntakeRequestsToCsv,
-  getPlayerLinks,
+  getAvailableSlotsForCycle,
   updateCycle,
   type Cycle,
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
-  type PlayerLink,
 } from '@/lib/cycles';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
@@ -72,6 +68,13 @@ import PreGenerationReview from '@/components/cycles/PreGenerationReview';
 import { getSuggestedLinks, getLinkedIdsForRequest, getDismissedSuggestions, getUnmatchedMentions, getDismissedUnmatched } from '@/lib/suggestLinks';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
+import { useQuery } from '@tanstack/react-query';
+import {
+  useCycleDetailQuery,
+  useCycleRequestsQuery,
+  useCyclePlayerLinksQuery,
+  useInvalidateProposalData,
+} from '@/hooks/useProposalData';
 
 export default function AcademyCycleDetail() {
   const { cycleId } = useParams<{ cycleId: string }>();
@@ -85,133 +88,107 @@ export default function AcademyCycleDetail() {
   const rawStep = searchParams.get('step') || 'registrations';
   const activeStep: WorkflowStep = (['registrations', 'review-links', 'generate', 'review-edit', 'approve'].includes(rawStep) ? rawStep : 'registrations') as WorkflowStep;
   const isWaitingList = rawStep === 'waitinglist';
+  const viewMode = searchParams.get('view') || 'list';
+  const statusFilter = searchParams.get('status') || 'all';
+
   const setActiveStep = (step: string) => {
-    setSearchParams({ step }, { replace: true });
+    const params = new URLSearchParams(searchParams);
+    params.set('step', step);
+    setSearchParams(params, { replace: true });
+  };
+  const setViewMode = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (value === 'list') params.delete('view'); else params.set('view', value);
+    setSearchParams(params, { replace: true });
+  };
+  const setStatusFilter = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (value === 'all') params.delete('status'); else params.set('status', value);
+    setSearchParams(params, { replace: true });
   };
 
-  // Data state
-  const [cycle, setCycle] = useState<Cycle | null>(null);
-  const [requests, setRequests] = useState<IntakeRequestWithProposal[]>([]);
-  const [filteredRequests, setFilteredRequests] = useState<IntakeRequestWithProposal[]>([]);
-  const [playerLinksData, setPlayerLinksData] = useState<PlayerLink[]>([]);
+  const academyId = activeAcademy?.id ?? null;
+
+  // TanStack Query — cached data
+  const { data: cycle = null, isLoading: cycleLoading } = useCycleDetailQuery(cycleId);
+  const { data: requests = [], isLoading: requestsLoading } = useCycleRequestsQuery('academy', academyId, cycleId);
+  const { data: playerLinksData = [] } = useCyclePlayerLinksQuery(cycleId);
+
+  const { invalidateAll, invalidateRequests, invalidateSlots } = useInvalidateProposalData();
+
+  // Settings data query
+  const { data: settingsData } = useQuery({
+    queryKey: ['academy-settings', academyId],
+    queryFn: async () => {
+      if (!academyId) return null;
+      const [academyTrainers, academyLocations, tzData] = await Promise.all([
+        getAcademyTrainersWithProfiles(academyId),
+        getAcademyLocations(academyId),
+        supabase.from('academy_profiles').select('timezone').eq('id', academyId).maybeSingle(),
+      ]);
+      const timezone = (tzData.data as any)?.timezone || 'Europe/Amsterdam';
+
+      const trainerIds = academyTrainers.map(t => t.trainer_profile_id);
+      let tlMap: Record<string, string[]> = {};
+      if (trainerIds.length > 0) {
+        const { data: trainerLocs } = await supabase
+          .from('trainer_locations')
+          .select('trainer_id, location_id')
+          .in('trainer_id', trainerIds);
+        if (trainerLocs) {
+          for (const tl of trainerLocs) {
+            if (!tlMap[tl.location_id]) tlMap[tl.location_id] = [];
+            tlMap[tl.location_id].push(tl.trainer_id);
+          }
+        }
+      }
+      return {
+        timezone,
+        trainers: academyTrainers.map((t) => ({
+          id: t.trainer_profile_id,
+          name: t.profile?.full_name || 'Unknown',
+          hourly_rate: t.trainer_profile?.hourly_rate || undefined,
+        })),
+        locations: academyLocations
+          .filter((l) => l.location)
+          .map((l) => ({
+            id: l.location!.id,
+            name: l.location!.name,
+            city: l.location!.city || '',
+          })),
+        trainerLocationMap: tlMap,
+      };
+    },
+    enabled: !!academyId,
+    staleTime: 120_000,
+  });
+
+  const trainers = settingsData?.trainers ?? [];
+  const locations = settingsData?.locations ?? [];
+  const trainerLocationMap = settingsData?.trainerLocationMap ?? {};
+  const academyTimezone = settingsData?.timezone ?? 'Europe/Amsterdam';
+
+  const isFirstLoad = cycleLoading && !cycle;
+
+  // Local state
   const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<string>('list');
-  const [showWizard, setShowWizard] = useState(false); // kept for potential dialog usage
+  const [showWizard, setShowWizard] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [academyTimezone, setAcademyTimezone] = useState<string>('Europe/Amsterdam');
 
-  // Settings data
-  const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
-  const [locations, setLocations] = useState<{ id: string; name: string; city: string }[]>([]);
-  const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
-
-  const fetchCycle = useCallback(async () => {
-    if (!cycleId) return;
-    const data = await getCycle(cycleId);
-    setCycle(data);
-    return data;
-  }, [cycleId]);
-
-  const fetchRequests = useCallback(async () => {
-    if (!activeAcademy || !cycleId) return;
-    const requestsData = await getIntakeRequestsWithProposals('academy', activeAcademy.id);
-    const cycleRequests = requestsData.filter(r => r.cycle_id === cycleId);
-    setRequests(cycleRequests);
+  // Preserve selectedRequest identity
+  useEffect(() => {
     setSelectedRequest(prev => {
       if (!prev) return null;
-      return cycleRequests.find(r => r.id === prev.id) ?? null;
+      return requests.find(r => r.id === prev.id) ?? null;
     });
-    const links = await getPlayerLinks(cycleId);
-    setPlayerLinksData(links);
-  }, [activeAcademy, cycleId]);
+  }, [requests]);
 
-  const fetchSettingsData = useCallback(async () => {
-    if (!activeAcademy) return;
-    const [academyTrainers, academyLocations, tzData] = await Promise.all([
-      getAcademyTrainersWithProfiles(activeAcademy.id),
-      getAcademyLocations(activeAcademy.id),
-      supabase.from('academy_profiles').select('timezone').eq('id', activeAcademy.id).maybeSingle(),
-    ]);
-    if ((tzData.data as any)?.timezone) setAcademyTimezone((tzData.data as any).timezone);
-
-    const trainerIds = academyTrainers.map(t => t.trainer_profile_id);
-    let tlMap: Record<string, string[]> = {};
-    if (trainerIds.length > 0) {
-      const { data: trainerLocs } = await supabase
-        .from('trainer_locations')
-        .select('trainer_id, location_id')
-        .in('trainer_id', trainerIds);
-      if (trainerLocs) {
-        for (const tl of trainerLocs) {
-          if (!tlMap[tl.location_id]) tlMap[tl.location_id] = [];
-          tlMap[tl.location_id].push(tl.trainer_id);
-        }
-      }
-    }
-    setTrainerLocationMap(tlMap);
-    setTrainers(
-      academyTrainers.map((t) => ({
-        id: t.trainer_profile_id,
-        name: t.profile?.full_name || 'Unknown',
-        hourly_rate: t.trainer_profile?.hourly_rate || undefined,
-      }))
-    );
-    setLocations(
-      academyLocations
-        .filter((l) => l.location)
-        .map((l) => ({
-          id: l.location!.id,
-          name: l.location!.name,
-          city: l.location!.city || '',
-        }))
-    );
-  }, [activeAcademy]);
-
-  // Initial load
-  useEffect(() => {
-    const load = async () => {
-      if (!activeAcademy || !cycleId) return;
-      setIsLoading(true);
-      try {
-        await Promise.all([fetchCycle(), fetchRequests(), fetchSettingsData()]);
-      } catch (error: any) {
-        logger.error('Error loading cycle detail', error as Error, { component: 'AcademyCycleDetail' });
-        toast.error(error.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
-  }, [activeAcademy, cycleId]);
-
-  // Silent refresh
-  const refreshData = useCallback(async () => {
-    try {
-      await Promise.all([fetchCycle(), fetchRequests()]);
-    } catch (error: any) {
-      logger.error('Error refreshing cycle detail', error as Error, { component: 'AcademyCycleDetail' });
-    }
-  }, [fetchCycle, fetchRequests]);
-
-  // Filter requests by status
-  useEffect(() => {
-    let filtered = requests;
-    if (statusFilter === 'skipped') {
-      filtered = filtered.filter(r => r.status === 'new' && r.skip_reason);
-    } else if (statusFilter !== 'all') {
-      filtered = filtered.filter(r => r.status === statusFilter);
-    }
-    setFilteredRequests(filtered);
-  }, [requests, statusFilter]);
-
-  // Load schedule slots when needed
+  // Load schedule slots — decoupled from requests
   useEffect(() => {
     if ((viewMode === 'schedule' || activeStep === 'review-edit' || activeStep === 'approve') && cycleId) {
       getAvailableSlotsForCycle(cycleId)
@@ -220,7 +197,18 @@ export default function AcademyCycleDetail() {
     } else {
       setScheduleSlots([]);
     }
-  }, [viewMode, activeStep, cycleId, requests]);
+  }, [viewMode, activeStep, cycleId]);
+
+  // Filter requests by status
+  const filteredRequests = useMemo(() => {
+    let filtered = requests;
+    if (statusFilter === 'skipped') {
+      filtered = filtered.filter(r => r.status === 'new' && r.skip_reason);
+    } else if (statusFilter !== 'all') {
+      filtered = filtered.filter(r => r.status === statusFilter);
+    }
+    return filtered;
+  }, [requests, statusFilter]);
 
   // Counts
   const allCount = requests.length;
@@ -232,7 +220,6 @@ export default function AcademyCycleDetail() {
   // Pending link actions
   const pendingLinkActions = useMemo(() => {
     const dismissed = getDismissedSuggestions();
-    const dismissedUn = getDismissedUnmatched();
     const seenPairs = new Set<string>();
     let count = 0;
     for (const req of requests) {
@@ -242,7 +229,6 @@ export default function AcademyCycleDetail() {
         const pairKey = [req.id, match.id].sort().join('::');
         if (!seenPairs.has(pairKey)) { seenPairs.add(pairKey); count++; }
       }
-      // Unmatched mentions are info-only, not counted as pending actions
     }
     return count;
   }, [requests, playerLinksData]);
@@ -250,25 +236,15 @@ export default function AcademyCycleDetail() {
   const unplacedPlayers = requests
     .filter(r => r.status === 'new')
     .map(r => ({
-      id: r.id,
-      full_name: r.full_name,
-      rating: r.rating,
-      rating_system: r.rating_system,
-      preferred_days: r.preferred_days,
-      lesson_type: r.lesson_type,
-      skip_reason: r.skip_reason,
+      id: r.id, full_name: r.full_name, rating: r.rating, rating_system: r.rating_system,
+      preferred_days: r.preferred_days, lesson_type: r.lesson_type, skip_reason: r.skip_reason,
       sessions_per_week: r.sessions_per_week,
     }));
 
   const allPlayersForGrid = requests
     .map(r => ({
-      id: r.id,
-      full_name: r.full_name,
-      rating: r.rating,
-      rating_system: r.rating_system,
-      preferred_days: r.preferred_days,
-      lesson_type: r.lesson_type,
-      skip_reason: r.skip_reason,
+      id: r.id, full_name: r.full_name, rating: r.rating, rating_system: r.rating_system,
+      preferred_days: r.preferred_days, lesson_type: r.lesson_type, skip_reason: r.skip_reason,
       sessions_per_week: r.sessions_per_week,
     }));
 
@@ -279,6 +255,18 @@ export default function AcademyCycleDetail() {
         return acc;
       }, {} as Record<string, number>)
     : {};
+
+  const refreshData = () => {
+    if (academyId && cycleId) {
+      invalidateRequests('academy', academyId, cycleId);
+    }
+  };
+
+  const refreshCycle = () => {
+    if (cycleId) {
+      invalidateAll('academy', academyId!, cycleId);
+    }
+  };
 
   const handleGenerateProposals = async (config: GenerateProposalsConfig) => {
     if (!cycleId) return;
@@ -301,9 +289,8 @@ export default function AcademyCycleDetail() {
       } else {
         toast.success(t('proposals.generated', { count: result.generated }));
       }
-      // wizard closes automatically in inline mode
       setActiveStep('review-edit');
-      refreshData();
+      if (academyId && cycleId) invalidateAll('academy', academyId, cycleId);
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -319,7 +306,7 @@ export default function AcademyCycleDetail() {
       toast.success(t('proposals.resetSuccess', { count: result.reset, defaultValue: `Reset ${result.reset} proposals` }));
       setShowResetConfirm(false);
       setActiveStep('generate');
-      refreshData();
+      if (academyId && cycleId) invalidateAll('academy', academyId, cycleId);
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -344,7 +331,7 @@ export default function AcademyCycleDetail() {
     try {
       await updateCycle(cycle.id, { status: newStatus });
       toast.success(t(`status.${newStatus}`));
-      fetchCycle();
+      refreshCycle();
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -364,8 +351,7 @@ export default function AcademyCycleDetail() {
     );
   };
 
-  // Schedule grid event handlers (shared between steps)
-  // Uses optimistic local state updates to avoid full page reloads
+  // Schedule grid event handlers with optimistic updates
   const scheduleGridHandlers = {
     onPlayerClick: (intakeRequestId: string) => {
       const req = requests.find(r => r.id === intakeRequestId);
@@ -373,7 +359,6 @@ export default function AcademyCycleDetail() {
     },
     onMovePlayer: async (assignmentId: string, newSlotId: string) => {
       const prev = [...scheduleSlots];
-      // Optimistic: move assignment between slots locally
       setScheduleSlots(slots => {
         let assignment: any = null;
         const updated = slots.map(s => {
@@ -397,7 +382,6 @@ export default function AcademyCycleDetail() {
     },
     onMoveSlot: async (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => {
       const prev = [...scheduleSlots];
-      // Optimistic: update slot time/trainer locally
       setScheduleSlots(slots => slots.map(s => s.id === slotId ? { ...s, trainer_id: newTrainerId, start_time: newStartTime, end_time: newEndTime } : s));
       try {
         await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
@@ -409,7 +393,6 @@ export default function AcademyCycleDetail() {
     },
     onSwapSlots: async (slotAId: string, slotATrainer: string, slotAStart: string, slotAEnd: string, slotBId: string, slotBTrainer: string, slotBStart: string, slotBEnd: string) => {
       const prev = [...scheduleSlots];
-      // Optimistic: swap times/trainers locally
       setScheduleSlots(slots => slots.map(s => {
         if (s.id === slotAId) return { ...s, trainer_id: slotATrainer, start_time: slotAStart, end_time: slotAEnd };
         if (s.id === slotBId) return { ...s, trainer_id: slotBTrainer, start_time: slotBStart, end_time: slotBEnd };
@@ -425,12 +408,11 @@ export default function AcademyCycleDetail() {
     },
     onDeleteSlot: async (slotId: string) => {
       const prev = [...scheduleSlots];
-      // Optimistic: remove slot locally
       setScheduleSlots(slots => slots.filter(s => s.id !== slotId));
       try {
         await deleteSlot(slotId);
         toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
-        refreshData(); // update unplaced list
+        refreshData();
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
@@ -442,7 +424,6 @@ export default function AcademyCycleDetail() {
     },
     onAssignPlayer: async (intakeRequestId: string, slotId: string) => {
       const prev = [...scheduleSlots];
-      // Optimistic: add a placeholder assignment locally
       const player = requests.find(r => r.id === intakeRequestId);
       setScheduleSlots(slots => slots.map(s => s.id === slotId ? {
         ...s,
@@ -459,10 +440,9 @@ export default function AcademyCycleDetail() {
       try {
         await assignPlayerToSlot(intakeRequestId, slotId);
         toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
-        // Refresh to get real assignment IDs and update unplaced list
         const [updatedSlots] = await Promise.all([
           getAvailableSlotsForCycle(cycleId!),
-          fetchRequests(),
+          refreshData(),
         ]);
         setScheduleSlots(updatedSlots);
       } catch (error: any) {
@@ -472,7 +452,6 @@ export default function AcademyCycleDetail() {
     },
     onUnassignPlayer: async (assignmentId: string) => {
       const prev = [...scheduleSlots];
-      // Optimistic: remove assignment locally
       setScheduleSlots(slots => slots.map(s => ({
         ...s,
         current_assignments: s.current_assignments.filter((a: any) => a.id !== assignmentId),
@@ -480,7 +459,7 @@ export default function AcademyCycleDetail() {
       try {
         await unassignPlayer(assignmentId);
         toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
-        fetchRequests(); // update unplaced list silently
+        refreshData();
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
@@ -488,7 +467,7 @@ export default function AcademyCycleDetail() {
     },
   };
 
-  if (isLoading) {
+  if (isFirstLoad) {
     return (
       <div className="container mx-auto px-4 py-6 space-y-6">
         <Skeleton className="h-8 w-64" />
@@ -590,7 +569,6 @@ export default function AcademyCycleDetail() {
       {/* ==================== STEP 1: REGISTRATIONS ==================== */}
       {activeStep === 'registrations' && (
         <div className="space-y-4">
-          {/* Status Filter + Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
@@ -848,7 +826,6 @@ export default function AcademyCycleDetail() {
         onLinkChanged={refreshData}
       />
 
-
       {/* Add Registration Dialog */}
       <AddIntakeRequestDialog
         open={showAddDialog}
@@ -874,7 +851,7 @@ export default function AcademyCycleDetail() {
               ownerId={activeAcademy!.id}
               onSuccess={() => {
                 toast.success(t('common:saved', 'Saved'));
-                fetchCycle();
+                refreshCycle();
                 setShowSettings(false);
               }}
               onCancel={() => setShowSettings(false)}
