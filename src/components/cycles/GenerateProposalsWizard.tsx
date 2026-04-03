@@ -253,7 +253,8 @@ export function GenerateProposalsWizard({
       trainerAvailability: trainerConfigs,
       weights,
       additionalCriteria,
-      keepCompleteGroups,
+      linkStrategy,
+      fillIncompleteGroups,
     });
   };
 
