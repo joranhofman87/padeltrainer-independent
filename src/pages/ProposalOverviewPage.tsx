@@ -20,6 +20,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   ArrowLeft,
   CheckCheck,
   Calendar,
@@ -29,8 +40,10 @@ import {
   UserX,
   ScaleIcon,
   Loader2,
+  Mail,
 } from 'lucide-react';
-import { getAvailableSlotsForCycle, type SlotWithOccupancy } from '@/lib/cycles';
+import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, type SlotWithOccupancy } from '@/lib/cycles';
+import { toast } from 'sonner';
 
 // --- Helpers ---
 
@@ -64,6 +77,8 @@ interface Warning {
   message: string;
 }
 
+type PageStatus = 'idle' | 'booking' | 'booked' | 'sending' | 'notified';
+
 // --- Component ---
 
 export default function ProposalOverviewPage() {
@@ -77,6 +92,7 @@ export default function ProposalOverviewPage() {
 
   const [fetchedSlots, setFetchedSlots] = useState<SlotWithOccupancy[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [pageStatus, setPageStatus] = useState<PageStatus>('idle');
 
   // If no slots were passed via state, fetch them using cycleId
   useEffect(() => {
@@ -135,32 +151,23 @@ export default function ProposalOverviewPage() {
     // Build warnings
     const warnings: Warning[] = [];
 
-    // 1. Empty slots
     if (totalEmpty > 0) {
       warnings.push({
         type: 'empty',
         icon: Clock,
-        message: t('overview.warningEmpty', {
-          count: totalEmpty,
-          defaultValue: '{{count}} slots have no players assigned',
-        }),
+        message: t('overview.warningEmpty', { count: totalEmpty, defaultValue: '{{count}} slots have no players assigned' }),
       });
     }
 
-    // 2. Solo players (groups with only 1 player)
     const soloCount = cycleSlots.filter(s => s.current_assignments.length === 1).length;
     if (soloCount > 0) {
       warnings.push({
         type: 'solo',
         icon: UserX,
-        message: t('overview.warningSolo', {
-          count: soloCount,
-          defaultValue: '{{count}} slots have only 1 player (group training needs 2+)',
-        }),
+        message: t('overview.warningSolo', { count: soloCount, defaultValue: '{{count}} slots have only 1 player (group training needs 2+)' }),
       });
     }
 
-    // 3. Large rating gaps (> 2 rating points within a slot)
     let ratingGapCount = 0;
     for (const slot of cycleSlots) {
       const ratings = slot.current_assignments
@@ -175,14 +182,10 @@ export default function ProposalOverviewPage() {
       warnings.push({
         type: 'rating-gap',
         icon: ScaleIcon,
-        message: t('overview.warningRatingGap', {
-          count: ratingGapCount,
-          defaultValue: '{{count}} slots have a rating gap larger than 2 points',
-        }),
+        message: t('overview.warningRatingGap', { count: ratingGapCount, defaultValue: '{{count}} slots have a rating gap larger than 2 points' }),
       });
     }
 
-    // 4. Trainer workload imbalance (>2x difference)
     if (sorted.length >= 2) {
       const slotCounts = sorted.map(g => g.totalSlots);
       const maxSlots = Math.max(...slotCounts);
@@ -215,6 +218,66 @@ export default function ProposalOverviewPage() {
     }
   };
 
+  const handleApproveAndBook = async () => {
+    if (!cycleId) return;
+    setPageStatus('booking');
+    try {
+      const result = await finalizeProposals(cycleId);
+      if (result.errors.length > 0) {
+        toast.warning(
+          t('overview.bookingPartialSuccess', {
+            booked: result.booked,
+            bookings: result.bookings_created,
+            errors: result.errors.length,
+            defaultValue: '{{booked}} registrations booked ({{bookings}} bookings created), {{errors}} errors',
+          })
+        );
+      } else {
+        toast.success(
+          t('overview.bookingSuccess', {
+            booked: result.booked,
+            bookings: result.bookings_created,
+            defaultValue: '{{booked}} registrations booked, {{bookings}} bookings created',
+          })
+        );
+      }
+      setPageStatus('booked');
+    } catch (err: any) {
+      console.error('Error finalizing proposals:', err);
+      toast.error(err.message || 'Failed to finalize proposals');
+      setPageStatus('idle');
+    }
+  };
+
+  const handleSendEmails = async () => {
+    if (!cycleId) return;
+    setPageStatus('sending');
+    try {
+      const result = await sendScheduleNotifications(cycleId);
+      if (result.errors.length > 0) {
+        toast.warning(
+          t('overview.emailPartialSuccess', {
+            sent: result.sent,
+            errors: result.errors.length,
+            defaultValue: '{{sent}} emails sent, {{errors}} failed',
+          })
+        );
+      } else {
+        toast.success(
+          t('overview.emailSuccess', {
+            sent: result.sent,
+            defaultValue: '{{sent}} schedule emails sent successfully!',
+          })
+        );
+      }
+      setPageStatus('notified');
+    } catch (err: any) {
+      console.error('Error sending schedule emails:', err);
+      toast.error(err.message || 'Failed to send emails');
+      setPageStatus('booked');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-6 flex items-center justify-center min-h-[50vh]">
@@ -222,6 +285,8 @@ export default function ProposalOverviewPage() {
       </div>
     );
   }
+
+  const isProcessing = pageStatus === 'booking' || pageStatus === 'sending';
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6 pb-24 sm:pb-6">
@@ -240,35 +305,95 @@ export default function ProposalOverviewPage() {
             </p>
           </div>
         </div>
-        <Button onClick={() => {}} className="hidden sm:flex">
-          <CheckCheck className="h-4 w-4 mr-1" />
-          {t('proposals.approveAll', { defaultValue: 'Approve & Book all' })}
-        </Button>
+        <div className="hidden sm:flex gap-2">
+          {pageStatus === 'booked' && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" disabled={isProcessing}>
+                  {pageStatus === 'sending' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+                  {t('overview.sendEmails', { defaultValue: 'Send Schedule Emails' })}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('overview.sendEmailsTitle', { defaultValue: 'Send schedule emails?' })}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('overview.sendEmailsDescription', {
+                      count: totalAssigned,
+                      defaultValue: 'This will send an email to all {{count}} assigned players with their training schedule and an invitation to create their account.',
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('overview.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleSendEmails}>
+                    {t('overview.confirmSendEmails', { defaultValue: 'Send Emails' })}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          {pageStatus === 'notified' && (
+            <Badge variant="secondary" className="text-sm py-2 px-3">
+              <CheckCheck className="h-4 w-4 mr-1" />
+              {t('overview.allDone', { defaultValue: 'Bookings confirmed & emails sent' })}
+            </Badge>
+          )}
+          {(pageStatus === 'idle' || pageStatus === 'booking') && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button disabled={isProcessing || totalAssigned === 0}>
+                  {pageStatus === 'booking' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-1" />}
+                  {t('proposals.approveAll', { defaultValue: 'Approve & Book all' })}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('overview.approveTitle', { defaultValue: 'Approve & book all proposals?' })}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('overview.approveDescription', {
+                      slots: totalSlots,
+                      players: totalAssigned,
+                      defaultValue: 'This will confirm all {{players}} player assignments across {{slots}} slots and create their bookings. This action cannot be undone.',
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('overview.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleApproveAndBook}>
+                    {t('overview.confirmApprove', { defaultValue: 'Approve & Book' })}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
+
+      {/* Status banner */}
+      {pageStatus === 'booked' && (
+        <Alert className="border-green-500/30 bg-green-500/5">
+          <CheckCheck className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-sm">
+            {t('overview.bookedBanner', { defaultValue: 'All proposals have been booked! You can now send schedule emails to notify players.' })}
+          </AlertDescription>
+        </Alert>
+      )}
+      {pageStatus === 'notified' && (
+        <Alert className="border-green-500/30 bg-green-500/5">
+          <Mail className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-sm">
+            {t('overview.notifiedBanner', { defaultValue: 'All schedule emails have been sent! Players can create their accounts to view their bookings.' })}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryCard
-          icon={Calendar}
-          label={t('overview.totalSlots', { defaultValue: 'Total slots' })}
-          value={totalSlots}
-        />
-        <SummaryCard
-          icon={Users}
-          label={t('overview.playersAssigned', { defaultValue: 'Players assigned' })}
-          value={totalAssigned}
-        />
-        <SummaryCard
-          icon={Clock}
-          label={t('overview.emptySlots', { defaultValue: 'Empty slots' })}
-          value={totalEmpty}
-          variant={totalEmpty > 0 ? 'warning' : 'default'}
-        />
-        <SummaryCard
-          icon={Users}
-          label={t('overview.trainers', { defaultValue: 'Trainers' })}
-          value={trainerGroups.length}
-        />
+        <SummaryCard icon={Calendar} label={t('overview.totalSlots', { defaultValue: 'Total slots' })} value={totalSlots} />
+        <SummaryCard icon={Users} label={t('overview.playersAssigned', { defaultValue: 'Players assigned' })} value={totalAssigned} />
+        <SummaryCard icon={Clock} label={t('overview.emptySlots', { defaultValue: 'Empty slots' })} value={totalEmpty} variant={totalEmpty > 0 ? 'warning' : 'default'} />
+        <SummaryCard icon={Users} label={t('overview.trainers', { defaultValue: 'Trainers' })} value={trainerGroups.length} />
       </div>
 
       {/* Warnings */}
@@ -386,10 +511,65 @@ export default function ProposalOverviewPage() {
             <ArrowLeft className="h-4 w-4 mr-1" />
             {t('overview.back', { defaultValue: 'Back' })}
           </Button>
-          <Button className="flex-1" onClick={() => {}}>
-            <CheckCheck className="h-4 w-4 mr-1" />
-            {t('proposals.approveAll', { defaultValue: 'Approve & Book all' })}
-          </Button>
+          {pageStatus === 'booked' ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button className="flex-1" disabled={isProcessing}>
+                  {pageStatus === 'sending' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+                  {t('overview.sendEmails', { defaultValue: 'Send Emails' })}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('overview.sendEmailsTitle', { defaultValue: 'Send schedule emails?' })}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('overview.sendEmailsDescription', {
+                      count: totalAssigned,
+                      defaultValue: 'This will send an email to all {{count}} assigned players with their training schedule.',
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('overview.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleSendEmails}>
+                    {t('overview.confirmSendEmails', { defaultValue: 'Send Emails' })}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : pageStatus === 'notified' ? (
+            <Badge variant="secondary" className="flex-1 flex items-center justify-center py-2">
+              <CheckCheck className="h-4 w-4 mr-1" />
+              {t('overview.allDone', { defaultValue: 'Done!' })}
+            </Badge>
+          ) : (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button className="flex-1" disabled={isProcessing || totalAssigned === 0}>
+                  {pageStatus === 'booking' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-1" />}
+                  {t('proposals.approveAll', { defaultValue: 'Approve & Book all' })}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('overview.approveTitle', { defaultValue: 'Approve & book all?' })}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('overview.approveDescription', {
+                      slots: totalSlots,
+                      players: totalAssigned,
+                      defaultValue: 'This will confirm all {{players}} player assignments across {{slots}} slots.',
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('overview.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleApproveAndBook}>
+                    {t('overview.confirmApprove', { defaultValue: 'Approve & Book' })}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </div>
     </div>
