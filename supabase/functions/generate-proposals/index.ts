@@ -84,7 +84,9 @@ interface RequestBody {
   startDate?: string;
   trainerAvailability?: TrainerAvailabilityInput[];
   additionalCriteria?: string;
-  keepCompleteGroups?: boolean;
+  keepCompleteGroups?: boolean; // backward compat
+  linkStrategy?: 'strict' | 'prefer' | 'ignore';
+  fillIncompleteGroups?: boolean;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
