@@ -349,7 +349,9 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups, fillIncompleteGroups: fillIncomplete, maxGroupSize: inputMaxGroupSize } = body;
+    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups, fillIncompleteGroups: fillIncomplete, maxGroupSize: inputMaxGroupSize, timezone: inputTimezone } = body;
+    // Resolve timezone: use provided value, default to Europe/Amsterdam
+    const timezone = inputTimezone || 'Europe/Amsterdam';
     // Resolve linkStrategy: new field takes precedence, fallback to keepCompleteGroups for backward compat
     const linkStrategy: 'strict' | 'prefer' | 'ignore' = body.linkStrategy ?? (keepCompleteGroups === false ? 'ignore' : keepCompleteGroups === true ? 'strict' : 'prefer');
     const fillIncompleteGroups = fillIncomplete ?? true;
