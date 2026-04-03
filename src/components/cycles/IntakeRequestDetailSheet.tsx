@@ -166,6 +166,14 @@ export default function IntakeRequestDetailSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request, allRequests, linkedRequestIds, dismissVersion]);
 
+  // Compute unmatched mentions
+  const unmatchedMentions = useMemo(() => {
+    if (!request) return [];
+    const dismissed = getDismissedUnmatched();
+    return getUnmatchedMentions(request, allRequests, dismissed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request, allRequests, dismissVersion]);
+
   // Available requests to link (same cycle, not already linked to this group, not self)
   const availableToLink = useMemo(() => {
     if (!request) return [];
