@@ -94,6 +94,31 @@ export default function AcademyIntakeRequests() {
     }
   };
 
+  // Silent refresh: same as fetchData but without loading skeleton
+  const refreshData = async () => {
+    if (!activeAcademy) return;
+    try {
+      const [cyclesData, requestsData] = await Promise.all([
+        getCycles('academy', activeAcademy.id),
+        getIntakeRequestsWithProposals('academy', activeAcademy.id)
+      ]);
+      setCycles(cyclesData);
+      setRequests(requestsData);
+      setSelectedRequest(prev => {
+        if (!prev) return null;
+        return requestsData.find(r => r.id === prev.id) ?? null;
+      });
+      const allLinks: PlayerLink[] = [];
+      for (const c of cyclesData) {
+        const links = await getPlayerLinks(c.id);
+        allLinks.push(...links);
+      }
+      setPlayerLinksData(allLinks);
+    } catch (error: any) {
+      logger.error('Error refreshing intake requests', error as Error, { component: 'AcademyIntakeRequests', academyId: activeAcademy?.id });
+    }
+  };
+
   useEffect(() => {
     if (activeAcademy) fetchData();
   }, [activeAcademy]);
@@ -354,7 +379,7 @@ export default function AcademyIntakeRequests() {
           emptyMessage={t('intakeRequests.noRequests')}
           emptyDescription={t('intakeRequests.noRequestsDescription')}
           playerLinks={playerLinksData}
-          onLinkChanged={fetchData}
+          onLinkChanged={refreshData}
         />
       ) : (
         <ProposalScheduleGrid
@@ -456,7 +481,7 @@ export default function AcademyIntakeRequests() {
         cycleId={selectedCycle?.id}
         playerLinks={playerLinksData}
         allRequests={requests}
-        onLinkChanged={fetchData}
+        onLinkChanged={refreshData}
       />
 
       {/* Generate Proposals Wizard */}
