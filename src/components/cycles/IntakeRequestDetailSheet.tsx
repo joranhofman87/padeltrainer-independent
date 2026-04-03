@@ -426,6 +426,16 @@ export default function IntakeRequestDetailSheet({
                       >
                         <Plus className="h-3 w-3" />
                       </button>
+                      <button
+                        onClick={() => {
+                          dismissSuggestion(request!.id, sl.id);
+                          setDismissVersion(v => v + 1);
+                        }}
+                        className="rounded-full hover:bg-destructive/20 p-0.5"
+                        title={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss suggestion' })}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     </Badge>
                   ))}
                 </div>
