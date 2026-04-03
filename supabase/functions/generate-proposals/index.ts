@@ -347,7 +347,10 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups } = body;
+    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria, keepCompleteGroups, fillIncompleteGroups: fillIncomplete } = body;
+    // Resolve linkStrategy: new field takes precedence, fallback to keepCompleteGroups for backward compat
+    const linkStrategy: 'strict' | 'prefer' | 'ignore' = body.linkStrategy ?? (keepCompleteGroups === false ? 'ignore' : keepCompleteGroups === true ? 'strict' : 'prefer');
+    const fillIncompleteGroups = fillIncomplete ?? true;
 
     if (!cycleId) {
       return new Response(
