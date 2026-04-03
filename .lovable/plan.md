@@ -1,65 +1,25 @@
 
 
-# Constrain Scoring Weights to Always Sum to 100
+# Fix: Sort Proposal Overview by Day Chronologically
 
 ## Problem
-The weight sliders are independent — each goes 0-100, so the total can exceed 100. The presets all sum to 100 but manual adjustments break this. Since the algorithm uses relative weights, going over 100 isn't a bug, but it's confusing UX.
-
-## Approach
-Auto-normalize: when a slider changes, proportionally adjust the other sliders so the total always equals 100. This is how most "budget allocation" UIs work.
-
-When the user drags one slider up by N, reduce the others proportionally. When dragged down, increase the others. If all others are at 0, cap the active slider.
+Trainer groups are sorted alphabetically by name (line 146). Within each trainer, days are stored in a `Map` that preserves insertion order rather than chronological order. The overview should show days sorted chronologically (Monday first, then Tuesday, etc.).
 
 ## Changes
 
-### `src/components/cycles/ScoringWeightsPanel.tsx`
-Replace `updateWeight` with a normalizing version:
+### `src/pages/ProposalOverviewPage.tsx`
 
-```typescript
-const updateWeight = (key: keyof ScoringWeights, newValue: number) => {
-  const oldValue = weights[key];
-  const delta = newValue - oldValue;
-  if (delta === 0) return;
+**Within each trainer group**, sort the days chronologically when rendering. The `days` Map keys are date strings (YYYY-MM-DD), so sorting by key gives chronological order.
 
-  const otherKeys = Object.keys(weights).filter(k => k !== key) as (keyof ScoringWeights)[];
-  const otherSum = otherKeys.reduce((sum, k) => sum + weights[k], 0);
+On line 146, also sort trainer groups by their **earliest slot date** instead of alphabetically — so the trainer with the earliest session on Monday appears first, then the one starting on Tuesday, etc.
 
-  const updated = { ...weights, [key]: newValue };
-
-  if (otherSum === 0) {
-    // Can't reduce others below 0 — cap this slider
-    updated[key] = 100;
-  } else {
-    // Distribute -delta proportionally among others
-    const scale = (otherSum - delta) / otherSum;
-    let remaining = 100 - newValue;
-    otherKeys.forEach((k, i) => {
-      if (i === otherKeys.length - 1) {
-        updated[k] = Math.max(0, remaining);
-      } else {
-        const adj = Math.max(0, Math.round(weights[k] * scale));
-        updated[k] = adj;
-        remaining -= adj;
-      }
-    });
-  }
-
-  onWeightsChange(updated);
-  setActivePreset(null);
-};
-```
-
-Also apply same logic in `ScoringWeightsDialog.tsx` if it has its own `updateWeight`.
-
-## Result
-- Total always shows 100
-- Dragging one slider automatically adjusts others proportionally
-- Presets still work as before (they already sum to 100)
+Concrete changes:
+1. **Sort trainer groups by earliest date** (line 146): Replace `a.trainerName.localeCompare(b.trainerName)` with a comparison of each group's earliest date key
+2. **Sort days within each trainer**: When iterating `group.days` for rendering, sort entries by date key (already lexicographic = chronological for YYYY-MM-DD format)
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/ScoringWeightsPanel.tsx` | Replace `updateWeight` with normalizing version |
-| `src/components/cycles/ScoringWeightsDialog.tsx` | Same normalizing logic if it has independent `updateWeight` |
+| `src/pages/ProposalOverviewPage.tsx` | Sort trainer groups by earliest date; sort day entries chronologically when rendering |
 
