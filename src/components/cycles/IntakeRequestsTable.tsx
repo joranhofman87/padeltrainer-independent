@@ -134,11 +134,22 @@ export default function IntakeRequestsTable({
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const displayedRequests = useMemo(() => {
+  const filteredRequests = useMemo(() => {
     if (!searchQuery.trim()) return requests;
     const q = searchQuery.toLowerCase();
     return requests.filter(r => r.full_name?.toLowerCase().includes(q));
   }, [requests, searchQuery]);
+
+  // Enrich with _isLinked for sorting
+  const enrichedRequests = useMemo(() => {
+    const linkedSet = new Set(playerLinks.map(pl => pl.intake_request_id));
+    return filteredRequests.map(r => ({
+      ...r,
+      _isLinked: linkedSet.has(r.id),
+    }));
+  }, [filteredRequests, playerLinks]);
+
+  const { sortedData: displayedRequests, sortConfig, handleSort } = useTableSort(enrichedRequests);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleColumns]));
