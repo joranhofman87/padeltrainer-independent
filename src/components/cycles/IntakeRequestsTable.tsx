@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useTableSort } from '@/hooks/useTableSort';
+import { SortableTableHead } from '@/components/admin/SortableTableHead';
 import {
   Table,
   TableBody,
@@ -132,11 +134,22 @@ export default function IntakeRequestsTable({
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const displayedRequests = useMemo(() => {
+  const filteredRequests = useMemo(() => {
     if (!searchQuery.trim()) return requests;
     const q = searchQuery.toLowerCase();
     return requests.filter(r => r.full_name?.toLowerCase().includes(q));
   }, [requests, searchQuery]);
+
+  // Enrich with _isLinked for sorting
+  const enrichedRequests = useMemo(() => {
+    const linkedSet = new Set(playerLinks.map(pl => pl.intake_request_id));
+    return filteredRequests.map(r => ({
+      ...r,
+      _isLinked: linkedSet.has(r.id),
+    }));
+  }, [filteredRequests, playerLinks]);
+
+  const { sortedData: displayedRequests, sortConfig, handleSort } = useTableSort(enrichedRequests);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleColumns]));
@@ -603,15 +616,15 @@ export default function IntakeRequestsTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 z-10 bg-background">{t('intakeRequests.table.player')}</TableHead>
+                  <SortableTableHead sortKey="full_name" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="sticky left-0 z-10 bg-background">{t('intakeRequests.table.player')}</SortableTableHead>
                   {isVisible('lessonType') && <TableHead>{t('intakeRequests.table.lessonType')}</TableHead>}
-                  {isVisible('rating') && <TableHead>{t('intakeRequests.table.rating')}</TableHead>}
+                  {isVisible('rating') && <SortableTableHead sortKey="rating" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.table.rating')}</SortableTableHead>}
                   {isVisible('availability') && <TableHead>{t('intakeRequests.table.availability')}</TableHead>}
                   {isVisible('preferredTrainer') && <TableHead>{t('intakeRequests.table.preferredTrainer')}</TableHead>}
                   {isVisible('status') && <TableHead>{t('intakeRequests.table.status')}</TableHead>}
-                  {isVisible('linked') && <TableHead>{t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' })}</TableHead>}
+                  {isVisible('linked') && <SortableTableHead sortKey="_isLinked" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' })}</SortableTableHead>}
                   {isVisible('proposal') && <TableHead>{t('proposals.title')}</TableHead>}
-                  {isVisible('applied') && <TableHead>{t('intakeRequests.table.applied')}</TableHead>}
+                  {isVisible('applied') && <SortableTableHead sortKey="created_at" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.table.applied')}</SortableTableHead>}
                   {isVisible('phone') && <TableHead>{t('intakeRequests.table.phone', { defaultValue: 'Phone' })}</TableHead>}
                   {isVisible('sessionsPerWeek') && <TableHead>{t('intakeRequests.table.sessionsPerWeek', { defaultValue: 'Sessions/wk' })}</TableHead>}
                   {isVisible('duration') && <TableHead>{t('intakeRequests.table.duration', { defaultValue: 'Duration' })}</TableHead>}
