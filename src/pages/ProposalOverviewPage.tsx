@@ -1,10 +1,17 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { format, differenceInWeeks, parseISO, getDay, eachWeekOfInterval, addDays, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Accordion,
   AccordionContent,
@@ -41,10 +48,14 @@ import {
   ScaleIcon,
   Loader2,
   Mail,
+  CalendarOff,
+  Plus,
+  X,
 } from 'lucide-react';
-import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, type SlotWithOccupancy } from '@/lib/cycles';
+import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, updateCycleSettings, type SlotWithOccupancy, type Cycle, type CycleSettings } from '@/lib/cycles';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 // --- Helpers ---
 
