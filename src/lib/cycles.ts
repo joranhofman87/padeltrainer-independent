@@ -114,6 +114,8 @@ export interface CycleSettings {
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   // Pre-selected days & time frames available for registration
   available_days?: Record<string, { start: string; end: string }[]>;
+  // Dates to exclude from recurring schedule (holidays, etc.)
+  excluded_dates?: string[];
   [key: string]: unknown; // Allow for Json compatibility
 }
 
@@ -413,6 +415,14 @@ export async function getCycle(cycleId: string): Promise<Cycle | null> {
     throw error;
   }
   return toCycle(data);
+}
+
+export async function updateCycleSettings(cycleId: string, settings: CycleSettings): Promise<void> {
+  const { error } = await supabase
+    .from('cycles')
+    .update({ settings: settings as unknown as Json })
+    .eq('id', cycleId);
+  if (error) throw error;
 }
 
 export async function createCycle(input: CycleInput): Promise<Cycle> {

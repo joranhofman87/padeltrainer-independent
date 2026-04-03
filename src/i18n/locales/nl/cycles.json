@@ -469,5 +469,13 @@
     "reviewDesc": "{{count}} voorstellen",
     "approve": "Goedkeuren & inplannen",
     "approveDesc": "{{count}} bevestigd"
+  },
+  "overview": {
+    "period": "Periode",
+    "weeks": "Weken",
+    "holidayDates": "Vakantiedagen",
+    "addDate": "Datum toevoegen",
+    "noHolidays": "Geen vakantiedagen ingesteld. Alle weken hebben lessen.",
+    "sessions": "Lessen"
   }
 }

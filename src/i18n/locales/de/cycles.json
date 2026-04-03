@@ -413,5 +413,13 @@
     "reviewDesc": "{{count}} Vorschläge",
     "approve": "Genehmigen & Buchen",
     "approveDesc": "{{count}} bestätigt"
+  },
+  "overview": {
+    "period": "Zeitraum",
+    "weeks": "Wochen",
+    "holidayDates": "Ferientage",
+    "addDate": "Datum hinzufügen",
+    "noHolidays": "Keine Ferientage festgelegt. Alle Wochen haben Trainingseinheiten.",
+    "sessions": "Einheiten"
   }
 }

@@ -1,10 +1,17 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { format, differenceInWeeks, parseISO, getDay, eachWeekOfInterval, addDays, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Accordion,
   AccordionContent,
@@ -41,10 +48,14 @@ import {
   ScaleIcon,
   Loader2,
   Mail,
+  CalendarOff,
+  Plus,
+  X,
 } from 'lucide-react';
-import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, type SlotWithOccupancy } from '@/lib/cycles';
+import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, updateCycleSettings, type SlotWithOccupancy, type Cycle, type CycleSettings } from '@/lib/cycles';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 // --- Helpers ---
 
@@ -106,6 +117,20 @@ export default function ProposalOverviewPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [pageStatus, setPageStatus] = useState<PageStatus>('idle');
   const [tz, setTz] = useState<string | undefined>(stateTimezone);
+  const [cycle, setCycle] = useState<Cycle | null>(null);
+  const [excludedDates, setExcludedDates] = useState<string[]>([]);
+  const [holidayPickerOpen, setHolidayPickerOpen] = useState(false);
+
+  // Fetch cycle data
+  useEffect(() => {
+    if (!cycleId) return;
+    getCycle(cycleId).then(c => {
+      if (c) {
+        setCycle(c);
+        setExcludedDates(c.settings?.excluded_dates ?? []);
+      }
+    }).catch(console.error);
+  }, [cycleId]);
 
   // If no slots were passed via state, fetch them using cycleId
   useEffect(() => {
@@ -240,6 +265,55 @@ export default function ProposalOverviewPage() {
 
     return { trainerGroups: sorted, totalSlots, totalAssigned, totalEmpty, warnings };
   }, [cycleSlots, i18n.language, t]);
+
+  // --- Holiday helpers ---
+  const totalWeeks = useMemo(() => {
+    if (!cycle) return 0;
+    return differenceInWeeks(parseISO(cycle.end_date), parseISO(cycle.start_date));
+  }, [cycle]);
+
+  const handleAddHoliday = useCallback(async (date: Date | undefined) => {
+    if (!date || !cycleId || !cycle) return;
+    const dateStr = format(date, 'yyyy-MM-dd');
+    if (excludedDates.includes(dateStr)) return;
+    const newDates = [...excludedDates, dateStr].sort();
+    setExcludedDates(newDates);
+    setHolidayPickerOpen(false);
+    try {
+      await updateCycleSettings(cycleId, { ...cycle.settings, excluded_dates: newDates });
+    } catch (err) {
+      console.error('Failed to save excluded dates', err);
+      setExcludedDates(excludedDates); // rollback
+      toast.error('Failed to save holiday date');
+    }
+  }, [cycleId, cycle, excludedDates]);
+
+  const handleRemoveHoliday = useCallback(async (dateStr: string) => {
+    if (!cycleId || !cycle) return;
+    const newDates = excludedDates.filter(d => d !== dateStr);
+    setExcludedDates(newDates);
+    try {
+      await updateCycleSettings(cycleId, { ...cycle.settings, excluded_dates: newDates });
+    } catch (err) {
+      console.error('Failed to save excluded dates', err);
+      setExcludedDates(excludedDates); // rollback
+      toast.error('Failed to save holiday date');
+    }
+  }, [cycleId, cycle, excludedDates]);
+
+  /** Count effective sessions for a slot's weekday, given excluded dates */
+  const getEffectiveSessions = useCallback((slotStartTime: string) => {
+    if (!cycle) return { total: totalWeeks, effective: totalWeeks, excluded: 0 };
+    const start = parseISO(cycle.start_date);
+    const end = parseISO(cycle.end_date);
+    const slotDay = new Date(slotStartTime).getDay(); // 0=Sun ... 6=Sat
+    const matchingHolidays = excludedDates.filter(d => {
+      const hDate = parseISO(d);
+      return hDate.getDay() === slotDay && hDate >= start && hDate <= end;
+    }).length;
+    return { total: totalWeeks, effective: totalWeeks - matchingHolidays, excluded: matchingHolidays };
+  }, [cycle, excludedDates, totalWeeks]);
+
 
   const handleBack = () => {
     if (typeof backPath === 'string') {
@@ -419,6 +493,72 @@ export default function ProposalOverviewPage() {
         </Alert>
       )}
 
+      {/* Cycle info & holidays */}
+      {cycle && (
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+            <div>
+              <span className="text-muted-foreground">{t('overview.period', { defaultValue: 'Period' })}:</span>{' '}
+              <span className="font-medium">
+                {format(parseISO(cycle.start_date), 'd MMM yyyy')} — {format(parseISO(cycle.end_date), 'd MMM yyyy')}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">{t('overview.weeks', { defaultValue: 'Weeks' })}:</span>{' '}
+              <span className="font-medium">{totalWeeks}</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <CalendarOff className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">{t('overview.holidayDates', { defaultValue: 'Holiday dates' })}</span>
+              <Popover open={holidayPickerOpen} onOpenChange={setHolidayPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                    <Plus className="h-3 w-3" />
+                    {t('overview.addDate', { defaultValue: 'Add date' })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    onSelect={handleAddHoliday}
+                    disabled={(date) => {
+                      const dateStr = format(date, 'yyyy-MM-dd');
+                      const start = parseISO(cycle.start_date);
+                      const end = parseISO(cycle.end_date);
+                      return date < start || date > end || excludedDates.includes(dateStr);
+                    }}
+                    defaultMonth={parseISO(cycle.start_date)}
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            {excludedDates.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {excludedDates.map(d => (
+                  <Badge key={d} variant="secondary" className="text-xs gap-1 pr-1">
+                    {format(parseISO(d), 'd MMM yyyy')}
+                    <button
+                      onClick={() => handleRemoveHoliday(d)}
+                      className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {t('overview.noHolidays', { defaultValue: 'No holiday dates set. All weeks will have sessions.' })}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryCard icon={Calendar} label={t('overview.totalSlots', { defaultValue: 'Total slots' })} value={totalSlots} />
@@ -473,6 +613,7 @@ export default function ProposalOverviewPage() {
                               <TableHead className="w-[120px] h-8 text-xs">{t('overview.time', { defaultValue: 'Time' })}</TableHead>
                               <TableHead className="h-8 text-xs">{t('overview.players', { defaultValue: 'Players' })}</TableHead>
                               <TableHead className="w-[60px] h-8 text-xs text-right">{t('overview.size', { defaultValue: 'Size' })}</TableHead>
+                              {cycle && <TableHead className="w-[80px] h-8 text-xs text-right">{t('overview.sessions', { defaultValue: 'Sessions' })}</TableHead>}
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -517,6 +658,17 @@ export default function ProposalOverviewPage() {
                                       <span className="text-muted-foreground">/{slot.max_participants}</span>
                                     )}
                                   </TableCell>
+                                  {cycle && (() => {
+                                    const sess = getEffectiveSessions(slot.start_time);
+                                    return (
+                                      <TableCell className="py-2 text-sm text-right tabular-nums">
+                                        <span className="font-medium">{sess.effective}</span>
+                                        {sess.excluded > 0 && (
+                                          <span className="text-muted-foreground text-xs ml-0.5">/{sess.total}</span>
+                                        )}
+                                      </TableCell>
+                                    );
+                                  })()}
                                 </TableRow>
                               );
                             })}
