@@ -129,6 +129,7 @@ export function GenerateProposalsWizard({
   const [additionalCriteria, setAdditionalCriteria] = useState(draft?.additionalCriteria || '');
   const [linkStrategy, setLinkStrategy] = useState<LinkStrategy>(draft?.linkStrategy || 'prefer');
   const [fillIncompleteGroups, setFillIncompleteGroups] = useState(draft?.fillIncompleteGroups ?? true);
+  const [maxGroupSize, setMaxGroupSize] = useState<number>(draft?.maxGroupSize ?? cycle.settings?.max_group_size ?? 4);
 
   // Show toast if draft was restored
   useEffect(() => {
