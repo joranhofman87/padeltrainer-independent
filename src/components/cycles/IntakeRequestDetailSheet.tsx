@@ -65,6 +65,7 @@ import {
   type EnrichedProposedAssignment,
   type PlayerLink,
   updateIntakeRequestStatus,
+  updateProposedAssignmentStatus,
   getProposedAssignmentForRequest,
   deleteIntakeRequest,
   linkPlayers,
@@ -72,6 +73,7 @@ import {
 } from '@/lib/cycles';
 import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getUnmatchedMentions, getDismissedUnmatched, dismissUnmatchedMention } from '@/lib/suggestLinks';
 import ProposalCard from './ProposalCard';
+import ReassignPlayerDialog from './ReassignPlayerDialog';
 import EditIntakeRequestDialog from './EditIntakeRequestDialog';
 
 interface IntakeRequestDetailSheetProps {
