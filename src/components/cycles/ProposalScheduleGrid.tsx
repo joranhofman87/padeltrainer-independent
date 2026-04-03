@@ -275,9 +275,10 @@ function SlotEditPopover({
     if (open) {
       setStartTime(format(parseISO(slot.start_time), 'HH:mm'));
       setEndTime(format(parseISO(slot.end_time), 'HH:mm'));
+      setTargetDay(selectedDay);
       setConfirmDelete(false);
     }
-  }, [open, slot.start_time, slot.end_time]);
+  }, [open, slot.start_time, slot.end_time, selectedDay]);
 
   // Get the trainer's availability bounds for the selected day
   const trainerBounds = useMemo(() => {
