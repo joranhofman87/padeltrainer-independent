@@ -759,7 +759,7 @@ export default function AcademyCycleDetail() {
       )}
 
       {/* ==================== WAITING LIST (secondary) ==================== */}
-      {(searchParams.get('step') === 'waitinglist') && (
+      {isWaitingList && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">{t('nav.waitingList', 'Waiting List')}</h3>
