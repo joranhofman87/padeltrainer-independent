@@ -102,6 +102,12 @@ export default function IntakeRequestDetailSheet({
   const [isDeleting, setIsDeleting] = useState(false);
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
+  const [optimisticLinkedIds, setOptimisticLinkedIds] = useState<string[]>([]);
+
+  // Reset optimistic state when request or playerLinks change from parent
+  useEffect(() => {
+    setOptimisticLinkedIds([]);
+  }, [playerLinks, request?.id]);
 
   useEffect(() => {
     const fetchProposal = async () => {
