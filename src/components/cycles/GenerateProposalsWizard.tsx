@@ -36,12 +36,16 @@ import { type Cycle, type ScoringWeights, DEFAULT_SCORING_WEIGHTS } from '@/lib/
 import { ScoringWeightsPanel } from './ScoringWeightsPanel';
 
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const TIME_OPTIONS: string[] = [];
+const TIME_OPTIONS_START: string[] = [];
+const TIME_OPTIONS_END: string[] = [];
 for (let h = 6; h <= 23; h++) {
-  TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:00`);
-  TIME_OPTIONS.push(`${h.toString().padStart(2, '0')}:30`);
+  TIME_OPTIONS_START.push(`${h.toString().padStart(2, '0')}:00`);
+  TIME_OPTIONS_START.push(`${h.toString().padStart(2, '0')}:30`);
+  TIME_OPTIONS_END.push(`${h.toString().padStart(2, '0')}:00`);
+  TIME_OPTIONS_END.push(`${h.toString().padStart(2, '0')}:30`);
 }
-TIME_OPTIONS.push('00:00');
+// 00:00 (midnight) is valid as end-of-day but not as start
+TIME_OPTIONS_END.push('00:00');
 
 export interface TrainerAvailabilityConfig {
   trainerId: string;
@@ -468,7 +472,7 @@ export function GenerateProposalsWizard({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {TIME_OPTIONS.map(t => (
+                          {TIME_OPTIONS_START.map(t => (
                             <SelectItem key={t} value={t}>{t}</SelectItem>
                           ))}
                         </SelectContent>
@@ -482,7 +486,7 @@ export function GenerateProposalsWizard({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {TIME_OPTIONS.map(t => (
+                          {TIME_OPTIONS_END.map(t => (
                             <SelectItem key={t} value={t}>{t}</SelectItem>
                           ))}
                         </SelectContent>
