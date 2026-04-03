@@ -507,7 +507,7 @@ export default function AcademyCycleDetail() {
       </div>
 
       {/* Workflow Steps Navigation */}
-      {activeStep !== 'waitinglist' && (
+      {!isWaitingList && (
         <ProposalWorkflowSteps
           activeStep={activeStep as WorkflowStep}
           onStepClick={setActiveStep}
