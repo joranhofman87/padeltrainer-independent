@@ -136,12 +136,18 @@ export default function IntakeRequestDetailSheet({
     return link?.link_group ?? null;
   }, [request, playerLinks]);
 
-  const linkedRequestIds = useMemo(() => {
+  const baseLinkedRequestIds = useMemo(() => {
     if (!currentLinkGroup) return [];
     return playerLinks
       .filter(pl => pl.link_group === currentLinkGroup && pl.intake_request_id !== request?.id)
       .map(pl => pl.intake_request_id);
   }, [currentLinkGroup, playerLinks, request]);
+
+  // Merge base linked IDs with optimistic additions
+  const linkedRequestIds = useMemo(() => {
+    const merged = new Set([...baseLinkedRequestIds, ...optimisticLinkedIds]);
+    return [...merged];
+  }, [baseLinkedRequestIds, optimisticLinkedIds]);
 
   const linkedRequests = useMemo(() => {
     return linkedRequestIds
