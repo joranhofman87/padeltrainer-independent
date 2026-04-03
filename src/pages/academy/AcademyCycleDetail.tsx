@@ -50,6 +50,7 @@ import {
   exportIntakeRequestsToCsv,
   getAvailableSlotsForCycle,
   updateCycle,
+  createProposalSlot,
   type Cycle,
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,

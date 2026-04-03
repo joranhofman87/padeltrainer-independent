@@ -23,6 +23,7 @@ import {
   unassignPlayer,
   exportIntakeRequestsToCsv,
   getAvailableSlotsForCycle,
+  createProposalSlot,
   type SlotWithOccupancy,
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
