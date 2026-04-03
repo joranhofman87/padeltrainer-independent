@@ -432,6 +432,24 @@ export function GenerateProposalsWizard({
         {/* Step 3: Additional Criteria */}
         {step === 3 && (
           <div className="space-y-4 py-2">
+            <div className="flex items-start space-x-3">
+              <Checkbox
+                id="keepCompleteGroups"
+                checked={keepCompleteGroups}
+                onCheckedChange={(checked) => setKeepCompleteGroups(!!checked)}
+              />
+              <div className="space-y-1">
+                <Label htmlFor="keepCompleteGroups" className="font-medium cursor-pointer">
+                  {t('proposals.wizard.keepCompleteGroups', { defaultValue: 'Keep complete groups together' })}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('proposals.wizard.keepCompleteGroupsHelp', { defaultValue: 'When a linked group has enough players to fill a slot (e.g. 4), they will be placed together as a unit.' })}
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
             <div className="space-y-2">
               <Label>{t('proposals.wizard.additionalCriteria', { defaultValue: 'Additional criteria' })}</Label>
               <p className="text-sm text-muted-foreground">
