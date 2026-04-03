@@ -48,6 +48,7 @@ export default function ProposalWorkflowSteps({
   onShowOverview,
   isGenerating,
   isResetting,
+  hideCycleSelector,
 }: ProposalWorkflowStepsProps) {
   const { t } = useTranslation('cycles');
 
