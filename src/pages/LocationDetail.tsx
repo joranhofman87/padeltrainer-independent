@@ -134,8 +134,8 @@ export default function LocationDetail() {
         setLocation(locationData);
 
         if (user && clubProfileData) {
-          const managerStatus = await isUserClubManager(user.id);
-          setIsManager(managerStatus);
+          const managerResult = await isUserClubManager(user.id);
+          setIsManager(managerResult.data);
         }
 
         const trainersData = await getTrainersAtLocation(locationData.id);
