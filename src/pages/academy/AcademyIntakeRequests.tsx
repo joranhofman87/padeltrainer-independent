@@ -177,6 +177,7 @@ export default function AcademyIntakeRequests() {
         startDate: config.startDate,
         trainerAvailability: config.trainerAvailability,
         additionalCriteria: config.additionalCriteria,
+        timezone: config.timezone,
       });
       if (result.skipped > 0) {
         toast.success(
