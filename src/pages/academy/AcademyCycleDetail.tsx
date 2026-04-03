@@ -431,8 +431,9 @@ export default function AcademyCycleDetail() {
       }
     },
     onDeleteSlot: async (slotId: string) => {
-      const prev = [...scheduleSlots];
+      const prev = deepCloneSlots();
       setScheduleSlots(slots => slots.filter(s => s.id !== slotId));
+      pendingMutationsRef.current++;
       try {
         await deleteSlot(slotId);
         toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
@@ -440,6 +441,9 @@ export default function AcademyCycleDetail() {
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
+      } finally {
+        pendingMutationsRef.current--;
+        safeInvalidateSlots();
       }
     },
     onUndo: (previousSlots: SlotWithOccupancy[]) => {
@@ -447,7 +451,7 @@ export default function AcademyCycleDetail() {
       toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
     },
     onAssignPlayer: async (intakeRequestId: string, slotId: string) => {
-      const prev = [...scheduleSlots];
+      const prev = deepCloneSlots();
       const player = requests.find(r => r.id === intakeRequestId);
       setScheduleSlots(slots => slots.map(s => s.id === slotId ? {
         ...s,
@@ -461,22 +465,26 @@ export default function AcademyCycleDetail() {
           sessions_per_week: player?.sessions_per_week ?? 1,
         }]
       } : s));
+      pendingMutationsRef.current++;
       try {
         await assignPlayerToSlot(intakeRequestId, slotId);
         toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
-        invalidateSlots(cycleId!);
         refreshData();
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
+      } finally {
+        pendingMutationsRef.current--;
+        safeInvalidateSlots();
       }
     },
     onUnassignPlayer: async (assignmentId: string) => {
-      const prev = [...scheduleSlots];
+      const prev = deepCloneSlots();
       setScheduleSlots(slots => slots.map(s => ({
         ...s,
         current_assignments: s.current_assignments.filter((a: any) => a.id !== assignmentId),
       })));
+      pendingMutationsRef.current++;
       try {
         await unassignPlayer(assignmentId);
         toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
@@ -484,6 +492,9 @@ export default function AcademyCycleDetail() {
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
+      } finally {
+        pendingMutationsRef.current--;
+        safeInvalidateSlots();
       }
     },
     onCreateSlot: async (trainerId: string, startTime: string, endTime: string) => {
@@ -505,6 +516,7 @@ export default function AcademyCycleDetail() {
         current_assignments: [],
       };
       setScheduleSlots(prev => [...prev, newSlot]);
+      pendingMutationsRef.current++;
       try {
         const result = await createProposalSlot(cycleId, trainerId, startTime, endTime);
         setScheduleSlots(prev => prev.map(s => s.id === tempId ? { ...s, id: result.id } : s));
@@ -512,6 +524,9 @@ export default function AcademyCycleDetail() {
       } catch (error: any) {
         setScheduleSlots(prev => prev.filter(s => s.id !== tempId));
         toast.error(error.message);
+      } finally {
+        pendingMutationsRef.current--;
+        safeInvalidateSlots();
       }
     },
   };
