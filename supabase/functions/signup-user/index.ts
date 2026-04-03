@@ -195,10 +195,11 @@ const handler = async (req: Request): Promise<Response> => {
     // Create Stripe customer and store ID
     const stripeCustomerId = await createStripeCustomer(email, fullName, user.id);
 
-    // Update profile with phone, language, and Stripe customer ID
+    // Update profile with phone, language, timezone, and Stripe customer ID
     const updates: Record<string, string> = {};
     if (phone) updates.phone = phone;
     if (language) updates.preferred_language = language;
+    if (timezone) updates.timezone = timezone;
     if (stripeCustomerId) updates.stripe_customer_id = stripeCustomerId;
     
     if (Object.keys(updates).length > 0) {

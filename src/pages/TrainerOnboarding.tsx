@@ -40,7 +40,8 @@ export default function TrainerOnboarding() {
         .maybeSingle();
 
       if (!hasTrainerRole.data) {
-        await setUserRole(user.id, 'trainer');
+        const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
+        await setUserRole(user.id, 'trainer', detectedTimezone);
         await refreshAuth();
       }
 

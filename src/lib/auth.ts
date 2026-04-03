@@ -153,7 +153,7 @@ export async function getUserRoles(userId: string): Promise<UserRole[]> {
   return data.map(d => d.role as UserRole);
 }
 
-export async function setUserRole(userId: string, role: UserRole) {
+export async function setUserRole(userId: string, role: UserRole, timezone?: string) {
   const { data, error } = await supabase
     .from('user_roles')
     .insert({ user_id: userId, role })
@@ -166,6 +166,7 @@ export async function setUserRole(userId: string, role: UserRole) {
   if (role === 'trainer') {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+    const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
     
     const { error: trainerError } = await supabase
       .from('trainer_profiles')
@@ -175,6 +176,7 @@ export async function setUserRole(userId: string, role: UserRole) {
         trial_ends_at: trialEnd.toISOString(),
         subscription_status: 'trial',
         is_public: false,
+        timezone: tz,
       });
     
     if (trainerError) throw trainerError;

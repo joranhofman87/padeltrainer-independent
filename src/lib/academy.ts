@@ -118,6 +118,7 @@ export async function createAcademy(
     const slug = await generateUniqueSlug(name);
 
     // Create the academy profile
+    const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
     const { data: academy, error: profileError } = await supabase
       .from('academy_profiles')
       .insert({
@@ -129,6 +130,7 @@ export async function createAcademy(
         is_public: false,
         created_by: session.user.id,
         country,
+        timezone: tz,
       })
       .select('id')
       .single();
