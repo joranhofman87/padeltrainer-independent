@@ -47,6 +47,7 @@ import {
   X,
   Lightbulb,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import { 
   type IntakeRequestWithProposal, 
@@ -55,10 +56,20 @@ import {
   updateIntakeRequestStatus,
   updateProposedAssignmentStatus,
   getProposedAssignmentForRequest,
-  
+  deleteIntakeRequest,
   linkPlayers,
   unlinkPlayer,
 } from '@/lib/cycles';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getUnmatchedMentions, getDismissedUnmatched, dismissUnmatchedMention } from '@/lib/suggestLinks';
 import ProposalCard from './ProposalCard';
 import ReassignPlayerDialog from './ReassignPlayerDialog';
@@ -73,6 +84,7 @@ interface IntakeRequestDetailSheetProps {
   playerLinks?: PlayerLink[];
   allRequests?: IntakeRequestWithProposal[];
   onLinkChanged?: () => void;
+  allowDelete?: boolean;
 }
 
 export default function IntakeRequestDetailSheet({
@@ -84,6 +96,7 @@ export default function IntakeRequestDetailSheet({
   playerLinks = [],
   allRequests = [],
   onLinkChanged,
+  allowDelete = false,
 }: IntakeRequestDetailSheetProps) {
   const { t } = useTranslation('cycles');
   const [proposal, setProposal] = useState<EnrichedProposedAssignment | null>(null);
@@ -94,6 +107,8 @@ export default function IntakeRequestDetailSheet({
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [optimisticLinkedIds, setOptimisticLinkedIds] = useState<string[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Reset optimistic state when request or playerLinks change from parent
   useEffect(() => {
@@ -303,7 +318,52 @@ export default function IntakeRequestDetailSheet({
                 {t('intakeRequests.actions.reject')}
               </Button>
             )}
+            {allowDelete && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                {t('intakeRequests.actions.delete', { defaultValue: 'Delete' })}
+              </Button>
+            )}
           </div>
+
+          {/* Delete confirmation dialog */}
+          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('intakeRequests.actions.deleteConfirmTitle', { defaultValue: 'Delete this registration?' })}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('intakeRequests.actions.deleteConfirmDescription', { defaultValue: 'This will permanently delete the registration for {{name}}. This action cannot be undone.', name: request.full_name })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('intakeRequests.actions.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    try {
+                      await deleteIntakeRequest(request.id);
+                      toast.success(t('intakeRequests.actions.deleteSuccess', { defaultValue: 'Registration deleted' }));
+                      onOpenChange(false);
+                      onStatusChange?.();
+                    } catch (error: any) {
+                      toast.error(error.message);
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  }}
+                >
+                  {t('intakeRequests.actions.delete', { defaultValue: 'Delete' })}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {/* Contact Info */}
           <Card>
             <CardHeader className="pb-3">
