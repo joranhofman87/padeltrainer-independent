@@ -205,7 +205,7 @@ function DraggablePlayerChip({
         onClick={() => onPlayerClick?.(assignment.intake_request_id)}
         className="flex items-center gap-1 cursor-pointer min-w-0"
       >
-        <span className="font-medium truncate max-w-[90px]">{assignment.player_name}</span>
+        <span className="font-medium truncate max-w-[90px] sm:max-w-none">{assignment.player_name}</span>
         {assignment.player_rating != null && (
           <span className={cn('text-[10px]', outOfRange ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
             {formatRating(assignment.player_rating)}
