@@ -483,7 +483,7 @@ function SlotEditPopover({
 
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
-  trainerAvailabilityWindows, selectedDay, daySlots, onMoveSlot, onDeleteSlot,
+  trainerAvailabilityWindows, selectedDay, daySlots, onMoveSlot, onDeleteSlot, searchQuery,
 }: {
   slot: SlotWithOccupancy;
   onPlayerClick?: (id: string) => void;
@@ -493,6 +493,7 @@ function DraggableSlotCard({
   daySlots: SlotWithOccupancy[];
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
+  searchQuery?: string;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `slot-drag-${slot.id}`,
