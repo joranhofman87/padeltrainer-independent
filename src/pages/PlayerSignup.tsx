@@ -79,49 +79,53 @@ export default function PlayerSignup() {
     if (!validateForm()) return;
     if (isSuspicious()) return;
     
-    trackEvent('signup_started', { role: 'player', method: 'email', ...getUtmParams() });
+    try { trackEvent('signup_started', { role: 'player', method: 'email', ...getUtmParams() }); } catch { /* analytics must not block signup */ }
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Player');
+    try {
+      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Player');
 
-    if (error) {
-      logger.error('Player signup failed', error, { component: 'PlayerSignup', action: 'signUp' });
+      if (error) {
+        logger.error('Player signup failed', error, { component: 'PlayerSignup', action: 'signUp' });
+        toast({
+          title: t('signUp.error', 'Error'),
+          description: error.message,
+          variant: 'destructive',
+        });
+      } else if (data?.session) {
+        try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch {}
+        localStorage.setItem('pendingRole', 'player');
+        if (data.user?.id) {
+          supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
+        }
+        const redirectUrl = searchParams.get('redirect');
+        if (redirectUrl) {
+          localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+        }
+        toast({
+          title: t('signUp.success'),
+          description: t('signUp.successDescription'),
+        });
+        navigate('/onboarding/player');
+      } else {
+        try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch {}
+        localStorage.setItem('pendingRole', 'player');
+        const redirectUrl = searchParams.get('redirect');
+        if (redirectUrl) {
+          localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+        }
+        setShowVerification(true);
+      }
+    } catch (err) {
+      logger.error('Unexpected signup error', err as Error, { component: 'PlayerSignup' });
       toast({
         title: t('signUp.error', 'Error'),
-        description: error.message,
+        description: t('signIn.genericError', 'Something went wrong. Please try again.'),
         variant: 'destructive',
       });
-    } else if (data?.session) {
-      trackEvent('signup_completed', { role: 'player', method: 'email' });
-      localStorage.setItem('pendingRole', 'player');
-      // Save language preference (non-blocking)
-      if (data.user?.id) {
-        supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
-      }
-      // Slack notification handled server-side by signup-user
-      // Store redirect URL if present
-      const redirectUrl = searchParams.get('redirect');
-      if (redirectUrl) {
-        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
-      }
-      toast({
-        title: t('signUp.success'),
-        description: t('signUp.successDescription'),
-      });
-      navigate('/onboarding/player');
-    } else {
-      trackEvent('signup_completed', { role: 'player', method: 'email' });
-      localStorage.setItem('pendingRole', 'player');
-      // Slack notification handled server-side by signup-user
-      // Store redirect URL if present
-      const redirectUrl = searchParams.get('redirect');
-      if (redirectUrl) {
-        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
-      }
-      setShowVerification(true);
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
