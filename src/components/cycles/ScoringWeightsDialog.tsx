@@ -170,8 +170,33 @@ export function ScoringWeightsDialog({
 
   const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
 
-  const updateWeight = (key: keyof ScoringWeights, value: number) => {
-    setWeights((prev) => ({ ...prev, [key]: value }));
+  const updateWeight = (key: keyof ScoringWeights, newValue: number) => {
+    setWeights((prev) => {
+      const delta = newValue - prev[key];
+      if (delta === 0) return prev;
+
+      const otherKeys = Object.keys(prev).filter(k => k !== key) as (keyof ScoringWeights)[];
+      const otherSum = otherKeys.reduce((sum, k) => sum + prev[k], 0);
+      const updated = { ...prev, [key]: newValue };
+
+      if (otherSum === 0) {
+        updated[key] = 100;
+      } else {
+        const scale = (otherSum - delta) / otherSum;
+        let remaining = 100 - newValue;
+        otherKeys.forEach((k, i) => {
+          if (i === otherKeys.length - 1) {
+            updated[k] = Math.max(0, remaining);
+          } else {
+            const adj = Math.max(0, Math.round(prev[k] * scale));
+            updated[k] = adj;
+            remaining -= adj;
+          }
+        });
+      }
+
+      return updated;
+    });
     setActivePreset(null);
   };
 
