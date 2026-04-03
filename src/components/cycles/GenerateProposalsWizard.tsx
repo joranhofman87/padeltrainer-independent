@@ -66,14 +66,16 @@ interface TrainerOption {
 }
 
 interface GenerateProposalsWizardProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   cycle: Cycle;
   onGenerate: (config: GenerateProposalsConfig) => Promise<void>;
   isGenerating?: boolean;
   /** Owner type for fetching trainers */
   ownerType: 'trainer' | 'academy';
   ownerId: string;
+  /** When true, renders inline in a Card instead of a Dialog */
+  inline?: boolean;
 }
 
 export function GenerateProposalsWizard({
