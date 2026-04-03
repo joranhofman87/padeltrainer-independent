@@ -1,44 +1,33 @@
 
 
-# Add "Add Player" to Slot — Pick from All Registrations
+# Enable Swapping Populated Slots
 
 ## Problem
-When a trainer wants to place someone a second time (e.g. for 2×/week decided via email, not in the form), there's no way to do it. The unplaced sidebar only shows players without any assignment. The trainer needs access to the full player list from within a slot.
+Currently, dragging a slot onto another slot only allows a swap if the target slot is **empty** (line 1268: `overlappingSlot.current_assignments.length === 0`). When both slots have players, the "Cannot move here — overlaps with an existing slot" error appears. The user wants to swap two full groups between time slots.
 
-## Approach
-Add a small, subtle "+" button at the bottom of each slot card. Clicking it opens a compact popover/dialog with a searchable list of **all** registered players (not just unplaced). Selecting a player calls the existing `onAssignPlayer` handler. This keeps the feature discoverable but not distracting.
+## Fix
+Remove the empty-slot restriction. Allow swapping any two slots (with players) as long as:
+- Neither is blocked
+- Durations match
+- Both target positions are within trainer availability windows
 
-## Changes
+The existing `onSwapSlots` handler already updates both slots' times in the database — it doesn't care about player counts.
+
+## Change
 
 ### `src/components/cycles/ProposalScheduleGrid.tsx`
 
-1. **New prop**: `allPlayers?: UnplacedPlayer[]` — the full list of registered players (placed + unplaced), passed from the parent
-2. **"+" button on slot cards**: Add a small `UserPlus` icon button below the player chips in `DraggableSlotCard`. Only shown when `onAssignPlayer` and `allPlayers` are provided. Styled as a ghost button, subtle and compact.
-3. **Add Player Popover**: Clicking "+" opens a `Popover` with:
-   - A search input
-   - A scrollable list of all players (filtered by search), showing name + rating
-   - Players already in *this* slot are greyed out / disabled
-   - Clicking a player triggers `onAssignPlayer(player.id, slot.id)` and closes the popover
-4. Pass `allPlayers` and `onAssignPlayer` down to `DraggableSlotCard`
+In the `handleDragEnd` slot-drag section (~line 1261-1302):
 
-### Parent pages (pass `allPlayers`)
+1. Remove the `if (overlappingSlot.current_assignments.length === 0 && onSwapSlots)` condition — change it to just `if (onSwapSlots)`
+2. Remove the `else` branch that shows the overlap error (line 1299-1301)
+3. Keep all existing validations: blocked check, duration mismatch check, availability window check
 
-- `src/pages/academy/AcademyCycleDetail.tsx`: Create `allPlayers` from the full `requests` array (same shape as `unplacedPlayers` but without the status filter), pass as `allPlayers` prop
-- `src/pages/TrainerIntakeRequests.tsx`: Same
-- `src/pages/academy/AcademyIntakeRequests.tsx`: Same
-
-## Result
-- Small "+" button at the bottom of each slot — easy to miss if you don't need it, but there when you do
-- Opens a searchable player picker showing everyone
-- Already-assigned players in that slot are disabled to prevent accidental duplicates within the same slot
-- Works with the existing `onAssignPlayer` handler — no new backend changes needed
+This means any two non-blocked, same-duration slots can be swapped by drag and drop.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/ProposalScheduleGrid.tsx` | Add `allPlayers` prop, "+" button on slots, Add Player Popover |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Build and pass `allPlayers` from full `requests` list |
-| `src/pages/TrainerIntakeRequests.tsx` | Same |
-| `src/pages/academy/AcademyIntakeRequests.tsx` | Same |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Remove empty-slot requirement for swap; allow swapping populated slots |
 
