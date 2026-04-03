@@ -103,7 +103,8 @@ export async function createAcademy(
   userId: string,
   contactEmail?: string,
   description?: string,
-  country: string = 'NL'
+  country: string = 'NL',
+  timezone?: string
 ): Promise<{ success: boolean; academyId?: string; error: Error | null }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
