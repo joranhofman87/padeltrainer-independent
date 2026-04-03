@@ -613,6 +613,7 @@ export default function ProposalOverviewPage() {
                               <TableHead className="w-[120px] h-8 text-xs">{t('overview.time', { defaultValue: 'Time' })}</TableHead>
                               <TableHead className="h-8 text-xs">{t('overview.players', { defaultValue: 'Players' })}</TableHead>
                               <TableHead className="w-[60px] h-8 text-xs text-right">{t('overview.size', { defaultValue: 'Size' })}</TableHead>
+                              {cycle && <TableHead className="w-[80px] h-8 text-xs text-right">{t('overview.sessions', { defaultValue: 'Sessions' })}</TableHead>}
                             </TableRow>
                           </TableHeader>
                           <TableBody>
