@@ -1,95 +1,46 @@
 
-## Fix: Live-site login is still blocked by backend CORS, not the auth page
 
-### Do I know what the issue is?
-Yes.
+# Fix: Login fails on padeltrainer.ai but works on www
 
-### What the problem actually is
-The screenshot confirms the real blocker is still this request:
+## Root cause
+The backend is overloaded. Evidence:
+- The Supabase metadata query itself timed out during this session
+- The `render-page` edge function logs show **dozens of boot/shutdown cycles per second** -- bots are hammering it continuously
+- Each render-page invocation likely queries the database, saturating the connection pool
+- Auth requests then get 503 "context deadline exceeded" because no DB connections are available
 
-```text
-POST https://ppkbhdiiqdusdeatgdft.supabase.co/auth/v1/token?grant_type=password
-Origin: https://padeltrainer.ai
-Blocked by CORS: No 'Access-Control-Allow-Origin' header
-```
-
-So the login is failing before the app can complete sign-in.
-
-### What I confirmed in the code
-- `src/lib/supabaseClient.ts` sends auth requests directly to the backend URL, so browser CORS rules apply to the page origin.
-- `src/lib/domains.ts` builds auth redirects from `window.location.origin`, so when users are on `https://padeltrainer.ai`, all auth-related flows stay on that domain.
-- `src/hooks/useAuth.tsx` and `src/pages/Auth.tsx` are already defensive about bad sessions and failed lookups, but they cannot fix a browser-level CORS rejection.
-- The `v2.js` “reading 'q'” error is from the Reditus script loaded in `src/main.tsx`. It is noisy, but it is not the root cause of the login failure.
+The reason `www` works intermittently is likely timing -- the backend has brief windows of availability between bot traffic spikes.
 
 ## Plan
 
-### 1. Fix backend auth origin / redirect configuration
-Update Lovable Cloud auth settings so the backend explicitly accepts:
-- `https://padeltrainer.ai`
-- `https://www.padeltrainer.ai` if that domain is used
-- the published fallback domain if needed: `https://padeltrainer.lovable.app`
+### 1. Reduce render-page load (primary fix)
+The Cloudflare Worker should **cache** bot-rendered pages instead of hitting the edge function on every request. Add `Cache-Control` headers and use Cloudflare's Cache API so repeated bot crawls of the same URL don't re-invoke the function.
 
-Also verify auth redirect URLs include:
-- `/app/auth`
-- `/app/reset-password`
+In `docs/cloudflare-worker.js`:
+- Use Cloudflare's `caches.default` to cache render-page responses for 1 hour
+- Check cache before calling the edge function
+- This alone should dramatically reduce backend load
 
-This is the primary fix. Without it, email/password login from `padeltrainer.ai` will keep failing regardless of frontend changes.
+### 2. Add rate limiting to render-page edge function
+In `supabase/functions/render-page/index.ts`:
+- Add a simple in-memory rate limiter or early-return for excessive requests
+- Return cached/stale HTML when under pressure rather than querying DB
 
-### 2. Stop spending more time patching the login page as the main fix
-The current frontend code is already catching failures more safely than before. Further edits to:
-- `src/pages/Auth.tsx`
-- `src/hooks/useAuth.tsx`
-- `src/lib/auth.ts`
+### 3. Frontend: add retry with backoff for auth 503s
+In `src/lib/auth.ts`:
+- When `signInWithEmail` gets a 503/retryable error, retry once after 2 seconds before showing the error
+- This handles transient overload gracefully
 
-will improve messaging, but will not solve the blocked request itself.
+## Files
 
-So implementation priority should be:
-1. backend auth configuration
-2. then only minimal frontend cleanup if needed
-
-### 3. Add one small frontend improvement after backend config
-After the backend CORS fix, make one small UX hardening pass:
-- keep the existing loading reset behavior
-- show a clearer “login unavailable on this domain” message when a network/CORS failure is detected
-- avoid retry loops on broken restored sessions
-
-This is a polish step, not the root fix.
-
-### 4. Optionally silence the unrelated Reditus script noise
-In `src/main.tsx`, make the Reditus loader more defensive or skip it on auth routes so the external `v2.js` error does not confuse debugging.
-
-This is optional and separate from login itself.
-
-## Files involved
-Primary fix:
-- backend auth configuration in Lovable Cloud
-
-Secondary optional cleanup:
-- `src/lib/auth.ts`
-- `src/pages/Auth.tsx`
-- `src/hooks/useAuth.tsx`
-- `src/main.tsx`
+| File | Change |
+|------|--------|
+| `docs/cloudflare-worker.js` | Add Cloudflare Cache API caching for render-page responses |
+| `supabase/functions/render-page/index.ts` | Add basic rate limiting / early cache response |
+| `src/lib/auth.ts` | Add single retry with 2s delay on 503 errors |
 
 ## Expected result
-After this:
-- email/password login works on `https://padeltrainer.ai`
-- users are no longer blocked by browser CORS before auth starts
-- any remaining auth errors become normal app errors instead of hard transport failures
-- console noise from Reditus can be reduced separately
+- Bot traffic no longer saturates the DB connection pool
+- Auth endpoint becomes reliably available
+- Login works consistently on both `padeltrainer.ai` and `www.padeltrainer.ai`
 
-## Technical details
-Why this is the real issue:
-
-```text
-padeltrainer.ai page
-  -> browser calls backend /auth/v1/token directly
-  -> backend does not allow origin https://padeltrainer.ai
-  -> browser blocks response
-  -> app only sees Failed to fetch
-```
-
-Key conclusion:
-- this is now primarily an auth-origin configuration problem
-- not a schedule-state issue
-- not a role-fetch issue
-- not something the current Auth page alone can solve
