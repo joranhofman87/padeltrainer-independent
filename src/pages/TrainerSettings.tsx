@@ -465,6 +465,37 @@ export default function TrainerSettings() {
           </Card>
         </div>
 
+        {/* Timezone Setting */}
+        <div className="max-w-4xl mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-sky-500/10">
+                  <Clock className="h-5 w-5 text-sky-600" />
+                </div>
+                <div className="flex-1">
+                  <CardTitle className="text-lg">{t('settings.timezone', 'Timezone')}</CardTitle>
+                  <CardDescription>{t('settings.timezoneDescription', 'Set the timezone used for scheduling and displaying lesson times')}</CardDescription>
+                </div>
+                <Select
+                  value={timezone}
+                  onValueChange={handleTimezoneChange}
+                  disabled={updatingTimezone}
+                >
+                  <SelectTrigger className="w-[240px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMMON_TIMEZONES.map(tz => (
+                      <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+
         {/* Danger Zone */}
         <div className="max-w-4xl mt-8 pt-6 border-t border-destructive/20">
           <h3 className="text-lg font-semibold text-destructive mb-4">{t('settings.dangerZone', 'Danger Zone')}</h3>

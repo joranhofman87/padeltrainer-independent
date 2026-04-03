@@ -14,7 +14,8 @@ import {
   Trash2,
   MessageSquare
 } from 'lucide-react';
-import { Globe } from 'lucide-react';
+import { Globe, Clock } from 'lucide-react';
+import { COMMON_TIMEZONES } from '@/lib/timezones';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import LinkExtension from '@tiptap/extension-link';
