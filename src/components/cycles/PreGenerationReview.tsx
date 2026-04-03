@@ -241,7 +241,13 @@ export default function PreGenerationReview({
                       className="flex items-center justify-between gap-2 p-2 rounded-md border bg-background text-sm"
                     >
                       <span className="truncate">
-                        <span className="font-medium">{item.requestName}</span>
+                        <button
+                          type="button"
+                          className="font-medium underline decoration-dotted hover:decoration-solid cursor-pointer hover:text-primary transition-colors"
+                          onClick={() => onPlayerClick?.(item.requestId)}
+                        >
+                          {item.requestName}
+                        </button>
                         <span className="text-muted-foreground mx-1">
                           {t('preReview.mentioned', { defaultValue: 'mentioned' })}
                         </span>
