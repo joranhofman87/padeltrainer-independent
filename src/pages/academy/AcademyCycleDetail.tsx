@@ -728,6 +728,7 @@ export default function AcademyCycleDetail() {
                 trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
                 {...scheduleGridHandlers}
                 unplacedPlayers={unplacedPlayers}
+                allPlayers={allPlayersForGrid}
               />
             </>
           ) : (
