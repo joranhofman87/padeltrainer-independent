@@ -443,11 +443,8 @@ export default function AcademyCycleDetail() {
       try {
         await assignPlayerToSlot(intakeRequestId, slotId);
         toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
-        const [updatedSlots] = await Promise.all([
-          getAvailableSlotsForCycle(cycleId!),
-          refreshData(),
-        ]);
-        setScheduleSlots(updatedSlots);
+        invalidateSlots(cycleId!);
+        refreshData();
       } catch (error: any) {
         setScheduleSlots(prev);
         toast.error(error.message);
