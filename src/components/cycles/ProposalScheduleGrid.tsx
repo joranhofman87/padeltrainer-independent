@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { format, parseISO, addMinutes, type Locale } from 'date-fns';
+import { format, parseISO, addMinutes, addDays, getDay, type Locale } from 'date-fns';
 import { nl, es, de, fr, enUS } from 'date-fns/locale';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
