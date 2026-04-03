@@ -58,6 +58,7 @@ import {
   Plus,
   X,
   Lightbulb,
+  AlertTriangle,
 } from 'lucide-react';
 import { 
   type IntakeRequestWithProposal, 
