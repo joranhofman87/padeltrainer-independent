@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -10,6 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   FileText, 
@@ -18,6 +28,7 @@ import {
   CheckCircle2,
   Clock,
   Link2,
+  Settings2,
 } from 'lucide-react';
 import { type IntakeRequestWithProposal, type PlayerLink } from '@/lib/cycles';
 import {
@@ -41,11 +52,54 @@ interface IntakeRequestsTableProps {
   playerLinks?: PlayerLink[];
 }
 
-// Colors for link groups so linked players are visually distinct
 const LINK_COLORS = [
   'bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-purple-500',
   'bg-pink-500', 'bg-cyan-500', 'bg-yellow-500', 'bg-red-500',
 ];
+
+const STORAGE_KEY = 'intake-table-columns';
+
+interface ColumnDef {
+  key: string;
+  labelKey: string;
+  defaultVisible: boolean;
+  alwaysVisible?: boolean;
+}
+
+const ALL_COLUMNS: ColumnDef[] = [
+  { key: 'player', labelKey: 'intakeRequests.table.player', defaultVisible: true, alwaysVisible: true },
+  { key: 'lessonType', labelKey: 'intakeRequests.table.lessonType', defaultVisible: true },
+  { key: 'rating', labelKey: 'intakeRequests.table.rating', defaultVisible: true },
+  { key: 'availability', labelKey: 'intakeRequests.table.availability', defaultVisible: true },
+  { key: 'preferredTrainer', labelKey: 'intakeRequests.table.preferredTrainer', defaultVisible: true },
+  { key: 'status', labelKey: 'intakeRequests.table.status', defaultVisible: true },
+  { key: 'linked', labelKey: 'intakeRequests.links.linkedColumn', defaultVisible: true },
+  { key: 'proposal', labelKey: 'proposals.title', defaultVisible: true },
+  { key: 'applied', labelKey: 'intakeRequests.table.applied', defaultVisible: true },
+  { key: 'phone', labelKey: 'intakeRequests.table.phone', defaultVisible: false },
+  { key: 'sessionsPerWeek', labelKey: 'intakeRequests.table.sessionsPerWeek', defaultVisible: false },
+  { key: 'duration', labelKey: 'intakeRequests.table.duration', defaultVisible: false },
+  { key: 'birthDate', labelKey: 'intakeRequests.table.birthDate', defaultVisible: false },
+  { key: 'notes', labelKey: 'intakeRequests.table.notes', defaultVisible: false },
+];
+
+function getDefaultColumns(): Set<string> {
+  return new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key));
+}
+
+function loadColumns(): Set<string> {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const arr = JSON.parse(stored) as string[];
+      const set = new Set(arr);
+      // Always include alwaysVisible
+      ALL_COLUMNS.filter(c => c.alwaysVisible).forEach(c => set.add(c.key));
+      return set;
+    }
+  } catch {}
+  return getDefaultColumns();
+}
 
 export default function IntakeRequestsTable({
   requests,
@@ -56,6 +110,22 @@ export default function IntakeRequestsTable({
   playerLinks = [],
 }: IntakeRequestsTableProps) {
   const { t } = useTranslation('cycles');
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(loadColumns);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleColumns]));
+  }, [visibleColumns]);
+
+  const toggleColumn = (key: string) => {
+    setVisibleColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const isVisible = (key: string) => visibleColumns.has(key);
 
   // Build link group map
   const linkGroupMap = new Map<string, string>();
@@ -67,7 +137,6 @@ export default function IntakeRequestsTable({
     linkGroups.set(pl.link_group, existing);
   });
 
-  // Assign colors to link groups
   const groupColors = new Map<string, string>();
   let colorIdx = 0;
   linkGroups.forEach((_, groupId) => {
@@ -275,83 +344,191 @@ export default function IntakeRequestsTable({
   }
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('intakeRequests.table.player')}</TableHead>
-              <TableHead>{t('intakeRequests.table.lessonType')}</TableHead>
-              <TableHead>{t('intakeRequests.table.rating')}</TableHead>
-              <TableHead className="hidden md:table-cell">{t('intakeRequests.table.availability')}</TableHead>
-              <TableHead className="hidden lg:table-cell">{t('intakeRequests.table.preferredTrainer')}</TableHead>
-              <TableHead>{t('intakeRequests.table.status')}</TableHead>
-              <TableHead>{t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' })}</TableHead>
-              <TableHead>{t('proposals.title')}</TableHead>
-              <TableHead className="hidden sm:table-cell">{t('intakeRequests.table.applied')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {requests.map((request) => (
-              <TableRow 
-                key={request.id} 
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => onRowClick(request)}
+    <div className="space-y-2">
+      {/* Column visibility toggle */}
+      <div className="flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <Settings2 className="h-4 w-4" />
+              {t('intakeRequests.table.columns', { defaultValue: 'Columns' })}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuLabel>{t('intakeRequests.table.toggleColumns', { defaultValue: 'Toggle columns' })}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {ALL_COLUMNS.filter(c => !c.alwaysVisible).map(col => (
+              <DropdownMenuCheckboxItem
+                key={col.key}
+                checked={visibleColumns.has(col.key)}
+                onCheckedChange={() => toggleColumn(col.key)}
               >
-                <TableCell>
-                  <div>
-                    <div className="font-medium">{request.full_name}</div>
-                    <div className="text-sm text-muted-foreground">{request.email}</div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {(Array.isArray(request.lesson_type) ? request.lesson_type : [request.lesson_type]).map((type: string) => (
-                      <Badge key={type} variant="outline" className={getLessonTypeBadge(type)}>
-                        {['private','duo','group3','group4','kids'].includes(type)
-                          ? t(`application.form.lessonTypes.${type}`)
-                          : type.charAt(0).toUpperCase() + type.slice(1)}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {request.rating ? (
-                    <div className="flex items-center gap-1">
-                      <span className="font-medium">{request.rating}</span>
-                      <span className="text-xs text-muted-foreground uppercase">
-                        {request.rating_system}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <span className="text-sm">{formatAvailability(request)}</span>
-                </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                  {getTrainerNames(request)}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={getStatusColor(request.status)}>
-                    {t(`intakeRequests.filters.${request.status}`)}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {renderLinkedColumn(request.id)}
-                </TableCell>
-                <TableCell>
-                  {renderProposalIndicator(request)}
-                </TableCell>
-                <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                  {format(new Date(request.created_at), 'MMM d')}
-                </TableCell>
-              </TableRow>
+                {t(col.labelKey, { defaultValue: col.key })}
+              </DropdownMenuCheckboxItem>
             ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="sticky left-0 z-10 bg-background">{t('intakeRequests.table.player')}</TableHead>
+                  {isVisible('lessonType') && <TableHead>{t('intakeRequests.table.lessonType')}</TableHead>}
+                  {isVisible('rating') && <TableHead>{t('intakeRequests.table.rating')}</TableHead>}
+                  {isVisible('availability') && <TableHead>{t('intakeRequests.table.availability')}</TableHead>}
+                  {isVisible('preferredTrainer') && <TableHead>{t('intakeRequests.table.preferredTrainer')}</TableHead>}
+                  {isVisible('status') && <TableHead>{t('intakeRequests.table.status')}</TableHead>}
+                  {isVisible('linked') && <TableHead>{t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' })}</TableHead>}
+                  {isVisible('proposal') && <TableHead>{t('proposals.title')}</TableHead>}
+                  {isVisible('applied') && <TableHead>{t('intakeRequests.table.applied')}</TableHead>}
+                  {isVisible('phone') && <TableHead>{t('intakeRequests.table.phone', { defaultValue: 'Phone' })}</TableHead>}
+                  {isVisible('sessionsPerWeek') && <TableHead>{t('intakeRequests.table.sessionsPerWeek', { defaultValue: 'Sessions/wk' })}</TableHead>}
+                  {isVisible('duration') && <TableHead>{t('intakeRequests.table.duration', { defaultValue: 'Duration' })}</TableHead>}
+                  {isVisible('birthDate') && <TableHead>{t('intakeRequests.table.birthDate', { defaultValue: 'Birth date' })}</TableHead>}
+                  {isVisible('notes') && <TableHead>{t('intakeRequests.table.notes', { defaultValue: 'Notes' })}</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {requests.map((request) => (
+                  <TableRow 
+                    key={request.id} 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => onRowClick(request)}
+                  >
+                    {/* Player - always visible, sticky */}
+                    <TableCell className="sticky left-0 z-10 bg-background">
+                      <div>
+                        <div className="font-medium">{request.full_name}</div>
+                        <div className="text-sm text-muted-foreground">{request.email}</div>
+                      </div>
+                    </TableCell>
+
+                    {isVisible('lessonType') && (
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {(Array.isArray(request.lesson_type) ? request.lesson_type : [request.lesson_type]).map((type: string) => (
+                            <Badge key={type} variant="outline" className={getLessonTypeBadge(type)}>
+                              {['private','duo','group3','group4','kids'].includes(type)
+                                ? t(`application.form.lessonTypes.${type}`)
+                                : type.charAt(0).toUpperCase() + type.slice(1)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                    )}
+
+                    {isVisible('rating') && (
+                      <TableCell>
+                        {request.rating ? (
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium">{request.rating}</span>
+                            <span className="text-xs text-muted-foreground uppercase">
+                              {request.rating_system}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    )}
+
+                    {isVisible('availability') && (
+                      <TableCell>
+                        <span className="text-sm whitespace-nowrap">{formatAvailability(request)}</span>
+                      </TableCell>
+                    )}
+
+                    {isVisible('preferredTrainer') && (
+                      <TableCell>
+                        {getTrainerNames(request)}
+                      </TableCell>
+                    )}
+
+                    {isVisible('status') && (
+                      <TableCell>
+                        <Badge variant="outline" className={getStatusColor(request.status)}>
+                          {t(`intakeRequests.filters.${request.status}`)}
+                        </Badge>
+                      </TableCell>
+                    )}
+
+                    {isVisible('linked') && (
+                      <TableCell>
+                        {renderLinkedColumn(request.id)}
+                      </TableCell>
+                    )}
+
+                    {isVisible('proposal') && (
+                      <TableCell>
+                        {renderProposalIndicator(request)}
+                      </TableCell>
+                    )}
+
+                    {isVisible('applied') && (
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {format(new Date(request.created_at), 'MMM d')}
+                      </TableCell>
+                    )}
+
+                    {isVisible('phone') && (
+                      <TableCell className="text-sm whitespace-nowrap">
+                        {request.phone || <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                    )}
+
+                    {isVisible('sessionsPerWeek') && (
+                      <TableCell className="text-sm">
+                        {request.sessions_per_week ?? <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                    )}
+
+                    {isVisible('duration') && (
+                      <TableCell className="text-sm whitespace-nowrap">
+                        {request.preferred_duration_minutes
+                          ? `${request.preferred_duration_minutes} min`
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                    )}
+
+                    {isVisible('birthDate') && (
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {request.birth_date
+                          ? format(new Date(request.birth_date), 'MMM d, yyyy')
+                          : '—'}
+                      </TableCell>
+                    )}
+
+                    {isVisible('notes') && (
+                      <TableCell>
+                        {request.notes ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-sm truncate max-w-[150px] block cursor-help">
+                                  {request.notes.length > 30 ? request.notes.slice(0, 30) + '…' : request.notes}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p className="text-sm whitespace-pre-wrap">{request.notes}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
