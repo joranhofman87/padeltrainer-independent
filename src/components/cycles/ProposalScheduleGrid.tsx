@@ -872,18 +872,6 @@ export default function ProposalScheduleGrid({
     return matches;
   }, [slots, searchQuery]);
 
-  // Auto-switch to the day with search matches (only when exactly one day matches)
-  const prevSearchRef = useRef(searchQuery);
-  useEffect(() => {
-    if (searchQuery.trim() && searchQuery !== prevSearchRef.current) {
-      const matchingDays = Array.from(daysWithSearchMatches.keys());
-      if (matchingDays.length === 1 && matchingDays[0] !== selectedDay) {
-        setSelectedDay(matchingDays[0]);
-      }
-    }
-    prevSearchRef.current = searchQuery;
-  }, [searchQuery, daysWithSearchMatches, selectedDay]);
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
