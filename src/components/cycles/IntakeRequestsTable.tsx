@@ -37,7 +37,9 @@ import {
   Plus,
   X,
   Settings2,
+  Search,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { type IntakeRequestWithProposal, type PlayerLink, linkPlayers } from '@/lib/cycles';
 import {
   Tooltip,
