@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { format, parseISO, addMinutes, type Locale } from 'date-fns';
+import { format, parseISO, addMinutes, addDays, getDay, type Locale } from 'date-fns';
 import { nl, es, de, fr, enUS } from 'date-fns/locale';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
@@ -248,6 +248,8 @@ function SlotEditPopover({
   trainerAvailabilityWindows,
   selectedDay,
   daySlots,
+  allSlots,
+  availableDays,
   onMoveSlot,
   onDeleteSlot,
   onPlayerClick,
@@ -256,6 +258,8 @@ function SlotEditPopover({
   trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
   selectedDay: string;
   daySlots: SlotWithOccupancy[];
+  allSlots: SlotWithOccupancy[];
+  availableDays: string[];
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
   onPlayerClick?: (intakeRequestId: string) => void;
@@ -264,22 +268,24 @@ function SlotEditPopover({
   const [open, setOpen] = useState(false);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [targetDay, setTargetDay] = useState(selectedDay);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (open) {
       setStartTime(format(parseISO(slot.start_time), 'HH:mm'));
       setEndTime(format(parseISO(slot.end_time), 'HH:mm'));
+      setTargetDay(selectedDay);
       setConfirmDelete(false);
     }
-  }, [open, slot.start_time, slot.end_time]);
+  }, [open, slot.start_time, slot.end_time, selectedDay]);
 
-  // Get the trainer's availability bounds for the selected day
+  // Get the trainer's availability bounds for the target day
   const trainerBounds = useMemo(() => {
     if (!trainerAvailabilityWindows) return { min: 6 * 60, max: 23 * 60 };
     const tw = trainerAvailabilityWindows.find(w => w.trainerId === slot.trainer_id);
     if (!tw) return { min: 6 * 60, max: 23 * 60 };
-    const dayWindows = tw.windows.filter(w => w.day.toLowerCase() === selectedDay.toLowerCase());
+    const dayWindows = tw.windows.filter(w => w.day.toLowerCase() === targetDay.toLowerCase());
     if (dayWindows.length === 0) return { min: 6 * 60, max: 23 * 60 };
     let min = Infinity, max = -Infinity;
     dayWindows.forEach(w => {
@@ -289,7 +295,7 @@ function SlotEditPopover({
       max = Math.max(max, eh * 60 + (em || 0));
     });
     return { min, max };
-  }, [trainerAvailabilityWindows, slot.trainer_id, selectedDay]);
+  }, [trainerAvailabilityWindows, slot.trainer_id, targetDay]);
 
   // Generate time options in 30-min increments
   const timeOptions = useMemo(() => {
@@ -304,26 +310,47 @@ function SlotEditPopover({
   const endMin = (() => { const [h, m] = endTime.split(':').map(Number); return h * 60 + (m || 0); })();
   const isValid = endMin > startMin;
 
+  // Get target day's slots for overlap checking
+  const targetDaySlots = useMemo(() => {
+    if (targetDay === selectedDay) return daySlots;
+    const dayMap: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    const targetDayNum = dayMap[targetDay.toLowerCase()];
+    return allSlots.filter(s => {
+      const d = parseISO(s.start_time);
+      return getDay(d) === targetDayNum;
+    });
+  }, [targetDay, selectedDay, daySlots, allSlots]);
+
   // Check for overlaps
   const hasOverlap = useMemo(() => {
     if (!isValid) return false;
-    return daySlots.some(other => {
+    return targetDaySlots.some(other => {
       if (other.id === slot.id) return false;
       if (other.trainer_id !== slot.trainer_id) return false;
       const otherStart = isoToMinutes(other.start_time);
       const otherEnd = otherStart + getDurationMinutes(other.start_time, other.end_time);
       return startMin < otherEnd && endMin > otherStart;
     });
-  }, [daySlots, slot.id, slot.trainer_id, startMin, endMin, isValid]);
+  }, [targetDaySlots, slot.id, slot.trainer_id, startMin, endMin, isValid]);
 
-  const canApply = isValid && !hasOverlap && (startTime !== format(parseISO(slot.start_time), 'HH:mm') || endTime !== format(parseISO(slot.end_time), 'HH:mm'));
+  const dayChanged = targetDay !== selectedDay;
+  const timeChanged = startTime !== format(parseISO(slot.start_time), 'HH:mm') || endTime !== format(parseISO(slot.end_time), 'HH:mm');
+  const canApply = isValid && !hasOverlap && (dayChanged || timeChanged);
 
   const handleApply = () => {
     if (!onMoveSlot || !canApply) return;
     const refDate = parseISO(slot.start_time);
-    const newStart = new Date(refDate);
+    let targetDate = refDate;
+    if (dayChanged) {
+      const dayMap: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+      const currentDayNum = getDay(refDate);
+      const targetDayNum = dayMap[targetDay.toLowerCase()];
+      const diff = (targetDayNum - currentDayNum + 7) % 7 || (targetDayNum === currentDayNum ? 0 : 7);
+      targetDate = addDays(refDate, diff);
+    }
+    const newStart = new Date(targetDate);
     newStart.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
-    const newEnd = new Date(refDate);
+    const newEnd = new Date(targetDate);
     newEnd.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
     onMoveSlot(slot.id, slot.trainer_id, newStart.toISOString(), newEnd.toISOString());
     setOpen(false);
@@ -352,11 +379,23 @@ function SlotEditPopover({
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0" align="start" side="right" onClick={(e) => e.stopPropagation()}>
-        {/* Time editing */}
+        {/* Day & Time editing */}
         <div className="p-3 space-y-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            {t('proposals.editTime', { defaultValue: 'Edit time' })}
+            {t('proposals.editSlot', { defaultValue: 'Edit slot' })}
           </p>
+          {availableDays.length > 1 && (
+            <Select value={targetDay} onValueChange={setTargetDay}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableDays.map(d => (
+                  <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <div className="flex items-center gap-2">
             <Select value={startTime} onValueChange={setStartTime}>
               <SelectTrigger className="h-8 text-xs flex-1">
@@ -569,7 +608,7 @@ function AddPlayerToSlotPopover({
 
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
-  trainerAvailabilityWindows, selectedDay, daySlots, onMoveSlot, onDeleteSlot, searchQuery,
+  trainerAvailabilityWindows, selectedDay, daySlots, allSlots, availableDays, onMoveSlot, onDeleteSlot, searchQuery,
   allPlayers, onAssignPlayer,
 }: {
   slot: SlotWithOccupancy;
@@ -578,6 +617,8 @@ function DraggableSlotCard({
   trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
   selectedDay: string;
   daySlots: SlotWithOccupancy[];
+  allSlots: SlotWithOccupancy[];
+  availableDays: string[];
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
   searchQuery?: string;
@@ -630,6 +671,8 @@ function DraggableSlotCard({
               trainerAvailabilityWindows={trainerAvailabilityWindows}
               selectedDay={selectedDay}
               daySlots={daySlots}
+              allSlots={allSlots}
+              availableDays={availableDays}
               onMoveSlot={onMoveSlot}
               onDeleteSlot={onDeleteSlot}
               onPlayerClick={onPlayerClick}
@@ -1502,6 +1545,8 @@ export default function ProposalScheduleGrid({
                                 trainerAvailabilityWindows={trainerAvailabilityWindows}
                                 selectedDay={selectedDay}
                                 daySlots={daySlots}
+                                allSlots={slots}
+                                availableDays={availableDays}
                                 onMoveSlot={onMoveSlot}
                                 onDeleteSlot={onDeleteSlot}
                                 searchQuery={searchQuery}
