@@ -47,17 +47,18 @@ export default function TrainerSettings() {
     setPlayerModeEnabled(roles.includes('player'));
   }, [roles]);
 
-  // Check academy membership
+  // Check academy membership and load timezone
   useEffect(() => {
     const checkAcademy = async () => {
       if (user) {
         const { data: trainerProfile } = await supabase
           .from('trainer_profiles')
-          .select('id, slug')
+          .select('id, slug, timezone')
           .eq('user_id', user.id)
           .maybeSingle();
         if (trainerProfile) {
           setTrainerSlug(trainerProfile.slug);
+          if ((trainerProfile as any).timezone) setTimezone((trainerProfile as any).timezone);
           const academy = await getTrainerAcademy(trainerProfile.id);
           setHasAcademy(!!academy);
           if (!subscription?.isSubscribed) {
@@ -69,6 +70,25 @@ export default function TrainerSettings() {
     };
     checkAcademy();
   }, [user, subscription]);
+
+  const handleTimezoneChange = useCallback(async (value: string) => {
+    if (!user) return;
+    setUpdatingTimezone(true);
+    try {
+      const { error } = await supabase
+        .from('trainer_profiles')
+        .update({ timezone: value } as any)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      setTimezone(value);
+      toast.success(t('settings.timezoneSaved', 'Timezone updated'));
+    } catch (error) {
+      logger.error('Error updating timezone', error as Error, { component: 'TrainerSettings' });
+      toast.error(t('common:error', 'Something went wrong'));
+    } finally {
+      setUpdatingTimezone(false);
+    }
+  }, [user, t]);
 
   const handleVisibilityToggle = async (checked: boolean) => {
     if (!user) return;
