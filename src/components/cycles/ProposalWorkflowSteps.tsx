@@ -49,7 +49,6 @@ export default function ProposalWorkflowSteps({
         if (linksReviewed && (hasProposals || activeStep === 'generate' || activeStep === 'review-edit' || activeStep === 'approve'))
           return 'completed';
         if (activeStep === 'review-links') return 'active';
-        if (hasRegistrations && activeStep === 'registrations') return 'upcoming';
         return linksReviewed ? 'completed' : 'active';
       case 'generate':
         if (!hasRegistrations) return 'upcoming';
