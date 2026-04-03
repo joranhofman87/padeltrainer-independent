@@ -343,10 +343,12 @@ export default function AcademyIntakeRequests() {
       {viewMode === 'list' ? (
         <IntakeRequestsTable
           requests={filteredRequests}
+          allRequests={requests}
           onRowClick={setSelectedRequest}
           emptyMessage={t('intakeRequests.noRequests')}
           emptyDescription={t('intakeRequests.noRequestsDescription')}
           playerLinks={playerLinksData}
+          onLinkChanged={fetchData}
         />
       ) : (
         <ProposalScheduleGrid
