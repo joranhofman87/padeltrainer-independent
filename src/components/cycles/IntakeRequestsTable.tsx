@@ -129,6 +129,13 @@ export default function IntakeRequestsTable({
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(loadColumns);
   const [dismissVersion, setDismissVersion] = useState(0);
   const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const displayedRequests = useMemo(() => {
+    if (!searchQuery.trim()) return requests;
+    const q = searchQuery.toLowerCase();
+    return requests.filter(r => r.full_name?.toLowerCase().includes(q));
+  }, [requests, searchQuery]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleColumns]));
