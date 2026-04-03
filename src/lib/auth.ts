@@ -172,19 +172,32 @@ export async function signInWithGoogle() {
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },
     });
-    return { data, error };
+
+    if (error) {
+      const normalizedError = normalizeAuthError(error, 'Google sign-in is temporarily unavailable. Please try again.');
+      logger.error('Google sign in failed', normalizedError as Error, {
+        component: 'auth',
+        action: 'signInWithGoogle',
+        status: (normalizedError as any).status,
+        code: (normalizedError as any).code,
+        name: normalizedError.name,
+      });
+      return { data, error: normalizedError as any };
+    }
+
+    return { data, error: null };
   } catch (err: any) {
-    const msg = err?.message || '';
-    const isCors = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS');
-    logger.error('Google sign-in network failure', err as Error, { component: 'auth', isCors });
+    const normalizedError = normalizeAuthError(err, 'Google sign-in is temporarily unavailable. Please try again.');
+    logger.error('Google sign-in network failure', normalizedError as Error, {
+      component: 'auth',
+      action: 'signInWithGoogleCatch',
+      status: (normalizedError as any).status,
+      code: (normalizedError as any).code,
+      name: normalizedError.name,
+    });
     return {
       data: null,
-      error: {
-        message: isCors
-          ? 'Unable to reach the login server. If you are on a custom domain, please try again or use the main site.'
-          : 'Google sign-in is temporarily unavailable. Please try again.',
-        name: 'NetworkError',
-      } as any,
+      error: normalizedError as any,
     };
   }
 }
