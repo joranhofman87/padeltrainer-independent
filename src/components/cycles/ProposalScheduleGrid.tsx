@@ -31,6 +31,7 @@ export interface UnplacedPlayer {
   preferred_days: string[];
   lesson_type: string | string[];
   skip_reason?: string | null;
+  sessions_per_week?: number;
 }
 
 interface ProposalScheduleGridProps {
