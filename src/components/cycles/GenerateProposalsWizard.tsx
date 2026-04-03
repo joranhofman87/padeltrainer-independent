@@ -302,6 +302,18 @@ export function GenerateProposalsWizard({
   };
 
   const handleGenerate = async () => {
+    // Fetch timezone from the owner profile
+    let tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    try {
+      if (ownerType === 'academy') {
+        const { data } = await supabase.from('academy_profiles').select('timezone').eq('id', ownerId).maybeSingle();
+        if ((data as any)?.timezone) tz = (data as any).timezone;
+      } else {
+        const { data } = await supabase.from('trainer_profiles').select('timezone').eq('id', ownerId).maybeSingle();
+        if ((data as any)?.timezone) tz = (data as any).timezone;
+      }
+    } catch {}
+
     await onGenerate({
       startDate: format(startDate, 'yyyy-MM-dd'),
       trainerAvailability: trainerConfigs,
@@ -310,6 +322,7 @@ export function GenerateProposalsWizard({
       linkStrategy,
       fillIncompleteGroups,
       maxGroupSize,
+      timezone: tz,
     });
     
   };
