@@ -318,7 +318,52 @@ export default function IntakeRequestDetailSheet({
                 {t('intakeRequests.actions.reject')}
               </Button>
             )}
+            {allowDelete && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                {t('intakeRequests.actions.delete', { defaultValue: 'Delete' })}
+              </Button>
+            )}
           </div>
+
+          {/* Delete confirmation dialog */}
+          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('intakeRequests.actions.deleteConfirmTitle', { defaultValue: 'Delete this registration?' })}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('intakeRequests.actions.deleteConfirmDescription', { defaultValue: 'This will permanently delete the registration for {{name}}. This action cannot be undone.', name: request.full_name })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('intakeRequests.actions.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    try {
+                      await deleteIntakeRequest(request.id);
+                      toast.success(t('intakeRequests.actions.deleteSuccess', { defaultValue: 'Registration deleted' }));
+                      onOpenChange(false);
+                      onStatusChange?.();
+                    } catch (error: any) {
+                      toast.error(error.message);
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  }}
+                >
+                  {t('intakeRequests.actions.delete', { defaultValue: 'Delete' })}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {/* Contact Info */}
           <Card>
             <CardHeader className="pb-3">

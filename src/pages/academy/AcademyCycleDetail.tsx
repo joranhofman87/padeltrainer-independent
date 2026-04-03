@@ -888,6 +888,7 @@ export default function AcademyCycleDetail() {
         playerLinks={playerLinksData}
         allRequests={requests}
         onLinkChanged={refreshData}
+        allowDelete={activeStep === 'registrations'}
       />
 
       {/* Add Registration Dialog */}
