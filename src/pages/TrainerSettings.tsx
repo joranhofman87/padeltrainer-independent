@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2, Globe, GraduationCap, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Crown, User, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2, Globe, GraduationCap, ExternalLink, Clock } from 'lucide-react';
+import { COMMON_TIMEZONES } from '@/lib/timezones';
 import { useTranslation } from 'react-i18next';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
@@ -29,6 +30,8 @@ export default function TrainerSettings() {
   const [playerModeEnabled, setPlayerModeEnabled] = useState(false);
   const [updatingPlayerMode, setUpdatingPlayerMode] = useState(false);
   const [trainerSlug, setTrainerSlug] = useState<string | null>(null);
+  const [timezone, setTimezone] = useState('Europe/Amsterdam');
+  const [updatingTimezone, setUpdatingTimezone] = useState(false);
 
   // Auth is now handled by TrainerLayout
 
@@ -44,17 +47,18 @@ export default function TrainerSettings() {
     setPlayerModeEnabled(roles.includes('player'));
   }, [roles]);
 
-  // Check academy membership
+  // Check academy membership and load timezone
   useEffect(() => {
     const checkAcademy = async () => {
       if (user) {
         const { data: trainerProfile } = await supabase
           .from('trainer_profiles')
-          .select('id, slug')
+          .select('id, slug, timezone')
           .eq('user_id', user.id)
           .maybeSingle();
         if (trainerProfile) {
           setTrainerSlug(trainerProfile.slug);
+          if ((trainerProfile as any).timezone) setTimezone((trainerProfile as any).timezone);
           const academy = await getTrainerAcademy(trainerProfile.id);
           setHasAcademy(!!academy);
           if (!subscription?.isSubscribed) {
@@ -66,6 +70,25 @@ export default function TrainerSettings() {
     };
     checkAcademy();
   }, [user, subscription]);
+
+  const handleTimezoneChange = useCallback(async (value: string) => {
+    if (!user) return;
+    setUpdatingTimezone(true);
+    try {
+      const { error } = await supabase
+        .from('trainer_profiles')
+        .update({ timezone: value } as any)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      setTimezone(value);
+      toast.success(t('settings.timezoneSaved', 'Timezone updated'));
+    } catch (error) {
+      logger.error('Error updating timezone', error as Error, { component: 'TrainerSettings' });
+      toast.error(t('common:error', 'Something went wrong'));
+    } finally {
+      setUpdatingTimezone(false);
+    }
+  }, [user, t]);
 
   const handleVisibilityToggle = async (checked: boolean) => {
     if (!user) return;
@@ -435,6 +458,37 @@ export default function TrainerSettings() {
                     <SelectItem value="es">🇪🇸 Español</SelectItem>
                     <SelectItem value="de">🇩🇪 Deutsch</SelectItem>
                     <SelectItem value="fr">🇫🇷 Français</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* Timezone Setting */}
+        <div className="max-w-4xl mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-sky-500/10">
+                  <Clock className="h-5 w-5 text-sky-600" />
+                </div>
+                <div className="flex-1">
+                  <CardTitle className="text-lg">{t('settings.timezone', 'Timezone')}</CardTitle>
+                  <CardDescription>{t('settings.timezoneDescription', 'Set the timezone used for scheduling and displaying lesson times')}</CardDescription>
+                </div>
+                <Select
+                  value={timezone}
+                  onValueChange={handleTimezoneChange}
+                  disabled={updatingTimezone}
+                >
+                  <SelectTrigger className="w-[240px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMMON_TIMEZONES.map(tz => (
+                      <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -42,21 +42,32 @@ import {
   Loader2,
   Mail,
 } from 'lucide-react';
-import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, type SlotWithOccupancy } from '@/lib/cycles';
+import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, type SlotWithOccupancy } from '@/lib/cycles';
+import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
 // --- Helpers ---
 
-function formatTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatTime(dateStr: string, tz?: string) {
+  const opts: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+  if (tz) opts.timeZone = tz;
+  return new Date(dateStr).toLocaleTimeString([], opts);
 }
 
-function formatDayLabel(dateStr: string, locale: string) {
+function formatDayLabel(dateStr: string, locale: string, tz?: string) {
   const d = new Date(dateStr);
-  return d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' });
+  const opts: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'short' };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleDateString(locale, opts);
 }
 
-function getDateKey(dateStr: string) {
+function getDateKey(dateStr: string, tz?: string) {
+  if (tz) {
+    // Format date in the target timezone to get the correct calendar date
+    const d = new Date(dateStr);
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    return parts; // returns YYYY-MM-DD
+  }
   return new Date(dateStr).toISOString().slice(0, 10);
 }
 
@@ -89,10 +100,12 @@ export default function ProposalOverviewPage() {
   const stateSlots: SlotWithOccupancy[] = (location.state as any)?.slots ?? [];
   const cycleId: string | undefined = (location.state as any)?.cycleId;
   const backPath: string = (location.state as any)?.backPath ?? -1;
+  const stateTimezone: string | undefined = (location.state as any)?.timezone;
 
   const [fetchedSlots, setFetchedSlots] = useState<SlotWithOccupancy[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [pageStatus, setPageStatus] = useState<PageStatus>('idle');
+  const [tz, setTz] = useState<string | undefined>(stateTimezone);
 
   // If no slots were passed via state, fetch them using cycleId
   useEffect(() => {
@@ -104,6 +117,20 @@ export default function ProposalOverviewPage() {
         .finally(() => setIsLoading(false));
     }
   }, [cycleId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch timezone from cycle's owner if not passed in state
+  useEffect(() => {
+    if (tz || !cycleId) return;
+    (async () => {
+      try {
+        const cycle = await getCycle(cycleId);
+        if (!cycle) return;
+        const table = cycle.owner_type === 'academy' ? 'academy_profiles' : 'trainer_profiles';
+        const { data } = await supabase.from(table).select('timezone').eq('id', cycle.owner_id).maybeSingle();
+        if ((data as any)?.timezone) setTz((data as any).timezone);
+      } catch {}
+    })();
+  }, [cycleId, tz]);
 
   const slots = stateSlots.length > 0 ? stateSlots : (fetchedSlots ?? []);
   const cycleSlots = useMemo(() => slots.filter(s => !s.is_blocked), [slots]);
@@ -125,10 +152,10 @@ export default function ProposalOverviewPage() {
         groupMap.set(slot.trainer_id, group);
       }
 
-      const dateKey = getDateKey(slot.start_time);
+      const dateKey = getDateKey(slot.start_time, tz);
       let day = group.days.get(dateKey);
       if (!day) {
-        day = { label: formatDayLabel(slot.start_time, i18n.language), slots: [] };
+        day = { label: formatDayLabel(slot.start_time, i18n.language, tz), slots: [] };
         group.days.set(dateKey, day);
       }
       day.slots.push(slot);
@@ -459,7 +486,7 @@ export default function ProposalOverviewPage() {
                               return (
                                 <TableRow key={slot.id} className={hasIssue ? 'bg-yellow-500/5' : ''}>
                                   <TableCell className="py-2 text-sm tabular-nums">
-                                    {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
+                                    {formatTime(slot.start_time, tz)} – {formatTime(slot.end_time, tz)}
                                   </TableCell>
                                   <TableCell className="py-2">
                                     <div className="flex flex-wrap gap-1">

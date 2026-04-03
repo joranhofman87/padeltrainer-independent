@@ -105,6 +105,7 @@ export default function AcademyCycleDetail() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [academyTimezone, setAcademyTimezone] = useState<string>('Europe/Amsterdam');
 
   // Settings data
   const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
@@ -133,10 +134,12 @@ export default function AcademyCycleDetail() {
 
   const fetchSettingsData = useCallback(async () => {
     if (!activeAcademy) return;
-    const [academyTrainers, academyLocations] = await Promise.all([
+    const [academyTrainers, academyLocations, tzData] = await Promise.all([
       getAcademyTrainersWithProfiles(activeAcademy.id),
       getAcademyLocations(activeAcademy.id),
+      supabase.from('academy_profiles').select('timezone').eq('id', activeAcademy.id).maybeSingle(),
     ]);
+    if ((tzData.data as any)?.timezone) setAcademyTimezone((tzData.data as any).timezone);
 
     const trainerIds = academyTrainers.map(t => t.trainer_profile_id);
     let tlMap: Record<string, string[]> = {};
@@ -275,6 +278,7 @@ export default function AcademyCycleDetail() {
         linkStrategy: config.linkStrategy,
         fillIncompleteGroups: config.fillIncompleteGroups,
         maxGroupSize: config.maxGroupSize,
+        timezone: config.timezone,
       });
       if (result.skipped > 0) {
         toast.success(
@@ -699,7 +703,7 @@ export default function AcademyCycleDetail() {
                     <RotateCcw className="h-4 w-4 mr-1" />
                     {t('proposals.reset', { defaultValue: 'Reset' })}
                   </Button>
-                  <Button size="sm" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve` } })}>
+                  <Button size="sm" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone } })}>
                     <Eye className="h-4 w-4 mr-1" />
                     {t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
                   </Button>

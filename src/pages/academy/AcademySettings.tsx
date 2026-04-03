@@ -14,7 +14,8 @@ import {
   Trash2,
   MessageSquare
 } from 'lucide-react';
-import { Globe } from 'lucide-react';
+import { Globe, Clock } from 'lucide-react';
+import { COMMON_TIMEZONES } from '@/lib/timezones';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import LinkExtension from '@tiptap/extension-link';
@@ -60,6 +61,8 @@ export default function AcademySettings() {
   const [savingTerms, setSavingTerms] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [savingWelcome, setSavingWelcome] = useState(false);
+  const [academyTimezone, setAcademyTimezone] = useState('Europe/Amsterdam');
+  const [updatingTimezone, setUpdatingTimezone] = useState(false);
   const termsEditor = useEditor({
     extensions: [
       StarterKit,
@@ -122,7 +125,7 @@ export default function AcademySettings() {
     const loadTermsAndWelcome = async () => {
       const { data } = await supabase
         .from('academy_profiles')
-        .select('general_terms, welcome_message')
+        .select('general_terms, welcome_message, timezone')
         .eq('id', activeAcademy.id)
         .maybeSingle();
       if (data?.general_terms) {
@@ -130,6 +133,9 @@ export default function AcademySettings() {
       }
       if (data?.welcome_message) {
         setWelcomeMessage(data.welcome_message);
+      }
+      if ((data as any)?.timezone) {
+        setAcademyTimezone((data as any).timezone);
       }
     };
     loadTermsAndWelcome();
@@ -585,6 +591,51 @@ export default function AcademySettings() {
                   <SelectItem value="es">🇪🇸 Español</SelectItem>
                   <SelectItem value="de">🇩🇪 Deutsch</SelectItem>
                   <SelectItem value="fr">🇫🇷 Français</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Timezone Setting */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-sky-500/10">
+                <Clock className="h-5 w-5 text-sky-600" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-lg">{t('settings.timezone', 'Timezone')}</CardTitle>
+                <CardDescription>{t('settings.timezoneDescription', 'Set the timezone used for scheduling and displaying lesson times')}</CardDescription>
+              </div>
+              <Select
+                value={academyTimezone}
+                onValueChange={async (value) => {
+                  if (!activeAcademy) return;
+                  setUpdatingTimezone(true);
+                  try {
+                    const { error } = await supabase
+                      .from('academy_profiles')
+                      .update({ timezone: value } as any)
+                      .eq('id', activeAcademy.id);
+                    if (error) throw error;
+                    setAcademyTimezone(value);
+                    toast({ title: t('settings.timezoneSaved', 'Timezone updated') });
+                  } catch (error: any) {
+                    toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+                  } finally {
+                    setUpdatingTimezone(false);
+                  }
+                }}
+                disabled={updatingTimezone}
+              >
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMMON_TIMEZONES.map(tz => (
+                    <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
