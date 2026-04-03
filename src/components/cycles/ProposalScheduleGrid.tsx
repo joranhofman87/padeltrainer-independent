@@ -156,13 +156,14 @@ function isRatingOutOfRange(
 }
 
 function DraggablePlayerChip({
-  assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating,
+  assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating, searchQuery,
 }: {
   assignment: Assignment;
   slotId: string;
   onPlayerClick?: (id: string) => void;
   slotMinRating?: number | null;
   slotMaxRating?: number | null;
+  searchQuery?: string;
 }) {
   const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -178,6 +179,7 @@ function DraggablePlayerChip({
       : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
 
   const outOfRange = isRatingOutOfRange(assignment.player_rating, slotMinRating, slotMaxRating);
+  const isSearchMatch = searchQuery && searchQuery.trim().length > 0 && assignment.player_name.toLowerCase().includes(searchQuery.toLowerCase());
 
   return (
     <div
@@ -186,6 +188,7 @@ function DraggablePlayerChip({
         'flex items-center gap-1 rounded-md pl-1.5 pr-2 py-1 text-xs transition-colors',
         outOfRange ? 'bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-400/50' : 'bg-muted',
         isDragging ? 'opacity-30' : 'hover:bg-accent',
+        isSearchMatch && 'ring-2 ring-orange-400 dark:ring-orange-500 bg-orange-50 dark:bg-orange-950/30 z-10',
       )}
     >
       <button
