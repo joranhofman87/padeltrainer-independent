@@ -1601,6 +1601,25 @@ export default function ProposalScheduleGrid({
                       </Button>
                     </div>
                   </div>
+                  <div className="px-2 pb-2">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        value={unplacedSearch}
+                        onChange={(e) => setUnplacedSearch(e.target.value)}
+                        placeholder={t('proposals.searchPlayers', { defaultValue: 'Search players...' })}
+                        className="h-7 text-xs pl-7 pr-7"
+                      />
+                      {unplacedSearch && (
+                        <button
+                          onClick={() => setUnplacedSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <span className="text-xs">✕</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <DroppableUnplacedPool>
                     {filteredUnplaced.length === 0 ? (
                       <p className="text-xs text-muted-foreground text-center py-4 italic">
