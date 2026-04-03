@@ -37,7 +37,9 @@ import {
   Plus,
   X,
   Settings2,
+  Search,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { type IntakeRequestWithProposal, type PlayerLink, linkPlayers } from '@/lib/cycles';
 import {
   Tooltip,
@@ -127,6 +129,13 @@ export default function IntakeRequestsTable({
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(loadColumns);
   const [dismissVersion, setDismissVersion] = useState(0);
   const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const displayedRequests = useMemo(() => {
+    if (!searchQuery.trim()) return requests;
+    const q = searchQuery.toLowerCase();
+    return requests.filter(r => r.full_name?.toLowerCase().includes(q));
+  }, [requests, searchQuery]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleColumns]));
@@ -490,8 +499,17 @@ export default function IntakeRequestsTable({
 
   return (
     <div className="space-y-2">
-      {/* Column visibility toggle */}
-      <div className="flex justify-end">
+      {/* Search + Column visibility toggle */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t('intakeRequests.table.searchPlayer', { defaultValue: 'Search player...' })}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 h-9"
+          />
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-1.5">
@@ -538,7 +556,7 @@ export default function IntakeRequestsTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {requests.map((request) => (
+                {displayedRequests.map((request) => (
                   <TableRow 
                     key={request.id} 
                     className="cursor-pointer hover:bg-muted/50"
