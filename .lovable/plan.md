@@ -1,35 +1,35 @@
 
 
-# Emergency: Kill render-page DB queries to stop connection drain
+# Add match indicators to the manual player assignment popover
 
-## Situation after upgrade
-- Instance upgraded: auth requests now succeed (200) but take 3-15 seconds
-- render-page: **still 2-3 boot/shutdown cycles per second** — unchanged
-- The Cloudflare Worker rate limiting is not stopping this because bots are likely hitting the edge function URL directly (ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page), bypassing Cloudflare
+## What this does
+When you click the "+" button on a slot to manually add a player, the search popover will now show match indicators next to each player name, so you can quickly see if a player fits the slot based on day preference and rating level.
 
-## Plan
+## Match logic (client-side, instant)
+For each player in the list, compute a simple match against the target slot:
 
-### 1. Make render-page zero-DB-cost (immediate relief)
-Strip all database queries from `render-page`. Instead of fetching real data from the DB for every bot request, serve pre-built static meta tags for all paths. This instantly eliminates the connection pool drain.
+1. **Day match**: Does the player's `preferred_days` include the slot's day of week?
+2. **Rating match**: Is the player's rating within the slot's `min_rating`–`max_rating` range?
+3. **Visual indicator**: Show a colored dot or percentage badge:
+   - Green dot + "Match" — both day and rating fit
+   - Orange dot + "Partial" — one of the two fits (e.g. right day, wrong level)
+   - Red dot + "Mismatch" — neither fits
+   - No indicator if slot has no rating range and player has no day preferences (insufficient data)
 
-The function will:
-- Parse the URL path to determine page type
-- Return appropriate static HTML with hardcoded OG tags per route pattern
-- No Supabase client creation, no DB queries at all
-- Keep the function working for SEO (bots still get structured HTML with titles/descriptions) but without any backend cost
+## Where it appears
+- **AddPlayerToSlotPopover** (the "+" button on each slot card in the schedule grid) — used in both Step 4 (Review & Edit) and Step 5 (Approve & Book)
+- Same component is already shared between Academy and Trainer flows, so both roles get it automatically
 
-### 2. Add auth token verification to render-page
-Require the Supabase anon key in an Authorization header. The Cloudflare Worker already sends this. Direct bot hits without the key get rejected immediately with 401.
-
-## Files
+## Changes
 
 | File | Change |
 |------|--------|
-| `supabase/functions/render-page/index.ts` | Remove all DB queries; return static HTML based on URL pattern; add auth header check |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Pass `slot` object to `AddPlayerToSlotPopover`; add match computation and colored indicator per player row; sort results by match quality (matches first) |
 
-## Expected result
-- render-page stops consuming DB connections entirely
-- Auth and app queries get full connection pool access
-- App becomes responsive immediately
-- SEO still works (bots get reasonable meta tags, just not dynamic data)
+## Technical details
+- `AddPlayerToSlotPopover` receives an additional `slot: SlotWithOccupancy` prop
+- Day is derived from `slot.start_time` using `format(new Date(slot.start_time), 'EEEE').toLowerCase()`
+- Rating check: `player.rating >= slot.min_rating && player.rating <= slot.max_rating`
+- Players sorted: full match → partial → mismatch, then alphabetically within each group
+- No new API calls, no new dependencies — purely computed from existing data already in memory
 
