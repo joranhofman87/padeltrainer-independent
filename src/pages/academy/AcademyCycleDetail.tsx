@@ -66,6 +66,7 @@ import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import CycleForm from '@/components/cycles/CycleForm';
 import WaitingListTable from '@/components/waitingList/WaitingListTable';
+import PreGenerationReview from '@/components/cycles/PreGenerationReview';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
 
