@@ -239,12 +239,13 @@ describe('Auth module', () => {
       });
       (supabase.from as Mock).mockReturnValue({ select: mockSelect });
 
-      const roles = await getUserRoles('user-123');
+      const result = await getUserRoles('user-123');
 
-      expect(roles).toEqual(['player', 'trainer']);
+      expect(result.data).toEqual(['player', 'trainer']);
+      expect(result.failed).toBe(false);
     });
 
-    it('returns empty array on error', async () => {
+    it('returns failed on error', async () => {
       const mockSelect = vi.fn().mockReturnValue({
         eq: vi.fn().mockResolvedValue({
           data: null,
@@ -253,9 +254,10 @@ describe('Auth module', () => {
       });
       (supabase.from as Mock).mockReturnValue({ select: mockSelect });
 
-      const roles = await getUserRoles('user-123');
+      const result = await getUserRoles('user-123');
 
-      expect(roles).toEqual([]);
+      expect(result.data).toEqual([]);
+      expect(result.failed).toBe(true);
     });
   });
 
