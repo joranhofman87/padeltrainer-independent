@@ -1,36 +1,82 @@
 
 
-# Founding 100 Trainers — Updated Plan
+# Approve & Book + Send Schedule Notifications
 
-## Change from previous plan
+## Overview
 
-**Remove the signup form section entirely** from the campaign page. Instead, all CTAs ("Claim Your Spot →", "Become a Founding Trainer") link directly to the existing trainer signup page at `/app/signup/trainer`.
+Wire up the "Approve & Book all" button on the Proposal Overview page, and add a "Send Schedule Emails" button that appears after booking. Both are manual actions — the academy reviews everything before each step.
 
-To preserve campaign attribution, append a query parameter: `/app/signup/trainer?ref=founding100`. This lets you track signups originating from this campaign.
+## Architecture
 
-## Updated page structure
+```text
+ProposalOverviewPage
+  ├── [Approve & Book All] → Edge function: finalize-proposals
+  │     ├── Confirm proposed_assignments → status 'confirmed'
+  │     ├── Create bookings (slot_id + guest_player_id)
+  │     └── Update intake_requests.status → 'booked'
+  │
+  └── [Send Schedule Emails] (appears after booking)
+        └── Edge function: send-schedule-notifications
+              ├── Fetch booked players + their schedules
+              ├── Send 'schedule_notification' email via send-email
+              └── Update intake_requests.status → 'notified'
+```
 
-1. **Hero** — badge, headline, subheadline, progress bar, CTA button → links to `/app/signup/trainer?ref=founding100`
-2. **What You Get** — 3 value cards
-3. **How It Works** — 4 steps (step 1 now says "Sign up on our platform" instead of "fill in the form below")
-4. **Value Breakdown** — comparison table
-5. **Who Is This For** — 4 bullet points
-6. **FAQ Accordion** — 6 items
-7. **Final CTA section** (replaces the signup form) — headline "Ready to Become a Founding Trainer?", subtext with remaining spots, single button → `/app/signup/trainer?ref=founding100`
+## Changes
 
-No `id="signup"` form. No new database table. The hero CTA and bottom CTA both navigate to the existing trainer signup.
+### 1. New Edge Function: `finalize-proposals`
+- Input: `{ cycle_id }`
+- Uses service role to:
+  - Fetch all intake_requests for the cycle where status = 'proposed'
+  - For each, fetch proposed_assignments (status = 'proposed')
+  - Update proposed_assignments.status to 'confirmed'
+  - Create a `booking` record per assignment (slot_id, guest_player_id from intake_request, status 'confirmed')
+  - Update intake_requests.status to 'booked'
+- Returns `{ booked: number, bookings_created: number, errors: [] }`
 
-## Everything else unchanged
+### 2. New Edge Function: `send-schedule-notifications`
+- Input: `{ cycle_id }`
+- Uses service role to:
+  - Fetch cycle details (name, dates, location, owner info)
+  - Fetch all intake_requests where status = 'booked', joined with guest_players and proposed_assignments + slots + trainer_profiles
+  - Group schedule per player (they may have multiple slots)
+  - For each player: call the existing `send-email` function internally with a new type `schedule_notification`
+  - Update intake_requests.status to 'notified'
+- Returns `{ sent: number, errors: [] }`
 
-Route, i18n, announcement banner, structured data, render-page update — all remain as previously planned.
+### 3. Add `schedule_notification` email type to `send-email`
+- New case in the switch statement
+- Content: "Your training schedule is ready!" with:
+  - Schedule table (day, time, trainer, location)
+  - Cycle name and date range
+  - CTA: "Create your account" → `https://padeltrainer.ai/app/signup/player`
+  - Multilingual (NL/EN/DE/ES/FR)
+  - Signed off with academy/trainer name
+- Add to EmailRequest type union and SYSTEM_EMAIL_TYPES array
+
+### 4. Update `ProposalOverviewPage.tsx`
+- Add state: `pageStatus: 'idle' | 'booking' | 'booked' | 'sending' | 'notified'`
+- Wire "Approve & Book all" button to call finalize-proposals edge function
+- After success, show "Send Schedule Emails" button
+- Add confirmation dialogs (AlertDialog) for both actions
+- Show toast results (X booked, X emails sent)
+- Disable buttons during processing, show spinners
+
+### 5. Add helper functions to `src/lib/cycles.ts`
+- `finalizeProposals(cycleId)` — invokes finalize-proposals
+- `sendScheduleNotifications(cycleId)` — invokes send-schedule-notifications
+
+### 6. Update `src/lib/email.ts`
+- Add `schedule_notification` to EmailType union
 
 ## Files
 
 | File | Action |
 |------|--------|
-| `src/pages/marketing/FoundingTrainers.tsx` | **New** — campaign page without embedded form; CTAs link to `/app/signup/trainer?ref=founding100` |
-| `src/components/DomainRouter.tsx` | Add route |
-| `src/components/marketing/MarketingLayout.tsx` | Dismissible announcement banner |
-| `src/i18n/locales/{en,nl,de,es,fr}/marketing.json` | Add `foundingTrainers.*` keys |
-| `supabase/functions/render-page/index.ts` | Add path for bot pre-rendering |
+| `supabase/functions/finalize-proposals/index.ts` | **New** |
+| `supabase/functions/send-schedule-notifications/index.ts` | **New** |
+| `supabase/functions/send-email/index.ts` | Add `schedule_notification` type + template |
+| `src/pages/ProposalOverviewPage.tsx` | Wire up buttons, state machine, confirmation dialogs |
+| `src/lib/cycles.ts` | Add `finalizeProposals` and `sendScheduleNotifications` |
+| `src/lib/email.ts` | Add type to union |
 
