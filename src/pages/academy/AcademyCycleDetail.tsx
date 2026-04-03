@@ -475,10 +475,14 @@ export default function AcademyCycleDetail() {
         start_time: startTime,
         end_time: endTime,
         max_participants: (cycle?.settings as any)?.max_participants ?? 4,
-        location_id: cycle?.location_id ?? null,
+        trainer_name: '',
+        trainer_avatar: null,
+        min_rating: null,
+        max_rating: null,
+        rating_system: null,
+        cyclus_name: cycle?.name ?? null,
         is_blocked: false,
         current_assignments: [],
-        cyclus_id: cycleId,
       };
       setScheduleSlots(prev => [...prev, newSlot]);
       try {

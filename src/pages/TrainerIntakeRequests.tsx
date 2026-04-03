@@ -440,10 +440,14 @@ export default function TrainerIntakeRequests() {
               start_time: startTime,
               end_time: endTime,
               max_participants: (selectedCycle?.settings as any)?.max_participants ?? 4,
-              location_id: selectedCycle?.location_id ?? null,
+              trainer_name: '',
+              trainer_avatar: null,
+              min_rating: null,
+              max_rating: null,
+              rating_system: null,
+              cyclus_name: selectedCycle?.name ?? null,
               is_blocked: false,
               current_assignments: [],
-              cyclus_id: selectedCycleId,
             };
             setScheduleSlots(prev => [...prev, newSlot]);
             try {
