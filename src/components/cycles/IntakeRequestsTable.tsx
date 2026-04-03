@@ -169,6 +169,21 @@ export default function IntakeRequestsTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests, allRequests, playerLinks, dismissVersion]);
 
+  // Compute unmatched mentions for all requests
+  const unmatchedMap = useMemo(() => {
+    if (!allRequests.length) return new Map<string, string[]>();
+    const dismissed = getDismissedUnmatched();
+    const map = new Map<string, string[]>();
+    for (const req of requests) {
+      const unmatched = getUnmatchedMentions(req, allRequests, dismissed);
+      if (unmatched.length > 0) {
+        map.set(req.id, unmatched);
+      }
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requests, allRequests, dismissVersion]);
+
   const handleLinkFromTable = async (requestId: string, suggestedId: string) => {
     setLinkingId(suggestedId);
     try {
