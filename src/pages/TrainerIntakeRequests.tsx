@@ -406,51 +406,63 @@ export default function TrainerIntakeRequests() {
             if (req) setSelectedRequest(req);
           }}
           onMovePlayer={async (assignmentId, newSlotId) => {
+            const prev = [...scheduleSlots];
+            setScheduleSlots(slots => {
+              let assignment: any = null;
+              const updated = slots.map(s => {
+                const found = s.current_assignments.find((a: any) => a.id === assignmentId);
+                if (found) {
+                  assignment = found;
+                  return { ...s, current_assignments: s.current_assignments.filter((a: any) => a.id !== assignmentId) };
+                }
+                return s;
+              });
+              if (!assignment) return slots;
+              return updated.map(s => s.id === newSlotId ? { ...s, current_assignments: [...s.current_assignments, assignment] } : s);
+            });
             try {
               await movePlayerAssignment(assignmentId, newSlotId);
               toast.success(t('proposals.playerMoved', 'Player moved successfully'));
-              if (selectedCycleId && selectedCycleId !== 'all') {
-                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
-                setScheduleSlots(updatedSlots);
-              }
             } catch (error: any) {
+              setScheduleSlots(prev);
               toast.error(error.message);
             }
           }}
           onMoveSlot={async (slotId, newTrainerId, newStartTime, newEndTime) => {
+            const prev = [...scheduleSlots];
+            setScheduleSlots(slots => slots.map(s => s.id === slotId ? { ...s, trainer_id: newTrainerId, start_time: newStartTime, end_time: newEndTime } : s));
             try {
               await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
               toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
-              if (selectedCycleId && selectedCycleId !== 'all') {
-                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
-                setScheduleSlots(updatedSlots);
-              }
             } catch (error: any) {
+              setScheduleSlots(prev);
               toast.error(error.message);
             }
           }}
           onSwapSlots={async (slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd) => {
+            const prev = [...scheduleSlots];
+            setScheduleSlots(slots => slots.map(s => {
+              if (s.id === slotAId) return { ...s, trainer_id: slotATrainer, start_time: slotAStart, end_time: slotAEnd };
+              if (s.id === slotBId) return { ...s, trainer_id: slotBTrainer, start_time: slotBStart, end_time: slotBEnd };
+              return s;
+            }));
             try {
               await swapSlots(slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd);
               toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
-              if (selectedCycleId && selectedCycleId !== 'all') {
-                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
-                setScheduleSlots(updatedSlots);
-              }
             } catch (error: any) {
+              setScheduleSlots(prev);
               toast.error(error.message);
             }
           }}
           onDeleteSlot={async (slotId) => {
+            const prev = [...scheduleSlots];
+            setScheduleSlots(slots => slots.filter(s => s.id !== slotId));
             try {
               await deleteSlot(slotId);
               toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
-              if (selectedCycleId && selectedCycleId !== 'all') {
-                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
-                setScheduleSlots(updatedSlots);
-              }
-              fetchData();
+              refreshData();
             } catch (error: any) {
+              setScheduleSlots(prev);
               toast.error(error.message);
             }
           }}
@@ -461,28 +473,45 @@ export default function TrainerIntakeRequests() {
           unplacedPlayers={unplacedPlayers}
           allPlayers={allPlayersForGrid}
           onAssignPlayer={async (intakeRequestId, slotId) => {
+            const prev = [...scheduleSlots];
+            const player = requests.find(r => r.id === intakeRequestId);
+            setScheduleSlots(slots => slots.map(s => s.id === slotId ? {
+              ...s,
+              current_assignments: [...s.current_assignments, {
+                id: `temp-${Date.now()}`,
+                intake_request_id: intakeRequestId,
+                player_name: player?.full_name || '',
+                player_rating: player?.rating ?? null,
+                player_rating_system: player?.rating_system ?? null,
+                confidence_score: null,
+                sessions_per_week: player?.sessions_per_week ?? 1,
+              }]
+            } : s));
             try {
               await assignPlayerToSlot(intakeRequestId, slotId);
               toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
-              fetchData();
               if (selectedCycleId && selectedCycleId !== 'all') {
                 const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
                 setScheduleSlots(updatedSlots);
               }
+              refreshData();
             } catch (error: any) {
+              setScheduleSlots(prev);
               toast.error(error.message);
             }
           }}
           onUnassignPlayer={async (assignmentId) => {
+            const prev = [...scheduleSlots];
+            setScheduleSlots(slots => slots.map(s => ({
+              ...s,
+              current_assignments: s.current_assignments.filter((a: any) => a.id !== assignmentId),
+            })));
             try {
               await unassignPlayer(assignmentId);
               toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
-              fetchData();
-              if (selectedCycleId && selectedCycleId !== 'all') {
-                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
-                setScheduleSlots(updatedSlots);
-              }
+              refreshData();
             } catch (error: any) {
+              setScheduleSlots(prev);
               toast.error(error.message);
             }
           }}

@@ -365,49 +365,74 @@ export default function AcademyCycleDetail() {
   };
 
   // Schedule grid event handlers (shared between steps)
+  // Uses optimistic local state updates to avoid full page reloads
   const scheduleGridHandlers = {
     onPlayerClick: (intakeRequestId: string) => {
       const req = requests.find(r => r.id === intakeRequestId);
       if (req) setSelectedRequest(req);
     },
     onMovePlayer: async (assignmentId: string, newSlotId: string) => {
+      const prev = [...scheduleSlots];
+      // Optimistic: move assignment between slots locally
+      setScheduleSlots(slots => {
+        let assignment: any = null;
+        const updated = slots.map(s => {
+          const found = s.current_assignments.find((a: any) => a.id === assignmentId);
+          if (found) {
+            assignment = found;
+            return { ...s, current_assignments: s.current_assignments.filter((a: any) => a.id !== assignmentId) };
+          }
+          return s;
+        });
+        if (!assignment) return slots;
+        return updated.map(s => s.id === newSlotId ? { ...s, current_assignments: [...s.current_assignments, assignment] } : s);
+      });
       try {
         await movePlayerAssignment(assignmentId, newSlotId);
         toast.success(t('proposals.playerMoved', 'Player moved successfully'));
-        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-        setScheduleSlots(updatedSlots);
       } catch (error: any) {
+        setScheduleSlots(prev);
         toast.error(error.message);
       }
     },
     onMoveSlot: async (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => {
+      const prev = [...scheduleSlots];
+      // Optimistic: update slot time/trainer locally
+      setScheduleSlots(slots => slots.map(s => s.id === slotId ? { ...s, trainer_id: newTrainerId, start_time: newStartTime, end_time: newEndTime } : s));
       try {
         await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
         toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
-        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-        setScheduleSlots(updatedSlots);
       } catch (error: any) {
+        setScheduleSlots(prev);
         toast.error(error.message);
       }
     },
     onSwapSlots: async (slotAId: string, slotATrainer: string, slotAStart: string, slotAEnd: string, slotBId: string, slotBTrainer: string, slotBStart: string, slotBEnd: string) => {
+      const prev = [...scheduleSlots];
+      // Optimistic: swap times/trainers locally
+      setScheduleSlots(slots => slots.map(s => {
+        if (s.id === slotAId) return { ...s, trainer_id: slotATrainer, start_time: slotAStart, end_time: slotAEnd };
+        if (s.id === slotBId) return { ...s, trainer_id: slotBTrainer, start_time: slotBStart, end_time: slotBEnd };
+        return s;
+      }));
       try {
         await swapSlots(slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd);
         toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
-        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-        setScheduleSlots(updatedSlots);
       } catch (error: any) {
+        setScheduleSlots(prev);
         toast.error(error.message);
       }
     },
     onDeleteSlot: async (slotId: string) => {
+      const prev = [...scheduleSlots];
+      // Optimistic: remove slot locally
+      setScheduleSlots(slots => slots.filter(s => s.id !== slotId));
       try {
         await deleteSlot(slotId);
         toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
-        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-        setScheduleSlots(updatedSlots);
-        refreshData();
+        refreshData(); // update unplaced list
       } catch (error: any) {
+        setScheduleSlots(prev);
         toast.error(error.message);
       }
     },
@@ -416,24 +441,48 @@ export default function AcademyCycleDetail() {
       toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
     },
     onAssignPlayer: async (intakeRequestId: string, slotId: string) => {
+      const prev = [...scheduleSlots];
+      // Optimistic: add a placeholder assignment locally
+      const player = requests.find(r => r.id === intakeRequestId);
+      setScheduleSlots(slots => slots.map(s => s.id === slotId ? {
+        ...s,
+        current_assignments: [...s.current_assignments, {
+          id: `temp-${Date.now()}`,
+          intake_request_id: intakeRequestId,
+          player_name: player?.full_name || '',
+          player_rating: player?.rating ?? null,
+          player_rating_system: player?.rating_system ?? null,
+          confidence_score: null,
+          sessions_per_week: player?.sessions_per_week ?? 1,
+        }]
+      } : s));
       try {
         await assignPlayerToSlot(intakeRequestId, slotId);
         toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
-        refreshData();
-        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
+        // Refresh to get real assignment IDs and update unplaced list
+        const [updatedSlots] = await Promise.all([
+          getAvailableSlotsForCycle(cycleId!),
+          fetchRequests(),
+        ]);
         setScheduleSlots(updatedSlots);
       } catch (error: any) {
+        setScheduleSlots(prev);
         toast.error(error.message);
       }
     },
     onUnassignPlayer: async (assignmentId: string) => {
+      const prev = [...scheduleSlots];
+      // Optimistic: remove assignment locally
+      setScheduleSlots(slots => slots.map(s => ({
+        ...s,
+        current_assignments: s.current_assignments.filter((a: any) => a.id !== assignmentId),
+      })));
       try {
         await unassignPlayer(assignmentId);
         toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
-        refreshData();
-        const updatedSlots = await getAvailableSlotsForCycle(cycleId!);
-        setScheduleSlots(updatedSlots);
+        fetchRequests(); // update unplaced list silently
       } catch (error: any) {
+        setScheduleSlots(prev);
         toast.error(error.message);
       }
     },
