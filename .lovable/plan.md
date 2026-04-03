@@ -1,49 +1,37 @@
 
 
-# Show Suggestion Indicators in the Table + Quick Actions
+# Fix Slow/Flickering Link Action in Player Detail Sheet
 
 ## Problem
-Trainers have to open each player's detail sheet to discover link suggestions. They need a visual indicator in the table to spot suggestions at a glance, and a way to dismiss false positives so the table becomes "clean."
+When clicking "Link" on a suggestion in the detail sheet, `onLinkChanged` triggers `fetchData()` in the parent page, which reloads all cycles, all requests, and all player links. This causes:
+1. A long loading period while all data refetches
+2. The `selectedRequest` object gets replaced with a new reference, causing the sheet to appear to close and reopen
+3. It feels "stuck" because the full data reload is slow with 78+ registrations
 
-## Approach
+## Fix
 
-### 1. Compute suggestions at the table level
-Move the suggestion-matching logic (currently in `IntakeRequestDetailSheet`) into a shared utility so both the table and the detail sheet can use it. The table will show a small indicator per row; the detail sheet keeps the full suggestion UI.
+### `src/components/cycles/IntakeRequestDetailSheet.tsx`
+- After linking, **don't call `onLinkChanged`** immediately. Instead, optimistically update the local state:
+  - Add the newly linked player to `linkedRequestIds` / `linkedRequests` locally
+  - Remove the linked player from `suggestedLinks`
+  - Show the success toast instantly
+- Call `onLinkChanged` in the background (non-blocking) so the parent table eventually refreshes, but the sheet stays open and responsive
 
-### 2. Table indicator
-Add a `Lightbulb` icon (or small badge) in the **Linked** column cell for any row that has unlinked suggestions. Clicking the icon opens a small **Popover** inline showing:
-- List of suggested names
-- "Link" button per suggestion
-- "Dismiss" button per suggestion (removes it from view)
+Concretely:
+1. Add local state `optimisticLinkedIds` that starts from `linkedRequestIds` but can be extended
+2. After `linkPlayers()` succeeds, update `optimisticLinkedIds` and show toast — don't await `onLinkChanged`
+3. Fire `onLinkChanged?.()` without awaiting it (fire-and-forget) so the table updates in the background
+4. Same approach for "Link all" button
 
-### 3. Dismiss suggestions
-Store dismissed suggestion pairs in `localStorage` (key: `dismissed-link-suggestions`, value: array of `[requestId, suggestedId]` pairs). When computing suggestions, filter out dismissed pairs. This keeps things simple with no database changes.
-
-### 4. Detail sheet integration
-The detail sheet's existing "Suggested links" section also respects dismissed suggestions and offers the same dismiss action.
+### `src/pages/TrainerIntakeRequests.tsx` + `src/pages/academy/AcademyIntakeRequests.tsx`
+- In `fetchData`, after reloading requests, **preserve `selectedRequest`** by re-finding the same ID:
+  - After `setRequests(requestsData)`, if `selectedRequest` is set, update it to the matching object from `requestsData` so the sheet doesn't flicker
 
 ## Files
 
-| File | Action |
+| File | Change |
 |------|--------|
-| `src/lib/suggestLinks.ts` | **New** — extract the fuzzy matching logic into a reusable function |
-| `src/components/cycles/IntakeRequestsTable.tsx` | Import suggestion logic, show indicator + popover with link/dismiss actions in linked column |
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Use shared `suggestLinks` util, respect dismissed suggestions |
-
-## Detail
-
-### `src/lib/suggestLinks.ts`
-```typescript
-export function getSuggestedLinks(request, allRequests, linkedIds, dismissedPairs): IntakeRequestWithProposal[]
-export function dismissSuggestion(requestId, suggestedId): void
-export function getDismissedSuggestions(): Set<string>
-```
-
-### Table column — Linked cell enhancement
-When a row has suggestions (after filtering dismissed), show a small amber `Lightbulb` icon with count badge. Clicking opens a `Popover` with:
-- Each suggestion as a row: name + "Link" button + "✕" dismiss button
-- "Link all" if multiple
-
-### Props change
-`IntakeRequestsTable` needs `allRequests` (the full unfiltered list) and callbacks `onLinkPlayer(requestId, suggestedId)` and a way to trigger re-render after dismiss. Since dismiss is localStorage-based, a local state counter bump suffices.
+| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Optimistic local state update after linking; fire-and-forget `onLinkChanged` |
+| `src/pages/TrainerIntakeRequests.tsx` | Preserve `selectedRequest` identity across `fetchData` |
+| `src/pages/academy/AcademyIntakeRequests.tsx` | Same preservation |
 
