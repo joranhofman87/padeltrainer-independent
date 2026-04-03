@@ -30,6 +30,8 @@ interface ProposalWorkflowStepsProps {
   onShowOverview: () => void;
   isGenerating?: boolean;
   isResetting?: boolean;
+  /** When true, hides the cycle selector (step 1) — used when already scoped to a single cycle */
+  hideCycleSelector?: boolean;
 }
 
 export default function ProposalWorkflowSteps({
