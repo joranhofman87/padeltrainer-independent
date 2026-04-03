@@ -992,6 +992,7 @@ export interface SlotWithOccupancy {
     player_rating: number | null;
     player_rating_system: string | null;
     confidence_score: number | null;
+    sessions_per_week: number;
   }>;
 }
 
