@@ -24,13 +24,6 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Auth check: require anon key to block direct bot hits
-  const authHeader = req.headers.get('Authorization') || '';
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  if (anonKey && !authHeader.includes(anonKey)) {
-    return new Response('Unauthorized', { status: 401, headers: corsHeaders });
-  }
-
   try {
     const url = new URL(req.url);
     const path = url.searchParams.get('path') || '/';
