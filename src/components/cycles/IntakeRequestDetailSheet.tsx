@@ -142,6 +142,33 @@ export default function IntakeRequestDetailSheet({
       .filter(Boolean) as IntakeRequestWithProposal[];
   }, [linkedRequestIds, allRequests]);
 
+  // Normalize text: lowercase + remove diacritics
+  const normalize = (text: string) =>
+    text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // Auto-suggest links from notes
+  const suggestedLinks = useMemo(() => {
+    if (!request?.notes || !allRequests.length) return [];
+    const normalizedNotes = normalize(request.notes);
+    const alreadyLinkedIds = new Set([request.id, ...linkedRequestIds]);
+    
+    return allRequests.filter(other => {
+      if (other.cycle_id !== request.cycle_id) return false;
+      if (alreadyLinkedIds.has(other.id)) return false;
+      
+      const tokens = normalize(other.full_name).split(/\s+/).filter(t => t.length >= 2);
+      if (tokens.length === 0) return false;
+      
+      const lastName = tokens[tokens.length - 1];
+      if (lastName.length >= 3 && normalizedNotes.includes(lastName)) return true;
+      
+      const matchCount = tokens.filter(t => normalizedNotes.includes(t)).length;
+      if (matchCount >= 2) return true;
+      
+      return false;
+    });
+  }, [request, allRequests, linkedRequestIds]);
+
   // Available requests to link (same cycle, not already linked to this group, not self)
   const availableToLink = useMemo(() => {
     if (!request) return [];
