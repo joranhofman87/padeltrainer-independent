@@ -1545,6 +1545,8 @@ export default function ProposalScheduleGrid({
                                 trainerAvailabilityWindows={trainerAvailabilityWindows}
                                 selectedDay={selectedDay}
                                 daySlots={daySlots}
+                                allSlots={slots}
+                                availableDays={availableDays}
                                 onMoveSlot={onMoveSlot}
                                 onDeleteSlot={onDeleteSlot}
                                 searchQuery={searchQuery}
