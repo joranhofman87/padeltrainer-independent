@@ -7,37 +7,13 @@ const corsHeaders = {
 
 const SITE_URL = 'https://padeltrainer.ai';
 
-// Simple in-memory rate limiter: max 30 requests per 10-second window
-const RATE_WINDOW_MS = 10_000;
-const RATE_MAX = 30;
-let rateWindowStart = Date.now();
-let rateCount = 0;
-
-function isRateLimited(): boolean {
-  const now = Date.now();
-  if (now - rateWindowStart > RATE_WINDOW_MS) {
-    rateWindowStart = now;
-    rateCount = 0;
-  }
-  rateCount++;
-  return rateCount > RATE_MAX;
-}
+// Rate limiting is now handled by the Cloudflare Worker.
+// This function focuses on rendering and returns Cache-Control headers
+// so both Cloudflare and Supabase CDN can cache responses.
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
-  }
-
-  // Rate limit: return 429 if too many requests
-  if (isRateLimited()) {
-    return new Response('Too Many Requests', {
-      status: 429,
-      headers: {
-        ...corsHeaders,
-        'Retry-After': '10',
-        'Cache-Control': 'no-store',
-      },
-    });
   }
 
   try {
