@@ -580,6 +580,7 @@ function DraggableSlotCard({
                 onPlayerClick={onPlayerClick}
                 slotMinRating={slot.min_rating}
                 slotMaxRating={slot.max_rating}
+                searchQuery={searchQuery}
               />
             ))}
           </div>
