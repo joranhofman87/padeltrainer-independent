@@ -1218,6 +1218,7 @@ export async function generateProposals(
     linkStrategy?: 'strict' | 'prefer' | 'ignore';
     fillIncompleteGroups?: boolean;
     maxGroupSize?: number;
+    timezone?: string;
   }
 ): Promise<{ generated: number; skipped: number; errors?: string[] }> {
   // Persist trainer availability windows to cycle settings for the schedule grid
@@ -1251,6 +1252,7 @@ export async function generateProposals(
       linkStrategy: options?.linkStrategy ?? 'prefer',
       fillIncompleteGroups: options?.fillIncompleteGroups ?? true,
       maxGroupSize: options?.maxGroupSize,
+      timezone: options?.timezone,
     }
   });
 

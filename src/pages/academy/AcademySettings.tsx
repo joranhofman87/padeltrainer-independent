@@ -597,6 +597,51 @@ export default function AcademySettings() {
           </CardHeader>
         </Card>
 
+        {/* Timezone Setting */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-sky-500/10">
+                <Clock className="h-5 w-5 text-sky-600" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-lg">{t('settings.timezone', 'Timezone')}</CardTitle>
+                <CardDescription>{t('settings.timezoneDescription', 'Set the timezone used for scheduling and displaying lesson times')}</CardDescription>
+              </div>
+              <Select
+                value={academyTimezone}
+                onValueChange={async (value) => {
+                  if (!activeAcademy) return;
+                  setUpdatingTimezone(true);
+                  try {
+                    const { error } = await supabase
+                      .from('academy_profiles')
+                      .update({ timezone: value } as any)
+                      .eq('id', activeAcademy.id);
+                    if (error) throw error;
+                    setAcademyTimezone(value);
+                    toast({ title: t('settings.timezoneSaved', 'Timezone updated') });
+                  } catch (error: any) {
+                    toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+                  } finally {
+                    setUpdatingTimezone(false);
+                  }
+                }}
+                disabled={updatingTimezone}
+              >
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMMON_TIMEZONES.map(tz => (
+                    <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+        </Card>
+
         {/* Extra Cost Presets */}
         {activeAcademy && (
           <ExtraCostPresetsCard academyProfileId={activeAcademy.id} />
