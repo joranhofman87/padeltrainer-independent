@@ -1396,6 +1396,7 @@ export default function ProposalScheduleGrid({
                                 daySlots={daySlots}
                                 onMoveSlot={onMoveSlot}
                                 onDeleteSlot={onDeleteSlot}
+                                searchQuery={searchQuery}
                               />
                             ) : null}
                           </DroppableCell>
