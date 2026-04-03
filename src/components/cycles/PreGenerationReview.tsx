@@ -95,7 +95,8 @@ export default function PreGenerationReview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests, playerLinks, dismissCounter]);
 
-  const totalActions = suggestions.length + unmatchedMentions.length;
+  // Only link suggestions count as blocking actions; unmatched mentions are info-only
+  const totalActions = suggestions.length;
 
   const handleLink = useCallback(async (item: SuggestionItem) => {
     const key = `${item.requestId}::${item.suggestedId}`;
