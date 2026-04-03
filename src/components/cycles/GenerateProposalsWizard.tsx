@@ -100,6 +100,7 @@ export function GenerateProposalsWizard({
 
   // Step 3: Additional criteria
   const [additionalCriteria, setAdditionalCriteria] = useState('');
+  const [keepCompleteGroups, setKeepCompleteGroups] = useState(true);
 
   // Load trainers
   useEffect(() => {
