@@ -62,25 +62,34 @@ export default function ProposalWorkflowSteps({
   const cycleSelected = hideCycleSelector || selectedCycleId !== 'all';
 
   // Determine step statuses based on data state
+  // Steps when hideCycleSelector: Review Links → Generate → Review & Edit → Approve & Book
+  // Steps otherwise: Select Cycle → Generate → Review & Edit → Approve & Book
   const getStepStatuses = () => {
+    if (hideCycleSelector) {
+      // 4 steps: ReviewLinks, Generate, Review&Edit, Approve&Book
+      if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
+        return ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
+      }
+      if (proposedCount > 0) {
+        return ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
+      }
+      // Pre-generation: review links step first
+      const linksStatus: StepStatus = (pendingLinkActions === 0 || isLinksReviewed) ? 'completed' : 'active';
+      const generateStatus: StepStatus = linksStatus === 'completed' ? 'active' : 'upcoming';
+      return [linksStatus, generateStatus, 'upcoming', 'upcoming'] as StepStatus[];
+    }
+
+    // Standard flow (with cycle selector): 4 steps
     if (!cycleSelected) {
-      return hideCycleSelector
-        ? ['active', 'upcoming', 'upcoming'] as StepStatus[]
-        : ['active', 'upcoming', 'upcoming', 'upcoming'] as StepStatus[];
+      return ['active', 'upcoming', 'upcoming', 'upcoming'] as StepStatus[];
     }
     if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
-      return hideCycleSelector
-        ? ['completed', 'completed', 'completed'] as StepStatus[]
-        : ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
+      return ['completed', 'completed', 'completed', 'completed'] as StepStatus[];
     }
     if (proposedCount > 0) {
-      return hideCycleSelector
-        ? ['completed', 'active', 'upcoming'] as StepStatus[]
-        : ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
+      return ['completed', 'completed', 'active', 'upcoming'] as StepStatus[];
     }
-    return hideCycleSelector
-      ? ['active', 'upcoming', 'upcoming'] as StepStatus[]
-      : ['completed', 'active', 'upcoming', 'upcoming'] as StepStatus[];
+    return ['completed', 'active', 'upcoming', 'upcoming'] as StepStatus[];
   };
 
   const statuses = getStepStatuses();
