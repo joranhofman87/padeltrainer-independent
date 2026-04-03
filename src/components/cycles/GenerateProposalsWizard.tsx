@@ -301,6 +301,7 @@ export function GenerateProposalsWizard({
       linkStrategy,
       fillIncompleteGroups,
     });
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
   };
 
   const canProceedStep1 = trainerConfigs.length > 0 && trainerConfigs.some(c => c.windows.length > 0);
