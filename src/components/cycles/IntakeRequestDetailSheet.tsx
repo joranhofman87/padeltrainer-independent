@@ -96,6 +96,7 @@ export default function IntakeRequestDetailSheet({
   playerLinks = [],
   allRequests = [],
   onLinkChanged,
+  allowDelete = false,
 }: IntakeRequestDetailSheetProps) {
   const { t } = useTranslation('cycles');
   const [proposal, setProposal] = useState<EnrichedProposedAssignment | null>(null);
@@ -106,6 +107,8 @@ export default function IntakeRequestDetailSheet({
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [optimisticLinkedIds, setOptimisticLinkedIds] = useState<string[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Reset optimistic state when request or playerLinks change from parent
   useEffect(() => {
