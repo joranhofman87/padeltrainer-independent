@@ -251,6 +251,7 @@ export default function TrainerIntakeRequests() {
       preferred_days: r.preferred_days,
       lesson_type: r.lesson_type,
       skip_reason: r.skip_reason,
+      sessions_per_week: r.sessions_per_week,
     }));
 
   const skippedReasonCounts = statusFilter === 'skipped'

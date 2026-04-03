@@ -992,6 +992,7 @@ export interface SlotWithOccupancy {
     player_rating: number | null;
     player_rating_system: string | null;
     confidence_score: number | null;
+    sessions_per_week: number;
   }>;
 }
 
@@ -1042,7 +1043,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
   // 4. Fetch all proposed_assignments for intake_requests in this cycle
   const { data: requests } = await supabase
     .from('intake_requests')
-    .select('id, full_name, rating, rating_system')
+    .select('id, full_name, rating, rating_system, sessions_per_week')
     .eq('cycle_id', cycleId);
 
   const requestMap = new Map((requests || []).map(r => [r.id, r]));
@@ -1114,6 +1115,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
           player_rating: req?.rating ?? null,
           player_rating_system: req?.rating_system ?? null,
           confidence_score: a.confidence_score,
+          sessions_per_week: req?.sessions_per_week ?? 1,
         };
       }),
     };

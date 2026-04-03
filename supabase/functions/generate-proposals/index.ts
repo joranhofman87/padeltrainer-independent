@@ -973,49 +973,84 @@ Deno.serve(async (req) => {
       });
 
       scoredSlots.sort((a, b) => b.score - a.score);
-      const bestMatch = scoredSlots[0];
 
-      if (!bestMatch || bestMatch.score === 0) {
-        skipped++;
-        const allFull = scoredSlots.every(s => 
-          s.rationale.find(r => r.type === 'capacity_available')?.score === 0
-        );
-        const ratingSpreadIssue = scoredSlots.every(s => 
-          s.rationale.find(r => r.type === 'level_compatible')?.score === 0
-        );
-        
-        let skipReason = "no_matching_slots";
-        if (allFull) skipReason = "all_slots_full";
-        else if (ratingSpreadIssue) skipReason = "rating_spread_exceeded";
-        
-        await supabase
-          .from("intake_requests")
-          .update({ skip_reason: skipReason })
-          .eq("id", request.id);
-        continue;
-      }
+      // Assign player to multiple slots if sessions_per_week > 1
+      const sessionsNeeded = request.sessions_per_week || 1;
+      const assignedDays: Set<string> = new Set();
+      let sessionAssigned = 0;
 
-      // Create proposed assignment
-      const { error: insertError } = await supabase
-        .from("proposed_assignments")
-        .insert({
-          intake_request_id: request.id,
-          slot_id: bestMatch.slot.id,
-          trainer_id: bestMatch.slot.trainer_id,
-          confidence_score: bestMatch.score,
-          rationale: bestMatch.rationale,
-          status: "proposed",
+      // Build a list of candidates sorted by score (already sorted)
+      const candidateSlots = [...scoredSlots];
+
+      for (let session = 0; session < sessionsNeeded; session++) {
+        // Find the best slot not on an already-assigned day and not full
+        const pick = candidateSlots.find(s => {
+          if (!s || s.score === 0) return false;
+          // Get the day-of-week from the slot's start_time
+          const slotDate = new Date(s.slot.start_time);
+          const dayKey = slotDate.toLocaleDateString('en-US', { weekday: 'long' });
+          if (assignedDays.has(dayKey)) return false;
+          // Re-check capacity with updated slotAssignments
+          const maxP = s.slot.max_participants || defaultMaxParticipantsIndiv;
+          const currentBookings = bookingCounts[s.slot.id] || 0;
+          const currentAssignments = slotAssignments[s.slot.id]?.length || 0;
+          if (currentBookings + currentAssignments >= maxP) return false;
+          return true;
         });
 
-      if (insertError) {
-        errors.push(`Failed to create proposal for ${request.id}: ${insertError.message}`);
-        skipped++;
-      } else {
-        if (!slotAssignments[bestMatch.slot.id]) {
-          slotAssignments[bestMatch.slot.id] = [];
+        if (!pick) {
+          if (session === 0) {
+            // No slot at all — skip this request
+            skipped++;
+            const allFull = scoredSlots.every(s =>
+              s.rationale.find(r => r.type === 'capacity_available')?.score === 0
+            );
+            const ratingSpreadIssue = scoredSlots.every(s =>
+              s.rationale.find(r => r.type === 'level_compatible')?.score === 0
+            );
+            let skipReason = "no_matching_slots";
+            if (allFull) skipReason = "all_slots_full";
+            else if (ratingSpreadIssue) skipReason = "rating_spread_exceeded";
+            await supabase
+              .from("intake_requests")
+              .update({ skip_reason: skipReason })
+              .eq("id", request.id);
+          } else {
+            // Partial fulfillment — some sessions assigned but not all
+            console.log(`Request ${request.id}: placed ${sessionAssigned}/${sessionsNeeded} sessions (not enough different-day slots)`);
+          }
+          break;
         }
-        slotAssignments[bestMatch.slot.id].push(request);
 
+        const slotDate = new Date(pick.slot.start_time);
+        const dayKey = slotDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+        const { error: insertError } = await supabase
+          .from("proposed_assignments")
+          .insert({
+            intake_request_id: request.id,
+            slot_id: pick.slot.id,
+            trainer_id: pick.slot.trainer_id,
+            confidence_score: pick.score,
+            rationale: pick.rationale,
+            status: "proposed",
+          });
+
+        if (insertError) {
+          errors.push(`Failed to create proposal for ${request.id} session ${session + 1}: ${insertError.message}`);
+          if (session === 0) skipped++;
+          break;
+        }
+
+        if (!slotAssignments[pick.slot.id]) {
+          slotAssignments[pick.slot.id] = [];
+        }
+        slotAssignments[pick.slot.id].push(request);
+        assignedDays.add(dayKey);
+        sessionAssigned++;
+      }
+
+      if (sessionAssigned > 0) {
         await supabase
           .from("intake_requests")
           .update({ status: "proposed" })

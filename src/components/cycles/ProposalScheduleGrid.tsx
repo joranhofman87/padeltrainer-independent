@@ -31,6 +31,7 @@ export interface UnplacedPlayer {
   preferred_days: string[];
   lesson_type: string | string[];
   skip_reason?: string | null;
+  sessions_per_week?: number;
 }
 
 interface ProposalScheduleGridProps {
@@ -223,6 +224,11 @@ function DraggablePlayerChip({
               })}
             </TooltipContent>
           </Tooltip>
+        )}
+        {assignment.sessions_per_week > 1 && (
+          <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0 border-primary/40 text-primary">
+            {assignment.sessions_per_week}×
+          </Badge>
         )}
         {confScore > 0 && (
           <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', confClass)}>
@@ -763,6 +769,11 @@ function DraggableUnplacedPlayer({
           {player.skip_reason && (
             <Badge variant="destructive" className="text-[9px] px-1 py-0 h-3.5">
               {t(`skipReasons.${player.skip_reason}.short`, { defaultValue: 'Skipped' })}
+            </Badge>
+          )}
+          {(player.sessions_per_week ?? 1) > 1 && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 border-primary/40 text-primary">
+              {player.sessions_per_week}×/wk
             </Badge>
           )}
         </div>
