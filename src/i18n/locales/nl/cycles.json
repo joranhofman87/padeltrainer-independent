@@ -294,6 +294,7 @@
     "addManualSuccess": "Registratie succesvol toegevoegd",
     "addManualSuccessNewAccount": "Registratie toegevoegd. er is een spelersaccount aangemaakt.",
     "profileCreationNote": "Als deze speler nog geen account heeft, wordt er automatisch een aangemaakt. ze ontvangen een e-mail ter bevestiging van hun inschrijving.",
+    "skippedSummary": "{{count}} aanmeldingen konden niet worden gekoppeld",
     "filters": {
       "all": "Alle",
       "new": "Nieuw",
@@ -303,7 +304,6 @@
       "waitlist": "Wachtlijst",
       "rejected": "Afgewezen"
     },
-    "skippedSummary": "{{count}} aanmeldingen konden niet worden gekoppeld",
     "table": {
       "player": "Speler",
       "lessonType": "Lesvorm",
@@ -311,7 +311,16 @@
       "availability": "Beschikbaarheid",
       "preferredTrainer": "Voork. trainer",
       "status": "Status",
-      "applied": "Aangemeld"
+      "applied": "Aangemeld",
+      "duration": "Duur",
+      "notes": "Opmerkingen",
+      "phone": "Telefoon",
+      "birthDate": "Geboortedatum",
+      "sessionsPerWeek": "Sessies/wk",
+      "columns": "Kolommen",
+      "toggleColumns": "Kolommen aan/uit",
+      "searchPlayer": "Zoek speler...",
+      "groupNotes": "Groepsnotities"
     },
     "detail": {
       "title": "Aanmeldingsdetails",
@@ -320,7 +329,8 @@
       "availability": "Beschikbaarheid",
       "notes": "Opmerkingen",
       "proposal": "Voorgestelde toewijzing",
-      "noProposal": "Nog geen voorstel gegenereerd"
+      "noProposal": "Nog geen voorstel gegenereerd",
+      "wholeDay": "Hele dag"
     },
     "actions": {
       "propose": "Voorstel genereren",
@@ -329,8 +339,38 @@
       "waitlist": "Naar wachtlijst",
       "viewProposal": "Voorstel bekijken",
       "delete": "Verwijderen",
-      "deleteSuccess": "Aanmelding verwijderd",
-      "declineProposal": "Voorstel afwijzen"
+      "deleteSuccess": "Registratie verwijderd",
+      "declineProposal": "Voorstel afwijzen",
+      "edit": "Bewerken",
+      "cancel": "Annuleren",
+      "deleteConfirmTitle": "Deze registratie verwijderen?",
+      "deleteConfirmDescription": "Dit verwijdert de registratie van {{name}} permanent. Deze actie kan niet ongedaan worden gemaakt."
+    },
+    "edit": {
+      "title": "Registratie bewerken",
+      "description": "Pas de registratiegegevens aan",
+      "save": "Wijzigingen opslaan",
+      "saving": "Opslaan...",
+      "success": "Registratie bijgewerkt"
+    },
+    "links": {
+      "linkedPlayers": "Samen trainen",
+      "linkedWith": "Gekoppeld met",
+      "linkedColumn": "Gekoppeld",
+      "suggestedLinks": "Voorgestelde koppelingen",
+      "suggestedLinksDescription": "Op basis van de notities van deze speler",
+      "suggestions": "Suggesties",
+      "linkAll": "Allemaal koppelen",
+      "link": "Koppelen",
+      "addLink": "Koppelen",
+      "linked": "Spelers gekoppeld",
+      "unlinked": "Speler ontkoppeld",
+      "noLinks": "Geen gekoppelde spelers",
+      "noResults": "Geen spelers gevonden",
+      "searchPlayer": "Zoek speler...",
+      "dismissSuggestion": "Negeren",
+      "unmatchedMentions": "Namen niet gevonden in aanmeldingen",
+      "unmatchedDescription": "Deze namen werden genoemd in de notities maar er is geen bijbehorende aanmelding gevonden."
     },
     "delete": {
       "title": "Aanmelding verwijderen?",
