@@ -135,8 +135,10 @@ export default function AcademyCalendar() {
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
   const [editBookingOpen, setEditBookingOpen] = useState(false);
+  const [editSlotOpen, setEditSlotOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
+  const [slotToEdit, setSlotToEdit] = useState<SlotWithBookings | null>(null);
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [createFormType, setCreateFormType] = useState<'registration' | 'event'>('registration');
