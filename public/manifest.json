@@ -1,7 +1,7 @@
 {
   "name": "PadelTrainer.ai",
   "short_name": "PadelTrainer",
-  "description": "Find Your Perfect Padel Trainer in the Netherlands",
+  "description": "Scheduling, Bookings & Payments for Padel Trainers",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

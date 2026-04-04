@@ -57,11 +57,11 @@ function renderPath(cleanPath: string, lang: string): string {
   // Homepage
   if (cleanPath === '/' || cleanPath === '') {
     return page(
-      lang === 'nl' ? 'PadelTrainer.ai - Vind & Boek Padel Trainers in Nederland' : 'PadelTrainer.ai - Find & Book Padel Trainers in the Netherlands',
-      lang === 'nl' ? 'Ontdek gecertificeerde padel trainers bij locaties door heel Nederland. Vergelijk tarieven, lees reviews en boek direct.' : 'Discover certified padel trainers at locations across the Netherlands. Compare rates, read reviews, and book lessons directly.',
+      lang === 'nl' ? 'PadelTrainer.ai - Planning, Boekingen & Betalingen voor Padel Trainers' : 'PadelTrainer.ai - Scheduling, Bookings & Payments for Padel Trainers',
+      lang === 'nl' ? 'Beheer je padel coaching vanuit één plek. Online boekingen, veilige betalingen en agenda synchronisatie.' : 'Run your padel coaching business from one place. Online booking, secure payments, and calendar sync.',
       '/', lang,
       `<h1>${lang === 'nl' ? 'Vind Jouw Perfecte Padel Trainer' : 'Find Your Perfect Padel Trainer'}</h1>
-       <p>${lang === 'nl' ? 'Ontdek gecertificeerde padel trainers door heel Nederland.' : 'Discover certified padel trainers across the Netherlands.'}</p>`,
+       <p>${lang === 'nl' ? 'Ontdek gecertificeerde padel trainers bij jou in de buurt.' : 'Discover certified padel trainers near you.'}</p>`,
       [websiteSchema(), organizationSchema()]
     );
   }
@@ -96,9 +96,9 @@ function renderPath(cleanPath: string, lang: string): string {
   if (cleanPath === '/trainers') {
     return page(
       'Find Padel Trainers | PadelTrainer.ai',
-      'Browse all certified padel trainers in the Netherlands. Filter by location, level, and specialization.',
+      'Browse all certified padel trainers. Filter by location, level, and specialization.',
       '/trainers', lang,
-      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers in the Netherlands.</p>`
+      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers. Filter by location, level, and specialization.</p>`
     );
   }
 
@@ -132,9 +132,9 @@ function renderPath(cleanPath: string, lang: string): string {
   if (cleanPath === '/locations') {
     return page(
       'Padel Locations | PadelTrainer.ai',
-      'Browse all padel clubs and locations in the Netherlands. Find courts near you.',
+      'Browse all padel clubs and locations. Find courts near you.',
       '/locations', lang,
-      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations in the Netherlands.</p>`
+      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations. Find courts near you.</p>`
     );
   }
 
@@ -266,7 +266,7 @@ function renderPath(cleanPath: string, lang: string): string {
 
   // Static pages
   const staticPages: Record<string, { title: string; desc: string }> = {
-    '/about': { title: 'About PadelTrainer.ai', desc: 'PadelTrainer.ai is the leading platform for finding and booking padel trainers in the Netherlands.' },
+    '/about': { title: 'About PadelTrainer.ai', desc: 'PadelTrainer.ai is the leading platform for padel trainers and academies.' },
     '/pricing': { title: 'Pricing — PadelTrainer.ai', desc: 'Explore our flexible pricing plans for padel trainers and academies.' },
     '/founding-trainers': { title: 'Founding 100 Trainers — Free Premium Racket', desc: 'Be one of the first 100 padel coaches on PadelTrainer.ai and receive a free premium racket.' },
     '/partner': { title: 'Become a Partner — PadelTrainer.ai', desc: 'Partner with PadelTrainer.ai to reach thousands of padel players.' },
