@@ -28,7 +28,6 @@ import {
   MapPin,
   Settings,
   CreditCard,
-  ChevronRight,
   LogOut,
   ExternalLink,
   PanelLeftClose,
