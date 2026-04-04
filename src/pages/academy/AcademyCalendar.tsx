@@ -143,8 +143,7 @@ export default function AcademyCalendar() {
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
-  const [slotDetailOpen, setSlotDetailOpen] = useState(false);
-  const [slotDetailId, setSlotDetailId] = useState<string | null>(null);
+  // SlotDetailDialog state removed — using page navigation now
 
   const handleCellClick = (day: Date, hour: number) => {
     setDefaultSlotDate(day);
