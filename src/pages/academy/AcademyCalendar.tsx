@@ -328,6 +328,51 @@ export default function AcademyCalendar() {
     }
   };
 
+  // Fetch all known players for the sidebar
+  const fetchAllKnownPlayers = async () => {
+    if (!activeAcademy) return;
+    try {
+      const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
+      const trainerIds = academyTrainers
+        .filter((at: any) => at.status === 'active' && at.trainer_profile)
+        .map((at: any) => at.trainer_profile.id);
+      if (trainerIds.length === 0) return;
+
+      // Get all unique player_ids from bookings for academy trainers
+      const { data: bookingPlayers } = await supabase
+        .from('bookings')
+        .select('player_id, guest_player_id, profiles:player_id(id, full_name, skill_rating, rating_system), guest_players:guest_player_id(id, full_name, skill_rating, rating_system), availability_slots!inner(trainer_id)')
+        .in('availability_slots.trainer_id', trainerIds)
+        .not('status', 'eq', 'cancelled');
+
+      const playerMap = new Map<string, KnownPlayer>();
+      (bookingPlayers || []).forEach((b: any) => {
+        if (b.profiles?.id && !playerMap.has(b.profiles.id)) {
+          playerMap.set(b.profiles.id, {
+            id: b.profiles.id,
+            full_name: b.profiles.full_name || 'Unknown',
+            skill_rating: b.profiles.skill_rating,
+            rating_system: b.profiles.rating_system || 'knltb',
+            is_guest: false,
+          });
+        }
+        if (b.guest_players?.id && !playerMap.has(`guest-${b.guest_players.id}`)) {
+          playerMap.set(`guest-${b.guest_players.id}`, {
+            id: b.guest_players.id,
+            full_name: b.guest_players.full_name || 'Guest',
+            skill_rating: b.guest_players.skill_rating,
+            rating_system: b.guest_players.rating_system || 'knltb',
+            is_guest: true,
+          });
+        }
+      });
+
+      setAllKnownPlayers(Array.from(playerMap.values()).sort((a, b) => a.full_name.localeCompare(b.full_name)));
+    } catch (error) {
+      logger.error('Error fetching known players', error as Error, { component: 'AcademyCalendar' });
+    }
+  };
+
   // Filter slots by selected trainer and location
   const filteredSlots = useMemo(() => {
     return slots.filter(s => {
