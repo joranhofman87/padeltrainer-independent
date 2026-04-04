@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   format,
@@ -7,19 +7,19 @@ import {
   endOfWeek,
   addWeeks,
   subWeeks,
-  addDays,
-  subDays,
   addMonths,
   subMonths,
   startOfMonth,
   endOfMonth,
   isBefore,
+  parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Clock, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -40,6 +40,12 @@ import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
 import AcademyWeekOverview from "@/components/academy/AcademyWeekOverview";
+import AcademyCalendarOverview from "@/components/academy/AcademyCalendarOverview";
+import AcademyTrainerHours from "@/components/academy/AcademyTrainerHours";
+
+// Lazy-load the open slots page content
+import { lazy, Suspense } from "react";
+const AcademyOpenSlotsContent = lazy(() => import("@/pages/academy/AcademyOpenSlots"));
 
 interface AcademySlot {
   id: string;
@@ -85,19 +91,31 @@ const dateFnsLocales: Record<string, typeof enUS> = {
   fr,
 };
 
+type TabValue = "overview" | "open-spots" | "manage" | "hours";
+
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
   const { t: tTrainer } = useTranslation("trainer");
   const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split("-")[0]] || enUS;
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
+
+  // Tab state from URL
+  const activeTab = (searchParams.get("tab") as TabValue) || "overview";
+  const setActiveTab = (tab: TabValue) => {
+    setSearchParams({ tab }, { replace: true });
+  };
   
-  const [view, setView] = useState<"day" | "week">("day");
+  const [manageView, setManageView] = useState<"day" | "week">("day");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [slots, setSlots] = useState<AcademySlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [allKnownPlayers, setAllKnownPlayers] = useState<KnownPlayer[]>([]);
+
+  // For overview: month-wide slots
+  const [monthSlots, setMonthSlots] = useState<AcademySlot[]>([]);
 
   // Filter state
   const [trainers, setTrainers] = useState<Trainer[]>([]);
@@ -107,7 +125,6 @@ export default function AcademyCalendar() {
   
   // Slot creation dialog state
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
-  
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string>();
   const [selectedSlotTrainerId, setSelectedSlotTrainerId] = useState<string | null>(null);
@@ -139,12 +156,12 @@ export default function AcademyCalendar() {
   useEffect(() => {
     if (activeAcademy) {
       fetchSlots(slots.length === 0);
+      fetchMonthSlots();
     }
   }, [activeAcademy, currentDate]);
 
   const loadAcademyData = async () => {
     if (!activeAcademy) return;
-
     try {
       const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
       const trainerList: Trainer[] = academyTrainers
@@ -156,7 +173,6 @@ export default function AcademyCalendar() {
           user_id: t.trainer_profile.user_id,
           hourly_rate: t.trainer_profile?.hourly_rate || undefined,
         }));
-      
       setTrainers(trainerList);
       
       const academyLocations = await getAcademyLocations(activeAcademy.id);
@@ -171,157 +187,15 @@ export default function AcademyCalendar() {
     }
   };
 
+  // Fetch week slots (for manage tab)
   const fetchSlots = async (showFullLoader = false) => {
     if (!activeAcademy) return;
-    
     if (showFullLoader) setLoading(true);
     try {
       const rangeStart = startOfWeek(currentDate, { weekStartsOn: 1 });
       const rangeEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
-      
-      const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
-      const trainerIds = academyTrainers
-        .filter((at: any) => at.status === 'active' && at.trainer_profile)
-        .map((at: any) => at.trainer_profile.id);
-      
-      if (trainerIds.length === 0) {
-        setSlots([]);
-        setLoading(false);
-        return;
-      }
-      
-      const { data: slotsData, error } = await supabase
-        .from("availability_slots")
-        .select(`
-          id,
-          trainer_id,
-          start_time,
-          end_time,
-          max_participants,
-          is_marked_full,
-          location_id,
-          cyclus_id,
-          cyclus_name,
-          rating_system,
-          min_rating,
-          max_rating,
-          price_per_session,
-          locations(name)
-        `)
-        .in("trainer_id", trainerIds)
-        .gte("start_time", rangeStart.toISOString())
-        .lte("start_time", rangeEnd.toISOString())
-        .order("start_time", { ascending: true });
-
-      if (error) {
-        logger.error("Error fetching academy slots", error as Error, { component: "AcademyCalendar", academyId: activeAcademy?.id });
-        setSlots([]);
-        return;
-      }
-
-      const { data: trainerProfiles } = await supabase
-        .from("trainer_profiles")
-        .select("id, user_id")
-        .in("id", trainerIds);
-
-      const userIds = trainerProfiles?.map((tp) => tp.user_id) || [];
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, full_name, avatar_url")
-        .in("user_id", userIds);
-
-      const profileMap = new Map(
-        (profiles || []).map((p) => [p.user_id, p])
-      );
-      const trainerUserMap = new Map(
-        (trainerProfiles || []).map((tp) => [tp.id, tp.user_id])
-      );
-
-      // Fetch bookings WITH player data (same pattern as TrainerCalendar)
-      const slotIds = slotsData?.map((s) => s.id) || [];
-      let bookings: any[] = [];
-      
-      if (slotIds.length > 0) {
-        const { data: bookingsData, error: bookingsError } = await supabase
-          .from("bookings")
-          .select(`
-            id,
-            slot_id,
-            status,
-            player_id,
-            guest_player_id,
-            profiles:player_id (full_name, skill_rating, rating_system),
-            guest_players:guest_player_id (full_name, skill_rating, rating_system)
-          `)
-          .in("slot_id", slotIds);
-
-        if (bookingsError) {
-          logger.error("Error fetching bookings", bookingsError as Error, { component: "AcademyCalendar" });
-        } else {
-          bookings = bookingsData || [];
-        }
-      }
-
-      // Aggregate booking counts and player info
-      const bookingCounts: Record<string, { active: number; pending: number; players: BookedPlayer[] }> = {};
-      bookings.forEach((b) => {
-        if (!bookingCounts[b.slot_id]) {
-          bookingCounts[b.slot_id] = { active: 0, pending: 0, players: [] };
-        }
-        if (b.status === "confirmed") {
-          bookingCounts[b.slot_id].active++;
-        } else if (b.status === "pending") {
-          bookingCounts[b.slot_id].pending++;
-        }
-
-        const profile = b.profiles as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
-        const guestPlayer = b.guest_players as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
-        const playerName = profile?.full_name || guestPlayer?.full_name || "Unknown";
-        const skillRating = profile?.skill_rating ?? guestPlayer?.skill_rating ?? null;
-        const ratingSystem = profile?.rating_system || guestPlayer?.rating_system || 'knltb';
-
-        if (b.status === "confirmed" || b.status === "pending") {
-          bookingCounts[b.slot_id].players.push({
-            id: b.player_id || b.guest_player_id || b.id,
-            bookingId: b.id,
-            name: playerName,
-            status: b.status as "confirmed" | "pending",
-            isGuest: !!b.guest_player_id,
-            skillRating,
-            ratingSystem,
-          });
-        }
-      });
-
-      const enrichedSlots: AcademySlot[] = (slotsData || []).map((slot: any) => {
-        const userId = trainerUserMap.get(slot.trainer_id);
-        const profile = userId ? profileMap.get(userId) : null;
-        const counts = bookingCounts[slot.id] || { active: 0, pending: 0, players: [] };
-
-        return {
-          id: slot.id,
-          trainer_id: slot.trainer_id,
-          start_time: slot.start_time,
-          end_time: slot.end_time,
-          is_marked_full: slot.is_marked_full,
-          location_id: slot.location_id,
-          max_participants: slot.max_participants || 4,
-          cyclus_id: slot.cyclus_id || null,
-          cyclus_name: slot.cyclus_name || null,
-          trainer_name: profile?.full_name || "Unknown",
-          trainer_avatar: profile?.avatar_url || null,
-          location_name: slot.locations?.name || null,
-          active_bookings: counts.active,
-          pending_bookings: counts.pending,
-          booked_players: counts.players,
-          rating_system: slot.rating_system || null,
-          min_rating: slot.min_rating != null ? Number(slot.min_rating) : null,
-          max_rating: slot.max_rating != null ? Number(slot.max_rating) : null,
-          price_per_session: slot.price_per_session || null,
-        };
-      });
-
-      setSlots(enrichedSlots);
+      const enriched = await fetchSlotsForRange(rangeStart, rangeEnd);
+      setSlots(enriched);
     } catch (error) {
       logger.error("Error fetching academy calendar slots", error as Error, { component: "AcademyCalendar" });
     } finally {
@@ -329,7 +203,134 @@ export default function AcademyCalendar() {
     }
   };
 
-  // Fetch all known players for the sidebar
+  // Fetch month slots (for overview + trainer hours)
+  const fetchMonthSlots = async () => {
+    if (!activeAcademy) return;
+    try {
+      const rangeStart = startOfMonth(currentDate);
+      const rangeEnd = endOfMonth(currentDate);
+      const enriched = await fetchSlotsForRange(rangeStart, rangeEnd);
+      setMonthSlots(enriched);
+    } catch (error) {
+      logger.error("Error fetching month slots", error as Error, { component: "AcademyCalendar" });
+    }
+  };
+
+  const fetchSlotsForRange = async (rangeStart: Date, rangeEnd: Date): Promise<AcademySlot[]> => {
+    const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy!.id);
+    const trainerIds = academyTrainers
+      .filter((at: any) => at.status === 'active' && at.trainer_profile)
+      .map((at: any) => at.trainer_profile.id);
+    
+    if (trainerIds.length === 0) return [];
+    
+    const { data: slotsData, error } = await supabase
+      .from("availability_slots")
+      .select(`
+        id, trainer_id, start_time, end_time, max_participants, is_marked_full,
+        location_id, cyclus_id, cyclus_name, rating_system, min_rating, max_rating,
+        price_per_session, locations(name)
+      `)
+      .in("trainer_id", trainerIds)
+      .gte("start_time", rangeStart.toISOString())
+      .lte("start_time", rangeEnd.toISOString())
+      .order("start_time", { ascending: true });
+
+    if (error) {
+      logger.error("Error fetching slots", error as Error, { component: "AcademyCalendar" });
+      return [];
+    }
+
+    const { data: trainerProfiles } = await supabase
+      .from("trainer_profiles")
+      .select("id, user_id")
+      .in("id", trainerIds);
+
+    const userIds = trainerProfiles?.map((tp) => tp.user_id) || [];
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("user_id, full_name, avatar_url")
+      .in("user_id", userIds);
+
+    const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
+    const trainerUserMap = new Map((trainerProfiles || []).map((tp) => [tp.id, tp.user_id]));
+
+    const slotIds = slotsData?.map((s) => s.id) || [];
+    let bookings: any[] = [];
+    
+    if (slotIds.length > 0) {
+      const { data: bookingsData, error: bookingsError } = await supabase
+        .from("bookings")
+        .select(`
+          id, slot_id, status, player_id, guest_player_id,
+          profiles:player_id (full_name, skill_rating, rating_system),
+          guest_players:guest_player_id (full_name, skill_rating, rating_system)
+        `)
+        .in("slot_id", slotIds);
+
+      if (bookingsError) {
+        logger.error("Error fetching bookings", bookingsError as Error, { component: "AcademyCalendar" });
+      } else {
+        bookings = bookingsData || [];
+      }
+    }
+
+    const bookingCounts: Record<string, { active: number; pending: number; players: BookedPlayer[] }> = {};
+    bookings.forEach((b) => {
+      if (!bookingCounts[b.slot_id]) {
+        bookingCounts[b.slot_id] = { active: 0, pending: 0, players: [] };
+      }
+      if (b.status === "confirmed") bookingCounts[b.slot_id].active++;
+      else if (b.status === "pending") bookingCounts[b.slot_id].pending++;
+
+      const profile = b.profiles as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
+      const guestPlayer = b.guest_players as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
+      const playerName = profile?.full_name || guestPlayer?.full_name || "Unknown";
+      const skillRating = profile?.skill_rating ?? guestPlayer?.skill_rating ?? null;
+      const ratingSystem = profile?.rating_system || guestPlayer?.rating_system || 'knltb';
+
+      if (b.status === "confirmed" || b.status === "pending") {
+        bookingCounts[b.slot_id].players.push({
+          id: b.player_id || b.guest_player_id || b.id,
+          bookingId: b.id,
+          name: playerName,
+          status: b.status as "confirmed" | "pending",
+          isGuest: !!b.guest_player_id,
+          skillRating,
+          ratingSystem,
+        });
+      }
+    });
+
+    return (slotsData || []).map((slot: any) => {
+      const userId = trainerUserMap.get(slot.trainer_id);
+      const profile = userId ? profileMap.get(userId) : null;
+      const counts = bookingCounts[slot.id] || { active: 0, pending: 0, players: [] };
+
+      return {
+        id: slot.id,
+        trainer_id: slot.trainer_id,
+        start_time: slot.start_time,
+        end_time: slot.end_time,
+        is_marked_full: slot.is_marked_full,
+        location_id: slot.location_id,
+        max_participants: slot.max_participants || 4,
+        cyclus_id: slot.cyclus_id || null,
+        cyclus_name: slot.cyclus_name || null,
+        trainer_name: profile?.full_name || "Unknown",
+        trainer_avatar: profile?.avatar_url || null,
+        location_name: slot.locations?.name || null,
+        active_bookings: counts.active,
+        pending_bookings: counts.pending,
+        booked_players: counts.players,
+        rating_system: slot.rating_system || null,
+        min_rating: slot.min_rating != null ? Number(slot.min_rating) : null,
+        max_rating: slot.max_rating != null ? Number(slot.max_rating) : null,
+        price_per_session: slot.price_per_session || null,
+      };
+    });
+  };
+
   const fetchAllKnownPlayers = async () => {
     if (!activeAcademy) return;
     try {
@@ -339,7 +340,6 @@ export default function AcademyCalendar() {
         .map((at: any) => at.trainer_profile.id);
       if (trainerIds.length === 0) return;
 
-      // Get all unique player_ids from bookings for academy trainers
       const { data: bookingPlayers } = await supabase
         .from('bookings')
         .select('player_id, guest_player_id, profiles:player_id(id, full_name, skill_rating, rating_system), guest_players:guest_player_id(id, full_name, skill_rating, rating_system), availability_slots!inner(trainer_id)')
@@ -374,7 +374,6 @@ export default function AcademyCalendar() {
     }
   };
 
-  // Filter slots by selected trainer and location
   const filteredSlots = useMemo(() => {
     return slots.filter(s => {
       if (selectedTrainerId !== "all" && s.trainer_id !== selectedTrainerId) return false;
@@ -383,7 +382,6 @@ export default function AcademyCalendar() {
     });
   }, [slots, selectedTrainerId, selectedLocationId]);
 
-  // Map to SlotWithBookings for the shared grid
   const mappedSlots: SlotWithBookings[] = useMemo(() => {
     const now = new Date();
     return filteredSlots.map(slot => ({
@@ -409,17 +407,51 @@ export default function AcademyCalendar() {
     }));
   }, [filteredSlots]);
 
+  // Overview data from month slots
+  const overviewSlots = useMemo(() => {
+    return monthSlots.map(s => ({
+      id: s.id,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      trainer_name: s.trainer_name,
+      trainer_id: s.trainer_id,
+      max_participants: s.max_participants,
+      booked_count: s.active_bookings + s.pending_bookings,
+      location_name: s.location_name,
+    }));
+  }, [monthSlots]);
+
+  // Trainer hours data from month slots
+  const trainerHoursSlots = useMemo(() => {
+    return monthSlots.map(s => ({
+      id: s.id,
+      trainer_id: s.trainer_id,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      booked_count: s.active_bookings + s.pending_bookings,
+    }));
+  }, [monthSlots]);
+
   const navigatePrevious = () => {
-    if (view === "day") setCurrentDate(subWeeks(currentDate, 1));
-    else setCurrentDate(subWeeks(currentDate, 1));
+    if (activeTab === "overview" || activeTab === "hours") {
+      setCurrentDate(subMonths(currentDate, 1));
+    } else {
+      setCurrentDate(subWeeks(currentDate, 1));
+    }
   };
   const navigateNext = () => {
-    if (view === "day") setCurrentDate(addWeeks(currentDate, 1));
-    else setCurrentDate(addWeeks(currentDate, 1));
+    if (activeTab === "overview" || activeTab === "hours") {
+      setCurrentDate(addMonths(currentDate, 1));
+    } else {
+      setCurrentDate(addWeeks(currentDate, 1));
+    }
   };
   const goToToday = () => setCurrentDate(new Date());
 
   const getDateRangeLabel = () => {
+    if (activeTab === "overview" || activeTab === "hours") {
+      return format(currentDate, "MMMM yyyy", { locale: dateLocale });
+    }
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
     const end = endOfWeek(currentDate, { weekStartsOn: 1 });
     return `${format(start, "d MMM", { locale: dateLocale })} - ${format(end, "d MMM yyyy", { locale: dateLocale })}`;
@@ -456,7 +488,6 @@ export default function AcademyCalendar() {
     }
   };
 
-  // Action handlers
   const handleBookForPlayer = (slot: SlotWithBookings) => {
     setSelectedSlot(slot);
     setBookForPlayerOpen(true);
@@ -477,12 +508,7 @@ export default function AcademyCalendar() {
       const { data, error } = await supabase
         .from("bookings")
         .select(`
-          id,
-          status,
-          notes,
-          payment_status,
-          payment_amount,
-          guest_player_id,
+          id, status, notes, payment_status, payment_amount, guest_player_id,
           availability_slots (id, start_time, end_time),
           profiles:player_id (id, full_name, email)
         `)
@@ -490,22 +516,14 @@ export default function AcademyCalendar() {
         .single();
 
       if (error) throw error;
-
-      setBookingToEdit({
-        ...data,
-        player: data.profiles,
-      });
+      setBookingToEdit({ ...data, player: data.profiles });
       setEditBookingOpen(true);
     } catch (error) {
       logger.error("Error fetching booking", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyCalendar' });
     }
   };
 
-  const handleToggleMarkedFull = async (
-    slotId: string,
-    value: boolean,
-    applyToCyclus?: boolean
-  ) => {
+  const handleToggleMarkedFull = async (slotId: string, value: boolean, applyToCyclus?: boolean) => {
     try {
       if (applyToCyclus) {
         const slot = slots.find((s) => s.id === slotId);
@@ -515,28 +533,16 @@ export default function AcademyCalendar() {
             .update({ is_marked_full: value })
             .eq("cyclus_id", slot.cyclus_id)
             .gte("start_time", new Date().toISOString());
-
           if (error) throw error;
-
-          toast({
-            title: value
-              ? tTrainer("calendar.cyclusMarkedFull")
-              : tTrainer("calendar.cyclusMarkedOpen"),
-          });
+          toast({ title: value ? tTrainer("calendar.cyclusMarkedFull") : tTrainer("calendar.cyclusMarkedOpen") });
         }
       } else {
         const { error } = await supabase
           .from("availability_slots")
           .update({ is_marked_full: value })
           .eq("id", slotId);
-
         if (error) throw error;
-
-        toast({
-          title: value
-            ? tTrainer("calendar.slotMarkedFull")
-            : tTrainer("calendar.slotMarkedOpen"),
-        });
+        toast({ title: value ? tTrainer("calendar.slotMarkedFull") : tTrainer("calendar.slotMarkedOpen") });
       }
       fetchSlots();
     } catch (error) {
@@ -546,9 +552,9 @@ export default function AcademyCalendar() {
 
   const handleSlotsCreated = () => {
     fetchSlots();
+    fetchMonthSlots();
   };
 
-  // Stats
   const freeSlots = slots.filter(
     (s) => !isBefore(new Date(s.start_time), new Date()) && s.active_bookings === 0 && s.pending_bookings === 0
   ).length;
@@ -568,11 +574,16 @@ export default function AcademyCalendar() {
     );
   }
 
-  // Determine trainer ID for dialogs - use filtered trainer or the slot's trainer
   const getTrainerIdForSlot = () => {
     if (selectedSlot?.trainer_id) return selectedSlot.trainer_id;
     if (selectedTrainerId !== "all") return selectedTrainerId;
     return trainers[0]?.id || "";
+  };
+
+  const handleOverviewDayClick = (date: Date) => {
+    setCurrentDate(date);
+    setActiveTab("manage");
+    setManageView("day");
   };
 
   return (
@@ -584,9 +595,7 @@ export default function AcademyCalendar() {
             <Button variant="ghost" size="icon" onClick={() => navigate("/app/academy")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div>
-              <h1 className="text-xl font-bold">{t("calendar.title", "Agenda")}</h1>
-            </div>
+            <h1 className="text-xl font-bold">{t("calendar.title", "Agenda")}</h1>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -603,149 +612,186 @@ export default function AcademyCalendar() {
               <Plus className="h-4 w-4" />
               {t("calendar.new", "New")}
             </Button>
-            
           </div>
         </div>
       </div>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Controls */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-              {/* Date Navigation */}
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <TabsList className="h-9">
+              <TabsTrigger value="overview" className="text-xs sm:text-sm gap-1.5">
+                <LayoutGrid className="h-3.5 w-3.5" />
+                {t("calendar.tabs.overview", "Overview")}
+              </TabsTrigger>
+              <TabsTrigger value="open-spots" className="text-xs sm:text-sm gap-1.5">
+                <Eye className="h-3.5 w-3.5" />
+                {t("calendar.tabs.openSpots", "Open Spots")}
+              </TabsTrigger>
+              <TabsTrigger value="manage" className="text-xs sm:text-sm gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />
+                {t("calendar.tabs.manage", "Manage")}
+              </TabsTrigger>
+              <TabsTrigger value="hours" className="text-xs sm:text-sm gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                {t("calendar.tabs.hours", "Trainer Hours")}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Date Navigation (shown for overview, manage, hours) */}
+            {activeTab !== "open-spots" && (
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={navigatePrevious}>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <div className="min-w-[120px] sm:min-w-[200px] text-center font-medium text-sm sm:text-base">
+                <div className="min-w-[120px] sm:min-w-[200px] text-center font-medium text-sm">
                   {getDateRangeLabel()}
                 </div>
-                <Button variant="outline" size="icon" onClick={navigateNext}>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" onClick={goToToday}>
+                <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
                   {t("calendar.today", "Today")}
                 </Button>
               </div>
+            )}
+          </div>
 
-              {/* View Toggle */}
-              <div className="flex items-center gap-1">
-                <Button
-                  variant={view === "day" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setView("day")}
-                >
-                  <Calendar className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">{t("calendar.dayView", "Day")}</span>
-                </Button>
-                <Button
-                  variant={view === "week" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setView("week")}
-                >
-                  <CalendarDays className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">{t("calendar.weekView", "Week")}</span>
-                </Button>
-              </div>
-            </div>
+          {/* ── Tab 1: Overview ── */}
+          <TabsContent value="overview" className="mt-4">
+            <AcademyCalendarOverview
+              slots={overviewSlots}
+              currentDate={currentDate}
+              onDayClick={handleOverviewDayClick}
+            />
+          </TabsContent>
 
-            {/* Filters */}
-            <div className="flex items-center gap-2 flex-wrap mt-4 pt-4 border-t">
-              <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-                <SelectTrigger className="w-[160px] h-8">
-                  <SelectValue placeholder={t("calendar.allLocations", "All Locations")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("calendar.allLocations", "All Locations")}</SelectItem>
-                  {locations.map(loc => (
-                    <SelectItem key={loc.id} value={loc.id}>
-                      {loc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
-                <SelectTrigger className="w-[160px] h-8">
-                  <SelectValue placeholder={t("calendar.allTrainers", "All Trainers")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("calendar.allTrainers", "All Trainers")}</SelectItem>
-                  {trainers.map(trainer => (
-                    <SelectItem key={trainer.id} value={trainer.id}>
-                      {trainer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* ── Tab 2: Open Spots ── */}
+          <TabsContent value="open-spots" className="mt-4">
+            <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
+              <AcademyOpenSlotsContent embedded={true} />
+            </Suspense>
+          </TabsContent>
 
-            {/* Quick Stats */}
-            <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded bg-muted border border-border" />
-                <span className="text-sm">
-                  {t("calendar.available", "Available")}: {freeSlots}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded bg-orange-100 dark:bg-orange-900/30 border border-orange-300 dark:border-orange-700" />
-                <span className="text-sm">
-                  {t("calendar.pending", "Pending")}: {pendingSlots}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700" />
-                <span className="text-sm">
-                  {t("calendar.booked", "Booked")}: {bookedSlots}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          {/* ── Tab 3: Manage Agenda ── */}
+          <TabsContent value="manage" className="mt-4 space-y-4">
+            {/* Controls Card */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                  {/* View Toggle */}
+                  <div className="flex items-center gap-1">
+                    <Button variant={manageView === "day" ? "default" : "outline"} size="sm" onClick={() => setManageView("day")}>
+                      <Calendar className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">{t("calendar.dayView", "Day")}</span>
+                    </Button>
+                    <Button variant={manageView === "week" ? "default" : "outline"} size="sm" onClick={() => setManageView("week")}>
+                      <CalendarDays className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">{t("calendar.weekView", "Week")}</span>
+                    </Button>
+                  </div>
 
-        {/* Calendar Grid */}
-        {view === "day" ? (
-          <AcademyDayGrid
-            slots={mappedSlots}
-            currentDate={currentDate}
-            allKnownPlayers={allKnownPlayers}
-            trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
-            onMovePlayer={handleMovePlayer}
-            onRemovePlayer={handleRemovePlayer}
-            onBookForPlayer={handleBookForPlayer}
-            onEditBooking={handleEditBooking}
-            onDeleteSlot={handleDeleteSlot}
-            onCellClick={handleCellClick}
-          />
-        ) : (
-          <Card>
-            <CardContent className="p-4">
-              <AcademyWeekOverview
+                  {/* Filters */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                      <SelectTrigger className="w-[160px] h-8">
+                        <SelectValue placeholder={t("calendar.allLocations", "All Locations")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("calendar.allLocations", "All Locations")}</SelectItem>
+                        {locations.map(loc => (
+                          <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
+                      <SelectTrigger className="w-[160px] h-8">
+                        <SelectValue placeholder={t("calendar.allTrainers", "All Trainers")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("calendar.allTrainers", "All Trainers")}</SelectItem>
+                        {trainers.map(trainer => (
+                          <SelectItem key={trainer.id} value={trainer.id}>{trainer.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Quick Stats */}
+                <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-muted border border-border" />
+                    <span className="text-sm">{t("calendar.available", "Available")}: {freeSlots}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700" />
+                    <span className="text-sm">{t("calendar.pending", "Pending")}: {pendingSlots}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700" />
+                    <span className="text-sm">{t("calendar.booked", "Booked")}: {bookedSlots}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Calendar Grid */}
+            {manageView === "day" ? (
+              <AcademyDayGrid
                 slots={mappedSlots}
                 currentDate={currentDate}
+                allKnownPlayers={allKnownPlayers}
                 trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
-                onDayClick={(date) => {
-                  setCurrentDate(date);
-                  setView("day");
-                }}
+                onMovePlayer={handleMovePlayer}
+                onRemovePlayer={handleRemovePlayer}
+                onBookForPlayer={handleBookForPlayer}
+                onEditBooking={handleEditBooking}
+                onDeleteSlot={handleDeleteSlot}
+                onCellClick={handleCellClick}
               />
-            </CardContent>
-          </Card>
-        )}
+            ) : (
+              <Card>
+                <CardContent className="p-4">
+                  <AcademyWeekOverview
+                    slots={mappedSlots}
+                    currentDate={currentDate}
+                    trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
+                    onDayClick={(date) => {
+                      setCurrentDate(date);
+                      setManageView("day");
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ── Tab 4: Trainer Hours ── */}
+          <TabsContent value="hours" className="mt-4">
+            <AcademyTrainerHours
+              slots={trainerHoursSlots}
+              trainers={trainers.map(t => ({
+                id: t.id,
+                name: t.name,
+                avatar: t.avatar,
+                hourly_rate: t.hourly_rate,
+              }))}
+              currentDate={currentDate}
+            />
+          </TabsContent>
+        </Tabs>
       </main>
       
-      {/* Slot Creation Dialogs */}
+      {/* Dialogs */}
       {activeAcademy && (
         <>
           <BulkCreateSheet
             open={bulkCreateOpen}
             onOpenChange={(open) => {
               setBulkCreateOpen(open);
-              if (!open) {
-                setPreselectedCyclusId(undefined);
-              }
+              if (!open) setPreselectedCyclusId(undefined);
             }}
             trainerId={selectedSlotTrainerId}
             defaultDate={defaultSlotDate}
@@ -759,7 +805,6 @@ export default function AcademyCalendar() {
             prefillFromCyclusId={preselectedCyclusId}
           />
 
-          {/* Book for Player Dialog */}
           {selectedSlot && (
             <BookForPlayerDialog
               open={bookForPlayerOpen}
@@ -780,7 +825,6 @@ export default function AcademyCalendar() {
             />
           )}
 
-          {/* Delete Slot Dialog */}
           <DeleteSlotDialog
             open={deleteSlotOpen}
             onOpenChange={(open) => {
@@ -792,7 +836,6 @@ export default function AcademyCalendar() {
             onSlotDeleted={handleSlotsCreated}
           />
 
-          {/* Edit Booking Dialog */}
           <EditBookingDialog
             open={editBookingOpen}
             onOpenChange={(open) => {

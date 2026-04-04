@@ -298,7 +298,7 @@ export function DomainRouter() {
           <Route path="profile" element={<AcademyProfile />} />
           <Route path="trainers" element={<AcademyTrainers />} />
           <Route path="players" element={<AcademyPlayers />} />
-          <Route path="open-slots" element={<AcademyOpenSlots />} />
+          <Route path="open-slots" element={<Navigate to="/app/academy/calendar?tab=open-spots" replace />} />
           <Route path="locations" element={<AcademyLocations />} />
           <Route path="cycles" element={<AcademyCycles />} />
           <Route path="cycles/new" element={<CycleFormPage ownerType="academy" />} />

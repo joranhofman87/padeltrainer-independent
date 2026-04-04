@@ -69,10 +69,6 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
   const { toast } = useToast();
 
   // Track which groups are open
-  const [scheduleOpen, setScheduleOpen] = useState(
-    location.pathname.includes("/app/academy/calendar") ||
-    location.pathname.includes("/app/academy/open-slots")
-  );
   const [registrationOpen, setRegistrationOpen] = useState(false); // No longer a collapsible group
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/academy/settings") ||
@@ -251,57 +247,19 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Schedule Group */}
-              <Collapsible
-                open={scheduleOpen && !collapsed}
-                onOpenChange={setScheduleOpen}
-                className="group/schedule"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t("nav.schedule")}
-                      className={isActive("/app/academy/calendar") || isActive("/app/academy/open-slots")
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : ""}
-                    >
-                      <Calendar className="h-4 w-4" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{t("nav.schedule")}</span>
-                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/schedule:rotate-90" />
-                        </>
-                      )}
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/calendar"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.calendar")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/open-slots"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.openSlots", "Open Slots")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+              {/* Schedule — single link */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.schedule")}>
+                  <NavLink
+                    to="/app/academy/calendar"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.schedule")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
               {/* Registrations — single link */}
               <SidebarMenuItem>

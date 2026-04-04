@@ -40,7 +40,7 @@ interface SlotData {
   location_name: string | null;
 }
 
-export default function AcademyOpenSlots() {
+export default function AcademyOpenSlots({ embedded = false }: { embedded?: boolean }) {
   const { t, i18n } = useTranslation('trainer');
   const { t: tAcademy } = useTranslation('academy');
   const navigate = useNavigate();
@@ -255,39 +255,41 @@ export default function AcademyOpenSlots() {
 
   return (
     <>
-      {/* Sub-page Header */}
-      <div className="border-b bg-background/60">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/app/academy')}>
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <h1 className="font-bold text-lg">{t('openSlots.title', 'Open Slots')}</h1>
-              <Badge variant="secondary">{totalOpenSlots}</Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              {anySlots && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toggleAllVisibility(!allPublic)}
-                >
-                  {allPublic ? <EyeOff className="h-4 w-4 sm:mr-2" /> : <Eye className="h-4 w-4 sm:mr-2" />}
-                  <span className="hidden sm:inline">{allPublic ? t('openSlots.hideAll') : t('openSlots.showAll')}</span>
+      {/* Sub-page Header — hidden when embedded in calendar hub */}
+      {!embedded && (
+        <div className="border-b bg-background/60">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="icon" onClick={() => navigate('/app/academy')}>
+                  <ArrowLeft className="h-5 w-5" />
                 </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={() => navigate('/app/academy/calendar')}>
-                <Calendar className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{t('openSlots.calendar', 'Calendar')}</span>
-              </Button>
+                <h1 className="font-bold text-lg">{t('openSlots.title', 'Open Slots')}</h1>
+                <Badge variant="secondary">{totalOpenSlots}</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                {anySlots && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleAllVisibility(!allPublic)}
+                  >
+                    {allPublic ? <EyeOff className="h-4 w-4 sm:mr-2" /> : <Eye className="h-4 w-4 sm:mr-2" />}
+                    <span className="hidden sm:inline">{allPublic ? t('openSlots.hideAll') : t('openSlots.showAll')}</span>
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => navigate('/app/academy/calendar')}>
+                  <Calendar className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t('openSlots.calendar', 'Calendar')}</span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className={embedded ? "" : "container mx-auto px-4 py-8"}>
         {loading ? (
           <div className="space-y-4">
             {[1, 2, 3, 4].map(i => (
