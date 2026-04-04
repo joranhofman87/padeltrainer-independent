@@ -571,7 +571,7 @@ export function BulkCreateContent({
 
   // Prefill from existing cyclus (duplicate mode)
   useEffect(() => {
-    if (!open || !prefillFromCyclusId) return;
+    if (!isActive || !prefillFromCyclusId) return;
 
     const prefillFromCyclus = async () => {
       try {
