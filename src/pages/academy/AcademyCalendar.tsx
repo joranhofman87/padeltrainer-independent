@@ -647,14 +647,6 @@ export default function AcademyCalendar() {
                   <CalendarDays className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">{t("calendar.weekView", "Week")}</span>
                 </Button>
-                <Button
-                  variant={view === "month" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setView("month")}
-                >
-                  <LayoutGrid className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">{t("calendar.monthView", "Month")}</span>
-                </Button>
               </div>
             </div>
 
