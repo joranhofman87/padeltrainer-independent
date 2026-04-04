@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle, UserPlus, Plus, X } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, LockOpen, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle, UserPlus, Plus, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -47,6 +47,7 @@ interface ProposalScheduleGridProps {
   onDeleteSlot?: (slotId: string) => void;
   onCreateSlot?: (trainerId: string, startTime: string, endTime: string) => void;
   onUndo?: (previousSlots: SlotWithOccupancy[]) => void;
+  onToggleSlotPrivacy?: (slotId: string, value: boolean) => void;
   unplacedPlayers?: UnplacedPlayer[];
   allPlayers?: UnplacedPlayer[];
   onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
@@ -719,7 +720,7 @@ function AddPlayerToSlotPopover({
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
   trainerAvailabilityWindows, selectedDay, daySlots, allSlots, availableDays, onMoveSlot, onDeleteSlot, searchQuery,
-  allPlayers, onAssignPlayer, onUnassignPlayer,
+  allPlayers, onAssignPlayer, onUnassignPlayer, onToggleSlotPrivacy,
 }: {
   slot: SlotWithOccupancy;
   onPlayerClick?: (id: string) => void;
@@ -735,6 +736,7 @@ function DraggableSlotCard({
   allPlayers?: UnplacedPlayer[];
   onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
   onUnassignPlayer?: (assignmentId: string) => void;
+  onToggleSlotPrivacy?: (slotId: string, value: boolean) => void;
 }) {
   const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
@@ -825,6 +827,30 @@ function DraggableSlotCard({
           </span>
           {avgConf > 0 && (
             <span className="text-muted-foreground text-[10px]">ø {avgConf}%</span>
+          )}
+          {onToggleSlotPrivacy && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onToggleSlotPrivacy(slot.id, !slot.is_marked_full); }}
+                    className={cn(
+                      'p-0.5 rounded transition-colors',
+                      slot.is_marked_full
+                        ? 'text-purple-600 dark:text-purple-400 hover:text-purple-700'
+                        : 'text-muted-foreground/40 hover:text-muted-foreground'
+                    )}
+                  >
+                    {slot.is_marked_full ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {slot.is_marked_full
+                    ? t('proposals.slotPrivate', { defaultValue: 'Private — hidden from public' })
+                    : t('proposals.slotPublic', { defaultValue: 'Public — click to mark as private' })}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
 
@@ -1107,7 +1133,7 @@ function DroppableUnplacedPool({ children }: { children: React.ReactNode }) {
 
 export default function ProposalScheduleGrid({
   slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onCreateSlot, onUndo,
-  unplacedPlayers, allPlayers, onAssignPlayer, onUnassignPlayer,
+  onToggleSlotPrivacy, unplacedPlayers, allPlayers, onAssignPlayer, onUnassignPlayer,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
@@ -1720,6 +1746,7 @@ export default function ProposalScheduleGrid({
                                 allPlayers={allPlayers}
                                 onAssignPlayer={onAssignPlayer}
                                 onUnassignPlayer={onUnassignPlayer}
+                                onToggleSlotPrivacy={onToggleSlotPrivacy}
                               />
                             ) : null}
                           </DroppableCell>

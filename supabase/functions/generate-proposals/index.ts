@@ -625,7 +625,7 @@ Deno.serve(async (req) => {
                   trainer_id: ta.trainerId,
                   start_time: startDateTime.toISOString(),
                   end_time: endDateTime.toISOString(),
-                  is_marked_full: false,
+                  is_marked_full: (inputMaxGroupSize || cycle.settings?.max_group_size || 4) < 4,
                   is_public: false,
                   is_recurring: false,
                   cyclus_id: cycleId,
