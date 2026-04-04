@@ -97,14 +97,14 @@ function TrainerDayBlock({
   trainerAvatar,
   slots,
   isPast,
-  onClick,
+  onSlotClick,
   defaultOpen,
 }: {
   trainerName: string;
   trainerAvatar?: string | null;
   slots: SlotSummary[];
   isPast: boolean;
-  onClick?: () => void;
+  onSlotClick?: (slotId: string) => void;
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
