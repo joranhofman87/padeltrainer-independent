@@ -19,10 +19,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  Send, Save, FileText, History, Loader2, Bold, Users, Eye,
+  Send, Save, FileText, History, Loader2, Users, Eye,
   Trash2, Pencil, ChevronRight, X, Plus, FlaskConical,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
 
 interface EmailCampaignTabProps {
   academyId: string;
@@ -307,14 +308,6 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
     }
   };
 
-  // Simple text → HTML conversion for the editor
-  const handleEditorInput = (e: React.FormEvent<HTMLDivElement>) => {
-    setBodyHtml(e.currentTarget.innerHTML);
-  };
-
-  const insertBold = () => {
-    document.execCommand('bold', false);
-  };
 
   const insertVariable = (variable: string) => {
     document.execCommand('insertText', false, `{{${variable}}}`);
@@ -516,38 +509,23 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label>Body</Label>
-                  <div className="border rounded-md">
-                    <div className="flex items-center gap-1 p-2 border-b bg-muted/30">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={insertBold}
-                        title="Bold"
-                      >
-                        <Bold className="h-3.5 w-3.5" />
-                      </Button>
-                      <Separator orientation="vertical" className="h-5" />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => insertVariable('name')}
-                      >
-                        {'{{name}}'}
-                      </Button>
-                    </div>
-                    <div
-                      contentEditable
-                      className="min-h-[200px] p-3 text-sm focus:outline-none prose prose-sm max-w-none [&_b]:font-bold [&_strong]:font-bold"
-                      onInput={handleEditorInput}
-                      dangerouslySetInnerHTML={{ __html: bodyHtml }}
-                      suppressContentEditableWarning
-                    />
+                  <div className="flex items-center justify-between">
+                    <Label>Body</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => insertVariable('name')}
+                    >
+                      {'Insert {{name}}'}
+                    </Button>
                   </div>
+                  <MiniRichTextEditor
+                    value={bodyHtml}
+                    onChange={setBodyHtml}
+                    placeholder="Write your email content here..."
+                  />
                 </div>
 
                 {/* Save template row */}
