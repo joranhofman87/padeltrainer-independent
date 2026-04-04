@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle, UserPlus, Plus } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle, UserPlus, Plus, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -254,6 +254,7 @@ function SlotEditPopover({
   onMoveSlot,
   onDeleteSlot,
   onPlayerClick,
+  onUnassignPlayer,
 }: {
   slot: SlotWithOccupancy;
   trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
@@ -264,6 +265,7 @@ function SlotEditPopover({
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
   onPlayerClick?: (intakeRequestId: string) => void;
+  onUnassignPlayer?: (assignmentId: string) => void;
 }) {
   const { t } = useTranslation('cycles');
   const [open, setOpen] = useState(false);
@@ -466,11 +468,23 @@ function SlotEditPopover({
                         </span>
                       )}
                     </div>
-                    {a.confidence_score != null && a.confidence_score > 0 && (
-                      <span className={cn('font-semibold text-[10px] shrink-0', confScoreColor(a.confidence_score))}>
-                        {a.confidence_score}%
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {a.confidence_score != null && a.confidence_score > 0 && (
+                        <span className={cn('font-semibold text-[10px]', confScoreColor(a.confidence_score))}>
+                          {a.confidence_score}%
+                        </span>
+                      )}
+                      {onUnassignPlayer && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onUnassignPlayer(a.id); }}
+                          className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                          title={t('proposals.playerUnassigned', { defaultValue: 'Remove player' })}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </button>
                 );
               })}
@@ -649,7 +663,7 @@ function AddPlayerToSlotPopover({
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
   trainerAvailabilityWindows, selectedDay, daySlots, allSlots, availableDays, onMoveSlot, onDeleteSlot, searchQuery,
-  allPlayers, onAssignPlayer,
+  allPlayers, onAssignPlayer, onUnassignPlayer,
 }: {
   slot: SlotWithOccupancy;
   onPlayerClick?: (id: string) => void;
@@ -664,6 +678,7 @@ function DraggableSlotCard({
   searchQuery?: string;
   allPlayers?: UnplacedPlayer[];
   onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
+  onUnassignPlayer?: (assignmentId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `slot-drag-${slot.id}`,
@@ -716,6 +731,7 @@ function DraggableSlotCard({
               onMoveSlot={onMoveSlot}
               onDeleteSlot={onDeleteSlot}
               onPlayerClick={onPlayerClick}
+              onUnassignPlayer={onUnassignPlayer}
             />
           </div>
           <div className="flex items-center gap-1">
@@ -1630,6 +1646,7 @@ export default function ProposalScheduleGrid({
                                 searchQuery={searchQuery}
                                 allPlayers={allPlayers}
                                 onAssignPlayer={onAssignPlayer}
+                                onUnassignPlayer={onUnassignPlayer}
                               />
                             ) : null}
                           </DroppableCell>
