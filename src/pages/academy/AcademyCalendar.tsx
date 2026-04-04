@@ -177,6 +177,23 @@ export default function AcademyCalendar() {
           hourly_rate: t.trainer_profile?.hourly_rate || undefined,
         }));
       setTrainers(trainerList);
+
+      // Build trainer-location map
+      const trainerIds = trainerList.map(t => t.id);
+      let tlMap: Record<string, string[]> = {};
+      if (trainerIds.length > 0) {
+        const { data: trainerLocs } = await supabase
+          .from('trainer_locations')
+          .select('trainer_id, location_id')
+          .in('trainer_id', trainerIds);
+        if (trainerLocs) {
+          for (const tl of trainerLocs) {
+            if (!tlMap[tl.location_id]) tlMap[tl.location_id] = [];
+            tlMap[tl.location_id].push(tl.trainer_id);
+          }
+        }
+      }
+      setTrainerLocationMap(tlMap);
       
       const academyLocations = await getAcademyLocations(activeAcademy.id);
       const locationList: Location[] = academyLocations.map((al: any) => ({
