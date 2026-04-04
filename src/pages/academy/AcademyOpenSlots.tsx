@@ -289,7 +289,7 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
       )}
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className={embedded ? "" : "container mx-auto px-4 py-8"}>
         {loading ? (
           <div className="space-y-4">
             {[1, 2, 3, 4].map(i => (
