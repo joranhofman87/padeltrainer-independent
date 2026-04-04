@@ -1069,28 +1069,6 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
     assignments = pa || [];
   }
 
-  // Auto-heal: if no slots AND no assignments exist but intake requests are 'proposed',
-  // reset them back to 'new' to fix inconsistent state (e.g. from interrupted reset)
-  if ((!slots || slots.length === 0) && assignments.length === 0) {
-    const { data: proposedRequests } = await supabase
-      .from('intake_requests')
-      .select('id')
-      .eq('cycle_id', cycleId)
-      .eq('status', 'proposed');
-
-    if (proposedRequests && proposedRequests.length > 0) {
-      logger.warn(`Auto-healing ${proposedRequests.length} orphaned 'proposed' intake requests back to 'new'`, {
-        component: 'getAvailableSlotsForCycle',
-        cycleId,
-        count: proposedRequests.length,
-      });
-      const ids = proposedRequests.map(r => r.id);
-      await supabase
-        .from('intake_requests')
-        .update({ status: 'new' })
-        .in('id', ids);
-    }
-  }
 
   // 5. Get trainer profiles -> user_ids -> profiles (two-step)
   const uniqueTrainerIds = [...new Set(slots.map(s => s.trainer_id))];

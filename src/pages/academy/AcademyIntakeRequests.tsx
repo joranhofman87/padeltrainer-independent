@@ -126,6 +126,8 @@ export default function AcademyIntakeRequests() {
     let filtered = cycleFilteredRequests;
     if (statusFilter === 'skipped') {
       filtered = filtered.filter(r => r.status === 'new' && r.skip_reason);
+    } else if (statusFilter === 'confirmed') {
+      filtered = filtered.filter(r => r.status === 'confirmed' || (r.status as string) === 'booked');
     } else if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
@@ -136,7 +138,7 @@ export default function AcademyIntakeRequests() {
   const newCount = cycleFilteredRequests.filter(r => r.status === 'new' && !r.skip_reason).length;
   const skippedCount = cycleFilteredRequests.filter(r => r.status === 'new' && r.skip_reason).length;
   const proposedCount = cycleFilteredRequests.filter(r => r.status === 'proposed').length;
-  const confirmedCount = cycleFilteredRequests.filter(r => r.status === 'confirmed').length;
+  const confirmedCount = cycleFilteredRequests.filter(r => r.status === 'confirmed' || (r.status as string) === 'booked').length;
 
   const unplacedPlayers = cycleFilteredRequests
     .filter(r => r.status === 'new')
