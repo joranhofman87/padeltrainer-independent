@@ -733,7 +733,7 @@ export default function AcademyCalendar() {
               />
             </CardContent>
           </Card>
-
+        )}
       </main>
       
       {/* Slot Creation Dialogs */}
