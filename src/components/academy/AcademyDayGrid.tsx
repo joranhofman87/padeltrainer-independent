@@ -178,12 +178,13 @@ function DraggableBookedPlayer({
 // ── Slot Card ──
 
 function SlotCard({
-  slot, searchQuery, onRemovePlayer, onEditBooking, onDeleteSlot, onBookForPlayer,
+  slot, searchQuery, onRemovePlayer, onEditBooking, onEditSlot, onDeleteSlot, onBookForPlayer,
 }: {
   slot: SlotWithBookings;
   searchQuery?: string;
   onRemovePlayer?: (bookingId: string) => void;
   onEditBooking?: (bookingId: string) => void;
+  onEditSlot?: (slot: SlotWithBookings) => void;
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
 }) {
