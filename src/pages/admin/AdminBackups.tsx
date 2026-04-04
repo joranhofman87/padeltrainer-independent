@@ -152,7 +152,7 @@ export default function AdminBackups() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Backups</h1>
         <p className="text-muted-foreground">
-          Automatische database backups — elke 12 uur
+          Automatische database backups — elke 2 uur
         </p>
       </div>
 
@@ -181,7 +181,7 @@ export default function AdminBackups() {
             <HardDrive className="h-4 w-4" />
             Schema
           </div>
-          <Badge variant="secondary">Elke 12 uur</Badge>
+          <Badge variant="secondary">Elke 2 uur</Badge>
         </div>
       </div>
 
