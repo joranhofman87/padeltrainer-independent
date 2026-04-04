@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -37,8 +37,9 @@ import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 
-import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
+import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
+import AcademyWeekOverview from "@/components/academy/AcademyWeekOverview";
 
 interface AcademySlot {
   id: string;
