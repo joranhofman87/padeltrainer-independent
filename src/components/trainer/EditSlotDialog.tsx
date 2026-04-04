@@ -304,6 +304,65 @@ export function EditSlotDialog({
             fixedRatingSystem={trainerRatingSystem}
           />
 
+
+          {/* Trainer */}
+          {trainers && trainers.length > 0 && (
+            <div className="space-y-2">
+              <Label>{t("calendar.trainer", "Trainer")}</Label>
+              <Select value={trainerId} onValueChange={setTrainerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("calendar.selectTrainer", "Select trainer")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {trainers.map(tr => (
+                    <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Location */}
+          {locations && locations.length > 0 && (
+            <div className="space-y-2">
+              <Label>{t("calendar.location", "Location")}</Label>
+              <Select value={locationId} onValueChange={setLocationId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("calendar.selectLocation", "Select location")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{t("calendar.noLocation", "No location")}</SelectItem>
+                  {locations.map(loc => (
+                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Max Participants + Mark as full */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>{t("calendar.maxParticipants", "Max participants")}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={maxParticipants}
+                onChange={(e) => setMaxParticipants(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("calendar.markAsFull", "Mark as full")}</Label>
+              <div className="flex items-center h-10">
+                <Switch
+                  checked={isMarkedFull}
+                  onCheckedChange={setIsMarkedFull}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Cyclus Name */}
           {slot.cyclus_id && (
             <div className="space-y-2">
