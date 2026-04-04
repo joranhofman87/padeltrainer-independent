@@ -57,11 +57,11 @@ function renderPath(cleanPath: string, lang: string): string {
   // Homepage
   if (cleanPath === '/' || cleanPath === '') {
     return page(
-      lang === 'nl' ? 'PadelTrainer.ai - Vind & Boek Padel Trainers in Nederland' : 'PadelTrainer.ai - Find & Book Padel Trainers in the Netherlands',
-      lang === 'nl' ? 'Ontdek gecertificeerde padel trainers bij locaties door heel Nederland. Vergelijk tarieven, lees reviews en boek direct.' : 'Discover certified padel trainers at locations across the Netherlands. Compare rates, read reviews, and book lessons directly.',
+      lang === 'nl' ? 'PadelTrainer.ai - Planning, Boekingen & Betalingen voor Padel Trainers' : 'PadelTrainer.ai - Scheduling, Bookings & Payments for Padel Trainers',
+      lang === 'nl' ? 'Beheer je padel coaching vanuit één plek. Online boekingen, veilige betalingen en agenda synchronisatie.' : 'Run your padel coaching business from one place. Online booking, secure payments, and calendar sync.',
       '/', lang,
       `<h1>${lang === 'nl' ? 'Vind Jouw Perfecte Padel Trainer' : 'Find Your Perfect Padel Trainer'}</h1>
-       <p>${lang === 'nl' ? 'Ontdek gecertificeerde padel trainers door heel Nederland.' : 'Discover certified padel trainers across the Netherlands.'}</p>`,
+       <p>${lang === 'nl' ? 'Ontdek gecertificeerde padel trainers bij jou in de buurt.' : 'Discover certified padel trainers near you.'}</p>`,
       [websiteSchema(), organizationSchema()]
     );
   }
