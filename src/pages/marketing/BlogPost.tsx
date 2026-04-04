@@ -9,9 +9,13 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
 import { BodySections } from '@/components/sanity/BodySections';
-import { PortableTextRenderer } from '@/components/sanity/PortableTextRenderer';
+import { PortableTextRenderer, extractHeadings } from '@/components/sanity/PortableTextRenderer';
+import { TableOfContents } from '@/components/sanity/TableOfContents';
 import { CTASection } from '@/components/sanity/CTASection';
 import { BannerZone } from '@/components/sponsors/BannerZone';
+import { HubHero } from '@/components/blog/HubHero';
+import { RelatedGuidesSection } from '@/components/blog/RelatedGuidesSection';
+import { isHubPage, getSpokeArticles } from '@/lib/hubPages';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
 import { getArticleBySlug, calculateReadTime } from '@/lib/blog';
@@ -42,12 +46,21 @@ export default function BlogPost() {
   const { slug } = useParams<{ slug: string }>();
   const { t, i18n } = useTranslation('marketing');
   const lang = i18n.language || 'en';
+  const hub = slug ? isHubPage(slug) : false;
 
   const { data: post, isLoading, error } = useQuery({
     queryKey: ['blog-post', slug, lang],
     queryFn: () => getArticleBySlug(slug!, lang),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
+  });
+
+  // Fetch spoke articles for hub pages
+  const { data: spokeArticles = [] } = useQuery({
+    queryKey: ['hub-spokes', slug, lang],
+    queryFn: () => getSpokeArticles(slug!, lang),
+    enabled: hub && !!slug,
+    staleTime: 1000 * 60 * 10,
   });
 
   // Fetch translations for language switcher + hreflang
@@ -99,25 +112,120 @@ export default function BlogPost() {
   }
 
   const readTime = calculateReadTime(post.bodySections, post.content);
+  const headings = post.content ? extractHeadings(post.content) : [];
 
-  const articleStructuredData = {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": post.h1 || post.title,
-    "datePublished": post.datePublished,
-    "dateModified": post.dateModified,
-    "author": {
-      "@type": "Person",
-      "name": post.authorName || "PadelTrainer.ai"
-    },
-    "publisher": {
-      "@type": "Organization",
-      "name": "PadelTrainer.ai",
-      "logo": { "@type": "ImageObject", "url": "https://padeltrainer.ai/favicon.png" }
-    },
-    "description": post.seo?.metaDescription || post.excerpt || post.title
-  };
+  // Build structured data based on hub vs regular
+  const structuredData = hub
+    ? {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": post.h1 || post.title,
+        "description": post.seo?.metaDescription || post.excerpt || post.title,
+        "url": `https://padeltrainer.ai/${lang}/blog/${slug}`,
+        "mainEntity": {
+          "@type": "Article",
+          "headline": post.h1 || post.title,
+          "description": post.seo?.metaDescription || post.excerpt || post.title,
+          "datePublished": post.datePublished,
+          "author": { "@type": "Organization", "name": "PadelTrainer.ai" },
+        },
+        "hasPart": spokeArticles.map((a) => ({
+          "@type": "Article",
+          "name": a.title,
+          "url": `https://padeltrainer.ai/${lang}/blog/${a.slug}`,
+        })),
+      }
+    : {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": post.h1 || post.title,
+        "datePublished": post.datePublished,
+        "dateModified": post.dateModified,
+        "author": {
+          "@type": "Person",
+          "name": post.authorName || "PadelTrainer.ai",
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "PadelTrainer.ai",
+          "logo": { "@type": "ImageObject", "url": "https://padeltrainer.ai/favicon.png" },
+        },
+        "description": post.seo?.metaDescription || post.excerpt || post.title,
+      };
 
+  // ─── Hub Page Layout ───
+  if (hub) {
+    return (
+      <MarketingLayout>
+        <SEO
+          title={post.seo?.titleTag || post.h1 || post.title}
+          description={post.seo?.metaDescription || post.excerpt || `Read about ${post.title} on PadelTrainer.ai`}
+          url={`/blog/${slug}`}
+          type="article"
+          structuredData={structuredData}
+          noIndex={post.seo?.indexable === false}
+          translations={translationsList}
+          pathPrefix="blog"
+        />
+
+        {/* Back Button */}
+        <div className="container mx-auto px-4 pt-8">
+          <Button variant="ghost" asChild>
+            <LocalizedLink to="/blog" className="flex items-center gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              {t('blog.backToBlog')}
+            </LocalizedLink>
+          </Button>
+        </div>
+
+        {/* Hub Hero */}
+        <HubHero
+          title={post.h1 || post.title}
+          excerpt={post.excerpt}
+          category={post.category}
+          datePublished={post.datePublished}
+          readTime={readTime}
+          authorName={post.authorName}
+        />
+
+        <article className="container mx-auto px-4 py-8 max-w-[900px]">
+          <Breadcrumbs items={[
+            { label: t('common:breadcrumbs.blog', 'Blog'), href: '/blog' },
+            { label: post.seo?.breadcrumbLabel || post.h1 || post.title },
+          ]} />
+
+          {/* Table of Contents */}
+          {headings.length >= 2 && (
+            <TableOfContents headings={headings} className="my-8 p-4 rounded-lg border border-border bg-muted/30" />
+          )}
+
+          {/* Article Content */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            {post.content && post.content.length > 0 ? (
+              <PortableTextRenderer content={post.content} />
+            ) : (
+              <BodySections sections={post.bodySections} />
+            )}
+          </motion.div>
+
+          {/* Sponsor Banner */}
+          <BannerZone zone="in-article" category={post.category} className="my-8" />
+
+          {/* Related Guides */}
+          <RelatedGuidesSection articles={spokeArticles} />
+
+          {/* CTA */}
+          <CTASection cta={post.cta} />
+        </article>
+      </MarketingLayout>
+    );
+  }
+
+  // ─── Regular Blog Post Layout ───
   return (
     <MarketingLayout>
       <SEO
@@ -125,7 +233,7 @@ export default function BlogPost() {
         description={post.seo?.metaDescription || post.excerpt || `Read about ${post.title} on PadelTrainer.ai`}
         url={`/blog/${slug}`}
         type="article"
-        structuredData={articleStructuredData}
+        structuredData={structuredData}
         noIndex={post.seo?.indexable === false}
         translations={translationsList}
         pathPrefix="blog"
