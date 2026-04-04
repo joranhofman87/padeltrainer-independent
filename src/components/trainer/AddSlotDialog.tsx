@@ -654,7 +654,7 @@ export function BulkCreateContent({
     };
 
     prefillFromCyclus();
-  }, [open, prefillFromCyclusId]);
+  }, [isActive, prefillFromCyclusId]);
 
 
   const addBulkSlotConfig = () => {
