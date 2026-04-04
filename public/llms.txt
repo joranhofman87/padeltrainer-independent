@@ -1,6 +1,6 @@
 # PadelTrainer.ai
 
-> The marketplace connecting padel players with professional trainers in the Netherlands.
+> The platform for padel trainers and academies to manage scheduling, bookings, and payments.
 
 llms-full.txt: https://padeltrainer.ai/llms-full.txt
 
