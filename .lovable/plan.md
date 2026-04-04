@@ -1,83 +1,69 @@
 
 
-# Redesign Overview: Trainer-Grouped, Visual-First Layout
+# Unified Slot Detail Dialog + Overview Improvements
 
-## Problem
-The current grid is a flat list of 30px rows per slot. With 15+ slots per day, it becomes a wall of identical-looking text. Occupancy is shown as fractions (0/4), avatars are too small to recognize, and there's no grouping — making it very hard for non-technical users to quickly scan the week.
+## Problems
+1. **No "marked full/private" indicator** on overview — dots show occupancy but don't reveal locked slots
+2. **Clicking a slot in overview** navigates to the Manage tab's day view, losing context — user has to find the slot again
+3. **Edit booking error on Manage tab** — `handleEditBooking` query is missing `paid_externally`, `price_per_session`, and `cyclus_name` fields that `EditBookingDialog` expects
+4. **Fragmented editing** — every tab pushes to Manage or opens different dialogs, no unified "view slot details + edit" flow
 
-## New Design Concept
+## Solution: Slot Detail Dialog accessible from anywhere
 
-### Layout: Trainer swim-lanes within each day column
+Instead of tab-hopping, clicking any slot (from Overview, Open Spots, or Manage) opens a single **SlotDetailDialog** that shows all slot info and provides edit actions inline.
 
-Instead of listing every slot individually sorted by time, **group by trainer** within each day column:
+### 1. New `SlotDetailDialog.tsx` — Unified slot detail + edit panel
 
-```text
-  MON 13          TUE 14          WED 15
-┌──────────────┬──────────────┬──────────────┐
-│ 🟢 Marco (5) │ 🟡 Marco (4) │ 🟢 Marco (6) │
-│ 10:30-12:00  │ 10:00-11:30  │ 11:30-12:30  │
-│ 14:00-15:00  │ 12:30-14:00  │ 12:30-13:30  │
-│ 15:00-16:00  │ 14:00-15:00  │ ...          │
-│ ...          │ ...          │              │
-│──────────────│──────────────│──────────────│
-│ 🟡 Sarah (3) │ 🔴 Sarah (2) │              │
-│ 18:00-19:00  │ 19:00-20:00  │     —        │
-│ 19:00-20:00  │ 20:00-21:00  │              │
-│ 20:00-21:00  │              │              │
-└──────────────┴──────────────┴──────────────┘
-```
+A dialog/sheet that receives a `slotId` and fetches full details:
 
-Each trainer block shows:
-- **Larger avatar** (28-32px) — actually recognizable
-- **Trainer first name** (short, next to avatar)
-- **Summary dot** — single colored circle for worst status that day (green = all full, amber = some open, red/gray = mostly empty)
-- **Session count badge** — e.g. "5 sessions"
-- **Time list** — simple text lines with small occupancy dots (●●●○ for 3/4)
+**Read-only section (top):**
+- Date, time, trainer (avatar + name), location
+- Cyclus name (if part of one) — links to cycle detail
+- Occupancy: player list with names
+- Lock icon + "Private" badge if `is_marked_full`
+- Price per session, rating range
 
-### Occupancy: Dot indicators instead of fractions
+**Action buttons:**
+- "Edit Slot" → opens existing `EditSlotDialog`
+- "Delete" → opens existing `DeleteSlotDialog`  
+- "Add Player" → opens existing `BookForPlayerDialog`
+- Per-player: click to edit booking → opens existing `EditBookingDialog`
+- Toggle "Mark as Private" inline
 
-Replace `0/4` with visual dots:
-- `●●●●` = 4/4 (green)
-- `●●○○` = 2/4 (amber)  
-- `○○○○` = 0/4 (gray)
+This dialog reuses ALL existing dialogs — it's just an entry point / detail view.
 
-Max 6 dots. Instantly readable without math.
+### 2. `AcademyCalendarOverview.tsx` — Show private indicator + wire slot click
 
-### Collapsible trainer blocks
+**Private/locked indicator:**
+- Add a small Lock icon next to the time in `TrainerDayBlock` when `slot.is_marked_full === true`
+- Update legend to include "🔒 Private (not shown to players)"
 
-Each trainer block is collapsible. Default: expanded if ≤3 trainers per day, collapsed (showing only avatar + summary) if >3. Click to expand.
+**Click behavior:**
+- Change `onClick` on individual slot rows to call a new `onSlotClick(slotId)` prop instead of `onDayClick`
+- Keep day header click as `onDayClick` (navigates to Manage day view)
 
-## Changes
+### 3. `AcademyCalendar.tsx` — Wire SlotDetailDialog + fix edit booking bug
 
-### `src/components/academy/AcademyCalendarOverview.tsx` — Full rewrite of the grid section
+**Wire `onSlotClick`:**
+- Add `SlotDetailDialog` to the dialogs section
+- Add `handleSlotClick(slotId)` that opens the detail dialog
+- Pass `onSlotClick` to `AcademyCalendarOverview`
 
-**Data grouping:**
-- After filtering, group `weekSlots` by day AND trainer: `Map<dayKey, Map<trainerId, SlotSummary[]>>`
-- Sort trainer groups by earliest start time within each day
+**Fix edit booking query (line 540):**
+- Add `paid_externally` to the select
+- Change `availability_slots (id, start_time, end_time)` to `availability_slots (id, start_time, end_time, price_per_session, cyclus_name)`
 
-**CompactSlotCard → TrainerDayBlock:**
-- New component replacing individual slot cards
-- Shows: trainer avatar (h-7 w-7), first name, session count badge, summary status dot
-- Below: list of time ranges as simple rows with dot-style occupancy indicators
-- Clickable — calls `onDayClick`
+### 4. `AcademyOpenSlots.tsx` — Wire slot click to same dialog
 
-**OccupancyDots component:**
-- Takes `booked` and `max` numbers
-- Renders filled/empty circles (max 6, scale down if max_participants > 6)
-- Colors: green for filled, gray for empty
+- Add `onSlotClick` callback that opens the same `SlotDetailDialog`
+- Individual slot cards and cyclus slot rows become clickable
 
-**Keep unchanged:**
-- Stats cards row (top)
-- Navigation + filters row
-- Legend (update to match new dot style)
-- All props and interfaces
+## File summary
 
-### No other files changed
-This is a self-contained visual refactor of one component.
-
-## Result
-- Trainer identity is immediately visible (larger photos, names shown once per group)
-- Occupancy is intuitive (dots, not fractions)
-- Day columns are shorter (grouped blocks vs individual rows)
-- The key question "who's doing what, and is anything empty?" is answerable in seconds
+| File | Change |
+|------|--------|
+| `src/components/academy/SlotDetailDialog.tsx` | **New** — Unified slot detail view with action buttons |
+| `src/components/academy/AcademyCalendarOverview.tsx` | Add Lock icon for private slots, add `onSlotClick` prop, update legend |
+| `src/pages/academy/AcademyCalendar.tsx` | Wire `SlotDetailDialog`, fix `handleEditBooking` query, pass `onSlotClick` to Overview |
+| `src/pages/academy/AcademyOpenSlots.tsx` | Make slot rows clickable → open `SlotDetailDialog` |
 
