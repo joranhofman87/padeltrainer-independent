@@ -428,7 +428,7 @@ export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { em
                 </div>
                 <div className="space-y-3">
                   {individualSlots.map(slot => (
-                    <Card key={slot.id}>
+                    <Card key={slot.id} className="cursor-pointer" onClick={() => onSlotClick?.(slot.id)}>
                       <CardContent className="p-4 flex items-center justify-between">
                         <div className="flex-1">
                           <p className="font-medium">{formatShortTime(slot.start_time, slot.end_time)}</p>
