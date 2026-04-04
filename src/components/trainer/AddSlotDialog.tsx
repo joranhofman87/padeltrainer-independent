@@ -384,6 +384,32 @@ interface BulkCreateSheetProps extends BulkCreateContentProps {
 export function BulkCreateSheet({
   open,
   onOpenChange,
+  ...contentProps
+}: BulkCreateSheetProps) {
+  const { t } = useTranslation("trainer");
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full h-full sm:w-auto sm:h-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <Repeat className="h-5 w-5" />
+            {t("calendar.cyclusTitle")}
+          </SheetTitle>
+          <SheetDescription>
+            {t("calendar.cyclusDescription")}
+          </SheetDescription>
+        </SheetHeader>
+        <BulkCreateContent
+          {...contentProps}
+          isActive={open}
+          onClose={() => onOpenChange(false)}
+        />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+export function BulkCreateContent({
   trainerId,
   defaultDate,
   defaultTime,
@@ -394,7 +420,9 @@ export function BulkCreateSheet({
   availableTrainers,
   prefillFromCyclusId,
   academyId,
-}: BulkCreateSheetProps) {
+  onClose,
+  isActive = true,
+}: BulkCreateContentProps & { isActive?: boolean }) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
   const { trainerRatingSystem } = useTrainerRatingSystem(trainerId || undefined);
@@ -409,15 +437,15 @@ export function BulkCreateSheet({
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
 
   useEffect(() => {
-    if (open && trainerId) {
+    if (isActive && trainerId) {
       fetchPlayers();
       fetchAcademy();
       fetchTrainerHourlyRate(trainerId);
     }
-    if (open && availableTrainers) {
+    if (isActive && availableTrainers) {
       fetchAllTrainerRates();
     }
-  }, [open, trainerId]);
+  }, [isActive, trainerId]);
 
   const fetchAcademy = async () => {
     if (!trainerId) return;
