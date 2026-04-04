@@ -1,42 +1,69 @@
 
 
-# Fix: Step 5 "0 confirmed" + unplaced visibility + tab counts
+# Fix: Academy managers can't upload trainer avatars (RLS violation)
 
 ## Root cause
-The `finalize-proposals` edge function sets intake request status to `'booked'`, but the UI only counts `status === 'confirmed'`. This mismatch means:
-- Step 5 always shows "0 confirmed"
-- The workflow never progresses to "completed" state
-- The "Bevestigd" tab shows nothing
+The `avatars` storage bucket and the `profiles` table have RLS policies for **club managers** to upload/update trainer avatars, but no equivalent policies exist for **academy managers**. When an academy manager tries to upload a photo for one of their trainers, both the storage upload and the profiles update are blocked.
 
 ## Changes
 
-### 1. Count booked requests as confirmed (`AcademyCycleDetail.tsx`)
-- Change `confirmedCount` to count both `'confirmed'` and `'booked'` statuses: `requests.filter(r => r.status === 'confirmed' || r.status === 'booked').length`
-- This makes step 5 show the correct number and the workflow progresses properly
+### 1. Storage RLS — allow academy managers to upload/update trainer avatars (SQL migration)
+Two new storage policies on `storage.objects`:
+- **INSERT** policy: academy managers can upload to folders matching their trainers' `user_id`
+- **UPDATE** policy: academy managers can update (upsert) those same files
 
-### 2. Update workflow step logic (`ProposalWorkflowSteps.tsx`)
-- Add `bookedCount` prop (or combine into `confirmedCount`)
-- Update `allConfirmed` check to account for booked status: when `confirmedCount > 0` (now including booked), mark steps as completed
+The lookup joins `academy_trainers` → `trainer_profiles` to get the trainer's `user_id`, filtered by `get_user_academy_ids(auth.uid())` and `status = 'active'`.
 
-### 3. Add "Bevestigd" tab count + "Booked" filter (`AcademyCycleDetail.tsx`)
-- Show count on the "Bevestigd" tab: `({confirmedCount})`
-- When filtering by `'confirmed'`, also include `'booked'` status requests
-- Add a "Booked" tab or merge booked into the confirmed tab
+### 2. Profiles RLS — allow academy managers to update trainer profiles (SQL migration)
+One new UPDATE policy on `public.profiles` so the `avatar_url` column update succeeds. Same join pattern as above.
 
-### 4. Show unplaced players at Step 1 registrations
-- Add a filter tab for unplaced/unassigned players — those with `status === 'new'` or `status === 'proposed'` but no assignments
-- This gives visibility into who hasn't been placed yet
+### SQL
 
-### 5. Refresh tab counts after actions
-- After assigning/confirming players, call `refreshData()` to update the counts in the status tabs
+```sql
+-- Academy managers can upload avatars for their trainers
+CREATE POLICY "Academy managers can upload trainer avatars"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'avatars' AND
+    (storage.foldername(name))[1] IN (
+      SELECT tp.user_id::text
+      FROM trainer_profiles tp
+      JOIN academy_trainers at ON at.trainer_profile_id = tp.id
+      WHERE at.status = 'active'
+        AND at.academy_profile_id IN (SELECT get_user_academy_ids(auth.uid()))
+    )
+  );
 
-## Files
+CREATE POLICY "Academy managers can update trainer avatars"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (
+    bucket_id = 'avatars' AND
+    (storage.foldername(name))[1] IN (
+      SELECT tp.user_id::text
+      FROM trainer_profiles tp
+      JOIN academy_trainers at ON at.trainer_profile_id = tp.id
+      WHERE at.status = 'active'
+        AND at.academy_profile_id IN (SELECT get_user_academy_ids(auth.uid()))
+    )
+  );
 
-| File | Change |
+-- Academy managers can update profiles for their trainers
+CREATE POLICY "Academy managers can update profiles for academy trainers"
+  ON public.profiles FOR UPDATE TO authenticated
+  USING (
+    user_id IN (
+      SELECT tp.user_id
+      FROM trainer_profiles tp
+      JOIN academy_trainers at ON at.trainer_profile_id = tp.id
+      WHERE at.status = 'active'
+        AND at.academy_profile_id IN (SELECT get_user_academy_ids(auth.uid()))
+    )
+  );
+```
+
+No code changes needed — the upload logic in `EditAcademyTrainerDialog.tsx` is already correct, it just needs the database to allow the operations.
+
+| What | Change |
 |------|--------|
-| `src/pages/academy/AcademyCycleDetail.tsx` | Update `confirmedCount` to include `'booked'` status; add count to Bevestigd tab; include booked in confirmed filter; refresh counts after mutations |
-| `src/components/cycles/ProposalWorkflowSteps.tsx` | Update `allConfirmed` logic to work with combined confirmed+booked count |
-
-## Summary
-Two files, ~10 lines changed. The core fix is a single filter change from `=== 'confirmed'` to including `'booked'`.
+| SQL migration | Add 3 RLS policies (2 storage, 1 profiles) for academy managers |
 
