@@ -19,7 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  Send, Save, FileText, History, Loader2, Bold, Users, Eye,
+  Send, Save, FileText, History, Loader2, Users, Eye,
   Trash2, Pencil, ChevronRight, X, Plus, FlaskConical,
 } from 'lucide-react';
 import { format } from 'date-fns';

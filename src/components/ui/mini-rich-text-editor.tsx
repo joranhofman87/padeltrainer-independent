@@ -1,9 +1,11 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { useEffect } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Bold } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Bold, List, ListOrdered, Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MiniRichTextEditorProps {
@@ -23,12 +25,16 @@ export function MiniRichTextEditor({
     extensions: [
       StarterKit.configure({
         heading: false,
-        bulletList: false,
-        orderedList: false,
         blockquote: false,
         codeBlock: false,
         code: false,
         horizontalRule: false,
+      }),
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: "text-primary underline",
+        },
       }),
       Placeholder.configure({
         placeholder: placeholder || "",
@@ -51,6 +57,14 @@ export function MiniRichTextEditor({
     }
   }, [value, editor]);
 
+  const addLink = () => {
+    if (!editor) return;
+    const url = window.prompt("Enter URL:");
+    if (url) {
+      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -66,6 +80,32 @@ export function MiniRichTextEditor({
           aria-label="Bold"
         >
           <Bold className="h-3.5 w-3.5" />
+        </Toggle>
+        <Separator orientation="vertical" className="mx-0.5 h-5" />
+        <Toggle
+          size="sm"
+          pressed={editor?.isActive("bulletList") ?? false}
+          onPressedChange={() => editor?.chain().focus().toggleBulletList().run()}
+          aria-label="Bullet List"
+        >
+          <List className="h-3.5 w-3.5" />
+        </Toggle>
+        <Toggle
+          size="sm"
+          pressed={editor?.isActive("orderedList") ?? false}
+          onPressedChange={() => editor?.chain().focus().toggleOrderedList().run()}
+          aria-label="Ordered List"
+        >
+          <ListOrdered className="h-3.5 w-3.5" />
+        </Toggle>
+        <Separator orientation="vertical" className="mx-0.5 h-5" />
+        <Toggle
+          size="sm"
+          pressed={editor?.isActive("link") ?? false}
+          onPressedChange={addLink}
+          aria-label="Add Link"
+        >
+          <LinkIcon className="h-3.5 w-3.5" />
         </Toggle>
       </div>
       <EditorContent editor={editor} />
