@@ -407,9 +407,9 @@ export default function AcademyCalendar() {
     }));
   }, [filteredSlots]);
 
-  // Overview data from month slots
+  // Overview data from week slots (same as manage tab)
   const overviewSlots = useMemo(() => {
-    return monthSlots.map(s => ({
+    return slots.map(s => ({
       id: s.id,
       start_time: s.start_time,
       end_time: s.end_time,
@@ -418,8 +418,9 @@ export default function AcademyCalendar() {
       max_participants: s.max_participants,
       booked_count: s.active_bookings + s.pending_bookings,
       location_name: s.location_name,
+      location_id: s.location_id,
     }));
-  }, [monthSlots]);
+  }, [slots]);
 
   // Trainer hours data from month slots
   const trainerHoursSlots = useMemo(() => {
@@ -433,14 +434,14 @@ export default function AcademyCalendar() {
   }, [monthSlots]);
 
   const navigatePrevious = () => {
-    if (activeTab === "overview" || activeTab === "hours") {
+    if (activeTab === "hours") {
       setCurrentDate(subMonths(currentDate, 1));
     } else {
       setCurrentDate(subWeeks(currentDate, 1));
     }
   };
   const navigateNext = () => {
-    if (activeTab === "overview" || activeTab === "hours") {
+    if (activeTab === "hours") {
       setCurrentDate(addMonths(currentDate, 1));
     } else {
       setCurrentDate(addWeeks(currentDate, 1));
@@ -449,7 +450,7 @@ export default function AcademyCalendar() {
   const goToToday = () => setCurrentDate(new Date());
 
   const getDateRangeLabel = () => {
-    if (activeTab === "overview" || activeTab === "hours") {
+    if (activeTab === "hours") {
       return format(currentDate, "MMMM yyyy", { locale: dateLocale });
     }
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -664,6 +665,8 @@ export default function AcademyCalendar() {
               slots={overviewSlots}
               currentDate={currentDate}
               onDayClick={handleOverviewDayClick}
+              trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+              locations={locations.map(l => ({ id: l.id, name: l.name }))}
             />
           </TabsContent>
 
