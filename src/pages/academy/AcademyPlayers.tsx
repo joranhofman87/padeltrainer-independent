@@ -360,19 +360,21 @@ export default function AcademyPlayers() {
           .not('player_id', 'is', null);
 
         if (bookings && bookings.length > 0) {
-          const playerMap = new Map<string, { created_at: string; trainer_id: string; locations: Set<string>; has_active_cyclus: boolean }>();
+          const playerMap = new Map<string, { created_at: string; trainer_ids: Set<string>; locations: Set<string>; has_active_cyclus: boolean }>();
           bookings.forEach((b) => {
             if (!b.player_id) return;
             const slot = slotDetailMap.get(b.slot_id);
+            const trainerId = slotTrainerMap.get(b.slot_id) || '';
             if (!playerMap.has(b.player_id)) {
               playerMap.set(b.player_id, {
                 created_at: b.created_at,
-                trainer_id: slotTrainerMap.get(b.slot_id) || '',
+                trainer_ids: new Set(),
                 locations: new Set(),
                 has_active_cyclus: false,
               });
             }
             const entry = playerMap.get(b.player_id)!;
+            if (trainerId) entry.trainer_ids.add(trainerId);
             if (slot?.location_id && locationNameMap.has(slot.location_id)) {
               entry.locations.add(locationNameMap.get(slot.location_id)!);
             }
