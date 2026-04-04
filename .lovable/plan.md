@@ -1,39 +1,42 @@
 
 
-# Auto-Generate Invoices After Registration Approval
+# One-Time Backfill: Generate Missing Invoices
 
-## Problem
-When bookings are created via the registration flow ("Approve & Book"), `finalize-proposals` creates booking records but never triggers invoice generation. This means all players booked through registrations have no invoices.
+## Approach
+Create the `generate-missing-invoices` edge function (no UI button), deploy it, and invoke it once to backfill. It stays available as a utility if ever needed again but isn't exposed in the UI.
 
-For comparison, the normal booking flow (BookLesson, AddSlotDialog) calls `auto-create-invoice` immediately after creating each booking.
+## Changes
 
-## Root Cause
-The `finalize-proposals` edge function (line 104) inserts bookings but stops there. No call to `auto-create-invoice` follows.
+### 1. `supabase/functions/generate-missing-invoices/index.ts` — New edge function
 
-## Fix: `supabase/functions/finalize-proposals/index.ts`
+Accepts `{ academyId }` (required):
+1. Fetch all cycles for the academy
+2. For each cycle, get all confirmed bookings with `payment_status = 'pending'`
+3. For each booking, check if a non-cancelled invoice already exists (via `booking_ids` overlap) — skip if so
+4. Group uninvoiced bookings by player (`player_id` or `guest_player_id`)
+5. For each player group, call `auto-create-invoice` with their booking IDs
+6. If cycle has `split_payment` enabled, pass `splitAmongPlayers`
+7. Return `{ invoicesCreated, skipped, errors }`
 
-After creating all bookings (the loop ending at line 124), add invoice generation logic:
+### 2. Invoke once after deploy
+After the function deploys, I'll invoke it via `supabase--curl_edge_functions` with the academy ID to generate all missing invoices.
 
-1. **Fetch the cycle's payment timing** from `cycles.settings` to determine behavior:
-   - `upfront` (default) or missing → generate invoices immediately
-   - `invoice_after_weeks` → skip (handled by `auto-invoice-cycles` cron)
-   - `manual` → skip (trainer invoices manually)
+### 3. Invoice sync on edits — `src/lib/invoiceSync.ts` + `src/pages/academy/AcademySlotDetail.tsx`
 
-2. **For upfront cycles**, after the booking loop completes:
-   - Re-query all newly created bookings for this cycle (status: confirmed, payment_status: pending)
-   - Group by player (player_id or guest_player_id) — same pattern used in `auto-invoice-cycles`
-   - For each player group, call `auto-create-invoice` with their booking IDs
-   - If the cycle has `split_payment` enabled, pass `splitAmongPlayers` count
-   - Log results but treat invoice failures as non-fatal (bookings are already created)
+Add `syncInvoicesAfterPriceChange(slotIds)` utility:
+- Find unpaid invoices with bookings on those slots
+- Rebuild line items from current slot prices
+- Update totals, clear `pdf_url`
 
-3. **Return invoice stats** in the response: add `invoices_created` count alongside existing `booked` and `bookings_created`
-
-## No other files need changes
-The `auto-create-invoice` function already handles everything (deduplication, PDF generation, forwarding). We just need to call it.
+Wire into `AcademySlotDetail`:
+- After price edit save → call sync utility
+- After slot delete → cancel/recalculate affected invoices
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `supabase/functions/finalize-proposals/index.ts` | After booking loop, fetch cycle payment timing, generate invoices for upfront cycles by calling `auto-create-invoice` per player |
+| `supabase/functions/generate-missing-invoices/index.ts` | **New** — One-time backfill utility |
+| `src/lib/invoiceSync.ts` | Add `syncInvoicesAfterPriceChange()` |
+| `src/pages/academy/AcademySlotDetail.tsx` | Call invoice sync on price edit + slot delete |
 
