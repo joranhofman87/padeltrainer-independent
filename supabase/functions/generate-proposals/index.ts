@@ -578,8 +578,8 @@ Deno.serve(async (req) => {
             current.setDate(current.getDate() + 1);
           }
 
-          // Generate uniform 60-min slots for the FULL trainer availability window
-          {
+          // Generate uniform 60-min slots for EVERY week until cycle end
+          while (current <= cycleEndDate) {
             // Helper: compute UTC offset in minutes for a given date and timezone
             function getTimezoneOffsetMs(date: Date, tz: string): number {
               const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
@@ -632,6 +632,9 @@ Deno.serve(async (req) => {
 
               slotStartMinutes += SLOT_DURATION;
             }
+
+            // Advance to the same weekday next week
+            current.setDate(current.getDate() + 7);
           }
         }
       }
