@@ -341,6 +341,27 @@ export default function AcademySlotDetail() {
     if (!detail) return;
     setDeleting(true);
     try {
+      // Collect booking IDs before deleting slots
+      let slotIdsToDelete: string[] = [];
+      if (deleteCyclus && detail.cyclus_id) {
+        const { data: cyclusSlots } = await supabase
+          .from('availability_slots')
+          .select('id')
+          .eq('cyclus_id', detail.cyclus_id)
+          .gte('start_time', new Date().toISOString());
+        slotIdsToDelete = (cyclusSlots || []).map(s => s.id);
+      } else {
+        slotIdsToDelete = [detail.id];
+      }
+
+      // Get bookings for these slots to sync invoices
+      const { data: slotBookings } = await supabase
+        .from('bookings')
+        .select('id')
+        .in('slot_id', slotIdsToDelete)
+        .in('status', ['confirmed', 'pending']);
+      const bookingIdsToRemove = (slotBookings || []).map(b => b.id);
+
       if (deleteCyclus && detail.cyclus_id) {
         const { error } = await supabase
           .from('availability_slots')
@@ -357,6 +378,16 @@ export default function AcademySlotDetail() {
         if (error) throw error;
         toast({ title: tTrainer('calendar.slotDeleted', 'Slot deleted') });
       }
+
+      // Sync invoices after deletion
+      if (bookingIdsToRemove.length > 0) {
+        try {
+          await syncInvoicesAfterBookingRemoval(bookingIdsToRemove);
+        } catch (e) {
+          logger.error('Failed to sync invoices after slot deletion', e as Error);
+        }
+      }
+
       navigate('/app/academy/calendar');
     } catch (error: any) {
       logger.error('Error deleting slot', error, { slotId: detail.id });
