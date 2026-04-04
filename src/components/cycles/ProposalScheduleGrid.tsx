@@ -193,6 +193,7 @@ function isRatingOutOfRange(
 
 function DraggablePlayerChip({
   assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating, searchQuery,
+  allPlayers, slotDay,
 }: {
   assignment: Assignment;
   slotId: string;
@@ -200,6 +201,8 @@ function DraggablePlayerChip({
   slotMinRating?: number | null;
   slotMaxRating?: number | null;
   searchQuery?: string;
+  allPlayers?: UnplacedPlayer[];
+  slotDay?: string;
 }) {
   const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -207,15 +210,23 @@ function DraggablePlayerChip({
     data: { type: 'player', assignmentId: assignment.id, sourceSlotId: slotId, assignment },
   });
 
-  const confScore = assignment.confidence_score || 0;
-  const confClass = confScore >= 80
+  const playerInfo = allPlayers?.find(p => p.id === assignment.intake_request_id);
+  const confScore = assignment.confidence_score;
+  const isManual = confScore == null;
+  const displayScore = confScore ?? (playerInfo ? computeManualScore(assignment, { start_time: '', end_time: '', min_rating: slotMinRating ?? null, max_rating: slotMaxRating ?? null } as any, playerInfo) : 0);
+  const confClass = displayScore >= 80
     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-    : confScore >= 60
+    : displayScore >= 60
       ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
       : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
 
   const outOfRange = isRatingOutOfRange(assignment.player_rating, slotMinRating, slotMaxRating);
   const isSearchMatch = searchQuery && searchQuery.trim().length > 0 && assignment.player_name.toLowerCase().includes(searchQuery.toLowerCase());
+
+  // Day availability warning
+  const dayMismatch = slotDay && playerInfo?.preferred_days?.length
+    ? !playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDay.toLowerCase())
+    : false;
 
   return (
     <div
@@ -260,14 +271,26 @@ function DraggablePlayerChip({
             </TooltipContent>
           </Tooltip>
         )}
+        {dayMismatch && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Clock className="h-3 w-3 text-amber-500 shrink-0" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs max-w-[200px]">
+              {t('proposals.dayMismatch', {
+                defaultValue: 'Player didn\'t indicate availability on this day',
+              })}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {assignment.sessions_per_week > 1 && (
           <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0 border-primary/40 text-primary">
             {assignment.sessions_per_week}×
           </Badge>
         )}
-        {confScore > 0 && (
-          <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', confClass)}>
-            {confScore}%
+        {displayScore > 0 && (
+          <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', confClass, isManual && 'border border-dashed border-current/30')}>
+            {displayScore}%{isManual ? '~' : ''}
           </Badge>
         )}
       </button>
