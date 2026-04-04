@@ -55,8 +55,10 @@ interface Invoice {
 
 export default function AcademyInvoices() {
   const { t, i18n } = useTranslation("academy");
+  const [searchParams, setSearchParams] = useSearchParams();
   const { activeAcademy } = useAcademyContext();
   const queryClient = useQueryClient();
+  const pageTab = searchParams.get("tab") === "settings" ? "settings" : "overview";
   const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
   const [trainerFilter, setTrainerFilter] = useState("all");
