@@ -467,11 +467,23 @@ function SlotEditPopover({
                         </span>
                       )}
                     </div>
-                    {a.confidence_score != null && a.confidence_score > 0 && (
-                      <span className={cn('font-semibold text-[10px] shrink-0', confScoreColor(a.confidence_score))}>
-                        {a.confidence_score}%
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {a.confidence_score != null && a.confidence_score > 0 && (
+                        <span className={cn('font-semibold text-[10px]', confScoreColor(a.confidence_score))}>
+                          {a.confidence_score}%
+                        </span>
+                      )}
+                      {onUnassignPlayer && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onUnassignPlayer(a.id); }}
+                          className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                          title={t('proposals.playerUnassigned', { defaultValue: 'Remove player' })}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </button>
                 );
               })}
