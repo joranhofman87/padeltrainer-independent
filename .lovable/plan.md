@@ -1,38 +1,77 @@
 
 
-# Reorganize Invoices Page + Sidebar Navigation
+# Redesign Overview: Compact, Scannable Week Grid
 
-## Current state
-- Sidebar has a collapsible "Zakelijk" (Business) group with 3 sub-items: Instellingen, Abonnement, Facturen
-- Invoice settings live on the separate AcademySettings page
-- Subscription is a separate page under the Business group
+## Problem
+The current overview is too busy:
+- Every unique start time (including half-hours) gets its own row, making the grid very tall
+- Slot cards are large: they show full trainer name, location text, occupancy bar, and count
+- Cards vary in height, making columns look misaligned
+- The goal — "quickly scan the week's planning" — is lost in the noise
+
+## Design approach (UX best practice for non-technical users)
+
+**Replace the time-row grid with a simple day-column layout.** Each day is a column, slots stack vertically sorted by time. No time-axis alignment — this eliminates the half-hour row problem entirely and makes the grid compact.
+
+**Minimal slot cards**: Each card is a single fixed-height row showing:
+- Trainer avatar (small circle, 20px)
+- Time range (`10:00–11:00`)
+- Player count as a simple fraction (`3/4`)
+- Color-coded left border: green = full, amber = partial, gray = empty
+
+No trainer name text, no location text, no occupancy bar. The avatar IS the trainer identifier. Full/marked-full slots get a green left border only — no bar, no badge.
+
+**Tooltip on hover** reveals full details (trainer name, location, player names) for users who need it.
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│ ◀  7 – 13 Apr 2026  ▶  Today  [+New]    [Loc▾] [Tr▾]  │
+├─────────────────────────────────────────────────────────┤
+│  Mon 7    Tue 8    Wed 9    Thu 10   Fri 11   Sat  Sun  │
+│ ┌──────┐ ┌──────┐ ┌──────┐                              │
+│ │🟢 👤 10:00 3/4│ │🟡 👤 10:00 2/4│ ...                 │
+│ │🟢 👤 10:00 4/4│ │   👤 11:00 0/4│                     │
+│ │🟡 👤 14:00 2/4│ │🟢 👤 14:00 4/4│                     │
+│ │   👤 18:00 0/4│ └──────┘                              │
+│ └──────┘                                                │
+│                                                         │
+│ 🟢 Full  🟡 Partial  ○ Empty                            │
+└─────────────────────────────────────────────────────────┘
+```
 
 ## Changes
 
-### 1. AcademySidebar.tsx — Flatten invoices, remove Business group, move subscription
+| File | Change |
+|------|--------|
+| `src/components/academy/AcademyCalendarOverview.tsx` | Complete rewrite of the grid and SlotCard |
 
-- Remove the entire "Zakelijk" collapsible group
-- Add **Facturen** as a top-level sidebar item (with FileText icon), linking to `/app/academy/invoices`
-- Move **Instellingen** up as a top-level sidebar item (with Settings icon)
-- Move **Abonnement** to the footer area (near ThemeToggle/Logout), as a small CreditCard icon button that navigates to `/app/academy/subscription`
-- Remove `businessOpen` state since the collapsible is gone
+### SlotCard redesign
+- Fixed height (~32px), single flex row
+- 3px left border (green/amber/transparent) for status
+- Trainer avatar (20px circle) — uses avatar from trainer data passed via props
+- Time: `HH:mm–HH:mm` in `text-xs font-medium`
+- Count: `3/4` in `text-[10px] text-muted-foreground`, right-aligned
+- No occupancy bar, no trainer name text, no location text, no "Full" badge
+- Hover tooltip (native `title` attribute): "Trainer Name · Location · 3/4 players"
 
-### 2. AcademyInvoices.tsx — Add tabs: Overview + Settings
+### Grid layout change
+- Remove the `uniqueTimes` time-row system entirely
+- Use `grid-cols-[repeat(7,1fr)]` — no time label column
+- Each day column: header + vertically stacked slot cards sorted by start_time
+- Day header: 3-letter day + date number (existing style)
+- Empty days show a subtle "—" placeholder
 
-- Wrap existing invoice content in a `Tabs` component with two tabs: **Overview** and **Settings** (Instellingen)
-- **Overview tab**: Contains the current stats cards, action buttons, filters, and invoice table (everything that's there now). Remove the "Factuur instellingen" link button since settings are now a tab away
-- **Settings tab**: Render `<AcademyInvoiceSettingsCard>` and `<ExtraCostPresetsCard>` (currently on AcademySettings page)
-- Support `?tab=settings` URL param so the settings link from other places can deep-link
-
-### 3. AcademySettings.tsx — Remove invoice settings section
-
-- Remove the `<AcademyInvoiceSettingsCard>` and its import from the settings page since it now lives under the Invoices Settings tab
-
-## File summary
+### Props update
+- Add `trainer_avatar` to the `SlotSummary` interface
+- Pass trainer avatar data from `AcademyCalendar.tsx` when mapping `overviewSlots`
 
 | File | Change |
 |------|--------|
-| `src/components/academy/AcademySidebar.tsx` | Remove Business collapsible, add Facturen + Instellingen as top-level items, add Abonnement icon to footer |
-| `src/pages/academy/AcademyInvoices.tsx` | Add Overview/Settings tabs, embed invoice settings card in Settings tab |
-| `src/pages/academy/AcademySettings.tsx` | Remove `AcademyInvoiceSettingsCard` section |
+| `src/pages/academy/AcademyCalendar.tsx` | Add `trainer_avatar` to `overviewSlots` mapping (where trainer data is joined) |
+
+### Stats cards
+- Keep as-is (they're fine and separate from the grid)
+
+### Legend
+- Simplify to match: green dot = Full, amber dot = Partial, gray dot = Empty
 
