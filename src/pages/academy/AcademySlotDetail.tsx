@@ -278,7 +278,8 @@ export default function AcademySlotDetail() {
         total_price: editTotalPrice ? Number(editTotalPrice) : null,
         split_payment: editSplitPayment,
         prices_include_vat: editPricesIncludeVat,
-        extra_costs: editExtraCosts.length > 0 ? editExtraCosts : null: editIsMarkedFull,
+        extra_costs: editExtraCosts.length > 0 ? editExtraCosts : null,
+        is_public: !editIsMarkedFull,
       };
 
       if (applyToCyclus && detail.cyclus_id) {
