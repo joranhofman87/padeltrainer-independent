@@ -1,42 +1,58 @@
 
 
-# One-Time Backfill: Generate Missing Invoices
+# Add Missing Pricing & Scheduling Fields to Slot Detail Edit
 
-## Approach
-Create the `generate-missing-invoices` edge function (no UI button), deploy it, and invoke it once to backfill. It stays available as a utility if ever needed again but isn't exposed in the UI.
+## Summary
+The slot detail page edit form currently only shows date/time, trainer, location, max participants, price per session, and rating. It's missing: total price, VAT mode, split payment, extra costs, and private toggle — all of which exist on `availability_slots` and are set during creation.
 
-## Changes
+## Changes — `src/pages/academy/AcademySlotDetail.tsx`
 
-### 1. `supabase/functions/generate-missing-invoices/index.ts` — New edge function
+### 1. Extend SlotDetail interface + fetch
+Add fields to `SlotDetail`:
+- `total_price: number | null`
+- `split_payment: boolean`
+- `prices_include_vat: boolean`
+- `extra_costs: ExtraCost[] | null`
 
-Accepts `{ academyId }` (required):
-1. Fetch all cycles for the academy
-2. For each cycle, get all confirmed bookings with `payment_status = 'pending'`
-3. For each booking, check if a non-cancelled invoice already exists (via `booking_ids` overlap) — skip if so
-4. Group uninvoiced bookings by player (`player_id` or `guest_player_id`)
-5. For each player group, call `auto-create-invoice` with their booking IDs
-6. If cycle has `split_payment` enabled, pass `splitAmongPlayers`
-7. Return `{ invoicesCreated, skipped, errors }`
+Update the select query to include these columns. Map them into `setDetail()`.
 
-### 2. Invoke once after deploy
-After the function deploys, I'll invoke it via `supabase--curl_edge_functions` with the academy ID to generate all missing invoices.
+### 2. Add edit state variables
+```
+editTotalPrice: string
+editSplitPayment: boolean
+editPricesIncludeVat: boolean
+editExtraCosts: ExtraCost[]
+```
+Initialize in `startEditing()` from `detail`.
 
-### 3. Invoice sync on edits — `src/lib/invoiceSync.ts` + `src/pages/academy/AcademySlotDetail.tsx`
+### 3. Extend the edit form UI
+After the existing price/max participants grid, add:
 
-Add `syncInvoicesAfterPriceChange(slotIds)` utility:
-- Find unpaid invoices with bookings on those slots
-- Rebuild line items from current slot prices
-- Update totals, clear `pdf_url`
+- **Total price** field (€ input, same style as price per session)
+- **VAT mode** toggle (Switch + label: "Prices include VAT" / "Prices exclude VAT") — same pattern as `CyclePricingCard`
+- **Split payment** toggle (Switch + description text)
+- **Mark as private** toggle (Switch — move from view-mode-only into the edit form as well)
+- **Extra costs** section: list of description + price + type (one_time/per_session) rows with add/remove buttons — reuse the pattern from `CyclePricingCard`
 
-Wire into `AcademySlotDetail`:
-- After price edit save → call sync utility
-- After slot delete → cancel/recalculate affected invoices
+### 4. Update `handleSave` payload
+Add the new fields to `updatePayload`:
+```typescript
+total_price: editTotalPrice ? Number(editTotalPrice) : null,
+split_payment: editSplitPayment,
+prices_include_vat: editPricesIncludeVat,
+extra_costs: editExtraCosts.length > 0 ? editExtraCosts : null,
+```
+
+### 5. Update view mode display
+Show the additional info as badges/labels when not editing:
+- VAT mode indicator
+- Split payment indicator
+- Extra costs summary (count + total)
+- Total price badge alongside price per session
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-missing-invoices/index.ts` | **New** — One-time backfill utility |
-| `src/lib/invoiceSync.ts` | Add `syncInvoicesAfterPriceChange()` |
-| `src/pages/academy/AcademySlotDetail.tsx` | Call invoice sync on price edit + slot delete |
+| `src/pages/academy/AcademySlotDetail.tsx` | Add missing fields to interface, fetch, edit state, edit form, save payload, and view display |
 
