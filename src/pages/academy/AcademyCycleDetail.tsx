@@ -573,6 +573,21 @@ export default function AcademyCycleDetail() {
         safeInvalidateSlots();
       }
     },
+    onToggleSlotPrivacy: async (slotId: string, value: boolean) => {
+      // Optimistic update
+      setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_marked_full: value } : s));
+      try {
+        const { error } = await supabase
+          .from('availability_slots')
+          .update({ is_marked_full: value })
+          .eq('id', slotId);
+        if (error) throw error;
+      } catch (error: any) {
+        // Revert
+        setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_marked_full: !value } : s));
+        toast.error(error.message);
+      }
+    },
   };
 
   if (isFirstLoad) {
