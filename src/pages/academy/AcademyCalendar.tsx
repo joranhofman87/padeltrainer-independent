@@ -640,8 +640,8 @@ export default function AcademyCalendar() {
               </TabsTrigger>
             </TabsList>
 
-            {/* Date Navigation (shown for manage, hours — overview has its own) */}
-            {activeTab !== "open-spots" && activeTab !== "overview" && (
+            {/* Date Navigation (only for hours tab — overview and manage have their own) */}
+            {activeTab === "hours" && (
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
                   <ChevronLeft className="h-4 w-4" />
@@ -686,20 +686,35 @@ export default function AcademyCalendar() {
             {/* Controls Card */}
             <Card>
               <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-                  {/* View Toggle */}
-                  <div className="flex items-center gap-1">
-                    <Button variant={manageView === "day" ? "default" : "outline"} size="sm" onClick={() => setManageView("day")}>
-                      <Calendar className="h-4 w-4 sm:mr-2" />
-                      <span className="hidden sm:inline">{t("calendar.dayView", "Day")}</span>
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                  {/* Left: View Toggle + Navigation */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <Button variant={manageView === "day" ? "default" : "outline"} size="sm" className="h-8" onClick={() => setManageView("day")}>
+                        <Calendar className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">{t("calendar.dayView", "Day")}</span>
+                      </Button>
+                      <Button variant={manageView === "week" ? "default" : "outline"} size="sm" className="h-8" onClick={() => setManageView("week")}>
+                        <CalendarDays className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">{t("calendar.weekView", "Week")}</span>
+                      </Button>
+                    </div>
+                    <div className="w-px h-6 bg-border hidden sm:block" />
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
+                      <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <Button variant={manageView === "week" ? "default" : "outline"} size="sm" onClick={() => setManageView("week")}>
-                      <CalendarDays className="h-4 w-4 sm:mr-2" />
-                      <span className="hidden sm:inline">{t("calendar.weekView", "Week")}</span>
+                    <div className="min-w-[140px] text-center font-medium text-sm">
+                      {getDateRangeLabel()}
+                    </div>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
+                      {t("calendar.today", "Today")}
                     </Button>
                   </div>
 
-                  {/* Filters */}
+                  {/* Right: Filters */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
                       <SelectTrigger className="w-[160px] h-8">
@@ -727,18 +742,18 @@ export default function AcademyCalendar() {
                 </div>
 
                 {/* Quick Stats */}
-                <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-muted border border-border" />
-                    <span className="text-sm">{t("calendar.available", "Available")}: {freeSlots}</span>
+                <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded bg-muted border border-border" />
+                    <span>{t("calendar.available", "Available")}: {freeSlots}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700" />
-                    <span className="text-sm">{t("calendar.pending", "Pending")}: {pendingSlots}</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700" />
+                    <span>{t("calendar.pending", "Pending")}: {pendingSlots}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700" />
-                    <span className="text-sm">{t("calendar.booked", "Booked")}: {bookedSlots}</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700" />
+                    <span>{t("calendar.booked", "Booked")}: {bookedSlots}</span>
                   </div>
                 </div>
               </CardContent>
