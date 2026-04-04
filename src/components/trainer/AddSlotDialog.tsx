@@ -361,9 +361,7 @@ interface TrainerOption {
   name: string;
 }
 
-interface BulkCreateSheetProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+export interface BulkCreateContentProps {
   trainerId: string | null;
   defaultDate?: Date;
   defaultTime?: string;
@@ -374,11 +372,44 @@ interface BulkCreateSheetProps {
   availableTrainers?: TrainerOption[];
   prefillFromCyclusId?: string | null;
   academyId?: string;
+  /** When used inside a Sheet, pass this to allow closing on success */
+  onClose?: () => void;
+}
+
+interface BulkCreateSheetProps extends BulkCreateContentProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 export function BulkCreateSheet({
   open,
   onOpenChange,
+  ...contentProps
+}: BulkCreateSheetProps) {
+  const { t } = useTranslation("trainer");
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full h-full sm:w-auto sm:h-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <Repeat className="h-5 w-5" />
+            {t("calendar.cyclusTitle")}
+          </SheetTitle>
+          <SheetDescription>
+            {t("calendar.cyclusDescription")}
+          </SheetDescription>
+        </SheetHeader>
+        <BulkCreateContent
+          {...contentProps}
+          isActive={open}
+          onClose={() => onOpenChange(false)}
+        />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+export function BulkCreateContent({
   trainerId,
   defaultDate,
   defaultTime,
@@ -389,7 +420,9 @@ export function BulkCreateSheet({
   availableTrainers,
   prefillFromCyclusId,
   academyId,
-}: BulkCreateSheetProps) {
+  onClose,
+  isActive = true,
+}: BulkCreateContentProps & { isActive?: boolean }) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
   const { trainerRatingSystem } = useTrainerRatingSystem(trainerId || undefined);
@@ -404,15 +437,15 @@ export function BulkCreateSheet({
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
 
   useEffect(() => {
-    if (open && trainerId) {
+    if (isActive && trainerId) {
       fetchPlayers();
       fetchAcademy();
       fetchTrainerHourlyRate(trainerId);
     }
-    if (open && availableTrainers) {
+    if (isActive && availableTrainers) {
       fetchAllTrainerRates();
     }
-  }, [open, trainerId]);
+  }, [isActive, trainerId]);
 
   const fetchAcademy = async () => {
     if (!trainerId) return;
@@ -523,25 +556,22 @@ export function BulkCreateSheet({
     };
   };
 
-  // Sync first slot when opened via cell click with default date/time
+  // Sync first slot when opened/activated with default date/time
   useEffect(() => {
-    if (open && prefillFromCyclusId) {
+    if (isActive && prefillFromCyclusId) {
       // Prefill mode — handled by separate effect below
       return;
     }
-    if (open && defaultDate) {
+    if (isActive && defaultDate) {
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
       setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId, academyId)]);
     }
-    if (!open) {
-      setBulkSlots([]);
-    }
-  }, [open, defaultDate, defaultTime]);
+  }, [isActive, defaultDate, defaultTime]);
 
   // Prefill from existing cyclus (duplicate mode)
   useEffect(() => {
-    if (!open || !prefillFromCyclusId) return;
+    if (!isActive || !prefillFromCyclusId) return;
 
     const prefillFromCyclus = async () => {
       try {
@@ -624,7 +654,7 @@ export function BulkCreateSheet({
     };
 
     prefillFromCyclus();
-  }, [open, prefillFromCyclusId]);
+  }, [isActive, prefillFromCyclusId]);
 
 
   const addBulkSlotConfig = () => {
@@ -976,7 +1006,7 @@ export function BulkCreateSheet({
 
       setBulkSlots([]);
       onSlotsCreated();
-      onOpenChange(false);
+      onClose?.();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -991,19 +1021,8 @@ export function BulkCreateSheet({
   const totalSessions = bulkSlots.reduce((acc, slot) => acc + slot.recurrenceWeeks, 0);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full h-full sm:w-auto sm:h-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Repeat className="h-5 w-5" />
-            {t("calendar.cyclusTitle")}
-          </SheetTitle>
-          <SheetDescription>
-            {t("calendar.cyclusDescription")}
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="space-y-4 py-6">
+    <>
+      <div className="space-y-4 py-6">
           {bulkSlots.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Repeat className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -1745,7 +1764,7 @@ export function BulkCreateSheet({
             }
           }}
         />
-      </SheetContent>
-    </Sheet>
+    </>
+
   );
 }
