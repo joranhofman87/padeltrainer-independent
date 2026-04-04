@@ -572,27 +572,67 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
                 <Separator />
 
-                <div className="flex items-center justify-between">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowPreview(true)}
-                    disabled={!bodyHtml.trim()}
-                  >
-                    <Eye className="mr-1.5 h-4 w-4" /> Preview
-                  </Button>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowPreview(true)}
+                      disabled={!bodyHtml.trim()}
+                    >
+                      <Eye className="mr-1.5 h-4 w-4" /> Preview
+                    </Button>
 
-                  <Button
-                    onClick={() => setShowConfirmSend(true)}
-                    disabled={isSending || !subject.trim() || !bodyHtml.trim() || filteredRecipients.length === 0}
-                  >
-                    {isSending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {!showTestInput ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowTestInput(true)}
+                        disabled={!subject.trim() || !bodyHtml.trim()}
+                      >
+                        <FlaskConical className="mr-1.5 h-4 w-4" /> Send test
+                      </Button>
                     ) : (
-                      <Send className="mr-2 h-4 w-4" />
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={testEmail}
+                          onChange={(e) => setTestEmail(e.target.value)}
+                          placeholder="test@email.com"
+                          className="h-9 w-48"
+                          onKeyDown={(e) => e.key === 'Enter' && handleSendTestEmail()}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleSendTestEmail}
+                          disabled={isSendingTest || !testEmail.trim()}
+                        >
+                          {isSendingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={() => setShowTestInput(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     )}
-                    Send to {filteredRecipients.length} recipient{filteredRecipients.length !== 1 ? 's' : ''}
-                  </Button>
+
+                    <div className="ml-auto">
+                      <Button
+                        onClick={() => setShowConfirmSend(true)}
+                        disabled={isSending || !subject.trim() || !bodyHtml.trim() || recipients.length === 0}
+                      >
+                        {isSending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="mr-2 h-4 w-4" />
+                        )}
+                        Send to {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
