@@ -392,7 +392,7 @@ export default function AcademyCalendarOverview({
             </ScrollArea>
 
             {/* Legend */}
-            <div className="flex items-center gap-4 mt-4 pt-3 border-t text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-4 mt-4 pt-3 border-t text-[10px] text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 {t('calendar.overview.fullyBooked', 'Fully booked')}
@@ -404,6 +404,10 @@ export default function AcademyCalendarOverview({
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-muted-foreground/30" />
                 {t('calendar.overview.noBookings', 'No bookings')}
+              </span>
+              <span className="flex items-center gap-1">
+                <Lock className="h-2.5 w-2.5 text-amber-500" />
+                {t('calendar.overview.private', 'Private')}
               </span>
             </div>
           </CardContent>
