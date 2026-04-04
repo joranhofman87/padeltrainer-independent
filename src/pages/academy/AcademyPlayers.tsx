@@ -411,8 +411,8 @@ export default function AcademyPlayers() {
                   notes: null,
                   created_at: info?.created_at || new Date().toISOString(),
                   type: 'registered' as const,
-                  trainer_id: info?.trainer_id,
-                  trainer_name: trainerNameMap.get(info?.trainer_id || '') || '—',
+                  trainer_ids: info ? Array.from(info.trainer_ids) : [],
+                  trainer_name: info?.trainer_ids.size ? trainerNameMap.get(Array.from(info.trainer_ids)[0]) || '—' : '—',
                   location_names: info ? Array.from(info.locations) : [],
                   has_active_cyclus: info?.has_active_cyclus || false,
                 };
