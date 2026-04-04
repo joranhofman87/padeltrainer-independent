@@ -434,14 +434,14 @@ export default function AcademyCalendar() {
   }, [monthSlots]);
 
   const navigatePrevious = () => {
-    if (activeTab === "overview" || activeTab === "hours") {
+    if (activeTab === "hours") {
       setCurrentDate(subMonths(currentDate, 1));
     } else {
       setCurrentDate(subWeeks(currentDate, 1));
     }
   };
   const navigateNext = () => {
-    if (activeTab === "overview" || activeTab === "hours") {
+    if (activeTab === "hours") {
       setCurrentDate(addMonths(currentDate, 1));
     } else {
       setCurrentDate(addWeeks(currentDate, 1));
