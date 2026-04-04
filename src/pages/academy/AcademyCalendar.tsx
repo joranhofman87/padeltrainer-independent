@@ -15,7 +15,7 @@ import {
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Clock, Eye } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Clock, Eye, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,6 +44,7 @@ import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDa
 import AcademyWeekOverview from "@/components/academy/AcademyWeekOverview";
 import AcademyCalendarOverview from "@/components/academy/AcademyCalendarOverview";
 import AcademyTrainerHours from "@/components/academy/AcademyTrainerHours";
+import AcademyReportsTab from "@/components/academy/AcademyReportsTab";
 // CycleForm removed — Create tab now uses BulkCreateContent inline
 
 // Lazy-load the open slots page content
@@ -94,7 +95,7 @@ const dateFnsLocales: Record<string, typeof enUS> = {
   fr,
 };
 
-type TabValue = "overview" | "open-spots" | "manage" | "create" | "hours";
+type TabValue = "overview" | "open-spots" | "manage" | "create" | "hours" | "reports";
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
@@ -661,6 +662,10 @@ export default function AcademyCalendar() {
                 <Clock className="h-3.5 w-3.5" />
                 {t("calendar.tabs.hours", "Trainer Hours")}
               </TabsTrigger>
+              <TabsTrigger value="reports" className="text-xs sm:text-sm gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                {t("calendar.tabs.reports", "Reports")}
+              </TabsTrigger>
             </TabsList>
 
             <Button size="sm" className="h-9 gap-1.5" onClick={() => setActiveTab("create" as TabValue)}>
@@ -849,6 +854,17 @@ export default function AcademyCalendar() {
               }))}
               currentDate={currentDate}
             />
+          </TabsContent>
+
+          {/* ── Tab 6: Reports ── */}
+          <TabsContent value="reports" className="mt-4">
+            {activeAcademy && (
+              <AcademyReportsTab
+                academyId={activeAcademy.id}
+                trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+                locations={locations.map(l => ({ id: l.id, name: l.name }))}
+              />
+            )}
           </TabsContent>
         </Tabs>
       </main>
