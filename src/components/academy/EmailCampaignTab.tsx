@@ -23,6 +23,7 @@ import {
   Trash2, Pencil, ChevronRight, X, Plus, FlaskConical,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
 
 interface EmailCampaignTabProps {
   academyId: string;
