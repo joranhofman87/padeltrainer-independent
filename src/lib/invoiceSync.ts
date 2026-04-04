@@ -266,6 +266,51 @@ export async function recalculateInvoiceAfterRemoval(
 }
 
 /**
+ * Recalculate unpaid invoices after slot price changes.
+ * Finds invoices with bookings on the given slots and rebuilds totals.
+ */
+export async function syncInvoicesAfterPriceChange(
+  slotIds: string[],
+): Promise<void> {
+  if (slotIds.length === 0) return;
+
+  // Find bookings on these slots
+  const { data: bookings } = await supabase
+    .from("bookings")
+    .select("id, slot_id, payment_amount")
+    .in("slot_id", slotIds)
+    .in("status", ["confirmed", "pending"]);
+
+  if (!bookings || bookings.length === 0) return;
+
+  const bookingIds = bookings.map((b) => b.id);
+
+  // Find unpaid invoices overlapping with these bookings
+  const { data: invoices } = await supabase
+    .from("invoices")
+    .select("id, invoice_number, status, booking_ids, total, vat_rate, line_items")
+    .in("status", ["sent", "pending", "draft"])
+    .overlaps("booking_ids", bookingIds);
+
+  if (!invoices || invoices.length === 0) return;
+
+  // For each affected invoice, do a full recalculate by "removing" zero bookings
+  // This forces a rebuild of line items from current slot/booking data
+  for (const inv of invoices) {
+    await recalculateInvoiceAfterRemoval(
+      {
+        id: inv.id,
+        booking_ids: (inv.booking_ids as string[]) || [],
+        vat_rate: (inv.vat_rate as number) || 21,
+        line_items: (inv.line_items as any[]) || [],
+        status: inv.status as string,
+      },
+      [], // no bookings removed — just recalculate with current prices
+    );
+  }
+}
+
+/**
  * Find and recalculate all unpaid invoices affected by removed booking IDs.
  * For paid invoices, optionally adds a credit note.
  */
