@@ -42,6 +42,7 @@ import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { useSearchParams } from 'react-router-dom';
+import { EmailCampaignTab } from '@/components/academy/EmailCampaignTab';
 
 interface TrainerOption {
   id: string;
@@ -768,18 +769,23 @@ export default function AcademyPlayers() {
 
         {/* Email Campaign Tab */}
         <TabsContent value="email-campaign" className="mt-4">
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Mail className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">
-                {tTrainer('players.emailCampaignTitle', 'Email Campaigns')}
-              </h3>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                {tTrainer('players.emailCampaignDescription', 'Send targeted emails to your players based on their level, location, or cyclus status. Coming soon.')}
-              </p>
-              <Badge variant="secondary" className="mt-4">Coming soon</Badge>
-            </CardContent>
-          </Card>
+          {activeAcademy && (
+            <EmailCampaignTab
+              academyId={activeAcademy.id}
+              trainers={trainers}
+              locations={allLocations}
+              players={players.map((p) => ({
+                id: p.id,
+                full_name: p.full_name,
+                email: p.email,
+                skill_rating: p.skill_rating,
+                trainer_id: p.trainer_id,
+                location_names: p.location_names,
+                has_active_cyclus: p.has_active_cyclus,
+                type: p.type,
+              }))}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
