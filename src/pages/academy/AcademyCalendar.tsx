@@ -693,7 +693,7 @@ export default function AcademyCalendar() {
               onNavigateNext={navigateNext}
               onGoToday={goToToday}
               dateRangeLabel={getDateRangeLabel()}
-              onNewClick={() => setActiveTab("create")}
+              
             />
           </TabsContent>
 

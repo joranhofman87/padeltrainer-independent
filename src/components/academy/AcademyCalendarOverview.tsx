@@ -215,12 +215,6 @@ export default function AcademyCalendarOverview({
             <Button variant="outline" size="sm" className="h-8" onClick={onGoToday}>
               {t('calendar.today', 'Today')}
             </Button>
-            {onNewClick && (
-              <Button size="sm" className="h-8 gap-1.5" onClick={onNewClick}>
-                <Plus className="h-3.5 w-3.5" />
-                {t('calendar.new', 'New')}
-              </Button>
-            )}
           </div>
 
           {(trainers.length > 1 || locations.length > 1) && (
