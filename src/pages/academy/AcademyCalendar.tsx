@@ -138,6 +138,8 @@ export default function AcademyCalendar() {
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
+  const [createFormType, setCreateFormType] = useState<'registration' | 'event'>('registration');
+  const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
 
   const handleCellClick = (day: Date, hour: number) => {
     setDefaultSlotDate(day);
