@@ -1,20 +1,28 @@
 
 
-# Add delete registration option on Step 1 (Registrations)
+# Fix: Proposals data inconsistent — 71 "proposed" requests but no slots or assignments
 
-## What changes
-Add a "Delete" button to the `IntakeRequestDetailSheet` that only appears when the sheet is opened from Step 1. Clicking it shows a confirmation dialog before permanently deleting the registration.
+## What happened
+Your cycle has 71 intake requests with status `proposed`, but **zero** availability slots and **zero** proposed assignments in the database. This is an inconsistent state — the proposals were partially deleted (slots + assignments removed) but the intake request statuses were never reset back to `new`.
 
-## How it works
-- The `deleteIntakeRequest` function already exists in `src/lib/cycles.ts` — no backend changes needed.
-- Pass a new `allowDelete` boolean prop to `IntakeRequestDetailSheet`. Only set it to `true` when `activeStep === 'registrations'`.
-- In the detail sheet's action bar, add a destructive "Delete" button (with Trash icon) that opens an `AlertDialog` asking "Delete this registration? This action cannot be undone."
-- On confirm: call `deleteIntakeRequest(request.id)`, show a success toast, close the sheet, and trigger `onStatusChange` to refresh the list.
+This likely happened during an earlier session where the connection timed out mid-reset (during the DB overload period), or the slots were deleted through a different code path that didn't update the intake request statuses.
 
-## Files
+## Immediate fix: Reset the data
+Click the **Reset** button on Step 4. This will:
+- Set all 71 intake requests back to `new`
+- Delete any remaining proposed assignments (there are none, but it cleans up safely)
+- Take you back to Step 3 (Generate) where you can re-create slots and re-generate proposals
+
+This should work — the `resetProposals` function handles exactly this case.
+
+## Code improvement: Make reset more resilient
+To prevent this inconsistent state in the future, I'll add a safeguard: when `getAvailableSlotsForCycle` detects that intake requests are `proposed` but no assignments exist, it auto-corrects them back to `new`.
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/IntakeRequestDetailSheet.tsx` | Add `allowDelete` prop, delete confirmation dialog, and delete handler using existing `deleteIntakeRequest` |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Pass `allowDelete={activeStep === 'registrations'}` to the detail sheet |
+| `src/lib/cycles.ts` | In `getAvailableSlotsForCycle`, after fetching assignments: if slots are empty and assignments are empty but proposed intake requests exist, auto-reset those intake request statuses to `new` |
+
+## Steps
+1. **Try the Reset button now** — it should clear the inconsistent state and let you re-generate
+2. After that works, I'll add the safeguard code to auto-heal this state if it ever happens again
 
