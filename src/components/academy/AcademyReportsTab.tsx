@@ -196,9 +196,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     let csv = '';
 
     if (rows) {
-      csv = 'Name,Sessions,Booked,Capacity,Fill Rate %,Hours\n';
+      csv = 'Name,Sessions,Empty,Booked,Capacity,Fill Rate %,Hours\n';
       rows.forEach(r => {
-        csv += `"${r.name}",${r.sessions},${r.booked},${r.capacity},${r.fillRate},${r.hours}\n`;
+        csv += `"${r.name}",${r.sessions},${r.emptySlots},${r.booked},${r.capacity},${r.fillRate},${r.hours}\n`;
       });
     } else {
       csv = 'Slot ID,Start,End,Trainer,Location,Booked,Capacity,Private\n';
