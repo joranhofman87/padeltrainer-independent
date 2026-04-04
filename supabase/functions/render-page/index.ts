@@ -132,9 +132,9 @@ function renderPath(cleanPath: string, lang: string): string {
   if (cleanPath === '/locations') {
     return page(
       'Padel Locations | PadelTrainer.ai',
-      'Browse all padel clubs and locations in the Netherlands. Find courts near you.',
+      'Browse all padel clubs and locations. Find courts near you.',
       '/locations', lang,
-      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations in the Netherlands.</p>`
+      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations. Find courts near you.</p>`
     );
   }
 
