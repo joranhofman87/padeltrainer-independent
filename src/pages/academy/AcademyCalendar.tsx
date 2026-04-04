@@ -93,11 +93,12 @@ export default function AcademyCalendar() {
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
   
-  const [view, setView] = useState<"day" | "week" | "month">("week");
+  const [view, setView] = useState<"day" | "week">("day");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [slots, setSlots] = useState<AcademySlot[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [allKnownPlayers, setAllKnownPlayers] = useState<KnownPlayer[]>([]);
+
   // Filter state
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
