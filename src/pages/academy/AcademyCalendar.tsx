@@ -419,6 +419,7 @@ export default function AcademyCalendar() {
       booked_count: s.active_bookings + s.pending_bookings,
       location_name: s.location_name,
       location_id: s.location_id,
+      is_marked_full: s.is_marked_full,
     }));
   }, [slots]);
 
