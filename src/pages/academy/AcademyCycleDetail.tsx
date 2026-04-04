@@ -174,6 +174,38 @@ export default function AcademyCycleDetail() {
 
   const isFirstLoad = cycleLoading && !cycle;
 
+  // Initialize pricing state from cycle when it loads
+  useEffect(() => {
+    if (cycle && !pricingInitialized) {
+      setPricingPricePerSession(cycle.price_per_session ?? null);
+      setPricingExtraCosts((cycle.settings?.extra_costs as ExtraCost[]) || []);
+      setPricingSplitPayment(cycle.settings?.split_payment ?? false);
+      setPricingIncludeVat(cycle.settings?.prices_include_vat ?? true);
+      setPricingInitialized(true);
+    }
+  }, [cycle, pricingInitialized]);
+
+  const handleSavePricingAndContinue = async () => {
+    if (!cycleId) return;
+    setIsSavingPricing(true);
+    try {
+      await updateCyclePricing(cycleId, {
+        price_per_session: pricingPricePerSession,
+        extra_costs: pricingExtraCosts,
+        split_payment: pricingSplitPayment,
+        prices_include_vat: pricingIncludeVat,
+      });
+      if (academyId) invalidateAll('academy', academyId, cycleId);
+      navigate('/app/academy/intake-requests/overview', {
+        state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone },
+      });
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save pricing');
+    } finally {
+      setIsSavingPricing(false);
+    }
+  };
+
   // Schedule slots from TanStack Query — cached, no local state
   const shouldLoadSlots = viewMode === 'schedule' || activeStep === 'review-edit' || activeStep === 'approve';
   const { data: scheduleSlots = [] } = useScheduleSlotsQuery(cycleId, shouldLoadSlots);
