@@ -335,7 +335,9 @@ export default function AcademyCalendar() {
         id: slot.id,
         trainer_id: slot.trainer_id,
         start_time: slot.start_time,
-        end_time: slot.end_time: slot.location_id: slot.location_id,
+        end_time: slot.end_time,
+        is_marked_full: !slot.is_public,
+        location_id: slot.location_id,
         max_participants: slot.max_participants || 4,
         cyclus_id: slot.cyclus_id || null,
         cyclus_name: slot.cyclus_name || null,
@@ -417,7 +419,9 @@ export default function AcademyCalendar() {
       is_past: new Date(slot.start_time) < now,
       cyclus_id: slot.cyclus_id,
       cyclus_name: slot.cyclus_name,
-      booked_players: slot.booked_players: slot.location_name: slot.location_name,
+      booked_players: slot.booked_players,
+      is_marked_full: !slot.is_public,
+      location_name: slot.location_name,
       trainer_id: slot.trainer_id,
       trainer_name: slot.trainer_name,
       trainer_avatar: slot.trainer_avatar,
@@ -439,7 +443,9 @@ export default function AcademyCalendar() {
       max_participants: s.max_participants,
       booked_count: s.active_bookings + s.pending_bookings,
       location_name: s.location_name,
-      location_id: s.location_id: s.}));
+      location_id: s.location_id,
+      is_marked_full: !s.is_public,
+    }));
   }, [slots]);
 
   // Trainer hours data from month slots

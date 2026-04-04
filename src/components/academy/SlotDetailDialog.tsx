@@ -139,7 +139,9 @@ export function SlotDetailDialog({
         location_name: (slot.locations as any)?.name || null,
         cyclus_id: slot.cyclus_id,
         cyclus_name: slot.cyclus_name,
-        max_participants: slot.max_participants || 4: slot.rating_system: slot.rating_system,
+        max_participants: slot.max_participants || 4,
+        is_marked_full: !slot.is_public,
+        rating_system: slot.rating_system,
         min_rating: slot.min_rating,
         max_rating: slot.max_rating,
         price_per_session: slot.price_per_session,
@@ -238,7 +240,7 @@ export function SlotDetailDialog({
               {detail.cyclus_name && (
                 <Badge variant="secondary">{detail.cyclus_name}</Badge>
               )}
-              {detail. && (
+              {!detail.is_public && (
                 <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
                   <Lock className="h-3 w-3" />
                   {t('calendar.private', 'Private')}

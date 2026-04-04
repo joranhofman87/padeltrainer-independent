@@ -833,20 +833,18 @@ function DraggableSlotCard({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={(e) => { e.stopPropagation(); onToggleSlotPrivacy(slot.id, !slot.); }}
+                    onClick={(e) => { e.stopPropagation(); onToggleSlotPrivacy(slot.id, !!slot.is_public); }}
                     className={cn(
                       'p-0.5 rounded transition-colors',
-                      slot.
-                        ? 'text-purple-600 dark:text-purple-400 hover:text-purple-700'
+                      !slot.is_public ? 'text-purple-600 dark:text-purple-400 hover:text-purple-700'
                         : 'text-muted-foreground/40 hover:text-muted-foreground'
                     )}
                   >
-                    {slot. ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+                    {!slot.is_public ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
-                  {slot.
-                    ? t('proposals.slotPrivate', { defaultValue: 'Private — hidden from public' })
+                  {!slot.is_public ? t('proposals.slotPrivate', { defaultValue: 'Private — hidden from public' })
                     : t('proposals.slotPublic', { defaultValue: 'Public — click to mark as private' })}
                 </TooltipContent>
               </Tooltip>

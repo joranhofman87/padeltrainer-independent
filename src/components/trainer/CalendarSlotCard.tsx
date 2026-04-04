@@ -56,7 +56,7 @@ type SlotStatus = "free" | "partial" | "full" | "past" | "private";
 
 function getSlotStatus(slot: SlotWithBookings): SlotStatus {
   if (slot.is_past) return "past";
-  if (slot.) return "private";
+  if (!slot.is_public) return "private";
   if (slot.active_bookings >= 4) return "full";
   if (slot.active_bookings > 0) return "partial";
   return "free";
@@ -146,7 +146,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
         {!compact && slot.cyclus_id && (
           <Repeat className="h-3 w-3 opacity-60" />
         )}
-        {!compact && slot. && (
+        {!compact && !slot.is_public && (
           <Lock className="h-3 w-3 opacity-60" />
         )}
       </div>
@@ -362,11 +362,11 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
             <div className="space-y-2 pt-2 border-t">
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-2 cursor-pointer text-sm">
-                  {slot. ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+                  {!slot.is_public ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
                   {t("calendar.markAsFull")}
                 </Label>
                 <Switch
-                  checked={slot.}
+                  checked={!slot.is_public}
                   onCheckedChange={(checked) => {
                     onToggleMarkedFull(slot.id, checked, slot.cyclus_id && applyToCyclus ? true : false);
                   }}
@@ -385,7 +385,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                {slot. ? t("calendar.markedFull") : t("calendar.openToPlayers")}
+                {!slot.is_public ? t("calendar.markedFull") : t("calendar.openToPlayers")}
               </p>
             </div>
           )}

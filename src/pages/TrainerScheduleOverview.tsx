@@ -369,7 +369,7 @@ export default function TrainerScheduleOverview() {
       pricePerSession: firstSlot?.price_per_session != null ? String(firstSlot.price_per_session) : "",
       locationId: firstSlot?.location_id || "",
       maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
-      isPrivate: firstSlot?. ?? false,
+      isPrivate: !firstSlot?.is_public ?? false,
       extraCosts: extraCosts.length > 0 ? extraCosts : [],
       startDate: earliestStart,
       originalStartDate: earliestStart,
@@ -538,7 +538,7 @@ export default function TrainerScheduleOverview() {
                 cyclus_id: editCycleId,
                 cyclus_name: cycleEditData.name.trim(),
                 max_participants: lastSlot.max_participants,
-                is_public: lastSlot.is_public: cycleEditData.isPrivate,
+                is_public: !cycleEditData.isPrivate,
                 location_id: cycleEditData.locationId || lastSlot.location_id,
                 price_per_session: sessionPrice ?? lastSlot.price_per_session,
                 extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : lastSlot.extra_costs,
@@ -941,7 +941,7 @@ export default function TrainerScheduleOverview() {
     setTogglingPrivacy(slotId);
     const { error } = await supabase
       .from("availability_slots")
-      .update({ : !currentValue })
+      .update({ is_public: currentValue })
       .eq("id", slotId);
     setTogglingPrivacy(null);
     if (error) {
@@ -1285,7 +1285,7 @@ export default function TrainerScheduleOverview() {
                                 {unpaid} {t("scheduleOverview.unpaid", "unpaid")}
                               </Badge>
                             )}
-                            {slot. && (
+                            {!slot.is_public && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                                 {t("scheduleOverview.private", "Private")}
                               </Badge>
@@ -1298,17 +1298,16 @@ export default function TrainerScheduleOverview() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => handleToggleSlotPrivacy(slot.id, slot.)}
+                              onClick={() => handleToggleSlotPrivacy(slot.id, !slot.is_public)}
                               disabled={togglingPrivacy === slot.id}
                               title={
-                                slot.
-                                  ? t("scheduleOverview.markAsPublic", "Mark as public")
+                                !slot.is_public ? t("scheduleOverview.markAsPublic", "Mark as public")
                                   : t("scheduleOverview.markAsPrivate", "Mark as private")
                               }
                             >
                               {togglingPrivacy === slot.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : slot. ? (
+                              ) : !slot.is_public ? (
                                 <Lock className="h-3.5 w-3.5" />
                               ) : (
                                 <LockOpen className="h-3.5 w-3.5" />

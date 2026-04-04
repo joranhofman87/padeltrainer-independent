@@ -154,7 +154,7 @@ function TrainerDayBlock({
                 onClick={() => onSlotClick?.(slot.id)}
               >
                 <span className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-1">
-                  {slot. && <Lock className="h-2.5 w-2.5 text-amber-500" />}
+                  {!slot.is_public && <Lock className="h-2.5 w-2.5 text-amber-500" />}
                   {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
                 </span>
                 <OccupancyDots booked={slot.booked_count} max={slot.max_participants} />
