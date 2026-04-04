@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Send, Save, FileText, History, Loader2, Bold, Users, Eye,
-  Trash2, Pencil, ChevronRight,
+  Trash2, Pencil, ChevronRight, X, Plus, FlaskConical,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -98,6 +98,16 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
   const [showConfirmSend, setShowConfirmSend] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Manual recipient management
+  const [recipients, setRecipients] = useState<{ id: string; full_name: string; email: string; isManual?: boolean }[]>([]);
+  const [addEmail, setAddEmail] = useState('');
+  const [addName, setAddName] = useState('');
+
+  // Test email
+  const [testEmail, setTestEmail] = useState('');
+  const [showTestInput, setShowTestInput] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
+
   useEffect(() => {
     fetchTemplates();
     fetchCampaigns();
@@ -145,6 +155,43 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
     if (filterCyclus === 'no' && p.has_active_cyclus) return false;
     return true;
   });
+
+  // Sync recipients when filters change
+  useEffect(() => {
+    setRecipients(filteredRecipients.map((p) => ({ id: p.id, full_name: p.full_name, email: p.email })));
+  }, [filterTrainer, filterLocation, filterLevel, filterCyclus, players]);
+
+  const handleRemoveRecipient = (id: string) => {
+    setRecipients((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const handleAddManualRecipient = () => {
+    if (!addEmail.trim()) return;
+    const newR = { id: `manual-${Date.now()}`, full_name: addName.trim() || addEmail.trim(), email: addEmail.trim(), isManual: true };
+    setRecipients((prev) => [...prev, newR]);
+    setAddEmail('');
+    setAddName('');
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!testEmail.trim() || !subject.trim() || !bodyHtml.trim()) {
+      toast({ title: 'Missing fields', description: 'Please fill in subject, body, and test email address.', variant: 'destructive' });
+      return;
+    }
+    setIsSendingTest(true);
+    try {
+      const { error } = await supabase.functions.invoke('send-campaign-emails', {
+        body: { testMode: true, testEmail: testEmail.trim(), subject: subject.trim(), bodyHtml, academyProfileId: academyId },
+      });
+      if (error) throw error;
+      toast({ title: 'Test email sent!', description: `A test email was sent to ${testEmail.trim()}.` });
+    } catch (err: any) {
+      logger.error('Error sending test email', err);
+      toast({ title: 'Error', description: err.message || 'Could not send test email.', variant: 'destructive' });
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim() || !subject.trim() || !bodyHtml.trim()) {
@@ -213,7 +260,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
           body_html: bodyHtml,
           filters,
           status: 'draft',
-          total_recipients: filteredRecipients.length,
+          total_recipients: recipients.length,
         } as any)
         .select()
         .single();
@@ -221,7 +268,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
       if (campErr || !campaign) throw campErr || new Error('Could not create campaign');
 
       // 2. Insert recipients
-      const recipientRows = filteredRecipients.map((p) => ({
+      const recipientRows = recipients.map((p) => ({
         campaign_id: campaign.id,
         recipient_email: p.email,
         recipient_name: p.full_name,
@@ -243,7 +290,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
       toast({
         title: 'Campaign sent!',
-        description: `Emails are being sent to ${filteredRecipients.length} recipients.`,
+        description: `Emails are being sent to ${recipients.length} recipients.`,
       });
 
       // Reset
@@ -387,27 +434,61 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                 <div className="flex items-center justify-between py-2">
                   <span className="text-sm font-medium">Selected recipients</span>
                   <Badge variant="secondary" className="text-sm">
-                    {filteredRecipients.length}
+                    {recipients.length}
                   </Badge>
                 </div>
 
-                {filteredRecipients.length > 0 && (
+                {recipients.length > 0 && (
                   <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
-                    {filteredRecipients.slice(0, 50).map((p) => (
-                      <div key={p.id} className="text-xs flex justify-between items-center py-0.5">
+                    {recipients.slice(0, 50).map((p) => (
+                      <div key={p.id} className="text-xs flex justify-between items-center py-0.5 group">
                         <span className="truncate flex-1">{p.full_name}</span>
-                        <span className="text-muted-foreground truncate ml-2 max-w-[120px]">{p.email}</span>
+                        <span className="text-muted-foreground truncate ml-2 max-w-[100px]">{p.email}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 ml-1 opacity-0 group-hover:opacity-100 shrink-0"
+                          onClick={() => handleRemoveRecipient(p.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
                       </div>
                     ))}
-                    {filteredRecipients.length > 50 && (
+                    {recipients.length > 50 && (
                       <p className="text-xs text-muted-foreground text-center pt-1">
-                        +{filteredRecipients.length - 50} more
+                        +{recipients.length - 50} more
                       </p>
                     )}
                   </div>
                 )}
 
-                {filteredRecipients.length === 0 && (
+                {/* Add manual recipient */}
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={addName}
+                    onChange={(e) => setAddName(e.target.value)}
+                    placeholder="Name"
+                    className="h-7 text-xs flex-1"
+                  />
+                  <Input
+                    value={addEmail}
+                    onChange={(e) => setAddEmail(e.target.value)}
+                    placeholder="Email"
+                    className="h-7 text-xs flex-1"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddManualRecipient()}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={handleAddManualRecipient}
+                    disabled={!addEmail.trim()}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                {recipients.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     No players match the current filters, or they have no email address.
                   </p>
@@ -491,27 +572,67 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
                 <Separator />
 
-                <div className="flex items-center justify-between">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowPreview(true)}
-                    disabled={!bodyHtml.trim()}
-                  >
-                    <Eye className="mr-1.5 h-4 w-4" /> Preview
-                  </Button>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowPreview(true)}
+                      disabled={!bodyHtml.trim()}
+                    >
+                      <Eye className="mr-1.5 h-4 w-4" /> Preview
+                    </Button>
 
-                  <Button
-                    onClick={() => setShowConfirmSend(true)}
-                    disabled={isSending || !subject.trim() || !bodyHtml.trim() || filteredRecipients.length === 0}
-                  >
-                    {isSending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {!showTestInput ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowTestInput(true)}
+                        disabled={!subject.trim() || !bodyHtml.trim()}
+                      >
+                        <FlaskConical className="mr-1.5 h-4 w-4" /> Send test
+                      </Button>
                     ) : (
-                      <Send className="mr-2 h-4 w-4" />
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={testEmail}
+                          onChange={(e) => setTestEmail(e.target.value)}
+                          placeholder="test@email.com"
+                          className="h-9 w-48"
+                          onKeyDown={(e) => e.key === 'Enter' && handleSendTestEmail()}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleSendTestEmail}
+                          disabled={isSendingTest || !testEmail.trim()}
+                        >
+                          {isSendingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={() => setShowTestInput(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     )}
-                    Send to {filteredRecipients.length} recipient{filteredRecipients.length !== 1 ? 's' : ''}
-                  </Button>
+
+                    <div className="ml-auto">
+                      <Button
+                        onClick={() => setShowConfirmSend(true)}
+                        disabled={isSending || !subject.trim() || !bodyHtml.trim() || recipients.length === 0}
+                      >
+                        {isSending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="mr-2 h-4 w-4" />
+                        )}
+                        Send to {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -639,7 +760,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
           <AlertDialogHeader>
             <AlertDialogTitle>Send campaign?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will send an email to <strong>{filteredRecipients.length} recipient{filteredRecipients.length !== 1 ? 's' : ''}</strong> with subject "<strong>{subject}</strong>". This action cannot be undone.
+              This will send an email to <strong>{recipients.length} recipient{recipients.length !== 1 ? 's' : ''}</strong> with subject "<strong>{subject}</strong>". This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

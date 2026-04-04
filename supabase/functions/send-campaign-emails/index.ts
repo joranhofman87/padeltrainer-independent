@@ -36,7 +36,56 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { campaignId } = await req.json();
+    const body = await req.json();
+    const { campaignId, testMode, testEmail, subject: testSubject, bodyHtml: testBodyHtml, academyProfileId } = body;
+
+    // === TEST MODE ===
+    if (testMode && testEmail && testSubject && testBodyHtml) {
+      // Verify user is academy manager
+      const { data: isManager } = await supabase.rpc("is_academy_manager", {
+        _user_id: user.id,
+        _academy_profile_id: academyProfileId,
+      });
+
+      if (!isManager) {
+        return new Response(JSON.stringify({ error: "Not authorized" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const personalizedHtml = testBodyHtml.replace(/\{\{name\}\}/gi, "Test User");
+      const personalizedSubject = testSubject.replace(/\{\{name\}\}/gi, "Test User");
+
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
+          to: [testEmail],
+          subject: `[TEST] ${personalizedSubject}`,
+          html: personalizedHtml,
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text();
+        return new Response(JSON.stringify({ error: errBody }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, test: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // === NORMAL CAMPAIGN MODE ===
     if (!campaignId) {
       return new Response(JSON.stringify({ error: "campaignId required" }), {
         status: 400,
