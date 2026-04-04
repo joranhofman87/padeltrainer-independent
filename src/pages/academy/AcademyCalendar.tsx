@@ -657,6 +657,11 @@ export default function AcademyCalendar() {
               </TabsTrigger>
             </TabsList>
 
+            <Button size="sm" className="h-9 gap-1.5" onClick={() => setActiveTab("create" as TabValue)}>
+              <Plus className="h-4 w-4" />
+              {t("calendar.new", "New")}
+            </Button>
+
             {/* Date Navigation (only for hours tab — overview and manage have their own) */}
             {activeTab === "hours" && (
               <div className="flex items-center gap-2">
