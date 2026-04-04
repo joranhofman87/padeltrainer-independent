@@ -72,7 +72,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
         .from('availability_slots')
         .select(`
           id, start_time, end_time, trainer_id, location_id,
-          max_participants, price_per_session,
+          max_participants, price_per_session, is_public,
           bookings!inner(id)
         `)
         .eq('academy_profile_id', academyId)
@@ -85,7 +85,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
           .from('availability_slots')
           .select(`
             id, start_time, end_time, trainer_id, location_id,
-            max_participants, price_per_session
+            max_participants, price_per_session, is_public
           `)
           .eq('academy_profile_id', academyId)
           .gte('start_time', rangeStart.toISOString())

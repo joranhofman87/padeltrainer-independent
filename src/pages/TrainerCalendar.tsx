@@ -152,6 +152,7 @@ export default function TrainerCalendar() {
           id,
           start_time,
           end_time,
+          is_public,
           max_participants,
           price_per_session,
           cyclus_id,
