@@ -43,7 +43,7 @@ import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDa
 import AcademyWeekOverview from "@/components/academy/AcademyWeekOverview";
 import AcademyCalendarOverview from "@/components/academy/AcademyCalendarOverview";
 import AcademyTrainerHours from "@/components/academy/AcademyTrainerHours";
-import CycleForm from "@/components/cycles/CycleForm";
+// CycleForm removed — Create tab now uses BulkCreateContent inline
 
 // Lazy-load the open slots page content
 import { lazy, Suspense } from "react";
