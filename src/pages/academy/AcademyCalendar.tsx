@@ -627,24 +627,6 @@ export default function AcademyCalendar() {
             </Button>
             <h1 className="text-xl font-bold">{t("calendar.title", "Agenda")}</h1>
           </div>
-          {activeTab !== "overview" && (
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={() => {
-                  setDefaultSlotDate(undefined);
-                  setDefaultSlotTime(undefined);
-                  const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
-                  setSelectedSlotTrainerId(trainerToUse);
-                  setBulkCreateOpen(true);
-                }}
-                className="gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                {t("calendar.new", "New")}
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 
