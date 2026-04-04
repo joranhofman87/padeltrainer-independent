@@ -66,6 +66,10 @@ export function EditSlotDialog({
   const [ratingSystem, setRatingSystem] = useState<string | null>(null);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [maxRating, setMaxRating] = useState<number | null>(null);
+  const [trainerId, setTrainerId] = useState<string>("");
+  const [locationId, setLocationId] = useState<string>("");
+  const [maxParticipants, setMaxParticipants] = useState<number>(4);
+  const [isMarkedFull, setIsMarkedFull] = useState(false);
 
   useEffect(() => {
     if (slot && open) {
