@@ -141,7 +141,7 @@ export function SlotDetailDialog({
         cyclus_id: slot.cyclus_id,
         cyclus_name: slot.cyclus_name,
         max_participants: slot.max_participants || 4,
-        is_public: slot.is_public,
+        is_public: (slot as any).is_public ?? true,
         rating_system: slot.rating_system,
         min_rating: slot.min_rating,
         max_rating: slot.max_rating,

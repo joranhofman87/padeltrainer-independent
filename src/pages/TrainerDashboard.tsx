@@ -46,7 +46,7 @@ async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStat
     supabase.from('availability_slots')
       .select('id, max_participants, bookings(id, status)')
       .eq('trainer_id', currentTrainerId)
-      .eq('', false)
+      .eq('is_public', true)
       .gte('start_time', now.toISOString()),
     supabase.from('bookings')
       .select('payment_amount, paid_at, availability_slots!inner(trainer_id)')
@@ -118,7 +118,7 @@ async function fetchTrainerActivity(trainerId: string) {
     supabase.from('availability_slots')
       .select('id, start_time, end_time, max_participants, cyclus_name, cyclus_id, locations:location_id (name)')
       .eq('trainer_id', trainerId)
-      .eq('', false)
+      .eq('is_public', true)
       .gte('start_time', now)
       .order('start_time', { ascending: true })
       .limit(50)

@@ -157,7 +157,7 @@ async function fetchFollowedTrainersData(profileId: string): Promise<{
     .select('id, cyclus_name, cyclus_id, allow_single_booking, trainer_id, start_time, location_id, locations(name)')
     .in('trainer_id', trainerIds)
     .eq('is_public', true)
-    .eq('', false)
+    
     .gte('start_time', now)
     .order('start_time', { ascending: true })
     .limit(50);

@@ -116,7 +116,7 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
           location_id, locations:location_id(name)
         `)
         .in('trainer_id', trainerIds)
-        .eq('', false)
+        
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true });
 
