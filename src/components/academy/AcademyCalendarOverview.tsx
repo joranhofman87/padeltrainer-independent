@@ -96,7 +96,7 @@ function CompactSlotCard({ slot, isPast }: { slot: SlotSummary; isPast: boolean 
 
 export default function AcademyCalendarOverview({
   slots, currentDate, onDayClick, trainers = [], locations = [],
-  onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel, onNewClick,
+  onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel,
 }: AcademyCalendarOverviewProps) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
