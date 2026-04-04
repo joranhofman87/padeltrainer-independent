@@ -1,48 +1,48 @@
 
 
-# Add Slot Edit/Delete Actions to Manage Tab
+# Propagate Pricing from Registration to Generated Slots
 
 ## Problem
-The Manage tab's slot cards have no way to edit slot details (time, day, trainer, max participants, location, rating) or delete slots/cyclus. Users can only drag-and-drop players but can't manage the slots themselves.
+When `generate-proposals` creates `availability_slots` from a registration, it doesn't carry over pricing fields (`price_per_session`, `extra_costs`, `split_payment`, `prices_include_vat`). These fields exist on the `availability_slots` table but are never populated. The admin should also be able to review and adjust these values before finalizing.
 
 ## Changes
 
-### 1. AcademyDayGrid.tsx — Add edit slot button + wire `onEditSlot` prop
+### 1. `supabase/functions/generate-proposals/index.ts` — Add pricing fields to slot inserts
 
-| What | Detail |
-|------|--------|
-| New prop | `onEditSlot?: (slot: SlotWithBookings) => void` |
-| SlotCard UI | Add a pencil (Edit) icon button and a Trash icon button in the slot card header (next to the existing UserPlus button), visible on hover. Edit opens the EditSlotDialog; Delete triggers the existing `onDeleteSlot`. |
-| Pass through | Wire `onEditSlot` from props into each `SlotCard` |
+Extract pricing from the cycle record and its settings, then include in each slot insert:
 
-### 2. AcademyCalendar.tsx — Add EditSlotDialog state + handler
+```
+price_per_session: cycle.price_per_session || null
+extra_costs: cycle.settings?.extra_costs || []
+split_payment: cycle.settings?.split_payment || false
+prices_include_vat: cycle.settings?.prices_include_vat ?? true
+```
 
-- Import `EditSlotDialog`
-- Add state: `editSlotOpen`, `slotToEdit`
-- Add handler `handleEditSlot` that sets the slot and opens the dialog
-- Render `<EditSlotDialog>` in the dialogs section
-- Pass `onEditSlot={handleEditSlot}` to `AcademyDayGrid`
+Also compute `total_price` per slot as `price_per_session × total_weeks_for_this_slot_group` (number of weeks the cycle spans).
 
-### 3. EditSlotDialog.tsx — Extend with location, trainer, max participants
+This ensures newly generated slots inherit the registration's pricing configuration.
 
-The existing dialog only edits time, date, duration, rating, and cyclus name. Extend it with:
+### 2. `src/pages/academy/AcademyCycleDetail.tsx` — Add pricing summary card at Step 4 (Review & Edit)
 
-- **Trainer selector** (dropdown of available trainers, passed as new prop)
-- **Location selector** (dropdown of available locations, passed as new prop)
-- **Max participants** (number input)
-- **Mark as full** toggle
-- Save updates these fields to `availability_slots` alongside the existing fields
-- "Apply to cyclus" checkbox also applies trainer/location/max_participants changes to all future slots
+Above the `ProposalScheduleGrid` in the review-edit step, add an editable "Pricing" card showing:
+- **Price per session** (number input, pre-filled from cycle)
+- **Extra costs** (list with add/remove, using `ExtraCostPresetPicker`)
+- **VAT inclusive/exclusive** (toggle switch)
+- **Split payment** (toggle switch)
 
-### 4. DeleteSlotDialog — Already exists and is wired
+State is initialized from `cycle.settings` / `cycle.price_per_session`. When the admin clicks "Continue to Approve", save any changes back to the cycle record AND bulk-update all generated slots with the (potentially modified) pricing values.
 
-The `onDeleteSlot` prop already exists on `AcademyDayGrid` and is already wired to `handleDeleteSlot` in `AcademyCalendar.tsx`. The Trash button just needs to be added to the SlotCard UI.
+### 3. `src/lib/cycles.ts` — Add `updateCyclePricing` helper
+
+A function that:
+1. Updates the cycle's `price_per_session` and `settings` (extra_costs, split_payment, prices_include_vat)
+2. Bulk-updates all `availability_slots` with `cyclus_id = cycleId` to apply the new pricing fields
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/components/academy/AcademyDayGrid.tsx` | Add `onEditSlot` prop, add Edit + Delete icon buttons to SlotCard header |
-| `src/pages/academy/AcademyCalendar.tsx` | Import EditSlotDialog, add state/handler, render dialog, pass `onEditSlot` to AcademyDayGrid |
-| `src/components/trainer/EditSlotDialog.tsx` | Add optional `trainers` and `locations` props, add trainer/location/maxParticipants/markedFull fields to the form and save logic |
+| `supabase/functions/generate-proposals/index.ts` | Add pricing fields to slot insert objects (~5 lines added around line 618) |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Add editable pricing card in Step 4, save pricing on "Continue to Approve" |
+| `src/lib/cycles.ts` | Add `updateCyclePricing()` helper to sync pricing to cycle + slots |
 
