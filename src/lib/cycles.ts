@@ -995,7 +995,7 @@ export interface SlotWithOccupancy {
   rating_system: string | null;
   cyclus_name: string | null;
   is_blocked?: boolean;
-  ?: boolean;
+  is_public?: boolean;
   current_assignments: Array<{
     id: string;
     intake_request_id: string;
@@ -1118,7 +1118,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
       rating_system: slot.rating_system ?? null,
       cyclus_name: slot.cyclus_name,
       is_blocked: false,
-      is_marked_full: !slot.is_public,
+      is_public: slot.is_public,
       current_assignments: slotAssignments.map(a => {
         const req = requestMap.get(a.intake_request_id);
         return {

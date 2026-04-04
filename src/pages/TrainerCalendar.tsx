@@ -246,7 +246,7 @@ export default function TrainerCalendar() {
             cyclus_id: slot.cyclus_id || null,
             cyclus_name: slot.cyclus_name || null,
             booked_players: counts.players,
-            is_marked_full: !slot.is_public,
+            is_public: slot.is_public,
             location_name: location?.name || null,
             rating_system: (slot as any).rating_system || null,
             min_rating: (slot as any).min_rating != null ? Number((slot as any).min_rating) : null,

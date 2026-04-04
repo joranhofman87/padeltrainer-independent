@@ -129,9 +129,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     const totalCapacity = slots.reduce((s, sl) => s + sl.max_participants, 0);
     const totalBooked = slots.reduce((s, sl) => s + sl.booking_count, 0);
     const fillRate = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0;
-    const openSpots = slots.filter(s => !s. && s.booking_count < s.max_participants).length;
+    const openSpots = slots.filter(s => s.is_public && s.booking_count < s.max_participants).length;
     const totalHours = slots.reduce((sum, s) => sum + differenceInMinutes(parseISO(s.end_time), parseISO(s.start_time)), 0) / 60;
-    const privateSlots = slots.filter(s => s.).length;
+    const privateSlots = slots.filter(s => !s.is_public).length;
     return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, totalHours, privateSlots };
   }, [slots]);
 
@@ -199,7 +199,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       slots.forEach(s => {
         const trName = trainers.find(t => t.id === s.trainer_id)?.name || '';
         const locName = locations.find(l => l.id === s.location_id)?.name || '';
-        csv += `"${s.id}","${s.start_time}","${s.end_time}","${trName}","${locName}",${s.booking_count},${s.max_participants},${s.}\n`;
+        csv += `"${s.id}","${s.start_time}","${s.end_time}","${trName}","${locName}",${s.booking_count},${s.max_participants},${!s.is_public}\n`;
       });
     }
 

@@ -442,7 +442,8 @@ export default function TrainerScheduleOverview() {
 
       // 1. Build bulk updates for all existing slots
       const updates: Record<string, unknown> = {
-        cyclus_name: cycleEditData.name.trim(): cycleEditData.isPrivate,
+        cyclus_name: cycleEditData.name.trim(),
+        is_public: !cycleEditData.isPrivate,
         extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : null,
         prices_include_vat: cycleEditData.pricesIncludeVat,
         split_payment: cycleEditData.splitPayment,

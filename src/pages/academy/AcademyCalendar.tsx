@@ -336,7 +336,7 @@ export default function AcademyCalendar() {
         trainer_id: slot.trainer_id,
         start_time: slot.start_time,
         end_time: slot.end_time,
-        is_marked_full: !slot.is_public,
+        is_public: slot.is_public,
         location_id: slot.location_id,
         max_participants: slot.max_participants || 4,
         cyclus_id: slot.cyclus_id || null,
@@ -420,7 +420,7 @@ export default function AcademyCalendar() {
       cyclus_id: slot.cyclus_id,
       cyclus_name: slot.cyclus_name,
       booked_players: slot.booked_players,
-      is_marked_full: !slot.is_public,
+      is_public: slot.is_public,
       location_name: slot.location_name,
       trainer_id: slot.trainer_id,
       trainer_name: slot.trainer_name,
@@ -444,7 +444,7 @@ export default function AcademyCalendar() {
       booked_count: s.active_bookings + s.pending_bookings,
       location_name: s.location_name,
       location_id: s.location_id,
-      is_marked_full: !s.is_public,
+      is_public: s.is_public,
     }));
   }, [slots]);
 

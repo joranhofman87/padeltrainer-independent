@@ -192,7 +192,7 @@ export default function AcademySlotDetail() {
         cyclus_id: slot.cyclus_id,
         cyclus_name: slot.cyclus_name,
         max_participants: slot.max_participants || 4,
-        is_marked_full: !slot.is_public,
+        is_public: slot.is_public,
         rating_system: slot.rating_system,
         min_rating: slot.min_rating,
         max_rating: slot.max_rating,
@@ -352,16 +352,16 @@ export default function AcademySlotDetail() {
 
   const togglePrivate = async () => {
     if (!detail) return;
-    const newVal = !!detail.is_public;
+    const newVal = !detail.is_public;
     const { error } = await supabase
       .from('availability_slots')
-      .update({ : newVal })
+      .update({ is_public: newVal })
       .eq('id', detail.id);
     if (error) {
       logger.error('Error toggling private', error, { slotId: detail.id });
       return;
     }
-    setDetail({ ...detail: newVal });
+    setDetail({ ...detail, is_public: newVal });
     toast({ description: newVal ? tTrainer('calendar.slotMarkedFull') : tTrainer('calendar.slotMarkedOpen') });
   };
 

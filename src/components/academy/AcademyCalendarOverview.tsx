@@ -33,7 +33,7 @@ interface SlotSummary {
   booked_count: number;
   location_name?: string | null;
   location_id?: string | null;
-  ?: boolean;
+  is_public: boolean;
 }
 
 interface TrainerOption { id: string; name: string; }
@@ -79,7 +79,7 @@ function OccupancyDots({ booked, max }: { booked: number; max: number }) {
 
 /* ── Summary status for a group of slots ── */
 function getGroupStatus(slots: SlotSummary[]): 'full' | 'partial' | 'empty' {
-  const allFull = slots.every(s => s. || s.booked_count >= s.max_participants);
+  const allFull = slots.every(s => !s.is_public || s.booked_count >= s.max_participants);
   if (allFull) return 'full';
   const anyBooked = slots.some(s => s.booked_count > 0);
   return anyBooked ? 'partial' : 'empty';
