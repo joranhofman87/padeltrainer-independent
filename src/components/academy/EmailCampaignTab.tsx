@@ -760,7 +760,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
           <AlertDialogHeader>
             <AlertDialogTitle>Send campaign?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will send an email to <strong>{filteredRecipients.length} recipient{filteredRecipients.length !== 1 ? 's' : ''}</strong> with subject "<strong>{subject}</strong>". This action cannot be undone.
+              This will send an email to <strong>{recipients.length} recipient{recipients.length !== 1 ? 's' : ''}</strong> with subject "<strong>{subject}</strong>". This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
