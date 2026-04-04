@@ -852,12 +852,28 @@ export default function AcademyCycleDetail() {
                     <RotateCcw className="h-4 w-4 mr-1" />
                     {t('proposals.reset', { defaultValue: 'Reset' })}
                   </Button>
-                  <Button size="sm" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone } })}>
+                  <Button size="sm" onClick={handleSavePricingAndContinue} disabled={isSavingPricing}>
                     <Eye className="h-4 w-4 mr-1" />
-                    {t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
+                    {isSavingPricing
+                      ? t('common:saving', 'Saving...')
+                      : t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
                   </Button>
                 </div>
               </div>
+
+              {/* Pricing & Payment card */}
+              <CyclePricingCard
+                pricePerSession={pricingPricePerSession}
+                extraCosts={pricingExtraCosts}
+                splitPayment={pricingSplitPayment}
+                pricesIncludeVat={pricingIncludeVat}
+                onPricePerSessionChange={setPricingPricePerSession}
+                onExtraCostsChange={setPricingExtraCosts}
+                onSplitPaymentChange={setPricingSplitPayment}
+                onPricesIncludeVatChange={setPricingIncludeVat}
+                academyProfileId={academyId}
+              />
+
               <ProposalScheduleGrid
                 slots={scheduleSlots}
                 trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
