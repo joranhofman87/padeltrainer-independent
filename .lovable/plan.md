@@ -1,67 +1,44 @@
 
 
-# Hub Pages for Blog Post Pillar Content
+# Add missing Dutch translations for registration workflow pages
 
-## What this does
-When a blog post matches one of 5 specific hub slugs, the page renders with an enhanced layout: a styled hero section with a "Guide" badge, an auto-generated Table of Contents, wider content area (900px vs 720px), and a "Related Guides" card grid showing the spoke articles fetched from Sanity.
+## Problem
+Many components in the registration/cycles workflow use translation keys with English `defaultValue` fallbacks. Since these keys don't exist in the Dutch `cycles.json` file, the UI shows English text when the language is set to Dutch.
 
-Regular blog posts are completely unaffected.
+## Scope
+One file to update: `src/i18n/locales/nl/cycles.json`
 
-## How it works
+The following key groups are missing and need Dutch translations added:
 
-**Detection**: A config file maps each hub slug to its spoke article slugs. The existing `BlogPost.tsx` checks if the current slug is a hub page and conditionally renders the hub layout.
+### 1. Workflow steps (`workflow.*`) — 8 keys
+- `workflow.registrations` → "Aanmeldingen"
+- `workflow.registrationsDesc` → "{{count}} aangemeld"
+- `workflow.reviewLinks` → "Koppelingen bekijken"
+- `workflow.reviewLinksDesc` → "{{count}} actie(s) openstaand"
+- `workflow.reviewLinksDone` → "Alles in orde"
+- `workflow.reviewDesc` → already exists
+- `workflow.continueToGenerate` → "Doorgaan naar genereren"
 
-**Spoke data**: A single GROQ query fetches all spoke articles by their slugs in one request. Results are reordered to match the config order.
+### 2. Generate wizard (`proposals.wizard.*`) — ~25 keys
+Step labels, start date, select trainers, min/max rating, available time windows, add window, max group size, linked players strategy options, fill incomplete groups, additional criteria, draft restored message, plus all help texts.
 
-**TOC**: Already built — `extractHeadings()` and `TableOfContents` component exist. Just need to wire them into the hub layout.
+### 3. Pre-generation review (`preReview.*`, `suggestions.*`) — ~10 keys
+Link suggestions, all clear, resolve first, ready to continue, mentioned, link/dismiss actions, unmatched info.
 
-**SEO**: Hub pages get `CollectionPage` structured data with `hasPart` linking to all spokes, instead of the regular `Article` schema.
+### 4. Intake request detail & table (`intakeRequests.links.*`, `intakeRequests.actions.*`, `intakeRequests.table.*`) — ~20 keys
+Linked with, suggested links, link all, unmatched mentions, dismiss suggestion, search player, columns, toggle columns, delete confirmation, edit actions.
+
+### 5. Proposal grid (`proposals.*`) — ~15 keys
+Edit slot, overlap warning, apply, players, delete slot, confirm delete, search player, no players found, existing lesson, blocked slot tooltip, duration mismatch, undo player move, rating out of range.
+
+### 6. Proposal card (`proposals.actions.decline`) — 1 key
+
+## Approach
+Add all missing keys to `src/i18n/locales/nl/cycles.json` with proper Dutch translations, following the existing sentence-case convention. No component changes needed — the `t()` calls already reference the correct keys and will automatically pick up the new translations.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/lib/hubPages.ts` | **New** — Hub slug config, spoke mappings, metadata, and `getSpokeArticles()` fetch function |
-| `src/components/blog/HubHero.tsx` | **New** — Hero section with badge, title, excerpt, date, read time |
-| `src/components/blog/RelatedGuidesSection.tsx` | **New** — 2-col responsive card grid for spoke articles |
-| `src/components/blog/GuideCard.tsx` | **New** — Individual spoke card with category badge, title, excerpt, "Read guide →" link |
-| `src/pages/marketing/BlogPost.tsx` | Modified — if `isHubPage`, render hub layout (hero + TOC + wider content + related guides) instead of standard layout; swap structured data to `CollectionPage` |
-
-## Layout structure (hub pages only)
-
-```text
-┌─────────────────────────────────────┐
-│  ← Back to Blog                     │
-├─────────────────────────────────────┤
-│  Breadcrumbs: Home > Blog > [Title] │
-├─────────────────────────────────────┤
-│  [Guide badge]                      │
-│  H1 Title                           │
-│  Date · Read time · Author · Share  │
-├─────────────────────────────────────┤
-│  Table of Contents (collapsible)    │
-├─────────────────────────────────────┤
-│  Article content (max-w 900px)      │
-├─────────────────────────────────────┤
-│  ── Related Guides ──               │
-│  ┌─────────┐  ┌─────────┐          │
-│  │ Card 1  │  │ Card 2  │          │
-│  └─────────┘  └─────────┘          │
-│  ┌─────────┐  ┌─────────┐          │
-│  │ Card 3  │  │ Card 4  │          │
-│  └─────────┘  └─────────┘          │
-├─────────────────────────────────────┤
-│  CTA Section                        │
-└─────────────────────────────────────┘
-```
-
-## Technical details
-
-- **GROQ query** for spokes: `*[_type == "blogPost" && slug.current in $slugs && language == $lang]{title, "slug": slug.current, excerpt, category}`
-- Spoke results sorted client-side to match config order
-- TOC uses existing `extractHeadings()` from `PortableTextRenderer.tsx` — only rendered when content has 2+ headings
-- Card hover: elevated shadow + green left border
-- Cards link to `/<locale>/blog/<spoke-slug>` via `LocalizedLink`
-- `CollectionPage` schema includes `hasPart` array with each spoke's title and URL
-- No new dependencies needed
+| `src/i18n/locales/nl/cycles.json` | Add ~80 missing Dutch translation keys across workflow, wizard, pre-review, intake requests, and proposals sections |
 
