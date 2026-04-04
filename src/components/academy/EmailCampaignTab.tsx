@@ -434,27 +434,61 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                 <div className="flex items-center justify-between py-2">
                   <span className="text-sm font-medium">Selected recipients</span>
                   <Badge variant="secondary" className="text-sm">
-                    {filteredRecipients.length}
+                    {recipients.length}
                   </Badge>
                 </div>
 
-                {filteredRecipients.length > 0 && (
+                {recipients.length > 0 && (
                   <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
-                    {filteredRecipients.slice(0, 50).map((p) => (
-                      <div key={p.id} className="text-xs flex justify-between items-center py-0.5">
+                    {recipients.slice(0, 50).map((p) => (
+                      <div key={p.id} className="text-xs flex justify-between items-center py-0.5 group">
                         <span className="truncate flex-1">{p.full_name}</span>
-                        <span className="text-muted-foreground truncate ml-2 max-w-[120px]">{p.email}</span>
+                        <span className="text-muted-foreground truncate ml-2 max-w-[100px]">{p.email}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 ml-1 opacity-0 group-hover:opacity-100 shrink-0"
+                          onClick={() => handleRemoveRecipient(p.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
                       </div>
                     ))}
-                    {filteredRecipients.length > 50 && (
+                    {recipients.length > 50 && (
                       <p className="text-xs text-muted-foreground text-center pt-1">
-                        +{filteredRecipients.length - 50} more
+                        +{recipients.length - 50} more
                       </p>
                     )}
                   </div>
                 )}
 
-                {filteredRecipients.length === 0 && (
+                {/* Add manual recipient */}
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={addName}
+                    onChange={(e) => setAddName(e.target.value)}
+                    placeholder="Name"
+                    className="h-7 text-xs flex-1"
+                  />
+                  <Input
+                    value={addEmail}
+                    onChange={(e) => setAddEmail(e.target.value)}
+                    placeholder="Email"
+                    className="h-7 text-xs flex-1"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddManualRecipient()}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={handleAddManualRecipient}
+                    disabled={!addEmail.trim()}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                {recipients.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     No players match the current filters, or they have no email address.
                   </p>
