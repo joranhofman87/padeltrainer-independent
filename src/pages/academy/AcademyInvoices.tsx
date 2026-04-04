@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
@@ -19,6 +19,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
 import { CreateCustomInvoiceDialog } from "@/components/invoices/CreateCustomInvoiceDialog";
+import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceSettingsCard";
+import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { nl, enUS } from "date-fns/locale";
 
 interface Invoice {
@@ -53,8 +55,10 @@ interface Invoice {
 
 export default function AcademyInvoices() {
   const { t, i18n } = useTranslation("academy");
+  const [searchParams, setSearchParams] = useSearchParams();
   const { activeAcademy } = useAcademyContext();
   const queryClient = useQueryClient();
+  const pageTab = searchParams.get("tab") === "settings" ? "settings" : "overview";
   const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
   const [trainerFilter, setTrainerFilter] = useState("all");
@@ -453,6 +457,18 @@ export default function AcademyInvoices() {
         </p>
       </div>
 
+      {/* Page-level tabs: Overview / Settings */}
+      <Tabs value={pageTab} onValueChange={(v) => setSearchParams(v === "settings" ? { tab: "settings" } : {})}>
+        <TabsList>
+          <TabsTrigger value="overview">{t("invoices.overviewTab", "Overzicht")}</TabsTrigger>
+          <TabsTrigger value="settings">
+            <Settings className="h-4 w-4 mr-1.5" />
+            {t("invoices.settingsTab", "Instellingen")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-4">
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <Card>
@@ -484,12 +500,6 @@ export default function AcademyInvoices() {
           <PlusCircle className="h-4 w-4 mr-2" />
           {t("invoices.createInvoice", "Nieuwe factuur")}
         </Button>
-        <Link to="/app/academy/settings">
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            {t("invoices.editSettings", "Factuur instellingen")}
-          </Button>
-        </Link>
       </div>
 
       {/* Bulk Actions */}
@@ -679,6 +689,18 @@ export default function AcademyInvoices() {
                   </Card>
                 ))}
               </div>
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
+
+        </TabsContent>
+
+        <TabsContent value="settings" className="space-y-6 mt-4">
+          {activeAcademy?.id && (
+            <>
+              <AcademyInvoiceSettingsCard academyId={activeAcademy.id} />
+              <ExtraCostPresetsCard academyProfileId={activeAcademy.id} />
             </>
           )}
         </TabsContent>
