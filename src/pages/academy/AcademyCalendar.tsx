@@ -667,6 +667,10 @@ export default function AcademyCalendar() {
               onDayClick={handleOverviewDayClick}
               trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
               locations={locations.map(l => ({ id: l.id, name: l.name }))}
+              onNavigatePrevious={navigatePrevious}
+              onNavigateNext={navigateNext}
+              onGoToday={goToToday}
+              dateRangeLabel={getDateRangeLabel()}
             />
           </TabsContent>
 

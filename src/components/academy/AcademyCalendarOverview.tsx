@@ -6,11 +6,12 @@ import {
 import { nl, es, de, fr, enUS, type Locale } from 'date-fns/locale';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Users, Calendar, AlertTriangle, TrendingUp, MapPin } from 'lucide-react';
+import { Users, Calendar, AlertTriangle, TrendingUp, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
@@ -43,6 +44,10 @@ interface AcademyCalendarOverviewProps {
   onDayClick?: (date: Date) => void;
   trainers?: TrainerOption[];
   locations?: LocationOption[];
+  onNavigatePrevious: () => void;
+  onNavigateNext: () => void;
+  onGoToday: () => void;
+  dateRangeLabel: string;
 }
 
 function OccupancyBar({ booked, max }: { booked: number; max: number }) {
@@ -63,20 +68,18 @@ function OccupancyBar({ booked, max }: { booked: number; max: number }) {
 
 export default function AcademyCalendarOverview({
   slots, currentDate, onDayClick, trainers = [], locations = [],
+  onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel,
 }: AcademyCalendarOverviewProps) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
   const now = new Date();
 
-  // Local filter state
   const [filterTrainerId, setFilterTrainerId] = useState<string>('all');
   const [filterLocationId, setFilterLocationId] = useState<string>('all');
 
-  // Week boundaries
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
 
-  // Filter slots
   const filteredSlots = useMemo(() => {
     return slots.filter(s => {
       if (filterTrainerId !== 'all' && s.trainer_id !== filterTrainerId) return false;
@@ -85,12 +88,10 @@ export default function AcademyCalendarOverview({
     });
   }, [slots, filterTrainerId, filterLocationId]);
 
-  // Week days
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   }, [weekStart]);
 
-  // Group slots by day key
   const slotsByDay = useMemo(() => {
     const map = new Map<string, SlotSummary[]>();
     filteredSlots.forEach(s => {
@@ -102,14 +103,12 @@ export default function AcademyCalendarOverview({
         map.set(key, arr);
       }
     });
-    // Sort each day's slots by time
-    map.forEach((daySlots, key) => {
+    map.forEach((daySlots) => {
       daySlots.sort((a, b) => a.start_time.localeCompare(b.start_time));
     });
     return map;
   }, [filteredSlots, weekStart, weekEnd]);
 
-  // Stats from filtered slots (week only)
   const weekSlots = useMemo(() => {
     return filteredSlots.filter(s => {
       const d = parseISO(s.start_time);
@@ -177,71 +176,87 @@ export default function AcademyCalendarOverview({
         </Card>
       </div>
 
-      {/* Filters */}
-      {(trainers.length > 1 || locations.length > 1) && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {locations.length > 1 && (
-            <Select value={filterLocationId} onValueChange={setFilterLocationId}>
-              <SelectTrigger className="w-[180px] h-8">
-                <SelectValue placeholder={t('calendar.allLocations', 'All Locations')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('calendar.allLocations', 'All Locations')}</SelectItem>
-                {locations.map(loc => (
-                  <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {trainers.length > 1 && (
-            <Select value={filterTrainerId} onValueChange={setFilterTrainerId}>
-              <SelectTrigger className="w-[180px] h-8">
-                <SelectValue placeholder={t('calendar.allTrainers', 'All Trainers')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('calendar.allTrainers', 'All Trainers')}</SelectItem>
-                {trainers.map(tr => (
-                  <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+      {/* Navigation + Filters Row */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={onNavigatePrevious}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-[140px] text-center font-medium text-sm">
+            {dateRangeLabel}
+          </div>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={onNavigateNext}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-8" onClick={onGoToday}>
+            {t('calendar.today', 'Today')}
+          </Button>
         </div>
-      )}
+
+        {(trainers.length > 1 || locations.length > 1) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {locations.length > 1 && (
+              <Select value={filterLocationId} onValueChange={setFilterLocationId}>
+                <SelectTrigger className="w-[180px] h-8">
+                  <SelectValue placeholder={t('calendar.allLocations', 'All Locations')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('calendar.allLocations', 'All Locations')}</SelectItem>
+                  {locations.map(loc => (
+                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {trainers.length > 1 && (
+              <Select value={filterTrainerId} onValueChange={setFilterTrainerId}>
+                <SelectTrigger className="w-[180px] h-8">
+                  <SelectValue placeholder={t('calendar.allTrainers', 'All Trainers')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('calendar.allTrainers', 'All Trainers')}</SelectItem>
+                  {trainers.map(tr => (
+                    <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Week Grid */}
       <Card>
         <CardContent className="p-3 sm:p-4">
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
             {weekDays.map(day => {
               const dayKey = format(day, 'yyyy-MM-dd');
               const daySlots = slotsByDay.get(dayKey) || [];
               const today = isToday(day);
-              const isPast = isBefore(day, new Date(format(now, 'yyyy-MM-dd')));
 
               return (
-                <div key={dayKey} className="min-w-0">
+                <div key={dayKey} className="bg-card min-w-0">
                   {/* Day Header */}
                   <button
                     onClick={() => onDayClick?.(day)}
                     className={cn(
-                      'w-full text-center py-1.5 rounded-md mb-2 transition-colors hover:bg-accent',
-                      today && 'bg-primary/10 font-bold',
+                      'w-full text-center py-2 border-b border-border transition-colors hover:bg-accent',
+                      today && 'bg-primary/10',
                     )}
                   >
-                    <div className="text-[10px] uppercase text-muted-foreground">
+                    <div className="text-[10px] uppercase text-muted-foreground tracking-wide">
                       {format(day, 'EEE', { locale: dateFnsLocale })}
                     </div>
-                    <div className={cn('text-sm', today && 'text-primary')}>
+                    <div className={cn('text-sm font-medium', today && 'text-primary font-bold')}>
                       {format(day, 'd')}
                     </div>
                   </button>
 
                   {/* Slot Cards */}
-                  <ScrollArea className="max-h-[400px]">
-                    <div className="space-y-1.5">
+                  <ScrollArea className="max-h-[420px]">
+                    <div className="p-1.5 space-y-1.5 min-h-[60px]">
                       {daySlots.length === 0 && (
-                        <div className="text-[10px] text-muted-foreground/50 text-center py-4 italic">
+                        <div className="text-[10px] text-muted-foreground/40 text-center py-6 italic">
                           —
                         </div>
                       )}
@@ -255,30 +270,27 @@ export default function AcademyCalendarOverview({
                             key={slot.id}
                             onClick={() => onDayClick?.(day)}
                             className={cn(
-                              'w-full text-left p-2 rounded-md border text-xs transition-colors hover:bg-accent/50',
+                              'w-full text-left p-2 rounded-lg border text-xs transition-colors hover:bg-accent/50',
                               slotPast && 'opacity-50',
                               isFull && 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20',
                               !isFull && hasBookings && 'border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20',
+                              !isFull && !hasBookings && 'border-border',
                             )}
                           >
-                            {/* Time */}
                             <div className="font-medium">
                               {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
                             </div>
-                            {/* Trainer */}
                             {slot.trainer_name && (
                               <div className="text-[10px] text-muted-foreground truncate mt-0.5">
                                 {slot.trainer_name}
                               </div>
                             )}
-                            {/* Location */}
                             {slot.location_name && (
                               <div className="text-[10px] text-muted-foreground truncate flex items-center gap-0.5 mt-0.5">
                                 <MapPin className="h-2.5 w-2.5 shrink-0" />
                                 {slot.location_name}
                               </div>
                             )}
-                            {/* Occupancy */}
                             <div className="mt-1.5 space-y-1">
                               <OccupancyBar booked={slot.booked_count} max={slot.max_participants} />
                               <div className="flex items-center justify-between">
