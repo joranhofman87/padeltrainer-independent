@@ -740,7 +740,7 @@ export default function AcademyPlayers() {
               </CardHeader>
               <CardContent>
                 <AddPlayerForm
-                  academyId={academyProfileId || undefined}
+                  academyId={activeAcademy?.id}
                   onPlayerCreated={() => fetchPlayers()}
                 />
               </CardContent>
