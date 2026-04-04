@@ -96,9 +96,9 @@ function renderPath(cleanPath: string, lang: string): string {
   if (cleanPath === '/trainers') {
     return page(
       'Find Padel Trainers | PadelTrainer.ai',
-      'Browse all certified padel trainers in the Netherlands. Filter by location, level, and specialization.',
+      'Browse all certified padel trainers. Filter by location, level, and specialization.',
       '/trainers', lang,
-      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers in the Netherlands.</p>`
+      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers. Filter by location, level, and specialization.</p>`
     );
   }
 
