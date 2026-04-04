@@ -129,6 +129,7 @@ export default function AcademySlotDetail() {
           id, start_time, end_time, trainer_id, max_participants,
           is_marked_full, cyclus_id, cyclus_name, location_id,
           rating_system, min_rating, max_rating, price_per_session,
+          total_price, split_payment, prices_include_vat, extra_costs,
           locations:location_id(name)
         `)
         .eq('id', slotId)
