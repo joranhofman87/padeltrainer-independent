@@ -720,7 +720,7 @@ function AddPlayerToSlotPopover({
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
   trainerAvailabilityWindows, selectedDay, daySlots, allSlots, availableDays, onMoveSlot, onDeleteSlot, searchQuery,
-  allPlayers, onAssignPlayer, onUnassignPlayer,
+  allPlayers, onAssignPlayer, onUnassignPlayer, onToggleSlotPrivacy,
 }: {
   slot: SlotWithOccupancy;
   onPlayerClick?: (id: string) => void;
@@ -736,6 +736,7 @@ function DraggableSlotCard({
   allPlayers?: UnplacedPlayer[];
   onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
   onUnassignPlayer?: (assignmentId: string) => void;
+  onToggleSlotPrivacy?: (slotId: string, value: boolean) => void;
 }) {
   const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
