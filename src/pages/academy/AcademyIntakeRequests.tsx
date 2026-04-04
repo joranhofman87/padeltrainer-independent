@@ -126,6 +126,8 @@ export default function AcademyIntakeRequests() {
     let filtered = cycleFilteredRequests;
     if (statusFilter === 'skipped') {
       filtered = filtered.filter(r => r.status === 'new' && r.skip_reason);
+    } else if (statusFilter === 'confirmed') {
+      filtered = filtered.filter(r => r.status === 'confirmed' || (r.status as string) === 'booked');
     } else if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
