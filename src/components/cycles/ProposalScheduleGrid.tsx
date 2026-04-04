@@ -87,7 +87,7 @@ function getDurationMinutes(startIso: string, endIso: string): number {
 
 function getAvgConfidence(slot: SlotWithOccupancy): number {
   if (slot.current_assignments.length === 0) return 0;
-  const sum = slot.current_assignments.reduce((s, a) => s + (a.confidence_score || 0), 0);
+  const sum = slot.current_assignments.reduce((s, a) => s + (a.confidence_score ?? computeManualScore(a, slot, undefined)), 0);
   return Math.round(sum / slot.current_assignments.length);
 }
 
@@ -96,6 +96,39 @@ function getConfidenceBorder(score: number): string {
   if (score >= 60) return 'border-l-amber-500 dark:border-l-amber-600';
   if (score > 0) return 'border-l-red-500 dark:border-l-red-600';
   return 'border-l-border';
+}
+
+/** Compute a basic match score for manually assigned players (confidence_score is null) */
+function computeManualScore(
+  assignment: Assignment,
+  slot: SlotWithOccupancy,
+  playerInfo?: UnplacedPlayer,
+): number {
+  let score = 0;
+  // Day match: 50 pts
+  if (playerInfo) {
+    const slotDay = format(parseISO(slot.start_time), 'EEEE', { locale: enUS }).toLowerCase();
+    const dayOk = !playerInfo.preferred_days?.length || playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDay);
+    if (dayOk) score += 50;
+  } else {
+    score += 25; // Unknown → neutral
+  }
+  // Rating fit: 50 pts
+  if (assignment.player_rating != null && (slot.min_rating != null || slot.max_rating != null)) {
+    const inRange = (slot.min_rating == null || assignment.player_rating >= slot.min_rating)
+      && (slot.max_rating == null || assignment.player_rating <= slot.max_rating);
+    if (inRange) score += 50;
+  } else {
+    score += 25; // No range configured → neutral
+  }
+  return score;
+}
+
+/** Calculate the rating spread within a slot's assignments */
+function getRatingSpread(assignments: Assignment[]): number | null {
+  const ratings = assignments.map(a => a.player_rating).filter((r): r is number => r != null);
+  if (ratings.length < 2) return null;
+  return Math.max(...ratings) - Math.min(...ratings);
 }
 
 function getOccupancyColor(current: number, max: number): string {
