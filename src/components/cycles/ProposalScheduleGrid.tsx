@@ -1746,6 +1746,7 @@ export default function ProposalScheduleGrid({
                                 allPlayers={allPlayers}
                                 onAssignPlayer={onAssignPlayer}
                                 onUnassignPlayer={onUnassignPlayer}
+                                onToggleSlotPrivacy={onToggleSlotPrivacy}
                               />
                             ) : null}
                           </DroppableCell>
