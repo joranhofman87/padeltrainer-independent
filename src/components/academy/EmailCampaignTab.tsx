@@ -57,7 +57,7 @@ interface Campaign {
   failed_count: number;
   sent_at: string | null;
   created_at: string;
-  filters: Record<string, any>;
+  filters: any;
 }
 
 function getLevelBand(rating: number | null): string {
