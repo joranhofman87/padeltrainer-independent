@@ -457,6 +457,18 @@ export default function AcademyInvoices() {
         </p>
       </div>
 
+      {/* Page-level tabs: Overview / Settings */}
+      <Tabs value={pageTab} onValueChange={(v) => setSearchParams(v === "settings" ? { tab: "settings" } : {})}>
+        <TabsList>
+          <TabsTrigger value="overview">{t("invoices.overviewTab", "Overzicht")}</TabsTrigger>
+          <TabsTrigger value="settings">
+            <Settings className="h-4 w-4 mr-1.5" />
+            {t("invoices.settingsTab", "Instellingen")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-4">
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <Card>
