@@ -30,6 +30,7 @@ interface SlotDetail {
   cyclus_id: string | null;
   cyclus_name: string | null;
   max_participants: number;
+  is_public: boolean;
   rating_system: string | null;
   min_rating: number | null;
   max_rating: number | null;

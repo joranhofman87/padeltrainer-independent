@@ -56,6 +56,7 @@ interface AcademySlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
+  is_public: boolean;
   location_id: string | null;
   max_participants: number;
   cyclus_id: string | null;

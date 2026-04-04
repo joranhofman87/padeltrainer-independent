@@ -40,6 +40,7 @@ export interface SlotWithBookings {
   active_bookings: number;
   pending_bookings: number;
   is_past: boolean;
+  is_public: boolean;
   cyclus_id: string | null;
   cyclus_name: string | null;
   booked_players: BookedPlayer[];
