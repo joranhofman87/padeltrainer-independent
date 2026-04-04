@@ -73,6 +73,30 @@ export default function TrainerLayout() {
     }
   }, [loading, isSubscriptionExpired, isOnSubscriptionPage, hasAcademy, navigate]);
 
+  // Redirect academy trainers away from restricted pages
+  const RESTRICTED_PATHS_FOR_ACADEMY = [
+    '/app/trainer/settings',
+    '/app/trainer/subscription',
+    '/app/trainer/earnings',
+    '/app/trainer/cycles',
+    '/app/trainer/intake-requests',
+    '/app/trainer/waiting-list',
+    '/app/trainer/schedule-overview',
+    '/app/trainer/open-slots',
+    '/app/trainer/get-started',
+  ];
+
+  useEffect(() => {
+    if (!loading && hasAcademy) {
+      const isRestricted = RESTRICTED_PATHS_FOR_ACADEMY.some(p => location.pathname.startsWith(p));
+      // Also redirect dashboard index for academy trainers
+      const isDashboardIndex = location.pathname === '/app/trainer' || location.pathname === '/app/trainer/';
+      if (isRestricted || isDashboardIndex) {
+        navigate('/app/trainer/calendar', { replace: true });
+      }
+    }
+  }, [loading, hasAcademy, location.pathname, navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
