@@ -361,9 +361,7 @@ interface TrainerOption {
   name: string;
 }
 
-interface BulkCreateSheetProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+export interface BulkCreateContentProps {
   trainerId: string | null;
   defaultDate?: Date;
   defaultTime?: string;
@@ -374,6 +372,13 @@ interface BulkCreateSheetProps {
   availableTrainers?: TrainerOption[];
   prefillFromCyclusId?: string | null;
   academyId?: string;
+  /** When used inside a Sheet, pass this to allow closing on success */
+  onClose?: () => void;
+}
+
+interface BulkCreateSheetProps extends BulkCreateContentProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 export function BulkCreateSheet({
