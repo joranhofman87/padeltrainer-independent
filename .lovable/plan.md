@@ -1,73 +1,39 @@
 
 
-# Add Reports/Analytics Tab to Academy Calendar
+# Auto-Generate Invoices After Registration Approval
 
-## Summary
-Remove the 4 stat cards from the Overview tab and create a new "Reports" tab in the calendar hub. This tab becomes the single place for all academy analytics — with period selection, breakdowns by trainer and location, and CSV export.
+## Problem
+When bookings are created via the registration flow ("Approve & Book"), `finalize-proposals` creates booking records but never triggers invoice generation. This means all players booked through registrations have no invoices.
 
-## Changes
+For comparison, the normal booking flow (BookLesson, AddSlotDialog) calls `auto-create-invoice` immediately after creating each booking.
 
-### 1. `src/components/academy/AcademyCalendarOverview.tsx` — Remove stat cards
-- Delete the stats calculation (lines 232-239) and the entire `grid grid-cols-2 lg:grid-cols-4` card block (lines 245-290)
-- The overview becomes purely the weekly schedule grid
+## Root Cause
+The `finalize-proposals` edge function (line 104) inserts bookings but stops there. No call to `auto-create-invoice` follows.
 
-### 2. `src/components/academy/AcademyReportsTab.tsx` — New component
-A full reports view with:
+## Fix: `supabase/functions/finalize-proposals/index.ts`
 
-**Period & timescale controls:**
-- Timescale toggle: Weekly / Monthly
-- Period navigation (arrows + label), like the reference screenshot
-- "Export CSV" button
+After creating all bookings (the loop ending at line 124), add invoice generation logic:
 
-**Summary stat cards (top row):**
-- Total sessions, fill rate %, slots with open spots, players booked — same stats that were on Overview, but now calculated for the selected period
+1. **Fetch the cycle's payment timing** from `cycles.settings` to determine behavior:
+   - `upfront` (default) or missing → generate invoices immediately
+   - `invoice_after_weeks` → skip (handled by `auto-invoice-cycles` cron)
+   - `manual` → skip (trainer invoices manually)
 
-**Overview table (default view):**
-- One row per period (week or month)
-- Columns: Period, Sessions, Booked players, Capacity, Fill rate %, Open spots, Private slots, Revenue (if payment data exists)
-- Sortable columns
+2. **For upfront cycles**, after the booking loop completes:
+   - Re-query all newly created bookings for this cycle (status: confirmed, payment_status: pending)
+   - Group by player (player_id or guest_player_id) — same pattern used in `auto-invoice-cycles`
+   - For each player group, call `auto-create-invoice` with their booking IDs
+   - If the cycle has `split_payment` enabled, pass `splitAmongPlayers` count
+   - Log results but treat invoice failures as non-fatal (bookings are already created)
 
-**"By Trainer" sub-tab:**
-- Same table but grouped/filtered by trainer
-- Trainer selector or one row per trainer per period
-- Shows: Trainer name, Sessions, Players, Fill rate, Hours
+3. **Return invoice stats** in the response: add `invoices_created` count alongside existing `booked` and `bookings_created`
 
-**"By Location" sub-tab:**
-- Same breakdown but per location
-
-**Data fetching:**
-- Query `availability_slots` + `bookings` for the selected date range
-- Join trainer and location names
-- All calculations client-side from the slot data already available in the calendar page
-
-**CSV Export:**
-- Export the currently visible table as CSV to `/mnt/documents/` or trigger browser download via `Blob`
-
-### 3. `src/pages/academy/AcademyCalendar.tsx` — Add tab
-- Add "Reports" tab with `BarChart3` icon after "Trainer Hours"
-- Add `TabsContent` rendering `<AcademyReportsTab />` with academy context (trainers, locations, academy ID)
-- Pass the existing `overviewSlots` fetch function or let the Reports tab do its own date-range query
-
-## Layout (reference: uploaded screenshot)
-
-```text
-┌──────────────────────────────────────────────────┐
-│ Overview | By Trainer | By Location              │
-├──────────────────────────────────────────────────┤
-│ Period [▾]   Timescale [Monthly ▾]   [Export CSV] │
-├──────────────────────────────────────────────────┤
-│ Period   Sessions  Booked  Capacity  Fill%  Open │
-│ Apr 2026    32       98      128      77%    12  │
-│ Mar 2026    28       85      112      76%     8  │
-│ ...                                              │
-└──────────────────────────────────────────────────┘
-```
+## No other files need changes
+The `auto-create-invoice` function already handles everything (deduplication, PDF generation, forwarding). We just need to call it.
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/components/academy/AcademyReportsTab.tsx` | **New** — Full reports view with sub-tabs, period controls, tables, export |
-| `src/components/academy/AcademyCalendarOverview.tsx` | Remove stat cards block |
-| `src/pages/academy/AcademyCalendar.tsx` | Add "Reports" tab trigger + content |
+| `supabase/functions/finalize-proposals/index.ts` | After booking loop, fetch cycle payment timing, generate invoices for upfront cycles by calling `auto-create-invoice` per player |
 
