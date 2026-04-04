@@ -32,7 +32,7 @@ import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/acade
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
-import { BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
+import { BulkCreateSheet, BulkCreateContent } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
