@@ -49,6 +49,8 @@ export function EditSlotDialog({
   onOpenChange,
   slot,
   onSlotUpdated,
+  trainers,
+  locations,
 }: EditSlotDialogProps) {
   const { t } = useTranslation("trainer");
   const { trainerRatingSystem } = useTrainerRatingSystem(slot?.trainer_id || undefined);
