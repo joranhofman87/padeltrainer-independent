@@ -934,6 +934,18 @@ export default function AcademyCalendar() {
             onSlotDeleted={handleSlotsCreated}
           />
 
+          <EditSlotDialog
+            open={editSlotOpen}
+            onOpenChange={(open) => {
+              setEditSlotOpen(open);
+              if (!open) setSlotToEdit(null);
+            }}
+            slot={slotToEdit}
+            onSlotUpdated={handleSlotsCreated}
+            trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+            locations={locations.map(l => ({ id: l.id, name: l.name }))}
+          />
+
           <EditBookingDialog
             open={editBookingOpen}
             onOpenChange={(open) => {
