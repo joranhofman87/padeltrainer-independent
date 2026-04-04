@@ -662,6 +662,10 @@ export default function AcademyCalendar() {
                 <Clock className="h-3.5 w-3.5" />
                 {t("calendar.tabs.hours", "Trainer Hours")}
               </TabsTrigger>
+              <TabsTrigger value="reports" className="text-xs sm:text-sm gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                {t("calendar.tabs.reports", "Reports")}
+              </TabsTrigger>
             </TabsList>
 
             <Button size="sm" className="h-9 gap-1.5" onClick={() => setActiveTab("create" as TabValue)}>
