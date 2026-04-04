@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Users, Calendar, AlertTriangle, TrendingUp, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Users, Calendar, AlertTriangle, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
@@ -46,7 +46,7 @@ interface AcademyCalendarOverviewProps {
   onNavigateNext: () => void;
   onGoToday: () => void;
   dateRangeLabel: string;
-  onNewClick?: () => void;
+  
 }
 
 function CompactSlotCard({ slot, isPast }: { slot: SlotSummary; isPast: boolean }) {
@@ -96,7 +96,7 @@ function CompactSlotCard({ slot, isPast }: { slot: SlotSummary; isPast: boolean 
 
 export default function AcademyCalendarOverview({
   slots, currentDate, onDayClick, trainers = [], locations = [],
-  onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel, onNewClick,
+  onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel,
 }: AcademyCalendarOverviewProps) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
@@ -215,12 +215,6 @@ export default function AcademyCalendarOverview({
             <Button variant="outline" size="sm" className="h-8" onClick={onGoToday}>
               {t('calendar.today', 'Today')}
             </Button>
-            {onNewClick && (
-              <Button size="sm" className="h-8 gap-1.5" onClick={onNewClick}>
-                <Plus className="h-3.5 w-3.5" />
-                {t('calendar.new', 'New')}
-              </Button>
-            )}
           </div>
 
           {(trainers.length > 1 || locations.length > 1) && (
