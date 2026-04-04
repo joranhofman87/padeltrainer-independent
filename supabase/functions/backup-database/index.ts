@@ -20,6 +20,8 @@ const TABLES_TO_BACKUP = [
   "academy_managers",
   "academy_trainers",
   "user_roles",
+  "proposed_assignments",
+  "intake_requests",
 ];
 
 Deno.serve(async (req) => {
