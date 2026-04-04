@@ -249,6 +249,7 @@ export default function AcademyPlayers() {
       const guestPlayerIds = allGuestPlayers.map((g) => g.id);
       const guestLocationMap = new Map<string, Set<string>>();
       const guestCyclusMap = new Map<string, boolean>();
+      const guestTrainerMap = new Map<string, Set<string>>();
       const locationNameMap = new Map<string, string>();
       const now = new Date().toISOString();
 
