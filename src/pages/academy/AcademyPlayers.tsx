@@ -42,6 +42,7 @@ import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { useSearchParams } from 'react-router-dom';
+import { EmailCampaignTab } from '@/components/academy/EmailCampaignTab';
 
 interface TrainerOption {
   id: string;
