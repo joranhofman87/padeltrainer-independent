@@ -40,7 +40,7 @@ interface SlotData {
   location_name: string | null;
 }
 
-export default function AcademyOpenSlots() {
+export default function AcademyOpenSlots({ embedded = false }: { embedded?: boolean }) {
   const { t, i18n } = useTranslation('trainer');
   const { t: tAcademy } = useTranslation('academy');
   const navigate = useNavigate();
