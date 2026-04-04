@@ -1,34 +1,38 @@
 
 
-# Backfill: Replicate Week 1 Slots & Bookings Across Full Cycle
+# Reorganize Invoices Page + Sidebar Navigation
 
-## Summary
-The "Padeltrainingen zomer 2026" cycle has 23 slots in week 1 (Apr 8-14) with 73 confirmed bookings. The cycle runs until Jul 14. We need to clone these slots and bookings for weeks 2-14 (13 additional weeks).
+## Current state
+- Sidebar has a collapsible "Zakelijk" (Business) group with 3 sub-items: Instellingen, Abonnement, Facturen
+- Invoice settings live on the separate AcademySettings page
+- Subscription is a separate page under the Business group
 
-## What the script will do
+## Changes
 
-1. **Clone 23 slots × 13 weeks = ~299 new availability_slots**
-   - Same trainer, location, max_participants, cyclus_id, and all other properties
-   - Shift `start_time` and `end_time` by +7, +14, ... +91 days
-   - Skip if a slot already exists at that exact start_time + trainer (idempotent)
+### 1. AcademySidebar.tsx — Flatten invoices, remove Business group, move subscription
 
-2. **Clone 73 bookings × 13 weeks = ~949 new bookings**
-   - For each original booking, create a matching booking on the corresponding new weekly slot
-   - Same guest_player_id, status (confirmed), payment_status (pending)
+- Remove the entire "Zakelijk" collapsible group
+- Add **Facturen** as a top-level sidebar item (with FileText icon), linking to `/app/academy/invoices`
+- Move **Instellingen** up as a top-level sidebar item (with Settings icon)
+- Move **Abonnement** to the footer area (near ThemeToggle/Logout), as a small CreditCard icon button that navigates to `/app/academy/subscription`
+- Remove `businessOpen` state since the collapsible is gone
 
-3. **Clone 73 proposed_assignments × 13 weeks = ~949 new proposed_assignments**
-   - Same intake_request_id, trainer_id, confidence_score, status (confirmed)
-   - Point to the new slot IDs
+### 2. AcademyInvoices.tsx — Add tabs: Overview + Settings
 
-## Approach
-- Python script using psycopg2 (pg env vars already set)
-- One-time data backfill, fully idempotent
-- No code changes needed — the calendar UI will automatically show all new slots
+- Wrap existing invoice content in a `Tabs` component with two tabs: **Overview** and **Settings** (Instellingen)
+- **Overview tab**: Contains the current stats cards, action buttons, filters, and invoice table (everything that's there now). Remove the "Factuur instellingen" link button since settings are now a tab away
+- **Settings tab**: Render `<AcademyInvoiceSettingsCard>` and `<ExtraCostPresetsCard>` (currently on AcademySettings page)
+- Support `?tab=settings` URL param so the settings link from other places can deep-link
 
-## Data verified
-- Cycle ID: `1e40f602-21eb-4ef1-ae31-f1616897f4c8`
-- End date: `2026-07-14`
-- 23 source slots (Apr 8-14), 73 bookings, 73 assignments
-- All bookings use `guest_player_id` (no `player_id`)
-- All bookings are `confirmed` / `payment_status = pending`
+### 3. AcademySettings.tsx — Remove invoice settings section
+
+- Remove the `<AcademyInvoiceSettingsCard>` and its import from the settings page since it now lives under the Invoices Settings tab
+
+## File summary
+
+| File | Change |
+|------|--------|
+| `src/components/academy/AcademySidebar.tsx` | Remove Business collapsible, add Facturen + Instellingen as top-level items, add Abonnement icon to footer |
+| `src/pages/academy/AcademyInvoices.tsx` | Add Overview/Settings tabs, embed invoice settings card in Settings tab |
+| `src/pages/academy/AcademySettings.tsx` | Remove `AcademyInvoiceSettingsCard` section |
 
