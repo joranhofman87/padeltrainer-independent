@@ -648,7 +648,7 @@ export default function AcademyCalendar() {
               </TabsTrigger>
               <TabsTrigger value="open-spots" className="text-xs sm:text-sm gap-1.5">
                 <Eye className="h-3.5 w-3.5" />
-                {t("calendar.tabs.openSpots", "Open Spots")}
+                {t("calendar.tabs.openSpots", "All Slots")}
               </TabsTrigger>
               <TabsTrigger value="manage" className="text-xs sm:text-sm gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />
