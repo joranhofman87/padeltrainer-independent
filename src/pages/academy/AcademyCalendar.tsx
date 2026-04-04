@@ -670,7 +670,7 @@ export default function AcademyCalendar() {
           {/* ── Tab 2: Open Spots ── */}
           <TabsContent value="open-spots" className="mt-4">
             <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
-              <AcademyOpenSlotsContent />
+              <AcademyOpenSlotsContent embedded={true} />
             </Suspense>
           </TabsContent>
 
