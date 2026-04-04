@@ -729,6 +729,7 @@ function DraggableSlotCard({
               onMoveSlot={onMoveSlot}
               onDeleteSlot={onDeleteSlot}
               onPlayerClick={onPlayerClick}
+              onUnassignPlayer={onUnassignPlayer}
             />
           </div>
           <div className="flex items-center gap-1">
