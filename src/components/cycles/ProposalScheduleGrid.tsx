@@ -836,6 +836,14 @@ function DraggableSlotCard({
           </div>
         )}
 
+        {/* Level spread warning */}
+        {ratingSpread != null && ratingSpread > 2.0 && (
+          <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            <span>{t('proposals.levelSpread', { defaultValue: 'Level spread: {{spread}} pts', spread: ratingSpread.toFixed(1) })}</span>
+          </div>
+        )}
+
         {/* Player chips */}
         {currentP > 0 && (
           <div className="flex flex-col gap-1">
@@ -848,6 +856,8 @@ function DraggableSlotCard({
                 slotMinRating={slot.min_rating}
                 slotMaxRating={slot.max_rating}
                 searchQuery={searchQuery}
+                allPlayers={allPlayers}
+                slotDay={slotDayName}
               />
             ))}
           </div>
