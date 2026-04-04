@@ -556,21 +556,18 @@ export function BulkCreateContent({
     };
   };
 
-  // Sync first slot when opened via cell click with default date/time
+  // Sync first slot when opened/activated with default date/time
   useEffect(() => {
-    if (open && prefillFromCyclusId) {
+    if (isActive && prefillFromCyclusId) {
       // Prefill mode — handled by separate effect below
       return;
     }
-    if (open && defaultDate) {
+    if (isActive && defaultDate) {
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
       setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId, academyId)]);
     }
-    if (!open) {
-      setBulkSlots([]);
-    }
-  }, [open, defaultDate, defaultTime]);
+  }, [isActive, defaultDate, defaultTime]);
 
   // Prefill from existing cyclus (duplicate mode)
   useEffect(() => {
