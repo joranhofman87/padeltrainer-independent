@@ -1,29 +1,45 @@
 
 
-# Fix: Missing `is_public` in Calendar Query
+# Move Edit/Delete Buttons Above the Cards
 
-## Root Cause
-During the `is_marked_full` → `is_public` migration, the `is_public` field was **not added** to the `.select()` query in `AcademyCalendar.tsx` (line 255). The query fetches slot data but omits `is_public`, so `slot.is_public` is always `undefined`. This causes:
+## Problem
+The Edit and Delete buttons sit in the top header bar next to the back arrow, making them easy to miss. The user wants them placed prominently above the detail cards.
 
-- **Overview tab**: `getGroupStatus` treats `undefined` as falsy → `!s.is_public` is always `true` → all slots appear "full"/hidden
-- **Manage tab (DayGrid)**: `!slot.is_public` is `true` → every slot is marked as "isFull", hiding them or showing them incorrectly
+## Change
 
-## Fix
+### `src/pages/academy/AcademySlotDetail.tsx`
 
-### `src/pages/academy/AcademyCalendar.tsx` — Add `is_public` to select query
+1. **Remove** the Edit/Delete buttons from the header bar (lines 508-523)
+2. **Add** them as a row between the header and the cards grid (inside `<main>`, above the `grid` div around line 527-528):
 
-Line 255, add `is_public` to the select string:
-
+```tsx
+<main className="container mx-auto px-4 py-6">
+  {!isEditing && (
+    <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
+      <Button variant="outline" className="gap-1.5" onClick={startEditing}>
+        <Pencil className="h-4 w-4" />
+        {tTrainer('calendar.editSlot', 'Edit')}
+      </Button>
+      <Button
+        variant="outline"
+        className="gap-1.5 text-destructive hover:text-destructive"
+        onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  )}
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
+    ...
+  </div>
+</main>
 ```
-id, trainer_id, start_time, end_time, max_participants,
-is_public, location_id, cyclus_id, cyclus_name, ...
-```
 
-One-line fix. All downstream mapping (line 340) and overview/grid components already reference `is_public` correctly.
+This places the buttons right-aligned above the Details and Players cards, making them immediately visible.
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyCalendar.tsx` | Add `is_public` to the `.select()` query string (line 255) |
+| `src/pages/academy/AcademySlotDetail.tsx` | Move Edit/Delete buttons from header to above the card grid |
 
