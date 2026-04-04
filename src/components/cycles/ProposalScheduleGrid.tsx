@@ -87,7 +87,7 @@ function getDurationMinutes(startIso: string, endIso: string): number {
 
 function getAvgConfidence(slot: SlotWithOccupancy): number {
   if (slot.current_assignments.length === 0) return 0;
-  const sum = slot.current_assignments.reduce((s, a) => s + (a.confidence_score || 0), 0);
+  const sum = slot.current_assignments.reduce((s, a) => s + (a.confidence_score ?? computeManualScore(a, slot, undefined)), 0);
   return Math.round(sum / slot.current_assignments.length);
 }
 
@@ -96,6 +96,39 @@ function getConfidenceBorder(score: number): string {
   if (score >= 60) return 'border-l-amber-500 dark:border-l-amber-600';
   if (score > 0) return 'border-l-red-500 dark:border-l-red-600';
   return 'border-l-border';
+}
+
+/** Compute a basic match score for manually assigned players (confidence_score is null) */
+function computeManualScore(
+  assignment: Assignment,
+  slot: SlotWithOccupancy,
+  playerInfo?: UnplacedPlayer,
+): number {
+  let score = 0;
+  // Day match: 50 pts
+  if (playerInfo) {
+    const slotDay = format(parseISO(slot.start_time), 'EEEE', { locale: enUS }).toLowerCase();
+    const dayOk = !playerInfo.preferred_days?.length || playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDay);
+    if (dayOk) score += 50;
+  } else {
+    score += 25; // Unknown → neutral
+  }
+  // Rating fit: 50 pts
+  if (assignment.player_rating != null && (slot.min_rating != null || slot.max_rating != null)) {
+    const inRange = (slot.min_rating == null || assignment.player_rating >= slot.min_rating)
+      && (slot.max_rating == null || assignment.player_rating <= slot.max_rating);
+    if (inRange) score += 50;
+  } else {
+    score += 25; // No range configured → neutral
+  }
+  return score;
+}
+
+/** Calculate the rating spread within a slot's assignments */
+function getRatingSpread(assignments: Assignment[]): number | null {
+  const ratings = assignments.map(a => a.player_rating).filter((r): r is number => r != null);
+  if (ratings.length < 2) return null;
+  return Math.max(...ratings) - Math.min(...ratings);
 }
 
 function getOccupancyColor(current: number, max: number): string {
@@ -160,6 +193,7 @@ function isRatingOutOfRange(
 
 function DraggablePlayerChip({
   assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating, searchQuery,
+  allPlayers, slotDay,
 }: {
   assignment: Assignment;
   slotId: string;
@@ -167,6 +201,8 @@ function DraggablePlayerChip({
   slotMinRating?: number | null;
   slotMaxRating?: number | null;
   searchQuery?: string;
+  allPlayers?: UnplacedPlayer[];
+  slotDay?: string;
 }) {
   const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -174,15 +210,23 @@ function DraggablePlayerChip({
     data: { type: 'player', assignmentId: assignment.id, sourceSlotId: slotId, assignment },
   });
 
-  const confScore = assignment.confidence_score || 0;
-  const confClass = confScore >= 80
+  const playerInfo = allPlayers?.find(p => p.id === assignment.intake_request_id);
+  const confScore = assignment.confidence_score;
+  const isManual = confScore == null;
+  const displayScore = confScore ?? (playerInfo ? computeManualScore(assignment, { start_time: '', end_time: '', min_rating: slotMinRating ?? null, max_rating: slotMaxRating ?? null } as any, playerInfo) : 0);
+  const confClass = displayScore >= 80
     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-    : confScore >= 60
+    : displayScore >= 60
       ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
       : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
 
   const outOfRange = isRatingOutOfRange(assignment.player_rating, slotMinRating, slotMaxRating);
   const isSearchMatch = searchQuery && searchQuery.trim().length > 0 && assignment.player_name.toLowerCase().includes(searchQuery.toLowerCase());
+
+  // Day availability warning
+  const dayMismatch = slotDay && playerInfo?.preferred_days?.length
+    ? !playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDay.toLowerCase())
+    : false;
 
   return (
     <div
@@ -227,14 +271,26 @@ function DraggablePlayerChip({
             </TooltipContent>
           </Tooltip>
         )}
+        {dayMismatch && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Clock className="h-3 w-3 text-amber-500 shrink-0" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs max-w-[200px]">
+              {t('proposals.dayMismatch', {
+                defaultValue: 'Player didn\'t indicate availability on this day',
+              })}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {assignment.sessions_per_week > 1 && (
           <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0 border-primary/40 text-primary">
             {assignment.sessions_per_week}×
           </Badge>
         )}
-        {confScore > 0 && (
-          <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', confClass)}>
-            {confScore}%
+        {displayScore > 0 && (
+          <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', confClass, isManual && 'border border-dashed border-current/30')}>
+            {displayScore}%{isManual ? '~' : ''}
           </Badge>
         )}
       </button>
@@ -680,6 +736,7 @@ function DraggableSlotCard({
   onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
   onUnassignPlayer?: (assignmentId: string) => void;
 }) {
+  const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `slot-drag-${slot.id}`,
     data: { type: 'slot', slotId: slot.id, slot },
@@ -692,6 +749,12 @@ function DraggableSlotCard({
   const avgConf = getAvgConfidence(slot);
   const isFull = currentP >= maxP;
   const isEmpty = currentP === 0;
+
+  const slotDayName = useMemo(() => {
+    try { return format(parseISO(slot.start_time), 'EEEE', { locale: enUS }); } catch { return ''; }
+  }, [slot.start_time]);
+
+  const ratingSpread = useMemo(() => getRatingSpread(slot.current_assignments), [slot.current_assignments]);
 
   const currentAssignmentIds = useMemo(
     () => new Set(slot.current_assignments.map(a => a.intake_request_id)),
@@ -773,6 +836,14 @@ function DraggableSlotCard({
           </div>
         )}
 
+        {/* Level spread warning */}
+        {ratingSpread != null && ratingSpread > 2.0 && (
+          <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            <span>{t('proposals.levelSpread', { defaultValue: 'Level spread: {{spread}} pts', spread: ratingSpread.toFixed(1) })}</span>
+          </div>
+        )}
+
         {/* Player chips */}
         {currentP > 0 && (
           <div className="flex flex-col gap-1">
@@ -785,6 +856,8 @@ function DraggableSlotCard({
                 slotMinRating={slot.min_rating}
                 slotMaxRating={slot.max_rating}
                 searchQuery={searchQuery}
+                allPlayers={allPlayers}
+                slotDay={slotDayName}
               />
             ))}
           </div>
