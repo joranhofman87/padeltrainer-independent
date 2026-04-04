@@ -331,7 +331,7 @@ export function EditSlotDialog({
                   <SelectValue placeholder={t("calendar.selectLocation", "Select location")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{t("calendar.noLocation", "No location")}</SelectItem>
+                  <SelectItem value="none">{t("calendar.noLocation", "No location")}</SelectItem>
                   {locations.map(loc => (
                     <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                   ))}
