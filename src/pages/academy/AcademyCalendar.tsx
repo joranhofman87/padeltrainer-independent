@@ -529,6 +529,11 @@ export default function AcademyCalendar() {
     setDeleteSlotOpen(true);
   };
 
+  const handleEditSlot = (slot: SlotWithBookings) => {
+    setSlotToEdit(slot);
+    setEditSlotOpen(true);
+  };
+
   const handleEditBooking = async (bookingId: string) => {
     try {
       const { data, error } = await supabase
