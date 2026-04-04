@@ -698,13 +698,7 @@ export default function AcademyCalendar() {
               onNavigateNext={navigateNext}
               onGoToday={goToToday}
               dateRangeLabel={getDateRangeLabel()}
-              onNewClick={() => {
-                setDefaultSlotDate(undefined);
-                setDefaultSlotTime(undefined);
-                const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
-                setSelectedSlotTrainerId(trainerToUse);
-                setBulkCreateOpen(true);
-              }}
+              onNewClick={() => setActiveTab("create")}
             />
           </TabsContent>
 
