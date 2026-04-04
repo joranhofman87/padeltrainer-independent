@@ -403,7 +403,7 @@ function DroppableSidebarPool({ children }: { children: React.ReactNode }) {
 export default function AcademyDayGrid({
   slots, currentDate, allKnownPlayers, trainers,
   onMovePlayer, onRemovePlayer, onAddPlayerToSlot, onEditBooking,
-  onDeleteSlot, onBookForPlayer, onCellClick,
+  onEditSlot, onDeleteSlot, onBookForPlayer, onCellClick,
 }: AcademyDayGridProps) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
