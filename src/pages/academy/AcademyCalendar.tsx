@@ -37,6 +37,7 @@ import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 import { EditSlotDialog } from "@/components/trainer/EditSlotDialog";
+import { SlotDetailDialog } from "@/components/academy/SlotDetailDialog";
 
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
@@ -142,6 +143,8 @@ export default function AcademyCalendar() {
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
+  const [slotDetailOpen, setSlotDetailOpen] = useState(false);
+  const [slotDetailId, setSlotDetailId] = useState<string | null>(null);
 
   const handleCellClick = (day: Date, hour: number) => {
     setDefaultSlotDate(day);
@@ -538,8 +541,8 @@ export default function AcademyCalendar() {
       const { data, error } = await supabase
         .from("bookings")
         .select(`
-          id, status, notes, payment_status, payment_amount, guest_player_id,
-          availability_slots (id, start_time, end_time),
+          id, status, notes, payment_status, payment_amount, guest_player_id, paid_externally,
+          availability_slots (id, start_time, end_time, price_per_session, cyclus_name),
           profiles:player_id (id, full_name, email)
         `)
         .eq("id", bookingId)
@@ -616,6 +619,11 @@ export default function AcademyCalendar() {
     setManageView("day");
   };
 
+  const handleSlotClick = (slotId: string) => {
+    setSlotDetailId(slotId);
+    setSlotDetailOpen(true);
+  };
+
   return (
     <>
       {/* Sub-page Header */}
@@ -687,20 +695,20 @@ export default function AcademyCalendar() {
               slots={overviewSlots}
               currentDate={currentDate}
               onDayClick={handleOverviewDayClick}
+              onSlotClick={handleSlotClick}
               trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
               locations={locations.map(l => ({ id: l.id, name: l.name }))}
               onNavigatePrevious={navigatePrevious}
               onNavigateNext={navigateNext}
               onGoToday={goToToday}
               dateRangeLabel={getDateRangeLabel()}
-              
             />
           </TabsContent>
 
           {/* ── Tab 2: Open Spots ── */}
           <TabsContent value="open-spots" className="mt-4">
             <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
-              <AcademyOpenSlotsContent embedded={true} />
+              <AcademyOpenSlotsContent embedded={true} onSlotClick={handleSlotClick} />
             </Suspense>
           </TabsContent>
 
@@ -920,6 +928,17 @@ export default function AcademyCalendar() {
             booking={bookingToEdit}
             trainerId={getTrainerIdForSlot()}
             onBookingUpdated={handleSlotsCreated}
+          />
+
+          <SlotDetailDialog
+            open={slotDetailOpen}
+            onOpenChange={setSlotDetailOpen}
+            slotId={slotDetailId}
+            onEditSlot={handleEditSlot}
+            onDeleteSlot={handleDeleteSlot}
+            onBookForPlayer={handleBookForPlayer}
+            onEditBooking={handleEditBooking}
+            onRefresh={handleSlotsCreated}
           />
         </>
       )}

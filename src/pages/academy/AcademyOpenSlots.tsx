@@ -40,7 +40,7 @@ interface SlotData {
   location_name: string | null;
 }
 
-export default function AcademyOpenSlots({ embedded = false }: { embedded?: boolean }) {
+export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { embedded?: boolean; onSlotClick?: (slotId: string) => void }) {
   const { t, i18n } = useTranslation('trainer');
   const { t: tAcademy } = useTranslation('academy');
   const navigate = useNavigate();
@@ -381,7 +381,8 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
                               {cyclus.slots.map(slot => (
                                 <div
                                   key={slot.id}
-                                  className="p-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                                  className="p-4 flex items-center justify-between hover:bg-accent/30 transition-colors cursor-pointer"
+                                  onClick={() => onSlotClick?.(slot.id)}
                                 >
                                   <div className="flex-1">
                                     <p className="font-medium">{formatShortTime(slot.start_time, slot.end_time)}</p>
@@ -427,7 +428,7 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
                 </div>
                 <div className="space-y-3">
                   {individualSlots.map(slot => (
-                    <Card key={slot.id}>
+                    <Card key={slot.id} className="cursor-pointer" onClick={() => onSlotClick?.(slot.id)}>
                       <CardContent className="p-4 flex items-center justify-between">
                         <div className="flex-1">
                           <p className="font-medium">{formatShortTime(slot.start_time, slot.end_time)}</p>

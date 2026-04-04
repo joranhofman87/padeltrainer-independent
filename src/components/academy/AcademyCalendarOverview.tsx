@@ -17,7 +17,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Users, Calendar, AlertTriangle, TrendingUp, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { Users, Calendar, AlertTriangle, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
@@ -43,6 +43,7 @@ interface AcademyCalendarOverviewProps {
   slots: SlotSummary[];
   currentDate: Date;
   onDayClick?: (date: Date) => void;
+  onSlotClick?: (slotId: string) => void;
   trainers?: TrainerOption[];
   locations?: LocationOption[];
   onNavigatePrevious: () => void;
@@ -96,14 +97,14 @@ function TrainerDayBlock({
   trainerAvatar,
   slots,
   isPast,
-  onClick,
+  onSlotClick,
   defaultOpen,
 }: {
   trainerName: string;
   trainerAvatar?: string | null;
   slots: SlotSummary[];
   isPast: boolean;
-  onClick?: () => void;
+  onSlotClick?: (slotId: string) => void;
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -150,9 +151,10 @@ function TrainerDayBlock({
               <button
                 key={slot.id}
                 className="w-full flex items-center justify-between gap-1 py-0.5 text-left hover:bg-accent/30 rounded px-1 transition-colors"
-                onClick={onClick}
+                onClick={() => onSlotClick?.(slot.id)}
               >
-                <span className="text-[11px] text-muted-foreground tabular-nums">
+                <span className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-1">
+                  {slot.is_marked_full && <Lock className="h-2.5 w-2.5 text-amber-500" />}
                   {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
                 </span>
                 <OccupancyDots booked={slot.booked_count} max={slot.max_participants} />
@@ -167,7 +169,7 @@ function TrainerDayBlock({
 
 /* ── Main Component ── */
 export default function AcademyCalendarOverview({
-  slots, currentDate, onDayClick, trainers = [], locations = [],
+  slots, currentDate, onDayClick, onSlotClick, trainers = [], locations = [],
   onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel,
 }: AcademyCalendarOverviewProps) {
   const { t, i18n } = useTranslation('academy');
@@ -375,7 +377,7 @@ export default function AcademyCalendarOverview({
                             trainerAvatar={trainerSlots[0]?.trainer_avatar}
                             slots={trainerSlots}
                             isPast={trainerSlots.every(s => isBefore(parseISO(s.end_time), now))}
-                            onClick={() => onDayClick?.(day)}
+                            onSlotClick={onSlotClick}
                             defaultOpen={trainerCount <= 3}
                           />
                         ))}
@@ -390,7 +392,7 @@ export default function AcademyCalendarOverview({
             </ScrollArea>
 
             {/* Legend */}
-            <div className="flex items-center gap-4 mt-4 pt-3 border-t text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-4 mt-4 pt-3 border-t text-[10px] text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 {t('calendar.overview.fullyBooked', 'Fully booked')}
@@ -402,6 +404,10 @@ export default function AcademyCalendarOverview({
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-muted-foreground/30" />
                 {t('calendar.overview.noBookings', 'No bookings')}
+              </span>
+              <span className="flex items-center gap-1">
+                <Lock className="h-2.5 w-2.5 text-amber-500" />
+                {t('calendar.overview.private', 'Private')}
               </span>
             </div>
           </CardContent>
