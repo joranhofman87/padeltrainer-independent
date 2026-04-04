@@ -61,6 +61,7 @@ type UnifiedPlayer = {
   created_at: string;
   type: 'guest' | 'registered';
   trainer_id?: string;
+  trainer_ids?: string[];
   trainer_name?: string;
   originalGuest?: GuestPlayer;
   location_names?: string[];
