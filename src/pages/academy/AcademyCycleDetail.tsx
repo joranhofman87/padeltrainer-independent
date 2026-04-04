@@ -217,7 +217,7 @@ export default function AcademyCycleDetail() {
     if (statusFilter === 'skipped') {
       filtered = filtered.filter(r => r.status === 'new' && r.skip_reason);
     } else if (statusFilter === 'confirmed') {
-      filtered = filtered.filter(r => r.status === 'confirmed' || r.status === 'booked');
+      filtered = filtered.filter(r => r.status === 'confirmed' || (r.status as string) === 'booked');
     } else if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
