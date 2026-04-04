@@ -736,6 +736,7 @@ function DraggableSlotCard({
   onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
   onUnassignPlayer?: (assignmentId: string) => void;
 }) {
+  const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `slot-drag-${slot.id}`,
     data: { type: 'slot', slotId: slot.id, slot },
@@ -748,6 +749,12 @@ function DraggableSlotCard({
   const avgConf = getAvgConfidence(slot);
   const isFull = currentP >= maxP;
   const isEmpty = currentP === 0;
+
+  const slotDayName = useMemo(() => {
+    try { return format(parseISO(slot.start_time), 'EEEE', { locale: enUS }); } catch { return ''; }
+  }, [slot.start_time]);
+
+  const ratingSpread = useMemo(() => getRatingSpread(slot.current_assignments), [slot.current_assignments]);
 
   const currentAssignmentIds = useMemo(
     () => new Set(slot.current_assignments.map(a => a.intake_request_id)),
