@@ -1646,6 +1646,7 @@ export default function ProposalScheduleGrid({
                                 searchQuery={searchQuery}
                                 allPlayers={allPlayers}
                                 onAssignPlayer={onAssignPlayer}
+                                onUnassignPlayer={onUnassignPlayer}
                               />
                             ) : null}
                           </DroppableCell>
