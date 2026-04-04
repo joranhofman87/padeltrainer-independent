@@ -855,6 +855,17 @@ export default function AcademyCalendar() {
               currentDate={currentDate}
             />
           </TabsContent>
+
+          {/* ── Tab 6: Reports ── */}
+          <TabsContent value="reports" className="mt-4">
+            {activeAcademy && (
+              <AcademyReportsTab
+                academyId={activeAcademy.id}
+                trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+                locations={locations.map(l => ({ id: l.id, name: l.name }))}
+              />
+            )}
+          </TabsContent>
         </Tabs>
       </main>
       
