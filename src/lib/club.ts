@@ -546,7 +546,6 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
       trainer_id,
       start_time,
       end_time,
-      is_marked_full,
       max_participants,
       cyclus_name,
       rating_system,

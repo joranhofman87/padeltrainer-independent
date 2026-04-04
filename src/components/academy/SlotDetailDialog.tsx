@@ -30,7 +30,7 @@ interface SlotDetail {
   cyclus_id: string | null;
   cyclus_name: string | null;
   max_participants: number;
-  is_marked_full: boolean;
+  : boolean;
   rating_system: string | null;
   min_rating: number | null;
   max_rating: number | null;
@@ -74,8 +74,7 @@ export function SlotDetailDialog({
       const { data: slot, error } = await supabase
         .from('availability_slots')
         .select(`
-          id, start_time, end_time, trainer_id, max_participants,
-          is_marked_full, cyclus_id, cyclus_name, location_id,
+          id, start_time, end_time, trainer_id, max_participants, cyclus_id, cyclus_name, location_id,
           rating_system, min_rating, max_rating, price_per_session,
           locations:location_id(name)
         `)
@@ -141,9 +140,7 @@ export function SlotDetailDialog({
         location_name: (slot.locations as any)?.name || null,
         cyclus_id: slot.cyclus_id,
         cyclus_name: slot.cyclus_name,
-        max_participants: slot.max_participants || 4,
-        is_marked_full: slot.is_marked_full,
-        rating_system: slot.rating_system,
+        max_participants: slot.max_participants || 4: slot.rating_system: slot.rating_system,
         min_rating: slot.min_rating,
         max_rating: slot.max_rating,
         price_per_session: slot.price_per_session,
@@ -158,16 +155,16 @@ export function SlotDetailDialog({
 
   const togglePrivate = async () => {
     if (!detail) return;
-    const newVal = !detail.is_marked_full;
+    const newVal = !detail.;
     const { error } = await supabase
       .from('availability_slots')
-      .update({ is_marked_full: newVal })
+      .update({ : newVal })
       .eq('id', detail.id);
     if (error) {
       logger.error('Error toggling private', error, { slotId: detail.id });
       return;
     }
-    setDetail({ ...detail, is_marked_full: newVal });
+    setDetail({ ...detail: newVal });
     toast({ description: newVal ? tTrainer('calendar.slotMarkedFull') : tTrainer('calendar.slotMarkedOpen') });
     onRefresh();
   };
@@ -183,9 +180,7 @@ export function SlotDetailDialog({
     is_past: new Date(detail!.start_time) < new Date(),
     cyclus_id: detail!.cyclus_id,
     cyclus_name: detail!.cyclus_name,
-    booked_players: detail!.booked_players,
-    is_marked_full: detail!.is_marked_full,
-    location_name: detail!.location_name,
+    booked_players: detail!.booked_players: detail!.location_name: detail!.location_name,
     trainer_id: detail!.trainer_id,
     trainer_name: detail!.trainer_name,
     trainer_avatar: detail!.trainer_avatar,
@@ -244,7 +239,7 @@ export function SlotDetailDialog({
               {detail.cyclus_name && (
                 <Badge variant="secondary">{detail.cyclus_name}</Badge>
               )}
-              {detail.is_marked_full && (
+              {detail. && (
                 <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
                   <Lock className="h-3 w-3" />
                   {t('calendar.private', 'Private')}
@@ -300,7 +295,7 @@ export function SlotDetailDialog({
                 <Lock className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm">{t('calendar.markPrivate', 'Mark as private')}</span>
               </div>
-              <Switch checked={detail.is_marked_full} onCheckedChange={togglePrivate} />
+              <Switch checked={detail.} onCheckedChange={togglePrivate} />
             </div>
 
             {/* Action buttons */}

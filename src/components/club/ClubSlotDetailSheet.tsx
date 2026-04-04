@@ -219,7 +219,7 @@ export function ClubSlotDetailSheet({
                 {slot.pending_bookings} {t("calendar.pendingApproval", "pending")}
               </Badge>
             )}
-            {slot.is_marked_full && (
+            {slot. && (
               <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30">
                 {t("calendar.private", "Private")}
               </Badge>

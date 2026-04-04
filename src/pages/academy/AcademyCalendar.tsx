@@ -56,7 +56,7 @@ interface AcademySlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  is_marked_full: boolean;
+  : boolean;
   location_id: string | null;
   max_participants: number;
   cyclus_id: string | null;
@@ -252,7 +252,7 @@ export default function AcademyCalendar() {
     const { data: slotsData, error } = await supabase
       .from("availability_slots")
       .select(`
-        id, trainer_id, start_time, end_time, max_participants, is_marked_full,
+        id, trainer_id, start_time, end_time, max_participants,
         location_id, cyclus_id, cyclus_name, rating_system, min_rating, max_rating,
         price_per_session, locations(name)
       `)
@@ -336,9 +336,7 @@ export default function AcademyCalendar() {
         id: slot.id,
         trainer_id: slot.trainer_id,
         start_time: slot.start_time,
-        end_time: slot.end_time,
-        is_marked_full: slot.is_marked_full,
-        location_id: slot.location_id,
+        end_time: slot.end_time: slot.location_id: slot.location_id,
         max_participants: slot.max_participants || 4,
         cyclus_id: slot.cyclus_id || null,
         cyclus_name: slot.cyclus_name || null,
@@ -420,9 +418,7 @@ export default function AcademyCalendar() {
       is_past: new Date(slot.start_time) < now,
       cyclus_id: slot.cyclus_id,
       cyclus_name: slot.cyclus_name,
-      booked_players: slot.booked_players,
-      is_marked_full: slot.is_marked_full,
-      location_name: slot.location_name,
+      booked_players: slot.booked_players: slot.location_name: slot.location_name,
       trainer_id: slot.trainer_id,
       trainer_name: slot.trainer_name,
       trainer_avatar: slot.trainer_avatar,
@@ -444,9 +440,7 @@ export default function AcademyCalendar() {
       max_participants: s.max_participants,
       booked_count: s.active_bookings + s.pending_bookings,
       location_name: s.location_name,
-      location_id: s.location_id,
-      is_marked_full: s.is_marked_full,
-    }));
+      location_id: s.location_id: s.}));
   }, [slots]);
 
   // Trainer hours data from month slots
@@ -563,7 +557,7 @@ export default function AcademyCalendar() {
         if (slot?.cyclus_id) {
           const { error } = await supabase
             .from("availability_slots")
-            .update({ is_marked_full: value })
+            .update({ : value })
             .eq("cyclus_id", slot.cyclus_id)
             .gte("start_time", new Date().toISOString());
           if (error) throw error;
@@ -572,7 +566,7 @@ export default function AcademyCalendar() {
       } else {
         const { error } = await supabase
           .from("availability_slots")
-          .update({ is_marked_full: value })
+          .update({ : value })
           .eq("id", slotId);
         if (error) throw error;
         toast({ title: value ? tTrainer("calendar.slotMarkedFull") : tTrainer("calendar.slotMarkedOpen") });

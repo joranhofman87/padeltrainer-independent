@@ -556,8 +556,7 @@ export default function AcademyCycleDetail() {
         max_rating: null,
         rating_system: null,
         cyclus_name: cycle?.name ?? null,
-        is_blocked: false,
-        is_marked_full: false,
+        is_blocked: false: false,
         current_assignments: [],
       };
       setScheduleSlots(prev => [...prev, newSlot]);
@@ -576,16 +575,16 @@ export default function AcademyCycleDetail() {
     },
     onToggleSlotPrivacy: async (slotId: string, value: boolean) => {
       // Optimistic update
-      setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_marked_full: value } : s));
+      setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s: value } : s));
       try {
         const { error } = await supabase
           .from('availability_slots')
-          .update({ is_marked_full: value })
+          .update({ : value })
           .eq('id', slotId);
         if (error) throw error;
       } catch (error: any) {
         // Revert
-        setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_marked_full: !value } : s));
+        setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s: !value } : s));
         toast.error(error.message);
       }
     },

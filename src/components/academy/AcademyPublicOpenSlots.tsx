@@ -81,7 +81,6 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           cyclus_id,
           cyclus_name,
           court_type,
-          is_marked_full,
           is_public,
           price_per_session,
           total_price,
@@ -94,7 +93,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           locations:location_id(name)
         `)
         .or(orFilter)
-        .eq('is_marked_full', false)
+        .eq('', false)
         .eq('is_public', true)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })
