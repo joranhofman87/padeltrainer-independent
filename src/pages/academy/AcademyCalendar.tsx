@@ -619,6 +619,11 @@ export default function AcademyCalendar() {
     setManageView("day");
   };
 
+  const handleSlotClick = (slotId: string) => {
+    setSlotDetailId(slotId);
+    setSlotDetailOpen(true);
+  };
+
   return (
     <>
       {/* Sub-page Header */}
