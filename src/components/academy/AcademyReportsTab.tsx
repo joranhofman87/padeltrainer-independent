@@ -5,7 +5,7 @@ import {
   addWeeks, subWeeks, addMonths, subMonths, parseISO, differenceInMinutes,
 } from 'date-fns';
 import { nl, es, de, fr, enUS, type Locale } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle, CalendarX2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -131,9 +131,10 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     const totalBooked = slots.reduce((s, sl) => s + sl.booking_count, 0);
     const fillRate = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0;
     const openSpots = slots.filter(s => s.is_public && s.booking_count < s.max_participants).length;
-    const totalHours = slots.reduce((sum, s) => sum + differenceInMinutes(parseISO(s.end_time), parseISO(s.start_time)), 0) / 60;
+    const emptySlots = slots.filter(s => s.booking_count === 0).length;
+    const totalHours = slots.filter(s => s.booking_count > 0).reduce((sum, s) => sum + differenceInMinutes(parseISO(s.end_time), parseISO(s.start_time)), 0) / 60;
     const privateSlots = slots.filter(s => !s.is_public).length;
-    return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, totalHours, privateSlots };
+    return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, emptySlots, totalHours, privateSlots };
   }, [slots]);
 
   // By trainer
@@ -148,10 +149,12 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       const trainer = trainers.find(t => t.id === tid);
       const cap = tSlots.reduce((s, sl) => s + sl.max_participants, 0);
       const booked = tSlots.reduce((s, sl) => s + sl.booking_count, 0);
-      const hours = tSlots.reduce((s, sl) => s + differenceInMinutes(parseISO(sl.end_time), parseISO(sl.start_time)), 0) / 60;
+      const emptySlots = tSlots.filter(s => s.booking_count === 0).length;
+      const hours = tSlots.filter(s => s.booking_count > 0).reduce((s, sl) => s + differenceInMinutes(parseISO(sl.end_time), parseISO(sl.start_time)), 0) / 60;
       return {
         name: trainer?.name || 'Unknown',
         sessions: tSlots.length,
+        emptySlots,
         booked,
         capacity: cap,
         fillRate: cap > 0 ? Math.round((booked / cap) * 100) : 0,
@@ -173,10 +176,12 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       const loc = locations.find(l => l.id === lid);
       const cap = lSlots.reduce((s, sl) => s + sl.max_participants, 0);
       const booked = lSlots.reduce((s, sl) => s + sl.booking_count, 0);
-      const hours = lSlots.reduce((s, sl) => s + differenceInMinutes(parseISO(sl.end_time), parseISO(sl.start_time)), 0) / 60;
+      const emptySlots = lSlots.filter(s => s.booking_count === 0).length;
+      const hours = lSlots.filter(s => s.booking_count > 0).reduce((s, sl) => s + differenceInMinutes(parseISO(sl.end_time), parseISO(sl.start_time)), 0) / 60;
       return {
         name: loc?.name || t('reports.noLocation', 'No location'),
         sessions: lSlots.length,
+        emptySlots,
         booked,
         capacity: cap,
         fillRate: cap > 0 ? Math.round((booked / cap) * 100) : 0,
@@ -191,9 +196,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     let csv = '';
 
     if (rows) {
-      csv = 'Name,Sessions,Booked,Capacity,Fill Rate %,Hours\n';
+      csv = 'Name,Sessions,Empty,Booked,Capacity,Fill Rate %,Hours\n';
       rows.forEach(r => {
-        csv += `"${r.name}",${r.sessions},${r.booked},${r.capacity},${r.fillRate},${r.hours}\n`;
+        csv += `"${r.name}",${r.sessions},${r.emptySlots},${r.booked},${r.capacity},${r.fillRate},${r.hours}\n`;
       });
     } else {
       csv = 'Slot ID,Start,End,Trainer,Location,Booked,Capacity,Private\n';
@@ -255,7 +260,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
@@ -264,6 +269,17 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
             <div>
               <p className="text-2xl font-bold">{isLoading ? '—' : stats.totalSessions}</p>
               <p className="text-xs text-muted-foreground">{t('reports.sessions', 'Sessions')}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-destructive/10">
+              <CalendarX2 className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{isLoading ? '—' : stats.emptySlots}</p>
+              <p className="text-xs text-muted-foreground">{t('reports.emptySlots', 'Empty slots')}</p>
             </div>
           </CardContent>
         </Card>
@@ -387,6 +403,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                     <TableRow>
                       <TableHead>{t('reports.trainer', 'Trainer')}</TableHead>
                       <TableHead className="text-right">{t('reports.sessions', 'Sessions')}</TableHead>
+                      <TableHead className="text-right">{t('reports.empty', 'Empty')}</TableHead>
                       <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
                       <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
                       <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
@@ -398,6 +415,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                       <TableRow key={r.name}>
                         <TableCell className="text-sm font-medium">{r.name}</TableCell>
                         <TableCell className="text-right text-sm">{r.sessions}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.emptySlots > 0 ? 'text-destructive' : 'text-muted-foreground'}>{r.emptySlots}</span>
+                        </TableCell>
                         <TableCell className="text-right text-sm">{r.booked}</TableCell>
                         <TableCell className="text-right text-sm">{r.capacity}</TableCell>
                         <TableCell className="text-right text-sm">
@@ -433,6 +453,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                     <TableRow>
                       <TableHead>{t('reports.location', 'Location')}</TableHead>
                       <TableHead className="text-right">{t('reports.sessions', 'Sessions')}</TableHead>
+                      <TableHead className="text-right">{t('reports.empty', 'Empty')}</TableHead>
                       <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
                       <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
                       <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
@@ -444,6 +465,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                       <TableRow key={r.name}>
                         <TableCell className="text-sm font-medium">{r.name}</TableCell>
                         <TableCell className="text-right text-sm">{r.sessions}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.emptySlots > 0 ? 'text-destructive' : 'text-muted-foreground'}>{r.emptySlots}</span>
+                        </TableCell>
                         <TableCell className="text-right text-sm">{r.booked}</TableCell>
                         <TableCell className="text-right text-sm">{r.capacity}</TableCell>
                         <TableCell className="text-right text-sm">
