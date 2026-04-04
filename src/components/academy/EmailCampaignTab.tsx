@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Send, Save, FileText, History, Loader2, Bold, Users, Eye,
-  Trash2, Pencil, ChevronRight,
+  Trash2, Pencil, ChevronRight, X, Plus, FlaskConical,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
