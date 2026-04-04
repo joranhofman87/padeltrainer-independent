@@ -98,6 +98,16 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
   const [showConfirmSend, setShowConfirmSend] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Manual recipient management
+  const [recipients, setRecipients] = useState<{ id: string; full_name: string; email: string; isManual?: boolean }[]>([]);
+  const [addEmail, setAddEmail] = useState('');
+  const [addName, setAddName] = useState('');
+
+  // Test email
+  const [testEmail, setTestEmail] = useState('');
+  const [showTestInput, setShowTestInput] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
+
   useEffect(() => {
     fetchTemplates();
     fetchCampaigns();
