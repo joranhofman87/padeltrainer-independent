@@ -142,12 +142,15 @@ export function AddSlotDialog({
     }
   }, [open, defaultDate, defaultTime]);
 
-  // Fetch trainer's academy affiliation
+  // Fetch trainer's academy affiliation and auto-set academy ID
   useEffect(() => {
     async function fetchAcademy() {
       if (!trainerId) return;
       const academy = await getTrainerAcademy(trainerId);
       setTrainerAcademy(academy);
+      if (academy?.id) {
+        setSlotAcademyId(academy.id);
+      }
     }
     if (open && trainerId) {
       fetchAcademy();
