@@ -89,7 +89,7 @@ export function EditSlotDialog({
       setMinRating((slot as any).min_rating != null ? Number((slot as any).min_rating) : null);
       setMaxRating((slot as any).max_rating != null ? Number((slot as any).max_rating) : null);
       setTrainerId(slot.trainer_id || "");
-      setLocationId((slot as any).location_id || "");
+      setLocationId((slot as any).location_id || "none");
       setMaxParticipants(slot.max_participants || 4);
       setIsMarkedFull(slot.is_marked_full || false);
     }
@@ -154,7 +154,7 @@ export function EditSlotDialog({
                 min_rating: minRating,
                 max_rating: maxRating,
                 trainer_id: trainerId || undefined,
-                location_id: locationId || null,
+                location_id: locationId === "none" ? null : (locationId || null),
                 max_participants: maxParticipants,
                 is_marked_full: isMarkedFull,
               })
@@ -178,7 +178,7 @@ export function EditSlotDialog({
             min_rating: minRating,
             max_rating: maxRating,
             trainer_id: trainerId || undefined,
-            location_id: locationId || null,
+            location_id: locationId === "none" ? null : (locationId || null),
             max_participants: maxParticipants,
             is_marked_full: isMarkedFull,
           })
@@ -331,7 +331,7 @@ export function EditSlotDialog({
                   <SelectValue placeholder={t("calendar.selectLocation", "Select location")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{t("calendar.noLocation", "No location")}</SelectItem>
+                  <SelectItem value="none">{t("calendar.noLocation", "No location")}</SelectItem>
                   {locations.map(loc => (
                     <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                   ))}

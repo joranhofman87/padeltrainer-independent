@@ -37,7 +37,7 @@ import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 import { EditSlotDialog } from "@/components/trainer/EditSlotDialog";
-import { SlotDetailDialog } from "@/components/academy/SlotDetailDialog";
+// SlotDetailDialog removed — now using /app/academy/slot/:slotId page
 
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
@@ -143,8 +143,7 @@ export default function AcademyCalendar() {
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
-  const [slotDetailOpen, setSlotDetailOpen] = useState(false);
-  const [slotDetailId, setSlotDetailId] = useState<string | null>(null);
+  // SlotDetailDialog state removed — using page navigation now
 
   const handleCellClick = (day: Date, hour: number) => {
     setDefaultSlotDate(day);
@@ -620,8 +619,7 @@ export default function AcademyCalendar() {
   };
 
   const handleSlotClick = (slotId: string) => {
-    setSlotDetailId(slotId);
-    setSlotDetailOpen(true);
+    navigate(`/app/academy/slot/${slotId}`);
   };
 
   return (
@@ -930,16 +928,7 @@ export default function AcademyCalendar() {
             onBookingUpdated={handleSlotsCreated}
           />
 
-          <SlotDetailDialog
-            open={slotDetailOpen}
-            onOpenChange={setSlotDetailOpen}
-            slotId={slotDetailId}
-            onEditSlot={handleEditSlot}
-            onDeleteSlot={handleDeleteSlot}
-            onBookForPlayer={handleBookForPlayer}
-            onEditBooking={handleEditBooking}
-            onRefresh={handleSlotsCreated}
-          />
+          {/* SlotDetailDialog removed — using /app/academy/slot/:slotId */}
         </>
       )}
     </>
