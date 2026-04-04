@@ -1006,7 +1006,7 @@ export function BulkCreateContent({
 
       setBulkSlots([]);
       onSlotsCreated();
-      onOpenChange(false);
+      onClose?.();
     } catch (error: any) {
       toast({
         title: "Error",
