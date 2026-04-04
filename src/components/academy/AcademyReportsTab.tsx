@@ -453,6 +453,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                     <TableRow>
                       <TableHead>{t('reports.location', 'Location')}</TableHead>
                       <TableHead className="text-right">{t('reports.sessions', 'Sessions')}</TableHead>
+                      <TableHead className="text-right">{t('reports.empty', 'Empty')}</TableHead>
                       <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
                       <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
                       <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
@@ -464,6 +465,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                       <TableRow key={r.name}>
                         <TableCell className="text-sm font-medium">{r.name}</TableCell>
                         <TableCell className="text-right text-sm">{r.sessions}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.emptySlots > 0 ? 'text-destructive' : 'text-muted-foreground'}>{r.emptySlots}</span>
+                        </TableCell>
                         <TableCell className="text-right text-sm">{r.booked}</TableCell>
                         <TableCell className="text-right text-sm">{r.capacity}</TableCell>
                         <TableCell className="text-right text-sm">
