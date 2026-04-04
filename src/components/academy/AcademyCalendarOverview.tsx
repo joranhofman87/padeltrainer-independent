@@ -151,9 +151,10 @@ function TrainerDayBlock({
               <button
                 key={slot.id}
                 className="w-full flex items-center justify-between gap-1 py-0.5 text-left hover:bg-accent/30 rounded px-1 transition-colors"
-                onClick={onClick}
+                onClick={() => onSlotClick?.(slot.id)}
               >
-                <span className="text-[11px] text-muted-foreground tabular-nums">
+                <span className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-1">
+                  {slot.is_marked_full && <Lock className="h-2.5 w-2.5 text-amber-500" />}
                   {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
                 </span>
                 <OccupancyDots booked={slot.booked_count} max={slot.max_participants} />
