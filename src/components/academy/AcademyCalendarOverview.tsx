@@ -43,6 +43,7 @@ interface AcademyCalendarOverviewProps {
   slots: SlotSummary[];
   currentDate: Date;
   onDayClick?: (date: Date) => void;
+  onSlotClick?: (slotId: string) => void;
   trainers?: TrainerOption[];
   locations?: LocationOption[];
   onNavigatePrevious: () => void;
