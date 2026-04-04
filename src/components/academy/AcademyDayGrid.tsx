@@ -678,6 +678,7 @@ export default function AcademyDayGrid({
                               searchQuery={searchQuery}
                               onRemovePlayer={onRemovePlayer}
                               onEditBooking={onEditBooking}
+                              onEditSlot={onEditSlot}
                               onDeleteSlot={onDeleteSlot}
                               onBookForPlayer={onBookForPlayer}
                             />
