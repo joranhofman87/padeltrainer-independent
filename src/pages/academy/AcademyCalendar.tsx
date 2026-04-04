@@ -807,6 +807,7 @@ export default function AcademyCalendar() {
                 onRemovePlayer={handleRemovePlayer}
                 onBookForPlayer={handleBookForPlayer}
                 onEditBooking={handleEditBooking}
+                onEditSlot={handleEditSlot}
                 onDeleteSlot={handleDeleteSlot}
                 onCellClick={handleCellClick}
               />
