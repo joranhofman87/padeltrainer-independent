@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Users, Clock, GripVertical, Search, PanelRightClose, PanelRightOpen,
-  UserPlus, AlertTriangle, X,
+  UserPlus, AlertTriangle, X, Pencil, Trash2,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -43,6 +43,7 @@ interface AcademyDayGridProps {
   onRemovePlayer?: (bookingId: string) => void;
   onAddPlayerToSlot?: (slot: SlotWithBookings) => void;
   onEditBooking?: (bookingId: string) => void;
+  onEditSlot?: (slot: SlotWithBookings) => void;
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onCellClick?: (day: Date, hour: number) => void;
@@ -177,12 +178,13 @@ function DraggableBookedPlayer({
 // ── Slot Card ──
 
 function SlotCard({
-  slot, searchQuery, onRemovePlayer, onEditBooking, onDeleteSlot, onBookForPlayer,
+  slot, searchQuery, onRemovePlayer, onEditBooking, onEditSlot, onDeleteSlot, onBookForPlayer,
 }: {
   slot: SlotWithBookings;
   searchQuery?: string;
   onRemovePlayer?: (bookingId: string) => void;
   onEditBooking?: (bookingId: string) => void;
+  onEditSlot?: (slot: SlotWithBookings) => void;
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
 }) {
@@ -214,6 +216,26 @@ function SlotCard({
             {getTimeRange(slot.start_time, slot.end_time)}
           </span>
           <div className="flex items-center gap-1">
+            {!slot.is_past && onEditSlot && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                onClick={() => onEditSlot(slot)}
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+            )}
+            {!slot.is_past && onDeleteSlot && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                onClick={() => onDeleteSlot(slot)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
             {!slot.is_past && onBookForPlayer && !isFull && (
               <Button
                 variant="ghost"
@@ -381,7 +403,7 @@ function DroppableSidebarPool({ children }: { children: React.ReactNode }) {
 export default function AcademyDayGrid({
   slots, currentDate, allKnownPlayers, trainers,
   onMovePlayer, onRemovePlayer, onAddPlayerToSlot, onEditBooking,
-  onDeleteSlot, onBookForPlayer, onCellClick,
+  onEditSlot, onDeleteSlot, onBookForPlayer, onCellClick,
 }: AcademyDayGridProps) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
@@ -656,6 +678,7 @@ export default function AcademyDayGrid({
                               searchQuery={searchQuery}
                               onRemovePlayer={onRemovePlayer}
                               onEditBooking={onEditBooking}
+                              onEditSlot={onEditSlot}
                               onDeleteSlot={onDeleteSlot}
                               onBookForPlayer={onBookForPlayer}
                             />

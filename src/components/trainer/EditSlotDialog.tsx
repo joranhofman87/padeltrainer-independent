@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { SlotWithBookings } from "./CalendarSlotCard";
 
 interface EditSlotDialogProps {
@@ -40,6 +41,8 @@ interface EditSlotDialogProps {
   onOpenChange: (open: boolean) => void;
   slot: SlotWithBookings | null;
   onSlotUpdated: () => void;
+  trainers?: { id: string; name: string }[];
+  locations?: { id: string; name: string }[];
 }
 
 export function EditSlotDialog({
@@ -47,6 +50,8 @@ export function EditSlotDialog({
   onOpenChange,
   slot,
   onSlotUpdated,
+  trainers,
+  locations,
 }: EditSlotDialogProps) {
   const { t } = useTranslation("trainer");
   const { trainerRatingSystem } = useTrainerRatingSystem(slot?.trainer_id || undefined);
@@ -62,6 +67,10 @@ export function EditSlotDialog({
   const [ratingSystem, setRatingSystem] = useState<string | null>(null);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [maxRating, setMaxRating] = useState<number | null>(null);
+  const [trainerId, setTrainerId] = useState<string>("");
+  const [locationId, setLocationId] = useState<string>("");
+  const [maxParticipants, setMaxParticipants] = useState<number>(4);
+  const [isMarkedFull, setIsMarkedFull] = useState(false);
 
   useEffect(() => {
     if (slot && open) {
@@ -74,12 +83,15 @@ export function EditSlotDialog({
       const duration = Math.round((end.getTime() - start.getTime()) / 60000);
       setDurationMinutes(duration);
       
-      
       setCyclusName(slot.cyclus_name || "");
       setApplyToCyclus(false);
       setRatingSystem((slot as any).rating_system || null);
       setMinRating((slot as any).min_rating != null ? Number((slot as any).min_rating) : null);
       setMaxRating((slot as any).max_rating != null ? Number((slot as any).max_rating) : null);
+      setTrainerId(slot.trainer_id || "");
+      setLocationId((slot as any).location_id || "");
+      setMaxParticipants(slot.max_participants || 4);
+      setIsMarkedFull(slot.is_marked_full || false);
     }
   }, [slot, open]);
 
@@ -141,6 +153,10 @@ export function EditSlotDialog({
                 rating_system: ratingSystem,
                 min_rating: minRating,
                 max_rating: maxRating,
+                trainer_id: trainerId || undefined,
+                location_id: locationId || null,
+                max_participants: maxParticipants,
+                is_marked_full: isMarkedFull,
               })
               .eq("id", cs.id);
           }
@@ -161,6 +177,10 @@ export function EditSlotDialog({
             rating_system: ratingSystem,
             min_rating: minRating,
             max_rating: maxRating,
+            trainer_id: trainerId || undefined,
+            location_id: locationId || null,
+            max_participants: maxParticipants,
+            is_marked_full: isMarkedFull,
           })
           .eq("id", slot.id);
 
@@ -283,6 +303,65 @@ export function EditSlotDialog({
             }}
             fixedRatingSystem={trainerRatingSystem}
           />
+
+
+          {/* Trainer */}
+          {trainers && trainers.length > 0 && (
+            <div className="space-y-2">
+              <Label>{t("calendar.trainer", "Trainer")}</Label>
+              <Select value={trainerId} onValueChange={setTrainerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("calendar.selectTrainer", "Select trainer")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {trainers.map(tr => (
+                    <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Location */}
+          {locations && locations.length > 0 && (
+            <div className="space-y-2">
+              <Label>{t("calendar.location", "Location")}</Label>
+              <Select value={locationId} onValueChange={setLocationId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("calendar.selectLocation", "Select location")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{t("calendar.noLocation", "No location")}</SelectItem>
+                  {locations.map(loc => (
+                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Max Participants + Mark as full */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>{t("calendar.maxParticipants", "Max participants")}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={maxParticipants}
+                onChange={(e) => setMaxParticipants(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("calendar.markAsFull", "Mark as full")}</Label>
+              <div className="flex items-center h-10">
+                <Switch
+                  checked={isMarkedFull}
+                  onCheckedChange={setIsMarkedFull}
+                />
+              </div>
+            </div>
+          </div>
 
           {/* Cyclus Name */}
           {slot.cyclus_id && (

@@ -36,6 +36,7 @@ import { BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
+import { EditSlotDialog } from "@/components/trainer/EditSlotDialog";
 
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
@@ -134,8 +135,10 @@ export default function AcademyCalendar() {
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
   const [editBookingOpen, setEditBookingOpen] = useState(false);
+  const [editSlotOpen, setEditSlotOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
+  const [slotToEdit, setSlotToEdit] = useState<SlotWithBookings | null>(null);
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [createFormType, setCreateFormType] = useState<'registration' | 'event'>('registration');
@@ -526,6 +529,11 @@ export default function AcademyCalendar() {
     setDeleteSlotOpen(true);
   };
 
+  const handleEditSlot = (slot: SlotWithBookings) => {
+    setSlotToEdit(slot);
+    setEditSlotOpen(true);
+  };
+
   const handleEditBooking = async (bookingId: string) => {
     try {
       const { data, error } = await supabase
@@ -799,6 +807,7 @@ export default function AcademyCalendar() {
                 onRemovePlayer={handleRemovePlayer}
                 onBookForPlayer={handleBookForPlayer}
                 onEditBooking={handleEditBooking}
+                onEditSlot={handleEditSlot}
                 onDeleteSlot={handleDeleteSlot}
                 onCellClick={handleCellClick}
               />
@@ -923,6 +932,18 @@ export default function AcademyCalendar() {
             slot={slotToDelete}
             trainerId={slotToDelete?.trainer_id || getTrainerIdForSlot()}
             onSlotDeleted={handleSlotsCreated}
+          />
+
+          <EditSlotDialog
+            open={editSlotOpen}
+            onOpenChange={(open) => {
+              setEditSlotOpen(open);
+              if (!open) setSlotToEdit(null);
+            }}
+            slot={slotToEdit}
+            onSlotUpdated={handleSlotsCreated}
+            trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+            locations={locations.map(l => ({ id: l.id, name: l.name }))}
           />
 
           <EditBookingDialog
