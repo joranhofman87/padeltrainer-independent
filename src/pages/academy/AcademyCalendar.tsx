@@ -830,37 +830,16 @@ export default function AcademyCalendar() {
 
           {/* ── Tab 4: Create Cyclus ── */}
           <TabsContent value="create" className="mt-4">
-            <div className="max-w-2xl">
-              <div className="flex gap-2 mb-6">
-                <Button
-                  variant={createFormType === 'registration' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setCreateFormType('registration')}
-                >
-                  {t('cycles:createRegistration', 'Registration')}
-                </Button>
-                <Button
-                  variant={createFormType === 'event' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setCreateFormType('event')}
-                >
-                  {t('cycles:createEvent', 'Event')}
-                </Button>
-              </div>
+            <div className="max-w-lg">
               {activeAcademy && (
-                <CycleForm
-                  ownerType="academy"
-                  ownerId={activeAcademy.id}
-                  formType={createFormType}
-                  locations={locations}
-                  trainers={trainers.map(t => ({ id: t.id, name: t.name, hourly_rate: t.hourly_rate }))}
-                  trainerLocationMap={trainerLocationMap}
-                  onSuccess={() => {
-                    fetchSlots(false);
-                    fetchMonthSlots();
-                    setActiveTab("overview");
-                  }}
-                  onCancel={() => setActiveTab("overview")}
+                <BulkCreateContent
+                  trainerId={selectedSlotTrainerId}
+                  defaultDuration={60}
+                  defaultWeeks={8}
+                  onSlotsCreated={handleSlotsCreated}
+                  availableLocations={locations}
+                  availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+                  academyId={activeAcademy?.id}
                 />
               )}
             </div>
