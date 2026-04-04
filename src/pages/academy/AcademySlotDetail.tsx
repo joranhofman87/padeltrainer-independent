@@ -283,12 +283,32 @@ export default function AcademySlotDetail() {
             .eq('id', cs.id);
         }
         toast({ title: tTrainer('calendar.cyclusUpdated', 'Cyclus updated') });
+
+        // Sync invoices if price changed
+        const priceChanged = detail.price_per_session !== (editPricePerSession ? Number(editPricePerSession) : null);
+        if (priceChanged && cyclusSlots) {
+          try {
+            await syncInvoicesAfterPriceChange(cyclusSlots.map(s => s.id));
+          } catch (e) {
+            logger.error('Failed to sync invoices after cyclus price change', e as Error);
+          }
+        }
       } else {
         const { error } = await supabase
           .from('availability_slots')
           .update(updatePayload)
           .eq('id', detail.id);
         if (error) throw error;
+
+        // Sync invoices if price changed
+        const priceChanged = detail.price_per_session !== (editPricePerSession ? Number(editPricePerSession) : null);
+        if (priceChanged) {
+          try {
+            await syncInvoicesAfterPriceChange([detail.id]);
+          } catch (e) {
+            logger.error('Failed to sync invoices after price change', e as Error);
+          }
+        }
         toast({ title: tTrainer('calendar.slotUpdated', 'Slot updated') });
       }
 
