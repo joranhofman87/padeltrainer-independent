@@ -35,7 +35,6 @@ import {
   type AcademyConnectStatus 
 } from '@/lib/academyPayments';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
-import { AcademyInvoiceSettingsCard } from '@/components/academy/AcademyInvoiceSettingsCard';
 import { ExtraCostPresetsCard } from '@/components/settings/ExtraCostPresetsCard';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
