@@ -228,67 +228,9 @@ export default function AcademyCalendarOverview({
     return map;
   }, [weekSlots, weekDays]);
 
-  // Stats
-  const totalSessions = weekSlots.length;
-  const totalCapacity = weekSlots.reduce((s, sl) => s + sl.max_participants, 0);
-  const totalBooked = weekSlots.reduce((s, sl) => s + sl.booked_count, 0);
-  const fillRate = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0;
-  const openSpotsCount = weekSlots.filter(s => {
-    const d = parseISO(s.start_time);
-    return d >= now && !s.is_marked_full && s.booked_count < s.max_participants;
-  }).length;
-
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-4">
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Calendar className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalSessions}</p>
-                <p className="text-xs text-muted-foreground">{t('calendar.overview.sessionsThisWeek', 'Sessions this week')}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/10">
-                <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{fillRate}%</p>
-                <p className="text-xs text-muted-foreground">{t('calendar.overview.fillRate', 'Fill rate')}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-500/10">
-                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{openSpotsCount}</p>
-                <p className="text-xs text-muted-foreground">{t('calendar.overview.openSpots', 'Slots with open spots')}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/10">
-                <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalBooked}/{totalCapacity}</p>
-                <p className="text-xs text-muted-foreground">{t('calendar.overview.playersBooked', 'Players booked')}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Navigation + Filters Row */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
