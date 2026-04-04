@@ -260,7 +260,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
           body_html: bodyHtml,
           filters,
           status: 'draft',
-          total_recipients: filteredRecipients.length,
+          total_recipients: recipients.length,
         } as any)
         .select()
         .single();
@@ -268,7 +268,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
       if (campErr || !campaign) throw campErr || new Error('Could not create campaign');
 
       // 2. Insert recipients
-      const recipientRows = filteredRecipients.map((p) => ({
+      const recipientRows = recipients.map((p) => ({
         campaign_id: campaign.id,
         recipient_email: p.email,
         recipient_name: p.full_name,
@@ -290,7 +290,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
       toast({
         title: 'Campaign sent!',
-        description: `Emails are being sent to ${filteredRecipients.length} recipients.`,
+        description: `Emails are being sent to ${recipients.length} recipients.`,
       });
 
       // Reset
