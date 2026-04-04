@@ -1,39 +1,24 @@
 
 
-# Fix: Proposal generation only creates slots for the first week
+# Fix: Proposals "disappearing" after Approve & Book
 
 ## Root cause
 
-In `supabase/functions/generate-proposals/index.ts`, lines 576-636, the code finds the first occurrence of each weekday after `effectiveStartDate` but **never loops to the next week**. The `cycleEndDate` variable is computed at line 558 but never used as a loop boundary.
+Two bugs working together:
 
-Current flow:
-1. Find first Monday after start date → generate slots for that Monday only
-2. Move to next availability window
+1. **Status mismatch on the Registrations list page**: The `finalize-proposals` edge function sets intake request status to `'booked'`. But `AcademyIntakeRequests.tsx` only filters for `'confirmed'` — it never checks for `'booked'`. So after approval, requests vanish from the "Confirmed" tab. The cycle detail page (`AcademyCycleDetail.tsx`) already handles this correctly with `status === 'confirmed' || status === 'booked'`, but the main list page doesn't.
 
-Missing: after generating all time slots for one date, advance `current` by 7 days and repeat until `current > cycleEndDate`.
+2. **Auto-heal side-effect**: `getAvailableSlotsForCycle` in `src/lib/cycles.ts` (lines 1072-1093) silently resets any `'proposed'` intake requests to `'new'` when it finds no slots/assignments. This is a destructive mutation hidden inside a read function. If the schedule grid loads during a timing gap (e.g. between finalization steps), it can wipe proposal state.
 
-## Fix
+## Changes
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-proposals/index.ts` | Wrap the slot generation block (lines 581-635) in a `while (current <= cycleEndDate)` loop, advancing `current` by 7 days after each iteration. |
-
-## Code change (conceptual)
-
-```text
-// Line 580, after finding the first matching weekday:
-
-while (current <= cycleEndDate) {   // ← NEW: repeat for every week
-  // ... existing slot generation logic (lines 581-635) stays the same ...
-
-  current.setDate(current.getDate() + 7);  // ← NEW: advance to next week
-}
-```
-
-This is a single structural change: adding 2 lines around the existing block. No data model changes, no frontend changes. The proposal assignment logic downstream already handles multiple slots per trainer — it just never received more than one week's worth.
+| `src/pages/academy/AcademyIntakeRequests.tsx` | In the `filteredRequests` memo and all status counts, treat `'booked'` as equivalent to `'confirmed'` (same pattern as `AcademyCycleDetail.tsx`). Update the confirmed filter: `r.status === 'confirmed' \|\| r.status === 'booked'`. Update `confirmedCount` similarly. |
+| `src/lib/cycles.ts` | Remove the auto-heal block (lines 1072-1093). Orphan cleanup should only happen via the explicit `resetProposals` action, not as a hidden side-effect of a data-fetch function. |
 
 ## Impact
-- Slots will now be generated for every week from `effectiveStartDate` to `cycle.end_date`
-- Existing cycles won't be affected until proposals are regenerated
-- The `finalize-proposals` function already books per-assignment, so it will correctly create bookings for all weeks
+- After approving proposals, requests correctly appear under the "Confirmed" tab on both the list page and detail page
+- No more silent data mutations during read operations
+- Existing `resetProposals` flow still handles cleanup when explicitly triggered
 
