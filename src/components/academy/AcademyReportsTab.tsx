@@ -5,7 +5,7 @@ import {
   addWeeks, subWeeks, addMonths, subMonths, parseISO, differenceInMinutes,
 } from 'date-fns';
 import { nl, es, de, fr, enUS, type Locale } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle, CalendarX2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
