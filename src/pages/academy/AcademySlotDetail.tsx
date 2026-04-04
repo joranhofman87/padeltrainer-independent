@@ -199,6 +199,10 @@ export default function AcademySlotDetail() {
         min_rating: slot.min_rating,
         max_rating: slot.max_rating,
         price_per_session: slot.price_per_session,
+        total_price: slot.total_price,
+        split_payment: slot.split_payment ?? false,
+        prices_include_vat: slot.prices_include_vat ?? true,
+        extra_costs: (slot.extra_costs as ExtraCost[] | null) || null,
         booked_players: players,
       });
     } catch (error) {
