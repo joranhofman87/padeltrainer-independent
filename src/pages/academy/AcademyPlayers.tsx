@@ -139,7 +139,7 @@ export default function AcademyPlayers() {
     let result = players;
 
     if (selectedTrainerId && selectedTrainerId !== 'all') {
-      result = result.filter((p) => p.trainer_id === selectedTrainerId);
+      result = result.filter((p) => p.trainer_ids?.includes(selectedTrainerId));
     }
 
     if (selectedLocation && selectedLocation !== 'all') {
