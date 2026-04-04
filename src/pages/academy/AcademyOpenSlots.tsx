@@ -381,7 +381,8 @@ export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { em
                               {cyclus.slots.map(slot => (
                                 <div
                                   key={slot.id}
-                                  className="p-4 flex items-center justify-between hover:bg-accent/30 transition-colors"
+                                  className="p-4 flex items-center justify-between hover:bg-accent/30 transition-colors cursor-pointer"
+                                  onClick={() => onSlotClick?.(slot.id)}
                                 >
                                   <div className="flex-1">
                                     <p className="font-medium">{formatShortTime(slot.start_time, slot.end_time)}</p>
