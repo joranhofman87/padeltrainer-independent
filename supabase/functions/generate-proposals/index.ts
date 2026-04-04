@@ -633,6 +633,10 @@ Deno.serve(async (req) => {
                   min_participants: cycle.settings?.min_group_size || null,
                   academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
                   location_id: cycle.location_id || null,
+                  price_per_session: pricePerSession,
+                  extra_costs: extraCosts.length > 0 ? extraCosts : null,
+                  split_payment: splitPayment,
+                  prices_include_vat: pricesIncludeVat,
                 });
               }
 
