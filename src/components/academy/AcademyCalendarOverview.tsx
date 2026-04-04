@@ -377,7 +377,7 @@ export default function AcademyCalendarOverview({
                             trainerAvatar={trainerSlots[0]?.trainer_avatar}
                             slots={trainerSlots}
                             isPast={trainerSlots.every(s => isBefore(parseISO(s.end_time), now))}
-                            onClick={() => onDayClick?.(day)}
+                            onSlotClick={onSlotClick}
                             defaultOpen={trainerCount <= 3}
                           />
                         ))}
