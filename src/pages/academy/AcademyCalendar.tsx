@@ -928,16 +928,7 @@ export default function AcademyCalendar() {
             onBookingUpdated={handleSlotsCreated}
           />
 
-          <SlotDetailDialog
-            open={slotDetailOpen}
-            onOpenChange={setSlotDetailOpen}
-            slotId={slotDetailId}
-            onEditSlot={handleEditSlot}
-            onDeleteSlot={handleDeleteSlot}
-            onBookForPlayer={handleBookForPlayer}
-            onEditBooking={handleEditBooking}
-            onRefresh={handleSlotsCreated}
-          />
+          {/* SlotDetailDialog removed — using /app/academy/slot/:slotId */}
         </>
       )}
     </>
