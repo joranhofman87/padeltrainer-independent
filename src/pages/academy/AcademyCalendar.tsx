@@ -640,8 +640,8 @@ export default function AcademyCalendar() {
               </TabsTrigger>
             </TabsList>
 
-            {/* Date Navigation (shown for overview, manage, hours) */}
-            {activeTab !== "open-spots" && (
+            {/* Date Navigation (shown for manage, hours — overview has its own) */}
+            {activeTab !== "open-spots" && activeTab !== "overview" && (
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
                   <ChevronLeft className="h-4 w-4" />
@@ -667,6 +667,10 @@ export default function AcademyCalendar() {
               onDayClick={handleOverviewDayClick}
               trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
               locations={locations.map(l => ({ id: l.id, name: l.name }))}
+              onNavigatePrevious={navigatePrevious}
+              onNavigateNext={navigateNext}
+              onGoToday={goToToday}
+              dateRangeLabel={getDateRangeLabel()}
             />
           </TabsContent>
 
