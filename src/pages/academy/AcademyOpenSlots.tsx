@@ -1,34 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Calendar, RotateCcw, ArrowLeft, ChevronDown, ChevronRight, MapPin, Eye, EyeOff } from 'lucide-react';
+import { Calendar, ArrowLeft, MapPin, Eye, EyeOff, Euro, X } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
+import { useTableSort } from '@/hooks/useTableSort';
+import { SortableTableHead } from '@/components/admin/SortableTableHead';
+import { formatPrice } from '@/lib/pricing';
+import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 
-interface CyclusGroup {
-  cyclus_id: string;
-  cyclus_name: string;
-  open_slots: number;
-  total_slots: number;
-  slots: SlotData[];
-  is_public: boolean;
-  day_time: string;
-  first_date: string;
-  last_date: string;
-  created_at: string;
-}
-
-interface SlotData {
+interface FlatSlot {
   id: string;
   start_time: string;
   end_time: string;
@@ -36,33 +32,46 @@ interface SlotData {
   booked_count: number;
   available_spots: number;
   cyclus_id: string | null;
+  cyclus_name: string | null;
   is_public: boolean;
   location_name: string | null;
+  location_id: string | null;
+  trainer_id: string | null;
+  trainer_name: string | null;
+  price_per_session: number | null;
 }
 
-export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { embedded?: boolean; onSlotClick?: (slotId: string) => void }) {
+export default function AcademyOpenSlots({ embedded = false }: { embedded?: boolean }) {
   const { t, i18n } = useTranslation('trainer');
-  const { t: tAcademy } = useTranslation('academy');
   const navigate = useNavigate();
   const { toast } = useToast();
   const { activeAcademy } = useAcademyContext();
   const [loading, setLoading] = useState(true);
-  const [cyclusGroups, setCyclusGroups] = useState<CyclusGroup[]>([]);
-  const [individualSlots, setIndividualSlots] = useState<SlotData[]>([]);
-  const [expandedCycluses, setExpandedCycluses] = useState<Set<string>>(new Set());
+  const [allSlots, setAllSlots] = useState<FlatSlot[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Filters
+  const [filterTrainer, setFilterTrainer] = useState('all');
+  const [filterLocation, setFilterLocation] = useState('all');
+  const [filterCyclus, setFilterCyclus] = useState('all');
+  const [filterVisibility, setFilterVisibility] = useState('all');
+
+  // Bulk price dialog
+  const [priceDialogOpen, setPriceDialogOpen] = useState(false);
+  const [bulkPrice, setBulkPrice] = useState('');
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
 
   useEffect(() => {
-    if (activeAcademy) fetchOpenSlots();
+    if (activeAcademy) fetchSlots();
   }, [activeAcademy]);
 
-  const fetchOpenSlots = async () => {
+  const fetchSlots = async () => {
     if (!activeAcademy) return;
     setLoading(true);
 
     try {
-      // Get academy trainer IDs
       const { data: academyTrainers } = await supabase
         .from('academy_trainers')
         .select('trainer_profile_id')
@@ -71,17 +80,39 @@ export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { em
 
       const trainerIds = academyTrainers?.map(t => t.trainer_profile_id) || [];
       if (trainerIds.length === 0) {
-        setCyclusGroups([]);
-        setIndividualSlots([]);
+        setAllSlots([]);
         setLoading(false);
         return;
       }
 
+      // Fetch trainer names
+      const { data: trainerProfiles } = await supabase
+        .from('trainer_profiles' as any)
+        .select('id, user_id')
+        .in('id', trainerIds);
+
+      const userIds = (trainerProfiles || []).map((tp: any) => tp.user_id).filter(Boolean);
+      let nameMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles' as any)
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+        (profiles || []).forEach((p: any) => {
+          if (p.full_name) nameMap[p.user_id] = p.full_name;
+        });
+      }
+      const trainerNameMap: Record<string, string> = {};
+      (trainerProfiles || []).forEach((tp: any) => {
+        trainerNameMap[tp.id] = nameMap[tp.user_id] || 'Unknown';
+      });
+
       const { data: slots, error } = await supabase
         .from('availability_slots')
         .select(`
-          id, start_time, end_time, max_participants, created_at,
+          id, start_time, end_time, max_participants,
           cyclus_id, cyclus_name, is_marked_full, is_public,
+          price_per_session, trainer_id,
           location_id, locations:location_id(name)
         `)
         .in('trainer_id', trainerIds)
@@ -92,73 +123,41 @@ export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { em
       if (error) throw error;
 
       const slotIds = slots?.map(s => s.id) || [];
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select('slot_id, status')
-        .in('slot_id', slotIds)
-        .in('status', ['confirmed', 'pending']);
+      let bookingCounts: Record<string, number> = {};
+      if (slotIds.length > 0) {
+        const { data: bookings } = await supabase
+          .from('bookings')
+          .select('slot_id')
+          .in('slot_id', slotIds)
+          .in('status', ['confirmed', 'pending']);
+        bookings?.forEach(b => {
+          bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
+        });
+      }
 
-      const bookingCounts: Record<string, number> = {};
-      bookings?.forEach(b => {
-        bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
-      });
-
-      const processedSlots: SlotData[] = (slots || []).map(slot => {
-        const maxParticipants = slot.max_participants || 4;
-        const bookedCount = bookingCounts[slot.id] || 0;
+      const processed: FlatSlot[] = (slots || []).map(slot => {
+        const maxP = slot.max_participants || 4;
+        const booked = bookingCounts[slot.id] || 0;
         return {
           id: slot.id,
           start_time: slot.start_time,
           end_time: slot.end_time,
-          max_participants: maxParticipants,
-          booked_count: bookedCount,
-          available_spots: maxParticipants - bookedCount,
+          max_participants: maxP,
+          booked_count: booked,
+          available_spots: maxP - booked,
           cyclus_id: slot.cyclus_id,
+          cyclus_name: slot.cyclus_name,
           is_public: slot.is_public ?? true,
           location_name: (slot.locations as any)?.name || null,
+          location_id: slot.location_id,
+          trainer_id: slot.trainer_id,
+          trainer_name: trainerNameMap[slot.trainer_id] || null,
+          price_per_session: slot.price_per_session,
         };
-      }).filter(slot => slot.available_spots > 0);
+      }).filter(s => s.available_spots > 0);
 
-      // Group by cyclus
-      const cyclusMap = new Map<string, CyclusGroup>();
-      const individual: SlotData[] = [];
-
-      processedSlots.forEach(slot => {
-        if (slot.cyclus_id) {
-          const existing = cyclusMap.get(slot.cyclus_id);
-          const slotInfo = slots?.find(s => s.id === slot.id);
-
-          if (existing) {
-            existing.slots.push(slot);
-            existing.open_slots++;
-            existing.total_slots++;
-            if (!slot.is_public) existing.is_public = false;
-            if (slot.start_time > existing.last_date) existing.last_date = slot.start_time;
-            if (slot.start_time < existing.first_date) existing.first_date = slot.start_time;
-            if (slotInfo && (slotInfo as any).created_at < existing.created_at) {
-              existing.created_at = (slotInfo as any).created_at;
-            }
-          } else {
-            cyclusMap.set(slot.cyclus_id, {
-              cyclus_id: slot.cyclus_id,
-              cyclus_name: (slotInfo as any)?.cyclus_name || `Cyclus ${slot.cyclus_id.slice(0, 8)}`,
-              open_slots: 1,
-              total_slots: 1,
-              slots: [slot],
-              is_public: slot.is_public,
-              day_time: format(new Date(slot.start_time), 'EEEE HH:mm', { locale: dateLocale }),
-              first_date: slot.start_time,
-              last_date: slot.start_time,
-              created_at: (slotInfo as any)?.created_at || slot.start_time,
-            });
-          }
-        } else {
-          individual.push(slot);
-        }
-      });
-
-      setCyclusGroups(Array.from(cyclusMap.values()));
-      setIndividualSlots(individual);
+      setAllSlots(processed);
+      setSelectedIds(new Set());
     } catch (error) {
       logger.error('Error fetching academy open slots', error as Error, { component: 'AcademyOpenSlots' });
     } finally {
@@ -166,14 +165,60 @@ export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { em
     }
   };
 
-  const toggleCyclus = (cyclusId: string) => {
-    setExpandedCycluses(prev => {
+  // Derive filter options
+  const trainerOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allSlots.forEach(s => { if (s.trainer_id && s.trainer_name) map.set(s.trainer_id, s.trainer_name); });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allSlots]);
+
+  const locationOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allSlots.forEach(s => { if (s.location_id && s.location_name) map.set(s.location_id, s.location_name); });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allSlots]);
+
+  const cyclusOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allSlots.forEach(s => { if (s.cyclus_id && s.cyclus_name) map.set(s.cyclus_id, s.cyclus_name); });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allSlots]);
+
+  // Apply filters
+  const filteredSlots = useMemo(() => {
+    return allSlots.filter(s => {
+      if (filterTrainer !== 'all' && s.trainer_id !== filterTrainer) return false;
+      if (filterLocation !== 'all' && s.location_id !== filterLocation) return false;
+      if (filterCyclus !== 'all' && s.cyclus_id !== filterCyclus) return false;
+      if (filterVisibility === 'public' && !s.is_public) return false;
+      if (filterVisibility === 'hidden' && s.is_public) return false;
+      return true;
+    });
+  }, [allSlots, filterTrainer, filterLocation, filterCyclus, filterVisibility]);
+
+  const { sortedData, sortConfig, handleSort } = useTableSort<FlatSlot>(filteredSlots, 'start_time', 'asc');
+
+  // Selection helpers
+  const allSelected = sortedData.length > 0 && sortedData.every(s => selectedIds.has(s.id));
+  const someSelected = selectedIds.size > 0;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sortedData.map(s => s.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
       const next = new Set(prev);
-      next.has(cyclusId) ? next.delete(cyclusId) : next.add(cyclusId);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
 
+  // Inline visibility toggle
   const toggleSlotVisibility = useCallback(async (slotId: string, newValue: boolean) => {
     const { error } = await supabase
       .from('availability_slots')
@@ -184,119 +229,94 @@ export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { em
       logger.error('Error toggling slot visibility', error, { slotId });
       return;
     }
+    setAllSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_public: newValue } : s));
+  }, []);
 
-    toast({ description: newValue ? t('openSlots.slotVisible') : t('openSlots.slotHidden') });
-    setIndividualSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_public: newValue } : s));
-    setCyclusGroups(prev => prev.map(g => {
-      const updatedSlots = g.slots.map(s => s.id === slotId ? { ...s, is_public: newValue } : s);
-      return { ...g, slots: updatedSlots, is_public: updatedSlots.every(s => s.is_public) };
-    }));
-  }, [t, toast]);
-
-  const toggleCyclusVisibility = useCallback(async (cyclusId: string, newValue: boolean) => {
-    const group = cyclusGroups.find(g => g.cyclus_id === cyclusId);
-    if (!group) return;
-
-    const slotIds = group.slots.map(s => s.id);
-    const { error } = await supabase
-      .from('availability_slots')
-      .update({ is_public: newValue })
-      .in('id', slotIds);
-
-    if (error) {
-      logger.error('Error toggling cyclus visibility', error, { cyclusId });
-      return;
-    }
-
-    toast({ description: newValue ? t('openSlots.cyclusVisible') : t('openSlots.cyclusHidden') });
-    setCyclusGroups(prev => prev.map(g =>
-      g.cyclus_id === cyclusId
-        ? { ...g, is_public: newValue, slots: g.slots.map(s => ({ ...s, is_public: newValue })) }
-        : g
-    ));
-  }, [cyclusGroups, t, toast]);
-
-  const toggleAllVisibility = useCallback(async (newValue: boolean) => {
-    const allSlotIds = [
-      ...individualSlots.map(s => s.id),
-      ...cyclusGroups.flatMap(g => g.slots.map(s => s.id)),
-    ];
-    if (allSlotIds.length === 0) return;
+  // Bulk visibility
+  const handleBulkVisibility = useCallback(async (newValue: boolean) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkUpdating(true);
 
     const { error } = await supabase
       .from('availability_slots')
       .update({ is_public: newValue })
-      .in('id', allSlotIds);
+      .in('id', ids);
 
     if (error) {
-      logger.error('Error toggling all visibility', error);
-      return;
+      logger.error('Error bulk updating visibility', error);
+      toast({ variant: 'destructive', description: 'Failed to update visibility' });
+    } else {
+      setAllSlots(prev => prev.map(s => ids.includes(s.id) ? { ...s, is_public: newValue } : s));
+      toast({ description: `${ids.length} slots updated` });
+      setSelectedIds(new Set());
     }
+    setBulkUpdating(false);
+  }, [selectedIds, toast]);
 
-    toast({ description: newValue ? t('openSlots.allVisible') : t('openSlots.allHidden') });
-    setIndividualSlots(prev => prev.map(s => ({ ...s, is_public: newValue })));
-    setCyclusGroups(prev => prev.map(g => ({
-      ...g,
-      is_public: newValue,
-      slots: g.slots.map(s => ({ ...s, is_public: newValue })),
-    })));
-  }, [individualSlots, cyclusGroups, t, toast]);
+  // Bulk price
+  const handleBulkPriceConfirm = useCallback(async () => {
+    const price = parseFloat(bulkPrice);
+    if (isNaN(price) || price < 0) return;
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkUpdating(true);
 
-  const formatShortTime = (startStr: string, endStr: string) => {
+    const { error } = await supabase
+      .from('availability_slots')
+      .update({ price_per_session: price })
+      .in('id', ids);
+
+    if (error) {
+      logger.error('Error bulk updating price', error);
+      toast({ variant: 'destructive', description: 'Failed to update prices' });
+    } else {
+      setAllSlots(prev => prev.map(s => ids.includes(s.id) ? { ...s, price_per_session: price } : s));
+      toast({ description: `Price updated for ${ids.length} slots` });
+
+      // Sync invoices in background
+      syncInvoicesAfterPriceChange(ids).catch(err => {
+        logger.error('Invoice sync after bulk price failed', err instanceof Error ? err : new Error(String(err)));
+      });
+
+      setSelectedIds(new Set());
+    }
+    setBulkUpdating(false);
+    setPriceDialogOpen(false);
+    setBulkPrice('');
+  }, [selectedIds, bulkPrice, toast]);
+
+  const formatSlotTime = (startStr: string, endStr: string) => {
     const start = new Date(startStr);
     const end = new Date(endStr);
-    return format(start, 'EEE d MMM HH:mm', { locale: dateLocale }) + ' – ' + format(end, 'HH:mm');
+    return {
+      date: format(start, 'EEE d MMM', { locale: dateLocale }),
+      time: format(start, 'HH:mm') + ' – ' + format(end, 'HH:mm'),
+    };
   };
-
-  const hasOpenSlots = cyclusGroups.length > 0 || individualSlots.length > 0;
-  const totalOpenSlots = cyclusGroups.reduce((acc, c) => acc + c.open_slots, 0) + individualSlots.length;
-  const allPublic = [...individualSlots, ...cyclusGroups.flatMap(g => g.slots)].every(s => s.is_public);
-  const anySlots = totalOpenSlots > 0;
 
   return (
     <>
-      {/* Sub-page Header — hidden when embedded in calendar hub */}
       {!embedded && (
         <div className="border-b bg-background/60">
           <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" onClick={() => navigate('/app/academy')}>
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-                <h1 className="font-bold text-lg">{t('openSlots.title', 'Open Slots')}</h1>
-                <Badge variant="secondary">{totalOpenSlots}</Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                {anySlots && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toggleAllVisibility(!allPublic)}
-                  >
-                    {allPublic ? <EyeOff className="h-4 w-4 sm:mr-2" /> : <Eye className="h-4 w-4 sm:mr-2" />}
-                    <span className="hidden sm:inline">{allPublic ? t('openSlots.hideAll') : t('openSlots.showAll')}</span>
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" onClick={() => navigate('/app/academy/calendar')}>
-                  <Calendar className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">{t('openSlots.calendar', 'Calendar')}</span>
-                </Button>
-              </div>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/app/academy')}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <h1 className="font-bold text-lg">{t('openSlots.title', 'Open Slots')}</h1>
+              <Badge variant="secondary">{allSlots.length}</Badge>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main Content */}
       <main className={embedded ? "" : "container mx-auto px-4 py-8"}>
         {loading ? (
           <div className="space-y-4">
-            {[1, 2, 3, 4].map(i => (
-              <Skeleton key={i} className="h-24 w-full" />
-            ))}
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
           </div>
-        ) : !hasOpenSlots ? (
+        ) : allSlots.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16 text-center">
               <Calendar className="h-16 w-16 text-muted-foreground mb-4" />
@@ -312,159 +332,271 @@ export default function AcademyOpenSlots({ embedded = false, onSlotClick }: { em
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-8">
-            {/* Training Cycles */}
-            {cyclusGroups.length > 0 && (
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <RotateCcw className="h-5 w-5 text-muted-foreground" />
-                  <h2 className="text-lg font-semibold">
-                    {t('openSlots.trainingCycles', 'Training Cycles')}
-                  </h2>
-                  <Badge variant="outline">{cyclusGroups.length}</Badge>
-                </div>
-                <div className="space-y-3">
-                  {cyclusGroups.map(cyclus => (
-                    <Collapsible
-                      key={cyclus.cyclus_id}
-                      open={expandedCycluses.has(cyclus.cyclus_id)}
-                      onOpenChange={() => toggleCyclus(cyclus.cyclus_id)}
-                    >
-                      <Card className="overflow-hidden">
-                        <div className="flex items-center">
-                          <CollapsibleTrigger asChild>
-                            <button className="flex-1 text-left">
-                              <CardContent className="p-4 flex items-center justify-between hover:bg-accent/50 transition-colors">
-                                <div className="flex items-center gap-3">
-                                  {expandedCycluses.has(cyclus.cyclus_id) ? (
-                                    <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" />
-                                  ) : (
-                                    <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
-                                  )}
-                                  <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-medium">{cyclus.cyclus_name}</span>
-                                      <Badge variant="secondary">
-                                        {cyclus.open_slots} {t('openSlots.sessionsOpen', 'sessions open')}
-                                      </Badge>
-                                      {!cyclus.is_public && (
-                                        <Badge variant="outline" className="text-xs">
-                                          <EyeOff className="h-3 w-3 mr-1" />
-                                          {t('openSlots.hiddenFromPlayers')}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                                      <p className="text-sm text-muted-foreground capitalize">{cyclus.day_time}</p>
-                                      <p className="text-sm text-muted-foreground">
-                                        {format(new Date(cyclus.first_date), 'd MMM', { locale: dateLocale })} – {format(new Date(cyclus.last_date), 'd MMM', { locale: dateLocale })}
-                                      </p>
-                                      <p className="text-sm text-muted-foreground">
-                                        {tAcademy('calendar.created', 'Created')}: {format(new Date(cyclus.created_at), 'd MMM yyyy', { locale: dateLocale })}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </button>
-                          </CollapsibleTrigger>
-                          <div className="pr-4" onClick={e => e.stopPropagation()}>
-                            <Switch
-                              checked={cyclus.is_public}
-                              onCheckedChange={(val) => toggleCyclusVisibility(cyclus.cyclus_id, val)}
-                            />
-                          </div>
-                        </div>
-                        <CollapsibleContent>
-                          <div className="border-t bg-muted/30">
-                            <div className="divide-y">
-                              {cyclus.slots.map(slot => (
-                                <div
-                                  key={slot.id}
-                                  className="p-4 flex items-center justify-between hover:bg-accent/30 transition-colors cursor-pointer"
-                                  onClick={() => onSlotClick?.(slot.id)}
-                                >
-                                  <div className="flex-1">
-                                    <p className="font-medium">{formatShortTime(slot.start_time, slot.end_time)}</p>
-                                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                                      <span className="text-sm text-muted-foreground">
-                                        {slot.available_spots}/{slot.max_participants} {t('openSlots.spotsAvailable')}
-                                      </span>
-                                      {slot.location_name && (
-                                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                                          <MapPin className="h-3 w-3" />
-                                          {slot.location_name}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                                    <Switch
-                                      checked={slot.is_public}
-                                      onCheckedChange={(val) => toggleSlotVisibility(slot.id, val)}
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </CollapsibleContent>
-                      </Card>
-                    </Collapsible>
+          <div className="space-y-4">
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3">
+              <Select value={filterTrainer} onValueChange={setFilterTrainer}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder={t('openSlots.filterTrainer', 'Trainer')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('common:all', 'All trainers')}</SelectItem>
+                  {trainerOptions.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>{name}</SelectItem>
                   ))}
-                </div>
-              </section>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterLocation} onValueChange={setFilterLocation}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder={t('openSlots.filterLocation', 'Location')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('common:all', 'All locations')}</SelectItem>
+                  {locationOptions.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterCyclus} onValueChange={setFilterCyclus}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder={t('openSlots.filterCyclus', 'Cyclus')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('common:all', 'All cycles')}</SelectItem>
+                  {cyclusOptions.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterVisibility} onValueChange={setFilterVisibility}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder={t('openSlots.visibility', 'Visibility')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('common:all', 'All')}</SelectItem>
+                  <SelectItem value="public">{t('openSlots.public', 'Public')}</SelectItem>
+                  <SelectItem value="hidden">{t('openSlots.hidden', 'Hidden')}</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="ml-auto text-sm text-muted-foreground self-center">
+                {sortedData.length} {t('common:slots', 'slots')}
+              </div>
+            </div>
+
+            {/* Bulk toolbar */}
+            {someSelected && (
+              <div className="sticky top-0 z-10 flex items-center gap-3 p-3 rounded-lg border bg-muted/80 backdrop-blur">
+                <span className="text-sm font-medium">
+                  {selectedIds.size} {t('openSlots.selected', 'selected')}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPriceDialogOpen(true)}
+                  disabled={bulkUpdating}
+                >
+                  <Euro className="h-4 w-4 mr-1" />
+                  {t('openSlots.setPrice', 'Set price')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleBulkVisibility(true)}
+                  disabled={bulkUpdating}
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  {t('openSlots.makePublic', 'Make public')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleBulkVisibility(false)}
+                  disabled={bulkUpdating}
+                >
+                  <EyeOff className="h-4 w-4 mr-1" />
+                  {t('openSlots.makeHidden', 'Hide')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  {t('common:deselectAll', 'Deselect')}
+                </Button>
+              </div>
             )}
 
-            {/* Individual Slots */}
-            {individualSlots.length > 0 && (
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <Calendar className="h-5 w-5 text-muted-foreground" />
-                  <h2 className="text-lg font-semibold">
-                    {t('openSlots.individualSlots', 'Individual Slots')}
-                  </h2>
-                  <Badge variant="outline">{individualSlots.length}</Badge>
-                </div>
-                <div className="space-y-3">
-                  {individualSlots.map(slot => (
-                    <Card key={slot.id} className="cursor-pointer" onClick={() => onSlotClick?.(slot.id)}>
-                      <CardContent className="p-4 flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="font-medium">{formatShortTime(slot.start_time, slot.end_time)}</p>
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                            <span className="text-sm text-muted-foreground">
-                              {slot.available_spots}/{slot.max_participants} {t('openSlots.spotsAvailable')}
-                            </span>
-                            {slot.location_name && (
-                              <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                                <MapPin className="h-3 w-3" />
+            {/* Table */}
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
+                    <SortableTableHead
+                      sortKey="start_time"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof FlatSlot)}
+                    >
+                      {t('openSlots.dateTime', 'Date / Time')}
+                    </SortableTableHead>
+                    <SortableTableHead
+                      sortKey="cyclus_name"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof FlatSlot)}
+                    >
+                      {t('openSlots.cyclus', 'Cyclus')}
+                    </SortableTableHead>
+                    <SortableTableHead
+                      sortKey="trainer_name"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof FlatSlot)}
+                    >
+                      {t('openSlots.trainer', 'Trainer')}
+                    </SortableTableHead>
+                    <SortableTableHead
+                      sortKey="location_name"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof FlatSlot)}
+                    >
+                      {t('openSlots.location', 'Location')}
+                    </SortableTableHead>
+                    <SortableTableHead
+                      sortKey="available_spots"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof FlatSlot)}
+                    >
+                      {t('openSlots.spots', 'Spots')}
+                    </SortableTableHead>
+                    <SortableTableHead
+                      sortKey="price_per_session"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof FlatSlot)}
+                    >
+                      {t('openSlots.price', 'Price')}
+                    </SortableTableHead>
+                    <TableHead className="w-[80px]">
+                      {t('openSlots.public', 'Public')}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedData.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        {t('openSlots.noMatchingSlots', 'No slots match current filters')}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedData.map(slot => {
+                      const { date, time } = formatSlotTime(slot.start_time, slot.end_time);
+                      return (
+                        <TableRow
+                          key={slot.id}
+                          className="cursor-pointer"
+                          onClick={() => navigate(`/app/academy/slot/${slot.id}`)}
+                        >
+                          <TableCell onClick={e => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedIds.has(slot.id)}
+                              onCheckedChange={() => toggleSelect(slot.id)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium text-sm">{date}</div>
+                            <div className="text-xs text-muted-foreground">{time}</div>
+                          </TableCell>
+                          <TableCell>
+                            {slot.cyclus_name ? (
+                              <Badge variant="outline" className="text-xs">{slot.cyclus_name}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm">{slot.trainer_name || '—'}</TableCell>
+                          <TableCell>
+                            {slot.location_name ? (
+                              <span className="flex items-center gap-1 text-sm">
+                                <MapPin className="h-3 w-3 text-muted-foreground" />
                                 {slot.location_name}
                               </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {!slot.is_public && (
-                            <Badge variant="outline" className="text-xs">
-                              <EyeOff className="h-3 w-3 mr-1" />
-                              {t('openSlots.hiddenFromPlayers')}
-                            </Badge>
-                          )}
-                          <Switch
-                            checked={slot.is_public}
-                            onCheckedChange={(val) => toggleSlotVisibility(slot.id, val)}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </section>
-            )}
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">
+                              {slot.available_spots}/{slot.max_participants}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {slot.price_per_session != null ? formatPrice(slot.price_per_session) : '—'}
+                          </TableCell>
+                          <TableCell onClick={e => e.stopPropagation()}>
+                            <Switch
+                              checked={slot.is_public}
+                              onCheckedChange={(val) => toggleSlotVisibility(slot.id, val)}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
       </main>
+
+      {/* Bulk price dialog */}
+      <Dialog open={priceDialogOpen} onOpenChange={setPriceDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>{t('openSlots.setPriceTitle', 'Set price per session')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              {t('openSlots.setPriceDescription', 'This will update the price for {{count}} selected slots and recalculate any unpaid invoices.', { count: selectedIds.size })}
+            </p>
+            <div className="space-y-2">
+              <Label>{t('openSlots.pricePerSession', 'Price per session (€)')}</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={bulkPrice}
+                onChange={e => setBulkPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPriceDialogOpen(false)}>
+              {t('common:cancel', 'Cancel')}
+            </Button>
+            <Button
+              onClick={handleBulkPriceConfirm}
+              disabled={bulkUpdating || !bulkPrice || isNaN(parseFloat(bulkPrice))}
+            >
+              {bulkUpdating ? t('common:saving', 'Saving...') : t('openSlots.updatePrice', 'Update price')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
