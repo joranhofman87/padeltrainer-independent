@@ -557,6 +557,7 @@ export default function AcademyCycleDetail() {
         rating_system: null,
         cyclus_name: cycle?.name ?? null,
         is_blocked: false,
+        is_marked_full: false,
         current_assignments: [],
       };
       setScheduleSlots(prev => [...prev, newSlot]);
