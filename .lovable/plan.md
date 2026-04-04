@@ -1,16 +1,18 @@
 
 
-# Add proposed_assignments and intake_requests to automated backups
+# Increase backup frequency from 12h to every 2 hours
 
-## Situation
-The automated backup system already runs every 12 hours via pg_cron, backing up 13 tables to a private storage bucket. It just doesn't include `proposed_assignments` or `intake_requests` — the two tables whose data was lost.
+## Impact assessment
+**Very low impact.** The backup function exports 15 tables as JSON files to storage. Each run takes a few seconds and uses a service-role connection. Going from 2 runs/day to 12 runs/day is negligible on the Small instance.
 
-## Change
-One file, two lines added:
+The only consideration is **storage growth** — more snapshots means more files. But JSON exports of these tables are small (KB range), so even at 2-hour intervals you'd accumulate ~12 backups/day. The admin UI already supports deleting old backups, and you could add a retention policy later if needed.
 
-| File | Change |
+## Changes
+
+| What | Change |
 |------|--------|
-| `supabase/functions/backup-database/index.ts` | Add `"proposed_assignments"` and `"intake_requests"` to the `TABLES_TO_BACKUP` array |
+| Cron job schedule (SQL) | Update from `0 */12 * * *` to `0 */2 * * *` (every 2 hours) |
+| `src/pages/admin/AdminBackups.tsx` | Update label from "elke 12 uur" to "elke 2 uur" |
 
-That's it. The backup infrastructure (cron job, storage bucket, admin UI at `/app/admin/backups`) is already in place. Next time slots/assignments are created, they'll be included in the 12-hourly snapshots automatically.
+The cron job update is a single SQL statement run via the database tool — no migration needed since it contains project-specific URLs/keys.
 
