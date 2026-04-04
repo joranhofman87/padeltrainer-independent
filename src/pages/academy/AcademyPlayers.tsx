@@ -38,6 +38,7 @@ import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
+import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { useSearchParams } from 'react-router-dom';
