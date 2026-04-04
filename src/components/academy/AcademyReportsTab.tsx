@@ -260,7 +260,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
@@ -269,6 +269,17 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
             <div>
               <p className="text-2xl font-bold">{isLoading ? '—' : stats.totalSessions}</p>
               <p className="text-xs text-muted-foreground">{t('reports.sessions', 'Sessions')}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-destructive/10">
+              <CalendarX2 className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{isLoading ? '—' : stats.emptySlots}</p>
+              <p className="text-xs text-muted-foreground">{t('reports.emptySlots', 'Empty slots')}</p>
             </div>
           </CardContent>
         </Card>
