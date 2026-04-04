@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
   ArrowLeft, Calendar, Clock, Lock, MapPin, Users, Pencil,
-  Trash2, UserPlus, DollarSign, Loader2, Save, X, Check,
+  Trash2, UserPlus, DollarSign, Loader2, Save, X, Check, Plus, Minus,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
@@ -38,6 +38,12 @@ import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
+interface ExtraCost {
+  description: string;
+  amount: number;
+  type: 'one_time' | 'per_session';
+}
+
 interface SlotDetail {
   id: string;
   start_time: string;
@@ -55,6 +61,10 @@ interface SlotDetail {
   min_rating: number | null;
   max_rating: number | null;
   price_per_session: number | null;
+  total_price: number | null;
+  split_payment: boolean;
+  prices_include_vat: boolean;
+  extra_costs: ExtraCost[] | null;
   booked_players: BookedPlayer[];
 }
 
@@ -88,6 +98,11 @@ export default function AcademySlotDetail() {
   const [editMaxRating, setEditMaxRating] = useState<number | null>(null);
   const [editCyclusName, setEditCyclusName] = useState('');
   const [editPricePerSession, setEditPricePerSession] = useState<string>('');
+  const [editTotalPrice, setEditTotalPrice] = useState<string>('');
+  const [editSplitPayment, setEditSplitPayment] = useState(false);
+  const [editPricesIncludeVat, setEditPricesIncludeVat] = useState(true);
+  const [editExtraCosts, setEditExtraCosts] = useState<ExtraCost[]>([]);
+  const [editIsMarkedFull, setEditIsMarkedFull] = useState(false);
   const [applyToCyclus, setApplyToCyclus] = useState(false);
 
   // Lookup data
@@ -114,6 +129,7 @@ export default function AcademySlotDetail() {
           id, start_time, end_time, trainer_id, max_participants,
           is_marked_full, cyclus_id, cyclus_name, location_id,
           rating_system, min_rating, max_rating, price_per_session,
+          total_price, split_payment, prices_include_vat, extra_costs,
           locations:location_id(name)
         `)
         .eq('id', slotId)
@@ -183,6 +199,10 @@ export default function AcademySlotDetail() {
         min_rating: slot.min_rating,
         max_rating: slot.max_rating,
         price_per_session: slot.price_per_session,
+        total_price: slot.total_price,
+        split_payment: slot.split_payment ?? false,
+        prices_include_vat: slot.prices_include_vat ?? true,
+        extra_costs: (slot.extra_costs as unknown as ExtraCost[] | null) || null,
         booked_players: players,
       });
     } catch (error) {
@@ -228,6 +248,11 @@ export default function AcademySlotDetail() {
     setEditMaxRating(detail.max_rating);
     setEditCyclusName(detail.cyclus_name || '');
     setEditPricePerSession(detail.price_per_session != null ? String(detail.price_per_session) : '');
+    setEditTotalPrice(detail.total_price != null ? String(detail.total_price) : '');
+    setEditSplitPayment(detail.split_payment);
+    setEditPricesIncludeVat(detail.prices_include_vat);
+    setEditExtraCosts(detail.extra_costs ? [...detail.extra_costs] : []);
+    setEditIsMarkedFull(detail.is_marked_full);
     setApplyToCyclus(false);
     setIsEditing(true);
   };
@@ -253,6 +278,11 @@ export default function AcademySlotDetail() {
         max_rating: editMaxRating,
         cyclus_name: editCyclusName || null,
         price_per_session: editPricePerSession ? Number(editPricePerSession) : null,
+        total_price: editTotalPrice ? Number(editTotalPrice) : null,
+        split_payment: editSplitPayment,
+        prices_include_vat: editPricesIncludeVat,
+        extra_costs: editExtraCosts.length > 0 ? editExtraCosts : null,
+        is_marked_full: editIsMarkedFull,
       };
 
       if (applyToCyclus && detail.cyclus_id) {
@@ -583,6 +613,105 @@ export default function AcademySlotDetail() {
                     </div>
                   </div>
 
+                  {/* Total price */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t('calendar.totalPrice', 'Total price (full cyclus)')}</Label>
+                    <Input
+                      type="number" step="0.01" min={0}
+                      value={editTotalPrice}
+                      onChange={e => setEditTotalPrice(e.target.value)}
+                      placeholder="€"
+                    />
+                  </div>
+
+                  <Separator />
+
+                  {/* VAT mode */}
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">{t('calendar.pricesIncludeVat', 'Prices include VAT')}</Label>
+                    <Switch checked={editPricesIncludeVat} onCheckedChange={setEditPricesIncludeVat} />
+                  </div>
+
+                  {/* Split payment */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">{t('calendar.splitPayment', 'Split payment')}</Label>
+                      <p className="text-[10px] text-muted-foreground">{t('calendar.splitPaymentDesc', 'Each player pays individually')}</p>
+                    </div>
+                    <Switch checked={editSplitPayment} onCheckedChange={setEditSplitPayment} />
+                  </div>
+
+                  {/* Mark as private */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                      <Label className="text-xs">{t('calendar.markPrivate', 'Mark as private')}</Label>
+                    </div>
+                    <Switch checked={editIsMarkedFull} onCheckedChange={setEditIsMarkedFull} />
+                  </div>
+
+                  <Separator />
+
+                  {/* Extra costs */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">{t('calendar.extraCosts', 'Extra costs')}</Label>
+                      <Button
+                        type="button" size="sm" variant="ghost" className="h-6 px-2 gap-1 text-xs"
+                        onClick={() => setEditExtraCosts([...editExtraCosts, { description: '', amount: 0, type: 'one_time' }])}
+                      >
+                        <Plus className="h-3 w-3" /> {tCommon('add', 'Add')}
+                      </Button>
+                    </div>
+                    {editExtraCosts.map((ec, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input
+                          className="flex-1 h-8 text-xs"
+                          placeholder={t('calendar.description', 'Description')}
+                          value={ec.description}
+                          onChange={e => {
+                            const updated = [...editExtraCosts];
+                            updated[idx] = { ...updated[idx], description: e.target.value };
+                            setEditExtraCosts(updated);
+                          }}
+                        />
+                        <Input
+                          className="w-20 h-8 text-xs"
+                          type="number" step="0.01" min={0}
+                          placeholder="€"
+                          value={ec.amount || ''}
+                          onChange={e => {
+                            const updated = [...editExtraCosts];
+                            updated[idx] = { ...updated[idx], amount: Number(e.target.value) };
+                            setEditExtraCosts(updated);
+                          }}
+                        />
+                        <Select
+                          value={ec.type}
+                          onValueChange={v => {
+                            const updated = [...editExtraCosts];
+                            updated[idx] = { ...updated[idx], type: v as 'one_time' | 'per_session' };
+                            setEditExtraCosts(updated);
+                          }}
+                        >
+                          <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="one_time">{t('calendar.oneTime', 'One-time')}</SelectItem>
+                            <SelectItem value="per_session">{t('calendar.perSession', 'Per session')}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                          onClick={() => setEditExtraCosts(editExtraCosts.filter((_, i) => i !== idx))}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Separator />
+
                   <SlotRatingPicker
                     ratingSystem={editRatingSystem}
                     minRating={editMinRating}
@@ -658,7 +787,21 @@ export default function AcademySlotDetail() {
                     {detail.price_per_session != null && (
                       <Badge variant="outline" className="gap-1">
                         <DollarSign className="h-3 w-3" />
-                        €{detail.price_per_session.toFixed(2)}
+                        €{detail.price_per_session.toFixed(2)} / {t('calendar.session', 'session')}
+                      </Badge>
+                    )}
+                    {detail.total_price != null && (
+                      <Badge variant="outline" className="gap-1">
+                        <DollarSign className="h-3 w-3" />
+                        €{detail.total_price.toFixed(2)} {t('calendar.total', 'total')}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="gap-1 text-muted-foreground">
+                      {detail.prices_include_vat ? t('calendar.inclVat', 'Incl. VAT') : t('calendar.exclVat', 'Excl. VAT')}
+                    </Badge>
+                    {detail.split_payment && (
+                      <Badge variant="outline" className="gap-1 text-muted-foreground">
+                        {t('calendar.splitPayment', 'Split payment')}
                       </Badge>
                     )}
                     {(detail.min_rating != null || detail.max_rating != null) && (
@@ -667,6 +810,18 @@ export default function AcademySlotDetail() {
                       </Badge>
                     )}
                   </div>
+
+                  {/* Extra costs summary */}
+                  {detail.extra_costs && detail.extra_costs.length > 0 && (
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <p className="font-medium">{t('calendar.extraCosts', 'Extra costs')}:</p>
+                      {detail.extra_costs.map((ec, i) => (
+                        <p key={i}>
+                          {ec.description}: €{ec.amount.toFixed(2)} ({ec.type === 'one_time' ? t('calendar.oneTime', 'One-time') : t('calendar.perSession', 'Per session')})
+                        </p>
+                      ))}
+                    </div>
+                  )}
 
                   <Separator />
 
