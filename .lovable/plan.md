@@ -1,69 +1,86 @@
 
 
-# Redesign Open Spots Tab: Table View with Filters + Bulk Edit
+# Restrict Trainer Dashboard for Academy Members
 
-## Summary
-Replace the current collapsible card layout on the Open Spots tab with a sortable table of all slots. Add filter dropdowns at the top (trainer, location, cyclus, visibility). Add checkbox-based bulk selection with a bulk edit toolbar for updating price, visibility, and other fields across multiple slots at once.
+## Problem
+Trainers who belong to an academy currently have a full independent dashboard with settings, billing, registrations, open slots management, etc. This creates confusion and duplication — the academy should own all configuration. Academy trainers should only see their own schedule and players.
+
+## Architecture Decision
+
+**Keep `/app/trainer` as the route** but dynamically strip the sidebar and redirect restricted pages based on whether the trainer belongs to an academy. No new routes needed — we restrict what's shown.
+
+The ProfileSwitcher at the bottom of the sidebar already handles switching to the academy dashboard for managers. Non-manager trainers will only see their limited trainer view.
 
 ## Changes
 
-### 1. `src/pages/academy/AcademyOpenSlots.tsx` — Full rewrite
+### 1. `src/components/trainer/TrainerSidebar.tsx` — Conditional nav for academy trainers
 
-**Data fetching**: Keep the existing query but flatten all slots into a single array (no cyclus grouping). Add trainer info to each row by joining `trainer_id` to the academy trainers list.
+When `hasAcademy` is true, the sidebar shows ONLY:
+- **My Profile** — personal details (name, bio, avatar, coaching style)
+- **My Schedule** — single link to `/trainer/calendar` (their slots only)
+- **My Players** — their booked players
 
-**Table columns**:
-| Date/Time | Cyclus | Trainer | Location | Spots | Price | Public | Actions |
-|-----------|--------|---------|----------|-------|-------|--------|---------|
+**Hidden** when `hasAcademy`:
+- Dashboard (stats are academy-level)
+- Open Slots / Schedule Overview (managed by academy)
+- Registrations / Intake / Waiting List (managed by academy)
+- Business group (Settings / Subscription / Earnings)
+- Get Started checklist
 
-- Date/Time: formatted start-end
-- Cyclus: cyclus_name or "—"
-- Trainer: name
-- Location: name
-- Spots: available/max
-- Price: price_per_session (€)
-- Public: switch toggle (inline, same as current)
-- Actions: click row → navigate to slot detail
+The ProfileSwitcher remains in the footer — academy managers can switch to `/app/academy` for full control.
 
-**Filters** (above table):
-- Trainer dropdown (from academy trainers)
-- Location dropdown (from academy locations)
-- Cyclus dropdown (unique cyclus names from fetched data)
-- Visibility: All / Public / Hidden
+### 2. `src/components/trainer/TrainerLayout.tsx` — Route guard for academy trainers
 
-**Sortable headers** using existing `useTableSort` + `SortableTableHead`.
+Add redirect logic: if `hasAcademy` is true and the current path is a restricted route (settings, subscription, earnings, cycles, intake-requests, waiting-list, schedule-overview, open-slots, get-started), redirect to `/app/trainer/calendar`.
 
-**Bulk selection**:
-- Checkbox column on left
-- "Select all" checkbox in header
-- When ≥1 selected, show a sticky toolbar with:
-  - Count label: "X slots selected"
-  - "Set price" — opens a small popover/dialog to set `price_per_session` for all selected
-  - "Set visibility" — toggle public/hidden for all selected
-  - "Deselect all" button
+This prevents direct URL access to pages the trainer shouldn't see.
 
-### 2. Bulk price update logic
+### 3. `src/pages/trainer/TrainerDashboard.tsx` — Redirect for academy trainers
 
-When "Set price" is confirmed:
-1. Update `availability_slots` set `price_per_session = X` where `id in (selectedIds)`
-2. Call `syncInvoicesAfterPriceChange(selectedIds)` to update unpaid invoices
-3. Refresh the table
-4. Show toast with count of updated slots
+When `hasAcademy`, redirect to `/app/trainer/calendar` instead of showing the stats dashboard. Academy-level stats live in the academy Reports tab.
 
-### 3. Wire into `AcademyCalendar.tsx`
+### 4. Trainer Settings page — scope down for academy trainers
 
-No changes needed — already lazy-loads `AcademyOpenSlotsContent` with `embedded={true}`.
+If somehow accessed (belt-and-suspenders), show only personal profile fields (bio, avatar, coaching style). Hide business settings (hourly rate, VAT, invoice settings, locations) — these are academy-managed.
 
-## Technical details
+## What stays the same
+- Independent trainers (no academy) see everything as before — no changes
+- Academy managers can still switch to academy dashboard via ProfileSwitcher
+- The trainer calendar at `/app/trainer/calendar` already shows only slots belonging to that trainer
+- The trainer players page already shows only their booked players
 
-- Reuse `useTableSort` hook for column sorting
-- Reuse `SortableTableHead` component for sort indicators
-- Fetch `price_per_session`, `trainer_id` + trainer name, and `is_public` in the query
-- Bulk update uses a single `.update().in('id', ids)` call
-- Invoice sync after bulk price change uses existing `syncInvoicesAfterPriceChange`
+## Visual: Sidebar comparison
+
+```text
+INDEPENDENT TRAINER          ACADEMY TRAINER
+─────────────────           ───────────────
+My Profile                  My Profile
+Dashboard                   My Schedule
+Players                     My Players
+▸ Schedule                  
+  Calendar                  ── footer ──
+  Open Slots                ProfileSwitcher
+  Overview                  (switch to Academy)
+▸ Registrations             Theme / Logout
+  Registrations             
+  Intake Requests           
+  Waiting List              
+▸ Business                  
+  Settings                  
+  Subscription              
+  Earnings                  
+Get Started                 
+                            
+── footer ──                
+ProfileSwitcher             
+View Profile                
+Theme / Referral / Logout   
+```
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyOpenSlots.tsx` | Rewrite: table layout, filters, sortable columns, bulk selection + bulk edit toolbar |
+| `src/components/trainer/TrainerSidebar.tsx` | Hide nav sections when `hasAcademy`, show only Profile/Schedule/Players |
+| `src/components/trainer/TrainerLayout.tsx` | Add route guard redirecting restricted paths for academy trainers |
 
