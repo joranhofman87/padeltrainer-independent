@@ -43,6 +43,7 @@ interface AcademyDayGridProps {
   onRemovePlayer?: (bookingId: string) => void;
   onAddPlayerToSlot?: (slot: SlotWithBookings) => void;
   onEditBooking?: (bookingId: string) => void;
+  onEditSlot?: (slot: SlotWithBookings) => void;
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onCellClick?: (day: Date, hour: number) => void;
