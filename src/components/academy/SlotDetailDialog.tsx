@@ -74,7 +74,7 @@ export function SlotDetailDialog({
       const { data: slot, error } = await supabase
         .from('availability_slots')
         .select(`
-          id, start_time, end_time, trainer_id, max_participants, cyclus_id, cyclus_name, location_id,
+          id, start_time, end_time, trainer_id, max_participants, cyclus_id, cyclus_name, location_id, is_public,
           rating_system, min_rating, max_rating, price_per_session,
           locations:location_id(name)
         `)
