@@ -38,6 +38,7 @@ import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
+import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { useSearchParams } from 'react-router-dom';
@@ -726,27 +727,43 @@ export default function AcademyPlayers() {
 
         {/* Create Tab */}
         <TabsContent value="create" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserPlus className="h-5 w-5" />
-                {tTrainer('players.addPlayer')}
-              </CardTitle>
-              <CardDescription>
-                {tTrainer('players.addPlayerDescription', 'Add a new player to your academy or import multiple players at once.')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex gap-3">
-              <Button onClick={() => setShowAddPlayer(true)}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                {tTrainer('players.addPlayer')}
-              </Button>
-              <Button variant="outline" onClick={() => setShowImportPlayers(true)}>
-                <Upload className="mr-2 h-4 w-4" />
-                {tTrainer('players.import.button')}
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <UserPlus className="h-5 w-5" />
+                  {tTrainer('players.addPlayer')}
+                </CardTitle>
+                <CardDescription>
+                  {tTrainer('players.addPlayerDescription', 'Add a new player to your academy.')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AddPlayerForm
+                  academyId={activeAcademy?.id}
+                  onPlayerCreated={() => fetchPlayers()}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Upload className="h-5 w-5" />
+                  {tTrainer('players.import.button', 'Import Players')}
+                </CardTitle>
+                <CardDescription>
+                  {tTrainer('players.import.description', 'Import multiple players at once from a CSV file.')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" onClick={() => setShowImportPlayers(true)}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  {tTrainer('players.import.button', 'Import CSV')}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Email Campaign Tab */}
