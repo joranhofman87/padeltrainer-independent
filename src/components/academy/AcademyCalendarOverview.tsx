@@ -46,7 +46,7 @@ interface AcademyCalendarOverviewProps {
   onNavigateNext: () => void;
   onGoToday: () => void;
   dateRangeLabel: string;
-  onNewClick?: () => void;
+  
 }
 
 function CompactSlotCard({ slot, isPast }: { slot: SlotSummary; isPast: boolean }) {
