@@ -308,14 +308,6 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
     }
   };
 
-  // Simple text → HTML conversion for the editor
-  const handleEditorInput = (e: React.FormEvent<HTMLDivElement>) => {
-    setBodyHtml(e.currentTarget.innerHTML);
-  };
-
-  const insertBold = () => {
-    document.execCommand('bold', false);
-  };
 
   const insertVariable = (variable: string) => {
     document.execCommand('insertText', false, `{{${variable}}}`);
