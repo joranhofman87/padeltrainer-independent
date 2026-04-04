@@ -37,6 +37,7 @@ import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 import { EditSlotDialog } from "@/components/trainer/EditSlotDialog";
+import { SlotDetailDialog } from "@/components/academy/SlotDetailDialog";
 
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
