@@ -283,70 +283,33 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Business Group */}
-              <Collapsible
-                open={businessOpen && !collapsed}
-                onOpenChange={setBusinessOpen}
-                className="group/business"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t("nav.business")}
-                      className={isActive("/app/academy/settings") || isActive("/app/academy/subscription") || isActive("/app/academy/invoices")
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : ""}
-                    >
-                      <CreditCard className="h-4 w-4" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{t("nav.business")}</span>
-                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/business:rotate-90" />
-                        </>
-                      )}
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/settings"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            <Settings className="h-4 w-4" />
-                            {t("nav.settings")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/subscription"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.subscription")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/invoices"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            <FileText className="h-4 w-4" />
-                            {t("nav.invoices", "Invoices")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+              {/* Invoices */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.invoices", "Invoices")}>
+                  <NavLink
+                    to="/app/academy/invoices"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.invoices", "Facturen")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Settings */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.settings")}>
+                  <NavLink
+                    to="/app/academy/settings"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <Settings className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.settings")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
             </SidebarMenu>
           </SidebarGroupContent>
