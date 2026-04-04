@@ -787,7 +787,21 @@ export default function AcademySlotDetail() {
                     {detail.price_per_session != null && (
                       <Badge variant="outline" className="gap-1">
                         <DollarSign className="h-3 w-3" />
-                        €{detail.price_per_session.toFixed(2)}
+                        €{detail.price_per_session.toFixed(2)} / {t('calendar.session', 'session')}
+                      </Badge>
+                    )}
+                    {detail.total_price != null && (
+                      <Badge variant="outline" className="gap-1">
+                        <DollarSign className="h-3 w-3" />
+                        €{detail.total_price.toFixed(2)} {t('calendar.total', 'total')}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="gap-1 text-muted-foreground">
+                      {detail.prices_include_vat ? t('calendar.inclVat', 'Incl. VAT') : t('calendar.exclVat', 'Excl. VAT')}
+                    </Badge>
+                    {detail.split_payment && (
+                      <Badge variant="outline" className="gap-1 text-muted-foreground">
+                        {t('calendar.splitPayment', 'Split payment')}
                       </Badge>
                     )}
                     {(detail.min_rating != null || detail.max_rating != null) && (
@@ -796,6 +810,18 @@ export default function AcademySlotDetail() {
                       </Badge>
                     )}
                   </div>
+
+                  {/* Extra costs summary */}
+                  {detail.extra_costs && detail.extra_costs.length > 0 && (
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <p className="font-medium">{t('calendar.extraCosts', 'Extra costs')}:</p>
+                      {detail.extra_costs.map((ec, i) => (
+                        <p key={i}>
+                          {ec.description}: €{ec.amount.toFixed(2)} ({ec.type === 'one_time' ? t('calendar.oneTime', 'One-time') : t('calendar.perSession', 'Per session')})
+                        </p>
+                      ))}
+                    </div>
+                  )}
 
                   <Separator />
 
