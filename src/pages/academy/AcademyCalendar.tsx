@@ -706,22 +706,34 @@ export default function AcademyCalendar() {
         </Card>
 
         {/* Calendar Grid */}
-        <Card>
-          <CardContent className="p-0 sm:p-4">
-            <TrainerCalendarGrid
-              slots={mappedSlots}
-              currentDate={currentDate}
-              view={view}
-              showTrainerInfo
-              onCellClick={handleCellClick}
-              onBookForPlayer={handleBookForPlayer}
-              onDuplicateCyclus={handleDuplicateCyclus}
-              onDeleteSlot={handleDeleteSlot}
-              onEditBooking={handleEditBooking}
-              onToggleMarkedFull={handleToggleMarkedFull}
-              onNavigatePrevious={navigatePrevious}
-              onNavigateNext={navigateNext}
-            />
+        {view === "day" ? (
+          <AcademyDayGrid
+            slots={mappedSlots}
+            currentDate={currentDate}
+            allKnownPlayers={allKnownPlayers}
+            trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
+            onMovePlayer={handleMovePlayer}
+            onRemovePlayer={handleRemovePlayer}
+            onBookForPlayer={handleBookForPlayer}
+            onEditBooking={handleEditBooking}
+            onDeleteSlot={handleDeleteSlot}
+            onCellClick={handleCellClick}
+          />
+        ) : (
+          <Card>
+            <CardContent className="p-4">
+              <AcademyWeekOverview
+                slots={mappedSlots}
+                currentDate={currentDate}
+                trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
+                onDayClick={(date) => {
+                  setCurrentDate(date);
+                  setView("day");
+                }}
+              />
+            </CardContent>
+          </Card>
+        )
           </CardContent>
         </Card>
       </main>
