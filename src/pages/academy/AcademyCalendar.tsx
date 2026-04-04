@@ -665,6 +665,8 @@ export default function AcademyCalendar() {
               slots={overviewSlots}
               currentDate={currentDate}
               onDayClick={handleOverviewDayClick}
+              trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+              locations={locations.map(l => ({ id: l.id, name: l.name }))}
             />
           </TabsContent>
 
