@@ -450,7 +450,7 @@ export default function AcademyCalendar() {
   const goToToday = () => setCurrentDate(new Date());
 
   const getDateRangeLabel = () => {
-    if (activeTab === "overview" || activeTab === "hours") {
+    if (activeTab === "hours") {
       return format(currentDate, "MMMM yyyy", { locale: dateLocale });
     }
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
