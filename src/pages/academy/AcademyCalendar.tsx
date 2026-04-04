@@ -435,6 +435,7 @@ export default function AcademyCalendar() {
       end_time: s.end_time,
       trainer_name: s.trainer_name,
       trainer_id: s.trainer_id,
+      trainer_avatar: s.trainer_avatar,
       max_participants: s.max_participants,
       booked_count: s.active_bookings + s.pending_bookings,
       location_name: s.location_name,
