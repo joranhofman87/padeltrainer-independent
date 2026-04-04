@@ -1764,7 +1764,7 @@ export function BulkCreateContent({
             }
           }}
         />
-      </SheetContent>
-    </Sheet>
+    </>
+
   );
 }
