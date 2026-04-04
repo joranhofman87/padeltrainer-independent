@@ -306,23 +306,30 @@ export default function AcademyPlayers() {
         }
       }
 
-      const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => ({
-        id: g.id,
-        full_name: g.full_name,
-        email: g.email || '',
-        phone: g.phone || '',
-        skill_rating: g.skill_rating ?? null,
-        rating_system: g.rating_system || 'knltb',
-        has_trained: g.has_trained ?? false,
-        notes: g.notes || null,
-        created_at: g.created_at,
-        type: 'guest' as const,
-        trainer_id: g.trainer_id,
-        trainer_name: g.trainer_id ? (trainerNameMap.get(g.trainer_id) || '—') : t('nav.academy', 'Academy'),
-        originalGuest: g as GuestPlayer,
-        location_names: guestLocationMap.has(g.id) ? Array.from(guestLocationMap.get(g.id)!) : [],
-        has_active_cyclus: guestCyclusMap.get(g.id) || false,
-      }));
+      const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => {
+        const bookingTrainerIds = guestTrainerMap.has(g.id) ? Array.from(guestTrainerMap.get(g.id)!) : [];
+        const allTrainerIds = g.trainer_id
+          ? [...new Set([g.trainer_id, ...bookingTrainerIds])]
+          : bookingTrainerIds;
+        return {
+          id: g.id,
+          full_name: g.full_name,
+          email: g.email || '',
+          phone: g.phone || '',
+          skill_rating: g.skill_rating ?? null,
+          rating_system: g.rating_system || 'knltb',
+          has_trained: g.has_trained ?? false,
+          notes: g.notes || null,
+          created_at: g.created_at,
+          type: 'guest' as const,
+          trainer_id: g.trainer_id,
+          trainer_ids: allTrainerIds,
+          trainer_name: g.trainer_id ? (trainerNameMap.get(g.trainer_id) || '—') : t('nav.academy', 'Academy'),
+          originalGuest: g as GuestPlayer,
+          location_names: guestLocationMap.has(g.id) ? Array.from(guestLocationMap.get(g.id)!) : [],
+          has_active_cyclus: guestCyclusMap.get(g.id) || false,
+        };
+      });
 
       // Fetch registered players from bookings
       const { data: slotIds } = await supabase
