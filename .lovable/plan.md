@@ -1,77 +1,48 @@
 
 
-# Redesign Overview: Compact, Scannable Week Grid
+# Add Slot Edit/Delete Actions to Manage Tab
 
 ## Problem
-The current overview is too busy:
-- Every unique start time (including half-hours) gets its own row, making the grid very tall
-- Slot cards are large: they show full trainer name, location text, occupancy bar, and count
-- Cards vary in height, making columns look misaligned
-- The goal — "quickly scan the week's planning" — is lost in the noise
-
-## Design approach (UX best practice for non-technical users)
-
-**Replace the time-row grid with a simple day-column layout.** Each day is a column, slots stack vertically sorted by time. No time-axis alignment — this eliminates the half-hour row problem entirely and makes the grid compact.
-
-**Minimal slot cards**: Each card is a single fixed-height row showing:
-- Trainer avatar (small circle, 20px)
-- Time range (`10:00–11:00`)
-- Player count as a simple fraction (`3/4`)
-- Color-coded left border: green = full, amber = partial, gray = empty
-
-No trainer name text, no location text, no occupancy bar. The avatar IS the trainer identifier. Full/marked-full slots get a green left border only — no bar, no badge.
-
-**Tooltip on hover** reveals full details (trainer name, location, player names) for users who need it.
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│ ◀  7 – 13 Apr 2026  ▶  Today  [+New]    [Loc▾] [Tr▾]  │
-├─────────────────────────────────────────────────────────┤
-│  Mon 7    Tue 8    Wed 9    Thu 10   Fri 11   Sat  Sun  │
-│ ┌──────┐ ┌──────┐ ┌──────┐                              │
-│ │🟢 👤 10:00 3/4│ │🟡 👤 10:00 2/4│ ...                 │
-│ │🟢 👤 10:00 4/4│ │   👤 11:00 0/4│                     │
-│ │🟡 👤 14:00 2/4│ │🟢 👤 14:00 4/4│                     │
-│ │   👤 18:00 0/4│ └──────┘                              │
-│ └──────┘                                                │
-│                                                         │
-│ 🟢 Full  🟡 Partial  ○ Empty                            │
-└─────────────────────────────────────────────────────────┘
-```
+The Manage tab's slot cards have no way to edit slot details (time, day, trainer, max participants, location, rating) or delete slots/cyclus. Users can only drag-and-drop players but can't manage the slots themselves.
 
 ## Changes
 
+### 1. AcademyDayGrid.tsx — Add edit slot button + wire `onEditSlot` prop
+
+| What | Detail |
+|------|--------|
+| New prop | `onEditSlot?: (slot: SlotWithBookings) => void` |
+| SlotCard UI | Add a pencil (Edit) icon button and a Trash icon button in the slot card header (next to the existing UserPlus button), visible on hover. Edit opens the EditSlotDialog; Delete triggers the existing `onDeleteSlot`. |
+| Pass through | Wire `onEditSlot` from props into each `SlotCard` |
+
+### 2. AcademyCalendar.tsx — Add EditSlotDialog state + handler
+
+- Import `EditSlotDialog`
+- Add state: `editSlotOpen`, `slotToEdit`
+- Add handler `handleEditSlot` that sets the slot and opens the dialog
+- Render `<EditSlotDialog>` in the dialogs section
+- Pass `onEditSlot={handleEditSlot}` to `AcademyDayGrid`
+
+### 3. EditSlotDialog.tsx — Extend with location, trainer, max participants
+
+The existing dialog only edits time, date, duration, rating, and cyclus name. Extend it with:
+
+- **Trainer selector** (dropdown of available trainers, passed as new prop)
+- **Location selector** (dropdown of available locations, passed as new prop)
+- **Max participants** (number input)
+- **Mark as full** toggle
+- Save updates these fields to `availability_slots` alongside the existing fields
+- "Apply to cyclus" checkbox also applies trainer/location/max_participants changes to all future slots
+
+### 4. DeleteSlotDialog — Already exists and is wired
+
+The `onDeleteSlot` prop already exists on `AcademyDayGrid` and is already wired to `handleDeleteSlot` in `AcademyCalendar.tsx`. The Trash button just needs to be added to the SlotCard UI.
+
+## File summary
+
 | File | Change |
 |------|--------|
-| `src/components/academy/AcademyCalendarOverview.tsx` | Complete rewrite of the grid and SlotCard |
-
-### SlotCard redesign
-- Fixed height (~32px), single flex row
-- 3px left border (green/amber/transparent) for status
-- Trainer avatar (20px circle) — uses avatar from trainer data passed via props
-- Time: `HH:mm–HH:mm` in `text-xs font-medium`
-- Count: `3/4` in `text-[10px] text-muted-foreground`, right-aligned
-- No occupancy bar, no trainer name text, no location text, no "Full" badge
-- Hover tooltip (native `title` attribute): "Trainer Name · Location · 3/4 players"
-
-### Grid layout change
-- Remove the `uniqueTimes` time-row system entirely
-- Use `grid-cols-[repeat(7,1fr)]` — no time label column
-- Each day column: header + vertically stacked slot cards sorted by start_time
-- Day header: 3-letter day + date number (existing style)
-- Empty days show a subtle "—" placeholder
-
-### Props update
-- Add `trainer_avatar` to the `SlotSummary` interface
-- Pass trainer avatar data from `AcademyCalendar.tsx` when mapping `overviewSlots`
-
-| File | Change |
-|------|--------|
-| `src/pages/academy/AcademyCalendar.tsx` | Add `trainer_avatar` to `overviewSlots` mapping (where trainer data is joined) |
-
-### Stats cards
-- Keep as-is (they're fine and separate from the grid)
-
-### Legend
-- Simplify to match: green dot = Full, amber dot = Partial, gray dot = Empty
+| `src/components/academy/AcademyDayGrid.tsx` | Add `onEditSlot` prop, add Edit + Delete icon buttons to SlotCard header |
+| `src/pages/academy/AcademyCalendar.tsx` | Import EditSlotDialog, add state/handler, render dialog, pass `onEditSlot` to AcademyDayGrid |
+| `src/components/trainer/EditSlotDialog.tsx` | Add optional `trainers` and `locations` props, add trainer/location/maxParticipants/markedFull fields to the form and save logic |
 
