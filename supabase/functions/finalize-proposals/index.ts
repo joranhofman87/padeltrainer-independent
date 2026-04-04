@@ -134,12 +134,88 @@ serve(async (req: Request) => {
       errors.push(`Failed to update intake request statuses: ${updateError.message}`);
     }
 
-    console.log(`Finalized: ${intakeRequests.length} intake requests, ${bookingsCreated} bookings created`);
+    // 5. Auto-generate invoices for upfront payment cycles
+    let invoicesCreated = 0;
+
+    // Fetch cycle settings to determine payment timing
+    const { data: cycle } = await supabaseAdmin
+      .from("cycles")
+      .select("settings")
+      .eq("id", cycle_id)
+      .single();
+
+    const settings = (cycle?.settings as Record<string, unknown>) || {};
+    const paymentTiming = settings.payment_timing || (settings.mark_as_paid ? "manual" : "upfront");
+    const isSplitPayment = settings.split_payment === true;
+
+    if (paymentTiming === "upfront" && bookingsCreated > 0) {
+      console.log("Generating invoices for upfront cycle...");
+
+      // Re-query confirmed bookings for this cycle's slots
+      const { data: slots } = await supabaseAdmin
+        .from("availability_slots")
+        .select("id")
+        .eq("cyclus_id", cycle_id);
+
+      if (slots && slots.length > 0) {
+        const slotIds = slots.map((s: any) => s.id);
+
+        const { data: newBookings } = await supabaseAdmin
+          .from("bookings")
+          .select("id, player_id, guest_player_id")
+          .in("slot_id", slotIds)
+          .eq("status", "confirmed")
+          .eq("payment_status", "pending");
+
+        if (newBookings && newBookings.length > 0) {
+          // Group by player
+          const playerBookings = new Map<string, string[]>();
+          for (const b of newBookings) {
+            const key = b.player_id || b.guest_player_id;
+            if (!key) continue;
+            const existing = playerBookings.get(key) || [];
+            existing.push(b.id);
+            playerBookings.set(key, existing);
+          }
+
+          const totalUniquePlayers = playerBookings.size;
+
+          for (const [playerId, bookingIds] of playerBookings) {
+            try {
+              const invoiceBody: Record<string, unknown> = { bookingIds };
+              if (isSplitPayment && totalUniquePlayers > 1) {
+                invoiceBody.splitAmongPlayers = totalUniquePlayers;
+              }
+
+              const invoiceRes = await supabaseAdmin.functions.invoke("auto-create-invoice", {
+                body: invoiceBody,
+              });
+
+              if (invoiceRes.error) {
+                console.error(`Invoice creation failed for player ${playerId}:`, String(invoiceRes.error));
+                errors.push(`Invoice failed for player ${playerId}: ${String(invoiceRes.error)}`);
+              } else {
+                invoicesCreated++;
+                console.log(`Invoice created for player ${playerId} (${bookingIds.length} bookings)`);
+              }
+            } catch (err: any) {
+              console.error(`Invoice error for player ${playerId}:`, err.message);
+              errors.push(`Invoice error for player ${playerId}: ${err.message}`);
+            }
+          }
+        }
+      }
+    } else if (paymentTiming !== "upfront") {
+      console.log(`Skipping invoice generation: payment_timing=${paymentTiming}`);
+    }
+
+    console.log(`Finalized: ${intakeRequests.length} intake requests, ${bookingsCreated} bookings created, ${invoicesCreated} invoices created`);
 
     return new Response(
       JSON.stringify({
         booked: intakeRequests.length,
         bookings_created: bookingsCreated,
+        invoices_created: invoicesCreated,
         errors,
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
