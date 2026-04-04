@@ -40,6 +40,8 @@ interface EditSlotDialogProps {
   onOpenChange: (open: boolean) => void;
   slot: SlotWithBookings | null;
   onSlotUpdated: () => void;
+  trainers?: { id: string; name: string }[];
+  locations?: { id: string; name: string }[];
 }
 
 export function EditSlotDialog({
