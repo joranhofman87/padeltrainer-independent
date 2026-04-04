@@ -55,6 +55,7 @@ import {
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
 } from '@/lib/cycles';
+import { updateCyclePricing, type ExtraCost } from '@/lib/cycles';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
