@@ -169,7 +169,7 @@ function TrainerDayBlock({
 
 /* ── Main Component ── */
 export default function AcademyCalendarOverview({
-  slots, currentDate, onDayClick, trainers = [], locations = [],
+  slots, currentDate, onDayClick, onSlotClick, trainers = [], locations = [],
   onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel,
 }: AcademyCalendarOverviewProps) {
   const { t, i18n } = useTranslation('academy');
