@@ -229,7 +229,7 @@ export default function AcademyCycleDetail() {
   const newCount = requests.filter(r => r.status === 'new' && !r.skip_reason).length;
   const skippedCount = requests.filter(r => r.status === 'new' && r.skip_reason).length;
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
-  const confirmedCount = requests.filter(r => r.status === 'confirmed' || r.status === 'booked').length;
+  const confirmedCount = requests.filter(r => r.status === 'confirmed' || (r.status as string) === 'booked').length;
 
   // Pending link actions
   const pendingLinkActions = useMemo(() => {
