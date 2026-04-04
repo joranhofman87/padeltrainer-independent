@@ -1118,6 +1118,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
       rating_system: slot.rating_system ?? null,
       cyclus_name: slot.cyclus_name,
       is_blocked: false,
+      is_marked_full: slot.is_marked_full ?? false,
       current_assignments: slotAssignments.map(a => {
         const req = requestMap.get(a.intake_request_id);
         return {
