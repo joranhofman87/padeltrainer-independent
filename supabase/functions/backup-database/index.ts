@@ -116,7 +116,44 @@ Deno.serve(async (req) => {
 
     console.log("Backup complete:", JSON.stringify(summary));
 
-    return new Response(JSON.stringify(summary), {
+    // --- 14-day retention cleanup ---
+    const RETENTION_DAYS = 14;
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    let deletedCount = 0;
+
+    const { data: allFolders } = await supabase.storage
+      .from("backups")
+      .list("", { limit: 1000, sortBy: { column: "name", order: "asc" } });
+
+    if (allFolders) {
+      for (const folder of allFolders) {
+        if (!folder.name || folder.name.startsWith(".")) continue;
+        // Parse timestamp from folder name like 2026-03-30T12-00-00
+        const m = folder.name.match(
+          /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})$/
+        );
+        if (!m) continue;
+        const folderDate = new Date(
+          `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`
+        );
+        if (folderDate >= cutoff) continue;
+
+        const { data: files } = await supabase.storage
+          .from("backups")
+          .list(folder.name);
+        if (files && files.length > 0) {
+          const paths = files.map((f) => `${folder.name}/${f.name}`);
+          await supabase.storage.from("backups").remove(paths);
+        }
+        deletedCount++;
+      }
+    }
+
+    if (deletedCount > 0) {
+      console.log(`Retention cleanup: deleted ${deletedCount} backups older than ${RETENTION_DAYS} days`);
+    }
+
+    return new Response(JSON.stringify({ ...summary, deleted_old_backups: deletedCount }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

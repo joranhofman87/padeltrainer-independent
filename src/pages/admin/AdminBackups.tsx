@@ -152,7 +152,7 @@ export default function AdminBackups() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Backups</h1>
         <p className="text-muted-foreground">
-          Automatische database backups — elke 2 uur
+          Automatische database backups — elke 2 uur, 14 dagen bewaard
         </p>
       </div>
 
