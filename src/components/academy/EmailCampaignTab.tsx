@@ -34,6 +34,7 @@ interface EmailCampaignTabProps {
     email: string;
     skill_rating: number | null;
     trainer_id?: string;
+    trainer_ids?: string[];
     location_names?: string[];
     has_active_cyclus?: boolean;
     type: 'guest' | 'registered';
