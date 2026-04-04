@@ -500,12 +500,6 @@ export default function AcademyInvoices() {
           <PlusCircle className="h-4 w-4 mr-2" />
           {t("invoices.createInvoice", "Nieuwe factuur")}
         </Button>
-        <Link to="/app/academy/settings">
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            {t("invoices.editSettings", "Factuur instellingen")}
-          </Button>
-        </Link>
       </div>
 
       {/* Bulk Actions */}
