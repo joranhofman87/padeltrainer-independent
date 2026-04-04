@@ -1,51 +1,29 @@
 
 
-# Merge `is_marked_full` into `is_public` on Slots
+# Fix: Missing `is_public` in Calendar Query
 
-## Problem
-Two boolean fields on `availability_slots` — `is_marked_full` and `is_public` — control the same thing: whether a slot is visible to players on public booking pages. This creates confusion. We consolidate into a single `is_public` field and show a Lock icon when a slot is hidden.
+## Root Cause
+During the `is_marked_full` → `is_public` migration, the `is_public` field was **not added** to the `.select()` query in `AcademyCalendar.tsx` (line 255). The query fetches slot data but omits `is_public`, so `slot.is_public` is always `undefined`. This causes:
 
-## Changes
+- **Overview tab**: `getGroupStatus` treats `undefined` as falsy → `!s.is_public` is always `true` → all slots appear "full"/hidden
+- **Manage tab (DayGrid)**: `!slot.is_public` is `true` → every slot is marked as "isFull", hiding them or showing them incorrectly
 
-### 1. Database migration — Merge fields
+## Fix
 
-```sql
--- Set is_public = false wherever is_marked_full = true (is_marked_full wins)
-UPDATE availability_slots
-SET is_public = false
-WHERE is_marked_full = true AND is_public = true;
+### `src/pages/academy/AcademyCalendar.tsx` — Add `is_public` to select query
 
--- Drop the redundant column
-ALTER TABLE availability_slots DROP COLUMN is_marked_full;
+Line 255, add `is_public` to the select string:
+
+```
+id, trainer_id, start_time, end_time, max_participants,
+is_public, location_id, cyclus_id, cyclus_name, ...
 ```
 
-### 2. Files to update (replace all `is_marked_full` references with `is_public`)
+One-line fix. All downstream mapping (line 340) and overview/grid components already reference `is_public` correctly.
 
-| File | What changes |
-|------|-------------|
-| `src/pages/academy/AcademySlotDetail.tsx` | Replace `is_marked_full` → `is_public` (inverted logic). Toggle updates `is_public`. Lock icon shows when `!is_public`. Edit form uses `is_public`. |
-| `src/pages/academy/AcademyOpenSlots.tsx` | Remove `is_marked_full` from query (already uses `is_public`). Add Lock icon next to Switch when `!is_public`. |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Replace `is_marked_full` → `!is_public` in toggle and slot creation. |
-| `src/components/academy/AcademyCalendarOverview.tsx` | Replace `is_marked_full` → `!is_public` in status check and Lock icon display. |
-| `src/components/academy/AcademyDayGrid.tsx` | Replace `is_marked_full` in isFull check → `!is_public`. |
-| `src/components/academy/AcademyReportsTab.tsx` | Replace `is_marked_full` → `!is_public` in queries and stats. |
-| `src/components/academy/SlotDetailDialog.tsx` | Replace `is_marked_full` → `is_public` (inverted). |
-| `src/components/academy/AcademyPublicOpenSlots.tsx` | Remove `.eq('is_marked_full', false)` — already filtered by `.eq('is_public', true)`. |
-| `src/pages/TrainerScheduleOverview.tsx` | Replace all `is_marked_full` → `is_public` (inverted logic) in queries, edits, toggles, badges. |
-| `src/pages/BookLesson.tsx` | Remove `.eq('is_marked_full', false)` — already has `.eq('is_public', true)`. |
-| `src/pages/PlayerDashboard.tsx` | Remove `.eq('is_marked_full', false)` — already has `.eq('is_public', true)`. |
-| `src/pages/OpenSlots.tsx` | Replace `.eq('is_marked_full', false)` with `.eq('is_public', true)`. |
-| `src/pages/academy/AcademyCalendar.tsx` | Remove `is_marked_full` from query/interface, use `is_public` instead. |
+## File summary
 
-### 3. UI — Lock icon
-
-Everywhere visibility is shown, display a small `Lock` icon when `is_public = false`:
-- **Open Spots table**: Lock icon next to the Switch toggle
-- **Calendar Overview**: Already has Lock icon (just change data source)
-- **Slot Detail page**: Lock badge already exists (just change data source)
-- **Trainer Schedule**: Lock icon already exists (just change data source)
-
-### 4. Logic inversion note
-
-`is_marked_full = true` meant "hidden" → `is_public = false` means "hidden". So every check like `slot.is_marked_full` becomes `!slot.is_public`, and every update `{ is_marked_full: value }` becomes `{ is_public: !value }`.
+| File | Change |
+|------|--------|
+| `src/pages/academy/AcademyCalendar.tsx` | Add `is_public` to the `.select()` query string (line 255) |
 
