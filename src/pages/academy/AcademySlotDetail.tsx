@@ -98,6 +98,11 @@ export default function AcademySlotDetail() {
   const [editMaxRating, setEditMaxRating] = useState<number | null>(null);
   const [editCyclusName, setEditCyclusName] = useState('');
   const [editPricePerSession, setEditPricePerSession] = useState<string>('');
+  const [editTotalPrice, setEditTotalPrice] = useState<string>('');
+  const [editSplitPayment, setEditSplitPayment] = useState(false);
+  const [editPricesIncludeVat, setEditPricesIncludeVat] = useState(true);
+  const [editExtraCosts, setEditExtraCosts] = useState<ExtraCost[]>([]);
+  const [editIsMarkedFull, setEditIsMarkedFull] = useState(false);
   const [applyToCyclus, setApplyToCyclus] = useState(false);
 
   // Lookup data
