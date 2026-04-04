@@ -972,10 +972,10 @@ export function BulkCreateContent({
       }
 
       // Notify followers with authentication — only if at least one slot is public (not marked private)
-      const hasPublicSlots = slotsToInsert.some(s => !s.);
+      const hasPublicSlots = true; // New slots are public by default
       if (hasPublicSlots) {
         try {
-          const publicSlots = slotsToInsert.filter(s => !s.);
+          const publicSlots = slotsToInsert;
           const earliestStart = new Date(
             Math.min(...publicSlots.map((s) => new Date(s.start_time).getTime()))
           );

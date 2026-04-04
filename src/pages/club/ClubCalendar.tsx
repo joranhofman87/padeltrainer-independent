@@ -35,6 +35,7 @@ interface ClubSlot {
   start_time: string;
   end_time: string;
   max_participants: number;
+  is_public: boolean;
   cyclus_name: string | null;
   trainer_name: string;
   trainer_avatar: string | null;
@@ -160,7 +161,7 @@ export default function ClubCalendar() {
       cyclus_id: null,
       cyclus_name: slot.cyclus_name,
       booked_players: [],
-      is_marked_full: !slot.is_public,
+      is_public: slot.is_public,
       location_name: null,
       trainer_id: slot.trainer_id,
       trainer_name: slot.trainer_name,

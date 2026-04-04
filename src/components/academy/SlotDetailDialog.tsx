@@ -30,6 +30,7 @@ interface SlotDetail {
   cyclus_id: string | null;
   cyclus_name: string | null;
   max_participants: number;
+  is_public: boolean;
   rating_system: string | null;
   min_rating: number | null;
   max_rating: number | null;
@@ -73,7 +74,7 @@ export function SlotDetailDialog({
       const { data: slot, error } = await supabase
         .from('availability_slots')
         .select(`
-          id, start_time, end_time, trainer_id, max_participants, cyclus_id, cyclus_name, location_id,
+          id, start_time, end_time, trainer_id, max_participants, cyclus_id, cyclus_name, location_id, is_public,
           rating_system, min_rating, max_rating, price_per_session,
           locations:location_id(name)
         `)
@@ -140,7 +141,7 @@ export function SlotDetailDialog({
         cyclus_id: slot.cyclus_id,
         cyclus_name: slot.cyclus_name,
         max_participants: slot.max_participants || 4,
-        is_marked_full: !slot.is_public,
+        is_public: (slot as any).is_public ?? true,
         rating_system: slot.rating_system,
         min_rating: slot.min_rating,
         max_rating: slot.max_rating,
@@ -156,17 +157,17 @@ export function SlotDetailDialog({
 
   const togglePrivate = async () => {
     if (!detail) return;
-    const newVal = !!detail.is_public;
+    const newVal = !detail.is_public;
     const { error } = await supabase
       .from('availability_slots')
-      .update({ : newVal })
+      .update({ is_public: newVal })
       .eq('id', detail.id);
     if (error) {
       logger.error('Error toggling private', error, { slotId: detail.id });
       return;
     }
-    setDetail({ ...detail: newVal });
-    toast({ description: newVal ? tTrainer('calendar.slotMarkedFull') : tTrainer('calendar.slotMarkedOpen') });
+    setDetail({ ...detail, is_public: newVal });
+    toast({ description: !newVal ? tTrainer('calendar.slotMarkedFull') : tTrainer('calendar.slotMarkedOpen') });
     onRefresh();
   };
 
@@ -181,7 +182,9 @@ export function SlotDetailDialog({
     is_past: new Date(detail!.start_time) < new Date(),
     cyclus_id: detail!.cyclus_id,
     cyclus_name: detail!.cyclus_name,
-    booked_players: detail!.booked_players: detail!.location_name: detail!.location_name,
+    booked_players: detail!.booked_players,
+    is_public: detail!.is_public,
+    location_name: detail!.location_name,
     trainer_id: detail!.trainer_id,
     trainer_name: detail!.trainer_name,
     trainer_avatar: detail!.trainer_avatar,

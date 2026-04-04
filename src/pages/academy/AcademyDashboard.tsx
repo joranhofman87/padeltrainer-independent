@@ -135,7 +135,7 @@ export default function AcademyDashboard() {
             .from('availability_slots')
             .select('id, start_time, end_time, max_participants, cyclus_name, cyclus_id, locations:location_id (name)')
             .in('trainer_id', trainerIds)
-            .eq('', false)
+            .eq('is_public', true)
             .gte('start_time', now)
             .order('start_time', { ascending: true })
             .limit(50),

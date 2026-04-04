@@ -576,7 +576,7 @@ export default function AcademyCycleDetail() {
     },
     onToggleSlotPrivacy: async (slotId: string, value: boolean) => {
       // Optimistic update
-      setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s: value } : s));
+      setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_public: !value } : s));
       try {
         const { error } = await supabase
           .from('availability_slots')
@@ -585,7 +585,7 @@ export default function AcademyCycleDetail() {
         if (error) throw error;
       } catch (error: any) {
         // Revert
-        setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s: !value } : s));
+        setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_public: value } : s));
         toast.error(error.message);
       }
     },

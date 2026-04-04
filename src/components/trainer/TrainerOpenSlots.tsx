@@ -87,7 +87,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           locations:location_id(name)
         `)
         .eq('trainer_id', trainerId)
-        .eq('', false)
+        
         .eq('is_public', true)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })

@@ -93,7 +93,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           locations:location_id(name)
         `)
         .or(orFilter)
-        .eq('', false)
+        
         .eq('is_public', true)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })

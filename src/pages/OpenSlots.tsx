@@ -91,7 +91,7 @@ export default function OpenSlots() {
           locations:location_id(name)
         `)
         .eq('trainer_id', tId)
-        .eq('', false)
+        .eq('is_public', true)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true });
 

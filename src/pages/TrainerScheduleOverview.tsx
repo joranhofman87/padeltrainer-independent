@@ -369,7 +369,7 @@ export default function TrainerScheduleOverview() {
       pricePerSession: firstSlot?.price_per_session != null ? String(firstSlot.price_per_session) : "",
       locationId: firstSlot?.location_id || "",
       maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
-      isPrivate: !firstSlot?.is_public ?? false,
+      isPrivate: !(firstSlot?.is_public ?? true),
       extraCosts: extraCosts.length > 0 ? extraCosts : [],
       startDate: earliestStart,
       originalStartDate: earliestStart,
@@ -442,7 +442,8 @@ export default function TrainerScheduleOverview() {
 
       // 1. Build bulk updates for all existing slots
       const updates: Record<string, unknown> = {
-        cyclus_name: cycleEditData.name.trim(): cycleEditData.isPrivate,
+        cyclus_name: cycleEditData.name.trim(),
+        is_public: !cycleEditData.isPrivate,
         extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : null,
         prices_include_vat: cycleEditData.pricesIncludeVat,
         split_payment: cycleEditData.splitPayment,
