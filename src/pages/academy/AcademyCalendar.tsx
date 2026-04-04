@@ -252,7 +252,7 @@ export default function AcademyCalendar() {
     const { data: slotsData, error } = await supabase
       .from("availability_slots")
       .select(`
-        id, trainer_id, start_time, end_time, max_participants,
+        id, trainer_id, start_time, end_time, max_participants, is_public,
         location_id, cyclus_id, cyclus_name, rating_system, min_rating, max_rating,
         price_per_session, locations(name)
       `)
