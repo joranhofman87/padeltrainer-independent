@@ -294,6 +294,7 @@
     "addManualSuccess": "Registratie succesvol toegevoegd",
     "addManualSuccessNewAccount": "Registratie toegevoegd. er is een spelersaccount aangemaakt.",
     "profileCreationNote": "Als deze speler nog geen account heeft, wordt er automatisch een aangemaakt. ze ontvangen een e-mail ter bevestiging van hun inschrijving.",
+    "skippedSummary": "{{count}} aanmeldingen konden niet worden gekoppeld",
     "filters": {
       "all": "Alle",
       "new": "Nieuw",
@@ -303,7 +304,6 @@
       "waitlist": "Wachtlijst",
       "rejected": "Afgewezen"
     },
-    "skippedSummary": "{{count}} aanmeldingen konden niet worden gekoppeld",
     "table": {
       "player": "Speler",
       "lessonType": "Lesvorm",
@@ -311,7 +311,16 @@
       "availability": "Beschikbaarheid",
       "preferredTrainer": "Voork. trainer",
       "status": "Status",
-      "applied": "Aangemeld"
+      "applied": "Aangemeld",
+      "duration": "Duur",
+      "notes": "Opmerkingen",
+      "phone": "Telefoon",
+      "birthDate": "Geboortedatum",
+      "sessionsPerWeek": "Sessies/wk",
+      "columns": "Kolommen",
+      "toggleColumns": "Kolommen aan/uit",
+      "searchPlayer": "Zoek speler...",
+      "groupNotes": "Groepsnotities"
     },
     "detail": {
       "title": "Aanmeldingsdetails",
@@ -320,7 +329,8 @@
       "availability": "Beschikbaarheid",
       "notes": "Opmerkingen",
       "proposal": "Voorgestelde toewijzing",
-      "noProposal": "Nog geen voorstel gegenereerd"
+      "noProposal": "Nog geen voorstel gegenereerd",
+      "wholeDay": "Hele dag"
     },
     "actions": {
       "propose": "Voorstel genereren",
@@ -329,8 +339,38 @@
       "waitlist": "Naar wachtlijst",
       "viewProposal": "Voorstel bekijken",
       "delete": "Verwijderen",
-      "deleteSuccess": "Aanmelding verwijderd",
-      "declineProposal": "Voorstel afwijzen"
+      "deleteSuccess": "Registratie verwijderd",
+      "declineProposal": "Voorstel afwijzen",
+      "edit": "Bewerken",
+      "cancel": "Annuleren",
+      "deleteConfirmTitle": "Deze registratie verwijderen?",
+      "deleteConfirmDescription": "Dit verwijdert de registratie van {{name}} permanent. Deze actie kan niet ongedaan worden gemaakt."
+    },
+    "edit": {
+      "title": "Registratie bewerken",
+      "description": "Pas de registratiegegevens aan",
+      "save": "Wijzigingen opslaan",
+      "saving": "Opslaan...",
+      "success": "Registratie bijgewerkt"
+    },
+    "links": {
+      "linkedPlayers": "Samen trainen",
+      "linkedWith": "Gekoppeld met",
+      "linkedColumn": "Gekoppeld",
+      "suggestedLinks": "Voorgestelde koppelingen",
+      "suggestedLinksDescription": "Op basis van de notities van deze speler",
+      "suggestions": "Suggesties",
+      "linkAll": "Allemaal koppelen",
+      "link": "Koppelen",
+      "addLink": "Koppelen",
+      "linked": "Spelers gekoppeld",
+      "unlinked": "Speler ontkoppeld",
+      "noLinks": "Geen gekoppelde spelers",
+      "noResults": "Geen spelers gevonden",
+      "searchPlayer": "Zoek speler...",
+      "dismissSuggestion": "Negeren",
+      "unmatchedMentions": "Namen niet gevonden in aanmeldingen",
+      "unmatchedDescription": "Deze namen werden genoemd in de notities maar er is geen bijbehorende aanmelding gevonden."
     },
     "delete": {
       "title": "Aanmelding verwijderen?",
@@ -347,6 +387,40 @@
     "approveAll": "Alles goedkeuren",
     "generating": "Voorstellen genereren...",
     "generated": "{{count}} voorstellen gegenereerd",
+    "editSlot": "Slot bewerken",
+    "overlapWarning": "Overlapt met een ander slot",
+    "applyTimeChange": "Toepassen",
+    "players": "Spelers",
+    "deleteSlot": "Slot verwijderen",
+    "deleteSlotConfirm": "Weet je het zeker? Spelers worden ontkoppeld.",
+    "confirmDelete": "Verwijderen",
+    "searchPlayer": "Zoek speler…",
+    "searchPlayers": "Zoek spelers...",
+    "noPlayersFound": "Geen spelers gevonden",
+    "noSearchResults": "Geen spelers gevonden",
+    "existingLesson": "Bestaande les",
+    "blockedSlotTooltip": "Dit tijdstip is al geboekt in de agenda van de trainer",
+    "slotBlocked": "Kan niet verplaatsen — trainer heeft al een bestaande les",
+    "noSlotHere": "Geen slot hier — sleep naar een bestaand slot",
+    "outsideAvailability": "Kan niet verplaatsen — buiten de beschikbaarheid van de trainer",
+    "playerAssigned": "Speler toegewezen aan slot",
+    "playerUnassigned": "Speler terug naar niet-ingedeeld",
+    "allPlaced": "Alle spelers zijn ingedeeld",
+    "unplacedPlayers": "Niet ingedeeld",
+    "showUnplaced": "Niet-ingedeelde spelers tonen",
+    "slotCreated": "Slot aangemaakt",
+    "slotDeleted": "Slot verwijderd",
+    "undoAssign": "Spelertoewijzing",
+    "undoUnassign": "Spelerontkoppeling",
+    "undoPlayerMove": "Spelerverplaatsing",
+    "undoSlotMove": "Slotverplaatsing",
+    "undoSlotSwap": "Slotwissel",
+    "undone": "Wijziging ongedaan gemaakt — sla op of ga verder met bewerken",
+    "reset": "Resetten",
+    "resetTitle": "Alle voorstellen resetten?",
+    "resetDescription": "Dit verwijdert alle gegenereerde voorstellen en zet de aanmeldingen terug naar 'nieuw'.",
+    "resetConfirm": "Voorstellen resetten",
+    "resetting": "Resetten...",
     "card": {
       "player": "Speler",
       "slot": "Voorgesteld moment",
@@ -368,6 +442,7 @@
       "approve": "Goedkeuren",
       "edit": "Bewerken",
       "reject": "Afwijzen",
+      "decline": "Afwijzen",
       "changeSlot": "Moment wijzigen",
       "changeTrainer": "Trainer wijzigen"
     },
@@ -377,7 +452,8 @@
       "current": "Huidige toewijzing",
       "noSlots": "Geen andere momenten beschikbaar",
       "confirm": "Speler verplaatsen",
-      "success": "{{name}} is verplaatst"
+      "success": "{{name}} is verplaatst",
+      "removed": "Voorstel verwijderd — speler naar niet-ingedeeld"
     },
     "confirmDialog": {
       "title": "Toewijzing bevestigen",
@@ -414,6 +490,33 @@
       "maxRatingSpreadHelp": "Maximaal toegestaan niveauverschil tussen spelers in dezelfde groep",
       "ratingSystem": "Ratingsysteem",
       "spreadPlaceholder": "bijv. 0.5 voor KNLTB"
+    },
+    "wizard": {
+      "step1Label": "Planning & trainers",
+      "step2Label": "Scoregewichten",
+      "step3Label": "Extra criteria",
+      "startDate": "Startdatum",
+      "selectTrainers": "Selecteer trainers",
+      "minRating": "Min rating",
+      "maxRating": "Max rating",
+      "availableWindows": "Beschikbare tijdsblokken",
+      "addWindow": "Tijdsblok toevoegen",
+      "maxGroupSize": "Max spelers per groep",
+      "maxGroupSizeHelp": "Maximaal aantal spelers dat aan één tijdslot kan worden toegewezen.",
+      "linkStrategy": "Gekoppelde spelers",
+      "linkStrategyHelp": "Hoe moeten spelers die samen willen trainen worden behandeld?",
+      "linkStrict": "Altijd samen houden",
+      "linkStrictHelp": "Gekoppelde spelers worden als eenheid geplaatst. Als er geen passend slot is, worden ze overgeslagen.",
+      "linkPrefer": "Probeer samen te houden (aanbevolen)",
+      "linkPreferHelp": "Sterke voorkeur om gekoppelde spelers samen te houden, maar ze kunnen worden gesplitst indien nodig.",
+      "linkIgnore": "Koppelingen negeren",
+      "linkIgnoreHelp": "Alle spelers worden individueel behandeld. Koppelingen worden niet meegenomen.",
+      "fillIncompleteGroups": "Onvolledige groepen aanvullen",
+      "fillIncompleteGroupsOnHelp": "Overgebleven plekken worden gevuld met andere compatibele spelers.",
+      "fillIncompleteGroupsOffHelp": "Plekken blijven leeg — de groep traint alleen of vindt zelf iemand.",
+      "additionalCriteria": "Extra criteria",
+      "additionalCriteriaHelp": "Voer eventuele extra regels in als vrije tekst. AI interpreteert en past deze toe bij het genereren van voorstellen.",
+      "draftRestored": "Je vorige configuratie is hersteld"
     },
     "guard": {
       "title": "Belangrijk",
@@ -463,12 +566,25 @@
     "scheduleConfirmed": "Je trainingsschema is bevestigd"
   },
   "workflow": {
+    "registrations": "Aanmeldingen",
+    "registrationsDesc": "{{count}} aangemeld",
+    "reviewLinks": "Koppelingen bekijken",
+    "reviewLinksDesc": "{{count}} actie(s) openstaand",
+    "reviewLinksDone": "Alles in orde",
     "generate": "Genereren",
     "generateDesc": "{{count}} nieuwe aanmeldingen",
     "review": "Bekijken & bewerken",
     "reviewDesc": "{{count}} voorstellen",
     "approve": "Goedkeuren & inplannen",
-    "approveDesc": "{{count}} bevestigd"
+    "approveDesc": "{{count}} bevestigd",
+    "continueToGenerate": "Doorgaan naar genereren"
+  },
+  "preReview": {
+    "allClear": "Alles in orde — geen openstaande koppelacties",
+    "mentioned": "genoemd"
+  },
+  "suggestions": {
+    "link": "Koppelen"
   },
   "overview": {
     "period": "Periode",
