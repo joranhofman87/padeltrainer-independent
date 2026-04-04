@@ -995,6 +995,7 @@ export interface SlotWithOccupancy {
   rating_system: string | null;
   cyclus_name: string | null;
   is_blocked?: boolean;
+  is_marked_full?: boolean;
   current_assignments: Array<{
     id: string;
     intake_request_id: string;
