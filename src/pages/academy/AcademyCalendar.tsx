@@ -410,25 +410,50 @@ export default function AcademyCalendar() {
   }, [filteredSlots]);
 
   const navigatePrevious = () => {
-    if (view === "day") setCurrentDate(subDays(currentDate, 1));
-    else if (view === "week") setCurrentDate(subWeeks(currentDate, 1));
-    else setCurrentDate(subMonths(currentDate, 1));
+    if (view === "day") setCurrentDate(subWeeks(currentDate, 1));
+    else setCurrentDate(subWeeks(currentDate, 1));
   };
   const navigateNext = () => {
-    if (view === "day") setCurrentDate(addDays(currentDate, 1));
-    else if (view === "week") setCurrentDate(addWeeks(currentDate, 1));
-    else setCurrentDate(addMonths(currentDate, 1));
+    if (view === "day") setCurrentDate(addWeeks(currentDate, 1));
+    else setCurrentDate(addWeeks(currentDate, 1));
   };
   const goToToday = () => setCurrentDate(new Date());
 
   const getDateRangeLabel = () => {
-    if (view === "day") return format(currentDate, "EEEE d MMMM yyyy", { locale: dateLocale });
-    if (view === "week") {
-      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-      const end = endOfWeek(currentDate, { weekStartsOn: 1 });
-      return `${format(start, "d MMM", { locale: dateLocale })} - ${format(end, "d MMM yyyy", { locale: dateLocale })}`;
+    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    return `${format(start, "d MMM", { locale: dateLocale })} - ${format(end, "d MMM yyyy", { locale: dateLocale })}`;
+  };
+
+  // DnD handlers
+  const handleMovePlayer = async (bookingId: string, newSlotId: string) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ slot_id: newSlotId })
+        .eq('id', bookingId);
+      if (error) throw error;
+      toast({ title: t('calendar.playerMoved', { defaultValue: 'Player moved' }) });
+      fetchSlots();
+    } catch (error) {
+      logger.error('Error moving player', error as Error, { component: 'AcademyCalendar' });
+      toast({ title: t('calendar.moveFailed', { defaultValue: 'Failed to move player' }), variant: 'destructive' });
     }
-    return format(currentDate, "MMMM yyyy", { locale: dateLocale });
+  };
+
+  const handleRemovePlayer = async (bookingId: string) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingId);
+      if (error) throw error;
+      toast({ title: t('calendar.playerRemoved', { defaultValue: 'Player removed from slot' }) });
+      fetchSlots();
+    } catch (error) {
+      logger.error('Error removing player', error as Error, { component: 'AcademyCalendar' });
+      toast({ title: t('calendar.removeFailed', { defaultValue: 'Failed to remove player' }), variant: 'destructive' });
+    }
   };
 
   // Action handlers
