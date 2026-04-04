@@ -202,7 +202,7 @@ export default function AcademySlotDetail() {
         total_price: slot.total_price,
         split_payment: slot.split_payment ?? false,
         prices_include_vat: slot.prices_include_vat ?? true,
-        extra_costs: (slot.extra_costs as ExtraCost[] | null) || null,
+        extra_costs: (slot.extra_costs as unknown as ExtraCost[] | null) || null,
         booked_players: players,
       });
     } catch (error) {
