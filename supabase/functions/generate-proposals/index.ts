@@ -559,6 +559,12 @@ Deno.serve(async (req) => {
       const slotsToInsert: any[] = [];
       const SLOT_DURATION = 60; // Always 60-min uniform grid
 
+      // Extract pricing fields from cycle record + settings
+      const pricePerSession = cycle.price_per_session || null;
+      const extraCosts = cycle.settings?.extra_costs || [];
+      const splitPayment = cycle.settings?.split_payment || false;
+      const pricesIncludeVat = cycle.settings?.prices_include_vat ?? true;
+
       for (const ta of trainerAvailability) {
         const trainerConflicts = conflictMap.get(ta.trainerId) || [];
 
@@ -627,6 +633,10 @@ Deno.serve(async (req) => {
                   min_participants: cycle.settings?.min_group_size || null,
                   academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
                   location_id: cycle.location_id || null,
+                  price_per_session: pricePerSession,
+                  extra_costs: extraCosts.length > 0 ? extraCosts : null,
+                  split_payment: splitPayment,
+                  prices_include_vat: pricesIncludeVat,
                 });
               }
 

@@ -55,6 +55,7 @@ import {
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
 } from '@/lib/cycles';
+import { updateCyclePricing, type ExtraCost } from '@/lib/cycles';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
@@ -66,6 +67,7 @@ import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import CycleForm from '@/components/cycles/CycleForm';
 import WaitingListTable from '@/components/waitingList/WaitingListTable';
 import PreGenerationReview from '@/components/cycles/PreGenerationReview';
+import CyclePricingCard from '@/components/cycles/CyclePricingCard';
 import { getSuggestedLinks, getLinkedIdsForRequest, getDismissedSuggestions, getUnmatchedMentions, getDismissedUnmatched } from '@/lib/suggestLinks';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
@@ -172,6 +174,7 @@ export default function AcademyCycleDetail() {
 
   const isFirstLoad = cycleLoading && !cycle;
 
+
   // Schedule slots from TanStack Query — cached, no local state
   const shouldLoadSlots = viewMode === 'schedule' || activeStep === 'review-edit' || activeStep === 'approve';
   const { data: scheduleSlots = [] } = useScheduleSlotsQuery(cycleId, shouldLoadSlots);
@@ -203,7 +206,46 @@ export default function AcademyCycleDetail() {
   const [isResetting, setIsResetting] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Preserve selectedRequest identity
+  // Pricing state for Step 4 — initialized from cycle data
+  const [pricingPricePerSession, setPricingPricePerSession] = useState<number | null>(null);
+  const [pricingExtraCosts, setPricingExtraCosts] = useState<ExtraCost[]>([]);
+  const [pricingSplitPayment, setPricingSplitPayment] = useState(false);
+  const [pricingIncludeVat, setPricingIncludeVat] = useState(true);
+  const [pricingInitialized, setPricingInitialized] = useState(false);
+  const [isSavingPricing, setIsSavingPricing] = useState(false);
+
+  // Initialize pricing state from cycle when it loads
+  useEffect(() => {
+    if (cycle && !pricingInitialized) {
+      setPricingPricePerSession(cycle.price_per_session ?? null);
+      setPricingExtraCosts((cycle.settings?.extra_costs as ExtraCost[]) || []);
+      setPricingSplitPayment(cycle.settings?.split_payment ?? false);
+      setPricingIncludeVat(cycle.settings?.prices_include_vat ?? true);
+      setPricingInitialized(true);
+    }
+  }, [cycle, pricingInitialized]);
+
+  const handleSavePricingAndContinue = async () => {
+    if (!cycleId) return;
+    setIsSavingPricing(true);
+    try {
+      await updateCyclePricing(cycleId, {
+        price_per_session: pricingPricePerSession,
+        extra_costs: pricingExtraCosts,
+        split_payment: pricingSplitPayment,
+        prices_include_vat: pricingIncludeVat,
+      });
+      if (academyId) invalidateAll('academy', academyId, cycleId);
+      navigate('/app/academy/intake-requests/overview', {
+        state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone },
+      });
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save pricing');
+    } finally {
+      setIsSavingPricing(false);
+    }
+  };
+
   useEffect(() => {
     setSelectedRequest(prev => {
       if (!prev) return null;
@@ -810,12 +852,28 @@ export default function AcademyCycleDetail() {
                     <RotateCcw className="h-4 w-4 mr-1" />
                     {t('proposals.reset', { defaultValue: 'Reset' })}
                   </Button>
-                  <Button size="sm" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone } })}>
+                  <Button size="sm" onClick={handleSavePricingAndContinue} disabled={isSavingPricing}>
                     <Eye className="h-4 w-4 mr-1" />
-                    {t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
+                    {isSavingPricing
+                      ? t('common:saving', 'Saving...')
+                      : t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
                   </Button>
                 </div>
               </div>
+
+              {/* Pricing & Payment card */}
+              <CyclePricingCard
+                pricePerSession={pricingPricePerSession}
+                extraCosts={pricingExtraCosts}
+                splitPayment={pricingSplitPayment}
+                pricesIncludeVat={pricingIncludeVat}
+                onPricePerSessionChange={setPricingPricePerSession}
+                onExtraCostsChange={setPricingExtraCosts}
+                onSplitPaymentChange={setPricingSplitPayment}
+                onPricesIncludeVatChange={setPricingIncludeVat}
+                academyProfileId={academyId}
+              />
+
               <ProposalScheduleGrid
                 slots={scheduleSlots}
                 trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
