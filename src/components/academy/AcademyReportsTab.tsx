@@ -131,9 +131,10 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     const totalBooked = slots.reduce((s, sl) => s + sl.booking_count, 0);
     const fillRate = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0;
     const openSpots = slots.filter(s => s.is_public && s.booking_count < s.max_participants).length;
-    const totalHours = slots.reduce((sum, s) => sum + differenceInMinutes(parseISO(s.end_time), parseISO(s.start_time)), 0) / 60;
+    const emptySlots = slots.filter(s => s.booking_count === 0).length;
+    const totalHours = slots.filter(s => s.booking_count > 0).reduce((sum, s) => sum + differenceInMinutes(parseISO(s.end_time), parseISO(s.start_time)), 0) / 60;
     const privateSlots = slots.filter(s => !s.is_public).length;
-    return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, totalHours, privateSlots };
+    return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, emptySlots, totalHours, privateSlots };
   }, [slots]);
 
   // By trainer
