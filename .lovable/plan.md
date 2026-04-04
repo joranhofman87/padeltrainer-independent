@@ -1,58 +1,44 @@
 
 
-# Replace Create Tab Content: CycleForm → BulkCreateSheet (inline)
+# Add "Mark as Private" Option for Registration-Generated Slots
 
 ## Problem
-The "Create" tab currently embeds the `CycleForm` (registration/intake form). The user wants it to show the BulkCreateSheet content (training cyclus creator with slots, pricing, players) instead — the same UI that's currently in the drawer/sheet.
-
-## Approach
-Extract the inner content of `BulkCreateSheet` into a standalone component (`BulkCreateContent`) that can render either inside a Sheet or inline on a page. Then use it directly in the Create tab, removing the CycleForm.
+When slots are generated from registration intake requests (via `generate-proposals`), `is_marked_full` is hardcoded to `false`. For private/duo/trio lessons, the admin wants to prevent empty spots from being shown publicly. They need a way to mark sessions as private during the review step.
 
 ## Changes
 
+### 1. `supabase/functions/generate-proposals/index.ts` — Auto-set `is_marked_full` based on lesson type
+
+When generating slots from an intake request, check the request's `lesson_type`. If it's `private`, `duo`, or `group3`, default `is_marked_full` to `true` so that these sessions aren't publicly visible by default.
+
+| What | Detail |
+|------|--------|
+| Line ~628 | Replace `is_marked_full: false` with logic that checks intake request lesson type to determine if the slot should be private |
+
+### 2. `src/components/cycles/ProposalScheduleGrid.tsx` — Add per-slot privacy toggle
+
+In the slot card within the proposal grid, add a small Lock icon toggle so the admin can override the auto-detected privacy setting per slot during the Review & Edit step (Step 4).
+
+| What | Detail |
+|------|--------|
+| `SlotWithOccupancy` interface | Add `is_marked_full: boolean` field |
+| Slot card UI | Add a Lock/LockOpen icon button that toggles privacy, calling a new `onToggleSlotPrivacy` callback |
+| Props | Add `onToggleSlotPrivacy?: (slotId: string, value: boolean) => void` |
+
+### 3. `src/pages/academy/AcademyCycleDetail.tsx` — Wire privacy toggle handler
+
+Add a handler that updates the `availability_slots.is_marked_full` field when the admin toggles privacy in the proposal grid.
+
+### 4. `src/lib/cycles.ts` — Ensure `is_marked_full` is included in schedule slot queries
+
+The `getScheduleSlots` or equivalent function should select and return `is_marked_full` so the grid can display current state.
+
+## File summary
+
 | File | Change |
 |------|--------|
-| `src/components/trainer/AddSlotDialog.tsx` | Refactor: extract all the form content (lines ~1006-1740) from inside `<SheetContent>` into a new `BulkCreateContent` component. `BulkCreateSheet` becomes a thin wrapper that renders `<Sheet><SheetContent><BulkCreateContent /></SheetContent></Sheet>`. Export `BulkCreateContent` separately. |
-| `src/pages/academy/AcademyCalendar.tsx` | Replace the Create tab content: remove the `CycleForm` + registration/event toggle, render `<BulkCreateContent>` inline instead. Remove `createFormType` state. Remove the `CycleForm` import. Keep the existing `BulkCreateSheet` dialog for other entry points (e.g. manage tab's "+ New" button) or remove it if no longer needed. Pass the same props that the sheet currently receives (trainerId, locations, trainers, academyId, onSlotsCreated callback that refreshes and switches to overview). |
-
-## Detail
-
-### BulkCreateContent props
-Same as current `BulkCreateSheetProps` minus `open` and `onOpenChange`:
-- `trainerId`, `defaultDate`, `defaultTime`, `defaultDuration`, `defaultWeeks`
-- `onSlotsCreated`, `availableLocations`, `availableTrainers`
-- `prefillFromCyclusId`, `academyId`
-
-### Create tab rendering
-```tsx
-<TabsContent value="create" className="mt-4">
-  <div className="max-w-lg">
-    <BulkCreateContent
-      trainerId={selectedSlotTrainerId}
-      defaultDuration={60}
-      defaultWeeks={8}
-      onSlotsCreated={handleSlotsCreated}
-      availableLocations={locations}
-      availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
-      academyId={activeAcademy?.id}
-    />
-  </div>
-</TabsContent>
-```
-
-### BulkCreateSheet becomes a wrapper
-```tsx
-export function BulkCreateSheet({ open, onOpenChange, ...contentProps }) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full h-full sm:w-auto sm:h-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>...</SheetHeader>
-        <BulkCreateContent {...contentProps} />
-      </SheetContent>
-    </Sheet>
-  );
-}
-```
-
-This keeps the Sheet version working for the Trainer calendar while giving the Academy Create tab the same form inline.
+| `supabase/functions/generate-proposals/index.ts` | Auto-set `is_marked_full` based on intake request `lesson_type` |
+| `src/components/cycles/ProposalScheduleGrid.tsx` | Add `is_marked_full` to slot interface, add toggle UI |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Wire `onToggleSlotPrivacy` handler |
+| `src/lib/cycles.ts` | Include `is_marked_full` in schedule slot queries |
 
