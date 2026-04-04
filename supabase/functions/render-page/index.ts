@@ -266,7 +266,7 @@ function renderPath(cleanPath: string, lang: string): string {
 
   // Static pages
   const staticPages: Record<string, { title: string; desc: string }> = {
-    '/about': { title: 'About PadelTrainer.ai', desc: 'PadelTrainer.ai is the leading platform for finding and booking padel trainers in the Netherlands.' },
+    '/about': { title: 'About PadelTrainer.ai', desc: 'PadelTrainer.ai is the leading platform for padel trainers and academies.' },
     '/pricing': { title: 'Pricing — PadelTrainer.ai', desc: 'Explore our flexible pricing plans for padel trainers and academies.' },
     '/founding-trainers': { title: 'Founding 100 Trainers — Free Premium Racket', desc: 'Be one of the first 100 padel coaches on PadelTrainer.ai and receive a free premium racket.' },
     '/partner': { title: 'Become a Partner — PadelTrainer.ai', desc: 'Partner with PadelTrainer.ai to reach thousands of padel players.' },

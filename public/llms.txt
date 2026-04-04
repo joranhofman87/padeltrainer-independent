@@ -6,7 +6,7 @@ llms-full.txt: https://padeltrainer.ai/llms-full.txt
 
 ## Overview
 
-PadelTrainer.ai is a specialized platform for the growing padel community in the Netherlands. It serves three main user groups:
+PadelTrainer.ai is a specialized platform for the growing global padel community. It serves three main user groups:
 
 1. **Players** - Find and book lessons with certified padel trainers
 2. **Trainers** - Manage their availability, students, and payments
