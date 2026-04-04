@@ -132,6 +132,7 @@ export default function AcademyCalendar() {
   useEffect(() => {
     if (activeAcademy) {
       loadAcademyData();
+      fetchAllKnownPlayers();
     }
   }, [activeAcademy]);
 
