@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -37,8 +37,9 @@ import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 
-import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
+import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
+import AcademyWeekOverview from "@/components/academy/AcademyWeekOverview";
 
 interface AcademySlot {
   id: string;
@@ -92,11 +93,12 @@ export default function AcademyCalendar() {
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
   
-  const [view, setView] = useState<"day" | "week" | "month">("week");
+  const [view, setView] = useState<"day" | "week">("day");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [slots, setSlots] = useState<AcademySlot[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [allKnownPlayers, setAllKnownPlayers] = useState<KnownPlayer[]>([]);
+
   // Filter state
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -130,6 +132,7 @@ export default function AcademyCalendar() {
   useEffect(() => {
     if (activeAcademy) {
       loadAcademyData();
+      fetchAllKnownPlayers();
     }
   }, [activeAcademy]);
 
@@ -326,6 +329,51 @@ export default function AcademyCalendar() {
     }
   };
 
+  // Fetch all known players for the sidebar
+  const fetchAllKnownPlayers = async () => {
+    if (!activeAcademy) return;
+    try {
+      const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
+      const trainerIds = academyTrainers
+        .filter((at: any) => at.status === 'active' && at.trainer_profile)
+        .map((at: any) => at.trainer_profile.id);
+      if (trainerIds.length === 0) return;
+
+      // Get all unique player_ids from bookings for academy trainers
+      const { data: bookingPlayers } = await supabase
+        .from('bookings')
+        .select('player_id, guest_player_id, profiles:player_id(id, full_name, skill_rating, rating_system), guest_players:guest_player_id(id, full_name, skill_rating, rating_system), availability_slots!inner(trainer_id)')
+        .in('availability_slots.trainer_id', trainerIds)
+        .not('status', 'eq', 'cancelled');
+
+      const playerMap = new Map<string, KnownPlayer>();
+      (bookingPlayers || []).forEach((b: any) => {
+        if (b.profiles?.id && !playerMap.has(b.profiles.id)) {
+          playerMap.set(b.profiles.id, {
+            id: b.profiles.id,
+            full_name: b.profiles.full_name || 'Unknown',
+            skill_rating: b.profiles.skill_rating,
+            rating_system: b.profiles.rating_system || 'knltb',
+            is_guest: false,
+          });
+        }
+        if (b.guest_players?.id && !playerMap.has(`guest-${b.guest_players.id}`)) {
+          playerMap.set(`guest-${b.guest_players.id}`, {
+            id: b.guest_players.id,
+            full_name: b.guest_players.full_name || 'Guest',
+            skill_rating: b.guest_players.skill_rating,
+            rating_system: b.guest_players.rating_system || 'knltb',
+            is_guest: true,
+          });
+        }
+      });
+
+      setAllKnownPlayers(Array.from(playerMap.values()).sort((a, b) => a.full_name.localeCompare(b.full_name)));
+    } catch (error) {
+      logger.error('Error fetching known players', error as Error, { component: 'AcademyCalendar' });
+    }
+  };
+
   // Filter slots by selected trainer and location
   const filteredSlots = useMemo(() => {
     return slots.filter(s => {
@@ -362,25 +410,50 @@ export default function AcademyCalendar() {
   }, [filteredSlots]);
 
   const navigatePrevious = () => {
-    if (view === "day") setCurrentDate(subDays(currentDate, 1));
-    else if (view === "week") setCurrentDate(subWeeks(currentDate, 1));
-    else setCurrentDate(subMonths(currentDate, 1));
+    if (view === "day") setCurrentDate(subWeeks(currentDate, 1));
+    else setCurrentDate(subWeeks(currentDate, 1));
   };
   const navigateNext = () => {
-    if (view === "day") setCurrentDate(addDays(currentDate, 1));
-    else if (view === "week") setCurrentDate(addWeeks(currentDate, 1));
-    else setCurrentDate(addMonths(currentDate, 1));
+    if (view === "day") setCurrentDate(addWeeks(currentDate, 1));
+    else setCurrentDate(addWeeks(currentDate, 1));
   };
   const goToToday = () => setCurrentDate(new Date());
 
   const getDateRangeLabel = () => {
-    if (view === "day") return format(currentDate, "EEEE d MMMM yyyy", { locale: dateLocale });
-    if (view === "week") {
-      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-      const end = endOfWeek(currentDate, { weekStartsOn: 1 });
-      return `${format(start, "d MMM", { locale: dateLocale })} - ${format(end, "d MMM yyyy", { locale: dateLocale })}`;
+    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    return `${format(start, "d MMM", { locale: dateLocale })} - ${format(end, "d MMM yyyy", { locale: dateLocale })}`;
+  };
+
+  // DnD handlers
+  const handleMovePlayer = async (bookingId: string, newSlotId: string) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ slot_id: newSlotId })
+        .eq('id', bookingId);
+      if (error) throw error;
+      toast({ title: t('calendar.playerMoved', { defaultValue: 'Player moved' }) });
+      fetchSlots();
+    } catch (error) {
+      logger.error('Error moving player', error as Error, { component: 'AcademyCalendar' });
+      toast({ title: t('calendar.moveFailed', { defaultValue: 'Failed to move player' }), variant: 'destructive' });
     }
-    return format(currentDate, "MMMM yyyy", { locale: dateLocale });
+  };
+
+  const handleRemovePlayer = async (bookingId: string) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingId);
+      if (error) throw error;
+      toast({ title: t('calendar.playerRemoved', { defaultValue: 'Player removed from slot' }) });
+      fetchSlots();
+    } catch (error) {
+      logger.error('Error removing player', error as Error, { component: 'AcademyCalendar' });
+      toast({ title: t('calendar.removeFailed', { defaultValue: 'Failed to remove player' }), variant: 'destructive' });
+    }
   };
 
   // Action handlers
@@ -574,14 +647,6 @@ export default function AcademyCalendar() {
                   <CalendarDays className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">{t("calendar.weekView", "Week")}</span>
                 </Button>
-                <Button
-                  variant={view === "month" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setView("month")}
-                >
-                  <LayoutGrid className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">{t("calendar.monthView", "Month")}</span>
-                </Button>
               </div>
             </div>
 
@@ -641,24 +706,34 @@ export default function AcademyCalendar() {
         </Card>
 
         {/* Calendar Grid */}
-        <Card>
-          <CardContent className="p-0 sm:p-4">
-            <TrainerCalendarGrid
-              slots={mappedSlots}
-              currentDate={currentDate}
-              view={view}
-              showTrainerInfo
-              onCellClick={handleCellClick}
-              onBookForPlayer={handleBookForPlayer}
-              onDuplicateCyclus={handleDuplicateCyclus}
-              onDeleteSlot={handleDeleteSlot}
-              onEditBooking={handleEditBooking}
-              onToggleMarkedFull={handleToggleMarkedFull}
-              onNavigatePrevious={navigatePrevious}
-              onNavigateNext={navigateNext}
-            />
-          </CardContent>
-        </Card>
+        {view === "day" ? (
+          <AcademyDayGrid
+            slots={mappedSlots}
+            currentDate={currentDate}
+            allKnownPlayers={allKnownPlayers}
+            trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
+            onMovePlayer={handleMovePlayer}
+            onRemovePlayer={handleRemovePlayer}
+            onBookForPlayer={handleBookForPlayer}
+            onEditBooking={handleEditBooking}
+            onDeleteSlot={handleDeleteSlot}
+            onCellClick={handleCellClick}
+          />
+        ) : (
+          <Card>
+            <CardContent className="p-4">
+              <AcademyWeekOverview
+                slots={mappedSlots}
+                currentDate={currentDate}
+                trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
+                onDayClick={(date) => {
+                  setCurrentDate(date);
+                  setView("day");
+                }}
+              />
+            </CardContent>
+          </Card>
+        )}
       </main>
       
       {/* Slot Creation Dialogs */}
