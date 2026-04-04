@@ -640,8 +640,8 @@ export default function AcademyCalendar() {
               </TabsTrigger>
             </TabsList>
 
-            {/* Date Navigation (shown for overview, manage, hours) */}
-            {activeTab !== "open-spots" && (
+            {/* Date Navigation (shown for manage, hours — overview has its own) */}
+            {activeTab !== "open-spots" && activeTab !== "overview" && (
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
                   <ChevronLeft className="h-4 w-4" />
