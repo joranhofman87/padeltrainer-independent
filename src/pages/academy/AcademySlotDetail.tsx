@@ -38,6 +38,12 @@ import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
+interface ExtraCost {
+  description: string;
+  amount: number;
+  type: 'one_time' | 'per_session';
+}
+
 interface SlotDetail {
   id: string;
   start_time: string;
@@ -55,6 +61,10 @@ interface SlotDetail {
   min_rating: number | null;
   max_rating: number | null;
   price_per_session: number | null;
+  total_price: number | null;
+  split_payment: boolean;
+  prices_include_vat: boolean;
+  extra_costs: ExtraCost[] | null;
   booked_players: BookedPlayer[];
 }
 
