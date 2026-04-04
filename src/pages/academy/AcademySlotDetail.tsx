@@ -248,6 +248,11 @@ export default function AcademySlotDetail() {
     setEditMaxRating(detail.max_rating);
     setEditCyclusName(detail.cyclus_name || '');
     setEditPricePerSession(detail.price_per_session != null ? String(detail.price_per_session) : '');
+    setEditTotalPrice(detail.total_price != null ? String(detail.total_price) : '');
+    setEditSplitPayment(detail.split_payment);
+    setEditPricesIncludeVat(detail.prices_include_vat);
+    setEditExtraCosts(detail.extra_costs ? [...detail.extra_costs] : []);
+    setEditIsMarkedFull(detail.is_marked_full);
     setApplyToCyclus(false);
     setIsEditing(true);
   };
