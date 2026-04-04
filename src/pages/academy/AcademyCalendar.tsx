@@ -657,6 +657,10 @@ export default function AcademyCalendar() {
                 <Calendar className="h-3.5 w-3.5" />
                 {t("calendar.tabs.manage", "Manage")}
               </TabsTrigger>
+              <TabsTrigger value="create" className="text-xs sm:text-sm gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                {t("calendar.tabs.create", "Create")}
+              </TabsTrigger>
               <TabsTrigger value="hours" className="text-xs sm:text-sm gap-1.5">
                 <Clock className="h-3.5 w-3.5" />
                 {t("calendar.tabs.hours", "Trainer Hours")}
