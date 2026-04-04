@@ -1,69 +1,60 @@
 
 
-# Unified Slot Detail Dialog + Overview Improvements
+# Add Tabs and Filters to Academy Players Page
 
-## Problems
-1. **No "marked full/private" indicator** on overview — dots show occupancy but don't reveal locked slots
-2. **Clicking a slot in overview** navigates to the Manage tab's day view, losing context — user has to find the slot again
-3. **Edit booking error on Manage tab** — `handleEditBooking` query is missing `paid_externally`, `price_per_session`, and `cyclus_name` fields that `EditBookingDialog` expects
-4. **Fragmented editing** — every tab pushes to Manage or opens different dialogs, no unified "view slot details + edit" flow
+## Summary
+Restructure the Players page to match the tab pattern used on the Calendar page. Add three filter dropdowns and three tabs (All Players, Create, Email Campaign).
 
-## Solution: Slot Detail Dialog accessible from anywhere
+## Changes
 
-Instead of tab-hopping, clicking any slot (from Overview, Open Spots, or Manage) opens a single **SlotDetailDialog** that shows all slot info and provides edit actions inline.
+### 1. `src/pages/academy/AcademyPlayers.tsx` — Add tabs + filters
 
-### 1. New `SlotDetailDialog.tsx` — Unified slot detail + edit panel
+**Tabs structure:**
+- Wrap entire page content in `<Tabs>` with values: `all-players`, `create`, `email-campaign`
+- Tab bar matches Calendar style (icon + label per trigger)
+- `all-players`: current player table (existing content)
+- `create`: embed the `AddPlayerDialog` content inline (or keep the button-triggered dialog — simpler to just keep the existing Add/Import buttons and table as-is in this tab)
+- `email-campaign`: placeholder card with "Coming soon" message
 
-A dialog/sheet that receives a `slotId` and fetches full details:
+**Filter row (below tabs, above search):**
+Add three `Select` dropdowns next to the existing trainer filter and search:
 
-**Read-only section (top):**
-- Date, time, trainer (avatar + name), location
-- Cyclus name (if part of one) — links to cycle detail
-- Occupancy: player list with names
-- Lock icon + "Private" badge if `is_marked_full`
-- Price per session, rating range
+1. **Location** — derived from bookings → availability_slots → location_id → locations.name
+   - During `fetchPlayers`, also fetch distinct location_ids from the slots that players are booked into
+   - Build a location name map and attach `location_names: string[]` to each `UnifiedPlayer`
+   - Filter dropdown shows all unique locations
 
-**Action buttons:**
-- "Edit Slot" → opens existing `EditSlotDialog`
-- "Delete" → opens existing `DeleteSlotDialog`  
-- "Add Player" → opens existing `BookForPlayerDialog`
-- Per-player: click to edit booking → opens existing `EditBookingDialog`
-- Toggle "Mark as Private" inline
+2. **Level** — based on `skill_rating` ranges
+   - Group into bands: Beginner (1-3), Intermediate (4-6), Advanced (7-9), Pro (9+), Unrated
+   - Filter by selected band
 
-This dialog reuses ALL existing dialogs — it's just an entry point / detail view.
+3. **Has Active Cyclus** — Yes/No filter
+   - During `fetchPlayers`, check if a player has any booking in a slot with a `cyclus_id` where `end_time >= now()`
+   - Attach `has_active_cyclus: boolean` to `UnifiedPlayer`
 
-### 2. `AcademyCalendarOverview.tsx` — Show private indicator + wire slot click
+**Data enrichment in `fetchPlayers`:**
+- When fetching slots for bookings, also select `location_id, cyclus_id, end_time` and join `locations(name)`
+- For guest players: query `bookings` by `guest_player_id` to get their slot details
+- Build per-player maps for location names and active cyclus status
 
-**Private/locked indicator:**
-- Add a small Lock icon next to the time in `TrainerDayBlock` when `slot.is_marked_full === true`
-- Update legend to include "🔒 Private (not shown to players)"
+### 2. `UnifiedPlayer` type — extend
 
-**Click behavior:**
-- Change `onClick` on individual slot rows to call a new `onSlotClick(slotId)` prop instead of `onDayClick`
-- Keep day header click as `onDayClick` (navigates to Manage day view)
+Add fields:
+```typescript
+location_names?: string[];
+has_active_cyclus?: boolean;
+```
 
-### 3. `AcademyCalendar.tsx` — Wire SlotDetailDialog + fix edit booking bug
+### 3. Filter logic in `useEffect`
 
-**Wire `onSlotClick`:**
-- Add `SlotDetailDialog` to the dialogs section
-- Add `handleSlotClick(slotId)` that opens the detail dialog
-- Pass `onSlotClick` to `AcademyCalendarOverview`
-
-**Fix edit booking query (line 540):**
-- Add `paid_externally` to the select
-- Change `availability_slots (id, start_time, end_time)` to `availability_slots (id, start_time, end_time, price_per_session, cyclus_name)`
-
-### 4. `AcademyOpenSlots.tsx` — Wire slot click to same dialog
-
-- Add `onSlotClick` callback that opens the same `SlotDetailDialog`
-- Individual slot cards and cyclus slot rows become clickable
+Chain existing trainer + search filters with the three new filters:
+- `selectedLocation` → filter players where `location_names` includes the value
+- `selectedLevel` → filter by skill_rating range
+- `selectedCyclus` → filter by `has_active_cyclus === true/false`
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/components/academy/SlotDetailDialog.tsx` | **New** — Unified slot detail view with action buttons |
-| `src/components/academy/AcademyCalendarOverview.tsx` | Add Lock icon for private slots, add `onSlotClick` prop, update legend |
-| `src/pages/academy/AcademyCalendar.tsx` | Wire `SlotDetailDialog`, fix `handleEditBooking` query, pass `onSlotClick` to Overview |
-| `src/pages/academy/AcademyOpenSlots.tsx` | Make slot rows clickable → open `SlotDetailDialog` |
+| `src/pages/academy/AcademyPlayers.tsx` | Add Tabs wrapper, filter dropdowns, extend data fetching to include location/cyclus info, add Email Campaign placeholder tab |
 
