@@ -1,42 +1,42 @@
 
 
-# Add match quality warnings for manually assigned players
+# Fix: Step 5 "0 confirmed" + unplaced visibility + tab counts
 
-## Problem
-When players are manually assigned to slots, they get `confidence_score: null`, so no quality indicators show. Three things are missing:
-1. **Day/time availability warning** — player didn't say they're available on this day
-2. **Rating out-of-range** — already works via `isRatingOutOfRange` on `DraggablePlayerChip`
-3. **Group level spread warning** — large rating gap between players in the same slot
+## Root cause
+The `finalize-proposals` edge function sets intake request status to `'booked'`, but the UI only counts `status === 'confirmed'`. This mismatch means:
+- Step 5 always shows "0 confirmed"
+- The workflow never progresses to "completed" state
+- The "Bevestigd" tab shows nothing
 
-## What changes
+## Changes
 
-### 1. Day availability warning on player chips
-The `DraggablePlayerChip` currently only checks rating range. Add a check: look up the player in `allPlayers` by `intake_request_id`, check if the slot's day is in their `preferred_days`. If not, show an orange clock icon with a tooltip "Player didn't indicate availability on [day]".
+### 1. Count booked requests as confirmed (`AcademyCycleDetail.tsx`)
+- Change `confirmedCount` to count both `'confirmed'` and `'booked'` statuses: `requests.filter(r => r.status === 'confirmed' || r.status === 'booked').length`
+- This makes step 5 show the correct number and the workflow progresses properly
 
-### 2. Group level spread warning on slot cards
-On the `DraggableSlotCard`, after occupancy info: if the slot has 2+ players with ratings, calculate the max rating gap. If it exceeds a threshold (e.g., 2.0 points), show an amber warning like "⚠ Level spread: 3.2 pts".
+### 2. Update workflow step logic (`ProposalWorkflowSteps.tsx`)
+- Add `bookedCount` prop (or combine into `confirmedCount`)
+- Update `allConfirmed` check to account for booked status: when `confirmedCount > 0` (now including booked), mark steps as completed
 
-### 3. Compute a basic match score for manual assignments
-When `confidence_score` is null (manual), compute a simple client-side score based on day match + rating fit and display it with a "manual" indicator, so you still see how well the player fits.
+### 3. Add "Bevestigd" tab count + "Booked" filter (`AcademyCycleDetail.tsx`)
+- Show count on the "Bevestigd" tab: `({confirmedCount})`
+- When filtering by `'confirmed'`, also include `'booked'` status requests
+- Add a "Booked" tab or merge booked into the confirmed tab
+
+### 4. Show unplaced players at Step 1 registrations
+- Add a filter tab for unplaced/unassigned players — those with `status === 'new'` or `status === 'proposed'` but no assignments
+- This gives visibility into who hasn't been placed yet
+
+### 5. Refresh tab counts after actions
+- After assigning/confirming players, call `refreshData()` to update the counts in the status tabs
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/ProposalScheduleGrid.tsx` | (1) Pass `allPlayers` + slot day to `DraggablePlayerChip`; add day-availability warning icon. (2) Add rating spread warning to `DraggableSlotCard`. (3) Compute display score for null-confidence assignments. |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Update `confirmedCount` to include `'booked'` status; add count to Bevestigd tab; include booked in confirmed filter; refresh counts after mutations |
+| `src/components/cycles/ProposalWorkflowSteps.tsx` | Update `allConfirmed` logic to work with combined confirmed+booked count |
 
-## Detail
-
-**Day warning on chips** (~5 lines in `DraggablePlayerChip`):
-- New props: `allPlayers`, `slotDay`
-- Lookup: `allPlayers?.find(p => p.id === assignment.intake_request_id)`
-- Check: `player.preferred_days` doesn't include slot day → show `Clock` icon with amber color + tooltip
-
-**Spread warning on slot card** (~10 lines in `DraggableSlotCard`):
-- After occupancy row, compute `maxGap = max(ratings) - min(ratings)` from assignments
-- If `maxGap > 2.0`, render amber `AlertTriangle` + "Level spread: X.X"
-
-**Client-side score for manual assignments** (~15 lines helper):
-- When `confidence_score` is null, calculate: day match (50pts) + rating-in-range (50pts)
-- Show as a lighter-styled badge so it's visually distinct from algorithm-generated scores
+## Summary
+Two files, ~10 lines changed. The core fix is a single filter change from `=== 'confirmed'` to including `'booked'`.
 
