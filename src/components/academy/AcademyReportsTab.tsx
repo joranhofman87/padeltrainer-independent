@@ -176,10 +176,12 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       const loc = locations.find(l => l.id === lid);
       const cap = lSlots.reduce((s, sl) => s + sl.max_participants, 0);
       const booked = lSlots.reduce((s, sl) => s + sl.booking_count, 0);
-      const hours = lSlots.reduce((s, sl) => s + differenceInMinutes(parseISO(sl.end_time), parseISO(sl.start_time)), 0) / 60;
+      const emptySlots = lSlots.filter(s => s.booking_count === 0).length;
+      const hours = lSlots.filter(s => s.booking_count > 0).reduce((s, sl) => s + differenceInMinutes(parseISO(sl.end_time), parseISO(sl.start_time)), 0) / 60;
       return {
         name: loc?.name || t('reports.noLocation', 'No location'),
         sessions: lSlots.length,
+        emptySlots,
         booked,
         capacity: cap,
         fillRate: cap > 0 ? Math.round((booked / cap) * 100) : 0,
