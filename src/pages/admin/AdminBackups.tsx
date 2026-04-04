@@ -181,7 +181,7 @@ export default function AdminBackups() {
             <HardDrive className="h-4 w-4" />
             Schema
           </div>
-          <Badge variant="secondary">Elke 12 uur</Badge>
+          <Badge variant="secondary">Elke 2 uur</Badge>
         </div>
       </div>
 
