@@ -176,6 +176,10 @@ export function EditSlotDialog({
             rating_system: ratingSystem,
             min_rating: minRating,
             max_rating: maxRating,
+            trainer_id: trainerId || undefined,
+            location_id: locationId || null,
+            max_participants: maxParticipants,
+            is_marked_full: isMarkedFull,
           })
           .eq("id", slot.id);
 
