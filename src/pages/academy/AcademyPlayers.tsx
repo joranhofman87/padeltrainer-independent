@@ -264,7 +264,7 @@ export default function AcademyPlayers() {
           const slotIdsForGuests = [...new Set(guestBookings.map((b) => b.slot_id))];
           const { data: slotsData } = await supabase
             .from('availability_slots')
-            .select('id, location_id, cyclus_id, end_time')
+            .select('id, location_id, cyclus_id, end_time, trainer_id')
             .in('id', slotIdsForGuests);
 
           if (slotsData) {
