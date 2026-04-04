@@ -1,28 +1,36 @@
 
 
-# Fix: Proposals data inconsistent — 71 "proposed" requests but no slots or assignments
+# Remove "the Netherlands" from sharing/OG metadata — go global
 
-## What happened
-Your cycle has 71 intake requests with status `proposed`, but **zero** availability slots and **zero** proposed assignments in the database. This is an inconsistent state — the proposals were partially deleted (slots + assignments removed) but the intake request statuses were never reset back to `new`.
+## Source of the problem
+The text in your screenshot ("Find & Book Padel Trainers in the Netherlands") comes from the **render-page edge function** (`supabase/functions/render-page/index.ts`). This is the SSR function that serves OG meta tags to social media crawlers. The i18n translations used in the actual React app are already location-neutral.
 
-This likely happened during an earlier session where the connection timed out mid-reset (during the DB overload period), or the slots were deleted through a different code path that didn't update the intake request statuses.
+Additionally, `public/llms.txt` and `public/manifest.json` contain Netherlands-specific copy.
 
-## Immediate fix: Reset the data
-Click the **Reset** button on Step 4. This will:
-- Set all 71 intake requests back to `new`
-- Delete any remaining proposed assignments (there are none, but it cleans up safely)
-- Take you back to Step 3 (Generate) where you can re-create slots and re-generate proposals
+## Changes
 
-This should work — the `resetProposals` function handles exactly this case.
+| File | What changes |
+|------|-------------|
+| `supabase/functions/render-page/index.ts` | Replace all "in the Netherlands" / "in Nederland" references in homepage, trainers, locations, and about page meta with location-neutral copy |
+| `public/llms.txt` | Update description from "Netherlands" to global focus |
+| `public/manifest.json` | Update description to remove "in the Netherlands" |
 
-## Code improvement: Make reset more resilient
-To prevent this inconsistent state in the future, I'll add a safeguard: when `getAvailableSlotsForCycle` detects that intake requests are `proposed` but no assignments exist, it auto-corrects them back to `new`.
+### Specific copy changes in render-page:
 
-| File | Change |
-|------|--------|
-| `src/lib/cycles.ts` | In `getAvailableSlotsForCycle`, after fetching assignments: if slots are empty and assignments are empty but proposed intake requests exist, auto-reset those intake request statuses to `new` |
+**Homepage (line 60-64):**
+- EN title: "PadelTrainer.ai - Find & Book Padel Trainers" → "PadelTrainer.ai - Scheduling, Bookings & Payments for Padel Trainers"
+- EN desc: "Discover certified padel trainers at locations across the Netherlands..." → "Run your padel coaching business from one place. Online booking, secure payments, and calendar sync."
+- NL title: "PadelTrainer.ai - Vind & Boek Padel Trainers in Nederland" → "PadelTrainer.ai - Planning, Boekingen & Betalingen voor Padel Trainers"
+- NL desc: remove "door heel Nederland"
 
-## Steps
-1. **Try the Reset button now** — it should clear the inconsistent state and let you re-generate
-2. After that works, I'll add the safeguard code to auto-heal this state if it ever happens again
+**Trainers page (line 97-101):**
+- "Browse all certified padel trainers in the Netherlands" → "Browse all certified padel trainers. Filter by location, level, and specialization."
+
+**Locations page (line 133-138):**
+- "Browse all padel clubs and locations in the Netherlands" → "Browse all padel clubs and locations. Find courts near you."
+
+**About page (line 269):**
+- "the leading platform for finding and booking padel trainers in the Netherlands" → "the leading platform for padel trainers and academies"
+
+This aligns the sharing metadata with the already-global i18n SEO copy.
 
