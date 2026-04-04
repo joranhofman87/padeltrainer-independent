@@ -354,6 +354,14 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
             <Button
               variant="ghost"
               size="icon"
+              onClick={() => navigate("/app/academy/subscription")}
+              title={t("nav.subscription")}
+            >
+              <CreditCard className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={showReferralWidget}
             >
               <Gift className="h-4 w-4 text-primary" />

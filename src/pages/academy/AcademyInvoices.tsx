@@ -694,6 +694,18 @@ export default function AcademyInvoices() {
         </TabsContent>
       </Tabs>
 
+        </TabsContent>
+
+        <TabsContent value="settings" className="space-y-6 mt-4">
+          {activeAcademy?.id && (
+            <>
+              <AcademyInvoiceSettingsCard academyId={activeAcademy.id} />
+              <ExtraCostPresetsCard academyProfileId={activeAcademy.id} />
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
+
       <InvoiceEmailDialog
         open={emailDialog.open}
         onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null })}

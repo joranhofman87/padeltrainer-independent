@@ -405,8 +405,6 @@ export default function AcademySettings() {
           </CardContent>
         </Card>
 
-        {/* Invoice Settings */}
-        <AcademyInvoiceSettingsCard academyId={activeAcademy.id} />
 
         {/* General Terms */}
         <Card>
