@@ -828,6 +828,30 @@ function DraggableSlotCard({
           {avgConf > 0 && (
             <span className="text-muted-foreground text-[10px]">ø {avgConf}%</span>
           )}
+          {onToggleSlotPrivacy && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onToggleSlotPrivacy(slot.id, !slot.is_marked_full); }}
+                    className={cn(
+                      'p-0.5 rounded transition-colors',
+                      slot.is_marked_full
+                        ? 'text-purple-600 dark:text-purple-400 hover:text-purple-700'
+                        : 'text-muted-foreground/40 hover:text-muted-foreground'
+                    )}
+                  >
+                    {slot.is_marked_full ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {slot.is_marked_full
+                    ? t('proposals.slotPrivate', { defaultValue: 'Private — hidden from public' })
+                    : t('proposals.slotPublic', { defaultValue: 'Public — click to mark as private' })}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         {/* Rating range indicator */}
