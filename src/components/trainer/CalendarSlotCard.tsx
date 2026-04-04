@@ -43,7 +43,6 @@ export interface SlotWithBookings {
   cyclus_id: string | null;
   cyclus_name: string | null;
   booked_players: BookedPlayer[];
-  : boolean;
   location_name: string | null;
   trainer_id?: string;
   trainer_name?: string;

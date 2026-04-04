@@ -80,7 +80,6 @@ type SlotWithBookings = {
   cyclus_name: string | null;
   max_participants: number | null;
   is_public: boolean;
-  : boolean;
   location_id: string | null;
   price_per_session: number | null;
   prices_include_vat: boolean;

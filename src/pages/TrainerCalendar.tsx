@@ -384,7 +384,7 @@ export default function TrainerCalendar() {
         if (slot?.cyclus_id) {
           const { error } = await supabase
             .from("availability_slots")
-            .update({ : value })
+            .update({ is_public: !value })
             .eq("cyclus_id", slot.cyclus_id)
             .gte("start_time", new Date().toISOString());
 
@@ -399,7 +399,7 @@ export default function TrainerCalendar() {
       } else {
         const { error } = await supabase
           .from("availability_slots")
-          .update({ : value })
+          .update({ is_public: !value })
           .eq("id", slotId);
 
         if (error) throw error;

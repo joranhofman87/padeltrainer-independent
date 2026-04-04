@@ -56,7 +56,6 @@ interface AcademySlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  : boolean;
   location_id: string | null;
   max_participants: number;
   cyclus_id: string | null;
@@ -557,7 +556,7 @@ export default function AcademyCalendar() {
         if (slot?.cyclus_id) {
           const { error } = await supabase
             .from("availability_slots")
-            .update({ : value })
+            .update({ is_public: !value })
             .eq("cyclus_id", slot.cyclus_id)
             .gte("start_time", new Date().toISOString());
           if (error) throw error;
@@ -566,7 +565,7 @@ export default function AcademyCalendar() {
       } else {
         const { error } = await supabase
           .from("availability_slots")
-          .update({ : value })
+          .update({ is_public: !value })
           .eq("id", slotId);
         if (error) throw error;
         toast({ title: value ? tTrainer("calendar.slotMarkedFull") : tTrainer("calendar.slotMarkedOpen") });

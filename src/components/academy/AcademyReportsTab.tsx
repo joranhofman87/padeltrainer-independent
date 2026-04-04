@@ -34,7 +34,6 @@ interface SlotRow {
   trainer_id: string;
   location_id: string | null;
   max_participants: number;
-  : boolean;
   price_per_session: number | null;
   booking_count: number;
 }

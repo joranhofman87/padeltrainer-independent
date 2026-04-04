@@ -56,7 +56,6 @@ interface SlotDetail {
   cyclus_id: string | null;
   cyclus_name: string | null;
   max_participants: number;
-  : boolean;
   rating_system: string | null;
   min_rating: number | null;
   max_rating: number | null;
@@ -249,7 +248,7 @@ export default function AcademySlotDetail() {
     setEditSplitPayment(detail.split_payment);
     setEditPricesIncludeVat(detail.prices_include_vat);
     setEditExtraCosts(detail.extra_costs ? [...detail.extra_costs] : []);
-    setEditIsMarkedFull(detail.);
+    setEditIsMarkedFull(!detail.is_public);
     setApplyToCyclus(false);
     setIsEditing(true);
   };
@@ -351,7 +350,7 @@ export default function AcademySlotDetail() {
 
   const togglePrivate = async () => {
     if (!detail) return;
-    const newVal = !detail.;
+    const newVal = !!detail.is_public;
     const { error } = await supabase
       .from('availability_slots')
       .update({ : newVal })
@@ -827,7 +826,7 @@ export default function AcademySlotDetail() {
                       <Lock className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm">{t('calendar.markPrivate', 'Mark as private')}</span>
                     </div>
-                    <Switch checked={detail.} onCheckedChange={togglePrivate} />
+                    <Switch checked={!detail.is_public} onCheckedChange={togglePrivate} />
                   </div>
                 </div>
               )}

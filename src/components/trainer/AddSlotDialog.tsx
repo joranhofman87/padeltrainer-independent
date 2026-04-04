@@ -775,7 +775,6 @@ export function BulkCreateContent({
         cyclus_name: string | null;
         court_type: 'indoor' | 'outdoor' | null;
         location_id: string | null;
-        : boolean;
         academy_profile_id: string | null;
         training_level: string | null;
         rating_system: string | null;

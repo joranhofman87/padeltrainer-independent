@@ -34,7 +34,6 @@ interface ClubSlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  : boolean;
   max_participants: number;
   cyclus_name: string | null;
   trainer_name: string;

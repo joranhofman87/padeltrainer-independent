@@ -579,7 +579,7 @@ export default function AcademyCycleDetail() {
       try {
         const { error } = await supabase
           .from('availability_slots')
-          .update({ : value })
+          .update({ is_public: !value })
           .eq('id', slotId);
         if (error) throw error;
       } catch (error: any) {

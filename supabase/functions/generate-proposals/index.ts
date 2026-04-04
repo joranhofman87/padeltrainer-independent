@@ -63,7 +63,6 @@ interface AvailabilitySlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  : boolean;
   location_id: string | null;
   cyclus_id: string | null;
   max_participants: number | null;
