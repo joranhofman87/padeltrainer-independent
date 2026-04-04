@@ -156,6 +156,43 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
     return true;
   });
 
+  // Sync recipients when filters change
+  useEffect(() => {
+    setRecipients(filteredRecipients.map((p) => ({ id: p.id, full_name: p.full_name, email: p.email })));
+  }, [filterTrainer, filterLocation, filterLevel, filterCyclus, players]);
+
+  const handleRemoveRecipient = (id: string) => {
+    setRecipients((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const handleAddManualRecipient = () => {
+    if (!addEmail.trim()) return;
+    const newR = { id: `manual-${Date.now()}`, full_name: addName.trim() || addEmail.trim(), email: addEmail.trim(), isManual: true };
+    setRecipients((prev) => [...prev, newR]);
+    setAddEmail('');
+    setAddName('');
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!testEmail.trim() || !subject.trim() || !bodyHtml.trim()) {
+      toast({ title: 'Missing fields', description: 'Please fill in subject, body, and test email address.', variant: 'destructive' });
+      return;
+    }
+    setIsSendingTest(true);
+    try {
+      const { error } = await supabase.functions.invoke('send-campaign-emails', {
+        body: { testMode: true, testEmail: testEmail.trim(), subject: subject.trim(), bodyHtml, academyProfileId: academyId },
+      });
+      if (error) throw error;
+      toast({ title: 'Test email sent!', description: `A test email was sent to ${testEmail.trim()}.` });
+    } catch (err: any) {
+      logger.error('Error sending test email', err);
+      toast({ title: 'Error', description: err.message || 'Could not send test email.', variant: 'destructive' });
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
   const handleSaveTemplate = async () => {
     if (!templateName.trim() || !subject.trim() || !bodyHtml.trim()) {
       toast({ title: 'Missing fields', description: 'Please fill in template name, subject, and body.', variant: 'destructive' });
