@@ -205,6 +205,14 @@ export default function AcademyCycleDetail() {
   const [isResetting, setIsResetting] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
+  // Pricing state for Step 4 — initialized from cycle data
+  const [pricingPricePerSession, setPricingPricePerSession] = useState<number | null>(null);
+  const [pricingExtraCosts, setPricingExtraCosts] = useState<ExtraCost[]>([]);
+  const [pricingSplitPayment, setPricingSplitPayment] = useState(false);
+  const [pricingIncludeVat, setPricingIncludeVat] = useState(true);
+  const [pricingInitialized, setPricingInitialized] = useState(false);
+  const [isSavingPricing, setIsSavingPricing] = useState(false);
+
   // Preserve selectedRequest identity
   useEffect(() => {
     setSelectedRequest(prev => {
