@@ -1,18 +1,26 @@
 
 
-# Increase backup frequency from 12h to every 2 hours
+# Add 14-day retention policy to automated backups
 
-## Impact assessment
-**Very low impact.** The backup function exports 15 tables as JSON files to storage. Each run takes a few seconds and uses a service-role connection. Going from 2 runs/day to 12 runs/day is negligible on the Small instance.
+## What changes
+After each backup completes, the edge function will automatically delete any backup folders older than 14 days. This keeps storage clean without manual intervention.
 
-The only consideration is **storage growth** — more snapshots means more files. But JSON exports of these tables are small (KB range), so even at 2-hour intervals you'd accumulate ~12 backups/day. The admin UI already supports deleting old backups, and you could add a retention policy later if needed.
+## How it works
+At the end of each backup run, the function:
+1. Lists all folders in the `backups` bucket
+2. Parses the timestamp from each folder name
+3. Deletes all files in folders older than 14 days
+4. Logs how many old backups were cleaned up
+
+At 2-hour intervals, this means you'll keep roughly **168 snapshots** (14 days x 12/day) at any time.
 
 ## Changes
 
-| What | Change |
+| File | Change |
 |------|--------|
-| Cron job schedule (SQL) | Update from `0 */12 * * *` to `0 */2 * * *` (every 2 hours) |
-| `src/pages/admin/AdminBackups.tsx` | Update label from "elke 12 uur" to "elke 2 uur" |
+| `supabase/functions/backup-database/index.ts` | After the backup loop, add a cleanup step that lists folders, checks age, and removes folders older than 14 days |
+| `src/pages/admin/AdminBackups.tsx` | Update subtitle to mention "14 dagen bewaard" so admins know the retention policy |
 
-The cron job update is a single SQL statement run via the database tool — no migration needed since it contains project-specific URLs/keys.
+## Technical detail
+The cleanup logic reuses the same `parseTimestamp` pattern already used in `AdminBackups.tsx`. For each expired folder, it lists its files and calls `storage.remove()` — the same approach the existing delete mutation uses in the admin UI.
 
