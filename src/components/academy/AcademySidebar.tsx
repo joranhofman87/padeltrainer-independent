@@ -70,12 +70,6 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
 
   // Track which groups are open
   const [registrationOpen, setRegistrationOpen] = useState(false); // No longer a collapsible group
-  const [businessOpen, setBusinessOpen] = useState(
-    location.pathname.includes("/app/academy/settings") ||
-    location.pathname.includes("/app/academy/subscription") ||
-    
-    location.pathname.includes("/app/academy/invoices")
-  );
 
   const handleLogout = async () => {
     const { error } = await signOut();
