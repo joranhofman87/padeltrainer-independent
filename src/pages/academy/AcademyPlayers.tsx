@@ -287,6 +287,12 @@ export default function AcademyPlayers() {
               const slot = slotMap.get(b.slot_id);
               if (!slot) return;
 
+              // Track trainer
+              if (slot.trainer_id) {
+                if (!guestTrainerMap.has(b.guest_player_id)) guestTrainerMap.set(b.guest_player_id, new Set());
+                guestTrainerMap.get(b.guest_player_id)!.add(slot.trainer_id);
+              }
+
               if (slot.location_id && locationNameMap.has(slot.location_id)) {
                 if (!guestLocationMap.has(b.guest_player_id)) guestLocationMap.set(b.guest_player_id, new Set());
                 guestLocationMap.get(b.guest_player_id)!.add(locationNameMap.get(slot.location_id)!);
