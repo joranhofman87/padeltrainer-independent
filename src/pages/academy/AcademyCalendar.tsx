@@ -42,6 +42,7 @@ import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDa
 import AcademyWeekOverview from "@/components/academy/AcademyWeekOverview";
 import AcademyCalendarOverview from "@/components/academy/AcademyCalendarOverview";
 import AcademyTrainerHours from "@/components/academy/AcademyTrainerHours";
+import CycleForm from "@/components/cycles/CycleForm";
 
 // Lazy-load the open slots page content
 import { lazy, Suspense } from "react";
@@ -91,7 +92,7 @@ const dateFnsLocales: Record<string, typeof enUS> = {
   fr,
 };
 
-type TabValue = "overview" | "open-spots" | "manage" | "hours";
+type TabValue = "overview" | "open-spots" | "manage" | "create" | "hours";
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
@@ -137,6 +138,8 @@ export default function AcademyCalendar() {
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
+  const [createFormType, setCreateFormType] = useState<'registration' | 'event'>('registration');
+  const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
 
   const handleCellClick = (day: Date, hour: number) => {
     setDefaultSlotDate(day);
@@ -174,6 +177,23 @@ export default function AcademyCalendar() {
           hourly_rate: t.trainer_profile?.hourly_rate || undefined,
         }));
       setTrainers(trainerList);
+
+      // Build trainer-location map
+      const trainerIds = trainerList.map(t => t.id);
+      let tlMap: Record<string, string[]> = {};
+      if (trainerIds.length > 0) {
+        const { data: trainerLocs } = await supabase
+          .from('trainer_locations')
+          .select('trainer_id, location_id')
+          .in('trainer_id', trainerIds);
+        if (trainerLocs) {
+          for (const tl of trainerLocs) {
+            if (!tlMap[tl.location_id]) tlMap[tl.location_id] = [];
+            tlMap[tl.location_id].push(tl.trainer_id);
+          }
+        }
+      }
+      setTrainerLocationMap(tlMap);
       
       const academyLocations = await getAcademyLocations(activeAcademy.id);
       const locationList: Location[] = academyLocations.map((al: any) => ({
@@ -637,6 +657,10 @@ export default function AcademyCalendar() {
                 <Calendar className="h-3.5 w-3.5" />
                 {t("calendar.tabs.manage", "Manage")}
               </TabsTrigger>
+              <TabsTrigger value="create" className="text-xs sm:text-sm gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                {t("calendar.tabs.create", "Create")}
+              </TabsTrigger>
               <TabsTrigger value="hours" className="text-xs sm:text-sm gap-1.5">
                 <Clock className="h-3.5 w-3.5" />
                 {t("calendar.tabs.hours", "Trainer Hours")}
@@ -674,13 +698,7 @@ export default function AcademyCalendar() {
               onNavigateNext={navigateNext}
               onGoToday={goToToday}
               dateRangeLabel={getDateRangeLabel()}
-              onNewClick={() => {
-                setDefaultSlotDate(undefined);
-                setDefaultSlotTime(undefined);
-                const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
-                setSelectedSlotTrainerId(trainerToUse);
-                setBulkCreateOpen(true);
-              }}
+              onNewClick={() => setActiveTab("create")}
             />
           </TabsContent>
 
@@ -800,7 +818,45 @@ export default function AcademyCalendar() {
             )}
           </TabsContent>
 
-          {/* ── Tab 4: Trainer Hours ── */}
+          {/* ── Tab 4: Create Cyclus ── */}
+          <TabsContent value="create" className="mt-4">
+            <div className="max-w-2xl">
+              <div className="flex gap-2 mb-6">
+                <Button
+                  variant={createFormType === 'registration' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCreateFormType('registration')}
+                >
+                  {t('cycles:createRegistration', 'Registration')}
+                </Button>
+                <Button
+                  variant={createFormType === 'event' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCreateFormType('event')}
+                >
+                  {t('cycles:createEvent', 'Event')}
+                </Button>
+              </div>
+              {activeAcademy && (
+                <CycleForm
+                  ownerType="academy"
+                  ownerId={activeAcademy.id}
+                  formType={createFormType}
+                  locations={locations}
+                  trainers={trainers.map(t => ({ id: t.id, name: t.name, hourly_rate: t.hourly_rate }))}
+                  trainerLocationMap={trainerLocationMap}
+                  onSuccess={() => {
+                    fetchSlots(false);
+                    fetchMonthSlots();
+                    setActiveTab("overview");
+                  }}
+                  onCancel={() => setActiveTab("overview")}
+                />
+              )}
+            </div>
+          </TabsContent>
+
+          {/* ── Tab 5: Trainer Hours ── */}
           <TabsContent value="hours" className="mt-4">
             <AcademyTrainerHours
               slots={trainerHoursSlots}
