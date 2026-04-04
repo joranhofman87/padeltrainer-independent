@@ -541,8 +541,8 @@ export default function AcademyCalendar() {
       const { data, error } = await supabase
         .from("bookings")
         .select(`
-          id, status, notes, payment_status, payment_amount, guest_player_id,
-          availability_slots (id, start_time, end_time),
+          id, status, notes, payment_status, payment_amount, guest_player_id, paid_externally,
+          availability_slots (id, start_time, end_time, price_per_session, cyclus_name),
           profiles:player_id (id, full_name, email)
         `)
         .eq("id", bookingId)
