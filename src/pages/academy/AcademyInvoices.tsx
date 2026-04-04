@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
@@ -19,6 +19,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
 import { CreateCustomInvoiceDialog } from "@/components/invoices/CreateCustomInvoiceDialog";
+import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceSettingsCard";
+import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { nl, enUS } from "date-fns/locale";
 
 interface Invoice {
