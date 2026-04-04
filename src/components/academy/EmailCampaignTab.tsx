@@ -34,6 +34,7 @@ interface EmailCampaignTabProps {
     email: string;
     skill_rating: number | null;
     trainer_id?: string;
+    trainer_ids?: string[];
     location_names?: string[];
     has_active_cyclus?: boolean;
     type: 'guest' | 'registered';
@@ -137,7 +138,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
   // Filter players
   const filteredRecipients = players.filter((p) => {
     if (!p.email) return false;
-    if (filterTrainer !== 'all' && p.trainer_id !== filterTrainer) return false;
+    if (filterTrainer !== 'all' && !p.trainer_ids?.includes(filterTrainer)) return false;
     if (filterLocation !== 'all' && !p.location_names?.includes(filterLocation)) return false;
     if (filterLevel !== 'all' && getLevelBand(p.skill_rating) !== filterLevel) return false;
     if (filterCyclus === 'yes' && !p.has_active_cyclus) return false;

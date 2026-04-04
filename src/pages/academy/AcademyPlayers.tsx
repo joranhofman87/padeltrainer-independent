@@ -61,6 +61,7 @@ type UnifiedPlayer = {
   created_at: string;
   type: 'guest' | 'registered';
   trainer_id?: string;
+  trainer_ids?: string[];
   trainer_name?: string;
   originalGuest?: GuestPlayer;
   location_names?: string[];
@@ -138,7 +139,7 @@ export default function AcademyPlayers() {
     let result = players;
 
     if (selectedTrainerId && selectedTrainerId !== 'all') {
-      result = result.filter((p) => p.trainer_id === selectedTrainerId);
+      result = result.filter((p) => p.trainer_ids?.includes(selectedTrainerId));
     }
 
     if (selectedLocation && selectedLocation !== 'all') {
@@ -248,6 +249,7 @@ export default function AcademyPlayers() {
       const guestPlayerIds = allGuestPlayers.map((g) => g.id);
       const guestLocationMap = new Map<string, Set<string>>();
       const guestCyclusMap = new Map<string, boolean>();
+      const guestTrainerMap = new Map<string, Set<string>>();
       const locationNameMap = new Map<string, string>();
       const now = new Date().toISOString();
 
@@ -262,7 +264,7 @@ export default function AcademyPlayers() {
           const slotIdsForGuests = [...new Set(guestBookings.map((b) => b.slot_id))];
           const { data: slotsData } = await supabase
             .from('availability_slots')
-            .select('id, location_id, cyclus_id, end_time')
+            .select('id, location_id, cyclus_id, end_time, trainer_id')
             .in('id', slotIdsForGuests);
 
           if (slotsData) {
@@ -285,6 +287,12 @@ export default function AcademyPlayers() {
               const slot = slotMap.get(b.slot_id);
               if (!slot) return;
 
+              // Track trainer
+              if (slot.trainer_id) {
+                if (!guestTrainerMap.has(b.guest_player_id)) guestTrainerMap.set(b.guest_player_id, new Set());
+                guestTrainerMap.get(b.guest_player_id)!.add(slot.trainer_id);
+              }
+
               if (slot.location_id && locationNameMap.has(slot.location_id)) {
                 if (!guestLocationMap.has(b.guest_player_id)) guestLocationMap.set(b.guest_player_id, new Set());
                 guestLocationMap.get(b.guest_player_id)!.add(locationNameMap.get(slot.location_id)!);
@@ -298,23 +306,30 @@ export default function AcademyPlayers() {
         }
       }
 
-      const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => ({
-        id: g.id,
-        full_name: g.full_name,
-        email: g.email || '',
-        phone: g.phone || '',
-        skill_rating: g.skill_rating ?? null,
-        rating_system: g.rating_system || 'knltb',
-        has_trained: g.has_trained ?? false,
-        notes: g.notes || null,
-        created_at: g.created_at,
-        type: 'guest' as const,
-        trainer_id: g.trainer_id,
-        trainer_name: g.trainer_id ? (trainerNameMap.get(g.trainer_id) || '—') : t('nav.academy', 'Academy'),
-        originalGuest: g as GuestPlayer,
-        location_names: guestLocationMap.has(g.id) ? Array.from(guestLocationMap.get(g.id)!) : [],
-        has_active_cyclus: guestCyclusMap.get(g.id) || false,
-      }));
+      const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => {
+        const bookingTrainerIds = guestTrainerMap.has(g.id) ? Array.from(guestTrainerMap.get(g.id)!) : [];
+        const allTrainerIds = g.trainer_id
+          ? [...new Set([g.trainer_id, ...bookingTrainerIds])]
+          : bookingTrainerIds;
+        return {
+          id: g.id,
+          full_name: g.full_name,
+          email: g.email || '',
+          phone: g.phone || '',
+          skill_rating: g.skill_rating ?? null,
+          rating_system: g.rating_system || 'knltb',
+          has_trained: g.has_trained ?? false,
+          notes: g.notes || null,
+          created_at: g.created_at,
+          type: 'guest' as const,
+          trainer_id: g.trainer_id,
+          trainer_ids: allTrainerIds,
+          trainer_name: g.trainer_id ? (trainerNameMap.get(g.trainer_id) || '—') : t('nav.academy', 'Academy'),
+          originalGuest: g as GuestPlayer,
+          location_names: guestLocationMap.has(g.id) ? Array.from(guestLocationMap.get(g.id)!) : [],
+          has_active_cyclus: guestCyclusMap.get(g.id) || false,
+        };
+      });
 
       // Fetch registered players from bookings
       const { data: slotIds } = await supabase
@@ -345,19 +360,21 @@ export default function AcademyPlayers() {
           .not('player_id', 'is', null);
 
         if (bookings && bookings.length > 0) {
-          const playerMap = new Map<string, { created_at: string; trainer_id: string; locations: Set<string>; has_active_cyclus: boolean }>();
+          const playerMap = new Map<string, { created_at: string; trainer_ids: Set<string>; locations: Set<string>; has_active_cyclus: boolean }>();
           bookings.forEach((b) => {
             if (!b.player_id) return;
             const slot = slotDetailMap.get(b.slot_id);
+            const trainerId = slotTrainerMap.get(b.slot_id) || '';
             if (!playerMap.has(b.player_id)) {
               playerMap.set(b.player_id, {
                 created_at: b.created_at,
-                trainer_id: slotTrainerMap.get(b.slot_id) || '',
+                trainer_ids: new Set(),
                 locations: new Set(),
                 has_active_cyclus: false,
               });
             }
             const entry = playerMap.get(b.player_id)!;
+            if (trainerId) entry.trainer_ids.add(trainerId);
             if (slot?.location_id && locationNameMap.has(slot.location_id)) {
               entry.locations.add(locationNameMap.get(slot.location_id)!);
             }
@@ -394,8 +411,8 @@ export default function AcademyPlayers() {
                   notes: null,
                   created_at: info?.created_at || new Date().toISOString(),
                   type: 'registered' as const,
-                  trainer_id: info?.trainer_id,
-                  trainer_name: trainerNameMap.get(info?.trainer_id || '') || '—',
+                  trainer_ids: info ? Array.from(info.trainer_ids) : [],
+                  trainer_name: info?.trainer_ids.size ? trainerNameMap.get(Array.from(info.trainer_ids)[0]) || '—' : '—',
                   location_names: info ? Array.from(info.locations) : [],
                   has_active_cyclus: info?.has_active_cyclus || false,
                 };
