@@ -86,13 +86,12 @@ export default function OpenSlots() {
           max_participants,
           cyclus_id,
           cyclus_name,
-          is_marked_full,
           is_public,
           location_id,
           locations:location_id(name)
         `)
         .eq('trainer_id', tId)
-        .eq('is_marked_full', false)
+        .eq('', false)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true });
 

@@ -156,7 +156,6 @@ export default function TrainerCalendar() {
           price_per_session,
           cyclus_id,
           cyclus_name,
-          is_marked_full,
           location_id,
           rating_system,
           min_rating,
@@ -247,7 +246,7 @@ export default function TrainerCalendar() {
             cyclus_id: slot.cyclus_id || null,
             cyclus_name: slot.cyclus_name || null,
             booked_players: counts.players,
-            is_marked_full: slot.is_marked_full || false,
+            is_marked_full: !slot.is_public,
             location_name: location?.name || null,
             rating_system: (slot as any).rating_system || null,
             min_rating: (slot as any).min_rating != null ? Number((slot as any).min_rating) : null,
@@ -385,7 +384,7 @@ export default function TrainerCalendar() {
         if (slot?.cyclus_id) {
           const { error } = await supabase
             .from("availability_slots")
-            .update({ is_marked_full: value })
+            .update({ is_public: !value })
             .eq("cyclus_id", slot.cyclus_id)
             .gte("start_time", new Date().toISOString());
 
@@ -400,7 +399,7 @@ export default function TrainerCalendar() {
       } else {
         const { error } = await supabase
           .from("availability_slots")
-          .update({ is_marked_full: value })
+          .update({ is_public: !value })
           .eq("id", slotId);
 
         if (error) throw error;

@@ -196,7 +196,7 @@ function SlotCard({
   const duration = getDurationMinutes(slot.start_time, slot.end_time);
   const maxP = slot.max_participants || 4;
   const currentP = slot.booked_players.length;
-  const isFull = currentP >= maxP || slot.is_marked_full;
+  const isFull = currentP >= maxP || slot.;
   const ratingSpread = getRatingSpread(slot.booked_players);
 
   return (

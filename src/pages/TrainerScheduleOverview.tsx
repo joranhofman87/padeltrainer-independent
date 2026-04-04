@@ -80,7 +80,6 @@ type SlotWithBookings = {
   cyclus_name: string | null;
   max_participants: number | null;
   is_public: boolean;
-  is_marked_full: boolean;
   location_id: string | null;
   price_per_session: number | null;
   prices_include_vat: boolean;
@@ -194,7 +193,7 @@ export default function TrainerScheduleOverview() {
       const { data, error } = await supabase
         .from("availability_slots")
         .select(`
-          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, is_marked_full, location_id, price_per_session, prices_include_vat, extra_costs, split_payment,
+          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, location_id, price_per_session, prices_include_vat, extra_costs, split_payment,
           locations:location_id (name, city),
           bookings (id, status, payment_status, player_id, guest_player_id,
             profiles:player_id (full_name),
@@ -370,7 +369,7 @@ export default function TrainerScheduleOverview() {
       pricePerSession: firstSlot?.price_per_session != null ? String(firstSlot.price_per_session) : "",
       locationId: firstSlot?.location_id || "",
       maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
-      isPrivate: firstSlot?.is_marked_full ?? false,
+      isPrivate: !firstSlot?.is_public ?? false,
       extraCosts: extraCosts.length > 0 ? extraCosts : [],
       startDate: earliestStart,
       originalStartDate: earliestStart,
@@ -443,8 +442,7 @@ export default function TrainerScheduleOverview() {
 
       // 1. Build bulk updates for all existing slots
       const updates: Record<string, unknown> = {
-        cyclus_name: cycleEditData.name.trim(),
-        is_marked_full: cycleEditData.isPrivate,
+        cyclus_name: cycleEditData.name.trim(): cycleEditData.isPrivate,
         extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : null,
         prices_include_vat: cycleEditData.pricesIncludeVat,
         split_payment: cycleEditData.splitPayment,
@@ -540,8 +538,7 @@ export default function TrainerScheduleOverview() {
                 cyclus_id: editCycleId,
                 cyclus_name: cycleEditData.name.trim(),
                 max_participants: lastSlot.max_participants,
-                is_public: lastSlot.is_public,
-                is_marked_full: cycleEditData.isPrivate,
+                is_public: !cycleEditData.isPrivate,
                 location_id: cycleEditData.locationId || lastSlot.location_id,
                 price_per_session: sessionPrice ?? lastSlot.price_per_session,
                 extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : lastSlot.extra_costs,
@@ -944,7 +941,7 @@ export default function TrainerScheduleOverview() {
     setTogglingPrivacy(slotId);
     const { error } = await supabase
       .from("availability_slots")
-      .update({ is_marked_full: !currentValue })
+      .update({ is_public: currentValue })
       .eq("id", slotId);
     setTogglingPrivacy(null);
     if (error) {
@@ -1288,7 +1285,7 @@ export default function TrainerScheduleOverview() {
                                 {unpaid} {t("scheduleOverview.unpaid", "unpaid")}
                               </Badge>
                             )}
-                            {slot.is_marked_full && (
+                            {!slot.is_public && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                                 {t("scheduleOverview.private", "Private")}
                               </Badge>
@@ -1301,17 +1298,16 @@ export default function TrainerScheduleOverview() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => handleToggleSlotPrivacy(slot.id, slot.is_marked_full)}
+                              onClick={() => handleToggleSlotPrivacy(slot.id, !slot.is_public)}
                               disabled={togglingPrivacy === slot.id}
                               title={
-                                slot.is_marked_full
-                                  ? t("scheduleOverview.markAsPublic", "Mark as public")
+                                !slot.is_public ? t("scheduleOverview.markAsPublic", "Mark as public")
                                   : t("scheduleOverview.markAsPrivate", "Mark as private")
                               }
                             >
                               {togglingPrivacy === slot.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : slot.is_marked_full ? (
+                              ) : !slot.is_public ? (
                                 <Lock className="h-3.5 w-3.5" />
                               ) : (
                                 <LockOpen className="h-3.5 w-3.5" />

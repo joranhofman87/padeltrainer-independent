@@ -63,7 +63,6 @@ interface AvailabilitySlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  is_marked_full: boolean;
   location_id: string | null;
   cyclus_id: string | null;
   max_participants: number | null;
@@ -624,8 +623,7 @@ Deno.serve(async (req) => {
                 slotsToInsert.push({
                   trainer_id: ta.trainerId,
                   start_time: startDateTime.toISOString(),
-                  end_time: endDateTime.toISOString(),
-                  is_marked_full: (inputMaxGroupSize || cycle.settings?.max_group_size || 4) < 4,
+                  end_time: endDateTime.toISOString(): (inputMaxGroupSize || cycle.settings?.max_group_size || 4) < 4,
                   is_public: false,
                   is_recurring: false,
                   cyclus_id: cycleId,
@@ -676,7 +674,7 @@ Deno.serve(async (req) => {
       .from("availability_slots")
       .select("*, max_participants")
       .eq("cyclus_id", cycleId)
-      .eq("is_marked_full", false);
+      .eq("", false);
 
     if (trainerIds.length > 0) {
       slotsQuery = slotsQuery.in("trainer_id", trainerIds);

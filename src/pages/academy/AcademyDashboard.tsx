@@ -133,9 +133,9 @@ export default function AcademyDashboard() {
             .limit(20),
           supabase
             .from('availability_slots')
-            .select('id, start_time, end_time, max_participants, is_marked_full, cyclus_name, cyclus_id, locations:location_id (name)')
+            .select('id, start_time, end_time, max_participants, cyclus_name, cyclus_id, locations:location_id (name)')
             .in('trainer_id', trainerIds)
-            .eq('is_marked_full', false)
+            .eq('', false)
             .gte('start_time', now)
             .order('start_time', { ascending: true })
             .limit(50),

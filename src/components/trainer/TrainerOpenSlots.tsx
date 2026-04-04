@@ -78,7 +78,6 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           cyclus_id,
           cyclus_name,
           court_type,
-          is_marked_full,
           is_public,
           price_per_session,
           split_payment,
@@ -88,7 +87,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           locations:location_id(name)
         `)
         .eq('trainer_id', trainerId)
-        .eq('is_marked_full', false)
+        .eq('', false)
         .eq('is_public', true)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })

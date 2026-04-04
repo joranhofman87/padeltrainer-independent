@@ -150,7 +150,7 @@ export default function BookLesson() {
       .from('availability_slots')
       .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, locations:location_id(id, name, city, street_address)`)
       .eq('trainer_id', trainerData.id)
-      .eq('is_marked_full', false)
+      .eq('', false)
       .eq('is_public', true)
       .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true });

@@ -33,7 +33,7 @@ interface SlotSummary {
   booked_count: number;
   location_name?: string | null;
   location_id?: string | null;
-  is_marked_full?: boolean;
+  ?: boolean;
 }
 
 interface TrainerOption { id: string; name: string; }
@@ -79,7 +79,7 @@ function OccupancyDots({ booked, max }: { booked: number; max: number }) {
 
 /* ── Summary status for a group of slots ── */
 function getGroupStatus(slots: SlotSummary[]): 'full' | 'partial' | 'empty' {
-  const allFull = slots.every(s => s.is_marked_full || s.booked_count >= s.max_participants);
+  const allFull = slots.every(s => s. || s.booked_count >= s.max_participants);
   if (allFull) return 'full';
   const anyBooked = slots.some(s => s.booked_count > 0);
   return anyBooked ? 'partial' : 'empty';
@@ -154,7 +154,7 @@ function TrainerDayBlock({
                 onClick={() => onSlotClick?.(slot.id)}
               >
                 <span className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-1">
-                  {slot.is_marked_full && <Lock className="h-2.5 w-2.5 text-amber-500" />}
+                  {!slot.is_public && <Lock className="h-2.5 w-2.5 text-amber-500" />}
                   {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
                 </span>
                 <OccupancyDots booked={slot.booked_count} max={slot.max_participants} />

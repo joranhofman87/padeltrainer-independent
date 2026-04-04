@@ -41,7 +41,7 @@ type SlotStatus = "free" | "partial" | "full" | "past" | "private";
 
 function getSlotStatus(slot: SlotWithBookings): SlotStatus {
   if (slot.is_past) return "past";
-  if (slot.is_marked_full) return "private";
+  if (!slot.is_public) return "private";
   if (slot.active_bookings >= 4) return "full";
   if (slot.active_bookings > 0) return "partial";
   return "free";
@@ -138,7 +138,7 @@ export function DayViewSlotCard({
                   {slot.cyclus_name || t("calendar.cyclus")}
                 </Badge>
               )}
-              {slot.is_marked_full && (
+              {!slot.is_public && (
                 <Badge variant="outline" className="gap-1 border-purple-300 text-purple-700 dark:text-purple-300">
                   <Lock className="h-3 w-3" />
                   {t("calendar.markedFull")}
@@ -334,11 +334,11 @@ export function DayViewSlotCard({
               <div className="mt-4 pt-4 border-t space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-2 cursor-pointer">
-                    {slot.is_marked_full ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+                    {!slot.is_public ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
                     {t("calendar.markAsFull")}
                   </Label>
                   <Switch
-                    checked={slot.is_marked_full}
+                    checked={!slot.is_public}
                     onCheckedChange={(checked) => {
                       onToggleMarkedFull(slot.id, checked, slot.cyclus_id && applyToCyclus ? true : false);
                     }}

@@ -111,12 +111,12 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
         .from('availability_slots')
         .select(`
           id, start_time, end_time, max_participants,
-          cyclus_id, cyclus_name, is_marked_full, is_public,
+          cyclus_id, cyclus_name, is_public,
           price_per_session, trainer_id,
           location_id, locations:location_id(name)
         `)
         .in('trainer_id', trainerIds)
-        .eq('is_marked_full', false)
+        .eq('', false)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true });
 

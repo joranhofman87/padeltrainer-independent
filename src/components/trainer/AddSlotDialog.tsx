@@ -775,7 +775,6 @@ export function BulkCreateContent({
         cyclus_name: string | null;
         court_type: 'indoor' | 'outdoor' | null;
         location_id: string | null;
-        is_marked_full: boolean;
         academy_profile_id: string | null;
         training_level: string | null;
         rating_system: string | null;
@@ -843,7 +842,7 @@ export function BulkCreateContent({
             cyclus_name: config.cyclusName,
             court_type: config.courtType,
             location_id: config.locationId,
-            is_marked_full: config.isMarkedFull,
+            is_public: !config.isMarkedFull,
             academy_profile_id: config.academyProfileId,
             training_level: null,
             rating_system: config.ratingSystem,
@@ -973,10 +972,10 @@ export function BulkCreateContent({
       }
 
       // Notify followers with authentication — only if at least one slot is public (not marked private)
-      const hasPublicSlots = slotsToInsert.some(s => !s.is_marked_full);
+      const hasPublicSlots = slotsToInsert.some(s => !s.);
       if (hasPublicSlots) {
         try {
-          const publicSlots = slotsToInsert.filter(s => !s.is_marked_full);
+          const publicSlots = slotsToInsert.filter(s => !s.);
           const earliestStart = new Date(
             Math.min(...publicSlots.map((s) => new Date(s.start_time).getTime()))
           );

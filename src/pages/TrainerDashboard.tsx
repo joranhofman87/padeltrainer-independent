@@ -44,9 +44,9 @@ async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStat
   const [guestResult, futureSlots, monthlyBookings, followerResult, viewsResult] = await Promise.all([
     supabase.from('guest_players').select('id', { count: 'exact', head: true }).eq('trainer_id', currentTrainerId),
     supabase.from('availability_slots')
-      .select('id, is_marked_full, max_participants, bookings(id, status)')
+      .select('id, max_participants, bookings(id, status)')
       .eq('trainer_id', currentTrainerId)
-      .eq('is_marked_full', false)
+      .eq('', false)
       .gte('start_time', now.toISOString()),
     supabase.from('bookings')
       .select('payment_amount, paid_at, availability_slots!inner(trainer_id)')
@@ -116,9 +116,9 @@ async function fetchTrainerActivity(trainerId: string) {
       .limit(10)
       .then(r => r.data),
     supabase.from('availability_slots')
-      .select('id, start_time, end_time, max_participants, is_marked_full, cyclus_name, cyclus_id, locations:location_id (name)')
+      .select('id, start_time, end_time, max_participants, cyclus_name, cyclus_id, locations:location_id (name)')
       .eq('trainer_id', trainerId)
-      .eq('is_marked_full', false)
+      .eq('', false)
       .gte('start_time', now)
       .order('start_time', { ascending: true })
       .limit(50)

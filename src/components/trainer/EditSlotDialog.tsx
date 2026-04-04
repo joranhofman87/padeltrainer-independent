@@ -91,7 +91,7 @@ export function EditSlotDialog({
       setTrainerId(slot.trainer_id || "");
       setLocationId((slot as any).location_id || "none");
       setMaxParticipants(slot.max_participants || 4);
-      setIsMarkedFull(slot.is_marked_full || false);
+      setIsMarkedFull(!slot.is_public);
     }
   }, [slot, open]);
 
@@ -156,7 +156,7 @@ export function EditSlotDialog({
                 trainer_id: trainerId || undefined,
                 location_id: locationId === "none" ? null : (locationId || null),
                 max_participants: maxParticipants,
-                is_marked_full: isMarkedFull,
+                is_public: !isMarkedFull,
               })
               .eq("id", cs.id);
           }
@@ -180,7 +180,7 @@ export function EditSlotDialog({
             trainer_id: trainerId || undefined,
             location_id: locationId === "none" ? null : (locationId || null),
             max_participants: maxParticipants,
-            is_marked_full: isMarkedFull,
+            is_public: !isMarkedFull,
           })
           .eq("id", slot.id);
 
