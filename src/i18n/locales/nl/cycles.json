@@ -566,12 +566,25 @@
     "scheduleConfirmed": "Je trainingsschema is bevestigd"
   },
   "workflow": {
+    "registrations": "Aanmeldingen",
+    "registrationsDesc": "{{count}} aangemeld",
+    "reviewLinks": "Koppelingen bekijken",
+    "reviewLinksDesc": "{{count}} actie(s) openstaand",
+    "reviewLinksDone": "Alles in orde",
     "generate": "Genereren",
     "generateDesc": "{{count}} nieuwe aanmeldingen",
     "review": "Bekijken & bewerken",
     "reviewDesc": "{{count}} voorstellen",
     "approve": "Goedkeuren & inplannen",
-    "approveDesc": "{{count}} bevestigd"
+    "approveDesc": "{{count}} bevestigd",
+    "continueToGenerate": "Doorgaan naar genereren"
+  },
+  "preReview": {
+    "allClear": "Alles in orde — geen openstaande koppelacties",
+    "mentioned": "genoemd"
+  },
+  "suggestions": {
+    "link": "Koppelen"
   },
   "overview": {
     "period": "Periode",
