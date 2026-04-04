@@ -1,45 +1,29 @@
 
 
-# Move Edit/Delete Buttons Above the Cards
+# Default "Add Players" to Open/Selected
 
 ## Problem
-The Edit and Delete buttons sit in the top header bar next to the back arrow, making them easy to miss. The user wants them placed prominently above the detail cards.
+When creating a new slot, the "Add players to this cycle" checkbox defaults to unchecked (`addPlayers: false`), making it hidden. The user wants it defaulted to **checked** so the player selection is always visible, and users can turn it off if they don't need it.
 
 ## Change
 
-### `src/pages/academy/AcademySlotDetail.tsx`
+### `src/components/trainer/AddSlotDialog.tsx`
 
-1. **Remove** the Edit/Delete buttons from the header bar (lines 508-523)
-2. **Add** them as a row between the header and the cards grid (inside `<main>`, above the `grid` div around line 527-528):
+1. **Line ~539** — Change the default value when creating a new bulk slot config:
+   ```
+   addPlayers: false  →  addPlayers: true
+   ```
 
-```tsx
-<main className="container mx-auto px-4 py-6">
-  {!isEditing && (
-    <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
-      <Button variant="outline" className="gap-1.5" onClick={startEditing}>
-        <Pencil className="h-4 w-4" />
-        {tTrainer('calendar.editSlot', 'Edit')}
-      </Button>
-      <Button
-        variant="outline"
-        className="gap-1.5 text-destructive hover:text-destructive"
-        onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
-    </div>
-  )}
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
-    ...
-  </div>
-</main>
-```
+2. **Line ~691** — Change the default when adding another config row ("Add another"):
+   ```
+   addPlayers: false  →  addPlayers: true
+   ```
 
-This places the buttons right-aligned above the Details and Players cards, making them immediately visible.
+That's it — two `false` → `true` changes. The duplicate-from-existing path (line ~631) already correctly sets `addPlayers` based on whether players exist, so no change needed there.
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademySlotDetail.tsx` | Move Edit/Delete buttons from header to above the card grid |
+| `src/components/trainer/AddSlotDialog.tsx` | Default `addPlayers` to `true` in two places |
 
