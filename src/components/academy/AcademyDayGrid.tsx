@@ -215,6 +215,26 @@ function SlotCard({
             {getTimeRange(slot.start_time, slot.end_time)}
           </span>
           <div className="flex items-center gap-1">
+            {!slot.is_past && onEditSlot && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                onClick={() => onEditSlot(slot)}
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+            )}
+            {!slot.is_past && onDeleteSlot && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                onClick={() => onDeleteSlot(slot)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
             {!slot.is_past && onBookForPlayer && !isFull && (
               <Button
                 variant="ghost"
