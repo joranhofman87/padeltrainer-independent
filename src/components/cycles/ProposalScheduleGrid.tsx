@@ -264,6 +264,7 @@ function SlotEditPopover({
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
   onDeleteSlot?: (slotId: string) => void;
   onPlayerClick?: (intakeRequestId: string) => void;
+  onUnassignPlayer?: (assignmentId: string) => void;
 }) {
   const { t } = useTranslation('cycles');
   const [open, setOpen] = useState(false);
