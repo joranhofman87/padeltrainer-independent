@@ -1021,19 +1021,8 @@ export function BulkCreateContent({
   const totalSessions = bulkSlots.reduce((acc, slot) => acc + slot.recurrenceWeeks, 0);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full h-full sm:w-auto sm:h-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Repeat className="h-5 w-5" />
-            {t("calendar.cyclusTitle")}
-          </SheetTitle>
-          <SheetDescription>
-            {t("calendar.cyclusDescription")}
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="space-y-4 py-6">
+    <>
+      <div className="space-y-4 py-6">
           {bulkSlots.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Repeat className="h-12 w-12 mx-auto mb-3 opacity-50" />
