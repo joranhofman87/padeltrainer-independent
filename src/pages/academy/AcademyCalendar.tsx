@@ -407,9 +407,9 @@ export default function AcademyCalendar() {
     }));
   }, [filteredSlots]);
 
-  // Overview data from month slots
+  // Overview data from week slots (same as manage tab)
   const overviewSlots = useMemo(() => {
-    return monthSlots.map(s => ({
+    return slots.map(s => ({
       id: s.id,
       start_time: s.start_time,
       end_time: s.end_time,
@@ -418,8 +418,9 @@ export default function AcademyCalendar() {
       max_participants: s.max_participants,
       booked_count: s.active_bookings + s.pending_bookings,
       location_name: s.location_name,
+      location_id: s.location_id,
     }));
-  }, [monthSlots]);
+  }, [slots]);
 
   // Trainer hours data from month slots
   const trainerHoursSlots = useMemo(() => {
