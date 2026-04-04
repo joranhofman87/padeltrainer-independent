@@ -89,7 +89,7 @@ export function EditSlotDialog({
       setMinRating((slot as any).min_rating != null ? Number((slot as any).min_rating) : null);
       setMaxRating((slot as any).max_rating != null ? Number((slot as any).max_rating) : null);
       setTrainerId(slot.trainer_id || "");
-      setLocationId((slot as any).location_id || "");
+      setLocationId((slot as any).location_id || "none");
       setMaxParticipants(slot.max_participants || 4);
       setIsMarkedFull(slot.is_marked_full || false);
     }

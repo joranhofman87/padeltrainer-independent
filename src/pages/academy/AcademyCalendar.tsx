@@ -620,8 +620,7 @@ export default function AcademyCalendar() {
   };
 
   const handleSlotClick = (slotId: string) => {
-    setSlotDetailId(slotId);
-    setSlotDetailOpen(true);
+    navigate(`/app/academy/slot/${slotId}`);
   };
 
   return (
