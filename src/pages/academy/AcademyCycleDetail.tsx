@@ -654,7 +654,7 @@ export default function AcademyCycleDetail() {
                     {t('intakeRequests.filters.proposed')} ({proposedCount})
                   </TabsTrigger>
                   <TabsTrigger value="confirmed">
-                    {t('intakeRequests.filters.confirmed')}
+                    {t('intakeRequests.filters.confirmed')} ({confirmedCount})
                   </TabsTrigger>
                   <TabsTrigger value="waitlist">
                     {t('intakeRequests.filters.waitlist')}
