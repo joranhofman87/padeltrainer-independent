@@ -1,48 +1,58 @@
 
 
-# Propagate Pricing from Registration to Generated Slots
+# Replace Create Tab Content: CycleForm → BulkCreateSheet (inline)
 
 ## Problem
-When `generate-proposals` creates `availability_slots` from a registration, it doesn't carry over pricing fields (`price_per_session`, `extra_costs`, `split_payment`, `prices_include_vat`). These fields exist on the `availability_slots` table but are never populated. The admin should also be able to review and adjust these values before finalizing.
+The "Create" tab currently embeds the `CycleForm` (registration/intake form). The user wants it to show the BulkCreateSheet content (training cyclus creator with slots, pricing, players) instead — the same UI that's currently in the drawer/sheet.
+
+## Approach
+Extract the inner content of `BulkCreateSheet` into a standalone component (`BulkCreateContent`) that can render either inside a Sheet or inline on a page. Then use it directly in the Create tab, removing the CycleForm.
 
 ## Changes
 
-### 1. `supabase/functions/generate-proposals/index.ts` — Add pricing fields to slot inserts
-
-Extract pricing from the cycle record and its settings, then include in each slot insert:
-
-```
-price_per_session: cycle.price_per_session || null
-extra_costs: cycle.settings?.extra_costs || []
-split_payment: cycle.settings?.split_payment || false
-prices_include_vat: cycle.settings?.prices_include_vat ?? true
-```
-
-Also compute `total_price` per slot as `price_per_session × total_weeks_for_this_slot_group` (number of weeks the cycle spans).
-
-This ensures newly generated slots inherit the registration's pricing configuration.
-
-### 2. `src/pages/academy/AcademyCycleDetail.tsx` — Add pricing summary card at Step 4 (Review & Edit)
-
-Above the `ProposalScheduleGrid` in the review-edit step, add an editable "Pricing" card showing:
-- **Price per session** (number input, pre-filled from cycle)
-- **Extra costs** (list with add/remove, using `ExtraCostPresetPicker`)
-- **VAT inclusive/exclusive** (toggle switch)
-- **Split payment** (toggle switch)
-
-State is initialized from `cycle.settings` / `cycle.price_per_session`. When the admin clicks "Continue to Approve", save any changes back to the cycle record AND bulk-update all generated slots with the (potentially modified) pricing values.
-
-### 3. `src/lib/cycles.ts` — Add `updateCyclePricing` helper
-
-A function that:
-1. Updates the cycle's `price_per_session` and `settings` (extra_costs, split_payment, prices_include_vat)
-2. Bulk-updates all `availability_slots` with `cyclus_id = cycleId` to apply the new pricing fields
-
-## File summary
-
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-proposals/index.ts` | Add pricing fields to slot insert objects (~5 lines added around line 618) |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Add editable pricing card in Step 4, save pricing on "Continue to Approve" |
-| `src/lib/cycles.ts` | Add `updateCyclePricing()` helper to sync pricing to cycle + slots |
+| `src/components/trainer/AddSlotDialog.tsx` | Refactor: extract all the form content (lines ~1006-1740) from inside `<SheetContent>` into a new `BulkCreateContent` component. `BulkCreateSheet` becomes a thin wrapper that renders `<Sheet><SheetContent><BulkCreateContent /></SheetContent></Sheet>`. Export `BulkCreateContent` separately. |
+| `src/pages/academy/AcademyCalendar.tsx` | Replace the Create tab content: remove the `CycleForm` + registration/event toggle, render `<BulkCreateContent>` inline instead. Remove `createFormType` state. Remove the `CycleForm` import. Keep the existing `BulkCreateSheet` dialog for other entry points (e.g. manage tab's "+ New" button) or remove it if no longer needed. Pass the same props that the sheet currently receives (trainerId, locations, trainers, academyId, onSlotsCreated callback that refreshes and switches to overview). |
+
+## Detail
+
+### BulkCreateContent props
+Same as current `BulkCreateSheetProps` minus `open` and `onOpenChange`:
+- `trainerId`, `defaultDate`, `defaultTime`, `defaultDuration`, `defaultWeeks`
+- `onSlotsCreated`, `availableLocations`, `availableTrainers`
+- `prefillFromCyclusId`, `academyId`
+
+### Create tab rendering
+```tsx
+<TabsContent value="create" className="mt-4">
+  <div className="max-w-lg">
+    <BulkCreateContent
+      trainerId={selectedSlotTrainerId}
+      defaultDuration={60}
+      defaultWeeks={8}
+      onSlotsCreated={handleSlotsCreated}
+      availableLocations={locations}
+      availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+      academyId={activeAcademy?.id}
+    />
+  </div>
+</TabsContent>
+```
+
+### BulkCreateSheet becomes a wrapper
+```tsx
+export function BulkCreateSheet({ open, onOpenChange, ...contentProps }) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full h-full sm:w-auto sm:h-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>...</SheetHeader>
+        <BulkCreateContent {...contentProps} />
+      </SheetContent>
+    </Sheet>
+  );
+}
+```
+
+This keeps the Sheet version working for the Trainer calendar while giving the Academy Create tab the same form inline.
 
