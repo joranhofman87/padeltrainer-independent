@@ -254,6 +254,7 @@ function SlotEditPopover({
   onMoveSlot,
   onDeleteSlot,
   onPlayerClick,
+  onUnassignPlayer,
 }: {
   slot: SlotWithOccupancy;
   trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
