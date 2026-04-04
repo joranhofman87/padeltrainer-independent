@@ -82,12 +82,15 @@ export function EditSlotDialog({
       const duration = Math.round((end.getTime() - start.getTime()) / 60000);
       setDurationMinutes(duration);
       
-      
       setCyclusName(slot.cyclus_name || "");
       setApplyToCyclus(false);
       setRatingSystem((slot as any).rating_system || null);
       setMinRating((slot as any).min_rating != null ? Number((slot as any).min_rating) : null);
       setMaxRating((slot as any).max_rating != null ? Number((slot as any).max_rating) : null);
+      setTrainerId(slot.trainer_id || "");
+      setLocationId((slot as any).location_id || "");
+      setMaxParticipants(slot.max_participants || 4);
+      setIsMarkedFull(slot.is_marked_full || false);
     }
   }, [slot, open]);
 
