@@ -236,6 +236,7 @@ function TrainerDayBlock({
 export default function AcademyCalendarOverview({
   slots, currentDate, onDayClick, onSlotClick, trainers = [], locations = [],
   onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel,
+  warningMaxRatingSpread, warningMaxAgeDiffYears,
 }: AcademyCalendarOverviewProps) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
