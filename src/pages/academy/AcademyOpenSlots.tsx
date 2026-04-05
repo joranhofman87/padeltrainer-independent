@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Calendar, ArrowLeft, MapPin, Eye, EyeOff, Euro, X } from 'lucide-react';
+import { Calendar, ArrowLeft, MapPin, Eye, EyeOff, Euro, X, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,6 +39,7 @@ interface FlatSlot {
   trainer_id: string | null;
   trainer_name: string | null;
   price_per_session: number | null;
+  player_names: string[];
 }
 
 export default function AcademyOpenSlots({ embedded = false }: { embedded?: boolean }) {
@@ -124,14 +125,47 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
 
       const slotIds = slots?.map(s => s.id) || [];
       let bookingCounts: Record<string, number> = {};
+      let playerNamesMap: Record<string, string[]> = {};
       if (slotIds.length > 0) {
         const { data: bookings } = await supabase
           .from('bookings')
-          .select('slot_id')
+          .select('slot_id, player_id, guest_player_id')
           .in('slot_id', slotIds)
           .in('status', ['confirmed', 'pending']);
+
+        // Collect player IDs for name lookup
+        const playerIds = [...new Set((bookings || []).map(b => b.player_id).filter(Boolean))] as string[];
+        let playerNameLookup: Record<string, string> = {};
+        if (playerIds.length > 0) {
+          const { data: playerProfiles } = await supabase
+            .from('profiles' as any)
+            .select('id, full_name')
+            .in('id', playerIds);
+          (playerProfiles || []).forEach((p: any) => {
+            if (p.full_name) playerNameLookup[p.id] = p.full_name;
+          });
+        }
+
+        // Collect guest player IDs for name lookup
+        const guestIds = [...new Set((bookings || []).map(b => b.guest_player_id).filter(Boolean))] as string[];
+        let guestNameLookup: Record<string, string> = {};
+        if (guestIds.length > 0) {
+          const { data: guestPlayers } = await supabase
+            .from('guest_players' as any)
+            .select('id, full_name')
+            .in('id', guestIds);
+          (guestPlayers || []).forEach((g: any) => {
+            if (g.full_name) guestNameLookup[g.id] = g.full_name;
+          });
+        }
+
         bookings?.forEach(b => {
           bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
+          const name = (b.player_id && playerNameLookup[b.player_id]) || (b.guest_player_id && guestNameLookup[b.guest_player_id]) || null;
+          if (name) {
+            if (!playerNamesMap[b.slot_id]) playerNamesMap[b.slot_id] = [];
+            playerNamesMap[b.slot_id].push(name);
+          }
         });
       }
 
@@ -153,6 +187,7 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
           trainer_id: slot.trainer_id,
           trainer_name: trainerNameMap[slot.trainer_id] || null,
           price_per_session: slot.price_per_session,
+          player_names: playerNamesMap[slot.id] || [],
         };
       }).filter(s => s.available_spots > 0);
 
@@ -483,6 +518,15 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
                       {t('openSlots.spots', 'Spots')}
                     </SortableTableHead>
                     <SortableTableHead
+                      sortKey="booked_count"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof FlatSlot)}
+                    >
+                      <Users className="h-3.5 w-3.5 inline mr-1" />
+                      {t('openSlots.players', 'Players')}
+                    </SortableTableHead>
+                    <SortableTableHead
                       sortKey="price_per_session"
                       currentSortKey={sortConfig.key as string | null}
                       currentDirection={sortConfig.direction}
@@ -498,7 +542,7 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
                 <TableBody>
                   {sortedData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         {t('openSlots.noMatchingSlots', 'No slots match current filters')}
                       </TableCell>
                     </TableRow>
@@ -541,6 +585,18 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
                             <span className="text-sm">
                               {slot.available_spots}/{slot.max_participants}
                             </span>
+                          </TableCell>
+                          <TableCell>
+                            {slot.player_names.length > 0 ? (
+                              <div className="text-xs text-foreground max-w-[180px]">
+                                {slot.player_names.slice(0, 3).join(', ')}
+                                {slot.player_names.length > 3 && (
+                                  <span className="text-muted-foreground"> +{slot.player_names.length - 3}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-sm">
                             {slot.price_per_session != null ? formatPrice(slot.price_per_session) : '—'}
