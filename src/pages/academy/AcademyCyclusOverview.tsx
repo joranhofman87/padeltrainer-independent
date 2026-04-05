@@ -3,19 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Search, Users } from 'lucide-react';
+import { Search, Users, Eye, EyeOff, Euro } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useTableSort } from '@/hooks/useTableSort';
 import { SortableTableHead } from '@/components/admin/SortableTableHead';
 import { formatPrice } from '@/lib/pricing';
+import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 
 interface CyclusGroup {
   cyclus_id: string;
@@ -47,11 +53,19 @@ export default function AcademyCyclusOverview() {
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<CyclusGroup[]>([]);
 
+  const { toast } = useToast();
+
   // Filters
   const [search, setSearch] = useState('');
   const [filterTrainer, setFilterTrainer] = useState('all');
   const [filterLocation, setFilterLocation] = useState('all');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('current');
+
+  // Bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [priceDialogOpen, setPriceDialogOpen] = useState(false);
+  const [bulkPrice, setBulkPrice] = useState('');
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
 
@@ -429,6 +443,94 @@ export default function AcademyCyclusOverview() {
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
+  // Bulk selection helpers
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === sortedData.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sortedData.map(g => g.cyclus_id)));
+    }
+  };
+
+  const getSelectedSlotIds = async (): Promise<string[]> => {
+    const cyclusIds = Array.from(selectedIds);
+    if (cyclusIds.length === 0) return [];
+    const { data } = await supabase
+      .from('availability_slots')
+      .select('id')
+      .in('cyclus_id', cyclusIds);
+    return (data || []).map(s => s.id);
+  };
+
+  const handleBulkVisibility = async (makePublic: boolean) => {
+    setBulkUpdating(true);
+    try {
+      const slotIds = await getSelectedSlotIds();
+      if (slotIds.length === 0) {
+        toast({ title: 'Geen slots gevonden voor geselecteerde cycli' });
+        return;
+      }
+      for (let i = 0; i < slotIds.length; i += 500) {
+        const chunk = slotIds.slice(i, i + 500);
+        await supabase
+          .from('availability_slots')
+          .update({ is_public: makePublic })
+          .in('id', chunk);
+      }
+      toast({ title: `${slotIds.length} slots ${makePublic ? 'zichtbaar' : 'verborgen'} gemaakt` });
+      setSelectedIds(new Set());
+      fetchCyclusData();
+    } catch (error) {
+      logger.error('Bulk visibility update failed', error as Error);
+      toast({ title: 'Er ging iets mis', variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  const handleBulkPriceUpdate = async () => {
+    const price = parseFloat(bulkPrice);
+    if (isNaN(price) || price < 0) {
+      toast({ title: 'Voer een geldig bedrag in', variant: 'destructive' });
+      return;
+    }
+    setBulkUpdating(true);
+    try {
+      const slotIds = await getSelectedSlotIds();
+      if (slotIds.length === 0) {
+        toast({ title: 'Geen slots gevonden voor geselecteerde cycli' });
+        return;
+      }
+      for (let i = 0; i < slotIds.length; i += 500) {
+        const chunk = slotIds.slice(i, i + 500);
+        await supabase
+          .from('availability_slots')
+          .update({ price_per_session: price })
+          .in('id', chunk);
+      }
+      // Sync invoices
+      await syncInvoicesAfterPriceChange(slotIds);
+      toast({ title: `Prijs bijgewerkt voor ${slotIds.length} slots` });
+      setPriceDialogOpen(false);
+      setBulkPrice('');
+      setSelectedIds(new Set());
+      fetchCyclusData();
+    } catch (error) {
+      logger.error('Bulk price update failed', error as Error);
+      toast({ title: 'Er ging iets mis', variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const handleRowClick = (group: CyclusGroup) => {
     if (group.first_slot_id) {
       navigate(`/app/academy/slot/${group.first_slot_id}`);
@@ -519,9 +621,43 @@ export default function AcademyCyclusOverview() {
         </CardContent>
       </Card>
 
-      {/* Summary */}
-      <div className="text-sm text-muted-foreground">
-        {sortedData.length} {sortedData.length === 1 ? 'cyclus' : 'cycli'}
+      {/* Summary + Bulk Actions */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          {sortedData.length} {sortedData.length === 1 ? 'cyclus' : 'cycli'}
+          {selectedIds.size > 0 && ` · ${selectedIds.size} geselecteerd`}
+        </div>
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkVisibility(true)}
+            >
+              <Eye className="h-3.5 w-3.5 mr-1.5" />
+              Zichtbaar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkVisibility(false)}
+            >
+              <EyeOff className="h-3.5 w-3.5 mr-1.5" />
+              Verbergen
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkUpdating}
+              onClick={() => { setBulkPrice(''); setPriceDialogOpen(true); }}
+            >
+              <Euro className="h-3.5 w-3.5 mr-1.5" />
+              Prijs wijzigen
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -530,6 +666,12 @@ export default function AcademyCyclusOverview() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[40px]">
+                  <Checkbox
+                    checked={sortedData.length > 0 && selectedIds.size === sortedData.length}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </TableHead>
                 <SortableTableHead
                   sortKey="cyclus_name"
                   currentSortKey={sortConfig.key as string}
@@ -579,7 +721,7 @@ export default function AcademyCyclusOverview() {
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
                     Geen cycli gevonden
                   </TableCell>
                 </TableRow>
@@ -590,6 +732,12 @@ export default function AcademyCyclusOverview() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleRowClick(group)}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(group.cyclus_id)}
+                        onCheckedChange={() => toggleSelect(group.cyclus_id)}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium max-w-[200px]">
                       <div className="flex items-center gap-2">
                         <span className="truncate">{group.cyclus_name}</span>
@@ -642,6 +790,39 @@ export default function AcademyCyclusOverview() {
           </Table>
         </div>
       </Card>
+
+      {/* Bulk Price Dialog */}
+      <Dialog open={priceDialogOpen} onOpenChange={setPriceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Prijs wijzigen voor {selectedIds.size} cycli</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Prijs per sessie (€)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={bulkPrice}
+                onChange={e => setBulkPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Dit past de prijs aan op alle slots van de geselecteerde cycli en synchroniseert openstaande facturen.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPriceDialogOpen(false)}>
+              Annuleren
+            </Button>
+            <Button onClick={handleBulkPriceUpdate} disabled={bulkUpdating}>
+              {bulkUpdating ? 'Bezig...' : 'Opslaan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

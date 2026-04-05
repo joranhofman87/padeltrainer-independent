@@ -163,7 +163,7 @@ const AcademyTrainerDetail = lazy(() => import('@/pages/academy/AcademyTrainerDe
 
 const AcademyWaitingList = lazy(() => import('@/pages/academy/AcademyWaitingList'));
 const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
-const AcademyOpenSlots = lazy(() => import('@/pages/academy/AcademyOpenSlots'));
+
 const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
 
 // Public pages
@@ -301,7 +301,7 @@ export function DomainRouter() {
           <Route path="trainers" element={<AcademyTrainers />} />
           <Route path="trainers/:trainerId" element={<AcademyTrainerDetail />} />
           <Route path="players" element={<AcademyPlayers />} />
-          <Route path="open-slots" element={<Navigate to="/app/academy/calendar?tab=open-spots" replace />} />
+          <Route path="open-slots" element={<Navigate to="/app/academy/calendar?tab=cycles" replace />} />
           <Route path="locations" element={<AcademyLocations />} />
           <Route path="cycles" element={<AcademyCycles />} />
           <Route path="cycles/new" element={<CycleFormPage ownerType="academy" />} />

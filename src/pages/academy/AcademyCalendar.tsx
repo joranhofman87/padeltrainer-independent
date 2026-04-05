@@ -15,7 +15,7 @@ import {
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Clock, Eye, BarChart3, Repeat } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Clock, BarChart3, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,9 +47,8 @@ import AcademyTrainerHours from "@/components/academy/AcademyTrainerHours";
 import AcademyReportsTab from "@/components/academy/AcademyReportsTab";
 // CycleForm removed — Create tab now uses BulkCreateContent inline
 
-// Lazy-load the open slots page content
+// Lazy-load tab content
 import { lazy, Suspense } from "react";
-const AcademyOpenSlotsContent = lazy(() => import("@/pages/academy/AcademyOpenSlots"));
 const AcademyCyclusOverviewContent = lazy(() => import("@/pages/academy/AcademyCyclusOverview"));
 
 interface AcademySlot {
@@ -96,7 +95,7 @@ const dateFnsLocales: Record<string, typeof enUS> = {
   fr,
 };
 
-type TabValue = "overview" | "open-spots" | "cycles" | "manage" | "create" | "hours" | "reports";
+type TabValue = "overview" | "cycles" | "manage" | "create" | "hours" | "reports";
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
@@ -647,10 +646,6 @@ export default function AcademyCalendar() {
                 <LayoutGrid className="h-3.5 w-3.5" />
                 {t("calendar.tabs.overview", "Overview")}
               </TabsTrigger>
-              <TabsTrigger value="open-spots" className="text-xs sm:text-sm gap-1.5">
-                <Eye className="h-3.5 w-3.5" />
-                {t("calendar.tabs.openSpots", "All Slots")}
-              </TabsTrigger>
               <TabsTrigger value="cycles" className="text-xs sm:text-sm gap-1.5">
                 <Repeat className="h-3.5 w-3.5" />
                 {t("calendar.tabs.cycles", "Cycles")}
@@ -711,13 +706,6 @@ export default function AcademyCalendar() {
               onGoToday={goToToday}
               dateRangeLabel={getDateRangeLabel()}
             />
-          </TabsContent>
-
-          {/* ── Tab 2: Open Spots ── */}
-          <TabsContent value="open-spots" className="mt-4">
-            <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
-              <AcademyOpenSlotsContent embedded={true} />
-            </Suspense>
           </TabsContent>
 
           {/* ── Tab: Cycles ── */}
