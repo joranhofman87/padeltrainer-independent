@@ -167,8 +167,8 @@ export default function AcademySlotDetail() {
         .from('bookings')
         .select(`
           id, status, player_id, guest_player_id, payment_status, payment_amount, paid_externally,
-          profiles:player_id(full_name, avatar_url, skill_rating, rating_system),
-          guest_players:guest_player_id(full_name, skill_rating, rating_system)
+          profiles:player_id(full_name, avatar_url, skill_rating, rating_system, birth_date),
+          guest_players:guest_player_id(full_name, skill_rating, rating_system, birth_date)
         `)
         .eq('slot_id', slotId)
         .in('status', ['confirmed', 'pending']);
@@ -185,6 +185,7 @@ export default function AcademySlotDetail() {
           skillRating: prof?.skill_rating ?? guest?.skill_rating ?? null,
           ratingSystem: prof?.rating_system || guest?.rating_system || 'knltb',
           avatarUrl: prof?.avatar_url || null,
+          birthDate: prof?.birth_date || guest?.birth_date || null,
         };
       });
 
