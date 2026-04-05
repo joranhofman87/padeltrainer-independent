@@ -95,7 +95,7 @@ const dateFnsLocales: Record<string, typeof enUS> = {
   fr,
 };
 
-type TabValue = "overview" | "open-spots" | "cycles" | "manage" | "create" | "hours" | "reports";
+type TabValue = "overview" | "cycles" | "manage" | "create" | "hours" | "reports";
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
