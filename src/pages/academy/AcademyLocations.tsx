@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
-import { MapPin, Plus, ExternalLink, Eye, EyeOff, Trash2, CalendarDays, FileText, Building2 } from 'lucide-react';
+import { MapPin, Plus, ExternalLink, Eye, EyeOff, Trash2, CalendarDays, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -257,12 +257,6 @@ function LocationCard({
       <CardContent className="space-y-4">
         {/* Contract Info */}
         <div className="flex flex-wrap gap-2">
-          <Badge variant={academyLocation.contract_type === 'exclusive' ? 'default' : 'secondary'}>
-            <FileText className="h-3 w-3 mr-1" />
-            {academyLocation.contract_type === 'exclusive'
-              ? t('locations.exclusive')
-              : t('locations.nonExclusive')}
-          </Badge>
           {academyLocation.contract_start && (
             <Badge variant="outline">
               <CalendarDays className="h-3 w-3 mr-1" />

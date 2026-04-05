@@ -15,13 +15,6 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { updateAcademyLocation, type AcademyLocationWithDetails } from '@/lib/academy';
 
@@ -37,9 +30,6 @@ export function EditAcademyLocationDialog({
   const { t } = useTranslation('academy');
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [contractType, setContractType] = useState<'exclusive' | 'non_exclusive'>(
-    academyLocation.contract_type || 'non_exclusive'
-  );
   const [contractStart, setContractStart] = useState(
     academyLocation.contract_start?.split('T')[0] || ''
   );
@@ -55,7 +45,6 @@ export function EditAcademyLocationDialog({
     setLoading(true);
     try {
       const success = await updateAcademyLocation(academyLocation.id, {
-        contract_type: contractType,
         contract_start: contractStart || null,
         contract_end: contractEnd || null,
         is_active: isActive,
@@ -100,27 +89,6 @@ export function EditAcademyLocationDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            {/* Contract Type */}
-            <div className="grid gap-2">
-              <Label>{t('locations.contractType')}</Label>
-              <Select
-                value={contractType}
-                onValueChange={(v) => setContractType(v as 'exclusive' | 'non_exclusive')}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="non_exclusive">
-                    {t('locations.nonExclusive')}
-                  </SelectItem>
-                  <SelectItem value="exclusive">
-                    {t('locations.exclusive')}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Contract Dates */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">

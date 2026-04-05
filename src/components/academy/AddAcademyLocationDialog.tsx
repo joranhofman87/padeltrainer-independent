@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Loader2, MapPin, CalendarDays } from 'lucide-react';
+import { Plus, Loader2, MapPin } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,13 +14,6 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { addAcademyLocation } from '@/lib/academy';
 import { LocationPicker } from '@/components/locations/LocationPicker';
@@ -40,7 +33,6 @@ export function AddAcademyLocationDialog({
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
-  const [contractType, setContractType] = useState<'exclusive' | 'non_exclusive'>('non_exclusive');
   const [contractStart, setContractStart] = useState('');
   const [contractEnd, setContractEnd] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,7 +51,6 @@ export function AddAcademyLocationDialog({
         const result = await addAcademyLocation(
           academyProfileId,
           locationId,
-          contractType,
           contractStart || undefined,
           contractEnd || undefined
         );
@@ -81,7 +72,6 @@ export function AddAcademyLocationDialog({
         });
 
         setSelectedLocationIds([]);
-        setContractType('non_exclusive');
         setContractStart('');
         setContractEnd('');
         setOpen(false);
@@ -136,37 +126,10 @@ export function AddAcademyLocationDialog({
               />
             </div>
 
-            {/* Contract Type */}
-            <div className="grid gap-2">
-              <Label>{t('locations.contractType')}</Label>
-              <Select
-                value={contractType}
-                onValueChange={(v) => setContractType(v as 'exclusive' | 'non_exclusive')}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="non_exclusive">
-                    {t('locations.nonExclusive')}
-                  </SelectItem>
-                  <SelectItem value="exclusive">
-                    {t('locations.exclusive')}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {contractType === 'exclusive'
-                  ? t('locations.exclusiveHint')
-                  : t('locations.nonExclusiveHint')}
-              </p>
-            </div>
-
             {/* Contract Dates */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="contractStart" className="flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4" />
+                <Label htmlFor="contractStart">
                   {t('locations.contractStart')}
                 </Label>
                 <Input

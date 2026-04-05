@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   MapPin, Users, Star, ExternalLink, Calendar, Share2, Copy, Check, 
-  MessageCircle, CheckCircle, Award
+  MessageCircle, CheckCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -69,7 +69,6 @@ interface TrainerData {
 interface LocationData {
   id: string;
   location_id: string;
-  contract_type: string;
   location: {
     id: string;
     name: string;
@@ -328,12 +327,6 @@ export default function AcademyPublicProfile() {
                           <MapPin className="h-3 w-3" />
                           {loc.location.city}
                         </p>
-                        {loc.contract_type === 'exclusive' && (
-                          <Badge variant="outline" className="mt-2 text-xs">
-                            <Award className="h-3 w-3 mr-1" />
-                            {t('locations.exclusive')}
-                          </Badge>
-                        )}
                       </div>
                     </div>
                   </CardContent>
