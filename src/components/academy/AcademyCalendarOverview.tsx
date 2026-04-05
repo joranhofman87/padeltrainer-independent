@@ -17,7 +17,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { ChevronLeft, ChevronRight, ChevronDown, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Lock, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
@@ -34,6 +34,7 @@ interface SlotSummary {
   location_name?: string | null;
   location_id?: string | null;
   is_public: boolean;
+  players?: { rating: number | null; birthDate: string | null }[];
 }
 
 interface TrainerOption { id: string; name: string; }
@@ -50,6 +51,8 @@ interface AcademyCalendarOverviewProps {
   onNavigateNext: () => void;
   onGoToday: () => void;
   dateRangeLabel: string;
+  warningMaxRatingSpread?: number | null;
+  warningMaxAgeDiffYears?: number | null;
 }
 
 /* ── Occupancy Dots ── */
@@ -91,6 +94,50 @@ const statusDotColor: Record<string, string> = {
   empty: 'bg-muted-foreground/30',
 };
 
+/* ── Slot Warning Logic ── */
+function getSlotWarnings(
+  slot: SlotSummary,
+  maxRatingSpread: number | null | undefined,
+  maxAgeDiffYears: number | null | undefined,
+): string[] {
+  const warnings: string[] = [];
+  const players = slot.players || [];
+  if (players.length < 2) return warnings;
+
+  if (maxRatingSpread != null) {
+    const ratings = players.map(p => p.rating).filter((r): r is number => r != null);
+    if (ratings.length >= 2) {
+      const spread = Math.max(...ratings) - Math.min(...ratings);
+      if (spread > maxRatingSpread) {
+        warnings.push(`Rating spread: ${spread.toFixed(1)}`);
+      }
+    }
+  }
+
+  if (maxAgeDiffYears != null) {
+    const today = new Date();
+    const ages = players
+      .map(p => p.birthDate)
+      .filter((d): d is string => !!d)
+      .map(d => {
+        const bd = new Date(d);
+        let age = today.getFullYear() - bd.getFullYear();
+        const m = today.getMonth() - bd.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < bd.getDate())) age--;
+        return age;
+      })
+      .filter(a => a > 0 && a < 120);
+    if (ages.length >= 2) {
+      const diff = Math.max(...ages) - Math.min(...ages);
+      if (diff > maxAgeDiffYears) {
+        warnings.push(`Age diff: ${diff} yr`);
+      }
+    }
+  }
+
+  return warnings;
+}
+
 /* ── Trainer Day Block ── */
 function TrainerDayBlock({
   trainerName,
@@ -99,6 +146,8 @@ function TrainerDayBlock({
   isPast,
   onSlotClick,
   defaultOpen,
+  warningMaxRatingSpread,
+  warningMaxAgeDiffYears,
 }: {
   trainerName: string;
   trainerAvatar?: string | null;
@@ -106,7 +155,10 @@ function TrainerDayBlock({
   isPast: boolean;
   onSlotClick?: (slotId: string) => void;
   defaultOpen: boolean;
+  warningMaxRatingSpread?: number | null;
+  warningMaxAgeDiffYears?: number | null;
 }) {
+  const { t } = useTranslation('academy');
   const [open, setOpen] = useState(defaultOpen);
   const status = getGroupStatus(slots);
   const initials = trainerName?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
@@ -147,19 +199,32 @@ function TrainerDayBlock({
         {/* Expanded: time list */}
         <CollapsibleContent>
           <div className="px-2 pb-1.5 space-y-0.5">
-            {slots.map(slot => (
-              <button
-                key={slot.id}
-                className="w-full flex items-center justify-between gap-1 py-0.5 text-left hover:bg-accent/30 rounded px-1 transition-colors"
-                onClick={() => onSlotClick?.(slot.id)}
-              >
-                <span className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-1">
-                  {!slot.is_public && <Lock className="h-2.5 w-2.5 text-amber-500" />}
-                  {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
-                </span>
-                <OccupancyDots booked={slot.booked_count} max={slot.max_participants} />
-              </button>
-            ))}
+            {slots.map(slot => {
+              const warnings = getSlotWarnings(slot, warningMaxRatingSpread, warningMaxAgeDiffYears);
+              return (
+                <button
+                  key={slot.id}
+                  className="w-full flex items-center justify-between gap-1 py-0.5 text-left hover:bg-accent/30 rounded px-1 transition-colors"
+                  onClick={() => onSlotClick?.(slot.id)}
+                >
+                  <span className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-1">
+                    {!slot.is_public && <Lock className="h-2.5 w-2.5 text-amber-500" />}
+                    {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
+                    {warnings.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          {warnings.map((w, i) => <div key={i}>{w}</div>)}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </span>
+                  <OccupancyDots booked={slot.booked_count} max={slot.max_participants} />
+                </button>
+              );
+            })}
           </div>
         </CollapsibleContent>
       </div>
@@ -171,6 +236,7 @@ function TrainerDayBlock({
 export default function AcademyCalendarOverview({
   slots, currentDate, onDayClick, onSlotClick, trainers = [], locations = [],
   onNavigatePrevious, onNavigateNext, onGoToday, dateRangeLabel,
+  warningMaxRatingSpread, warningMaxAgeDiffYears,
 }: AcademyCalendarOverviewProps) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
@@ -321,6 +387,8 @@ export default function AcademyCalendarOverview({
                             isPast={trainerSlots.every(s => isBefore(parseISO(s.end_time), now))}
                             onSlotClick={onSlotClick}
                             defaultOpen={trainerCount <= 3}
+                            warningMaxRatingSpread={warningMaxRatingSpread}
+                            warningMaxAgeDiffYears={warningMaxAgeDiffYears}
                           />
                         ))}
                         {trainerCount === 0 && (
@@ -351,6 +419,12 @@ export default function AcademyCalendarOverview({
                 <Lock className="h-2.5 w-2.5 text-amber-500" />
                 {t('calendar.overview.private', 'Private')}
               </span>
+              {(warningMaxRatingSpread != null || warningMaxAgeDiffYears != null) && (
+                <span className="flex items-center gap-1">
+                  <AlertTriangle className="h-2.5 w-2.5 text-amber-500" />
+                  {t('calendar.overview.warning', 'Level/age warning')}
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
