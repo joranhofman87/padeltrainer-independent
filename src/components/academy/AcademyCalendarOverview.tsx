@@ -17,7 +17,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { ChevronLeft, ChevronRight, ChevronDown, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Lock, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
