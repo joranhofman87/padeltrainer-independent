@@ -125,14 +125,47 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
 
       const slotIds = slots?.map(s => s.id) || [];
       let bookingCounts: Record<string, number> = {};
+      let playerNamesMap: Record<string, string[]> = {};
       if (slotIds.length > 0) {
         const { data: bookings } = await supabase
           .from('bookings')
-          .select('slot_id')
+          .select('slot_id, player_id, guest_player_id')
           .in('slot_id', slotIds)
           .in('status', ['confirmed', 'pending']);
+
+        // Collect player IDs for name lookup
+        const playerIds = [...new Set((bookings || []).map(b => b.player_id).filter(Boolean))] as string[];
+        let playerNameLookup: Record<string, string> = {};
+        if (playerIds.length > 0) {
+          const { data: playerProfiles } = await supabase
+            .from('profiles' as any)
+            .select('id, full_name')
+            .in('id', playerIds);
+          (playerProfiles || []).forEach((p: any) => {
+            if (p.full_name) playerNameLookup[p.id] = p.full_name;
+          });
+        }
+
+        // Collect guest player IDs for name lookup
+        const guestIds = [...new Set((bookings || []).map(b => b.guest_player_id).filter(Boolean))] as string[];
+        let guestNameLookup: Record<string, string> = {};
+        if (guestIds.length > 0) {
+          const { data: guestPlayers } = await supabase
+            .from('guest_players' as any)
+            .select('id, full_name')
+            .in('id', guestIds);
+          (guestPlayers || []).forEach((g: any) => {
+            if (g.full_name) guestNameLookup[g.id] = g.full_name;
+          });
+        }
+
         bookings?.forEach(b => {
           bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
+          const name = (b.player_id && playerNameLookup[b.player_id]) || (b.guest_player_id && guestNameLookup[b.guest_player_id]) || null;
+          if (name) {
+            if (!playerNamesMap[b.slot_id]) playerNamesMap[b.slot_id] = [];
+            playerNamesMap[b.slot_id].push(name);
+          }
         });
       }
 
@@ -154,6 +187,7 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
           trainer_id: slot.trainer_id,
           trainer_name: trainerNameMap[slot.trainer_id] || null,
           price_per_session: slot.price_per_session,
+          player_names: playerNamesMap[slot.id] || [],
         };
       }).filter(s => s.available_spots > 0);
 
