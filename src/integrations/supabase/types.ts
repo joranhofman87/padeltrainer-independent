@@ -351,6 +351,8 @@ export type Database = {
           trial_ends_at: string | null
           updated_at: string
           waiting_list_enabled: boolean
+          warning_max_age_diff_years: number | null
+          warning_max_rating_spread: number | null
           website_url: string | null
           welcome_message: string | null
         }
@@ -399,6 +401,8 @@ export type Database = {
           trial_ends_at?: string | null
           updated_at?: string
           waiting_list_enabled?: boolean
+          warning_max_age_diff_years?: number | null
+          warning_max_rating_spread?: number | null
           website_url?: string | null
           welcome_message?: string | null
         }
@@ -447,6 +451,8 @@ export type Database = {
           trial_ends_at?: string | null
           updated_at?: string
           waiting_list_enabled?: boolean
+          warning_max_age_diff_years?: number | null
+          warning_max_rating_spread?: number | null
           website_url?: string | null
           welcome_message?: string | null
         }
@@ -2028,6 +2034,7 @@ export type Database = {
       guest_players: {
         Row: {
           academy_profile_id: string | null
+          birth_date: string | null
           created_at: string
           email: string | null
           full_name: string
@@ -2044,6 +2051,7 @@ export type Database = {
         }
         Insert: {
           academy_profile_id?: string | null
+          birth_date?: string | null
           created_at?: string
           email?: string | null
           full_name: string
@@ -2060,6 +2068,7 @@ export type Database = {
         }
         Update: {
           academy_profile_id?: string | null
+          birth_date?: string | null
           created_at?: string
           email?: string | null
           full_name?: string
