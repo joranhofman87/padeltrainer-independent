@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval } from '@/lib/invoiceSync';
+import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
@@ -462,6 +462,15 @@ export default function AcademySlotDetail() {
           await syncInvoicesAfterBookingRemoval(bookingIdsToRemove);
         } catch (e) {
           logger.error('Failed to sync invoices after slot deletion', e as Error);
+        }
+      }
+
+      // Recalculate split count for remaining players in the cycle
+      if (detail.cyclus_id) {
+        try {
+          await syncSplitCountForCycle(detail.cyclus_id);
+        } catch (e) {
+          logger.error('Failed to sync split count after slot deletion', e as Error);
         }
       }
 
