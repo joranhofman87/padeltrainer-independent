@@ -966,47 +966,42 @@ export default function AcademySlotDetail() {
 
           {/* Warnings */}
           {activeWarnings.length > 0 && (
-            <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="h-4 w-4" />
+            <div className="rounded-md border border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" />
                   {t('calendar.warnings', 'Warnings')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {activeWarnings.map(warning => (
-                  <Alert key={warning.type} className="border-amber-200 bg-transparent">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    <AlertDescription className="flex items-center justify-between gap-2">
-                      <span className="text-sm">{warning.message}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs shrink-0"
-                        disabled={dismissingWarning === warning.type}
-                        onClick={() => handleDismissWarning(warning.type)}
-                      >
-                        {dismissingWarning === warning.type ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <X className="h-3 w-3 mr-1" />
-                        )}
-                        {t('calendar.dismiss', 'Dismiss')}
-                      </Button>
-                    </AlertDescription>
-                  </Alert>
-                ))}
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs text-muted-foreground gap-1"
+                </span>
+                <button
+                  className="text-[11px] text-muted-foreground hover:underline flex items-center gap-1"
                   onClick={() => navigate('/app/academy/settings')}
                 >
                   <Settings className="h-3 w-3" />
-                  {t('calendar.configureWarnings', 'Configure warning thresholds →')}
-                </Button>
-              </CardContent>
-            </Card>
+                  {t('calendar.configureWarnings', 'Configure thresholds →')}
+                </button>
+              </div>
+              <div className="space-y-1">
+                {activeWarnings.map(warning => (
+                  <div key={warning.type} className="flex items-center justify-between gap-2 text-xs text-amber-800 dark:text-amber-300">
+                    <span>{warning.message}</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-[11px] shrink-0"
+                      disabled={dismissingWarning === warning.type}
+                      onClick={() => handleDismissWarning(warning.type)}
+                    >
+                      {dismissingWarning === warning.type ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <X className="h-3 w-3 mr-0.5" />
+                      )}
+                      {t('calendar.dismiss', 'Dismiss')}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Right: Players */}
