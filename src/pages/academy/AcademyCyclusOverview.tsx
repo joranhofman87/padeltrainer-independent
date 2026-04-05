@@ -58,7 +58,7 @@ export default function AcademyCyclusOverview() {
   // Extract unique trainers/locations for filters
   const trainers = useMemo(() => {
     const map = new Map<string, string>();
-    groups.forEach(g => map.set(g.trainer_id, g.trainer_name));
+    groups.forEach(g => { if (g.trainer_id) map.set(g.trainer_id, g.trainer_name); });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [groups]);
 
@@ -296,9 +296,9 @@ export default function AcademyCyclusOverview() {
           dayTime = `${dayName} ${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
         }
 
-        // Period
-        const periodStart = hasSlots ? cyclusSlots[0].start_time : cycle.start_date;
-        const periodEnd = hasSlots ? cyclusSlots[cyclusSlots.length - 1].start_time : cycle.end_date;
+        // Period — default to today if both cycle dates and slot dates are missing
+        const periodStart = hasSlots ? cyclusSlots[0].start_time : (cycle.start_date || new Date().toISOString());
+        const periodEnd = hasSlots ? cyclusSlots[cyclusSlots.length - 1].start_time : (cycle.end_date || new Date().toISOString());
 
         // Players from both bookings and intake requests
         const allPlayerNames = new Set<string>();
@@ -393,14 +393,19 @@ export default function AcademyCyclusOverview() {
   const timeFiltered = useMemo(() => {
     const now = new Date();
     return groups.filter(g => {
-      const start = parseISO(g.period_start);
-      const end = parseISO(g.period_end);
-      switch (timeFilter) {
-        case 'current': return start <= now && end >= now;
-        case 'future': return start > now;
-        case 'past': return end < now;
-        case 'all': return true;
-        default: return true;
+      if (!g.period_start || !g.period_end) return timeFilter === 'all';
+      try {
+        const start = parseISO(g.period_start);
+        const end = parseISO(g.period_end);
+        switch (timeFilter) {
+          case 'current': return start <= now && end >= now;
+          case 'future': return start > now;
+          case 'past': return end < now;
+          case 'all': return true;
+          default: return true;
+        }
+      } catch {
+        return timeFilter === 'all';
       }
     });
   }, [groups, timeFilter]);
