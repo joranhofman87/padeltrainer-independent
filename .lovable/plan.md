@@ -1,34 +1,36 @@
 
 
-# Add Players Column to All Slots Table
+# Auto-Open Edit Mode on Slot Detail Page
 
 ## Problem
-The "All Slots" table currently shows Date/Time, Cyclus, Trainer, Location, Spots, Price, and Public toggle. It's missing a "Players" column showing who is booked into each slot.
+When clicking a slot, the detail page opens in read-only mode. The user must click "Edit" to start editing — an unnecessary extra step.
 
-## Changes
+## Change
 
-### `src/pages/academy/AcademyOpenSlots.tsx`
+### `src/pages/academy/AcademySlotDetail.tsx`
 
-1. **Extend `FlatSlot` interface** — add `player_names: string[]`
+**Auto-trigger edit mode once slot data loads.** The page already has `startEditing()` which populates all edit fields from `detail`. Simply call it automatically after data loads instead of waiting for a button click.
 
-2. **Update `fetchSlots`** — after fetching booking counts, also fetch booking details with player names:
-   - Query `bookings` joined with `profiles` (via `user_id`) to get `full_name` for each confirmed/pending booking
-   - Build a `Record<string, string[]>` mapping slot IDs to arrays of player names
-   - Populate `player_names` in the processed slots
+1. **Add auto-edit trigger** — In the existing `useEffect` or after `detail` is set, call `startEditing()` automatically on first load:
+   ```typescript
+   // Add a ref to track if we've auto-started editing
+   const autoEditTriggered = useRef(false);
+   
+   useEffect(() => {
+     if (detail && !autoEditTriggered.current) {
+       autoEditTriggered.current = true;
+       startEditing();
+     }
+   }, [detail]);
+   ```
 
-3. **Add "Players" column** — between Spots and Price:
-   - Sortable by `booked_count`
-   - Each cell shows player names as small comma-separated text, or "—" if empty
-   - Truncate if more than 2-3 names with a "+N more" indicator
+2. **Keep the Edit/Delete buttons visible** — The current UI hides them when `isEditing` is true. Keep the Delete button always visible (move it to the header or keep it in the action bar). The Edit button can be hidden since we're already in edit mode.
 
-4. **Update `colSpan`** — from 8 to 9 for the empty state row
-
-## No database changes needed
-Bookings table already has `user_id` which links to `profiles.user_id` for names.
+3. **No other files change** — The navigation from `AcademyCalendar.tsx` and `AcademyOpenSlots.tsx` stays the same.
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyOpenSlots.tsx` | Add `player_names` to data model, fetch player names from bookings, add Players column to table |
+| `src/pages/academy/AcademySlotDetail.tsx` | Auto-call `startEditing()` on load, keep Delete button visible during edit mode |
 
