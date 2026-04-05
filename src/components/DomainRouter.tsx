@@ -159,6 +159,7 @@ const AcademySlotDetail = lazy(() => import('@/pages/academy/AcademySlotDetail')
 const AcademyIntakeRequests = lazy(() => import('@/pages/academy/AcademyIntakeRequests'));
 const AcademySubscription = lazy(() => import('@/pages/academy/AcademySubscription'));
 const AcademyTrainerInvitation = lazy(() => import('@/pages/academy/AcademyTrainerInvitation'));
+const AcademyTrainerDetail = lazy(() => import('@/pages/academy/AcademyTrainerDetail'));
 
 const AcademyWaitingList = lazy(() => import('@/pages/academy/AcademyWaitingList'));
 const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
@@ -298,6 +299,7 @@ export function DomainRouter() {
           <Route index element={<AcademyDashboard />} />
           <Route path="profile" element={<AcademyProfile />} />
           <Route path="trainers" element={<AcademyTrainers />} />
+          <Route path="trainers/:trainerId" element={<AcademyTrainerDetail />} />
           <Route path="players" element={<AcademyPlayers />} />
           <Route path="open-slots" element={<Navigate to="/app/academy/calendar?tab=open-spots" replace />} />
           <Route path="locations" element={<AcademyLocations />} />
