@@ -577,6 +577,19 @@ export default function AcademyInvoices() {
                 </SelectContent>
               </Select>
             )}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
+                <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
+                <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
+                <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
+                <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
+                <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
+              </SelectContent>
+            </Select>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -588,23 +601,6 @@ export default function AcademyInvoices() {
             </div>
           </div>
         </div>
-
-        <TabsContent value={activeTab} className="mt-4">
-          {isLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredInvoices.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p>{t("invoices.noInvoices", "No invoices found")}</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              {/* Desktop Table */}
-              <div className="hidden md:block">
                 <Card>
                   <Table>
                     <TableHeader>
