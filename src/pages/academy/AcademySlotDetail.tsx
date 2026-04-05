@@ -494,6 +494,59 @@ export default function AcademySlotDetail() {
     }
   };
 
+  // Warning helpers
+  const calculateAge = (birthDate: string | null): number | null => {
+    if (!birthDate) return null;
+    const diff = Date.now() - new Date(birthDate).getTime();
+    return Math.floor(diff / 31557600000);
+  };
+
+  const computeWarnings = (): { type: string; message: string }[] => {
+    if (!detail || detail.booked_players.length < 2) return [];
+    const warnings: { type: string; message: string }[] = [];
+    
+    if (warningThresholds.maxRatingSpread != null) {
+      const ratings = detail.booked_players.map(p => p.skillRating).filter((r): r is number => r != null);
+      if (ratings.length >= 2) {
+        const spread = Math.max(...ratings) - Math.min(...ratings);
+        if (spread > warningThresholds.maxRatingSpread) {
+          warnings.push({ type: 'rating_spread', message: t('calendar.warningRatingSpread', 'Rating spread: {{spread}} points (max {{max}})', { spread: spread.toFixed(1), max: warningThresholds.maxRatingSpread }) });
+        }
+      }
+    }
+
+    if (warningThresholds.maxAgeDiff != null) {
+      const ages = detail.booked_players.map(p => calculateAge(p.birthDate)).filter((a): a is number => a != null);
+      if (ages.length >= 2) {
+        const diff = Math.max(...ages) - Math.min(...ages);
+        if (diff > warningThresholds.maxAgeDiff) {
+          warnings.push({ type: 'age_diff', message: t('calendar.warningAgeDiff', 'Age difference: {{diff}} years (max {{max}})', { diff, max: warningThresholds.maxAgeDiff }) });
+        }
+      }
+    }
+
+    return warnings.filter(w => !dismissedWarnings.includes(w.type));
+  };
+
+  const handleDismissWarning = async (warningType: string) => {
+    if (!slotId) return;
+    setDismissingWarning(warningType);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('dismissed_slot_warnings')
+        .insert({ slot_id: slotId, warning_type: warningType, dismissed_by: user?.id || null });
+      if (error) throw error;
+      setDismissedWarnings(prev => [...prev, warningType]);
+    } catch (e) {
+      logger.error('Error dismissing warning', e as Error);
+    } finally {
+      setDismissingWarning(null);
+    }
+  };
+
+  const activeWarnings = detail ? computeWarnings() : [];
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
