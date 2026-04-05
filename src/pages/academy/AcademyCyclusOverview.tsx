@@ -151,20 +151,28 @@ export default function AcademyCyclusOverview() {
       const cycleIds = Array.from(cycleMap.keys());
 
       // 2. Fetch all slots that belong to any of these cycles OR have a cyclus_id (orphans)
+      // Paginate to avoid Supabase 1000-row default limit
       let allSlots: any[] = [];
       if (trainerIds.length > 0) {
-        const { data: slots } = await supabase
-          .from('availability_slots')
-          .select(`
-            id, start_time, end_time, max_participants,
-            cyclus_id, cyclus_name, trainer_id,
-            price_per_session,
-            location_id, locations:location_id(name)
-          `)
-          .in('trainer_id', trainerIds)
-          .not('cyclus_id', 'is', null)
-          .order('start_time', { ascending: true });
-        allSlots = slots || [];
+        let page = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: slots } = await supabase
+            .from('availability_slots')
+            .select(`
+              id, start_time, end_time, max_participants,
+              cyclus_id, cyclus_name, trainer_id,
+              price_per_session,
+              location_id, locations:location_id(name)
+            `)
+            .in('trainer_id', trainerIds)
+            .not('cyclus_id', 'is', null)
+            .order('start_time', { ascending: true })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+          allSlots.push(...(slots || []));
+          if (!slots || slots.length < pageSize) break;
+          page++;
+        }
       }
 
       // Group slots by cyclus_id
