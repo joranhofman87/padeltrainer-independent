@@ -1,34 +1,57 @@
 
 
-# Fix: Search Players in Cycles Tab + Invoice €0 Root Cause
+# Fix: Slot Query Pagination + Invoice Split for Denise
 
-## Investigation Summary
+## Two Issues
 
-Invoice INV-2026-0149 (Denise van Bavel Schiedon, €0) belongs to cycle "Padeltrainingen zomer 2026" under trainer **Yannick Verwater**. The cycle row exists on the Cycles tab, but you can't find Denise because **the search only matches cycle name, not player names**.
+### 1. Search returns 0 results — Supabase 1000-row limit
+The slots query fetches `availability_slots` with `.in('trainer_id', trainerIds)` but there are **1273 slots** total. Supabase caps at 1000 rows by default. Slots beyond 1000 (including many of Denise's trainer's slots) are silently dropped, so her bookings/player names never load.
 
-The €0 amount is because:
-- The `cycles` table has `price_per_session = NULL` for this cycle
-- 61 of Yannick's 70 slots have `price_per_session = NULL` (only 9 have €73)
-- When the invoice was generated, it resolved `unit_price: 0` from the NULL pricing
+**Fix**: Paginate the slots query in chunks (e.g. 500 per trainer, or use a loop fetching with `.range()`).
+
+### 2. Invoice not split
+INV-2026-0149 shows €949 (13 × €73) but the slots have **4 players each**. The previous data fix set the price correctly but did not run the split-invoice logic. Each of the 4 players should pay ~€237.25.
+
+**Fix**: Run the split-invoice edge function for this invoice (and the other 45 that were fixed). Or apply a data migration that divides the totals.
 
 ## Changes
 
-### 1. `src/pages/academy/AcademyCyclusOverview.tsx` — Search matches player names
+### `src/pages/academy/AcademyCyclusOverview.tsx` — Paginate slots query
 
-Update the `filteredGroups` filter logic to also match search text against `player_names` array entries, not just `cyclus_name`, `trainer_name`, and `location_name`.
+Replace the single `.in('trainer_id', trainerIds)` query (lines 155-168) with a paginated approach:
 
-This way, searching "Denise" will surface the cycle row she belongs to.
+```typescript
+// Fetch slots in pages of 1000 to avoid Supabase row limit
+let allSlots: any[] = [];
+if (trainerIds.length > 0) {
+  let page = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data: slots } = await supabase
+      .from('availability_slots')
+      .select(/* same columns */)
+      .in('trainer_id', trainerIds)
+      .not('cyclus_id', 'is', null)
+      .order('start_time', { ascending: true })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+    allSlots.push(...(slots || []));
+    if (!slots || slots.length < pageSize) break;
+    page++;
+  }
+}
+```
 
-### 2. Fix the €0 invoice (data fix)
+### Data fix — Split the 46 repaired invoices
 
-Use the existing `rebuild_from_bookings` utility or update the invoice's line items to use the slot's `price_per_session` (€73) where available. This is a data-level fix — the 9 slots with €73 confirm the intended price.
-
-Also update the cycle record to set `price_per_session = 73` so future invoices pick it up correctly.
+Run the `split-invoice` edge function for all invoices that were bulk-repaired with €73 pricing. This will:
+- Find other players on the same slots
+- Divide the total by the number of players
+- Create split invoices for the other players
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyCyclusOverview.tsx` | Extend search filter to match player names |
-| Data fix (migration/insert) | Set cycle `price_per_session = 73`, update invoice line items |
+| `src/pages/academy/AcademyCyclusOverview.tsx` | Paginate slots query to handle >1000 rows |
+| Data fix (edge function calls) | Run split-invoice for the 46 repaired invoices that need splitting |
 
