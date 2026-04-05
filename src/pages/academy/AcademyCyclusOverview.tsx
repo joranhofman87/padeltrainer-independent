@@ -53,11 +53,19 @@ export default function AcademyCyclusOverview() {
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<CyclusGroup[]>([]);
 
+  const { toast } = useToast();
+
   // Filters
   const [search, setSearch] = useState('');
   const [filterTrainer, setFilterTrainer] = useState('all');
   const [filterLocation, setFilterLocation] = useState('all');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('current');
+
+  // Bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [priceDialogOpen, setPriceDialogOpen] = useState(false);
+  const [bulkPrice, setBulkPrice] = useState('');
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
 
