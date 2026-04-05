@@ -1792,6 +1792,38 @@ export type Database = {
           },
         ]
       }
+      dismissed_slot_warnings: {
+        Row: {
+          created_at: string | null
+          dismissed_by: string | null
+          id: string
+          slot_id: string
+          warning_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          dismissed_by?: string | null
+          id?: string
+          slot_id: string
+          warning_type: string
+        }
+        Update: {
+          created_at?: string | null
+          dismissed_by?: string | null
+          id?: string
+          slot_id?: string
+          warning_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dismissed_slot_warnings_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_campaign_recipients: {
         Row: {
           campaign_id: string
