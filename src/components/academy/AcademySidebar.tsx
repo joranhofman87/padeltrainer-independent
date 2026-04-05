@@ -190,16 +190,44 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Profile */}
+              {/* Players */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.profile")}>
+                <SidebarMenuButton asChild tooltip={t("nav.players")}>
                   <NavLink
-                    to="/app/academy/profile"
+                    to="/app/academy/players"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                   >
-                    <User className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.profile")}</span>}
+                    <Users className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.players")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Schedule */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.schedule")}>
+                  <NavLink
+                    to="/app/academy/calendar"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.schedule")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Registrations */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.registrations", "Registrations")}>
+                  <NavLink
+                    to="/app/academy/cycles"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <CalendarDays className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.registrations", "Registrations")}</span>}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -218,44 +246,16 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Players */}
+              {/* Profile */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.players")}>
+                <SidebarMenuButton asChild tooltip={t("nav.profile")}>
                   <NavLink
-                    to="/app/academy/players"
+                    to="/app/academy/profile"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                   >
-                    <Users className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.players")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Schedule — single link */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.schedule")}>
-                  <NavLink
-                    to="/app/academy/calendar"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <Calendar className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.schedule")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Registrations — single link */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.registrations", "Registrations")}>
-                  <NavLink
-                    to="/app/academy/cycles"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <CalendarDays className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.registrations", "Registrations")}</span>}
+                    <User className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.profile")}</span>}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
