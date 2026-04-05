@@ -232,7 +232,15 @@ export default function AcademySlotDetail() {
     })();
   }, [activeAcademy]);
 
-  const startEditing = () => {
+  // Auto-open edit mode on first load
+  const autoEditTriggered = useRef(false);
+  useEffect(() => {
+    if (detail && !autoEditTriggered.current) {
+      autoEditTriggered.current = true;
+      startEditing();
+    }
+  }, [detail]);
+
     if (!detail) return;
     const start = new Date(detail.start_time);
     const end = new Date(detail.end_time);
