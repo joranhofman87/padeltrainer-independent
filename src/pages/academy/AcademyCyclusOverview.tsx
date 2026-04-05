@@ -127,11 +127,7 @@ export default function AcademyCyclusOverview() {
         trainerCycles = data || [];
       }
 
-      const cycleResults = await Promise.all(cycleQueries);
-      const allCycles: any[] = [];
-      cycleResults.forEach(r => {
-        if (r.data) allCycles.push(...r.data);
-      });
+      const allCycles: any[] = [...(academyCycles || []), ...trainerCycles];
 
       // Deduplicate by id
       const cycleMap = new Map<string, any>();
