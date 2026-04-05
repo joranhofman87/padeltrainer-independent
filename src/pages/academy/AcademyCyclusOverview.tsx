@@ -499,7 +499,7 @@ export default function AcademyCyclusOverview() {
     if (selectedIds.size === sortedData.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(sortedData.map(g => g.cyclus_id)));
+      setSelectedIds(new Set(sortedData.map(g => g.group_key)));
     }
   };
 
