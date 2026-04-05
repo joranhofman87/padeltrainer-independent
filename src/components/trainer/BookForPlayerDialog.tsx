@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { format, differenceInMinutes } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { syncSplitCountForCycle } from "@/lib/invoiceSync";
 import {
   Dialog,
   DialogContent,
@@ -368,6 +369,15 @@ export function BookForPlayerDialog({
             ? t("bookings.multiPlayersBooked", { count: selectedPlayers.length })
             : t("bookings.bookingCreatedDescription"),
         });
+      }
+
+      // Recalculate split invoices if this is a split-payment cycle
+      if (slot.cyclus_id) {
+        try {
+          await syncSplitCountForCycle(slot.cyclus_id);
+        } catch (err) {
+          logger.warn("Split count sync failed after adding player", { error: (err as Error)?.message });
+        }
       }
 
       setSelectedPlayerIds(EMPTY_PLAYER_SLOTS);
