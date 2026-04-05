@@ -1,23 +1,34 @@
 
 
-# Remove Contract Type (Exclusivity) from UI
+# Add Players Column to All Slots Table
 
 ## Problem
-The "exclusive / non-exclusive" contract type selector adds complexity without clear value. It appears in several places but has no business logic depending on it — it's purely a display label.
+The "All Slots" table currently shows Date/Time, Cyclus, Trainer, Location, Spots, Price, and Public toggle. It's missing a "Players" column showing who is booked into each slot.
 
-## Impact Analysis
-No dependencies beyond display. The `contract_type` column exists on `academy_locations` but nothing in the backend (RLS, triggers, edge functions) checks it. It's safe to remove from UI while leaving the DB column untouched.
+## Changes
 
-## Places to clean up
+### `src/pages/academy/AcademyOpenSlots.tsx`
 
-| File | What to remove |
-|------|----------------|
-| `src/components/academy/AddAcademyLocationDialog.tsx` | Remove `contractType` state, the Select dropdown, and the hint text. Stop passing `contractType` to `addAcademyLocation()` (just use default). |
-| `src/components/academy/EditAcademyLocationDialog.tsx` | Remove `contractType` state and the Select dropdown from the form. Remove `contract_type` from the update payload. |
-| `src/pages/academy/AcademyLocations.tsx` | Remove the "exclusive/non-exclusive" Badge from the location card. |
-| `src/pages/AcademyPublicProfile.tsx` | Remove the "Exclusive" badge that shows when `contract_type === 'exclusive'`. |
-| `src/components/admin/AcademyEditDialog.tsx` | Remove `contract_type` from the insert payload (line 487). |
-| `src/lib/academy.ts` | Remove `contractType` parameter from `addAcademyLocation()` signature, hardcode `'non_exclusive'` as default. Remove `contract_type` from `updateAcademyLocation()` updates type. Keep the DB column as-is. |
+1. **Extend `FlatSlot` interface** — add `player_names: string[]`
 
-No database migration needed — the column stays, we just stop reading/writing it in the UI.
+2. **Update `fetchSlots`** — after fetching booking counts, also fetch booking details with player names:
+   - Query `bookings` joined with `profiles` (via `user_id`) to get `full_name` for each confirmed/pending booking
+   - Build a `Record<string, string[]>` mapping slot IDs to arrays of player names
+   - Populate `player_names` in the processed slots
+
+3. **Add "Players" column** — between Spots and Price:
+   - Sortable by `booked_count`
+   - Each cell shows player names as small comma-separated text, or "—" if empty
+   - Truncate if more than 2-3 names with a "+N more" indicator
+
+4. **Update `colSpan`** — from 8 to 9 for the empty state row
+
+## No database changes needed
+Bookings table already has `user_id` which links to `profiles.user_id` for names.
+
+## File summary
+
+| File | Change |
+|------|--------|
+| `src/pages/academy/AcademyOpenSlots.tsx` | Add `player_names` to data model, fetch player names from bookings, add Players column to table |
 
