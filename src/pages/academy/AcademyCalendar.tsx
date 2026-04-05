@@ -341,6 +341,7 @@ export default function AcademyCalendar() {
           isGuest: !!b.guest_player_id,
           skillRating,
           ratingSystem,
+          birthDate: profile?.birth_date ?? guestPlayer?.birth_date ?? null,
         });
       }
     });
@@ -464,6 +465,10 @@ export default function AcademyCalendar() {
       location_name: s.location_name,
       location_id: s.location_id,
       is_public: s.is_public,
+      players: s.booked_players.map(p => ({
+        rating: p.skillRating ?? null,
+        birthDate: p.birthDate ?? null,
+      })),
     }));
   }, [slots]);
 
