@@ -731,7 +731,6 @@ export default function AcademyCalendar() {
               warningMaxRatingSpread={warningMaxRatingSpread}
               warningMaxAgeDiffYears={warningMaxAgeDiffYears}
             />
-            />
           </TabsContent>
 
           {/* ── Tab: Cycles ── */}
