@@ -964,6 +964,51 @@ export default function AcademySlotDetail() {
             </CardContent>
           </Card>
 
+          {/* Warnings */}
+          {activeWarnings.length > 0 && (
+            <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  {t('calendar.warnings', 'Warnings')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {activeWarnings.map(warning => (
+                  <Alert key={warning.type} className="border-amber-200 bg-transparent">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="flex items-center justify-between gap-2">
+                      <span className="text-sm">{warning.message}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs shrink-0"
+                        disabled={dismissingWarning === warning.type}
+                        onClick={() => handleDismissWarning(warning.type)}
+                      >
+                        {dismissingWarning === warning.type ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <X className="h-3 w-3 mr-1" />
+                        )}
+                        {t('calendar.dismiss', 'Dismiss')}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ))}
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs text-muted-foreground gap-1"
+                  onClick={() => navigate('/app/academy/settings')}
+                >
+                  <Settings className="h-3 w-3" />
+                  {t('calendar.configureWarnings', 'Configure warning thresholds →')}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Right: Players */}
           <Card>
             <CardHeader className="pb-3">
@@ -1005,7 +1050,10 @@ export default function AcademySlotDetail() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{player.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {player.skillRating != null && `${player.ratingSystem?.toUpperCase()} ${player.skillRating}`}
+                          {[
+                            player.skillRating != null ? `${player.ratingSystem?.toUpperCase()} ${player.skillRating}` : null,
+                            calculateAge(player.birthDate) != null ? `${calculateAge(player.birthDate)} yr` : null,
+                          ].filter(Boolean).join(' · ') || '\u00A0'}
                         </p>
                       </div>
                       {player.isGuest && (
