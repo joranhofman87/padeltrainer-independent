@@ -63,6 +63,7 @@ export default function AcademyInvoices() {
   const pageTab = searchParams.get("tab") === "settings" ? "settings" : "overview";
   const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [trainerFilter, setTrainerFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [sendingAll, setSendingAll] = useState(false);
