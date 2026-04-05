@@ -601,6 +601,23 @@ export default function AcademyInvoices() {
             </div>
           </div>
         </div>
+
+        <TabsContent value={activeTab} className="mt-4">
+          {isLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredInvoices.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>{t("invoices.noInvoices", "No invoices found")}</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block">
                 <Card>
                   <Table>
                     <TableHeader>
@@ -608,9 +625,31 @@ export default function AcademyInvoices() {
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
                         <TableHead>{t("invoices.player", "Player")}</TableHead>
                         <TableHead>{t("invoices.date", "Date")}</TableHead>
-                        <TableHead>{t("invoices.dueDate", "Due")}</TableHead>
-                        <TableHead className="text-right">{t("invoices.amount", "Amount")}</TableHead>
-                        <TableHead>{t("invoices.status", "Status")}</TableHead>
+                        <SortableTableHead
+                          sortKey="due_date"
+                          currentSortKey={sortConfig.key as string | null}
+                          currentDirection={sortConfig.direction}
+                          onSort={(key) => handleSort(key as any)}
+                        >
+                          {t("invoices.dueDate", "Due")}
+                        </SortableTableHead>
+                        <SortableTableHead
+                          sortKey="total"
+                          currentSortKey={sortConfig.key as string | null}
+                          currentDirection={sortConfig.direction}
+                          onSort={(key) => handleSort(key as any)}
+                          className="text-right"
+                        >
+                          {t("invoices.amount", "Amount")}
+                        </SortableTableHead>
+                        <SortableTableHead
+                          sortKey="_computedStatus"
+                          currentSortKey={sortConfig.key as string | null}
+                          currentDirection={sortConfig.direction}
+                          onSort={(key) => handleSort(key as any)}
+                        >
+                          {t("invoices.status", "Status")}
+                        </SortableTableHead>
                         <TableHead className="text-right">{t("invoices.actions", "Actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
