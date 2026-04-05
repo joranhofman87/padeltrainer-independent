@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
+import { syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { getApplicableTerms } from '@/lib/terms';
 import { formatPrice } from '@/lib/pricing';
@@ -324,6 +325,11 @@ export default function BookLesson() {
           setRequestSent(true);
           toast({ title: t('bookLesson.requestSent'), description: t('bookLesson.requestSentDescription') });
         } else if (paymentTiming === 'manual' || paymentTiming === 'invoice_after_weeks') {
+          // Recalculate split invoices for existing players
+          if (cycleSettings?.split_payment && selectedCyclus.cyclus_id) {
+            try { await syncSplitCountForCycle(selectedCyclus.cyclus_id); }
+            catch (err) { logger.warn('Split count sync failed after booking', { error: (err as Error)?.message }); }
+          }
           await supabase.functions.invoke('send-email', {
             body: { type: 'manual_booking_confirmation', to: profile.email, data: {
               playerName: profile.full_name, trainerName: trainer.profiles.full_name,
