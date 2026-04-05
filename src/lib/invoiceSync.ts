@@ -78,6 +78,12 @@ export async function recalculateInvoiceAfterRemoval(
     );
   const defaultVatRate = invoice.vat_rate || 21;
 
+  // Resolve price per booking: prefer payment_amount, then slot price
+  const resolveBookingPrice = (b: any): number => {
+    const bSlot = b.availability_slots as any;
+    return b.payment_amount || bSlot.price_per_session || 0;
+  };
+
   // Build session line items
   let lineItems: {
     description: string;
@@ -89,23 +95,48 @@ export async function recalculateInvoiceAfterRemoval(
 
   if (allSameCyclus) {
     const cyclusName = firstSlot.cyclus_name || "Training cyclus";
-    let pricePerSession =
-      remainingBookings[0].payment_amount ||
-      firstSlot.price_per_session ||
-      0;
-    if (splitCount > 1) {
-      pricePerSession = Math.round((pricePerSession / splitCount) * 100) / 100;
+
+    // Resolve price from ALL remaining bookings, not just the first one
+    const prices = remainingBookings.map(resolveBookingPrice);
+    const nonZeroPrices = prices.filter((p) => p > 0);
+    const allSamePrice = nonZeroPrices.length > 0 && nonZeroPrices.every((p) => p === nonZeroPrices[0]);
+
+    if (allSamePrice) {
+      let pricePerSession = nonZeroPrices[0];
+      if (splitCount > 1) {
+        pricePerSession = Math.round((pricePerSession / splitCount) * 100) / 100;
+      }
+      const desc = splitCount > 1
+        ? `${cyclusName} (${remainingBookings.length} weken) (1/${splitCount})`
+        : `${cyclusName} (${remainingBookings.length} weken)`;
+      lineItems = [
+        {
+          description: desc,
+          quantity: remainingBookings.length,
+          unit_price: pricePerSession,
+        },
+      ];
+    } else {
+      // Mixed prices or some missing — fall back to per-session line items
+      lineItems = remainingBookings.map((b) => {
+        const bSlot = b.availability_slots as any;
+        const startTime = new Date(bSlot.start_time);
+        const locationName = bSlot.locations?.name || "";
+        let price = resolveBookingPrice(b);
+        if (splitCount > 1) {
+          price = Math.round((price / splitCount) * 100) / 100;
+        }
+        const desc = splitCount > 1
+          ? `${cyclusName} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""} (1/${splitCount})`
+          : `${cyclusName} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`;
+        return {
+          description: desc,
+          quantity: 1,
+          unit_price: price,
+          date: startTime.toISOString().split("T")[0],
+        };
+      });
     }
-    const desc = splitCount > 1
-      ? `${cyclusName} (${remainingBookings.length} weken) (1/${splitCount})`
-      : `${cyclusName} (${remainingBookings.length} weken)`;
-    lineItems = [
-      {
-        description: desc,
-        quantity: remainingBookings.length,
-        unit_price: pricePerSession,
-      },
-    ];
   } else {
     lineItems = remainingBookings.map((b) => {
       const bSlot = b.availability_slots as any;
@@ -114,7 +145,7 @@ export async function recalculateInvoiceAfterRemoval(
       let desc = bSlot.cyclus_name
         ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
         : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
-      let price = b.payment_amount || bSlot.price_per_session || 0;
+      let price = resolveBookingPrice(b);
       if (splitCount > 1) {
         price = Math.round((price / splitCount) * 100) / 100;
         desc = `${desc} (1/${splitCount})`;

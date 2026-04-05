@@ -197,15 +197,49 @@ serve(async (req) => {
 
     let lineItems: { description: string; quantity: number; unit_price: number; date?: string }[];
 
+    // Resolve price per booking: prefer payment_amount, then slot price
+    const resolveBookingPrice = (b: any): number => {
+      const bSlot = b.availability_slots as any;
+      return b.payment_amount || bSlot.price_per_session || 0;
+    };
+
     if (allSameCyclus) {
       const cyclusName = firstSlot.cyclus_name || "Training cyclus";
-      const pricePerSession = bookings[0].payment_amount || firstSlot.price_per_session || 0;
 
-      lineItems = [{
-        description: `${cyclusName} (${bookings.length} weken)`,
-        quantity: bookings.length,
-        unit_price: pricePerSession,
-      }];
+      // Resolve price from ALL bookings, not just the first one
+      const prices = bookings.map(resolveBookingPrice);
+      const nonZeroPrices = prices.filter((p) => p > 0);
+      const allSamePrice = nonZeroPrices.length > 0 && nonZeroPrices.every((p) => p === nonZeroPrices[0]);
+
+      if (allSamePrice) {
+        // All sessions have the same price — use bundled line item
+        lineItems = [{
+          description: `${cyclusName} (${bookings.length} weken)`,
+          quantity: bookings.length,
+          unit_price: nonZeroPrices[0],
+        }];
+      } else if (nonZeroPrices.length > 0) {
+        // Mixed prices or some missing — fall back to per-session line items
+        lineItems = bookings.map((b) => {
+          const bSlot = b.availability_slots as any;
+          const startTime = new Date(bSlot.start_time);
+          const locationName = bSlot.locations?.name || "";
+          const price = resolveBookingPrice(b);
+          return {
+            description: `${cyclusName} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`,
+            quantity: 1,
+            unit_price: price,
+            date: startTime.toISOString().split("T")[0],
+          };
+        });
+      } else {
+        // No valid price found at all — skip invoice creation
+        logStep("All bookings have zero price, skipping invoice", { bookingIds });
+        return new Response(JSON.stringify({ skipped: true, reason: "missing_price_data" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     } else {
       lineItems = bookings.map((b) => {
         const bSlot = b.availability_slots as any;
@@ -215,7 +249,7 @@ serve(async (req) => {
           ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
           : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
 
-        const price = b.payment_amount || bSlot.price_per_session || 0;
+        const price = resolveBookingPrice(b);
 
         return {
           description,
@@ -224,6 +258,15 @@ serve(async (req) => {
           date: startTime.toISOString().split("T")[0],
         };
       });
+
+      // If ALL line items are zero, skip
+      if (lineItems.every((li) => li.unit_price === 0)) {
+        logStep("All bookings have zero price, skipping invoice", { bookingIds });
+        return new Response(JSON.stringify({ skipped: true, reason: "missing_price_data" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Check for extra costs from cycle settings, fall back to slot extra_costs
