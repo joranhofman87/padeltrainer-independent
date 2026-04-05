@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Calendar, ArrowLeft, MapPin, Eye, EyeOff, Euro, X } from 'lucide-react';
+import { Calendar, ArrowLeft, MapPin, Eye, EyeOff, Euro, X, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
