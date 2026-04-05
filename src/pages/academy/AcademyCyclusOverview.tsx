@@ -504,13 +504,28 @@ export default function AcademyCyclusOverview() {
   };
 
   const getSelectedSlotIds = async (): Promise<string[]> => {
-    const cyclusIds = Array.from(selectedIds);
-    if (cyclusIds.length === 0) return [];
-    const { data } = await supabase
-      .from('availability_slots')
-      .select('id')
-      .in('cyclus_id', cyclusIds);
-    return (data || []).map(s => s.id);
+    const groupKeys = Array.from(selectedIds);
+    if (groupKeys.length === 0) return [];
+    
+    // Parse group_keys into (cyclus_id, trainer_id) pairs
+    const pairs = groupKeys.map(key => {
+      const [cyclusId, trainerId] = key.split('::');
+      return { cyclusId, trainerId };
+    });
+
+    const allSlotIds: string[] = [];
+    for (const { cyclusId, trainerId } of pairs) {
+      let query = supabase
+        .from('availability_slots')
+        .select('id')
+        .eq('cyclus_id', cyclusId);
+      if (trainerId) {
+        query = query.eq('trainer_id', trainerId);
+      }
+      const { data } = await query;
+      (data || []).forEach(s => allSlotIds.push(s.id));
+    }
+    return allSlotIds;
   };
 
   const handleBulkVisibility = async (makePublic: boolean) => {
