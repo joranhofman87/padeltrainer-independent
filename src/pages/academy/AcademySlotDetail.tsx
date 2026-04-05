@@ -119,6 +119,11 @@ export default function AcademySlotDetail() {
   const [editBookingOpen, setEditBookingOpen] = useState(false);
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
 
+  // Warning state
+  const [warningThresholds, setWarningThresholds] = useState<{ maxRatingSpread: number | null; maxAgeDiff: number | null }>({ maxRatingSpread: null, maxAgeDiff: null });
+  const [dismissedWarnings, setDismissedWarnings] = useState<string[]>([]);
+  const [dismissingWarning, setDismissingWarning] = useState<string | null>(null);
+
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
 
   const fetchSlotDetail = useCallback(async () => {
