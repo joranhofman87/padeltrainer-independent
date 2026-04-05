@@ -275,6 +275,8 @@ export default function AcademySlotDetail() {
       const endDateTime = new Date(startDateTime);
       endDateTime.setMinutes(endDateTime.getMinutes() + editDuration);
 
+      const isCycleSlot = !!detail.cyclus_id;
+
       const updatePayload: any = {
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
@@ -285,13 +287,17 @@ export default function AcademySlotDetail() {
         min_rating: editMinRating,
         max_rating: editMaxRating,
         cyclus_name: editCyclusName || null,
-        price_per_session: editPricePerSession ? Number(editPricePerSession) : null,
-        total_price: editTotalPrice ? Number(editTotalPrice) : null,
-        split_payment: editSplitPayment,
-        prices_include_vat: editPricesIncludeVat,
-        extra_costs: editExtraCosts.length > 0 ? editExtraCosts : null,
         is_public: !editIsMarkedFull,
       };
+
+      // Only include pricing fields if slot does NOT belong to a cycle
+      if (!isCycleSlot) {
+        updatePayload.price_per_session = editPricePerSession ? Number(editPricePerSession) : null;
+        updatePayload.total_price = editTotalPrice ? Number(editTotalPrice) : null;
+        updatePayload.split_payment = editSplitPayment;
+        updatePayload.prices_include_vat = editPricesIncludeVat;
+        updatePayload.extra_costs = editExtraCosts.length > 0 ? editExtraCosts : null;
+      }
 
       if (applyToCyclus && detail.cyclus_id) {
         const { data: cyclusSlots, error: fetchError } = await supabase
