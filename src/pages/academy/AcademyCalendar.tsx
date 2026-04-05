@@ -728,6 +728,9 @@ export default function AcademyCalendar() {
               onNavigateNext={navigateNext}
               onGoToday={goToToday}
               dateRangeLabel={getDateRangeLabel()}
+              warningMaxRatingSpread={warningMaxRatingSpread}
+              warningMaxAgeDiffYears={warningMaxAgeDiffYears}
+            />
             />
           </TabsContent>
 
