@@ -194,6 +194,14 @@ export default function AcademyInvoices() {
   });
 
 
+  const getComputedStatus = (inv: Invoice): string => {
+    if (inv.status === "paid") return "paid";
+    if (inv.status === "cancelled") return "cancelled";
+    if (inv.sent_at && new Date(inv.due_date) < new Date()) return "overdue";
+    if (inv.sent_at) return "sent";
+    return "draft";
+  };
+
   // Filter by trainer, then by location
   const trainerFiltered = trainerFilter === "all"
     ? invoices
@@ -209,9 +217,18 @@ export default function AcademyInvoices() {
 
   const tabFiltered = activeTab === "paid" ? paidInvoices : unpaidInvoices;
 
-  const filteredInvoices = tabFiltered.filter(i =>
+  const statusFiltered = statusFilter === "all"
+    ? tabFiltered
+    : tabFiltered.filter(i => getComputedStatus(i) === statusFilter);
+
+  const searchFiltered = statusFiltered.filter(i =>
     !searchQuery || i.player_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Add computed status for sorting
+  const dataWithStatus = searchFiltered.map(i => ({ ...i, _computedStatus: getComputedStatus(i) }));
+  const { sortedData, sortConfig, handleSort } = useTableSort(dataWithStatus);
+  const filteredInvoices = sortedData.map(({ _computedStatus, ...rest }) => rest as Invoice);
 
   const totalUnpaid = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
 
