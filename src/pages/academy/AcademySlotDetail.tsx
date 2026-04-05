@@ -241,6 +241,7 @@ export default function AcademySlotDetail() {
     }
   }, [detail]);
 
+  const startEditing = () => {
     if (!detail) return;
     const start = new Date(detail.start_time);
     const end = new Date(detail.end_time);
