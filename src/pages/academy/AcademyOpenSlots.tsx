@@ -518,6 +518,15 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
                       {t('openSlots.spots', 'Spots')}
                     </SortableTableHead>
                     <SortableTableHead
+                      sortKey="booked_count"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof FlatSlot)}
+                    >
+                      <Users className="h-3.5 w-3.5 inline mr-1" />
+                      {t('openSlots.players', 'Players')}
+                    </SortableTableHead>
+                    <SortableTableHead
                       sortKey="price_per_session"
                       currentSortKey={sortConfig.key as string | null}
                       currentDirection={sortConfig.direction}
@@ -533,7 +542,7 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
                 <TableBody>
                   {sortedData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         {t('openSlots.noMatchingSlots', 'No slots match current filters')}
                       </TableCell>
                     </TableRow>
