@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Users, ExternalLink, Eye, EyeOff, Clock, UserPlus, Pencil, MapPin } from 'lucide-react';
+import { Users, ExternalLink, Eye, EyeOff, Clock, UserPlus, Pencil, MapPin, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -45,7 +45,7 @@ import {
 } from '@/lib/academy';
 import { InviteAcademyTrainerDialog } from '@/components/academy/InviteAcademyTrainerDialog';
 import { CreateAcademyTrainerDialog } from '@/components/academy/CreateAcademyTrainerDialog';
-import { EditAcademyTrainerDialog } from '@/components/academy/EditAcademyTrainerDialog';
+
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -265,8 +265,11 @@ export default function AcademyTrainers() {
 
                     return (
                       <TableRow key={trainer.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
+                         <TableCell>
+                          <div
+                            className="flex items-center gap-3 cursor-pointer hover:opacity-80"
+                            onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
+                          >
                             <Avatar className="h-9 w-9">
                               <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
                               <AvatarFallback className="text-xs">
@@ -320,17 +323,6 @@ export default function AcademyTrainers() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            {trainer.trainer_profile?.user_id && (
-                              <EditAcademyTrainerDialog
-                                trainerId={trainer.trainer_profile.id}
-                                userId={trainer.trainer_profile.user_id}
-                                trainerName={trainer.profile?.full_name || 'Trainer'}
-                                academyTrainerId={trainer.id}
-                                academyLocations={academyLocations}
-                                onTrainerUpdated={fetchData}
-                                onRemoveTrainer={() => handleRemoveTrainer(trainer.id)}
-                              />
-                            )}
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -353,6 +345,13 @@ export default function AcademyTrainers() {
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
