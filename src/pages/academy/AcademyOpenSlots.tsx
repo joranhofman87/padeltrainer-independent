@@ -39,6 +39,7 @@ interface FlatSlot {
   trainer_id: string | null;
   trainer_name: string | null;
   price_per_session: number | null;
+  player_names: string[];
 }
 
 export default function AcademyOpenSlots({ embedded = false }: { embedded?: boolean }) {
