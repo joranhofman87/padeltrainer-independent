@@ -275,6 +275,8 @@ export default function AcademySlotDetail() {
       const endDateTime = new Date(startDateTime);
       endDateTime.setMinutes(endDateTime.getMinutes() + editDuration);
 
+      const isCycleSlot = !!detail.cyclus_id;
+
       const updatePayload: any = {
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
@@ -285,13 +287,17 @@ export default function AcademySlotDetail() {
         min_rating: editMinRating,
         max_rating: editMaxRating,
         cyclus_name: editCyclusName || null,
-        price_per_session: editPricePerSession ? Number(editPricePerSession) : null,
-        total_price: editTotalPrice ? Number(editTotalPrice) : null,
-        split_payment: editSplitPayment,
-        prices_include_vat: editPricesIncludeVat,
-        extra_costs: editExtraCosts.length > 0 ? editExtraCosts : null,
         is_public: !editIsMarkedFull,
       };
+
+      // Only include pricing fields if slot does NOT belong to a cycle
+      if (!isCycleSlot) {
+        updatePayload.price_per_session = editPricePerSession ? Number(editPricePerSession) : null;
+        updatePayload.total_price = editTotalPrice ? Number(editTotalPrice) : null;
+        updatePayload.split_payment = editSplitPayment;
+        updatePayload.prices_include_vat = editPricesIncludeVat;
+        updatePayload.extra_costs = editExtraCosts.length > 0 ? editExtraCosts : null;
+      }
 
       if (applyToCyclus && detail.cyclus_id) {
         const { data: cyclusSlots, error: fetchError } = await supabase
@@ -594,122 +600,156 @@ export default function AcademySlotDetail() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">{tTrainer('calendar.maxParticipants', 'Max participants')}</Label>
-                      <Input
-                        type="number" min={1} max={20}
-                        value={editMaxParticipants}
-                        onChange={e => setEditMaxParticipants(Number(e.target.value))}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">{tTrainer('calendar.price', 'Price')}</Label>
-                      <Input
-                        type="number" step="0.01" min={0}
-                        value={editPricePerSession}
-                        onChange={e => setEditPricePerSession(e.target.value)}
-                        placeholder="€"
-                      />
-                    </div>
-                  </div>
+                  {(() => {
+                    const isCycleSlot = !!detail.cyclus_id;
+                    return (
+                      <>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">{tTrainer('calendar.maxParticipants', 'Max participants')}</Label>
+                            <Input
+                              type="number" min={1} max={20}
+                              value={editMaxParticipants}
+                              onChange={e => setEditMaxParticipants(Number(e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">{tTrainer('calendar.price', 'Price')}</Label>
+                            <Input
+                              type="number" step="0.01" min={0}
+                              value={editPricePerSession}
+                              onChange={e => setEditPricePerSession(e.target.value)}
+                              placeholder="€"
+                              disabled={isCycleSlot}
+                              className={isCycleSlot ? 'opacity-60' : ''}
+                            />
+                          </div>
+                        </div>
 
-                  {/* Total price */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{t('calendar.totalPrice', 'Total price (full cyclus)')}</Label>
-                    <Input
-                      type="number" step="0.01" min={0}
-                      value={editTotalPrice}
-                      onChange={e => setEditTotalPrice(e.target.value)}
-                      placeholder="€"
-                    />
-                  </div>
+                        {/* Total price */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">{t('calendar.totalPrice', 'Total price (full cyclus)')}</Label>
+                          <Input
+                            type="number" step="0.01" min={0}
+                            value={editTotalPrice}
+                            onChange={e => setEditTotalPrice(e.target.value)}
+                            placeholder="€"
+                            disabled={isCycleSlot}
+                            className={isCycleSlot ? 'opacity-60' : ''}
+                          />
+                        </div>
 
-                  <Separator />
+                        {isCycleSlot && (
+                          <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                            <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                            <span>{t('calendar.pricingManagedByCycle', 'Pricing is managed at the cycle level.')}</span>
+                            <Button
+                              type="button"
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 text-xs ml-auto"
+                              onClick={() => navigate(`/app/academy/cycles/${detail.cyclus_id}`)}
+                            >
+                              {t('calendar.editCyclePricing', 'Edit cycle pricing →')}
+                            </Button>
+                          </div>
+                        )}
 
-                  {/* VAT mode */}
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">{t('calendar.pricesIncludeVat', 'Prices include VAT')}</Label>
-                    <Switch checked={editPricesIncludeVat} onCheckedChange={setEditPricesIncludeVat} />
-                  </div>
+                        <Separator />
 
-                  {/* Split payment */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-xs">{t('calendar.splitPayment', 'Split payment')}</Label>
-                      <p className="text-[10px] text-muted-foreground">{t('calendar.splitPaymentDesc', 'Each player pays individually')}</p>
-                    </div>
-                    <Switch checked={editSplitPayment} onCheckedChange={setEditSplitPayment} />
-                  </div>
+                        {/* VAT mode */}
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">{t('calendar.pricesIncludeVat', 'Prices include VAT')}</Label>
+                          <Switch checked={editPricesIncludeVat} onCheckedChange={setEditPricesIncludeVat} disabled={isCycleSlot} />
+                        </div>
 
-                  {/* Mark as private */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Lock className="h-4 w-4 text-muted-foreground" />
-                      <Label className="text-xs">{t('calendar.markPrivate', 'Mark as private')}</Label>
-                    </div>
-                    <Switch checked={editIsMarkedFull} onCheckedChange={setEditIsMarkedFull} />
-                  </div>
+                        {/* Split payment */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <Label className="text-xs">{t('calendar.splitPayment', 'Split payment')}</Label>
+                            <p className="text-[10px] text-muted-foreground">{t('calendar.splitPaymentDesc', 'Each player pays individually')}</p>
+                          </div>
+                          <Switch checked={editSplitPayment} onCheckedChange={setEditSplitPayment} disabled={isCycleSlot} />
+                        </div>
 
-                  <Separator />
+                        {/* Mark as private */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Lock className="h-4 w-4 text-muted-foreground" />
+                            <Label className="text-xs">{t('calendar.markPrivate', 'Mark as private')}</Label>
+                          </div>
+                          <Switch checked={editIsMarkedFull} onCheckedChange={setEditIsMarkedFull} />
+                        </div>
 
-                  {/* Extra costs */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">{t('calendar.extraCosts', 'Extra costs')}</Label>
-                      <Button
-                        type="button" size="sm" variant="ghost" className="h-6 px-2 gap-1 text-xs"
-                        onClick={() => setEditExtraCosts([...editExtraCosts, { description: '', amount: 0, type: 'one_time' }])}
-                      >
-                        <Plus className="h-3 w-3" /> {tCommon('add', 'Add')}
-                      </Button>
-                    </div>
-                    {editExtraCosts.map((ec, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <Input
-                          className="flex-1 h-8 text-xs"
-                          placeholder={t('calendar.description', 'Description')}
-                          value={ec.description}
-                          onChange={e => {
-                            const updated = [...editExtraCosts];
-                            updated[idx] = { ...updated[idx], description: e.target.value };
-                            setEditExtraCosts(updated);
-                          }}
-                        />
-                        <Input
-                          className="w-20 h-8 text-xs"
-                          type="number" step="0.01" min={0}
-                          placeholder="€"
-                          value={ec.amount || ''}
-                          onChange={e => {
-                            const updated = [...editExtraCosts];
-                            updated[idx] = { ...updated[idx], amount: Number(e.target.value) };
-                            setEditExtraCosts(updated);
-                          }}
-                        />
-                        <Select
-                          value={ec.type}
-                          onValueChange={v => {
-                            const updated = [...editExtraCosts];
-                            updated[idx] = { ...updated[idx], type: v as 'one_time' | 'per_session' };
-                            setEditExtraCosts(updated);
-                          }}
-                        >
-                          <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="one_time">{t('calendar.oneTime', 'One-time')}</SelectItem>
-                            <SelectItem value="per_session">{t('calendar.perSession', 'Per session')}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0"
-                          onClick={() => setEditExtraCosts(editExtraCosts.filter((_, i) => i !== idx))}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                        <Separator />
+
+                        {/* Extra costs */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">{t('calendar.extraCosts', 'Extra costs')}</Label>
+                            {!isCycleSlot && (
+                              <Button
+                                type="button" size="sm" variant="ghost" className="h-6 px-2 gap-1 text-xs"
+                                onClick={() => setEditExtraCosts([...editExtraCosts, { description: '', amount: 0, type: 'one_time' }])}
+                              >
+                                <Plus className="h-3 w-3" /> {tCommon('add', 'Add')}
+                              </Button>
+                            )}
+                          </div>
+                          {editExtraCosts.map((ec, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Input
+                                className={`flex-1 h-8 text-xs ${isCycleSlot ? 'opacity-60' : ''}`}
+                                placeholder={t('calendar.description', 'Description')}
+                                value={ec.description}
+                                disabled={isCycleSlot}
+                                onChange={e => {
+                                  const updated = [...editExtraCosts];
+                                  updated[idx] = { ...updated[idx], description: e.target.value };
+                                  setEditExtraCosts(updated);
+                                }}
+                              />
+                              <Input
+                                className={`w-20 h-8 text-xs ${isCycleSlot ? 'opacity-60' : ''}`}
+                                type="number" step="0.01" min={0}
+                                placeholder="€"
+                                value={ec.amount || ''}
+                                disabled={isCycleSlot}
+                                onChange={e => {
+                                  const updated = [...editExtraCosts];
+                                  updated[idx] = { ...updated[idx], amount: Number(e.target.value) };
+                                  setEditExtraCosts(updated);
+                                }}
+                              />
+                              <Select
+                                value={ec.type}
+                                disabled={isCycleSlot}
+                                onValueChange={v => {
+                                  const updated = [...editExtraCosts];
+                                  updated[idx] = { ...updated[idx], type: v as 'one_time' | 'per_session' };
+                                  setEditExtraCosts(updated);
+                                }}
+                              >
+                                <SelectTrigger className={`w-28 h-8 text-xs ${isCycleSlot ? 'opacity-60' : ''}`}><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="one_time">{t('calendar.oneTime', 'One-time')}</SelectItem>
+                                  <SelectItem value="per_session">{t('calendar.perSession', 'Per session')}</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {!isCycleSlot && (
+                                <Button
+                                  type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                                  onClick={() => setEditExtraCosts(editExtraCosts.filter((_, i) => i !== idx))}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   <Separator />
 
