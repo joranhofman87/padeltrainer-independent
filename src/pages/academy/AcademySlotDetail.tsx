@@ -6,6 +6,7 @@ import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
   ArrowLeft, Calendar, Clock, Lock, MapPin, Users, Pencil,
   Trash2, UserPlus, DollarSign, Loader2, Save, X, Check, Plus, Minus,
+  AlertTriangle, Settings,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
@@ -15,6 +16,7 @@ import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
@@ -117,6 +119,11 @@ export default function AcademySlotDetail() {
   const [editBookingOpen, setEditBookingOpen] = useState(false);
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
 
+  // Warning state
+  const [warningThresholds, setWarningThresholds] = useState<{ maxRatingSpread: number | null; maxAgeDiff: number | null }>({ maxRatingSpread: null, maxAgeDiff: null });
+  const [dismissedWarnings, setDismissedWarnings] = useState<string[]>([]);
+  const [dismissingWarning, setDismissingWarning] = useState<string | null>(null);
+
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
 
   const fetchSlotDetail = useCallback(async () => {
@@ -160,8 +167,8 @@ export default function AcademySlotDetail() {
         .from('bookings')
         .select(`
           id, status, player_id, guest_player_id, payment_status, payment_amount, paid_externally,
-          profiles:player_id(full_name, avatar_url, skill_rating, rating_system),
-          guest_players:guest_player_id(full_name, skill_rating, rating_system)
+          profiles:player_id(full_name, avatar_url, skill_rating, rating_system, birth_date),
+          guest_players:guest_player_id(full_name, skill_rating, rating_system, birth_date)
         `)
         .eq('slot_id', slotId)
         .in('status', ['confirmed', 'pending']);
@@ -178,6 +185,7 @@ export default function AcademySlotDetail() {
           skillRating: prof?.skill_rating ?? guest?.skill_rating ?? null,
           ratingSystem: prof?.rating_system || guest?.rating_system || 'knltb',
           avatarUrl: prof?.avatar_url || null,
+          birthDate: prof?.birth_date || guest?.birth_date || null,
         };
       });
 
@@ -213,6 +221,31 @@ export default function AcademySlotDetail() {
   }, [slotId]);
 
   useEffect(() => { fetchSlotDetail(); }, [fetchSlotDetail]);
+
+  // Fetch warning thresholds + dismissed warnings
+  useEffect(() => {
+    if (!activeAcademy?.id || !slotId) return;
+    (async () => {
+      const [thresholdsRes, dismissedRes] = await Promise.all([
+        supabase
+          .from('academy_profiles')
+          .select('warning_max_rating_spread, warning_max_age_diff_years')
+          .eq('id', activeAcademy.id)
+          .single(),
+        supabase
+          .from('dismissed_slot_warnings')
+          .select('warning_type')
+          .eq('slot_id', slotId),
+      ]);
+      if (thresholdsRes.data) {
+        setWarningThresholds({
+          maxRatingSpread: thresholdsRes.data.warning_max_rating_spread,
+          maxAgeDiff: thresholdsRes.data.warning_max_age_diff_years,
+        });
+      }
+      setDismissedWarnings((dismissedRes.data || []).map(d => d.warning_type));
+    })();
+  }, [activeAcademy?.id, slotId]);
 
   useEffect(() => {
     if (!activeAcademy) return;
@@ -460,6 +493,59 @@ export default function AcademySlotDetail() {
       logger.error('Error fetching booking', error instanceof Error ? error : new Error(String(error)));
     }
   };
+
+  // Warning helpers
+  const calculateAge = (birthDate: string | null): number | null => {
+    if (!birthDate) return null;
+    const diff = Date.now() - new Date(birthDate).getTime();
+    return Math.floor(diff / 31557600000);
+  };
+
+  const computeWarnings = (): { type: string; message: string }[] => {
+    if (!detail || detail.booked_players.length < 2) return [];
+    const warnings: { type: string; message: string }[] = [];
+    
+    if (warningThresholds.maxRatingSpread != null) {
+      const ratings = detail.booked_players.map(p => p.skillRating).filter((r): r is number => r != null);
+      if (ratings.length >= 2) {
+        const spread = Math.max(...ratings) - Math.min(...ratings);
+        if (spread > warningThresholds.maxRatingSpread) {
+          warnings.push({ type: 'rating_spread', message: t('calendar.warningRatingSpread', 'Rating spread: {{spread}} points (max {{max}})', { spread: spread.toFixed(1), max: warningThresholds.maxRatingSpread }) });
+        }
+      }
+    }
+
+    if (warningThresholds.maxAgeDiff != null) {
+      const ages = detail.booked_players.map(p => calculateAge(p.birthDate)).filter((a): a is number => a != null);
+      if (ages.length >= 2) {
+        const diff = Math.max(...ages) - Math.min(...ages);
+        if (diff > warningThresholds.maxAgeDiff) {
+          warnings.push({ type: 'age_diff', message: t('calendar.warningAgeDiff', 'Age difference: {{diff}} years (max {{max}})', { diff, max: warningThresholds.maxAgeDiff }) });
+        }
+      }
+    }
+
+    return warnings.filter(w => !dismissedWarnings.includes(w.type));
+  };
+
+  const handleDismissWarning = async (warningType: string) => {
+    if (!slotId) return;
+    setDismissingWarning(warningType);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('dismissed_slot_warnings')
+        .insert({ slot_id: slotId, warning_type: warningType, dismissed_by: user?.id || null });
+      if (error) throw error;
+      setDismissedWarnings(prev => [...prev, warningType]);
+    } catch (e) {
+      logger.error('Error dismissing warning', e as Error);
+    } finally {
+      setDismissingWarning(null);
+    }
+  };
+
+  const activeWarnings = detail ? computeWarnings() : [];
 
   if (loading) {
     return (
@@ -878,6 +964,51 @@ export default function AcademySlotDetail() {
             </CardContent>
           </Card>
 
+          {/* Warnings */}
+          {activeWarnings.length > 0 && (
+            <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  {t('calendar.warnings', 'Warnings')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {activeWarnings.map(warning => (
+                  <Alert key={warning.type} className="border-amber-200 bg-transparent">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="flex items-center justify-between gap-2">
+                      <span className="text-sm">{warning.message}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs shrink-0"
+                        disabled={dismissingWarning === warning.type}
+                        onClick={() => handleDismissWarning(warning.type)}
+                      >
+                        {dismissingWarning === warning.type ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <X className="h-3 w-3 mr-1" />
+                        )}
+                        {t('calendar.dismiss', 'Dismiss')}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ))}
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs text-muted-foreground gap-1"
+                  onClick={() => navigate('/app/academy/settings')}
+                >
+                  <Settings className="h-3 w-3" />
+                  {t('calendar.configureWarnings', 'Configure warning thresholds →')}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Right: Players */}
           <Card>
             <CardHeader className="pb-3">
@@ -919,7 +1050,10 @@ export default function AcademySlotDetail() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{player.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {player.skillRating != null && `${player.ratingSystem?.toUpperCase()} ${player.skillRating}`}
+                          {[
+                            player.skillRating != null ? `${player.ratingSystem?.toUpperCase()} ${player.skillRating}` : null,
+                            calculateAge(player.birthDate) != null ? `${calculateAge(player.birthDate)} yr` : null,
+                          ].filter(Boolean).join(' · ') || '\u00A0'}
                         </p>
                       </div>
                       {player.isGuest && (
