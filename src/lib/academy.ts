@@ -52,7 +52,6 @@ export interface AcademyLocation {
   id: string;
   academy_profile_id: string;
   location_id: string;
-  contract_type: 'exclusive' | 'non_exclusive';
   contract_start: string | null;
   contract_end: string | null;
   is_active: boolean;
@@ -513,7 +512,6 @@ export async function getAcademyLocationsWithDetails(academyProfileId: string): 
 export async function addAcademyLocation(
   academyProfileId: string,
   locationId: string,
-  contractType: 'exclusive' | 'non_exclusive' = 'non_exclusive',
   contractStart?: string,
   contractEnd?: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -532,7 +530,7 @@ export async function addAcademyLocation(
   const { error } = await supabase.from('academy_locations').insert({
     academy_profile_id: academyProfileId,
     location_id: locationId,
-    contract_type: contractType,
+    contract_type: 'non_exclusive',
     contract_start: contractStart || null,
     contract_end: contractEnd || null,
     is_active: true,
@@ -552,7 +550,6 @@ export async function addAcademyLocation(
 export async function updateAcademyLocation(
   academyLocationId: string,
   updates: {
-    contract_type?: 'exclusive' | 'non_exclusive';
     contract_start?: string | null;
     contract_end?: string | null;
     is_active?: boolean;
@@ -1068,7 +1065,6 @@ export async function getPublicAcademyLocations(academyProfileId: string): Promi
     .select(`
       id,
       location_id,
-      contract_type,
       location:locations(id, name, city, slug, logo_url, street_address, postal_code)
     `)
     .eq('academy_profile_id', academyProfileId)

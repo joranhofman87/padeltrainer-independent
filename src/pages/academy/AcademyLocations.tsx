@@ -257,12 +257,6 @@ function LocationCard({
       <CardContent className="space-y-4">
         {/* Contract Info */}
         <div className="flex flex-wrap gap-2">
-          <Badge variant={academyLocation.contract_type === 'exclusive' ? 'default' : 'secondary'}>
-            <FileText className="h-3 w-3 mr-1" />
-            {academyLocation.contract_type === 'exclusive'
-              ? t('locations.exclusive')
-              : t('locations.nonExclusive')}
-          </Badge>
           {academyLocation.contract_start && (
             <Badge variant="outline">
               <CalendarDays className="h-3 w-3 mr-1" />
