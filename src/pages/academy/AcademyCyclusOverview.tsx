@@ -786,7 +786,7 @@ export default function AcademyCyclusOverview() {
               ) : (
                 sortedData.map((group) => (
                   <TableRow
-                    key={group.cyclus_id}
+                    key={group.group_key}
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleRowClick(group)}
                   >
