@@ -465,6 +465,15 @@ export default function AcademySlotDetail() {
         }
       }
 
+      // Recalculate split count for remaining players in the cycle
+      if (detail.cyclus_id) {
+        try {
+          await syncSplitCountForCycle(detail.cyclus_id);
+        } catch (e) {
+          logger.error('Failed to sync split count after slot deletion', e as Error);
+        }
+      }
+
       navigate('/app/academy/calendar');
     } catch (error: any) {
       logger.error('Error deleting slot', error, { slotId: detail.id });
