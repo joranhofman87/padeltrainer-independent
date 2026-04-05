@@ -49,16 +49,18 @@ Deno.serve(async (req) => {
     // Parse optional body
     let dryRun = false;
     let invoiceIds: string[] | null = null;
+    let rebuildFromBookings = false;
     try {
       const body = await req.json();
       dryRun = body.dry_run === true;
+      rebuildFromBookings = body.rebuild_from_bookings === true;
       if (Array.isArray(body.invoice_ids)) invoiceIds = body.invoice_ids;
     } catch { /* no body */ }
 
     // Fetch unpaid invoices
     let query = supabaseAdmin
       .from("invoices")
-      .select("id, invoice_number, line_items, subtotal, vat_amount, total, vat_rate, prices_include_vat, status")
+      .select("id, invoice_number, line_items, subtotal, vat_amount, total, vat_rate, prices_include_vat, status, booking_ids")
       .in("status", ["draft", "sent", "pending"]);
 
     if (invoiceIds && invoiceIds.length > 0) {
@@ -77,14 +79,110 @@ Deno.serve(async (req) => {
     const results: any[] = [];
 
     for (const inv of invoices) {
-      const lineItems: any[] = (inv.line_items as any[]) || [];
+      let lineItems: any[] = (inv.line_items as any[]) || [];
+      const pricesIncludeVat = inv.prices_include_vat ?? true;
+      const defaultVatRate = (inv.vat_rate as number) || 21;
+      const bookingIds = (inv.booking_ids as string[]) || [];
+
+      // If rebuild_from_bookings is true and invoice has booking_ids,
+      // rebuild line items from current booking/slot data
+      if (rebuildFromBookings && bookingIds.length > 0) {
+        const { data: bookings } = await supabaseAdmin
+          .from("bookings")
+          .select(`
+            id, payment_amount,
+            availability_slots!inner(price_per_session, cyclus_id, cyclus_name, start_time, locations(name))
+          `)
+          .in("id", bookingIds);
+
+        if (bookings && bookings.length > 0) {
+          const resolvePrice = (b: any): number => {
+            const bSlot = b.availability_slots as any;
+            return b.payment_amount || bSlot.price_per_session || 0;
+          };
+
+          // Detect split count from existing line items
+          let splitCount = 1;
+          for (const item of lineItems) {
+            const match = item.description?.match(/\(1\/(\d+)\)/);
+            if (match) { splitCount = parseInt(match[1], 10); break; }
+          }
+
+          const firstSlot = bookings[0].availability_slots as any;
+          const sharedCyclusId = firstSlot.cyclus_id;
+          const allSameCyclus = sharedCyclusId && bookings.every((b: any) => (b.availability_slots as any).cyclus_id === sharedCyclusId);
+
+          if (allSameCyclus) {
+            const cyclusName = firstSlot.cyclus_name || "Training cyclus";
+            const prices = bookings.map(resolvePrice);
+            const nonZeroPrices = prices.filter((p: number) => p > 0);
+            const allSamePrice = nonZeroPrices.length > 0 && nonZeroPrices.every((p: number) => p === nonZeroPrices[0]);
+
+            if (allSamePrice) {
+              let price = nonZeroPrices[0];
+              if (splitCount > 1) price = Math.round((price / splitCount) * 100) / 100;
+              const desc = splitCount > 1
+                ? `${cyclusName} (${bookings.length} weken) (1/${splitCount})`
+                : `${cyclusName} (${bookings.length} weken)`;
+              lineItems = [{ description: desc, quantity: bookings.length, unit_price: price }];
+            } else {
+              lineItems = bookings.map((b: any) => {
+                const bSlot = b.availability_slots as any;
+                const startTime = new Date(bSlot.start_time);
+                const locationName = bSlot.locations?.name || "";
+                let price = resolvePrice(b);
+                if (splitCount > 1) price = Math.round((price / splitCount) * 100) / 100;
+                const desc = splitCount > 1
+                  ? `${cyclusName} - ${startTime.toLocaleDateString("nl-NL")}${locationName ? ` (${locationName})` : ""} (1/${splitCount})`
+                  : `${cyclusName} - ${startTime.toLocaleDateString("nl-NL")}${locationName ? ` (${locationName})` : ""}`;
+                return { description: desc, quantity: 1, unit_price: price, date: startTime.toISOString().split("T")[0] };
+              });
+            }
+          } else {
+            lineItems = bookings.map((b: any) => {
+              const bSlot = b.availability_slots as any;
+              const startTime = new Date(bSlot.start_time);
+              const locationName = bSlot.locations?.name || "";
+              let price = resolvePrice(b);
+              if (splitCount > 1) price = Math.round((price / splitCount) * 100) / 100;
+              const desc = bSlot.cyclus_name
+                ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")}${locationName ? ` (${locationName})` : ""}`
+                : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
+              return { description: desc, quantity: 1, unit_price: price, date: startTime.toISOString().split("T")[0] };
+            });
+          }
+
+          // Re-add extra costs from cycle settings
+          if (sharedCyclusId) {
+            const { data: cycleData } = await supabaseAdmin
+              .from("cycles")
+              .select("settings")
+              .eq("id", sharedCyclusId)
+              .maybeSingle();
+            const extraCosts = (cycleData?.settings as any)?.extra_costs;
+            if (extraCosts && Array.isArray(extraCosts)) {
+              for (const ec of extraCosts) {
+                if (ec.description && ec.price > 0) {
+                  const isOneTime = ec.type === "one_time";
+                  let ecPrice = ec.price;
+                  if (splitCount > 1) ecPrice = Math.round((ecPrice / splitCount) * 100) / 100;
+                  lineItems.push({
+                    description: isOneTime ? ec.description : `${ec.description} (per sessie)`,
+                    quantity: isOneTime ? 1 : bookings.length,
+                    unit_price: ecPrice,
+                    vat_rate: ec.vat_rate ?? defaultVatRate,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
       if (lineItems.length === 0) {
         results.push({ invoice_number: inv.invoice_number, status: "skipped", reason: "no line items" });
         continue;
       }
-
-      const pricesIncludeVat = inv.prices_include_vat ?? true;
-      const defaultVatRate = (inv.vat_rate as number) || 21;
 
       // Recalculate from line items
       let totalSub = 0;
@@ -101,11 +199,9 @@ Deno.serve(async (req) => {
         let lineVat: number;
 
         if (pricesIncludeVat) {
-          // unit_price includes VAT → back-calculate
           lineSub = lineTotal / (1 + lineVatRate / 100);
           lineVat = lineTotal - lineSub;
         } else {
-          // unit_price is excl VAT → add VAT on top
           lineSub = lineTotal;
           lineVat = lineSub * (lineVatRate / 100);
         }
@@ -134,7 +230,7 @@ Deno.serve(async (req) => {
       }
 
       const oldTotal = inv.total;
-      const changed = Math.abs((oldTotal as number) - newTotal) > 0.01;
+      const changed = Math.abs((oldTotal as number) - newTotal) > 0.01 || rebuildFromBookings;
 
       const result: any = {
         invoice_number: inv.invoice_number,
@@ -146,15 +242,21 @@ Deno.serve(async (req) => {
       };
 
       if (!dryRun && changed) {
+        const updatePayload: any = {
+          subtotal: newSubtotal,
+          vat_amount: newVatAmount,
+          total: newTotal,
+          pdf_url: null,
+          vat_breakdown: Object.keys(vatBreakdown).length > 1 ? vatBreakdown : null,
+        };
+        // If we rebuilt line items, also update them on the invoice
+        if (rebuildFromBookings) {
+          updatePayload.line_items = lineItems;
+        }
+
         const { error: updateErr } = await supabaseAdmin
           .from("invoices")
-          .update({
-            subtotal: newSubtotal,
-            vat_amount: newVatAmount,
-            total: newTotal,
-            pdf_url: null,
-            vat_breakdown: Object.keys(vatBreakdown).length > 1 ? vatBreakdown : null,
-          })
+          .update(updatePayload)
           .eq("id", inv.id);
 
         result.updated = !updateErr;
