@@ -62,6 +62,9 @@ export default function AcademySettings() {
   const [savingWelcome, setSavingWelcome] = useState(false);
   const [academyTimezone, setAcademyTimezone] = useState('Europe/Amsterdam');
   const [updatingTimezone, setUpdatingTimezone] = useState(false);
+  const [warningMaxRatingSpread, setWarningMaxRatingSpread] = useState<string>('');
+  const [warningMaxAgeDiffYears, setWarningMaxAgeDiffYears] = useState<string>('');
+  const [savingWarnings, setSavingWarnings] = useState(false);
   const termsEditor = useEditor({
     extensions: [
       StarterKit,
@@ -124,7 +127,7 @@ export default function AcademySettings() {
     const loadTermsAndWelcome = async () => {
       const { data } = await supabase
         .from('academy_profiles')
-        .select('general_terms, welcome_message, timezone')
+        .select('general_terms, welcome_message, timezone, warning_max_rating_spread, warning_max_age_diff_years')
         .eq('id', activeAcademy.id)
         .maybeSingle();
       if (data?.general_terms) {
@@ -135,6 +138,12 @@ export default function AcademySettings() {
       }
       if ((data as any)?.timezone) {
         setAcademyTimezone((data as any).timezone);
+      }
+      if ((data as any)?.warning_max_rating_spread != null) {
+        setWarningMaxRatingSpread(String((data as any).warning_max_rating_spread));
+      }
+      if ((data as any)?.warning_max_age_diff_years != null) {
+        setWarningMaxAgeDiffYears(String((data as any).warning_max_age_diff_years));
       }
     };
     loadTermsAndWelcome();
@@ -404,6 +413,78 @@ export default function AcademySettings() {
           </CardContent>
         </Card>
 
+
+        {/* Warnings */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">
+                {t("settings.warnings", "Warnings")}
+              </CardTitle>
+            </div>
+            <CardDescription>
+              {t("settings.warningsDescription", "Set thresholds for when to show warning icons on the calendar overview when players in the same slot have big differences.")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t("settings.maxRatingSpread", "Max rating spread")}</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={warningMaxRatingSpread}
+                  onChange={(e) => setWarningMaxRatingSpread(e.target.value)}
+                  placeholder={t("settings.maxRatingSpreadPlaceholder", "e.g. 2.0")}
+                />
+                <p className="text-xs text-muted-foreground">{t("settings.maxRatingSpreadHelp", "Show warning when the skill rating difference between players exceeds this value. Leave empty to disable.")}</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t("settings.maxAgeDiff", "Max age difference (years)")}</label>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={warningMaxAgeDiffYears}
+                  onChange={(e) => setWarningMaxAgeDiffYears(e.target.value)}
+                  placeholder={t("settings.maxAgeDiffPlaceholder", "e.g. 5")}
+                />
+                <p className="text-xs text-muted-foreground">{t("settings.maxAgeDiffHelp", "Show warning when the age difference between players exceeds this many years. Leave empty to disable.")}</p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                disabled={savingWarnings}
+                onClick={async () => {
+                  if (!activeAcademy) return;
+                  setSavingWarnings(true);
+                  try {
+                    const { error } = await supabase
+                      .from('academy_profiles')
+                      .update({
+                        warning_max_rating_spread: warningMaxRatingSpread ? Number(warningMaxRatingSpread) : null,
+                        warning_max_age_diff_years: warningMaxAgeDiffYears ? Number(warningMaxAgeDiffYears) : null,
+                      } as any)
+                      .eq('id', activeAcademy.id);
+                    if (error) throw error;
+                    toast({ title: t('settings.warningsSaved', 'Warning settings saved') });
+                  } catch (error: any) {
+                    toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+                  } finally {
+                    setSavingWarnings(false);
+                  }
+                }}
+              >
+                {savingWarnings && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {t('common.save', 'Save Changes')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* General Terms */}
         <Card>

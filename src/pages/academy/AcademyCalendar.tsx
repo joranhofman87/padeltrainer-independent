@@ -120,6 +120,10 @@ export default function AcademyCalendar() {
 
   // For overview: month-wide slots
   const [monthSlots, setMonthSlots] = useState<AcademySlot[]>([]);
+  
+  // Warning thresholds
+  const [warningMaxRatingSpread, setWarningMaxRatingSpread] = useState<number | null>(null);
+  const [warningMaxAgeDiffYears, setWarningMaxAgeDiffYears] = useState<number | null>(null);
 
   // Filter state
   const [trainers, setTrainers] = useState<Trainer[]>([]);
@@ -158,8 +162,22 @@ export default function AcademyCalendar() {
     if (activeAcademy) {
       loadAcademyData();
       fetchAllKnownPlayers();
+      fetchWarningThresholds();
     }
   }, [activeAcademy]);
+
+  const fetchWarningThresholds = async () => {
+    if (!activeAcademy) return;
+    const { data } = await supabase
+      .from('academy_profiles')
+      .select('warning_max_rating_spread, warning_max_age_diff_years')
+      .eq('id', activeAcademy.id)
+      .maybeSingle();
+    if (data) {
+      setWarningMaxRatingSpread((data as any).warning_max_rating_spread ?? null);
+      setWarningMaxAgeDiffYears((data as any).warning_max_age_diff_years ?? null);
+    }
+  };
 
   useEffect(() => {
     if (activeAcademy) {
@@ -288,8 +306,8 @@ export default function AcademyCalendar() {
         .from("bookings")
         .select(`
           id, slot_id, status, player_id, guest_player_id,
-          profiles:player_id (full_name, skill_rating, rating_system),
-          guest_players:guest_player_id (full_name, skill_rating, rating_system)
+          profiles:player_id (full_name, skill_rating, rating_system, birth_date),
+          guest_players:guest_player_id (full_name, skill_rating, rating_system, birth_date)
         `)
         .in("slot_id", slotIds);
 
@@ -308,8 +326,8 @@ export default function AcademyCalendar() {
       if (b.status === "confirmed") bookingCounts[b.slot_id].active++;
       else if (b.status === "pending") bookingCounts[b.slot_id].pending++;
 
-      const profile = b.profiles as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
-      const guestPlayer = b.guest_players as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
+      const profile = b.profiles as { full_name: string | null; skill_rating: number | null; rating_system: string; birth_date: string | null } | null;
+      const guestPlayer = b.guest_players as { full_name: string | null; skill_rating: number | null; rating_system: string; birth_date: string | null } | null;
       const playerName = profile?.full_name || guestPlayer?.full_name || "Unknown";
       const skillRating = profile?.skill_rating ?? guestPlayer?.skill_rating ?? null;
       const ratingSystem = profile?.rating_system || guestPlayer?.rating_system || 'knltb';
