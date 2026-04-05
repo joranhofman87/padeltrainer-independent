@@ -24,6 +24,7 @@ import { formatPrice } from '@/lib/pricing';
 import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 
 interface CyclusGroup {
+  group_key: string; // composite: cyclus_id + trainer_id
   cyclus_id: string;
   cyclus_name: string;
   trainer_name: string;
