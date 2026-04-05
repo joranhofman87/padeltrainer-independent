@@ -34,6 +34,7 @@ interface SlotSummary {
   location_name?: string | null;
   location_id?: string | null;
   is_public: boolean;
+  players?: { rating: number | null; birthDate: string | null }[];
 }
 
 interface TrainerOption { id: string; name: string; }
@@ -50,6 +51,8 @@ interface AcademyCalendarOverviewProps {
   onNavigateNext: () => void;
   onGoToday: () => void;
   dateRangeLabel: string;
+  warningMaxRatingSpread?: number | null;
+  warningMaxAgeDiffYears?: number | null;
 }
 
 /* ── Occupancy Dots ── */
