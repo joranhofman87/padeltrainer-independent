@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { getTrainerProfile } from "@/lib/auth";
 import { logger } from "@/lib/logger";
-import { syncInvoicesAfterBookingRemoval } from "@/lib/invoiceSync";
+import { syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";

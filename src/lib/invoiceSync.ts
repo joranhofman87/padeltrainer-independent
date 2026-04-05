@@ -342,6 +342,216 @@ export async function syncInvoicesAfterPriceChange(
 }
 
 /**
+ * Recalculate the split count (1/N) for all unpaid invoices in a cycle.
+ * Called when a player is added to or removed from a split-payment cycle.
+ * Updates all sibling invoices so each player pays 1/N of the session price.
+ */
+export async function syncSplitCountForCycle(
+  cyclusId: string,
+): Promise<void> {
+  if (!cyclusId) return;
+
+  // 1. Find all slots in this cycle
+  const { data: cycleSlots } = await supabase
+    .from("availability_slots")
+    .select("id, price_per_session, split_payment, cyclus_name, prices_include_vat, extra_costs")
+    .eq("cyclus_id", cyclusId);
+
+  if (!cycleSlots || cycleSlots.length === 0) return;
+
+  const firstSlot = cycleSlots[0] as any;
+  if (!firstSlot.split_payment) return; // Not a split-payment cycle
+
+  const slotIds = cycleSlots.map((s) => s.id);
+
+  // 2. Count unique active players across the cycle
+  const { data: activeBookings } = await supabase
+    .from("bookings")
+    .select("id, player_id, guest_player_id")
+    .in("slot_id", slotIds)
+    .in("status", ["confirmed", "pending"]);
+
+  if (!activeBookings || activeBookings.length === 0) return;
+
+  const uniquePlayers = new Set<string>();
+  for (const b of activeBookings) {
+    const key = b.player_id || b.guest_player_id;
+    if (key) uniquePlayers.add(key);
+  }
+
+  const playerCount = uniquePlayers.size;
+  if (playerCount <= 1) return; // No split needed
+
+  const activeBookingIds = activeBookings.map((b) => b.id);
+
+  // 3. Find all unpaid invoices overlapping with these bookings
+  const { data: invoices } = await supabase
+    .from("invoices")
+    .select("id, booking_ids, line_items, vat_rate, status")
+    .in("status", ["sent", "pending", "draft"])
+    .overlaps("booking_ids", activeBookingIds);
+
+  if (!invoices || invoices.length === 0) return;
+
+  // 4. For each invoice, rebuild with new split count
+  for (const inv of invoices) {
+    const invBookingIds = (inv.booking_ids as string[]) || [];
+    // Only process if this invoice actually overlaps with active bookings
+    const relevantIds = invBookingIds.filter((id) => activeBookingIds.includes(id));
+    if (relevantIds.length === 0) continue;
+
+    // Recalculate using the shared function — it will detect the split from line items
+    // But we need to force the NEW split count. We do this by updating descriptions first.
+    // Instead, we call recalculateInvoiceAfterRemoval with no removals,
+    // but we need to override the split detection.
+    // The cleanest approach: directly rebuild line items here.
+
+    const { data: invBookings } = await supabase
+      .from("bookings")
+      .select(`
+        id, payment_amount,
+        availability_slots!inner(price_per_session, cyclus_id, cyclus_name, start_time, locations(name), prices_include_vat, extra_costs)
+      `)
+      .in("id", invBookingIds)
+      .in("status", ["confirmed", "pending"]);
+
+    if (!invBookings || invBookings.length === 0) continue;
+
+    const defaultVatRate = (inv.vat_rate as number) || 21;
+    const slotPricesIncludeVat = (invBookings[0].availability_slots as any).prices_include_vat ?? true;
+    const cyclusName = (invBookings[0].availability_slots as any).cyclus_name || "Training cyclus";
+
+    // Get the base (unsplit) price per session
+    const basePrice = (invBookings[0].availability_slots as any).price_per_session || 0;
+    const splitPrice = Math.round((basePrice / playerCount) * 100) / 100;
+
+    const lineItems: { description: string; quantity: number; unit_price: number; vat_rate?: number }[] = [
+      {
+        description: `${cyclusName} (${invBookings.length} weken) (1/${playerCount})`,
+        quantity: invBookings.length,
+        unit_price: splitPrice,
+      },
+    ];
+
+    // Add extra costs from cycle settings
+    const cyclusId2 = (invBookings[0].availability_slots as any).cyclus_id;
+    let extraCosts: any[] | null = null;
+
+    if (cyclusId2) {
+      const { data: cycleData } = await supabase
+        .from("cycles")
+        .select("settings")
+        .eq("id", cyclusId2)
+        .maybeSingle();
+      extraCosts = (cycleData?.settings as any)?.extra_costs || null;
+    }
+
+    if (!extraCosts || !Array.isArray(extraCosts) || extraCosts.length === 0) {
+      const slotExtraCosts = (invBookings[0].availability_slots as any).extra_costs;
+      if (slotExtraCosts && Array.isArray(slotExtraCosts)) {
+        extraCosts = slotExtraCosts;
+      }
+    }
+
+    if (extraCosts && Array.isArray(extraCosts)) {
+      for (const ec of extraCosts) {
+        if (ec.description && ec.price > 0) {
+          const isOneTime = ec.type === "one_time";
+          const ecPrice = Math.round((ec.price / playerCount) * 100) / 100;
+          const ecDesc = isOneTime ? ec.description : `${ec.description} (per sessie)`;
+          lineItems.push({
+            description: `${ecDesc} (1/${playerCount})`,
+            quantity: isOneTime ? 1 : invBookings.length,
+            unit_price: ecPrice,
+            vat_rate: ec.vat_rate ?? defaultVatRate,
+          });
+        }
+      }
+    }
+
+    // Calculate totals
+    const hasMultipleVatRates = lineItems.some(
+      (item) => (item.vat_rate ?? defaultVatRate) !== defaultVatRate,
+    );
+
+    let subtotal: number;
+    let vatAmount: number;
+    let totalInclusive: number;
+    let vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
+
+    if (hasMultipleVatRates) {
+      let totalSub = 0;
+      let totalVat = 0;
+      for (const item of lineItems) {
+        const lineTotal = item.quantity * item.unit_price;
+        const lineVatRate = item.vat_rate ?? defaultVatRate;
+        let lineSub: number;
+        let lineVat: number;
+        if (slotPricesIncludeVat) {
+          lineSub = lineTotal / (1 + lineVatRate / 100);
+          lineVat = lineTotal - lineSub;
+        } else {
+          lineSub = lineTotal;
+          lineVat = lineSub * (lineVatRate / 100);
+        }
+        totalSub += lineSub;
+        totalVat += lineVat;
+        if (!vatBreakdown[lineVatRate]) vatBreakdown[lineVatRate] = { subtotal: 0, vat: 0 };
+        vatBreakdown[lineVatRate].subtotal += lineSub;
+        vatBreakdown[lineVatRate].vat += lineVat;
+      }
+      subtotal = Math.round(totalSub * 100) / 100;
+      vatAmount = Math.round(totalVat * 100) / 100;
+      totalInclusive = slotPricesIncludeVat
+        ? lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+        : Math.round((subtotal + vatAmount) * 100) / 100;
+      for (const rate in vatBreakdown) {
+        vatBreakdown[rate].subtotal = Math.round(vatBreakdown[rate].subtotal * 100) / 100;
+        vatBreakdown[rate].vat = Math.round(vatBreakdown[rate].vat * 100) / 100;
+      }
+    } else {
+      const lineItemTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+      if (slotPricesIncludeVat) {
+        totalInclusive = lineItemTotal;
+        subtotal = totalInclusive / (1 + defaultVatRate / 100);
+        vatAmount = totalInclusive - subtotal;
+      } else {
+        subtotal = lineItemTotal;
+        vatAmount = subtotal * (defaultVatRate / 100);
+        totalInclusive = subtotal + vatAmount;
+      }
+    }
+
+    await supabase
+      .from("invoices")
+      .update({
+        line_items: lineItems,
+        subtotal: Math.round(subtotal * 100) / 100,
+        vat_amount: Math.round(vatAmount * 100) / 100,
+        total: Math.round(totalInclusive * 100) / 100,
+        pdf_url: null,
+        ...(Object.keys(vatBreakdown).length > 0
+          ? { vat_breakdown: vatBreakdown }
+          : { vat_breakdown: null }),
+      })
+      .eq("id", inv.id);
+
+    // Regenerate PDF
+    try {
+      await supabase.functions.invoke("generate-invoice", {
+        body: { invoiceId: inv.id },
+      });
+    } catch (err) {
+      logger.error(
+        "Failed to regenerate invoice PDF after split sync",
+        err instanceof Error ? err : new Error(String(err)),
+        { component: "invoiceSync" },
+      );
+    }
+  }
+}
+
+/**
  * Find and recalculate all unpaid invoices affected by removed booking IDs.
  * For paid invoices, optionally adds a credit note.
  */
