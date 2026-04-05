@@ -15,7 +15,7 @@ import {
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Clock, Eye, BarChart3 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Clock, Eye, BarChart3, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,6 +50,7 @@ import AcademyReportsTab from "@/components/academy/AcademyReportsTab";
 // Lazy-load the open slots page content
 import { lazy, Suspense } from "react";
 const AcademyOpenSlotsContent = lazy(() => import("@/pages/academy/AcademyOpenSlots"));
+const AcademyCyclusOverviewContent = lazy(() => import("@/pages/academy/AcademyCyclusOverview"));
 
 interface AcademySlot {
   id: string;
@@ -95,7 +96,7 @@ const dateFnsLocales: Record<string, typeof enUS> = {
   fr,
 };
 
-type TabValue = "overview" | "open-spots" | "manage" | "create" | "hours" | "reports";
+type TabValue = "overview" | "open-spots" | "cycles" | "manage" | "create" | "hours" | "reports";
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
@@ -650,6 +651,10 @@ export default function AcademyCalendar() {
                 <Eye className="h-3.5 w-3.5" />
                 {t("calendar.tabs.openSpots", "All Slots")}
               </TabsTrigger>
+              <TabsTrigger value="cycles" className="text-xs sm:text-sm gap-1.5">
+                <Repeat className="h-3.5 w-3.5" />
+                {t("calendar.tabs.cycles", "Cycles")}
+              </TabsTrigger>
               <TabsTrigger value="manage" className="text-xs sm:text-sm gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />
                 {t("calendar.tabs.manage", "Manage")}
@@ -712,6 +717,13 @@ export default function AcademyCalendar() {
           <TabsContent value="open-spots" className="mt-4">
             <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
               <AcademyOpenSlotsContent embedded={true} />
+            </Suspense>
+          </TabsContent>
+
+          {/* ── Tab: Cycles ── */}
+          <TabsContent value="cycles" className="mt-4">
+            <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
+              <AcademyCyclusOverviewContent />
             </Suspense>
           </TabsContent>
 
