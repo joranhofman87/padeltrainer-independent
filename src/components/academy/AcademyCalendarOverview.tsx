@@ -94,6 +94,50 @@ const statusDotColor: Record<string, string> = {
   empty: 'bg-muted-foreground/30',
 };
 
+/* ── Slot Warning Logic ── */
+function getSlotWarnings(
+  slot: SlotSummary,
+  maxRatingSpread: number | null | undefined,
+  maxAgeDiffYears: number | null | undefined,
+): string[] {
+  const warnings: string[] = [];
+  const players = slot.players || [];
+  if (players.length < 2) return warnings;
+
+  if (maxRatingSpread != null) {
+    const ratings = players.map(p => p.rating).filter((r): r is number => r != null);
+    if (ratings.length >= 2) {
+      const spread = Math.max(...ratings) - Math.min(...ratings);
+      if (spread > maxRatingSpread) {
+        warnings.push(`Rating spread: ${spread.toFixed(1)}`);
+      }
+    }
+  }
+
+  if (maxAgeDiffYears != null) {
+    const today = new Date();
+    const ages = players
+      .map(p => p.birthDate)
+      .filter((d): d is string => !!d)
+      .map(d => {
+        const bd = new Date(d);
+        let age = today.getFullYear() - bd.getFullYear();
+        const m = today.getMonth() - bd.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < bd.getDate())) age--;
+        return age;
+      })
+      .filter(a => a > 0 && a < 120);
+    if (ages.length >= 2) {
+      const diff = Math.max(...ages) - Math.min(...ages);
+      if (diff > maxAgeDiffYears) {
+        warnings.push(`Age diff: ${diff} yr`);
+      }
+    }
+  }
+
+  return warnings;
+}
+
 /* ── Trainer Day Block ── */
 function TrainerDayBlock({
   trainerName,
