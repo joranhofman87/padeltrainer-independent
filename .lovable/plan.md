@@ -1,42 +1,50 @@
 
 
-# Remove "All Slots" Tab + Add Bulk Actions to Cycles Tab
+# Fix Cycles Tab: Group by Cycle + Trainer
 
-## What changes
+## Root Cause
+A single registration cycle (e.g. "Padeltrainingen zomer 2026", id `1e40f602-...`) contains slots for **multiple trainers** — Patrick (84 slots), Yannick (70), Rene (42), Tygho (126). The current code groups only by `cycle_id`, so it creates one row and picks the first trainer it finds (Rene). The other trainers are invisible.
 
-### 1. `src/pages/academy/AcademyCalendar.tsx`
-- Remove `"open-spots"` from the `TabValue` type
-- Remove the lazy import of `AcademyOpenSlotsContent` (line 52)
-- Remove the `<TabsTrigger value="open-spots">` (lines 650-653)
-- Remove the `<TabsContent value="open-spots">` block (lines 716-721)
-- Remove the `Eye` icon import (no longer needed for tabs — check if used elsewhere first)
+## Solution
+Change the grouping key from `cycle_id` to `cycle_id + trainer_id`. Each unique (cycle, trainer) combination becomes its own row. This way "Padeltrainingen zomer 2026" appears as 4 rows — one per trainer.
 
-### 2. `src/pages/academy/AcademyDashboard.tsx`
-- Change `navigate('/app/academy/calendar?tab=open-spots')` → `navigate('/app/academy/calendar?tab=cycles')` (line 472)
+## Changes in `src/pages/academy/AcademyCyclusOverview.tsx`
 
-### 3. `src/components/DomainRouter.tsx`
-- Change the redirect on line 304 from `?tab=open-spots` to `?tab=cycles`
+### 1. Update the `CyclusGroup` interface
+- Add a composite `group_key` field (`cyclus_id + trainer_id`) used for selection/identification
+- Keep `cyclus_id` for reference
 
-### 4. `src/pages/academy/AcademyOpenSlots.tsx`
-- **Delete this file** — no longer referenced
+### 2. Rewrite the grouping logic (lines ~280-396)
+When processing cycles from the `cycles` table:
+- Instead of creating one `CyclusGroup` per cycle, **sub-group the slots by `trainer_id`** within each cycle
+- For each (cycle, trainer) pair, create a separate `CyclusGroup` with:
+  - `cyclus_name`: cycle name (same for all trainers in the cycle)
+  - `trainer_id` / `trainer_name`: the specific trainer
+  - `sessions`: count of that trainer's slots only
+  - `day_time`: derived from that trainer's first slot
+  - `period_start`/`period_end`: from that trainer's slot range
+  - `player_names`: only players booked on that trainer's slots
+  - `price_per_session`: from that trainer's slots or cycle-level price
+- For academy-owned cycles with **no slots** for a specific trainer, still show one row with cycle-level data
 
-### 5. `src/pages/academy/AcademyCyclusOverview.tsx` — Add bulk actions
-Port the useful bulk features from the deleted All Slots page:
-- **Checkbox column** — Add `selectedIds` state and a checkbox on each row + "select all" in header
-- **Bulk action bar** — When items are selected, show a floating/sticky bar with:
-  - **Bulk visibility toggle** — Update `is_public` on all `availability_slots` belonging to selected cycles
-  - **Bulk price update** — Open a dialog to set `price_per_session` on all slots of selected cycles (+ sync invoices via `syncInvoicesAfterPriceChange`)
-- Import `Checkbox`, `Switch`, `Dialog`, `useToast`, and `syncInvoicesAfterPriceChange` from existing locations
-- Add `setBulkPrice` dialog state, `bulkUpdating` loading state
-- The bulk update function: fetch all slot IDs for selected `cyclus_id`s, then batch-update them
+### 3. Update selectedIds and bulk actions
+- Use the composite `group_key` instead of `cyclus_id` for selection
+- When applying bulk updates, resolve the correct slot IDs for the specific trainer within the cycle
+
+### 4. Intake players
+- For academy-owned cycles, intake players should be distributed to the correct trainer row (if `intake_requests` has a trainer reference) or shown on all trainer rows for that cycle
+
+## Expected result
+The Cycles tab will show:
+- "Padeltrainingen zomer 2026" — Patrick (84 sessions)
+- "Padeltrainingen zomer 2026" — Yannick (70 sessions)
+- "Padeltrainingen zomer 2026" — Rene (42 sessions)
+- "Padeltrainingen zomer 2026" — Tygho (126 sessions)
+- Plus any other cycles from other registrations
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyCalendar.tsx` | Remove open-spots tab, trigger, content, and lazy import |
-| `src/pages/academy/AcademyDashboard.tsx` | Update "View all" link to `?tab=cycles` |
-| `src/components/DomainRouter.tsx` | Update redirect from `open-spots` to `cycles` |
-| `src/pages/academy/AcademyOpenSlots.tsx` | Delete file |
-| `src/pages/academy/AcademyCyclusOverview.tsx` | Add bulk select, bulk visibility toggle, bulk price update |
+| `src/pages/academy/AcademyCyclusOverview.tsx` | Group by (cycle_id + trainer_id) instead of just cycle_id |
 
