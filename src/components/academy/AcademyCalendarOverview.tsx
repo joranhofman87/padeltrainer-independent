@@ -146,6 +146,8 @@ function TrainerDayBlock({
   isPast,
   onSlotClick,
   defaultOpen,
+  warningMaxRatingSpread,
+  warningMaxAgeDiffYears,
 }: {
   trainerName: string;
   trainerAvatar?: string | null;
@@ -153,7 +155,10 @@ function TrainerDayBlock({
   isPast: boolean;
   onSlotClick?: (slotId: string) => void;
   defaultOpen: boolean;
+  warningMaxRatingSpread?: number | null;
+  warningMaxAgeDiffYears?: number | null;
 }) {
+  const { t } = useTranslation('academy');
   const [open, setOpen] = useState(defaultOpen);
   const status = getGroupStatus(slots);
   const initials = trainerName?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
@@ -194,19 +199,32 @@ function TrainerDayBlock({
         {/* Expanded: time list */}
         <CollapsibleContent>
           <div className="px-2 pb-1.5 space-y-0.5">
-            {slots.map(slot => (
-              <button
-                key={slot.id}
-                className="w-full flex items-center justify-between gap-1 py-0.5 text-left hover:bg-accent/30 rounded px-1 transition-colors"
-                onClick={() => onSlotClick?.(slot.id)}
-              >
-                <span className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-1">
-                  {!slot.is_public && <Lock className="h-2.5 w-2.5 text-amber-500" />}
-                  {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
-                </span>
-                <OccupancyDots booked={slot.booked_count} max={slot.max_participants} />
-              </button>
-            ))}
+            {slots.map(slot => {
+              const warnings = getSlotWarnings(slot, warningMaxRatingSpread, warningMaxAgeDiffYears);
+              return (
+                <button
+                  key={slot.id}
+                  className="w-full flex items-center justify-between gap-1 py-0.5 text-left hover:bg-accent/30 rounded px-1 transition-colors"
+                  onClick={() => onSlotClick?.(slot.id)}
+                >
+                  <span className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-1">
+                    {!slot.is_public && <Lock className="h-2.5 w-2.5 text-amber-500" />}
+                    {format(parseISO(slot.start_time), 'HH:mm')}–{format(parseISO(slot.end_time), 'HH:mm')}
+                    {warnings.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          {warnings.map((w, i) => <div key={i}>{w}</div>)}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </span>
+                  <OccupancyDots booked={slot.booked_count} max={slot.max_participants} />
+                </button>
+              );
+            })}
           </div>
         </CollapsibleContent>
       </div>
