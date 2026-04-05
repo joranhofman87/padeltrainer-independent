@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
@@ -231,6 +231,15 @@ export default function AcademySlotDetail() {
       }
     })();
   }, [activeAcademy]);
+
+  // Auto-open edit mode on first load
+  const autoEditTriggered = useRef(false);
+  useEffect(() => {
+    if (detail && !autoEditTriggered.current) {
+      autoEditTriggered.current = true;
+      startEditing();
+    }
+  }, [detail]);
 
   const startEditing = () => {
     if (!detail) return;
@@ -509,21 +518,15 @@ export default function AcademySlotDetail() {
       </div>
 
       <main className="container mx-auto px-4 py-6">
-        {!isEditing && (
-          <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
-            <Button variant="outline" className="gap-1.5" onClick={startEditing}>
-              <Pencil className="h-4 w-4" />
-              {tTrainer('calendar.editSlot', 'Edit')}
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-1.5 text-destructive hover:text-destructive"
-              onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
+          <Button
+            variant="outline"
+            className="gap-1.5 text-destructive hover:text-destructive"
+            onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
           {/* Left: Details */}
           <Card>
