@@ -222,6 +222,31 @@ export default function AcademySlotDetail() {
 
   useEffect(() => { fetchSlotDetail(); }, [fetchSlotDetail]);
 
+  // Fetch warning thresholds + dismissed warnings
+  useEffect(() => {
+    if (!activeAcademy?.id || !slotId) return;
+    (async () => {
+      const [thresholdsRes, dismissedRes] = await Promise.all([
+        supabase
+          .from('academy_profiles')
+          .select('warning_max_rating_spread, warning_max_age_diff_years')
+          .eq('id', activeAcademy.id)
+          .single(),
+        supabase
+          .from('dismissed_slot_warnings')
+          .select('warning_type')
+          .eq('slot_id', slotId),
+      ]);
+      if (thresholdsRes.data) {
+        setWarningThresholds({
+          maxRatingSpread: thresholdsRes.data.warning_max_rating_spread,
+          maxAgeDiff: thresholdsRes.data.warning_max_age_diff_years,
+        });
+      }
+      setDismissedWarnings((dismissedRes.data || []).map(d => d.warning_type));
+    })();
+  }, [activeAcademy?.id, slotId]);
+
   useEffect(() => {
     if (!activeAcademy) return;
     (async () => {
