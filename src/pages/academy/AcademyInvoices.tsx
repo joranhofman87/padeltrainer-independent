@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
@@ -61,6 +63,7 @@ export default function AcademyInvoices() {
   const pageTab = searchParams.get("tab") === "settings" ? "settings" : "overview";
   const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [trainerFilter, setTrainerFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [sendingAll, setSendingAll] = useState(false);
@@ -191,6 +194,14 @@ export default function AcademyInvoices() {
   });
 
 
+  const getComputedStatus = (inv: Invoice): string => {
+    if (inv.status === "paid") return "paid";
+    if (inv.status === "cancelled") return "cancelled";
+    if (inv.sent_at && new Date(inv.due_date) < new Date()) return "overdue";
+    if (inv.sent_at) return "sent";
+    return "draft";
+  };
+
   // Filter by trainer, then by location
   const trainerFiltered = trainerFilter === "all"
     ? invoices
@@ -206,9 +217,18 @@ export default function AcademyInvoices() {
 
   const tabFiltered = activeTab === "paid" ? paidInvoices : unpaidInvoices;
 
-  const filteredInvoices = tabFiltered.filter(i =>
+  const statusFiltered = statusFilter === "all"
+    ? tabFiltered
+    : tabFiltered.filter(i => getComputedStatus(i) === statusFilter);
+
+  const searchFiltered = statusFiltered.filter(i =>
     !searchQuery || i.player_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Add computed status for sorting
+  const dataWithStatus = searchFiltered.map(i => ({ ...i, _computedStatus: getComputedStatus(i) }));
+  const { sortedData, sortConfig, handleSort } = useTableSort(dataWithStatus);
+  const filteredInvoices = sortedData.map(({ _computedStatus, ...rest }) => rest as Invoice);
 
   const totalUnpaid = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
 
@@ -557,6 +577,19 @@ export default function AcademyInvoices() {
                 </SelectContent>
               </Select>
             )}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
+                <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
+                <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
+                <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
+                <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
+                <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
+              </SelectContent>
+            </Select>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -592,9 +625,31 @@ export default function AcademyInvoices() {
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
                         <TableHead>{t("invoices.player", "Player")}</TableHead>
                         <TableHead>{t("invoices.date", "Date")}</TableHead>
-                        <TableHead>{t("invoices.dueDate", "Due")}</TableHead>
-                        <TableHead className="text-right">{t("invoices.amount", "Amount")}</TableHead>
-                        <TableHead>{t("invoices.status", "Status")}</TableHead>
+                        <SortableTableHead
+                          sortKey="due_date"
+                          currentSortKey={sortConfig.key as string | null}
+                          currentDirection={sortConfig.direction}
+                          onSort={(key) => handleSort(key as any)}
+                        >
+                          {t("invoices.dueDate", "Due")}
+                        </SortableTableHead>
+                        <SortableTableHead
+                          sortKey="total"
+                          currentSortKey={sortConfig.key as string | null}
+                          currentDirection={sortConfig.direction}
+                          onSort={(key) => handleSort(key as any)}
+                          className="text-right"
+                        >
+                          {t("invoices.amount", "Amount")}
+                        </SortableTableHead>
+                        <SortableTableHead
+                          sortKey="_computedStatus"
+                          currentSortKey={sortConfig.key as string | null}
+                          currentDirection={sortConfig.direction}
+                          onSort={(key) => handleSort(key as any)}
+                        >
+                          {t("invoices.status", "Status")}
+                        </SortableTableHead>
                         <TableHead className="text-right">{t("invoices.actions", "Actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
