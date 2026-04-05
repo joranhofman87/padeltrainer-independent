@@ -443,6 +443,94 @@ export default function AcademyCyclusOverview() {
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
+  // Bulk selection helpers
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === sortedData.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sortedData.map(g => g.cyclus_id)));
+    }
+  };
+
+  const getSelectedSlotIds = async (): Promise<string[]> => {
+    const cyclusIds = Array.from(selectedIds);
+    if (cyclusIds.length === 0) return [];
+    const { data } = await supabase
+      .from('availability_slots')
+      .select('id')
+      .in('cyclus_id', cyclusIds);
+    return (data || []).map(s => s.id);
+  };
+
+  const handleBulkVisibility = async (makePublic: boolean) => {
+    setBulkUpdating(true);
+    try {
+      const slotIds = await getSelectedSlotIds();
+      if (slotIds.length === 0) {
+        toast({ title: 'Geen slots gevonden voor geselecteerde cycli' });
+        return;
+      }
+      for (let i = 0; i < slotIds.length; i += 500) {
+        const chunk = slotIds.slice(i, i + 500);
+        await supabase
+          .from('availability_slots')
+          .update({ is_public: makePublic })
+          .in('id', chunk);
+      }
+      toast({ title: `${slotIds.length} slots ${makePublic ? 'zichtbaar' : 'verborgen'} gemaakt` });
+      setSelectedIds(new Set());
+      fetchCyclusData();
+    } catch (error) {
+      logger.error('Bulk visibility update failed', error as Error);
+      toast({ title: 'Er ging iets mis', variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  const handleBulkPriceUpdate = async () => {
+    const price = parseFloat(bulkPrice);
+    if (isNaN(price) || price < 0) {
+      toast({ title: 'Voer een geldig bedrag in', variant: 'destructive' });
+      return;
+    }
+    setBulkUpdating(true);
+    try {
+      const slotIds = await getSelectedSlotIds();
+      if (slotIds.length === 0) {
+        toast({ title: 'Geen slots gevonden voor geselecteerde cycli' });
+        return;
+      }
+      for (let i = 0; i < slotIds.length; i += 500) {
+        const chunk = slotIds.slice(i, i + 500);
+        await supabase
+          .from('availability_slots')
+          .update({ price_per_session: price })
+          .in('id', chunk);
+      }
+      // Sync invoices
+      await syncInvoicesAfterPriceChange(slotIds);
+      toast({ title: `Prijs bijgewerkt voor ${slotIds.length} slots` });
+      setPriceDialogOpen(false);
+      setBulkPrice('');
+      setSelectedIds(new Set());
+      fetchCyclusData();
+    } catch (error) {
+      logger.error('Bulk price update failed', error as Error);
+      toast({ title: 'Er ging iets mis', variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const handleRowClick = (group: CyclusGroup) => {
     if (group.first_slot_id) {
       navigate(`/app/academy/slot/${group.first_slot_id}`);
