@@ -1,36 +1,23 @@
 
 
-# Replace Trainer Edit Dialog with Dedicated Page
+# Remove Contract Type (Exclusivity) from UI
 
 ## Problem
-Editing a trainer in the academy opens a dialog popup, which is cramped, hard to extend with more fields, and not mobile-friendly. The user wants a dedicated full page per trainer instead.
+The "exclusive / non-exclusive" contract type selector adds complexity without clear value. It appears in several places but has no business logic depending on it — it's purely a display label.
 
-## Changes
+## Impact Analysis
+No dependencies beyond display. The `contract_type` column exists on `academy_locations` but nothing in the backend (RLS, triggers, edge functions) checks it. It's safe to remove from UI while leaving the DB column untouched.
 
-### 1. Create new page: `src/pages/academy/AcademyTrainerDetail.tsx`
-- New page at route `/app/academy/trainers/:trainerId`
-- Move all the form logic from `EditAcademyTrainerDialog.tsx` into this page
-- Full-width layout with sections: avatar/name header, basic info, trainer details (rate, experience), certifications, specializations, rating, social links, coaching method, location assignments, visibility toggle, and a remove trainer action
-- Back button to `/app/academy/trainers`
-- Save button at the top (similar to `AcademySlotDetail` pattern)
+## Places to clean up
 
-### 2. Add route in `src/components/DomainRouter.tsx`
-- Add `<Route path="trainers/:trainerId" element={<AcademyTrainerDetail />} />` under the academy routes
+| File | What to remove |
+|------|----------------|
+| `src/components/academy/AddAcademyLocationDialog.tsx` | Remove `contractType` state, the Select dropdown, and the hint text. Stop passing `contractType` to `addAcademyLocation()` (just use default). |
+| `src/components/academy/EditAcademyLocationDialog.tsx` | Remove `contractType` state and the Select dropdown from the form. Remove `contract_type` from the update payload. |
+| `src/pages/academy/AcademyLocations.tsx` | Remove the "exclusive/non-exclusive" Badge from the location card. |
+| `src/pages/AcademyPublicProfile.tsx` | Remove the "Exclusive" badge that shows when `contract_type === 'exclusive'`. |
+| `src/components/admin/AcademyEditDialog.tsx` | Remove `contract_type` from the insert payload (line 487). |
+| `src/lib/academy.ts` | Remove `contractType` parameter from `addAcademyLocation()` signature, hardcode `'non_exclusive'` as default. Remove `contract_type` from `updateAcademyLocation()` updates type. Keep the DB column as-is. |
 
-### 3. Update `src/pages/academy/AcademyTrainers.tsx`
-- Remove `EditAcademyTrainerDialog` import and usage
-- Replace the edit button with a navigation link: clicking the trainer row or the edit icon navigates to `/app/academy/trainers/{trainer.id}`
-- Make the trainer name clickable as well
-
-### 4. Remove or deprecate `src/components/academy/EditAcademyTrainerDialog.tsx`
-- No longer needed once the page is in place
-
-## File summary
-
-| File | Change |
-|------|--------|
-| `src/pages/academy/AcademyTrainerDetail.tsx` | New page with full trainer edit form |
-| `src/components/DomainRouter.tsx` | Add route for `/app/academy/trainers/:trainerId` |
-| `src/pages/academy/AcademyTrainers.tsx` | Replace dialog with navigation to detail page |
-| `src/components/academy/EditAcademyTrainerDialog.tsx` | Remove (logic moves to new page) |
+No database migration needed — the column stays, we just stop reading/writing it in the UI.
 
