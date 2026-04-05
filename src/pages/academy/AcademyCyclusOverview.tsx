@@ -621,9 +621,43 @@ export default function AcademyCyclusOverview() {
         </CardContent>
       </Card>
 
-      {/* Summary */}
-      <div className="text-sm text-muted-foreground">
-        {sortedData.length} {sortedData.length === 1 ? 'cyclus' : 'cycli'}
+      {/* Summary + Bulk Actions */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          {sortedData.length} {sortedData.length === 1 ? 'cyclus' : 'cycli'}
+          {selectedIds.size > 0 && ` · ${selectedIds.size} geselecteerd`}
+        </div>
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkVisibility(true)}
+            >
+              <Eye className="h-3.5 w-3.5 mr-1.5" />
+              Zichtbaar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkVisibility(false)}
+            >
+              <EyeOff className="h-3.5 w-3.5 mr-1.5" />
+              Verbergen
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkUpdating}
+              onClick={() => { setBulkPrice(''); setPriceDialogOpen(true); }}
+            >
+              <Euro className="h-3.5 w-3.5 mr-1.5" />
+              Prijs wijzigen
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -632,6 +666,12 @@ export default function AcademyCyclusOverview() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[40px]">
+                  <Checkbox
+                    checked={sortedData.length > 0 && selectedIds.size === sortedData.length}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </TableHead>
                 <SortableTableHead
                   sortKey="cyclus_name"
                   currentSortKey={sortConfig.key as string}
@@ -681,7 +721,7 @@ export default function AcademyCyclusOverview() {
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
                     Geen cycli gevonden
                   </TableCell>
                 </TableRow>
@@ -692,6 +732,12 @@ export default function AcademyCyclusOverview() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleRowClick(group)}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(group.cyclus_id)}
+                        onCheckedChange={() => toggleSelect(group.cyclus_id)}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium max-w-[200px]">
                       <div className="flex items-center gap-2">
                         <span className="truncate">{group.cyclus_name}</span>
@@ -744,6 +790,39 @@ export default function AcademyCyclusOverview() {
           </Table>
         </div>
       </Card>
+
+      {/* Bulk Price Dialog */}
+      <Dialog open={priceDialogOpen} onOpenChange={setPriceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Prijs wijzigen voor {selectedIds.size} cycli</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Prijs per sessie (€)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={bulkPrice}
+                onChange={e => setBulkPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Dit past de prijs aan op alle slots van de geselecteerde cycli en synchroniseert openstaande facturen.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPriceDialogOpen(false)}>
+              Annuleren
+            </Button>
+            <Button onClick={handleBulkPriceUpdate} disabled={bulkUpdating}>
+              {bulkUpdating ? 'Bezig...' : 'Opslaan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
