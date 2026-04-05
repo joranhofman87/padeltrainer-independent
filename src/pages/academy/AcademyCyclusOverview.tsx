@@ -11,7 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useTableSort } from '@/hooks/useTableSort';
@@ -33,7 +32,10 @@ interface CyclusGroup {
   price_per_session: number | null;
   max_participants: number;
   max_booked: number;
-  first_slot_id: string;
+  first_slot_id: string | null;
+  status: string;
+  type: string;
+  has_slots: boolean;
 }
 
 type TimeFilter = 'current' | 'future' | 'past' | 'all';
@@ -41,7 +43,6 @@ type TimeFilter = 'current' | 'future' | 'past' | 'all';
 export default function AcademyCyclusOverview() {
   const { t, i18n } = useTranslation('trainer');
   const navigate = useNavigate();
-  const { toast } = useToast();
   const { activeAcademy } = useAcademyContext();
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<CyclusGroup[]>([]);
@@ -84,56 +85,93 @@ export default function AcademyCyclusOverview() {
         .eq('status', 'active');
 
       const trainerIds = academyTrainers?.map(t => t.trainer_profile_id) || [];
-      if (trainerIds.length === 0) {
-        setGroups([]);
-        setLoading(false);
-        return;
-      }
 
       // Fetch trainer names
-      const { data: trainerProfiles } = await supabase
-        .from('trainer_profiles' as any)
-        .select('id, user_id')
-        .in('id', trainerIds);
+      const trainerNameMap: Record<string, string> = {};
+      if (trainerIds.length > 0) {
+        const { data: trainerProfiles } = await supabase
+          .from('trainer_profiles' as any)
+          .select('id, user_id')
+          .in('id', trainerIds);
 
-      const userIds = (trainerProfiles || []).map((tp: any) => tp.user_id).filter(Boolean);
-      let nameMap: Record<string, string> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles' as any)
-          .select('user_id, full_name')
-          .in('user_id', userIds);
-        (profiles || []).forEach((p: any) => {
-          if (p.full_name) nameMap[p.user_id] = p.full_name;
+        const userIds = (trainerProfiles || []).map((tp: any) => tp.user_id).filter(Boolean);
+        let nameMap: Record<string, string> = {};
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles' as any)
+            .select('user_id, full_name')
+            .in('user_id', userIds);
+          (profiles || []).forEach((p: any) => {
+            if (p.full_name) nameMap[p.user_id] = p.full_name;
+          });
+        }
+        (trainerProfiles || []).forEach((tp: any) => {
+          trainerNameMap[tp.id] = nameMap[tp.user_id] || 'Unknown';
         });
       }
-      const trainerNameMap: Record<string, string> = {};
-      (trainerProfiles || []).forEach((tp: any) => {
-        trainerNameMap[tp.id] = nameMap[tp.user_id] || 'Unknown';
+
+      // 1. Fetch cycles from cycles table (academy-owned + trainer-owned)
+      const cycleQueries: Promise<any>[] = [
+        supabase
+          .from('cycles')
+          .select('id, name, owner_id, owner_type, status, type, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
+          .eq('owner_type', 'academy')
+          .eq('owner_id', activeAcademy.id),
+      ];
+
+      if (trainerIds.length > 0) {
+        cycleQueries.push(
+          supabase
+            .from('cycles')
+            .select('id, name, owner_id, owner_type, status, type, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
+            .eq('owner_type', 'trainer')
+            .in('owner_id', trainerIds)
+        );
+      }
+
+      const cycleResults = await Promise.all(cycleQueries);
+      const allCycles: any[] = [];
+      cycleResults.forEach(r => {
+        if (r.data) allCycles.push(...r.data);
       });
 
-      // Fetch all slots that belong to a cyclus
-      const { data: slots, error } = await supabase
-        .from('availability_slots')
-        .select(`
-          id, start_time, end_time, max_participants,
-          cyclus_id, cyclus_name, trainer_id,
-          price_per_session,
-          location_id, locations:location_id(name)
-        `)
-        .in('trainer_id', trainerIds)
-        .not('cyclus_id', 'is', null)
-        .order('start_time', { ascending: true });
+      // Deduplicate by id
+      const cycleMap = new Map<string, any>();
+      allCycles.forEach(c => cycleMap.set(c.id, c));
 
-      if (error) throw error;
+      const cycleIds = Array.from(cycleMap.keys());
 
-      // Fetch booking data for player names
-      const slotIds = slots?.map(s => s.id) || [];
+      // 2. Fetch all slots that belong to any of these cycles OR have a cyclus_id (orphans)
+      let allSlots: any[] = [];
+      if (trainerIds.length > 0) {
+        const { data: slots } = await supabase
+          .from('availability_slots')
+          .select(`
+            id, start_time, end_time, max_participants,
+            cyclus_id, cyclus_name, trainer_id,
+            price_per_session,
+            location_id, locations:location_id(name)
+          `)
+          .in('trainer_id', trainerIds)
+          .not('cyclus_id', 'is', null)
+          .order('start_time', { ascending: true });
+        allSlots = slots || [];
+      }
+
+      // Group slots by cyclus_id
+      const slotsByCyclus = new Map<string, any[]>();
+      allSlots.forEach(slot => {
+        const cid = slot.cyclus_id as string;
+        if (!slotsByCyclus.has(cid)) slotsByCyclus.set(cid, []);
+        slotsByCyclus.get(cid)!.push(slot);
+      });
+
+      // 3. Fetch booking data for player names
+      const slotIds = allSlots.map(s => s.id);
       let playerNamesMap: Record<string, string[]> = {};
       let bookingCountMap: Record<string, number> = {};
 
       if (slotIds.length > 0) {
-        // Batch in chunks of 500 to avoid query limits
         for (let i = 0; i < slotIds.length; i += 500) {
           const chunk = slotIds.slice(i, i + 500);
           const { data: bookings } = await supabase
@@ -177,40 +215,159 @@ export default function AcademyCyclusOverview() {
         }
       }
 
-      // Group by cyclus_id
-      const cyclusMap = new Map<string, typeof slots>();
-      (slots || []).forEach(slot => {
-        const cid = (slot as any).cyclus_id as string;
-        if (!cyclusMap.has(cid)) cyclusMap.set(cid, []);
-        cyclusMap.get(cid)!.push(slot);
+      // 4. Also fetch intake requests for cycles without slots (to show registered players)
+      let intakePlayerMap: Record<string, string[]> = {};
+      if (cycleIds.length > 0) {
+        for (let i = 0; i < cycleIds.length; i += 500) {
+          const chunk = cycleIds.slice(i, i + 500);
+          const { data: intakes } = await supabase
+            .from('intake_requests' as any)
+            .select('cycle_id, player_id, guest_player_id')
+            .in('cycle_id', chunk)
+            .in('status', ['confirmed', 'booked', 'pending']);
+
+          if (intakes && intakes.length > 0) {
+            const intakePlayerIds = [...new Set(intakes.map((ir: any) => ir.player_id).filter(Boolean))] as string[];
+            let intakePlayerLookup: Record<string, string> = {};
+            if (intakePlayerIds.length > 0) {
+              const { data: pp } = await supabase
+                .from('profiles' as any)
+                .select('id, full_name')
+                .in('id', intakePlayerIds);
+              (pp || []).forEach((p: any) => {
+                if (p.full_name) intakePlayerLookup[p.id] = p.full_name;
+              });
+            }
+
+            const intakeGuestIds = [...new Set(intakes.map((ir: any) => ir.guest_player_id).filter(Boolean))] as string[];
+            let intakeGuestLookup: Record<string, string> = {};
+            if (intakeGuestIds.length > 0) {
+              const { data: gp } = await supabase
+                .from('guest_players' as any)
+                .select('id, full_name')
+                .in('id', intakeGuestIds);
+              (gp || []).forEach((g: any) => {
+                if (g.full_name) intakeGuestLookup[g.id] = g.full_name;
+              });
+            }
+
+            intakes.forEach((ir: any) => {
+              const name = (ir.player_id && intakePlayerLookup[ir.player_id]) || (ir.guest_player_id && intakeGuestLookup[ir.guest_player_id]) || null;
+              if (name) {
+                if (!intakePlayerMap[ir.cycle_id]) intakePlayerMap[ir.cycle_id] = [];
+                if (!intakePlayerMap[ir.cycle_id].includes(name)) {
+                  intakePlayerMap[ir.cycle_id].push(name);
+                }
+              }
+            });
+          }
+        }
+      }
+
+      // 5. Build grouped results
+      const grouped: CyclusGroup[] = [];
+      const processedCyclusIds = new Set<string>();
+
+      // Process cycles from cycles table
+      cycleMap.forEach((cycle, cycleId) => {
+        processedCyclusIds.add(cycleId);
+        const cyclusSlots = slotsByCyclus.get(cycleId) || [];
+        const hasSlots = cyclusSlots.length > 0;
+
+        // Determine trainer from cycle owner or first slot
+        let trainerId = '';
+        let trainerName = 'Unknown';
+        if (cycle.owner_type === 'trainer' && trainerNameMap[cycle.owner_id]) {
+          trainerId = cycle.owner_id;
+          trainerName = trainerNameMap[cycle.owner_id];
+        } else if (hasSlots) {
+          trainerId = cyclusSlots[0].trainer_id;
+          trainerName = trainerNameMap[cyclusSlots[0].trainer_id] || 'Unknown';
+        }
+
+        // Location from slots or cycle
+        let locationName: string | null = null;
+        if (hasSlots) {
+          locationName = (cyclusSlots[0].locations as any)?.name || null;
+        } else if (cycle.locations) {
+          locationName = (cycle.locations as any)?.name || null;
+        }
+
+        // Day/time from first slot
+        let dayTime = '—';
+        if (hasSlots) {
+          const startDate = parseISO(cyclusSlots[0].start_time);
+          const endDate = parseISO(cyclusSlots[0].end_time);
+          const dayName = format(startDate, 'EEEE', { locale: dateLocale });
+          dayTime = `${dayName} ${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
+        }
+
+        // Period
+        const periodStart = hasSlots ? cyclusSlots[0].start_time : cycle.start_date;
+        const periodEnd = hasSlots ? cyclusSlots[cyclusSlots.length - 1].start_time : cycle.end_date;
+
+        // Players from both bookings and intake requests
+        const allPlayerNames = new Set<string>();
+        let maxBooked = 0;
+        cyclusSlots.forEach((s: any) => {
+          const names = playerNamesMap[s.id] || [];
+          names.forEach((n: string) => allPlayerNames.add(n));
+          const count = bookingCountMap[s.id] || 0;
+          if (count > maxBooked) maxBooked = count;
+        });
+        // Also add intake players
+        const intakePlayers = intakePlayerMap[cycleId] || [];
+        intakePlayers.forEach(n => allPlayerNames.add(n));
+
+        // Price from cycle or first slot
+        const pricePerSession = cycle.price_per_session ?? (hasSlots ? cyclusSlots[0].price_per_session : null);
+
+        grouped.push({
+          cyclus_id: cycleId,
+          cyclus_name: cycle.name || cycleId,
+          trainer_name: trainerName,
+          trainer_id: trainerId,
+          location_name: locationName,
+          day_time: dayTime,
+          period_start: periodStart,
+          period_end: periodEnd,
+          sessions: cyclusSlots.length,
+          player_names: Array.from(allPlayerNames).sort(),
+          player_count: allPlayerNames.size,
+          price_per_session: pricePerSession,
+          max_participants: hasSlots ? (cyclusSlots[0].max_participants || 4) : 4,
+          max_booked: maxBooked,
+          first_slot_id: hasSlots ? cyclusSlots[0].id : null,
+          status: cycle.status || 'draft',
+          type: cycle.type || 'cyclus',
+          has_slots: hasSlots,
+        });
       });
 
-      const now = new Date();
-      const grouped: CyclusGroup[] = [];
+      // Process orphan slot groups (cyclus_id not in cycles table)
+      slotsByCyclus.forEach((cyclusSlots, cyclusId) => {
+        if (processedCyclusIds.has(cyclusId)) return;
 
-      cyclusMap.forEach((cyclusSlots, cyclusId) => {
         const first = cyclusSlots[0];
         const last = cyclusSlots[cyclusSlots.length - 1];
 
-        // Derive day/time from first slot
         const startDate = parseISO(first.start_time);
         const endDate = parseISO(first.end_time);
         const dayName = format(startDate, 'EEEE', { locale: dateLocale });
         const timeRange = `${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
 
-        // Collect unique player names across all slots
         const allPlayerNames = new Set<string>();
         let maxBooked = 0;
-        cyclusSlots.forEach(s => {
+        cyclusSlots.forEach((s: any) => {
           const names = playerNamesMap[s.id] || [];
-          names.forEach(n => allPlayerNames.add(n));
+          names.forEach((n: string) => allPlayerNames.add(n));
           const count = bookingCountMap[s.id] || 0;
           if (count > maxBooked) maxBooked = count;
         });
 
         grouped.push({
           cyclus_id: cyclusId,
-          cyclus_name: (first as any).cyclus_name || cyclusId,
+          cyclus_name: first.cyclus_name || cyclusId,
           trainer_name: trainerNameMap[first.trainer_id] || 'Unknown',
           trainer_id: first.trainer_id,
           location_name: (first.locations as any)?.name || null,
@@ -224,6 +381,9 @@ export default function AcademyCyclusOverview() {
           max_participants: first.max_participants || 4,
           max_booked: maxBooked,
           first_slot_id: first.id,
+          status: 'active',
+          type: 'cyclus',
+          has_slots: true,
         });
       });
 
@@ -271,7 +431,30 @@ export default function AcademyCyclusOverview() {
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
   const handleRowClick = (group: CyclusGroup) => {
-    navigate(`/app/academy/slot/${group.first_slot_id}`);
+    if (group.first_slot_id) {
+      navigate(`/app/academy/slot/${group.first_slot_id}`);
+    } else {
+      navigate(`/app/academy/registrations?cycle=${group.cyclus_id}`);
+    }
+  };
+
+  const getStatusBadge = (group: CyclusGroup) => {
+    if (!group.has_slots && group.sessions === 0) {
+      return <Badge variant="outline" className="text-xs">Geen sessies</Badge>;
+    }
+    return (
+      <Badge variant={group.max_booked >= group.max_participants ? 'destructive' : 'secondary'}>
+        {group.max_booked}/{group.max_participants}
+      </Badge>
+    );
+  };
+
+  const getTypeBadge = (type: string) => {
+    switch (type) {
+      case 'registration': return <Badge variant="outline" className="text-xs">Registratie</Badge>;
+      case 'event': return <Badge variant="outline" className="text-xs">Event</Badge>;
+      default: return null;
+    }
   };
 
   if (loading) {
@@ -408,8 +591,11 @@ export default function AcademyCyclusOverview() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleRowClick(group)}
                   >
-                    <TableCell className="font-medium max-w-[200px] truncate">
-                      {group.cyclus_name}
+                    <TableCell className="font-medium max-w-[200px]">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate">{group.cyclus_name}</span>
+                        {getTypeBadge(group.type)}
+                      </div>
                     </TableCell>
                     <TableCell>{group.trainer_name}</TableCell>
                     <TableCell className="text-muted-foreground">
@@ -424,7 +610,7 @@ export default function AcademyCyclusOverview() {
                       {format(parseISO(group.period_end), 'd MMM yyyy', { locale: dateLocale })}
                     </TableCell>
                     <TableCell className="text-center">
-                      {group.sessions}
+                      {group.sessions > 0 ? group.sessions : '—'}
                     </TableCell>
                     <TableCell>
                       {group.player_count > 0 ? (
@@ -448,9 +634,7 @@ export default function AcademyCyclusOverview() {
                       }
                     </TableCell>
                     <TableCell>
-                      <Badge variant={group.max_booked >= group.max_participants ? 'destructive' : 'secondary'}>
-                        {group.max_booked}/{group.max_participants}
-                      </Badge>
+                      {getStatusBadge(group)}
                     </TableCell>
                   </TableRow>
                 ))
