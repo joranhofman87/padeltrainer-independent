@@ -387,6 +387,8 @@ export default function AcademyCalendarOverview({
                             isPast={trainerSlots.every(s => isBefore(parseISO(s.end_time), now))}
                             onSlotClick={onSlotClick}
                             defaultOpen={trainerCount <= 3}
+                            warningMaxRatingSpread={warningMaxRatingSpread}
+                            warningMaxAgeDiffYears={warningMaxAgeDiffYears}
                           />
                         ))}
                         {trainerCount === 0 && (
@@ -417,6 +419,12 @@ export default function AcademyCalendarOverview({
                 <Lock className="h-2.5 w-2.5 text-amber-500" />
                 {t('calendar.overview.private', 'Private')}
               </span>
+              {(warningMaxRatingSpread != null || warningMaxAgeDiffYears != null) && (
+                <span className="flex items-center gap-1">
+                  <AlertTriangle className="h-2.5 w-2.5 text-amber-500" />
+                  {t('calendar.overview.warning', 'Level/age warning')}
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
