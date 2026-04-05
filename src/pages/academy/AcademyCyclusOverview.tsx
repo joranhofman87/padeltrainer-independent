@@ -792,8 +792,8 @@ export default function AcademyCyclusOverview() {
                   >
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox
-                        checked={selectedIds.has(group.cyclus_id)}
-                        onCheckedChange={() => toggleSelect(group.cyclus_id)}
+                        checked={selectedIds.has(group.group_key)}
+                        onCheckedChange={() => toggleSelect(group.group_key)}
                       />
                     </TableCell>
                     <TableCell className="font-medium max-w-[200px]">
