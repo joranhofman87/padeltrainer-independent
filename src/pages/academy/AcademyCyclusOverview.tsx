@@ -111,22 +111,20 @@ export default function AcademyCyclusOverview() {
       }
 
       // 1. Fetch cycles from cycles table (academy-owned + trainer-owned)
-      const cycleQueries: Promise<any>[] = [
-        supabase
+      const { data: academyCycles } = await supabase
+        .from('cycles')
+        .select('id, name, owner_id, owner_type, status, type, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
+        .eq('owner_type', 'academy')
+        .eq('owner_id', activeAcademy.id);
+
+      let trainerCycles: any[] = [];
+      if (trainerIds.length > 0) {
+        const { data } = await supabase
           .from('cycles')
           .select('id, name, owner_id, owner_type, status, type, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
-          .eq('owner_type', 'academy')
-          .eq('owner_id', activeAcademy.id),
-      ];
-
-      if (trainerIds.length > 0) {
-        cycleQueries.push(
-          supabase
-            .from('cycles')
-            .select('id, name, owner_id, owner_type, status, type, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
-            .eq('owner_type', 'trainer')
-            .in('owner_id', trainerIds)
-        );
+          .eq('owner_type', 'trainer')
+          .in('owner_id', trainerIds);
+        trainerCycles = data || [];
       }
 
       const cycleResults = await Promise.all(cycleQueries);
