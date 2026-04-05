@@ -1049,6 +1049,13 @@ export default function TrainerScheduleOverview() {
           } catch (err) {
             logger.error("Invoice sync failed after cycle player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
           }
+
+          // Recalculate split count for remaining players
+          try {
+            await syncSplitCountForCycle(editCycleId);
+          } catch (err) {
+            logger.error("Split count sync failed after cycle player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
+          }
         }
       }
 
