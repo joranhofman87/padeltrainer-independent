@@ -586,6 +586,18 @@ export default function AcademyOpenSlots({ embedded = false }: { embedded?: bool
                               {slot.available_spots}/{slot.max_participants}
                             </span>
                           </TableCell>
+                          <TableCell>
+                            {slot.player_names.length > 0 ? (
+                              <div className="text-xs text-foreground max-w-[180px]">
+                                {slot.player_names.slice(0, 3).join(', ')}
+                                {slot.player_names.length > 3 && (
+                                  <span className="text-muted-foreground"> +{slot.player_names.length - 3}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-sm">
                             {slot.price_per_session != null ? formatPrice(slot.price_per_session) : '—'}
                           </TableCell>
