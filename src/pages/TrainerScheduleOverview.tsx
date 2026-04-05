@@ -1004,6 +1004,13 @@ export default function TrainerScheduleOverview() {
         }]);
       }
 
+      // Recalculate split invoices for all players in the cycle
+      try {
+        await syncSplitCountForCycle(editCycleId);
+      } catch (err) {
+        logger.error("Split count sync failed after adding player to cycle", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
+      }
+
       toast({ title: t("scheduleOverview.addedToCycle", "Player added to all sessions") });
       invalidate();
     } catch (err: any) {
