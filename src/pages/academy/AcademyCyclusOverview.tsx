@@ -273,7 +273,7 @@ export default function AcademyCyclusOverview() {
         }
       }
 
-      // 5. Build grouped results
+      // 5. Build grouped results — group by (cycle_id + trainer_id)
       const grouped: CyclusGroup[] = [];
       const processedCyclusIds = new Set<string>();
 
@@ -281,118 +281,160 @@ export default function AcademyCyclusOverview() {
       cycleMap.forEach((cycle, cycleId) => {
         processedCyclusIds.add(cycleId);
         const cyclusSlots = slotsByCyclus.get(cycleId) || [];
-        const hasSlots = cyclusSlots.length > 0;
 
-        // Determine trainer from cycle owner or first slot
-        let trainerId = '';
-        let trainerName = 'Unknown';
-        if (cycle.owner_type === 'trainer' && trainerNameMap[cycle.owner_id]) {
-          trainerId = cycle.owner_id;
-          trainerName = trainerNameMap[cycle.owner_id];
-        } else if (hasSlots) {
-          trainerId = cyclusSlots[0].trainer_id;
-          trainerName = trainerNameMap[cyclusSlots[0].trainer_id] || 'Unknown';
-        }
-
-        // Location from slots or cycle
-        let locationName: string | null = null;
-        if (hasSlots) {
-          locationName = (cyclusSlots[0].locations as any)?.name || null;
-        } else if (cycle.locations) {
-          locationName = (cycle.locations as any)?.name || null;
-        }
-
-        // Day/time from first slot
-        let dayTime = '—';
-        if (hasSlots) {
-          const startDate = parseISO(cyclusSlots[0].start_time);
-          const endDate = parseISO(cyclusSlots[0].end_time);
-          const dayName = format(startDate, 'EEEE', { locale: dateLocale });
-          dayTime = `${dayName} ${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
-        }
-
-        // Period — default to today if both cycle dates and slot dates are missing
-        const periodStart = hasSlots ? cyclusSlots[0].start_time : (cycle.start_date || new Date().toISOString());
-        const periodEnd = hasSlots ? cyclusSlots[cyclusSlots.length - 1].start_time : (cycle.end_date || new Date().toISOString());
-
-        // Players from both bookings and intake requests
-        const allPlayerNames = new Set<string>();
-        let maxBooked = 0;
-        cyclusSlots.forEach((s: any) => {
-          const names = playerNamesMap[s.id] || [];
-          names.forEach((n: string) => allPlayerNames.add(n));
-          const count = bookingCountMap[s.id] || 0;
-          if (count > maxBooked) maxBooked = count;
+        // Sub-group slots by trainer_id
+        const slotsByTrainer = new Map<string, any[]>();
+        cyclusSlots.forEach((slot: any) => {
+          const tid = slot.trainer_id || '';
+          if (!slotsByTrainer.has(tid)) slotsByTrainer.set(tid, []);
+          slotsByTrainer.get(tid)!.push(slot);
         });
-        // Also add intake players
-        const intakePlayers = intakePlayerMap[cycleId] || [];
-        intakePlayers.forEach(n => allPlayerNames.add(n));
 
-        // Price from cycle or first slot
-        const pricePerSession = cycle.price_per_session ?? (hasSlots ? cyclusSlots[0].price_per_session : null);
+        // If no slots at all, create one row with cycle-level data
+        if (slotsByTrainer.size === 0) {
+          let trainerId = '';
+          let trainerName = 'Unknown';
+          if (cycle.owner_type === 'trainer' && trainerNameMap[cycle.owner_id]) {
+            trainerId = cycle.owner_id;
+            trainerName = trainerNameMap[cycle.owner_id];
+          }
+          const locationName = (cycle.locations as any)?.name || null;
+          const periodStart = cycle.start_date || new Date().toISOString();
+          const periodEnd = cycle.end_date || new Date().toISOString();
+          const intakePlayers = intakePlayerMap[cycleId] || [];
 
-        grouped.push({
-          cyclus_id: cycleId,
-          cyclus_name: cycle.name || cycleId,
-          trainer_name: trainerName,
-          trainer_id: trainerId,
-          location_name: locationName,
-          day_time: dayTime,
-          period_start: periodStart,
-          period_end: periodEnd,
-          sessions: cyclusSlots.length,
-          player_names: Array.from(allPlayerNames).sort(),
-          player_count: allPlayerNames.size,
-          price_per_session: pricePerSession,
-          max_participants: hasSlots ? (cyclusSlots[0].max_participants || 4) : 4,
-          max_booked: maxBooked,
-          first_slot_id: hasSlots ? cyclusSlots[0].id : null,
-          status: cycle.status || 'draft',
-          type: cycle.type || 'cyclus',
-          has_slots: hasSlots,
-        });
+          grouped.push({
+            group_key: `${cycleId}::${trainerId}`,
+            cyclus_id: cycleId,
+            cyclus_name: cycle.name || cycleId,
+            trainer_name: trainerName,
+            trainer_id: trainerId,
+            location_name: locationName,
+            day_time: '—',
+            period_start: periodStart,
+            period_end: periodEnd,
+            sessions: 0,
+            player_names: intakePlayers.sort(),
+            player_count: intakePlayers.length,
+            price_per_session: cycle.price_per_session ?? null,
+            max_participants: 4,
+            max_booked: 0,
+            first_slot_id: null,
+            status: cycle.status || 'draft',
+            type: cycle.type || 'cyclus',
+            has_slots: false,
+          });
+        } else {
+          // Create one row per trainer within this cycle
+          slotsByTrainer.forEach((trainerSlots, trainerId) => {
+            const trainerName = trainerNameMap[trainerId] || 'Unknown';
+            const first = trainerSlots[0];
+            const last = trainerSlots[trainerSlots.length - 1];
+
+            const locationName = (first.locations as any)?.name || (cycle.locations as any)?.name || null;
+
+            let dayTime = '—';
+            try {
+              const startDate = parseISO(first.start_time);
+              const endDate = parseISO(first.end_time);
+              const dayName = format(startDate, 'EEEE', { locale: dateLocale });
+              dayTime = `${dayName} ${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
+            } catch { /* ignore */ }
+
+            const periodStart = first.start_time || cycle.start_date || new Date().toISOString();
+            const periodEnd = last.start_time || cycle.end_date || new Date().toISOString();
+
+            const allPlayerNames = new Set<string>();
+            let maxBooked = 0;
+            trainerSlots.forEach((s: any) => {
+              const names = playerNamesMap[s.id] || [];
+              names.forEach((n: string) => allPlayerNames.add(n));
+              const count = bookingCountMap[s.id] || 0;
+              if (count > maxBooked) maxBooked = count;
+            });
+            const intakePlayers = intakePlayerMap[cycleId] || [];
+            intakePlayers.forEach(n => allPlayerNames.add(n));
+
+            const pricePerSession = cycle.price_per_session ?? first.price_per_session ?? null;
+
+            grouped.push({
+              group_key: `${cycleId}::${trainerId}`,
+              cyclus_id: cycleId,
+              cyclus_name: cycle.name || cycleId,
+              trainer_name: trainerName,
+              trainer_id: trainerId,
+              location_name: locationName,
+              day_time: dayTime,
+              period_start: periodStart,
+              period_end: periodEnd,
+              sessions: trainerSlots.length,
+              player_names: Array.from(allPlayerNames).sort(),
+              player_count: allPlayerNames.size,
+              price_per_session: pricePerSession,
+              max_participants: first.max_participants || 4,
+              max_booked: maxBooked,
+              first_slot_id: first.id,
+              status: cycle.status || 'draft',
+              type: cycle.type || 'cyclus',
+              has_slots: true,
+            });
+          });
+        }
       });
 
       // Process orphan slot groups (cyclus_id not in cycles table)
       slotsByCyclus.forEach((cyclusSlots, cyclusId) => {
         if (processedCyclusIds.has(cyclusId)) return;
 
-        const first = cyclusSlots[0];
-        const last = cyclusSlots[cyclusSlots.length - 1];
-
-        const startDate = parseISO(first.start_time);
-        const endDate = parseISO(first.end_time);
-        const dayName = format(startDate, 'EEEE', { locale: dateLocale });
-        const timeRange = `${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
-
-        const allPlayerNames = new Set<string>();
-        let maxBooked = 0;
-        cyclusSlots.forEach((s: any) => {
-          const names = playerNamesMap[s.id] || [];
-          names.forEach((n: string) => allPlayerNames.add(n));
-          const count = bookingCountMap[s.id] || 0;
-          if (count > maxBooked) maxBooked = count;
+        const slotsByTrainer = new Map<string, any[]>();
+        cyclusSlots.forEach((slot: any) => {
+          const tid = slot.trainer_id || '';
+          if (!slotsByTrainer.has(tid)) slotsByTrainer.set(tid, []);
+          slotsByTrainer.get(tid)!.push(slot);
         });
 
-        grouped.push({
-          cyclus_id: cyclusId,
-          cyclus_name: first.cyclus_name || cyclusId,
-          trainer_name: trainerNameMap[first.trainer_id] || 'Unknown',
-          trainer_id: first.trainer_id,
-          location_name: (first.locations as any)?.name || null,
-          day_time: `${dayName} ${timeRange}`,
-          period_start: first.start_time,
-          period_end: last.start_time,
-          sessions: cyclusSlots.length,
-          player_names: Array.from(allPlayerNames).sort(),
-          player_count: allPlayerNames.size,
-          price_per_session: first.price_per_session,
-          max_participants: first.max_participants || 4,
-          max_booked: maxBooked,
-          first_slot_id: first.id,
-          status: 'active',
-          type: 'cyclus',
-          has_slots: true,
+        slotsByTrainer.forEach((trainerSlots, trainerId) => {
+          const first = trainerSlots[0];
+          const last = trainerSlots[trainerSlots.length - 1];
+
+          let dayTime = '—';
+          try {
+            const startDate = parseISO(first.start_time);
+            const endDate = parseISO(first.end_time);
+            const dayName = format(startDate, 'EEEE', { locale: dateLocale });
+            dayTime = `${dayName} ${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
+          } catch { /* ignore */ }
+
+          const allPlayerNames = new Set<string>();
+          let maxBooked = 0;
+          trainerSlots.forEach((s: any) => {
+            const names = playerNamesMap[s.id] || [];
+            names.forEach((n: string) => allPlayerNames.add(n));
+            const count = bookingCountMap[s.id] || 0;
+            if (count > maxBooked) maxBooked = count;
+          });
+
+          grouped.push({
+            group_key: `${cyclusId}::${trainerId}`,
+            cyclus_id: cyclusId,
+            cyclus_name: first.cyclus_name || cyclusId,
+            trainer_name: trainerNameMap[trainerId] || 'Unknown',
+            trainer_id: trainerId,
+            location_name: (first.locations as any)?.name || null,
+            day_time: dayTime,
+            period_start: first.start_time,
+            period_end: last.start_time,
+            sessions: trainerSlots.length,
+            player_names: Array.from(allPlayerNames).sort(),
+            player_count: allPlayerNames.size,
+            price_per_session: first.price_per_session,
+            max_participants: first.max_participants || 4,
+            max_booked: maxBooked,
+            first_slot_id: first.id,
+            status: 'active',
+            type: 'cyclus',
+            has_slots: true,
+          });
         });
       });
 
