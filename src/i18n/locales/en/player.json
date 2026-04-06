@@ -309,5 +309,16 @@
     "unfollowConfirm": "Unfollow {{name}}?",
     "unfollowed": "Unfollowed",
     "unfollowedDescription": "You unfollowed {{name}}"
+  },
+  "attendance": {
+    "title": "Attendance",
+    "reported": "Reported",
+    "sessionHappened": "Did this session happen?",
+    "sessionSummary": "Session summary",
+    "myNotes": "My notes (private)",
+    "myNotesPlaceholder": "Notes for yourself...",
+    "save": "Save",
+    "saved": "Attendance saved",
+    "saveError": "Failed to save"
   }
 }

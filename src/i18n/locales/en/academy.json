@@ -431,5 +431,21 @@
     "level": "Level",
     "years": "yr",
     "guest": "Guest"
+  },
+  "attendance": {
+    "title": "Attendance",
+    "noReports": "No attendance reports submitted yet",
+    "conflict": "Conflict",
+    "trainerReport": "Trainer report",
+    "sessionHappened": "Session happened",
+    "sessionCancelled": "Session cancelled",
+    "attendees": "Attendees",
+    "players": "players",
+    "sessionSummary": "Session summary",
+    "trainerNotes": "Trainer notes (private)",
+    "playerConfirmations": "Player confirmations",
+    "unknownPlayer": "Player",
+    "confirmed": "Confirmed",
+    "denied": "Denied"
   }
 }
