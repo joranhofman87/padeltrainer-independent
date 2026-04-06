@@ -726,8 +726,8 @@ export default function AcademyCyclusOverview() {
         )}
       </div>
 
-      {/* Table */}
-      <Card>
+      {/* Desktop Table */}
+      <Card className="hidden md:block">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -738,48 +738,13 @@ export default function AcademyCyclusOverview() {
                     onCheckedChange={toggleSelectAll}
                   />
                 </TableHead>
-                <SortableTableHead
-                  sortKey="cyclus_name"
-                  currentSortKey={sortConfig.key as string}
-                  currentDirection={sortConfig.direction}
-                  onSort={handleSort as (key: string) => void}
-                >
-                  {t('cyclesTab.name')}
-                </SortableTableHead>
-                <SortableTableHead
-                  sortKey="trainer_name"
-                  currentSortKey={sortConfig.key as string}
-                  currentDirection={sortConfig.direction}
-                  onSort={handleSort as (key: string) => void}
-                >
-                  {t('cyclesTab.trainer')}
-                </SortableTableHead>
+                <SortableTableHead sortKey="cyclus_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.name')}</SortableTableHead>
+                <SortableTableHead sortKey="trainer_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.trainer')}</SortableTableHead>
                 <TableHead>{t('cyclesTab.location')}</TableHead>
                 <TableHead>{t('cyclesTab.dayTime')}</TableHead>
-                <SortableTableHead
-                  sortKey="period_start"
-                  currentSortKey={sortConfig.key as string}
-                  currentDirection={sortConfig.direction}
-                  onSort={handleSort as (key: string) => void}
-                >
-                  {t('cyclesTab.period')}
-                </SortableTableHead>
-                <SortableTableHead
-                  sortKey="sessions"
-                  currentSortKey={sortConfig.key as string}
-                  currentDirection={sortConfig.direction}
-                  onSort={handleSort as (key: string) => void}
-                >
-                  {t('cyclesTab.sessions')}
-                </SortableTableHead>
-                <SortableTableHead
-                  sortKey="player_count"
-                  currentSortKey={sortConfig.key as string}
-                  currentDirection={sortConfig.direction}
-                  onSort={handleSort as (key: string) => void}
-                >
-                  {t('cyclesTab.players')}
-                </SortableTableHead>
+                <SortableTableHead sortKey="period_start" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.period')}</SortableTableHead>
+                <SortableTableHead sortKey="sessions" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.sessions')}</SortableTableHead>
+                <SortableTableHead sortKey="player_count" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.players')}</SortableTableHead>
                 <TableHead>{t('cyclesTab.price')}</TableHead>
                 <TableHead>{t('cyclesTab.occupancy')}</TableHead>
               </TableRow>
@@ -793,16 +758,9 @@ export default function AcademyCyclusOverview() {
                 </TableRow>
               ) : (
                 sortedData.map((group) => (
-                  <TableRow
-                    key={group.group_key}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleRowClick(group)}
-                  >
+                  <TableRow key={group.group_key} className="cursor-pointer hover:bg-muted/50" onClick={() => handleRowClick(group)}>
                     <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={selectedIds.has(group.group_key)}
-                        onCheckedChange={() => toggleSelect(group.group_key)}
-                      />
+                      <Checkbox checked={selectedIds.has(group.group_key)} onCheckedChange={() => toggleSelect(group.group_key)} />
                     </TableCell>
                     <TableCell className="font-medium max-w-[200px]">
                       <div className="flex items-center gap-2">
@@ -811,29 +769,21 @@ export default function AcademyCyclusOverview() {
                       </div>
                     </TableCell>
                     <TableCell>{group.trainer_name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {group.location_name || '—'}
-                    </TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">
-                      {group.day_time}
-                    </TableCell>
+                    <TableCell className="text-muted-foreground">{group.location_name || '—'}</TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{group.day_time}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">
                       {format(parseISO(group.period_start), 'd MMM', { locale: dateLocale })}
                       {' → '}
                       {format(parseISO(group.period_end), 'd MMM yyyy', { locale: dateLocale })}
                     </TableCell>
-                    <TableCell className="text-center">
-                      {group.sessions > 0 ? group.sessions : '—'}
-                    </TableCell>
+                    <TableCell className="text-center">{group.sessions > 0 ? group.sessions : '—'}</TableCell>
                     <TableCell>
                       {group.player_count > 0 ? (
                         <div className="flex items-center gap-1.5">
                           <Users className="h-3.5 w-3.5 text-muted-foreground" />
                           <span className="text-sm">{group.player_names.slice(0, 3).join(', ')}</span>
                           {group.player_names.length > 3 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{group.player_names.length - 3}
-                            </Badge>
+                            <Badge variant="secondary" className="text-xs">+{group.player_names.length - 3}</Badge>
                           )}
                         </div>
                       ) : (
@@ -841,14 +791,9 @@ export default function AcademyCyclusOverview() {
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {group.price_per_session != null
-                        ? formatPrice(group.price_per_session)
-                        : <span className="text-muted-foreground">—</span>
-                      }
+                      {group.price_per_session != null ? formatPrice(group.price_per_session) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
-                    <TableCell>
-                      {getStatusBadge(group)}
-                    </TableCell>
+                    <TableCell>{getStatusBadge(group)}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -856,6 +801,56 @@ export default function AcademyCyclusOverview() {
           </Table>
         </div>
       </Card>
+
+      {/* Mobile Cards */}
+      <div className="md:hidden space-y-3">
+        {sortedData.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              {t('cyclesTab.noCyclesFound')}
+            </CardContent>
+          </Card>
+        ) : (
+          sortedData.map((group) => (
+            <Card key={group.group_key} className="cursor-pointer hover:bg-muted/50" onClick={() => handleRowClick(group)}>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate">{group.cyclus_name}</p>
+                    <p className="text-xs text-muted-foreground">{group.trainer_name}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {getStatusBadge(group)}
+                    {getTypeBadge(group.type)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {group.location_name && <span>{group.location_name}</span>}
+                  <span>{group.day_time}</span>
+                  <span>
+                    {format(parseISO(group.period_start), 'd MMM', { locale: dateLocale })}
+                    {' → '}
+                    {format(parseISO(group.period_end), 'd MMM', { locale: dateLocale })}
+                  </span>
+                  <span>{group.sessions} {t('cyclesTab.sessions')}</span>
+                </div>
+                {group.player_count > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <Users className="h-3 w-3 text-muted-foreground" />
+                    <span className="truncate">{group.player_names.slice(0, 2).join(', ')}</span>
+                    {group.player_names.length > 2 && (
+                      <Badge variant="secondary" className="text-xs">+{group.player_names.length - 2}</Badge>
+                    )}
+                  </div>
+                )}
+                {group.price_per_session != null && (
+                  <p className="text-xs font-medium">{formatPrice(group.price_per_session)} / {t('cyclesTab.session', 'session')}</p>
+                )}
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
 
       {/* Bulk Price Dialog */}
       <Dialog open={priceDialogOpen} onOpenChange={setPriceDialogOpen}>
