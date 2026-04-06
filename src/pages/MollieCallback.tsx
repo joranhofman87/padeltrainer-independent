@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,7 @@ export default function MollieCallback() {
   const [status, setStatus] = useState<CallbackStatus>('processing');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [organizationName, setOrganizationName] = useState<string>('');
-
+  const { t } = useTranslation('common');
   useEffect(() => {
     const callbackStatus = searchParams.get('status');
     const name = searchParams.get('name');
@@ -41,7 +42,7 @@ export default function MollieCallback() {
 
     if (callbackStatus === 'error') {
       setStatus('error');
-      const msg = message || 'Something went wrong while connecting your Mollie account.';
+      const msg = message || t('mollieCallback.genericError', 'Something went wrong while connecting your Mollie account.');
       logger.error('Mollie connection failed', new Error(msg), { component: 'MollieCallback', entity: entity || 'unknown' });
       setErrorMessage(msg);
       return;
@@ -51,13 +52,13 @@ export default function MollieCallback() {
     // (shouldn't happen with the new architecture, but handle gracefully)
     if (code) {
       setStatus('error');
-      setErrorMessage('The connection flow encountered an unexpected redirect. Please try again.');
+      setErrorMessage(t('mollieCallback.unexpectedRedirect', 'The connection flow encountered an unexpected redirect. Please try again.'));
       return;
     }
 
     // No recognized params - show error
     setStatus('error');
-    setErrorMessage('Missing connection parameters. Please try again.');
+    setErrorMessage(t('mollieCallback.missingParams', 'Missing connection parameters. Please try again.'));
   }, [searchParams, navigate]);
 
   const handleRetry = () => {
@@ -76,9 +77,9 @@ export default function MollieCallback() {
           {status === 'processing' && (
             <div className="text-center space-y-4">
               <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-              <h2 className="text-xl font-semibold">Connecting your Mollie account...</h2>
+              <h2 className="text-xl font-semibold">{t('mollieCallback.connecting')}</h2>
               <p className="text-muted-foreground">
-                Please wait while we complete the connection.
+                {t('mollieCallback.pleaseWait')}
               </p>
             </div>
           )}
@@ -86,14 +87,14 @@ export default function MollieCallback() {
           {status === 'success' && (
             <div className="text-center space-y-4">
               <CheckCircle className="h-12 w-12 mx-auto text-green-500" />
-              <h2 className="text-xl font-semibold">Successfully connected!</h2>
+              <h2 className="text-xl font-semibold">{t('mollieCallback.success')}</h2>
               <p className="text-muted-foreground">
                 {organizationName
-                  ? `Your Mollie account "${organizationName}" has been connected.`
-                  : 'Your Mollie account has been connected successfully.'}
+                  ? t('mollieCallback.connectedWith', { name: organizationName })
+                  : t('mollieCallback.connectedGeneric')}
               </p>
               <p className="text-sm text-muted-foreground">
-                Redirecting you back...
+                {t('mollieCallback.redirecting')}
               </p>
             </div>
           )}
@@ -101,12 +102,12 @@ export default function MollieCallback() {
           {status === 'error' && (
             <div className="text-center space-y-4">
               <XCircle className="h-12 w-12 mx-auto text-destructive" />
-              <h2 className="text-xl font-semibold">Connection failed</h2>
+              <h2 className="text-xl font-semibold">{t('mollieCallback.failed')}</h2>
               <p className="text-muted-foreground">
                 {errorMessage}
               </p>
               <Button onClick={handleRetry} className="mt-4">
-                Try again
+                {t('mollieCallback.tryAgain')}
               </Button>
             </div>
           )}
