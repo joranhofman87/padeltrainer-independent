@@ -115,6 +115,7 @@ const TrainerInvoices = lazy(() => import('@/pages/trainer/TrainerInvoices'));
 const TrainerCreateInvoice = lazy(() => import('@/pages/trainer/TrainerCreateInvoice'));
 const TrainerEditInvoice = lazy(() => import('@/pages/trainer/TrainerEditInvoice'));
 const TrainerSlotDetail = lazy(() => import('@/pages/trainer/TrainerSlotDetail'));
+const TrainerCreateSlot = lazy(() => import('@/pages/trainer/TrainerCreateSlot'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'));
