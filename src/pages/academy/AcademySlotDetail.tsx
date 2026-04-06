@@ -517,6 +517,11 @@ export default function AcademySlotDetail() {
   };
 
   const handleEditBooking = async (bookingId: string) => {
+    if (editingBookingId === bookingId) {
+      setEditingBookingId(null);
+      setEditingBookingData(null);
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('bookings')
@@ -528,8 +533,8 @@ export default function AcademySlotDetail() {
         .eq('id', bookingId)
         .single();
       if (error) throw error;
-      setBookingToEdit({ ...data, player: data.profiles });
-      setEditBookingOpen(true);
+      setEditingBookingData({ ...data, player: data.profiles });
+      setEditingBookingId(bookingId);
     } catch (error) {
       logger.error('Error fetching booking', error instanceof Error ? error : new Error(String(error)));
     }

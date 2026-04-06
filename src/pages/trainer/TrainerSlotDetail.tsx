@@ -299,13 +299,18 @@ export default function TrainerSlotDetail() {
   };
 
   const handleEditBooking = async (bookingId: string) => {
+    if (editingBookingId === bookingId) {
+      setEditingBookingId(null);
+      setEditingBookingData(null);
+      return;
+    }
     try {
       const { data, error } = await supabase.from('bookings')
         .select('id, status, notes, payment_status, payment_amount, guest_player_id, paid_externally, availability_slots (id, start_time, end_time, price_per_session, cyclus_name), profiles:player_id (id, full_name, email)')
         .eq('id', bookingId).single();
       if (error) throw error;
-      setBookingToEdit({ ...data, player: data.profiles });
-      setEditBookingOpen(true);
+      setEditingBookingData({ ...data, player: data.profiles });
+      setEditingBookingId(bookingId);
     } catch (error) { logger.error('Error fetching booking', error instanceof Error ? error : new Error(String(error))); }
   };
 
