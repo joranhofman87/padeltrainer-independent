@@ -418,6 +418,13 @@ export default function PlayerBookings() {
                             </Dialog>
                           )}
                         </div>
+                        {/* Attendance confirmation for past non-cancelled bookings */}
+                        {booking.status !== 'cancelled' && isPast(parseISO(booking.availability_slots.start_time)) && (
+                          <PlayerAttendanceForm
+                            slotId={booking.slot_id}
+                            bookingId={booking.id}
+                          />
+                        )}
                       </CardContent>
                     </Card>
                   );

@@ -65,6 +65,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TrainerAttendanceForm } from "@/components/attendance/TrainerAttendanceForm";
 import { useToast } from "@/hooks/use-toast";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 
