@@ -1,73 +1,96 @@
 
 
-# Invoice Behavior When Adding/Removing Players from Split Slots
+# Localize Hardcoded Strings in Recently Changed Files
 
-## Current Behavior Analysis
+## Summary of findings
 
-### Adding a 4th player to a slot with 3 players
+There are hardcoded strings across 4 files. Most are in **Dutch** (which is fine for invoice descriptions stored in the DB) but UI-facing text needs to go through `t()`. Here's the full inventory:
 
-**The existing invoices for the 3 players will NOT automatically update.** Here's what happens:
+## File 1: `src/pages/academy/AcademyCyclusOverview.tsx`
 
-1. When a new player books via the registration form (`BookLesson.tsx`), the code calculates the split at booking time (lines 348-358) — it counts existing players and divides the `totalPrice` by the total count. So the **new player's invoice** would be correctly split by 4.
-2. However, **the existing 3 players' invoices still say `(1/3)`** — there is no mechanism that goes back and recalculates them when a new booking is added. The split count is baked into the line item descriptions and amounts at invoice creation time.
-3. The `split-invoice` edge function only runs when explicitly called (e.g. from the UI's "Split" button), not automatically when players are added.
+**Hardcoded Dutch UI text (needs `t()`):**
+- Line 544: `'Geen slots gevonden voor geselecteerde cycli'`
+- Line 554: `'${slotIds.length} slots ${makePublic ? 'zichtbaar' : 'verborgen'} gemaakt'`
+- Line 559: `'Er ging iets mis'`
+- Line 568: `'Voer een geldig bedrag in'`
+- Line 575: `'Geen slots gevonden voor geselecteerde cycli'`
+- Line 587: `'Prijs bijgewerkt voor ${slotIds.length} slots'`
+- Line 594: `'Er ging iets mis'`
+- Line 610: `'Geen sessies'` (Badge)
+- Line 621: `'Registratie'` (Badge)
+- Line 622: `'Event'` (Badge)
+- Line 652-655: `'Huidig'`, `'Toekomstig'`, `'Afgelopen'`, `'Alle'` (time filter)
+- Line 693: `'cyclus'` / `'cycli'` + `'geselecteerd'`
+- Line 705: `'Zichtbaar'`
+- Line 714: `'Verbergen'`
+- Line 723: `'Prijs wijzigen'`
+- Line 747: `'Naam'` (table header)
+- Line 755: `'Trainer'` (table header)
+- Line 757: `'Locatie'` (table header)
+- Line 758: `'Dag / Tijd'` (table header)
+- Line 765: `'Periode'` (table header)
+- Line 773: `'Sessies'` (table header)
+- Line 781: `'Spelers'` (table header)
+- Line 783: `'Prijs'` (table header)
+- Line 784: `'Bezetting'` (table header)
+- Line 791: `'Geen cycli gevonden'`
+- Line 864: `'Prijs wijzigen voor ${selectedIds.size} cycli'`
+- Line 868: `'Prijs per sessie (€)'`
+- Line 879: `'Dit past de prijs aan...'`
+- Line 884: `'Annuleren'`
+- Line 887: `'Bezig...'` / `'Opslaan'`
 
-**Result**: Player 4 pays 1/4, but Players 1-3 still pay 1/3 each. The trainer effectively collects more than 100% of the session price.
+## File 2: `src/pages/academy/AcademySlotDetail.tsx`
 
-### Removing a player from a cycle
+**Hardcoded English UI text (needs `t()`):**
+- Line 945: `'Level'` in badge text
+- Line 1059: `'yr'` (age suffix)
+- Line 1064: `'Guest'` badge
 
-**The invoice sync DOES work for removal**, but only partially:
+## File 3: `src/components/academy/AcademyCalendarOverview.tsx`
 
-1. `syncInvoicesAfterBookingRemoval()` is called when a player is removed (from `TrainerScheduleOverview` and `AcademySlotDetail`).
-2. It rebuilds the **removed player's** invoice — cancelling it if all bookings are gone, or reducing the session count.
-3. However, **it does NOT recalculate the split count for the remaining players**. The `detectSplitCount()` function reads the existing `(1/N)` from descriptions and **preserves that same N**. So if you remove 1 player from a 4-player split, the remaining 3 still pay 1/4 each — the trainer now only collects 75%.
+**Hardcoded English UI text (needs `t()`):**
+- Line 112: `'Rating spread: ${spread.toFixed(1)}'`
+- Line 133: `'Age diff: ${diff} yr'`
 
-## Proposed Fix
+## File 4: `src/lib/invoiceSync.ts`
 
-### Trigger: Recalculate all sibling invoices when a player is added or removed
+**Hardcoded Dutch text in invoice line items:**
+- Line 52: `"Invoice cancelled — all sessions were removed"` (notes field)
+- Line 97: `"Training cyclus"` (fallback)
+- Line 110-111: `"weken"` in descriptions
+- Line 147: `"Training sessie"` fallback
+- Line 191: `"per sessie"`
+- Line 422: `"Training cyclus"` fallback
+- Line 430: `"weken"`
+- Line 461: `"per sessie"`
 
-When a booking is added or cancelled on a split-payment slot, find **all invoices** for that slot's cycle and update the split count (N) on each one.
+**Note on invoiceSync.ts**: These strings are written into invoice records (stored in DB, shown on PDFs). They can't easily use `t()` since this is a non-component utility. Options: (a) accept Dutch-only for invoices (common for NL businesses), (b) pass a locale/translate function as parameter. I recommend **(a)** — keep Dutch for invoice line items since invoices are legal documents tied to the business locale.
 
-### Changes
+## Plan
 
-**1. `src/lib/invoiceSync.ts` — New function `syncSplitCountForCycle`**
-- Given a `cyclus_id`, count the current number of unique players with active bookings
-- Find all unpaid invoices linked to those slots
-- Update each invoice's line items to reflect the new `(1/N)` split and recalculate totals
-- This reuses the existing `recalculateInvoiceAfterRemoval` pattern but updates the split denominator
+### 1. Add translation keys to locale files
+Add ~35 new keys to `trainer` namespace (since `AcademyCyclusOverview` uses `trainer` namespace) and `academy` namespace.
 
-**2. `src/pages/academy/AcademySlotDetail.tsx` — Call after player removal**
-- After `syncInvoicesAfterBookingRemoval`, also call `syncSplitCountForCycle` for the affected cycle
+### 2. `src/pages/academy/AcademyCyclusOverview.tsx`
+Replace all hardcoded Dutch strings with `t()` calls using the new keys.
 
-**3. `src/pages/TrainerScheduleOverview.tsx` — Call after player removal**
-- Same: after removing a player from a cycle, trigger `syncSplitCountForCycle`
+### 3. `src/pages/academy/AcademySlotDetail.tsx`
+Replace `'Level'`, `'yr'`, and `'Guest'` with `t()` calls.
 
-**4. `src/pages/BookLesson.tsx` — Call after new booking**
-- After a successful cycle booking on a split-payment cycle, trigger `syncSplitCountForCycle` so existing players' invoices update to the new N
+### 4. `src/components/academy/AcademyCalendarOverview.tsx`
+Replace `'Rating spread: ...'` and `'Age diff: ...'` with `t()` calls.
 
-**5. `supabase/functions/auto-invoice-cycles/index.ts`** — ensure it uses current player count
-
-### Logic for `syncSplitCountForCycle`
-
-```text
-Input: cyclus_id
-1. Fetch all active bookings for slots in this cycle
-2. Count unique players (player_id or guest_player_id)
-3. If count <= 1, no split needed
-4. Fetch all unpaid invoices overlapping with these booking IDs
-5. For each invoice:
-   a. Rebuild line items with unit_price = original_price / new_player_count
-   b. Update description to (1/new_count)
-   c. Recalculate subtotal, VAT, total
-   d. Clear pdf_url
-```
+### 5. `src/lib/invoiceSync.ts`
+Keep as-is (Dutch invoice descriptions for legal/business reasons). Only change the English `notes` field to Dutch for consistency: `"Factuur geannuleerd — alle sessies zijn verwijderd"`.
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/lib/invoiceSync.ts` | Add `syncSplitCountForCycle()` function |
-| `src/pages/academy/AcademySlotDetail.tsx` | Call sync after player removal on split-payment cycles |
-| `src/pages/TrainerScheduleOverview.tsx` | Call sync after player removal on split-payment cycles |
-| `src/pages/BookLesson.tsx` | Call sync after new cycle booking on split-payment cycles |
+| Locale JSON files (EN, NL, ES, DE, FR) | Add ~35 translation keys for cycles tab + slot detail + calendar overview |
+| `src/pages/academy/AcademyCyclusOverview.tsx` | Replace ~30 hardcoded Dutch strings with `t()` |
+| `src/pages/academy/AcademySlotDetail.tsx` | Replace 3 hardcoded English strings with `t()` |
+| `src/components/academy/AcademyCalendarOverview.tsx` | Replace 2 hardcoded warning strings with `t()` |
+| `src/lib/invoiceSync.ts` | Minor: fix English notes string to Dutch |
 
