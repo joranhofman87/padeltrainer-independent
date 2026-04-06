@@ -357,5 +357,21 @@
     "level": "Nivel",
     "years": "años",
     "guest": "Invitado"
+  },
+  "attendance": {
+    "title": "Asistencia",
+    "noReports": "Aún no se han enviado informes de asistencia",
+    "conflict": "Conflicto",
+    "trainerReport": "Informe del entrenador",
+    "sessionHappened": "La sesión se realizó",
+    "sessionCancelled": "Sesión cancelada",
+    "attendees": "Asistentes",
+    "players": "jugadores",
+    "sessionSummary": "Resumen de la sesión",
+    "trainerNotes": "Notas del entrenador (privado)",
+    "playerConfirmations": "Confirmaciones de jugadores",
+    "unknownPlayer": "Jugador",
+    "confirmed": "Confirmado",
+    "denied": "Denegado"
   }
 }

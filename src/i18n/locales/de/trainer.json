@@ -727,5 +727,18 @@
     "cancel": "Abbrechen",
     "saving": "Speichern...",
     "save": "Speichern"
+  },
+  "attendance": {
+    "title": "Anwesenheit",
+    "reported": "Gemeldet",
+    "sessionHappened": "Training hat stattgefunden",
+    "whoAttended": "Wer war anwesend?",
+    "sessionSummary": "Trainingszusammenfassung (sichtbar für Spieler)",
+    "sessionSummaryPlaceholder": "Was wurde heute geübt...",
+    "privateNotes": "Private Notizen (nicht sichtbar für Spieler)",
+    "privateNotesPlaceholder": "Interne Notizen...",
+    "save": "Anwesenheit speichern",
+    "saved": "Anwesenheit gespeichert",
+    "saveError": "Speichern fehlgeschlagen"
   }
 }

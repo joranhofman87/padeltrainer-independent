@@ -727,5 +727,18 @@
     "cancel": "Cancelar",
     "saving": "Guardando...",
     "save": "Guardar"
+  },
+  "attendance": {
+    "title": "Asistencia",
+    "reported": "Reportado",
+    "sessionHappened": "La sesión se realizó",
+    "whoAttended": "¿Quién asistió?",
+    "sessionSummary": "Resumen de la sesión (visible para jugadores)",
+    "sessionSummaryPlaceholder": "Qué se practicó hoy...",
+    "privateNotes": "Notas privadas (no visibles para jugadores)",
+    "privateNotesPlaceholder": "Notas internas...",
+    "save": "Guardar asistencia",
+    "saved": "Asistencia guardada",
+    "saveError": "Error al guardar"
   }
 }

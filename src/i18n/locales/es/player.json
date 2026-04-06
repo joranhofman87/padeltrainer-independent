@@ -277,5 +277,16 @@
     "unfollowConfirm": "¿Dejar de seguir a {{name}}?",
     "unfollowed": "Dejado de seguir",
     "unfollowedDescription": "Ya no sigues a {{name}}"
+  },
+  "attendance": {
+    "title": "Asistencia",
+    "reported": "Reportado",
+    "sessionHappened": "¿Se realizó esta sesión?",
+    "sessionSummary": "Resumen de la sesión",
+    "myNotes": "Mis notas (privado)",
+    "myNotesPlaceholder": "Notas para ti mismo...",
+    "save": "Guardar",
+    "saved": "Asistencia guardada",
+    "saveError": "Error al guardar"
   }
 }

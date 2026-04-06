@@ -431,5 +431,21 @@
     "level": "Niveau",
     "years": "jr",
     "guest": "Gast"
+  },
+  "attendance": {
+    "title": "Aanwezigheid",
+    "noReports": "Nog geen aanwezigheidsrapporten ingediend",
+    "conflict": "Conflict",
+    "trainerReport": "Rapport trainer",
+    "sessionHappened": "Training heeft plaatsgevonden",
+    "sessionCancelled": "Training geannuleerd",
+    "attendees": "Aanwezigen",
+    "players": "spelers",
+    "sessionSummary": "Samenvatting training",
+    "trainerNotes": "Notities trainer (privé)",
+    "playerConfirmations": "Bevestigingen spelers",
+    "unknownPlayer": "Speler",
+    "confirmed": "Bevestigd",
+    "denied": "Afgewezen"
   }
 }

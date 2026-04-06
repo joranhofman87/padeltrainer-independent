@@ -308,5 +308,16 @@
     "unfollowConfirm": "{{name}} ontvolgen?",
     "unfollowed": "Ontvolgd",
     "unfollowedDescription": "Je volgt {{name}} niet meer"
+  },
+  "attendance": {
+    "title": "Aanwezigheid",
+    "reported": "Gerapporteerd",
+    "sessionHappened": "Heeft deze training plaatsgevonden?",
+    "sessionSummary": "Samenvatting training",
+    "myNotes": "Mijn notities (privé)",
+    "myNotesPlaceholder": "Notities voor jezelf...",
+    "save": "Opslaan",
+    "saved": "Aanwezigheid opgeslagen",
+    "saveError": "Opslaan mislukt"
   }
 }
