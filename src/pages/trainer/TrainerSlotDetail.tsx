@@ -28,8 +28,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { BookForPlayerDialog } from '@/components/trainer/BookForPlayerDialog';
-import { EditBookingDialog } from '@/components/trainer/EditBookingDialog';
+import { InlineBookPlayer } from '@/components/trainer/InlineBookPlayer';
+import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
 import { SlotRatingPicker } from '@/components/trainer/SlotRatingPicker';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
@@ -90,9 +90,9 @@ export default function TrainerSlotDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteCyclus, setDeleteCyclus] = useState(false);
-  const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
-  const [editBookingOpen, setEditBookingOpen] = useState(false);
-  const [bookingToEdit, setBookingToEdit] = useState<any>(null);
+  const [showBookPlayer, setShowBookPlayer] = useState(false);
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
+  const [editingBookingData, setEditingBookingData] = useState<any>(null);
   const [slotInvoices, setSlotInvoices] = useState<SlotInvoice[]>([]);
 
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
@@ -299,13 +299,18 @@ export default function TrainerSlotDetail() {
   };
 
   const handleEditBooking = async (bookingId: string) => {
+    if (editingBookingId === bookingId) {
+      setEditingBookingId(null);
+      setEditingBookingData(null);
+      return;
+    }
     try {
       const { data, error } = await supabase.from('bookings')
         .select('id, status, notes, payment_status, payment_amount, guest_player_id, paid_externally, availability_slots (id, start_time, end_time, price_per_session, cyclus_name), profiles:player_id (id, full_name, email)')
         .eq('id', bookingId).single();
       if (error) throw error;
-      setBookingToEdit({ ...data, player: data.profiles });
-      setEditBookingOpen(true);
+      setEditingBookingData({ ...data, player: data.profiles });
+      setEditingBookingId(bookingId);
     } catch (error) { logger.error('Error fetching booking', error instanceof Error ? error : new Error(String(error))); }
   };
 
@@ -485,7 +490,7 @@ export default function TrainerSlotDetail() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" />{t('calendar.players', 'Spelers')} ({bookedCount}/{detail.max_participants})</CardTitle>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setBookForPlayerOpen(true)}><UserPlus className="h-3.5 w-3.5" />{t('calendar.addPlayer', 'Speler toevoegen')}</Button>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowBookPlayer(!showBookPlayer)}><UserPlus className="h-3.5 w-3.5" />{t('calendar.addPlayer', 'Speler toevoegen')}</Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -494,22 +499,47 @@ export default function TrainerSlotDetail() {
               ) : (
                 <div className="space-y-1">
                   {detail.booked_players.map(player => (
-                    <button key={player.bookingId} className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent/50 transition-colors text-left" onClick={() => handleEditBooking(player.bookingId)}>
-                      <Avatar className="h-8 w-8"><AvatarImage src={(player as any).avatarUrl || undefined} /><AvatarFallback className="text-[10px]">{player.name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{player.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {[player.skillRating != null ? `${player.ratingSystem?.toUpperCase()} ${player.skillRating}` : null, calculateAge(player.birthDate) != null ? `${calculateAge(player.birthDate)} jr` : null].filter(Boolean).join(' · ') || '\u00A0'}
-                        </p>
-                      </div>
-                      {player.isGuest && <Badge variant="outline" className="text-[10px] h-5 px-1.5">Gast</Badge>}
-                      {player.status === 'confirmed' ? (
-                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300"><Check className="h-2.5 w-2.5 mr-0.5" />{tCommon('confirmed', 'Bevestigd')}</Badge>
-                      ) : (<Badge variant="outline" className="text-[10px] h-5 px-1.5 text-amber-600 border-amber-300">{tCommon('pending', 'Wachtend')}</Badge>)}
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    </button>
+                    <div key={player.bookingId}>
+                      <button className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent/50 transition-colors text-left" onClick={() => handleEditBooking(player.bookingId)}>
+                        <Avatar className="h-8 w-8"><AvatarImage src={(player as any).avatarUrl || undefined} /><AvatarFallback className="text-[10px]">{player.name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{player.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {[player.skillRating != null ? `${player.ratingSystem?.toUpperCase()} ${player.skillRating}` : null, calculateAge(player.birthDate) != null ? `${calculateAge(player.birthDate)} jr` : null].filter(Boolean).join(' · ') || '\u00A0'}
+                          </p>
+                        </div>
+                        {player.isGuest && <Badge variant="outline" className="text-[10px] h-5 px-1.5">Gast</Badge>}
+                        {player.status === 'confirmed' ? (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300"><Check className="h-2.5 w-2.5 mr-0.5" />{tCommon('confirmed', 'Bevestigd')}</Badge>
+                        ) : (<Badge variant="outline" className="text-[10px] h-5 px-1.5 text-amber-600 border-amber-300">{tCommon('pending', 'Wachtend')}</Badge>)}
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      </button>
+                      {editingBookingId === player.bookingId && editingBookingData && (
+                        <InlineEditBooking
+                          booking={editingBookingData}
+                          trainerId={detail.trainer_id}
+                          onBookingUpdated={() => { setEditingBookingId(null); setEditingBookingData(null); fetchSlotDetail(); }}
+                          onClose={() => { setEditingBookingId(null); setEditingBookingData(null); }}
+                        />
+                      )}
+                    </div>
                   ))}
                 </div>
+              )}
+              {showBookPlayer && (
+                <InlineBookPlayer
+                  trainerId={detail.trainer_id}
+                  slot={{
+                    id: detail.id,
+                    start_time: detail.start_time,
+                    end_time: detail.end_time,
+                    cyclus_id: detail.cyclus_id,
+                    cyclus_name: detail.cyclus_name,
+                    booked_players: detail.booked_players,
+                  }}
+                  onBookingCreated={() => { setShowBookPlayer(false); fetchSlotDetail(); }}
+                  onClose={() => setShowBookPlayer(false)}
+                />
               )}
             </CardContent>
           </Card>
@@ -555,12 +585,12 @@ export default function TrainerSlotDetail() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('calendar.deleteSlot', 'Sessie verwijderen')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('calendar.deleteSlotConfirm', 'Weet je zeker dat je deze sessie wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')}</AlertDialogDescription>
+            <AlertDialogDescription>{t('calendar.deleteSlotConfirm', 'Weet je zeker dat je deze sessie wilt verwijderen?')}</AlertDialogDescription>
           </AlertDialogHeader>
           {detail.cyclus_id && (
             <div className="flex items-center space-x-2 py-2">
               <Checkbox id="delete-cyclus" checked={deleteCyclus} onCheckedChange={c => setDeleteCyclus(!!c)} />
-              <Label htmlFor="delete-cyclus" className="text-sm font-normal cursor-pointer">{t('calendar.deleteEntireCyclus', 'Alle toekomstige sessies in deze cyclus verwijderen')}</Label>
+              <Label htmlFor="delete-cyclus" className="text-sm font-normal cursor-pointer">{t('calendar.deleteEntireCyclus', 'Alle toekomstige sessies verwijderen')}</Label>
             </div>
           )}
           <AlertDialogFooter>
@@ -571,13 +601,6 @@ export default function TrainerSlotDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <BookForPlayerDialog open={bookForPlayerOpen} onOpenChange={setBookForPlayerOpen} trainerId={detail.trainer_id}
-        slot={{ id: detail.id, start_time: detail.start_time, end_time: detail.end_time, cyclus_id: detail.cyclus_id, cyclus_name: detail.cyclus_name, booked_players: detail.booked_players }}
-        onBookingCreated={fetchSlotDetail} />
-
-      <EditBookingDialog open={editBookingOpen} onOpenChange={open => { setEditBookingOpen(open); if (!open) setBookingToEdit(null); }}
-        booking={bookingToEdit} trainerId={detail.trainer_id} onBookingUpdated={fetchSlotDetail} />
     </div>
   );
 }
