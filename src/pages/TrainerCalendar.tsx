@@ -572,6 +572,20 @@ export default function TrainerCalendar() {
 
 
 
+      {/* Delete Slot Dialog */}
+      <DeleteSlotDialog
+        open={deleteSlotOpen}
+        onOpenChange={(open) => {
+          setDeleteSlotOpen(open);
+          if (!open) {
+            setSlotToDelete(null);
+          }
+        }}
+        slot={slotToDelete}
+        trainerId={trainerId || ""}
+        onSlotDeleted={handleSlotsCreated}
+      />
+
       {/* EditBookingDialog removed — navigating to slot detail page */}
 
     </>
