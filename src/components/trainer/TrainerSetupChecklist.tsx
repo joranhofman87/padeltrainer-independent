@@ -27,7 +27,7 @@ export function TrainerSetupChecklist({
   const { t } = useTranslation('trainer');
   const academyInfo = setupStatus.academyPaymentInfo;
   
-  let paymentLabel = 'Connect payment account or setup manual payments';
+  let paymentLabel = t('setupChecklist.connectPayment');
   let paymentSubLabel = '';
   
   if (academyInfo?.isAcademyTrainer && academyInfo?.academyChargesEnabled) {
@@ -38,11 +38,11 @@ export function TrainerSetupChecklist({
   }
   
   const steps = [
-    { key: 'hasAvailability', label: 'Add your first time slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
+    { key: 'hasAvailability', label: t('setupChecklist.addTimeSlots'), route: '/trainer/calendar', complete: setupStatus.hasAvailability },
     { key: 'paymentsComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/trainer/earnings', complete: setupStatus.paymentsComplete, isAcademyManaged: academyInfo?.isAcademyTrainer && academyInfo?.academyChargesEnabled },
-    { key: 'profileComplete', label: 'Complete your profile details', route: '/trainer/profile', complete: setupStatus.profileComplete },
-    { key: 'hasPlayers', label: 'Add your existing players', route: '/trainer/players', complete: setupStatus.hasPlayers },
-    { key: 'isPublished', label: 'Publish your profile', route: '/trainer/settings', complete: setupStatus.isPublished },
+    { key: 'profileComplete', label: t('setupChecklist.completeProfile'), route: '/trainer/profile', complete: setupStatus.profileComplete },
+    { key: 'hasPlayers', label: t('setupChecklist.addPlayers'), route: '/trainer/players', complete: setupStatus.hasPlayers },
+    { key: 'isPublished', label: t('setupChecklist.publishProfile'), route: '/trainer/settings', complete: setupStatus.isPublished },
   ];
 
   const completedCount = steps.filter(s => s.complete).length;
@@ -56,10 +56,10 @@ export function TrainerSetupChecklist({
             <span className="text-2xl">🚀</span>
             <div>
               <CardTitle className="text-orange-700 dark:text-orange-400">
-                Complete Your Setup
+                {t('setupChecklist.title')}
               </CardTitle>
               <CardDescription className="mt-1">
-                {completedCount}/{totalSteps} steps complete
+                {t('setupChecklist.progress', { completed: completedCount, total: totalSteps })}
               </CardDescription>
             </div>
           </div>
@@ -83,7 +83,7 @@ export function TrainerSetupChecklist({
       </CardHeader>
       <CardContent className="pt-0">
         <p className="text-sm text-muted-foreground mb-4">
-          Finish setting up your trainer profile to start receiving bookings
+          {t('setupChecklist.description')}
         </p>
         <div className="space-y-2">
           {steps.map((step, index) => (

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +15,7 @@ interface OnboardingStep1ProfileProps {
 
 export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) {
   const { user } = useAuth();
+  const { t } = useTranslation('trainer');
   const [fullName, setFullName] = useState('');
   const [bio, setBio] = useState('');
   const [hourlyRate, setHourlyRate] = useState<string>('');
@@ -82,33 +84,33 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold">Let's get you live 🚀</h1>
-        <p className="text-muted-foreground">Just 3 quick fields — you can refine everything later</p>
+        <h1 className="text-2xl font-bold">{t('onboarding.step1.title')}</h1>
+        <p className="text-muted-foreground">{t('onboarding.step1.subtitle')}</p>
       </div>
 
       <div className="space-y-5">
         {/* Name */}
         <div className="space-y-2">
-          <Label htmlFor="fullName">Your name *</Label>
+          <Label htmlFor="fullName">{t('onboarding.step1.nameLabel')} *</Label>
           <Input
             id="fullName"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            placeholder="Your full name"
+            placeholder={t('players.fullNamePlaceholder')}
           />
         </div>
 
         {/* One-liner bio */}
         <div className="space-y-2">
-          <Label htmlFor="bio">One-liner about you *</Label>
+          <Label htmlFor="bio">{t('onboarding.step1.bioLabel')} *</Label>
           <Textarea
             id="bio"
             value={bio}
             onChange={(e) => setBio(e.target.value)}
-            placeholder="e.g. Padel trainer in Amsterdam with 5 years of experience"
+            placeholder={t('onboarding.step1.bioPlaceholder')}
             rows={2}
           />
-          <p className="text-xs text-muted-foreground">1–2 sentences is plenty. You can update this anytime.</p>
+          <p className="text-xs text-muted-foreground">{t('onboarding.step1.bioHint')}</p>
         </div>
 
       </div>
@@ -119,7 +121,7 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
         disabled={!canProceed || saving}
         onClick={handleSave}
       >
-        {saving ? 'Saving...' : 'Continue'}
+        {saving ? t('onboarding.step1.saving') : t('onboarding.step1.continue')}
       </Button>
     </div>
   );
