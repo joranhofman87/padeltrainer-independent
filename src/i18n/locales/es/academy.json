@@ -348,5 +348,14 @@
     "enableDescription": "Cuando está activada, los jugadores pueden inscribirse en tu lista de espera en tu perfil público. Serás notificado cuando alguien se una.",
     "enabled": "La lista de espera está ahora activa en tu perfil",
     "disabled": "La lista de espera ha sido desactivada"
+  },
+  "warnings": {
+    "ratingSpread": "Diferencia de nivel: {{spread}}",
+    "ageDiff": "Diferencia de edad: {{diff}} años"
+  },
+  "slotDetail": {
+    "level": "Nivel",
+    "years": "años",
+    "guest": "Invitado"
   }
 }

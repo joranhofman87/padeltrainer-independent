@@ -348,5 +348,14 @@
     "enableDescription": "Lorsqu'elle est activée, les joueurs peuvent s'inscrire sur votre liste d'attente depuis votre profil public. Vous serez notifié lorsque quelqu'un s'inscrit.",
     "enabled": "La liste d'attente est maintenant active sur votre profil",
     "disabled": "La liste d'attente a été désactivée"
+  },
+  "warnings": {
+    "ratingSpread": "Écart de niveau : {{spread}}",
+    "ageDiff": "Écart d'âge : {{diff}} ans"
+  },
+  "slotDetail": {
+    "level": "Niveau",
+    "years": "ans",
+    "guest": "Invité"
   }
 }
