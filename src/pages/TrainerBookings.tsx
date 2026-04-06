@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,7 +63,7 @@ export default function TrainerBookings() {
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
   const { toast } = useToast();
-  
+  const { t } = useTranslation('trainer');
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -120,8 +121,8 @@ export default function TrainerBookings() {
     if (error) {
       logger.error('Error fetching bookings', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerBookings' });
       toast({
-        title: 'Error',
-        description: 'Failed to load bookings',
+        title: t('common:error'),
+        description: t('manageBookings.loadError', 'Failed to load bookings'),
         variant: 'destructive',
       });
     } else {
@@ -133,9 +134,9 @@ export default function TrainerBookings() {
   const handleConfirm = async (bookingId: string) => {
     const { error } = await updateBookingStatus(bookingId, 'confirmed');
     if (error) {
-      toast({ title: 'Error', description: 'Failed to confirm booking', variant: 'destructive' });
+      toast({ title: t('common:error'), description: t('manageBookings.confirmError', 'Failed to confirm booking'), variant: 'destructive' });
     } else {
-      toast({ title: 'Booking Confirmed', description: 'The player has been notified' });
+      toast({ title: t('manageBookings.bookingConfirmed'), description: t('manageBookings.bookingConfirmedDescription') });
       fetchBookings();
     }
   };
@@ -151,9 +152,9 @@ export default function TrainerBookings() {
     
     const { error } = await updateBookingStatus(cancellingBooking.id, 'cancelled');
     if (error) {
-      toast({ title: 'Error', description: 'Failed to cancel booking', variant: 'destructive' });
+      toast({ title: t('common:error'), description: t('manageBookings.cancelError', 'Failed to cancel booking'), variant: 'destructive' });
     } else {
-      toast({ title: 'Booking Cancelled', description: 'The booking has been cancelled and the slot is now closed.' });
+      toast({ title: t('manageBookings.lessonCancelled', 'Booking Cancelled'), description: t('manageBookings.lessonCancelledDescription', 'The booking has been cancelled and the slot is now closed.') });
       fetchBookings();
     }
     
@@ -191,12 +192,12 @@ export default function TrainerBookings() {
       });
 
       toast({ 
-        title: 'Slot Reopened!', 
-        description: 'The booking was cancelled and followers have been notified about the available slot.' 
+        title: t('manageBookings.slotReopened'), 
+        description: t('manageBookings.slotReopenedDescription')
       });
       fetchBookings();
     } catch (err: any) {
-      toast({ title: 'Error', description: err.message || 'Failed to cancel and reopen', variant: 'destructive' });
+      toast({ title: t('common:error'), description: err.message || t('manageBookings.cancelError', 'Failed to cancel and reopen'), variant: 'destructive' });
     }
     
     setIsCancelling(false);
@@ -213,7 +214,7 @@ export default function TrainerBookings() {
   };
 
   const handleMarkCancelled = async (bookingId: string) => {
-    if (!confirm('Mark this lesson as cancelled? Payment will be waived.')) return;
+    if (!confirm(t('manageBookings.markCancelledConfirm'))) return;
     
     // Update both status and payment_status
     const { error } = await supabase
@@ -222,9 +223,9 @@ export default function TrainerBookings() {
       .eq('id', bookingId);
       
     if (error) {
-      toast({ title: 'Error', description: 'Failed to mark as cancelled', variant: 'destructive' });
+      toast({ title: t('common:error'), description: t('manageBookings.cancelError', 'Failed to mark as cancelled'), variant: 'destructive' });
     } else {
-      toast({ title: 'Lesson Cancelled', description: 'Payment has been waived for this lesson' });
+      toast({ title: t('manageBookings.lessonCancelled'), description: t('manageBookings.lessonCancelledDescription') });
       fetchBookings();
     }
   };
@@ -232,9 +233,9 @@ export default function TrainerBookings() {
   const handleComplete = async (bookingId: string) => {
     const { error } = await updateBookingStatus(bookingId, 'completed');
     if (error) {
-      toast({ title: 'Error', description: 'Failed to complete booking', variant: 'destructive' });
+      toast({ title: t('common:error'), description: t('manageBookings.completeError', 'Failed to complete booking'), variant: 'destructive' });
     } else {
-      toast({ title: 'Lesson Completed', description: 'The lesson has been marked as completed' });
+      toast({ title: t('manageBookings.lessonCompleted'), description: t('manageBookings.lessonCompletedDescription') });
       fetchBookings();
     }
   };
@@ -242,13 +243,13 @@ export default function TrainerBookings() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">Pending</Badge>;
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">{t('manageBookings.statusPending')}</Badge>;
       case 'confirmed':
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">Confirmed</Badge>;
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">{t('manageBookings.statusConfirmed')}</Badge>;
       case 'cancelled':
-        return <Badge variant="destructive">Cancelled</Badge>;
+        return <Badge variant="destructive">{t('manageBookings.statusCancelled')}</Badge>;
       case 'completed':
-        return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">Completed</Badge>;
+        return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">{t('manageBookings.statusCompleted')}</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -256,18 +257,18 @@ export default function TrainerBookings() {
 
   const getPaymentBadge = (paymentStatus: string, paymentTiming: string, bookingStatus: string) => {
     if (paymentStatus === 'paid') {
-      return <Badge variant="outline" className="border-green-300 text-green-600"><CreditCard className="h-3 w-3 mr-1" />Paid</Badge>;
+      return <Badge variant="outline" className="border-green-300 text-green-600"><CreditCard className="h-3 w-3 mr-1" />{t('manageBookings.paymentPaid')}</Badge>;
     }
     if (paymentStatus === 'waived') {
-      return <Badge variant="outline" className="border-gray-300 text-gray-600">Waived</Badge>;
+      return <Badge variant="outline" className="border-gray-300 text-gray-600">{t('manageBookings.paymentWaived')}</Badge>;
     }
     if (paymentTiming === 'after') {
       if (bookingStatus === 'cancelled') {
-        return <Badge variant="outline" className="border-gray-300 text-gray-600">No Charge</Badge>;
+        return <Badge variant="outline" className="border-gray-300 text-gray-600">{t('manageBookings.paymentNoCharge')}</Badge>;
       }
-      return <Badge variant="outline" className="border-orange-300 text-orange-600">Due After</Badge>;
+      return <Badge variant="outline" className="border-orange-300 text-orange-600">{t('manageBookings.paymentDueAfter')}</Badge>;
     }
-    return <Badge variant="outline" className="border-yellow-300 text-yellow-600">Payment Pending</Badge>;
+    return <Badge variant="outline" className="border-yellow-300 text-yellow-600">{t('manageBookings.paymentPending')}</Badge>;
   };
 
   // Filter bookings
@@ -300,8 +301,8 @@ export default function TrainerBookings() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
-              <h1 className="text-xl font-bold">Manage Bookings</h1>
-              <p className="text-sm text-muted-foreground">View and manage player bookings</p>
+              <h1 className="text-xl font-bold">{t('manageBookings.title')}</h1>
+              <p className="text-sm text-muted-foreground">{t('manageBookings.subtitle')}</p>
             </div>
           </div>
         </div>
@@ -313,19 +314,19 @@ export default function TrainerBookings() {
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-3xl font-bold text-yellow-600">{pendingBookings.length}</p>
-              <p className="text-sm text-muted-foreground">Pending</p>
+              <p className="text-sm text-muted-foreground">{t('manageBookings.statusPending')}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-3xl font-bold text-blue-600">{upcomingBookings.length}</p>
-              <p className="text-sm text-muted-foreground">Upcoming</p>
+              <p className="text-sm text-muted-foreground">{t('manageBookings.upcoming')}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-3xl font-bold text-green-600">{pastBookings.filter(b => b.status === 'completed').length}</p>
-              <p className="text-sm text-muted-foreground">Completed</p>
+              <p className="text-sm text-muted-foreground">{t('manageBookings.statusCompleted')}</p>
             </CardContent>
           </Card>
         </div>
@@ -333,21 +334,21 @@ export default function TrainerBookings() {
         <Tabs defaultValue="pending" className="space-y-4">
           <TabsList>
             <TabsTrigger value="pending" className="gap-2">
-              Pending
+              {t('manageBookings.pending')}
               {pendingBookings.length > 0 && (
                 <Badge variant="destructive" className="h-5 w-5 p-0 justify-center">{pendingBookings.length}</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
-            <TabsTrigger value="past">Past</TabsTrigger>
+            <TabsTrigger value="upcoming">{t('manageBookings.upcoming')}</TabsTrigger>
+            <TabsTrigger value="past">{t('manageBookings.past')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="pending" className="space-y-4">
             {pendingBookings.length === 0 ? (
               <Card className="p-8 text-center">
                 <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">All caught up!</h3>
-                <p className="text-muted-foreground">No pending bookings to review</p>
+                <h3 className="font-semibold text-lg mb-2">{t('manageBookings.allCaughtUp')}</h3>
+                <p className="text-muted-foreground">{t('manageBookings.noPendingBookings')}</p>
               </Card>
             ) : (
               pendingBookings.map(booking => (
@@ -368,8 +369,8 @@ export default function TrainerBookings() {
             {upcomingBookings.length === 0 ? (
               <Card className="p-8 text-center">
                 <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">No upcoming lessons</h3>
-                <p className="text-muted-foreground">Confirmed bookings will appear here</p>
+                <h3 className="font-semibold text-lg mb-2">{t('manageBookings.noUpcomingLessons')}</h3>
+                <p className="text-muted-foreground">{t('manageBookings.confirmedWillAppear')}</p>
               </Card>
             ) : (
               upcomingBookings.map(booking => (
@@ -391,8 +392,8 @@ export default function TrainerBookings() {
             {pastBookings.length === 0 ? (
               <Card className="p-8 text-center">
                 <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">No past lessons</h3>
-                <p className="text-muted-foreground">Completed and cancelled bookings will appear here</p>
+                <h3 className="font-semibold text-lg mb-2">{t('manageBookings.noPastLessons')}</h3>
+                <p className="text-muted-foreground">{t('manageBookings.pastWillAppear')}</p>
               </Card>
             ) : (
               pastBookings.map(booking => (
@@ -413,9 +414,9 @@ export default function TrainerBookings() {
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cancel Booking</DialogTitle>
+            <DialogTitle>{t('manageBookings.cancelBooking')}</DialogTitle>
             <DialogDescription>
-              How would you like to handle this cancellation?
+              {t('manageBookings.cancelDescription')}
             </DialogDescription>
           </DialogHeader>
           
@@ -441,12 +442,12 @@ export default function TrainerBookings() {
                   disabled={isCancelling}
                 >
                   <XCircle className="h-5 w-5 text-destructive" />
-                  <div className="text-left">
-                    <p className="font-medium">Cancel & Close Slot</p>
-                    <p className="text-xs text-muted-foreground">
-                      Cancel this booking and remove the time slot
-                    </p>
-                  </div>
+                   <div className="text-left">
+                     <p className="font-medium">{t('manageBookings.cancelAndClose')}</p>
+                     <p className="text-xs text-muted-foreground">
+                       {t('manageBookings.cancelAndCloseDescription')}
+                     </p>
+                   </div>
                 </Button>
                 
                 <Button
@@ -456,12 +457,12 @@ export default function TrainerBookings() {
                   disabled={isCancelling}
                 >
                   <RefreshCw className="h-5 w-5 text-green-600" />
-                  <div className="text-left">
-                    <p className="font-medium text-green-700 dark:text-green-400">Cancel & Reopen for Others</p>
-                    <p className="text-xs text-muted-foreground">
-                      <Bell className="h-3 w-3 inline mr-1" />
-                      Keep slot available and notify followers
-                    </p>
+                   <div className="text-left">
+                     <p className="font-medium text-green-700 dark:text-green-400">{t('manageBookings.cancelAndReopen')}</p>
+                     <p className="text-xs text-muted-foreground">
+                       <Bell className="h-3 w-3 inline mr-1" />
+                       {t('manageBookings.cancelAndReopenDescription')}
+                     </p>
                   </div>
                 </Button>
               </div>
@@ -470,7 +471,7 @@ export default function TrainerBookings() {
           
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCancelDialogOpen(false)} disabled={isCancelling}>
-              Keep Booking
+              {t('manageBookings.keepBooking')}
             </Button>
           </DialogFooter>
         </DialogContent>
