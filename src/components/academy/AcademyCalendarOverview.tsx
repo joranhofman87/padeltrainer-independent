@@ -109,7 +109,7 @@ function getSlotWarnings(
     if (ratings.length >= 2) {
       const spread = Math.max(...ratings) - Math.min(...ratings);
       if (spread > maxRatingSpread) {
-        warnings.push(`Rating spread: ${spread.toFixed(1)}`);
+        warnings.push(t('academy:warnings.ratingSpread', { spread: spread.toFixed(1) }));
       }
     }
   }
@@ -130,7 +130,7 @@ function getSlotWarnings(
     if (ages.length >= 2) {
       const diff = Math.max(...ages) - Math.min(...ages);
       if (diff > maxAgeDiffYears) {
-        warnings.push(`Age diff: ${diff} yr`);
+        warnings.push(t('academy:warnings.ageDiff', { diff }));
       }
     }
   }
