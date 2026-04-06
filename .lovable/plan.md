@@ -1,73 +1,81 @@
 
 
-# Add Testing & Monitoring to Prevent Breakages
+# Convert Remaining Popups to Pages/Inline Components
 
-## Summary
+## Overview
 
-The codebase has ~14 unit test files covering utilities but **zero tests on the two riskiest modules**: invoice calculation (`invoiceSync.ts`) and cycle management (`cycles.ts`). The VAT calculation logic, split-payment math, and line-item building are all pure computation that can be extracted and tested without mocking Supabase.
+Six dialog components still use popups for complex workflows. This plan converts them to dedicated pages or inline UI, matching the pattern already established for invoices and slot detail.
 
-## Strategy
+## Conversions
 
-### 1. Extract Pure Computation from `invoiceSync.ts` into Testable Functions
+### 1. AddSlotDialog (1,772 lines) → Dedicated Pages
 
-The invoice recalculation logic (lines 80-267) contains pure math that's currently buried inside async Supabase-calling functions. Extract these into standalone pure functions:
+The biggest popup becomes two new page routes:
+- `/app/trainer/slot/new` — for standalone trainers
+- `/app/academy/slot/new` — for academy (with trainer picker)
 
-- **`detectSplitCount(lineItems)`** — already exists, just needs exporting
-- **`buildLineItems(bookings, splitCount, cyclusName, extraCosts)`** — extract the line-item builder (lines 96-200)
-- **`calculateVatTotals(lineItems, defaultVatRate, pricesIncludeVat)`** — extract the VAT computation (lines 202-267)
+**Approach**: Extract the existing `BulkCreateContent` component (already exists inside `AddSlotDialog.tsx`) into a new shared component `SlotCreateForm.tsx`. The two page files are thin wrappers that pass the appropriate props (trainer ID vs academy ID + trainer selector). Calendar pages (`TrainerCalendar`, `AcademyCalendar`) replace the dialog open with `navigate()`, passing query params for pre-filled date/time (`?date=2026-04-07&time=09:00`).
 
-Then write ~15 unit tests covering:
-- Single-rate VAT (inclusive and exclusive)
-- Multi-rate VAT with extra costs at different rates
-- Split payment math (1/2, 1/3, 1/4 players)
-- Edge cases: zero price, single booking, all bookings removed
-- Rounding precision (the `Math.round * 100 / 100` pattern)
+The `ClubAddSlotDialog` and `ClubBulkCreateSheet` on the club calendar remain as-is (club side is not in scope).
 
-### 2. Add Unit Tests for `cycles.ts` Pure Logic
+### 2. CreateInvoiceDialog → Wire Up Existing Page
 
-- `DEFAULT_SCORING_WEIGHTS` sums to 100 (already tested)
-- `toCycle()` / `toIntakeRequest()` type converters — test with edge-case JSON
-- `exportIntakeRequestsToCsv()` — test CSV output format
-- Rate-limiting logic in `submitIntakeRequest` — test the time-window check
+The page `/app/trainer/invoices/new` already exists. Simply:
+- Remove `CreateInvoiceDialog` import and state from `TrainerEarnings.tsx`
+- Replace the "Create Invoice" button with `navigate('/app/trainer/invoices/new')`
+- Delete `CreateInvoiceDialog.tsx` once no longer imported
 
-### 3. Edge Function Integration Tests
+### 3. EditSlotDialog → Redirect to Slot Detail Page
 
-Expand the existing `rls-health.spec.ts` pattern to cover the critical edge functions:
+Both calendars currently open an `EditSlotDialog` on double-click/edit action. Instead:
+- Navigate to `/app/academy/slot/:id` or `/app/trainer/slot/:id` (both already exist and have edit mode)
+- Remove `EditSlotDialog` usage from `AcademyCalendar` and `TrainerCalendar`
+- Keep `EditSlotDialog.tsx` file temporarily (club calendar may still reference it)
 
-- **`auto-create-invoice`** — call with a test booking ID, verify invoice structure returned
-- **`split-invoice`** — call with known data, verify split math
-- **`generate-invoice`** — verify PDF URL is returned
-- **`health-check`** — already exists, add assertions for each sub-check
+### 4. BookForPlayerDialog → Inline on Slot Detail Pages
 
-### 4. Add a CI Smoke Test for Invoice Math
+Both `AcademySlotDetail` and `TrainerSlotDetail` already render this dialog. Convert to an inline collapsible section within the Players card:
+- Add an "Add Player" button that expands an inline form (player search + book button)
+- Reuse the core logic from `BookForPlayerDialog` but render it inline instead of in a modal
+- Calendar pages (`TrainerCalendar`, `AcademyCalendar`) that open this dialog should navigate to the slot detail page instead
 
-Create a lightweight Vitest test that runs the extracted pure functions through real-world scenarios based on the bugs we've already fixed (€0 invoices, missing splits, pagination limits).
+### 5. EditBookingDialog → Inline on Slot Detail Pages
 
-### 5. Runtime Monitoring: Invoice Anomaly Detection
+Similar to BookForPlayerDialog:
+- When clicking a booked player row on the slot detail page, expand an inline edit section (change player, update payment status, cancel booking)
+- Remove the dialog usage from slot detail pages and calendar pages
+- Calendar edit-booking actions navigate to slot detail page
 
-Add a periodic edge function (`invoice-health-check`) that queries for common anomalies:
-- Invoices with `total = 0` but `status != cancelled`
-- Invoices where `booking_ids` is empty but status is `sent`
-- Split invoices where sibling totals don't match
-- Invoices with `due_date` in the past and status still `draft`
+### 6. ImportPlayersDialog → Tab on Players Page
 
-This runs on a cron (weekly) and sends a Slack alert via the existing `slack-notify` function.
+Both `TrainerPlayers` and `AcademyPlayers` pages already have tabs. Add an "Import" tab:
+- Move the CSV upload/preview/import logic from `ImportPlayersDialog.tsx` into a new `ImportPlayersTab.tsx` component
+- Add it as a tab alongside the existing "Create" tab on the players page
+- Remove the dialog trigger buttons and dialog state
+
+## Implementation Order
+
+1. **CreateInvoiceDialog** — simplest, just rewire a button (5 min)
+2. **EditSlotDialog** — replace with navigation (10 min)
+3. **ImportPlayersDialog** → tab (medium complexity)
+4. **EditBookingDialog** → inline on slot detail (medium)
+5. **BookForPlayerDialog** → inline on slot detail (medium)
+6. **AddSlotDialog** → pages (most complex, largest file)
 
 ## File Summary
 
 | File | Change |
 |------|--------|
-| `src/lib/invoiceCalc.ts` | New — extracted pure functions for line items + VAT math |
-| `src/lib/invoiceCalc.test.ts` | New — ~20 unit tests for invoice calculation edge cases |
-| `src/lib/invoiceSync.ts` | Refactor to use `invoiceCalc.ts` functions internally |
-| `src/lib/cycles.test.ts` | Expand with CSV export + type converter tests |
-| `e2e/invoice-health.spec.ts` | New — integration tests calling invoice edge functions |
-| `supabase/functions/invoice-health-check/index.ts` | New — weekly anomaly detection, Slack alerts |
-
-## Implementation Priority
-
-1. Extract + test invoice math (highest value — prevents €0 invoice bugs)
-2. Invoice anomaly detection edge function (catches issues in production)
-3. Expand cycles tests
-4. Edge function integration tests
+| `src/pages/TrainerEarnings.tsx` | Remove CreateInvoiceDialog, navigate to invoices/new |
+| `src/pages/TrainerCalendar.tsx` | Remove EditSlotDialog + EditBookingDialog + BookForPlayerDialog, navigate to slot detail |
+| `src/pages/academy/AcademyCalendar.tsx` | Same removals, navigate to slot detail |
+| `src/components/trainer/ImportPlayersTab.tsx` | New — extracted import logic as inline tab content |
+| `src/pages/TrainerPlayers.tsx` | Add Import tab, remove ImportPlayersDialog |
+| `src/pages/academy/AcademyPlayers.tsx` | Add Import tab, remove ImportPlayersDialog |
+| `src/pages/academy/AcademySlotDetail.tsx` | Inline player booking + booking edit (replace dialogs) |
+| `src/pages/trainer/TrainerSlotDetail.tsx` | Same inline treatment |
+| `src/components/trainer/SlotCreateForm.tsx` | New — extracted from BulkCreateContent |
+| `src/pages/trainer/TrainerCreateSlot.tsx` | New — `/app/trainer/slot/new` page |
+| `src/pages/academy/AcademyCreateSlot.tsx` | New — `/app/academy/slot/new` page |
+| `src/components/DomainRouter.tsx` | Add routes for slot/new pages |
 
