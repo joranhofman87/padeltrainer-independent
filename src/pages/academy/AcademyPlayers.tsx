@@ -636,6 +636,8 @@ export default function AcademyPlayers() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Desktop Table */}
+                <div className="hidden md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -739,6 +741,77 @@ export default function AcademyPlayers() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
+
+                {/* Mobile Cards */}
+                <div className="md:hidden space-y-3">
+                  {filteredPlayers.map((player) => (
+                    <div key={player.id} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium truncate">{player.full_name}</p>
+                          {player.trainer_name && (
+                            <p className="text-xs text-muted-foreground">{player.trainer_name}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {player.type === 'registered' ? (
+                            <Badge variant="default" className="text-xs">{tTrainer('players.statuses.registered')}</Badge>
+                          ) : player.has_trained ? (
+                            <Badge variant="secondary" className="text-xs">{tTrainer('players.statuses.active')}</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">{tTrainer('players.statuses.prospect')}</Badge>
+                          )}
+                          {player.type === 'guest' && player.originalGuest && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setEditingPlayer(player.originalGuest!)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  {tTrainer('players.edit')}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setDeletingPlayer(player.originalGuest!)} className="text-destructive">
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  {tTrainer('players.delete')}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                        {player.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3" /> {player.email}
+                          </span>
+                        )}
+                        {player.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {player.phone}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        {player.skill_rating && (
+                          <Badge variant="secondary" className="text-xs">
+                            {player.skill_rating.toFixed(1)} {player.rating_system?.toUpperCase()}
+                          </Badge>
+                        )}
+                        {player.has_active_cyclus && (
+                          <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Cyclus
+                          </Badge>
+                        )}
+                        <span>{format(new Date(player.created_at), 'MMM d, yyyy')}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}

@@ -314,17 +314,17 @@ export default function TrainerCyclus() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={() => navigate("/trainer")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
               <h1 className="text-2xl font-bold">{t("cyclus.title", "Training Cycles")}</h1>
-              <p className="text-muted-foreground">{t("cyclus.subtitle", "Manage your recurring training groups")}</p>
+              <p className="text-muted-foreground hidden sm:block">{t("cyclus.subtitle", "Manage your recurring training groups")}</p>
             </div>
           </div>
-          <Button onClick={() => navigate("/trainer/calendar")}>
+          <Button className="w-full sm:w-auto" onClick={() => navigate("/trainer/calendar")}>
             <Plus className="mr-2 h-4 w-4" />
             {t("calendar.createCyclus")}
           </Button>
@@ -399,18 +399,16 @@ export default function TrainerCyclus() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 sm:gap-4">
+                        <div className="flex items-center gap-3 sm:gap-4">
                             <div className="text-center">
-                              <p className="text-2xl font-bold">{cyclus.future_sessions}</p>
+                              <p className="text-lg sm:text-2xl font-bold">{cyclus.future_sessions}</p>
                               <p className="text-xs text-muted-foreground">{t("cyclus.upcoming", "upcoming")}</p>
                             </div>
                             <div className="text-center">
-                              <p className="text-2xl font-bold">{cyclus.players.length}</p>
+                              <p className="text-lg sm:text-2xl font-bold">{cyclus.players.length}</p>
                               <p className="text-xs text-muted-foreground">{t("cyclus.players", "players")}</p>
                             </div>
-                          </div>
                         </div>
 
                         <DropdownMenu>

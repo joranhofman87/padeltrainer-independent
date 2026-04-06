@@ -247,13 +247,13 @@ export default function AcademyTrainers() {
               </CardContent>
             </Card>
           ) : (
-            <div className="rounded-md border">
+            {/* Desktop Table */}
+            <div className="hidden md:block rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[250px]">{t('common:name', 'Name')}</TableHead>
                      <TableHead>{t('common:locations.title', 'Locations')}</TableHead>
-                     
                      <TableHead className="text-center">{t('trainers.showOnAcademyPage', 'Visible')}</TableHead>
                      <TableHead className="text-right w-[100px]">{t('common:actions', 'Actions')}</TableHead>
                   </TableRow>
@@ -359,6 +359,65 @@ export default function AcademyTrainers() {
                   })}
                 </TableBody>
               </Table>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="md:hidden space-y-3">
+              {activeTrainers.map((trainer) => {
+                const hasName = !!trainer.profile?.full_name;
+                const isVisible = trainer.show_on_academy_page;
+
+                return (
+                  <div
+                    key={trainer.id}
+                    className="border rounded-lg p-3 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div
+                        className="flex items-center gap-3 cursor-pointer hover:opacity-80 min-w-0 flex-1"
+                        onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
+                      >
+                        <Avatar className="h-9 w-9 shrink-0">
+                          <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
+                          <AvatarFallback className="text-xs">
+                            {getInitials(trainer.profile?.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium truncate">
+                          {trainer.profile?.full_name || 'Trainer'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Switch
+                          checked={isVisible}
+                          onCheckedChange={(checked) =>
+                            handleVisibilityToggle(trainer.id, checked, hasName)
+                          }
+                          disabled={updatingVisibility === trainer.id || (!hasName && !isVisible)}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    {trainer.locations && trainer.locations.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {trainer.locations.map((loc: any) => (
+                          <Badge key={loc.id} variant="secondary" className="text-xs">
+                            <MapPin className="h-3 w-3 mr-1" />
+                            {loc.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </TabsContent>

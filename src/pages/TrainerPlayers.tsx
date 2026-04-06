@@ -451,6 +451,8 @@ export default function TrainerPlayers() {
                 )}
               </div>
             ) : (
+            {/* Desktop Table */}
+              <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -553,6 +555,81 @@ export default function TrainerPlayers() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-3">
+                {filteredPlayers.map((player) => {
+                  const statusConfig: Record<PlayerStatus, { variant: "default" | "secondary" | "outline" | "destructive"; className?: string }> = {
+                    active: { variant: "default" },
+                    registered: { variant: "default" },
+                    available: { variant: "outline", className: "border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-400" },
+                    waiting_list: { variant: "outline", className: "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400" },
+                    prospect: { variant: "outline" },
+                  };
+                  const cfg = statusConfig[player.computedStatus];
+                  return (
+                    <div key={player.id} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">{player.full_name}</p>
+                          {player.notes && (
+                            <p className="text-xs text-muted-foreground truncate max-w-[200px]">{player.notes}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={cfg.variant} className={cfg.className}>
+                            {t(`players.statuses.${player.computedStatus}`)}
+                          </Badge>
+                          {player.type === "guest" && player.originalGuest && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setEditingPlayer(player.originalGuest!)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  {t("players.edit")}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => navigate(`/trainer/calendar`)}>
+                                  <Calendar className="mr-2 h-4 w-4" />
+                                  {t("players.bookLesson")}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setDeletingPlayer(player.originalGuest!)} className="text-destructive">
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  {t("players.delete")}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                        {player.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3" /> {player.email}
+                          </span>
+                        )}
+                        {player.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {player.phone}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        {player.skill_rating && (
+                          <Badge variant="secondary" className="text-xs">
+                            {player.skill_rating.toFixed(1)} {player.rating_system?.toUpperCase()}
+                          </Badge>
+                        )}
+                        <span>{format(new Date(player.created_at), "MMM d, yyyy")}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
