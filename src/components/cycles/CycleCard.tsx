@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import { logger } from '@/lib/logger';
+import { SafeHtml } from '@/components/ui/SafeHtml';
 import { 
   Calendar, 
   Users, 
@@ -230,7 +231,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
       
       <CardContent>
         {cycle.description && (
-          <div className="text-sm text-muted-foreground mb-4 line-clamp-2 prose prose-sm dark:prose-invert max-w-none [&>*]:m-0" dangerouslySetInnerHTML={{ __html: cycle.description }} />
+          <SafeHtml html={cycle.description} className="text-sm text-muted-foreground mb-4 line-clamp-2 prose prose-sm dark:prose-invert max-w-none [&>*]:m-0" />
         )}
         
         <div className="flex items-center gap-4 text-sm">

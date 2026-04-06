@@ -20,6 +20,7 @@ import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { logger } from '@/lib/logger';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
+import { SafeHtml } from '@/components/ui/SafeHtml';
 
 interface OwnerInfo {
   type: 'trainer' | 'club' | 'academy';
@@ -387,7 +388,7 @@ export default function CycleRegistration() {
 
               {/* Description */}
               {cycle.description && (
-                <div className="text-muted-foreground prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
+                <SafeHtml html={cycle.description} className="text-muted-foreground prose dark:prose-invert max-w-none" />
               )}
 
               {/* Price table */}

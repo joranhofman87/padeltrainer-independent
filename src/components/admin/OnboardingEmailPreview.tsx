@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useState } from "react";
 import { type OnboardingEmailTemplate } from "@/lib/onboardingEmails";
+import { SafeHtml } from "@/components/ui/SafeHtml";
 
 interface OnboardingEmailPreviewProps {
   open: boolean;
@@ -102,9 +103,9 @@ export function OnboardingEmailPreview({
             <div className="text-sm text-muted-foreground">
               {t("onboardingEmails.bodyLabel")}
             </div>
-            <div
+            <SafeHtml
+              html={previewBody}
               className="border rounded-lg p-4 bg-background prose prose-sm max-w-none dark:prose-invert"
-              dangerouslySetInnerHTML={{ __html: previewBody }}
             />
           </div>
 

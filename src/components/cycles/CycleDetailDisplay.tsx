@@ -5,14 +5,7 @@ import { differenceInWeeks } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import type { Cycle, PriceTableRow, CyclusOption } from '@/lib/cycles';
 
-/** Renders HTML without React tracking inner DOM nodes, preventing reconciliation crashes from third-party scripts. */
-function SafeHTML({ html, className }: { html: string; className?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.innerHTML = html;
-  }, [html]);
-  return <div ref={ref} className={className} />;
-}
+import { SafeHtml } from '@/components/ui/SafeHtml';
 
 interface CycleDetailDisplayProps {
   cycle: Cycle;
@@ -248,7 +241,7 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
       {(cycle.settings as any)?.pricing_note && (
         <div 
           className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none [&_p]:my-1"
-          dangerouslySetInnerHTML={{ __html: (cycle.settings as any).pricing_note }}
+          ref={undefined}
         />
       )}
       {/* Terms */}
