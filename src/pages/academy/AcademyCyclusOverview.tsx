@@ -645,7 +645,7 @@ export default function AcademyCyclusOverview() {
             </div>
 
             <Select value={timeFilter} onValueChange={v => setTimeFilter(v as TimeFilter)}>
-              <SelectTrigger className="w-[140px] h-9">
+              <SelectTrigger className="w-full sm:w-[140px] h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -658,7 +658,7 @@ export default function AcademyCyclusOverview() {
 
             {trainers.length > 1 && (
               <Select value={filterTrainer} onValueChange={setFilterTrainer}>
-                <SelectTrigger className="w-[160px] h-9">
+                <SelectTrigger className="w-full sm:w-[160px] h-9">
                   <SelectValue placeholder={t('calendar.allTrainers', 'All Trainers')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -672,7 +672,7 @@ export default function AcademyCyclusOverview() {
 
             {locations.length > 1 && (
               <Select value={filterLocation} onValueChange={setFilterLocation}>
-                <SelectTrigger className="w-[160px] h-9">
+                <SelectTrigger className="w-full sm:w-[160px] h-9">
                   <SelectValue placeholder={t('calendar.allLocations', 'All Locations')} />
                 </SelectTrigger>
                 <SelectContent>
