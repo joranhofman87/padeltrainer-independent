@@ -848,5 +848,12 @@
     "cancel": "Annuleren",
     "saving": "Bezig...",
     "save": "Opslaan"
+  },
+  "pendingAttendance": {
+    "title": "Actie vereist",
+    "subtitle": "{{count}} sessie(s) wacht(en) op je aanwezigheidsrapport",
+    "report": "Rapporteren",
+    "trainingSession": "Trainingssessie",
+    "players": "spelers"
   }
 }

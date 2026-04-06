@@ -320,5 +320,12 @@
     "save": "Save",
     "saved": "Attendance saved",
     "saveError": "Failed to save"
+  },
+  "pendingAttendance": {
+    "title": "Action Required",
+    "subtitle": "{{count}} session(s) need your attendance report",
+    "report": "Report",
+    "trainingSession": "Training Session",
+    "players": "players"
   }
 }
