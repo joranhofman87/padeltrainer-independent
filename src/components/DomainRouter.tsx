@@ -111,6 +111,10 @@ const OpenSlots = lazy(() => import('@/pages/OpenSlots'));
 const TrainerScheduleOverview = lazy(() => import('@/pages/TrainerScheduleOverview'));
 const BookingSuccess = lazy(() => import('@/pages/BookingSuccess'));
 const CycleFormPage = lazy(() => import('@/pages/CycleFormPage'));
+const TrainerInvoices = lazy(() => import('@/pages/trainer/TrainerInvoices'));
+const TrainerCreateInvoice = lazy(() => import('@/pages/trainer/TrainerCreateInvoice'));
+const TrainerEditInvoice = lazy(() => import('@/pages/trainer/TrainerEditInvoice'));
+const TrainerSlotDetail = lazy(() => import('@/pages/trainer/TrainerSlotDetail'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'));
