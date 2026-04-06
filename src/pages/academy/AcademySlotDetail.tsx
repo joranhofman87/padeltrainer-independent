@@ -262,6 +262,23 @@ export default function AcademySlotDetail() {
     })();
   }, [activeAcademy?.id, slotId]);
 
+  // Fetch invoices linked to this slot's bookings
+  useEffect(() => {
+    if (!detail || detail.booked_players.length === 0) {
+      setSlotInvoices([]);
+      return;
+    }
+    const bookingIds = detail.booked_players.map(p => p.bookingId);
+    (async () => {
+      const { data } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, player_name, total, status, due_date, paid_at')
+        .overlaps('booking_ids', bookingIds)
+        .order('invoice_number');
+      setSlotInvoices((data as SlotInvoice[]) || []);
+    })();
+  }, [detail]);
+
   useEffect(() => {
     if (!activeAcademy) return;
     (async () => {
