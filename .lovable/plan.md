@@ -1,57 +1,94 @@
 
 
-# Session Notes: Public Summary + Private Notes
+# Bring Trainer Side to Feature Parity with Academy
 
-## Summary
+## Overview
 
-The `session_reports` table exists but has only a single `notes` column and no frontend code was persisted. This plan adds two note types and builds the missing attendance UI.
+The academy side has received significant upgrades (dedicated pages for invoices, slot detail, cycles overview with search/filters, attendance, mobile optimization). The trainer side still uses the older patterns — dialogs instead of pages, a simpler schedule overview, and no dedicated invoicing pages. This plan brings the trainer up to par while keeping the architecture ready for shared changes in the future.
 
-### Note types
+## Key Differences to Account For
 
-1. **Session summary** (`public_notes`) — Trainer writes what was practiced. Visible to players and academy.
-2. **Private notes** (`notes`, existing column) — Private to the reporter:
-   - Trainer's private notes: visible only to trainer + academy owner
-   - Player's private notes: visible only to that individual player
+- **Academy** = multi-trainer (uses `useAcademyContext`, filters by trainer). **Trainer** = single trainer (uses `useAuth` + `trainer_profiles` lookup).
+- Routes: `/app/trainer/...` vs `/app/academy/...`
+- Context: `activeAcademy.id` vs `trainerId` (from trainer_profiles)
 
-## Database migration
+## Changes by Area
 
-Add a `public_notes` column to `session_reports`:
+### 1. Invoices — Dedicated Pages (replace dialog)
 
-```sql
-ALTER TABLE public.session_reports ADD COLUMN public_notes text;
+**Current state:** TrainerEarnings.tsx uses a `CreateInvoiceDialog` popup. No edit page exists.
+
+**New:**
+- **`/app/trainer/invoices`** — New page mirroring `AcademyInvoices.tsx` (table + mobile cards, filters by status, search, sort by amount/date/status, settings tab)
+- **`/app/trainer/invoices/new`** — New page mirroring `AcademyCreateInvoice.tsx` (full-page form with line items, VAT, customer details, responsive mobile layout)
+- **`/app/trainer/invoices/:invoiceId/edit`** — New page mirroring `AcademyEditInvoice.tsx` (edit + PDF download + payment link + mark paid)
+- Remove `CreateInvoiceDialog` usage from TrainerEarnings; link to `/app/trainer/invoices` instead
+- Move the "Invoices" tab from TrainerEarnings into its own top-level nav item
+
+### 2. Slot Detail Page
+
+**Current state:** Trainer calendar opens inline edit or small dialogs for slots. No dedicated slot page.
+
+**New:**
+- **`/app/trainer/slot/:slotId`** — New page mirroring `AcademySlotDetail.tsx` (auto-edit mode, player list with ages/ratings, warnings, invoices card, attendance card)
+- Simplified version: no trainer dropdown (it's always the logged-in trainer), no academy context
+- Calendar slot clicks navigate to this page instead of opening a dialog
+
+### 3. Cycles/Schedule Overview Enhancement
+
+**Current state:** `TrainerScheduleOverview.tsx` (1865 lines) has an edit dialog for cycles. `TrainerCyclus.tsx` is a separate legacy page.
+
+**New:**
+- Replace the inline edit dialog in `TrainerScheduleOverview.tsx` with navigation to the cycle edit page (`/app/trainer/cycles/:cycleId/edit`)
+- Add the Cycles tab from `AcademyCyclusOverview.tsx` as a component in the trainer calendar (search by player name, mobile card view, bulk visibility/pricing updates)
+- Keep `TrainerScheduleOverview` but remove the large inline edit dialog
+
+### 4. Attendance Integration
+
+**Current state:** Attendance components (`TrainerAttendanceForm`, `SlotAttendanceCard`) were created but the trainer slot detail page doesn't exist yet.
+
+**New:**
+- The new trainer slot detail page includes the attendance card (same as academy slot detail)
+- `TrainerScheduleOverview` already has attendance form integration — keep it
+
+### 5. Route Changes
+
+Add to DomainRouter.tsx under trainer routes:
+```
+/app/trainer/invoices          → TrainerInvoices
+/app/trainer/invoices/new      → TrainerCreateInvoice
+/app/trainer/invoices/:id/edit → TrainerEditInvoice
+/app/trainer/slot/:slotId      → TrainerSlotDetail
 ```
 
-No RLS changes needed — visibility is controlled in the UI layer. The existing RLS already ensures each reporter can only read/write their own row, and academy managers can read all.
+### 6. Shared Component Strategy (Future-proofing)
 
-## UI changes
+To avoid divergence, extract shared logic where possible:
+- **`InvoiceForm` component** — shared between academy and trainer create/edit pages, receiving `ownerId` + `ownerType` props
+- **`SlotDetailContent` component** — shared layout receiving slot data, with academy-specific extras (trainer dropdown) conditionally rendered
+- This refactoring can happen incrementally — start by creating trainer-specific pages that mirror the academy ones, then consolidate shared code in a follow-up
 
-### Academy Slot Detail (`AcademySlotDetail.tsx`)
-The attendance card (needs to be built since the code wasn't saved) shows:
-- Trainer's session summary (public_notes) — labeled "Session summary"
-- Trainer's private notes — labeled "Trainer notes (private)"
-- Each player's confirmation + their private notes are NOT shown here (player privacy)
-- Player attendance status (confirmed/not) IS shown
+## Implementation Order
 
-### Trainer Schedule Overview (`TrainerScheduleOverview.tsx`)
-Past slots get an attendance form:
-- "Session happened?" toggle
-- Player attendance checkboxes
-- "Session summary" textarea (public_notes) — what was practiced
-- "Private notes" textarea (notes) — internal notes, not visible to players
+1. Trainer Invoices page (list) — highest value, replaces dialog
+2. Trainer Create Invoice page
+3. Trainer Edit Invoice page
+4. Trainer Slot Detail page
+5. Route registration + navigation updates
+6. Remove old dialog-based invoice creation from TrainerEarnings
+7. Localization keys for new trainer pages
 
-### Player Bookings (`PlayerBookings.tsx`)
-Past bookings show:
-- Trainer's session summary (public_notes) from the trainer's report — read-only
-- "Did this session happen?" Yes/No
-- "My notes" textarea (notes) — private, only for this player
-
-## File summary
+## File Summary
 
 | File | Change |
 |------|--------|
-| Migration SQL | Add `public_notes` column to `session_reports` |
-| `src/pages/academy/AcademySlotDetail.tsx` | Build attendance card with summary + private trainer notes display |
-| `src/pages/TrainerScheduleOverview.tsx` | Add attendance form with two note fields |
-| `src/pages/PlayerBookings.tsx` | Show trainer summary (read-only) + player private notes |
-| Locale JSON files | Add translation keys for the two note types |
+| `src/pages/trainer/TrainerInvoices.tsx` | New — invoice list page mirroring AcademyInvoices |
+| `src/pages/trainer/TrainerCreateInvoice.tsx` | New — full-page invoice creation form |
+| `src/pages/trainer/TrainerEditInvoice.tsx` | New — invoice edit/view page |
+| `src/pages/trainer/TrainerSlotDetail.tsx` | New — slot detail page with players, invoices, attendance |
+| `src/components/DomainRouter.tsx` | Add 4 new trainer routes |
+| `src/pages/TrainerEarnings.tsx` | Remove CreateInvoiceDialog, link to invoices page |
+| `src/pages/TrainerCalendar.tsx` | Navigate to slot detail page on click |
+| `src/pages/TrainerScheduleOverview.tsx` | Replace edit dialog with navigation to edit page |
+| `src/i18n/locales/*/trainer.json` | Add translation keys for new pages |
 
