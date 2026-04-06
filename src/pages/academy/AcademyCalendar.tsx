@@ -32,7 +32,7 @@ import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/acade
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
-import { BulkCreateSheet, BulkCreateContent } from "@/components/trainer/AddSlotDialog";
+import { BulkCreateContent } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 // EditBookingDialog + EditSlotDialog removed — navigating to slot detail page instead
@@ -130,10 +130,7 @@ export default function AcademyCalendar() {
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>("all");
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
   
-  // Slot creation dialog state
-  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
-  const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
-  const [defaultSlotTime, setDefaultSlotTime] = useState<string>();
+  // Selected trainer for create tab
   const [selectedSlotTrainerId, setSelectedSlotTrainerId] = useState<string | null>(null);
 
   // Action dialog state
@@ -141,16 +138,15 @@ export default function AcademyCalendar() {
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
-  const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
+  const [preselectedCyclusId] = useState<string | undefined>();
   const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
   // SlotDetailDialog state removed — using page navigation now
 
   const handleCellClick = (day: Date, hour: number) => {
-    setDefaultSlotDate(day);
-    setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
-    const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
-    setSelectedSlotTrainerId(trainerToUse);
-    setBulkCreateOpen(true);
+    const dateStr = format(day, "yyyy-MM-dd");
+    const timeStr = `${String(hour).padStart(2, "0")}:00`;
+    const trainerParam = selectedTrainerId !== "all" ? `&trainer=${selectedTrainerId}` : "";
+    navigate(`/app/academy/slot/new?date=${dateStr}&time=${timeStr}${trainerParam}`);
   };
 
   useEffect(() => {
@@ -540,8 +536,7 @@ export default function AcademyCalendar() {
   };
 
   const handleDuplicateCyclus = (cyclusId: string) => {
-    setPreselectedCyclusId(cyclusId);
-    setBulkCreateOpen(true);
+    navigate(`/app/academy/slot/new?cyclus=${cyclusId}`);
   };
 
   const handleDeleteSlot = (slot: SlotWithBookings) => {
@@ -679,7 +674,7 @@ export default function AcademyCalendar() {
               </TabsTrigger>
             </TabsList>
 
-            <Button size="sm" className="h-9 gap-1.5" onClick={() => setActiveTab("create" as TabValue)}>
+            <Button size="sm" className="h-9 gap-1.5" onClick={() => navigate("/app/academy/slot/new")}>
               <Plus className="h-4 w-4" />
               {t("calendar.new", "New")}
             </Button>
