@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +32,7 @@ export default function CalendarSettings() {
   const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation('common');
 
   const [connection, setConnection] = useState<CalendarConnection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,14 +52,14 @@ export default function CalendarSettings() {
 
     if (success === 'true') {
       toast({
-        title: 'Calendar Connected!',
-        description: 'Your Google Calendar has been successfully connected.',
+        title: t('calendarSettings.connected'),
+        description: t('calendarSettings.connectedDescription'),
       });
       // Clear URL params
       navigate('/settings/calendar', { replace: true });
     } else if (error) {
       toast({
-        title: 'Connection Failed',
+        title: t('calendarSettings.connectionFailed'),
         description: getErrorMessage(error),
         variant: 'destructive',
       });
@@ -99,8 +101,8 @@ export default function CalendarSettings() {
       window.location.href = authUrl;
     } else {
       toast({
-        title: 'Connection Failed',
-        description: 'Could not initiate Google Calendar connection. The integration may not be configured yet.',
+        title: t('calendarSettings.connectionFailed'),
+        description: t('calendarSettings.notConfigured'),
         variant: 'destructive',
       });
       setConnecting(false);
@@ -114,15 +116,15 @@ export default function CalendarSettings() {
     if (success) {
       setConnection(prev => prev ? { ...prev, is_active: enabled } : null);
       toast({
-        title: enabled ? 'Sync Enabled' : 'Sync Paused',
+        title: enabled ? t('calendarSettings.syncEnabled') : t('calendarSettings.syncPaused'),
         description: enabled
-          ? 'New confirmed bookings will be added to your calendar.'
-          : 'Bookings will no longer be synced to your calendar.',
+          ? t('calendarSettings.syncEnabledDescription')
+          : t('calendarSettings.syncPausedDescription'),
       });
     } else {
       toast({
-        title: 'Failed to Update',
-        description: 'Could not update sync settings. Please try again.',
+        title: t('calendarSettings.failedToUpdate'),
+        description: t('calendarSettings.failedToUpdateDescription'),
         variant: 'destructive',
       });
     }
@@ -136,13 +138,13 @@ export default function CalendarSettings() {
     if (success) {
       setConnection(null);
       toast({
-        title: 'Calendar Disconnected',
-        description: 'Your Google Calendar has been disconnected.',
+        title: t('calendarSettings.disconnected'),
+        description: t('calendarSettings.disconnectedDescription'),
       });
     } else {
       toast({
-        title: 'Failed to Disconnect',
-        description: 'Could not disconnect your calendar. Please try again.',
+        title: t('calendarSettings.failedToDisconnect'),
+        description: t('calendarSettings.failedToDisconnectDescription'),
         variant: 'destructive',
       });
     }
@@ -166,8 +168,8 @@ export default function CalendarSettings() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Calendar Settings</h1>
-            <p className="text-muted-foreground">Sync your bookings with Google Calendar</p>
+            <h1 className="text-2xl font-bold">{t('calendarSettings.title')}</h1>
+            <p className="text-muted-foreground">{t('calendarSettings.subtitle')}</p>
           </div>
         </div>
 
@@ -179,7 +181,7 @@ export default function CalendarSettings() {
               Google Calendar
             </CardTitle>
             <CardDescription>
-              Connect your Google Calendar to automatically add confirmed training sessions to your calendar.
+              {t('calendarSettings.description')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -191,7 +193,7 @@ export default function CalendarSettings() {
                     <Check className="h-5 w-5 text-green-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-green-700 dark:text-green-300">Connected</p>
+                    <p className="font-medium text-green-700 dark:text-green-300">{t('calendarSettings.connectedState')}</p>
                     <p className="text-sm text-green-600 dark:text-green-400">
                       {connection.calendar_id || 'Primary calendar'}
                     </p>
@@ -201,11 +203,11 @@ export default function CalendarSettings() {
                 {/* Sync Toggle */}
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="space-y-0.5">
-                    <Label htmlFor="sync-toggle" className="font-medium">
-                      Auto-sync bookings
+                     <Label htmlFor="sync-toggle" className="font-medium">
+                       {t('calendarSettings.autoSync')}
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Automatically add confirmed training sessions to your calendar
+                      {t('calendarSettings.autoSyncDescription')}
                     </p>
                   </div>
                   <Switch
@@ -220,11 +222,11 @@ export default function CalendarSettings() {
                 <div className="flex gap-3 p-4 bg-muted rounded-lg">
                   <AlertCircle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
                   <div className="text-sm text-muted-foreground">
-                    <p className="font-medium mb-1">How it works</p>
+                    <p className="font-medium mb-1">{t('calendarSettings.howItWorks')}</p>
                     <ul className="list-disc list-inside space-y-1">
-                      <li>When a booking is confirmed, it's added to your calendar</li>
-                      <li>Calendar events include session details and participant info</li>
-                      <li>If a booking is cancelled, the event is removed</li>
+                       <li>{t('calendarSettings.howBookingAdded')}</li>
+                       <li>{t('calendarSettings.howDetailsIncluded')}</li>
+                       <li>{t('calendarSettings.howCancelRemoved')}</li>
                     </ul>
                   </div>
                 </div>
@@ -242,20 +244,20 @@ export default function CalendarSettings() {
                       ) : (
                         <Unlink className="h-4 w-4 mr-2" />
                       )}
-                      Disconnect Calendar
+                      {t('calendarSettings.disconnect')}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Disconnect Google Calendar?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will stop syncing new bookings to your calendar. Existing calendar events will remain unchanged.
+                       <AlertDialogTitle>{t('calendarSettings.disconnectConfirmTitle')}</AlertDialogTitle>
+                       <AlertDialogDescription>
+                         {t('calendarSettings.disconnectConfirmDescription')}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDisconnect}>
-                        Disconnect
+                       <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+                       <AlertDialogAction onClick={handleDisconnect}>
+                         {t('calendarSettings.disconnect')}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -268,9 +270,9 @@ export default function CalendarSettings() {
                   <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                     <Calendar className="h-8 w-8 text-muted-foreground" />
                   </div>
-                  <h3 className="font-medium mb-2">Not Connected</h3>
-                  <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
-                    Connect your Google Calendar to have confirmed training sessions automatically added to your calendar.
+                   <h3 className="font-medium mb-2">{t('calendarSettings.notConnected')}</h3>
+                   <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
+                     {t('calendarSettings.notConnectedDescription')}
                   </p>
                   <Button onClick={handleConnect} disabled={connecting} size="lg">
                     {connecting ? (
@@ -278,25 +280,25 @@ export default function CalendarSettings() {
                     ) : (
                       <Calendar className="h-4 w-4 mr-2" />
                     )}
-                    Connect Google Calendar
+                    {t('calendarSettings.connectButton')}
                   </Button>
                 </div>
 
                 {/* Benefits */}
                 <div className="border-t pt-6">
-                  <p className="text-sm font-medium mb-3">Benefits of connecting:</p>
+                  <p className="text-sm font-medium mb-3">{t('calendarSettings.benefits')}</p>
                   <ul className="space-y-2 text-sm text-muted-foreground">
                     <li className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />
-                      Automatic calendar reminders
+                      {t('calendarSettings.benefitReminders')}
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />
-                      See training sessions alongside your other events
+                      {t('calendarSettings.benefitSeeAlongside')}
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />
-                      Access from any device
+                      {t('calendarSettings.benefitAnyDevice')}
                     </li>
                   </ul>
                 </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Helmet } from 'react-helmet-async';
 import { AreaChart, Area, XAxis, YAxis } from 'recharts';
 import { format, differenceInMonths } from 'date-fns';
@@ -20,6 +21,7 @@ interface PublicRatingData {
 export default function PublicRatingCard() {
   const { profileId, lang } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation('common');
   const [data, setData] = useState<PublicRatingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -57,8 +59,8 @@ export default function PublicRatingCard() {
   if (error || !data) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#1a1a2e] text-white gap-4">
-        <p className="text-xl">Rating not found</p>
-        <Button onClick={() => navigate(`/${lang || 'nl'}`)}>Go to homepage</Button>
+        <p className="text-xl">{t('ratingNotFound')}</p>
+        <Button onClick={() => navigate(`/${lang || 'nl'}`)}>{t('goToHomepage')}</Button>
       </div>
     );
   }
