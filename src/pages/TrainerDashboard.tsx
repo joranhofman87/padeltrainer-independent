@@ -14,6 +14,7 @@ import { logger } from '@/lib/logger';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
+import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { getTrainerAcademy } from '@/lib/academy';
 import { useQuery } from '@tanstack/react-query';
 
@@ -241,6 +242,9 @@ export default function TrainerDashboard() {
           onUpgrade={() => navigate('/app/trainer/subscription')}
         />
       )}
+
+      {/* Pending Attendance Actions */}
+      <PendingAttendanceCard mode="trainer" trainerId={trainerId ?? undefined} />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
