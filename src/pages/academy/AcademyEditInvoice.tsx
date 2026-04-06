@@ -87,7 +87,7 @@ export default function AcademyEditInvoice() {
 
   useEffect(() => {
     if (invoice) {
-      setLineItems((invoice.line_items as LineItem[] || []).map((li: LineItem) => ({ ...li })));
+      setLineItems(((invoice.line_items as unknown as LineItem[]) || []).map((li: LineItem) => ({ ...li })));
       setVatRate(invoice.vat_rate ?? 21);
       setDueDate(invoice.due_date ? parseISO(invoice.due_date) : undefined);
       setNotes(invoice.notes || '');
@@ -185,7 +185,7 @@ export default function AcademyEditInvoice() {
   const originalPrices = useMemo(() => {
     if (!invoice?.line_items) return {};
     const map: Record<number, number> = {};
-    (invoice.line_items as LineItem[]).forEach((li: LineItem, i: number) => { map[i] = li.unit_price; });
+    ((invoice.line_items as unknown as LineItem[]) || []).forEach((li: LineItem, i: number) => { map[i] = li.unit_price; });
     return map;
   }, [invoice]);
 
