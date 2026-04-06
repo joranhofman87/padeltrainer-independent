@@ -1417,6 +1417,20 @@ export default function TrainerScheduleOverview() {
                             })}
                           </div>
                         )}
+
+                        {/* Attendance form for past slots */}
+                        {slotExpanded && isPastSlot && (
+                          <div className="px-6 pb-3">
+                            <TrainerAttendanceForm
+                              slotId={slot.id}
+                              players={active.map(b => ({
+                                id: b.id,
+                                name: b.profiles?.full_name || b.guest_players?.full_name || t("scheduleOverview.unknownPlayer", "Unknown"),
+                                playerId: b.player_id || b.guest_player_id || undefined,
+                              }))}
+                            />
+                          </div>
+                        )}
                       </div>
                     );
                   })}
