@@ -420,6 +420,7 @@ export default function AcademyTrainers() {
                 );
               })}
             </div>
+            </>
           )}
         </TabsContent>
 
