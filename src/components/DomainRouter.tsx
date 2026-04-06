@@ -319,6 +319,8 @@ export function DomainRouter() {
           <Route path="subscription" element={<AcademySubscription />} />
           
           <Route path="invoices" element={<AcademyInvoices />} />
+          <Route path="invoices/new" element={<AcademyCreateInvoice />} />
+          <Route path="invoices/:invoiceId/edit" element={<AcademyEditInvoice />} />
         </Route>
         <Route path="/app/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
 
