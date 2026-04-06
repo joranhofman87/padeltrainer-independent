@@ -17,9 +17,11 @@ import { getPlayerReview } from '@/lib/reviews';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
 import { downloadIcsFile } from '@/lib/icsGenerator';
+import { PlayerAttendanceForm } from '@/components/attendance/PlayerAttendanceForm';
 
 interface BookingWithDetails {
   id: string;
+  slot_id: string;
   status: string;
   payment_status: string | null;
   notes: string | null;
@@ -60,6 +62,7 @@ export default function PlayerBookings() {
       .from('bookings')
       .select(`
         id,
+        slot_id,
         status,
         payment_status,
         notes,
