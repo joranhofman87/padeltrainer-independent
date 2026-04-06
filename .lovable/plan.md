@@ -1,67 +1,122 @@
 
 
-# Academy Mobile Optimization Audit
+# Session Attendance & Confirmation System
 
-## What's already good
+## Overview
 
-- **Invoices list**: Has a proper `hidden md:block` table + `md:hidden` mobile card layout
-- **Dashboard**: Uses `grid-cols-1 md:grid-cols-4` — stacks on mobile
-- **Slot detail**: Uses `grid-cols-1 lg:grid-cols-2` — stacks on mobile
-- **Calendar tabs**: Uses `text-xs sm:text-sm` for tab labels
-- **Filters on Invoices/Cycles**: Uses `flex-col sm:flex-row` wrapping
+After a training session ends, both the **trainer** and the **players** can report what happened: did the session take place, who showed up, and optionally add notes about what was practiced. This creates a two-sided verification system where the academy owner gets reliable data about actual worked hours.
 
-## Issues found
+## How it works
 
-### 1. Invoice Create/Edit — Line items grid is broken on mobile
-Both `AcademyCreateInvoice.tsx` and `AcademyEditInvoice.tsx` use a fixed 6-column grid:
+### Data model
+
+A new `session_reports` table stores one report per (slot + reporter):
+
+```text
+session_reports
+├── id (uuid, PK)
+├── slot_id (uuid, FK → availability_slots)
+├── reporter_id (uuid, FK → profiles)  -- who submitted this report
+├── reporter_role ('trainer' | 'player')
+├── session_happened (boolean)          -- did the session take place?
+├── attendees (uuid[])                  -- profile IDs of players who showed up
+├── notes (text, nullable)              -- what was practiced / reason for cancellation
+├── created_at (timestamptz)
+└── updated_at (timestamptz)
 ```
-grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem]
+
+**Why one table instead of separate trainer/player tables?** Same schema, same RLS pattern, simpler queries. The `reporter_role` column distinguishes who reported.
+
+### UX flow
+
+**For trainers** (after a past session):
+1. On the slot detail page and schedule overview, past sessions show an "Attendance" section
+2. Quick toggle: "Session happened?" (defaults to yes)
+3. Checkboxes for each booked player — tick who showed up
+4. Optional notes field (e.g., "Worked on volleys and positioning")
+5. Single "Save" button
+
+**For players** (after a past session):
+1. On the Player Bookings page, past bookings show a "Confirm attendance" prompt
+2. Simple: "Did this session happen?" Yes/No
+3. Optional notes field
+4. Single "Save" button
+
+**Visual indicators:**
+- Slots/bookings that need attendance reporting show a small clipboard icon
+- Already-reported slots show a green checkmark
+- Conflicting reports (trainer says happened, player says no) show a warning indicator on the academy side
+
+### Academy owner view
+
+On the slot detail page, a new "Attendance" card shows:
+- Trainer's report (happened/not, who attended, notes)
+- Each player's confirmation (happened/not, notes)
+- Conflicts highlighted if trainer and player disagree
+- This feeds into the Reports tab for accurate worked-hours calculations
+
+### Impact on reporting
+
+The existing Reports tab (`AcademyReports`) currently counts hours based on slots with bookings. With attendance data available, it can optionally filter to only count sessions that were confirmed as having happened — giving the academy owner the "actual worked hours" they requested.
+
+## Migration
+
+```sql
+CREATE TABLE public.session_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slot_id uuid REFERENCES availability_slots(id) ON DELETE CASCADE NOT NULL,
+  reporter_id uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  reporter_role text NOT NULL CHECK (reporter_role IN ('trainer', 'player')),
+  session_happened boolean NOT NULL DEFAULT true,
+  attendees uuid[] DEFAULT '{}',
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE (slot_id, reporter_id)
+);
+
+ALTER TABLE public.session_reports ENABLE ROW LEVEL SECURITY;
+
+-- Trainers can report on their own slots
+CREATE POLICY "Trainers can manage their slot reports"
+  ON session_reports FOR ALL TO authenticated
+  USING (
+    reporter_id = get_profile_id_for_user(auth.uid())
+    OR EXISTS (
+      SELECT 1 FROM availability_slots s
+      JOIN trainer_profiles tp ON tp.id = s.trainer_id
+      WHERE s.id = slot_id AND tp.user_id = auth.uid()
+    )
+  );
+
+-- Players can report on slots they're booked on
+CREATE POLICY "Players can manage their booking reports"
+  ON session_reports FOR ALL TO authenticated
+  USING (
+    reporter_id = get_profile_id_for_user(auth.uid())
+  );
+
+-- Academy managers can read all reports for their trainers
+CREATE POLICY "Academy managers can read reports"
+  ON session_reports FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM availability_slots s
+      JOIN academy_trainers at ON at.trainer_profile_id = s.trainer_id
+      JOIN academy_managers am ON am.academy_profile_id = at.academy_profile_id
+      WHERE s.id = slot_id AND am.user_id = auth.uid()
+    )
+  );
 ```
-This totals ~350px minimum width with no responsive breakpoint — it overflows or squishes on phones. Needs a stacked mobile layout.
-
-### 2. Cycles tab — Wide table with no mobile card view
-`AcademyCyclusOverview.tsx` renders a full `<Table>` with 10 columns (checkbox, name, trainer, location, day/time, period, sessions, players, price, occupancy). No `md:hidden` mobile card alternative exists like on the Invoices page.
-
-### 3. Cycles tab — Filter bar overflows on mobile
-The filter bar has search input + 3 dropdowns (time, trainer, location) all in a `flex` row with fixed widths (`w-[140px]`, `w-[160px]`). No wrapping or stacking for small screens.
-
-### 4. Calendar tab bar — 6 tabs overflow horizontally
-The calendar has 6 `TabsTrigger` items (Overview, Cycles, Manage, Create, Hours, Reports) in a single `TabsList`. On mobile this likely overflows since `TabsList` doesn't scroll by default.
-
-### 5. Invoice filters — Fixed-width dropdowns
-The invoice filter bar has `w-48`, `w-40`, `w-64` fixed-width elements without responsive alternatives.
-
-## Plan
-
-### File 1: `src/pages/academy/AcademyCreateInvoice.tsx`
-- On mobile (`md:` breakpoint), switch line items from the 6-column grid to a stacked card-per-item layout
-- Each line item becomes a small card with description on top, then quantity/price/vat/total in a 2x2 grid
-- Keep the desktop 6-column grid as `hidden md:block`
-
-### File 2: `src/pages/academy/AcademyEditInvoice.tsx`
-- Same line items mobile treatment as Create page
-
-### File 3: `src/pages/academy/AcademyCyclusOverview.tsx`
-- Add a `md:hidden` mobile card view (like Invoices page already has)
-- Each cycle becomes a card showing name, trainer, period, sessions count, and player count
-- Keep the desktop table as `hidden md:block`
-- Make the filter bar wrap on mobile: `flex-wrap` with `w-full sm:w-auto` on dropdowns
-
-### File 4: `src/pages/academy/AcademyCalendar.tsx`
-- Make the `TabsList` horizontally scrollable on mobile using `overflow-x-auto` and `flex-nowrap`
-- Ensure the "New" button doesn't get pushed off-screen
-
-### File 5: `src/pages/academy/AcademyInvoices.tsx`
-- Make filter dropdowns use `w-full sm:w-48` so they stack full-width on mobile
-- Search input: `w-full sm:w-64`
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyCreateInvoice.tsx` | Responsive line items: stacked cards on mobile |
-| `src/pages/academy/AcademyEditInvoice.tsx` | Same responsive line items treatment |
-| `src/pages/academy/AcademyCyclusOverview.tsx` | Add mobile card view + responsive filter bar |
-| `src/pages/academy/AcademyCalendar.tsx` | Scrollable tab bar on mobile |
-| `src/pages/academy/AcademyInvoices.tsx` | Responsive filter widths |
+| Migration SQL | Create `session_reports` table with RLS |
+| `src/pages/academy/AcademySlotDetail.tsx` | Add "Attendance" card showing trainer report + player confirmations, with edit capability for the trainer |
+| `src/pages/PlayerBookings.tsx` | Add attendance confirmation prompt on past bookings |
+| `src/pages/TrainerScheduleOverview.tsx` | Add attendance indicator + quick-report on past slots |
+| `src/components/trainer/CalendarSlotCard.tsx` | Show attendance status icon on past slots |
+| Locale JSON files (EN, NL, ES, DE, FR) | Add ~25 translation keys for attendance feature |
 
