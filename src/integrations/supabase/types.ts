@@ -4639,7 +4639,6 @@ export type Database = {
       academy_profiles_safe: {
         Row: {
           banner_url: string | null
-          contact_email: string | null
           country: string | null
           created_at: string | null
           description: string | null
@@ -4648,23 +4647,20 @@ export type Database = {
           is_verified: boolean | null
           logo_url: string | null
           name: string | null
-          phone: string | null
           slug: string | null
           social_facebook: string | null
           social_instagram: string | null
           social_linkedin: string | null
           social_tiktok: string | null
           social_youtube: string | null
-          subscription_ends_at: string | null
-          subscription_status: string | null
-          subscription_tier: string | null
-          trial_ends_at: string | null
+          timezone: string | null
           updated_at: string | null
+          waiting_list_enabled: boolean | null
           website_url: string | null
+          welcome_message: string | null
         }
         Insert: {
           banner_url?: string | null
-          contact_email?: string | null
           country?: string | null
           created_at?: string | null
           description?: string | null
@@ -4673,23 +4669,20 @@ export type Database = {
           is_verified?: boolean | null
           logo_url?: string | null
           name?: string | null
-          phone?: string | null
           slug?: string | null
           social_facebook?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
-          subscription_ends_at?: string | null
-          subscription_status?: string | null
-          subscription_tier?: string | null
-          trial_ends_at?: string | null
+          timezone?: string | null
           updated_at?: string | null
+          waiting_list_enabled?: boolean | null
           website_url?: string | null
+          welcome_message?: string | null
         }
         Update: {
           banner_url?: string | null
-          contact_email?: string | null
           country?: string | null
           created_at?: string | null
           description?: string | null
@@ -4698,19 +4691,17 @@ export type Database = {
           is_verified?: boolean | null
           logo_url?: string | null
           name?: string | null
-          phone?: string | null
           slug?: string | null
           social_facebook?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
-          subscription_ends_at?: string | null
-          subscription_status?: string | null
-          subscription_tier?: string | null
-          trial_ends_at?: string | null
+          timezone?: string | null
           updated_at?: string | null
+          waiting_list_enabled?: boolean | null
           website_url?: string | null
+          welcome_message?: string | null
         }
         Relationships: []
       }
@@ -4794,6 +4785,7 @@ export type Database = {
           social_tiktok: string | null
           social_youtube: string | null
           updated_at: string | null
+          welcome_message: string | null
         }
         Insert: {
           banner_url?: string | null
@@ -4809,6 +4801,7 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           updated_at?: string | null
+          welcome_message?: string | null
         }
         Update: {
           banner_url?: string | null
@@ -4824,6 +4817,7 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           updated_at?: string | null
+          welcome_message?: string | null
         }
         Relationships: [
           {
@@ -4976,11 +4970,8 @@ export type Database = {
           social_tiktok: string | null
           social_youtube: string | null
           specializations: string[] | null
-          subscription_status: string | null
           trainer_rating_system: string | null
-          trial_ends_at: string | null
           updated_at: string | null
-          use_manual_invoicing: boolean | null
           user_id: string | null
           video_url: string | null
           waiting_list_enabled: boolean | null
@@ -5009,11 +5000,8 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
-          subscription_status?: string | null
           trainer_rating_system?: string | null
-          trial_ends_at?: string | null
           updated_at?: string | null
-          use_manual_invoicing?: boolean | null
           user_id?: string | null
           video_url?: string | null
           waiting_list_enabled?: boolean | null
@@ -5042,11 +5030,8 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
-          subscription_status?: string | null
           trainer_rating_system?: string | null
-          trial_ends_at?: string | null
           updated_at?: string | null
-          use_manual_invoicing?: boolean | null
           user_id?: string | null
           video_url?: string | null
           waiting_list_enabled?: boolean | null
