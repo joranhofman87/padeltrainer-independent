@@ -246,6 +246,11 @@ export function DomainRouter() {
           <Route path="earnings" element={<TrainerEarnings />} />
           <Route path="analytics" element={<TrainerAnalytics />} />
           
+          <Route path="invoices" element={<TrainerInvoices />} />
+          <Route path="invoices/new" element={<TrainerCreateInvoice />} />
+          <Route path="invoices/:invoiceId/edit" element={<TrainerEditInvoice />} />
+          <Route path="slot/:slotId" element={<TrainerSlotDetail />} />
+          
           <Route path="get-started" element={<TrainerGetStarted />} />
         </Route>
 
