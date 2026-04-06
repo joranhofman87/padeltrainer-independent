@@ -198,6 +198,7 @@ serve(async (req: Request) => {
             language: "nl",
             data: {
               playerName: ir.full_name,
+              playerEmail: ir.email,
               cycleName: cycle.name,
               startDate: cycle.start_date,
               endDate: cycle.end_date,

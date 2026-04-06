@@ -75,6 +75,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
       .from('invoices')
       .select('id, invoice_number, invoice_date, due_date, player_name, player_business_name, player_address, player_btw_number, subtotal, vat_rate, vat_amount, total, status, pdf_url, sent_at, paid_at, notes')
       .eq('player_id', profileId)
+      .neq('status', 'draft')
       .order('invoice_date', { ascending: false });
 
     if (error) {
