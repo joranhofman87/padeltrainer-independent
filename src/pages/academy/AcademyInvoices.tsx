@@ -549,8 +549,8 @@ export default function AcademyInvoices() {
           </TabsList>
           <div className="flex items-center gap-2 flex-1 flex-wrap">
             {trainers.length > 0 && (
-              <Select value={trainerFilter} onValueChange={setTrainerFilter}>
-                <SelectTrigger className="w-48">
+            <Select value={trainerFilter} onValueChange={setTrainerFilter}>
+                <SelectTrigger className="w-full sm:w-48">
                   <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -562,8 +562,8 @@ export default function AcademyInvoices() {
               </Select>
             )}
             {academyLocations.length > 0 && (
-              <Select value={locationFilter} onValueChange={setLocationFilter}>
-                <SelectTrigger className="w-48">
+            <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger className="w-full sm:w-48">
                   <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -575,7 +575,7 @@ export default function AcademyInvoices() {
               </Select>
             )}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full sm:w-40">
                 <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
               </SelectTrigger>
               <SelectContent>
@@ -593,7 +593,7 @@ export default function AcademyInvoices() {
                 placeholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-64"
+                className="pl-9 w-full sm:w-64"
               />
             </div>
           </div>

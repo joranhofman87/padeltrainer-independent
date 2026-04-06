@@ -664,30 +664,36 @@ export default function AcademyCalendar() {
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <TabsList className="h-9">
-              <TabsTrigger value="overview" className="text-xs sm:text-sm gap-1.5">
+            <TabsList className="h-9 w-full sm:w-auto overflow-x-auto flex-nowrap justify-start">
+              <TabsTrigger value="overview" className="text-xs sm:text-sm gap-1.5 shrink-0">
                 <LayoutGrid className="h-3.5 w-3.5" />
-                {t("calendar.tabs.overview", "Overview")}
+                <span className="hidden sm:inline">{t("calendar.tabs.overview", "Overview")}</span>
+                <span className="sm:hidden">{t("calendar.tabs.overview", "Overview")}</span>
               </TabsTrigger>
-              <TabsTrigger value="cycles" className="text-xs sm:text-sm gap-1.5">
+              <TabsTrigger value="cycles" className="text-xs sm:text-sm gap-1.5 shrink-0">
                 <Repeat className="h-3.5 w-3.5" />
-                {t("calendar.tabs.cycles", "Cycles")}
+                <span className="hidden sm:inline">{t("calendar.tabs.cycles", "Cycles")}</span>
+                <span className="sm:hidden">{t("calendar.tabs.cycles", "Cycles")}</span>
               </TabsTrigger>
-              <TabsTrigger value="manage" className="text-xs sm:text-sm gap-1.5">
+              <TabsTrigger value="manage" className="text-xs sm:text-sm gap-1.5 shrink-0">
                 <Calendar className="h-3.5 w-3.5" />
-                {t("calendar.tabs.manage", "Manage")}
+                <span className="hidden sm:inline">{t("calendar.tabs.manage", "Manage")}</span>
+                <span className="sm:hidden">{t("calendar.tabs.manage", "Manage")}</span>
               </TabsTrigger>
-              <TabsTrigger value="create" className="text-xs sm:text-sm gap-1.5">
+              <TabsTrigger value="create" className="text-xs sm:text-sm gap-1.5 shrink-0">
                 <Plus className="h-3.5 w-3.5" />
-                {t("calendar.tabs.create", "Create")}
+                <span className="hidden sm:inline">{t("calendar.tabs.create", "Create")}</span>
+                <span className="sm:hidden">{t("calendar.tabs.create", "Create")}</span>
               </TabsTrigger>
-              <TabsTrigger value="hours" className="text-xs sm:text-sm gap-1.5">
+              <TabsTrigger value="hours" className="text-xs sm:text-sm gap-1.5 shrink-0">
                 <Clock className="h-3.5 w-3.5" />
-                {t("calendar.tabs.hours", "Trainer Hours")}
+                <span className="hidden sm:inline">{t("calendar.tabs.hours", "Trainer Hours")}</span>
+                <span className="sm:hidden">{t("calendar.tabs.hours", "Hours")}</span>
               </TabsTrigger>
-              <TabsTrigger value="reports" className="text-xs sm:text-sm gap-1.5">
+              <TabsTrigger value="reports" className="text-xs sm:text-sm gap-1.5 shrink-0">
                 <BarChart3 className="h-3.5 w-3.5" />
-                {t("calendar.tabs.reports", "Reports")}
+                <span className="hidden sm:inline">{t("calendar.tabs.reports", "Reports")}</span>
+                <span className="sm:hidden">{t("calendar.tabs.reports", "Reports")}</span>
               </TabsTrigger>
             </TabsList>
 
