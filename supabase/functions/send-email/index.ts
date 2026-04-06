@@ -937,7 +937,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
             </div>
             <p><strong>Maak je account aan</strong> om je schema altijd terug te vinden, betalingen te beheren en meer:</p>
             <p style="margin-top: 16px;">
-              <a href="https://padeltrainer.ai/app/signup/player" style="background: ${BRAND_ORANGE}; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">Account aanmaken</a>
+              <a href="https://padeltrainer.ai/app/signup/player?email=${encodeURIComponent(data.playerEmail || '')}&name=${encodeURIComponent(data.playerName || '')}" style="background: ${BRAND_ORANGE}; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">Account aanmaken</a>
             </p>
             <p style="background: #fef3c7; padding: 12px; border-radius: 6px; color: #92400e; margin-top: 20px;">
               <strong>Belangrijk:</strong> Gebruik hetzelfde e-mailadres (${data.playerEmail || (data as any).to || ''}) bij het aanmaken van je account, zodat je schema automatisch zichtbaar is.
