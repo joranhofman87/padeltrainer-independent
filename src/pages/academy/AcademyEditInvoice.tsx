@@ -47,7 +47,8 @@ function parseAddress(address?: string | null): { street: string; zipCode: strin
 }
 
 export default function AcademyEditInvoice() {
-  const { t, i18n } = useTranslation('academy');
+  const { t: tAcademy, i18n } = useTranslation('academy');
+  const { t } = useTranslation('common');
   const navigate = useNavigate();
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const { activeAcademy } = useAcademyContext();
@@ -236,16 +237,16 @@ export default function AcademyEditInvoice() {
         });
         if (syncError) {
           logger.error('Sync to bookings failed', syncError instanceof Error ? syncError : new Error(String(syncError)), { component: 'AcademyEditInvoice' });
-          toast.error('Factuur opgeslagen, maar synchronisatie naar boekingen is mislukt');
+          toast.error(t('invoiceEdit.savedSyncFailed'));
         }
       }
 
-      toast.success('Factuur bijgewerkt');
+      toast.success(t('invoiceEdit.saved'));
       queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
       navigate('/app/academy/invoices');
     } catch (err) {
       logger.error('Failed to update invoice', err instanceof Error ? err : new Error(String(err)), { component: 'AcademyEditInvoice' });
-      toast.error('Kon factuur niet bijwerken');
+      toast.error(t('invoiceEdit.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -258,7 +259,7 @@ export default function AcademyEditInvoice() {
         body: { invoiceId: invoice.id },
       });
       if (error || !data?.html) {
-        toast.error(t('invoices.noPdf', 'No PDF available'));
+        toast.error(t('invoiceEdit.noPdf', tAcademy('invoices.noPdf', 'No PDF available')));
         return;
       }
       const printWindow = window.open('', '_blank');
@@ -268,7 +269,7 @@ export default function AcademyEditInvoice() {
         printWindow.onload = () => printWindow.print();
       }
     } catch {
-      toast.error(t('invoices.noPdf', 'No PDF available'));
+      toast.error(tAcademy('invoices.noPdf', 'No PDF available'));
     }
   };
 
@@ -279,10 +280,10 @@ export default function AcademyEditInvoice() {
       .update({ status: 'paid', paid_at: new Date().toISOString() })
       .eq('id', invoice.id);
     if (error) {
-      toast.error('Kon status niet bijwerken');
+      toast.error(t('invoiceEdit.statusFailed'));
       return;
     }
-    toast.success(t('invoices.markedAsPaid', 'Invoice marked as paid'));
+    toast.success(tAcademy('invoices.markedAsPaid', 'Invoice marked as paid'));
     queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
     navigate('/app/academy/invoices');
   };
@@ -291,12 +292,12 @@ export default function AcademyEditInvoice() {
     if (!invoice) return;
     if (isDraft) {
       const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
-      if (error) { toast.error('Kon factuur niet verwijderen'); return; }
-      toast.success(t('invoices.deleted', 'Invoice deleted'));
+      if (error) { toast.error(t('invoiceEdit.deleteFailed')); return; }
+      toast.success(tAcademy('invoices.deleted', 'Invoice deleted'));
     } else {
       const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
-      if (error) { toast.error('Kon factuur niet annuleren'); return; }
-      toast.success(t('invoices.cancelled', 'Invoice cancelled'));
+      if (error) { toast.error(t('invoiceEdit.cancelFailed')); return; }
+      toast.success(tAcademy('invoices.cancelled', 'Invoice cancelled'));
     }
     queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
     navigate('/app/academy/invoices');
@@ -313,9 +314,9 @@ export default function AcademyEditInvoice() {
   if (!invoice) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
-        <p className="text-muted-foreground">Factuur niet gevonden</p>
+        <p className="text-muted-foreground">{t('invoiceEdit.notFound')}</p>
         <Button variant="outline" className="mt-4" onClick={() => navigate('/app/academy/invoices')}>
-          Terug naar facturen
+          {t('invoiceEdit.backToInvoices')}
         </Button>
       </div>
     );
@@ -330,7 +331,7 @@ export default function AcademyEditInvoice() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold">Factuur bewerken</h1>
+            <h1 className="text-2xl font-bold">{t('invoiceEdit.title')}</h1>
             <p className="text-sm text-muted-foreground font-mono">{invoice.invoice_number}</p>
           </div>
           {/* Management actions */}
@@ -342,7 +343,7 @@ export default function AcademyEditInvoice() {
             {!isPaid && !isCancelled && (
               <Button variant="outline" size="sm" onClick={handleMarkPaid}>
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Betaald
+                {t('invoiceEdit.paid')}
               </Button>
             )}
             {!isCancelled && (
@@ -353,7 +354,7 @@ export default function AcademyEditInvoice() {
                 onClick={() => setDeleteConfirmOpen(true)}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                {isDraft ? 'Verwijderen' : 'Annuleren'}
+                {isDraft ? t('invoiceEdit.deleteAction') : t('invoiceEdit.cancelAction')}
               </Button>
             )}
           </div>
@@ -362,16 +363,16 @@ export default function AcademyEditInvoice() {
         {/* Receiver */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Ontvanger</CardTitle>
+            <CardTitle className="text-base">{t('invoiceEdit.receiver')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-2">
-              <Input value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder="Naam" className="text-sm" />
-              <Input value={playerBusinessName} onChange={(e) => setPlayerBusinessName(e.target.value)} placeholder="Bedrijfsnaam (optioneel)" className="text-sm" />
-              <Input value={playerStreet} onChange={(e) => setPlayerStreet(e.target.value)} placeholder="Straat + huisnummer" className="text-sm col-span-2" />
-              <Input value={playerZipCode} onChange={(e) => setPlayerZipCode(e.target.value)} placeholder="Postcode" className="text-sm" />
-              <Input value={playerCity} onChange={(e) => setPlayerCity(e.target.value)} placeholder="Plaats" className="text-sm" />
-              <Input value={playerBtwNumber} onChange={(e) => setPlayerBtwNumber(e.target.value)} placeholder="BTW-nummer (optioneel)" className="text-sm col-span-2" />
+              <Input value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder={t('invoiceEdit.namePlaceholder')} className="text-sm" />
+              <Input value={playerBusinessName} onChange={(e) => setPlayerBusinessName(e.target.value)} placeholder={t('invoiceEdit.businessNamePlaceholder')} className="text-sm" />
+              <Input value={playerStreet} onChange={(e) => setPlayerStreet(e.target.value)} placeholder={t('invoiceEdit.streetPlaceholder')} className="text-sm col-span-2" />
+              <Input value={playerZipCode} onChange={(e) => setPlayerZipCode(e.target.value)} placeholder={t('invoiceEdit.zipCodePlaceholder')} className="text-sm" />
+              <Input value={playerCity} onChange={(e) => setPlayerCity(e.target.value)} placeholder={t('invoiceEdit.cityPlaceholder')} className="text-sm" />
+              <Input value={playerBtwNumber} onChange={(e) => setPlayerBtwNumber(e.target.value)} placeholder={t('invoiceEdit.btwPlaceholder')} className="text-sm col-span-2" />
             </div>
           </CardContent>
         </Card>
@@ -380,7 +381,7 @@ export default function AcademyEditInvoice() {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Regelitems</CardTitle>
+              <CardTitle className="text-base">{t('invoiceEdit.lineItems')}</CardTitle>
               <div className="flex items-center gap-1">
                 <ExtraCostPresetPicker
                   academyProfileId={activeAcademy?.id}
@@ -410,7 +411,7 @@ export default function AcademyEditInvoice() {
                   }}
                 >
                   <Plus className="h-3 w-3 mr-1" />
-                  Regel toevoegen
+                  {t('invoiceEdit.addLineItem')}
                 </Button>
               </div>
             </div>
@@ -420,16 +421,16 @@ export default function AcademyEditInvoice() {
               {/* Desktop grid */}
               <div className="hidden md:block space-y-2">
               <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
-                <span>Omschrijving</span>
-                <span>Aantal</span>
-                <span>Prijs</span>
+                <span>{t('invoiceEdit.description')}</span>
+                <span>{t('invoiceEdit.quantity')}</span>
+                <span>{t('invoiceEdit.price')}</span>
                 <span>BTW %</span>
-                <span>Totaal</span>
+                <span>{t('invoiceEdit.total')}</span>
                 <span></span>
               </div>
               {lineItems.map((li, i) => (
                 <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
-                  <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder="Omschrijving" className="text-sm" />
+                  <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder={t('invoiceEdit.description')} className="text-sm" />
                   <Input type="number" value={li.quantity === 0 ? '' : li.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))} onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }} className="text-sm" min={1} />
                   <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
                   <div className="relative">
@@ -448,18 +449,18 @@ export default function AcademyEditInvoice() {
               {lineItems.map((li, i) => (
                 <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/30">
                   <div className="flex items-center gap-2">
-                    <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder="Omschrijving" className="text-sm flex-1" />
+                    <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder={t('invoiceEdit.description')} className="text-sm flex-1" />
                     <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                       <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <Label className="text-xs text-muted-foreground">Aantal</Label>
+                      <Label className="text-xs text-muted-foreground">{t('invoiceEdit.quantity')}</Label>
                       <Input type="number" value={li.quantity === 0 ? '' : li.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))} onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }} className="text-sm" min={1} />
                     </div>
                     <div>
-                      <Label className="text-xs text-muted-foreground">Prijs</Label>
+                      <Label className="text-xs text-muted-foreground">{t('invoiceEdit.price')}</Label>
                       <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
                     </div>
                     <div>
@@ -470,7 +471,7 @@ export default function AcademyEditInvoice() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right text-sm font-medium">Totaal: €{(li.quantity * li.unit_price).toFixed(2)}</div>
+                  <div className="text-right text-sm font-medium">{t('invoiceEdit.total')}: €{(li.quantity * li.unit_price).toFixed(2)}</div>
                 </div>
               ))}
             </div>
@@ -482,7 +483,7 @@ export default function AcademyEditInvoice() {
         <Card>
           <CardContent className="pt-6 space-y-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm">Prijzen zijn inclusief BTW</Label>
+              <Label className="text-sm">{t('invoiceEdit.pricesIncludeVat')}</Label>
               <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
             </div>
 
@@ -490,7 +491,7 @@ export default function AcademyEditInvoice() {
 
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotaal</span>
+                <span className="text-muted-foreground">{t('invoiceEdit.subtotal')}</span>
                 <span>€{subtotal.toFixed(2)}</span>
               </div>
               {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
@@ -521,7 +522,7 @@ export default function AcademyEditInvoice() {
                 </div>
               )}
               <div className="flex justify-between font-bold text-base border-t pt-2">
-                <span>Totaal</span>
+                <span>{t('invoiceEdit.total')}</span>
                 <span>€{total.toFixed(2)}</span>
               </div>
             </div>
@@ -530,12 +531,12 @@ export default function AcademyEditInvoice() {
 
             {/* Due date */}
             <div className="flex items-center gap-4">
-              <Label className="text-sm whitespace-nowrap">Vervaldatum</Label>
+              <Label className="text-sm whitespace-nowrap">{t('invoiceEdit.dueDate')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className={cn('justify-start text-left font-normal', !dueDate && 'text-muted-foreground')}>
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dueDate ? format(dueDate, 'd MMM yyyy', { locale: dateFnsLocale }) : 'Selecteer datum'}
+                    {dueDate ? format(dueDate, 'd MMM yyyy', { locale: dateFnsLocale }) : t('invoiceEdit.selectDate')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -546,8 +547,8 @@ export default function AcademyEditInvoice() {
 
             {/* Notes */}
             <div>
-              <Label className="text-sm mb-1 block">Notities</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optionele notities op de factuur..." rows={2} />
+              <Label className="text-sm mb-1 block">{t('invoiceEdit.notes')}</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('invoiceEdit.notesPlaceholder')} rows={2} />
             </div>
 
             {/* Sync checkbox */}
@@ -555,7 +556,7 @@ export default function AcademyEditInvoice() {
               <div className="flex items-center space-x-2 bg-muted/50 p-3 rounded-md">
                 <Checkbox id="sync-bookings" checked={syncToBookings} onCheckedChange={(v) => setSyncToBookings(v === true)} />
                 <Label htmlFor="sync-bookings" className="text-sm cursor-pointer">
-                  Ook prijswijzigingen doorvoeren naar boekingen
+                  {t('invoiceEdit.syncToBookings')}
                 </Label>
               </div>
             )}
@@ -564,10 +565,10 @@ export default function AcademyEditInvoice() {
 
         {/* Actions */}
         <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => navigate('/app/academy/invoices')} disabled={saving}>Annuleren</Button>
+          <Button variant="outline" onClick={() => navigate('/app/academy/invoices')} disabled={saving}>{t('cancel')}</Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Opslaan
+            {t('save')}
           </Button>
         </div>
       </div>
@@ -576,20 +577,18 @@ export default function AcademyEditInvoice() {
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{isDraft ? 'Factuur verwijderen' : 'Factuur annuleren'}</AlertDialogTitle>
+            <AlertDialogTitle>{isDraft ? t('invoiceEdit.deleteTitle') : t('invoiceEdit.cancelTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {isDraft
-                ? 'Weet je zeker dat je deze factuur wilt verwijderen? Dit kan niet ongedaan worden gemaakt.'
-                : 'Weet je zeker dat je deze factuur wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.'}
+              {isDraft ? t('invoiceEdit.deleteConfirm') : t('invoiceEdit.cancelConfirm')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Terug</AlertDialogCancel>
+            <AlertDialogCancel>{t('back')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDelete}
             >
-              {isDraft ? 'Verwijderen' : 'Annuleren'}
+              {isDraft ? t('invoiceEdit.deleteAction') : t('invoiceEdit.cancelAction')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
