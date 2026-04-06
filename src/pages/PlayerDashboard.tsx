@@ -304,6 +304,9 @@ export default function PlayerDashboard() {
         </p>
       </div>
 
+      {/* Pending Attendance Actions */}
+      <PendingAttendanceCard mode="player" profileId={profileId ?? undefined} />
+
       {/* Rating History Chart */}
       {profile?.id && (
       <RatingHistoryChart
