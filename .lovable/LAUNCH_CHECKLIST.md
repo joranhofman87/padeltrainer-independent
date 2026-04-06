@@ -92,7 +92,7 @@
 |-------|--------|------------|
 | profiles_public uses security_invoker=off | Intentional for public trainer profiles | Low |
 | pg_net extension in public schema | Cannot be moved (Supabase limitation) | None |
-| Leaked password protection disabled | Requires Supabase dashboard toggle | Low |
+| ~~Leaked password protection disabled~~ | **DONE** — HIBP check enabled | None |
 | subscription_payments & notification_queue have no RLS policies | Intentionally service-role-only tables | None |
 | admin_impersonation_logs INSERT uses USING(true) | Service-role-only inserts during impersonation | None |
 
@@ -128,7 +128,7 @@
 
 ## 🚀 Launch Day
 
-1. [ ] Deploy to production domain
+1. [x] Deploy to production domain
 2. [ ] Verify DNS propagation
 3. [ ] Check SSL certificates
 4. [ ] Monitor error logs for first hour
@@ -136,7 +136,7 @@
 6. [ ] Submit sitemap to Google Search Console
 7. [ ] Verify Mollie webhooks receiving events
 8. [ ] Test one real payment (small amount)
-9. [ ] Set up uptime monitoring (UptimeRobot/BetterStack) pointing to health-check endpoint
+9. [x] Set up uptime monitoring (UptimeRobot/BetterStack) pointing to health-check endpoint
 
 ---
 

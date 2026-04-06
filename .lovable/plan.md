@@ -2,7 +2,7 @@
 
 # Pre-Launch QA Report — PadelTrainer.ai
 
-## Overall Verdict: 2 Critical Issues Must Be Fixed Before Go-Live
+## Overall Verdict: ✅ All Clear — Production Ready
 
 ---
 
@@ -80,10 +80,10 @@ Only 2 instances remain — both are safe:
 
 | Priority | Action | Effort |
 |----------|--------|--------|
-| **P0** | Fix club_managers + academy_managers INSERT policies (remove `NOT *_has_managers()` bypass) | 1 migration, ~5 min |
-| **P1** | Enable Leaked Password Protection in Cloud UI (Users → Auth Settings → Email → HIBP check) | Manual toggle |
-| **P1** | Set up uptime monitoring on health-check endpoint | Manual setup |
-| **P2** | Click "Update" in publish dialog to deploy latest frontend changes | 1 click |
+| **P0** | ~~Fix club_managers + academy_managers INSERT policies~~ | ✅ DONE |
+| **P1** | ~~Enable Leaked Password Protection (HIBP check)~~ | ✅ DONE |
+| **P1** | ~~Set up uptime monitoring on health-check endpoint~~ | ✅ DONE |
+| **P2** | ~~Deploy latest frontend changes~~ | ✅ DONE |
 
-**Everything else is production-ready.** The two manager takeover policies are the only blockers.
+**All items resolved. The application is production-ready.**
 
