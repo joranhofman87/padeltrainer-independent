@@ -417,6 +417,8 @@ export default function AcademyEditInvoice() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
+              {/* Desktop grid */}
+              <div className="hidden md:block space-y-2">
               <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
                 <span>Omschrijving</span>
                 <span>Aantal</span>
