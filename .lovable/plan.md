@@ -1,122 +1,57 @@
 
 
-# Session Attendance & Confirmation System
+# Session Notes: Public Summary + Private Notes
 
-## Overview
+## Summary
 
-After a training session ends, both the **trainer** and the **players** can report what happened: did the session take place, who showed up, and optionally add notes about what was practiced. This creates a two-sided verification system where the academy owner gets reliable data about actual worked hours.
+The `session_reports` table exists but has only a single `notes` column and no frontend code was persisted. This plan adds two note types and builds the missing attendance UI.
 
-## How it works
+### Note types
 
-### Data model
+1. **Session summary** (`public_notes`) — Trainer writes what was practiced. Visible to players and academy.
+2. **Private notes** (`notes`, existing column) — Private to the reporter:
+   - Trainer's private notes: visible only to trainer + academy owner
+   - Player's private notes: visible only to that individual player
 
-A new `session_reports` table stores one report per (slot + reporter):
+## Database migration
 
-```text
-session_reports
-├── id (uuid, PK)
-├── slot_id (uuid, FK → availability_slots)
-├── reporter_id (uuid, FK → profiles)  -- who submitted this report
-├── reporter_role ('trainer' | 'player')
-├── session_happened (boolean)          -- did the session take place?
-├── attendees (uuid[])                  -- profile IDs of players who showed up
-├── notes (text, nullable)              -- what was practiced / reason for cancellation
-├── created_at (timestamptz)
-└── updated_at (timestamptz)
-```
-
-**Why one table instead of separate trainer/player tables?** Same schema, same RLS pattern, simpler queries. The `reporter_role` column distinguishes who reported.
-
-### UX flow
-
-**For trainers** (after a past session):
-1. On the slot detail page and schedule overview, past sessions show an "Attendance" section
-2. Quick toggle: "Session happened?" (defaults to yes)
-3. Checkboxes for each booked player — tick who showed up
-4. Optional notes field (e.g., "Worked on volleys and positioning")
-5. Single "Save" button
-
-**For players** (after a past session):
-1. On the Player Bookings page, past bookings show a "Confirm attendance" prompt
-2. Simple: "Did this session happen?" Yes/No
-3. Optional notes field
-4. Single "Save" button
-
-**Visual indicators:**
-- Slots/bookings that need attendance reporting show a small clipboard icon
-- Already-reported slots show a green checkmark
-- Conflicting reports (trainer says happened, player says no) show a warning indicator on the academy side
-
-### Academy owner view
-
-On the slot detail page, a new "Attendance" card shows:
-- Trainer's report (happened/not, who attended, notes)
-- Each player's confirmation (happened/not, notes)
-- Conflicts highlighted if trainer and player disagree
-- This feeds into the Reports tab for accurate worked-hours calculations
-
-### Impact on reporting
-
-The existing Reports tab (`AcademyReports`) currently counts hours based on slots with bookings. With attendance data available, it can optionally filter to only count sessions that were confirmed as having happened — giving the academy owner the "actual worked hours" they requested.
-
-## Migration
+Add a `public_notes` column to `session_reports`:
 
 ```sql
-CREATE TABLE public.session_reports (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  slot_id uuid REFERENCES availability_slots(id) ON DELETE CASCADE NOT NULL,
-  reporter_id uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  reporter_role text NOT NULL CHECK (reporter_role IN ('trainer', 'player')),
-  session_happened boolean NOT NULL DEFAULT true,
-  attendees uuid[] DEFAULT '{}',
-  notes text,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  UNIQUE (slot_id, reporter_id)
-);
-
-ALTER TABLE public.session_reports ENABLE ROW LEVEL SECURITY;
-
--- Trainers can report on their own slots
-CREATE POLICY "Trainers can manage their slot reports"
-  ON session_reports FOR ALL TO authenticated
-  USING (
-    reporter_id = get_profile_id_for_user(auth.uid())
-    OR EXISTS (
-      SELECT 1 FROM availability_slots s
-      JOIN trainer_profiles tp ON tp.id = s.trainer_id
-      WHERE s.id = slot_id AND tp.user_id = auth.uid()
-    )
-  );
-
--- Players can report on slots they're booked on
-CREATE POLICY "Players can manage their booking reports"
-  ON session_reports FOR ALL TO authenticated
-  USING (
-    reporter_id = get_profile_id_for_user(auth.uid())
-  );
-
--- Academy managers can read all reports for their trainers
-CREATE POLICY "Academy managers can read reports"
-  ON session_reports FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM availability_slots s
-      JOIN academy_trainers at ON at.trainer_profile_id = s.trainer_id
-      JOIN academy_managers am ON am.academy_profile_id = at.academy_profile_id
-      WHERE s.id = slot_id AND am.user_id = auth.uid()
-    )
-  );
+ALTER TABLE public.session_reports ADD COLUMN public_notes text;
 ```
+
+No RLS changes needed — visibility is controlled in the UI layer. The existing RLS already ensures each reporter can only read/write their own row, and academy managers can read all.
+
+## UI changes
+
+### Academy Slot Detail (`AcademySlotDetail.tsx`)
+The attendance card (needs to be built since the code wasn't saved) shows:
+- Trainer's session summary (public_notes) — labeled "Session summary"
+- Trainer's private notes — labeled "Trainer notes (private)"
+- Each player's confirmation + their private notes are NOT shown here (player privacy)
+- Player attendance status (confirmed/not) IS shown
+
+### Trainer Schedule Overview (`TrainerScheduleOverview.tsx`)
+Past slots get an attendance form:
+- "Session happened?" toggle
+- Player attendance checkboxes
+- "Session summary" textarea (public_notes) — what was practiced
+- "Private notes" textarea (notes) — internal notes, not visible to players
+
+### Player Bookings (`PlayerBookings.tsx`)
+Past bookings show:
+- Trainer's session summary (public_notes) from the trainer's report — read-only
+- "Did this session happen?" Yes/No
+- "My notes" textarea (notes) — private, only for this player
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| Migration SQL | Create `session_reports` table with RLS |
-| `src/pages/academy/AcademySlotDetail.tsx` | Add "Attendance" card showing trainer report + player confirmations, with edit capability for the trainer |
-| `src/pages/PlayerBookings.tsx` | Add attendance confirmation prompt on past bookings |
-| `src/pages/TrainerScheduleOverview.tsx` | Add attendance indicator + quick-report on past slots |
-| `src/components/trainer/CalendarSlotCard.tsx` | Show attendance status icon on past slots |
-| Locale JSON files (EN, NL, ES, DE, FR) | Add ~25 translation keys for attendance feature |
+| Migration SQL | Add `public_notes` column to `session_reports` |
+| `src/pages/academy/AcademySlotDetail.tsx` | Build attendance card with summary + private trainer notes display |
+| `src/pages/TrainerScheduleOverview.tsx` | Add attendance form with two note fields |
+| `src/pages/PlayerBookings.tsx` | Show trainer summary (read-only) + player private notes |
+| Locale JSON files | Add translation keys for the two note types |
 
