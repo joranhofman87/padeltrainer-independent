@@ -1,96 +1,72 @@
-# Secure Financial Data: Strip Sensitive Columns from Public Views
 
-## Problem
 
-When `is_public = true`, the current SELECT policies on `trainer_profiles`, `academy_profiles`, and `club_profiles` expose the **entire row** — including banking details (IBAN, BIC), tax numbers (KVK, BTW), payment provider IDs (mollie_customer_id, stripe_customer_id), and internal config (platform_fee_override, invoice settings).
+# Fix Private Slot Exposure & Email Queue Security
 
-Anyone can query these directly via the API, bypassing the frontend.
+## Issue 3: Private Slots Readable by Anyone
 
-## Affected Tables & Sensitive Fields
+**Problem**: The `availability_slots` table has an `is_public` column, but the SELECT policy is `USING (true)` — meaning private slots (group lessons, academy-internal sessions) are exposed to any API caller.
 
-### trainer_profiles
-- `mollie_customer_id`, `stripe_customer_id`
-- `subscription_id`, `subscription_status`, `subscription_tier`, `subscription_ends_at`, `trial_ends_at`
-- `platform_fee_override`
-- `use_manual_invoicing`
+**Fix**: Replace the blanket SELECT with two policies:
+1. Public slots visible to everyone (for marketplace/booking)
+2. Private slots visible only to the owner trainer, academy managers, or club managers
 
-### academy_profiles
-- `iban`, `bic`, `kvk_number`, `btw_number`
-- `business_address`, `business_name`
-- `mollie_customer_id`, `stripe_customer_id`
-- `subscription_id`, `subscription_status`, `subscription_tier`, `subscription_ends_at`, `trial_ends_at`
-- `platform_fee_override`
-- `invoice_prefix`, `invoice_next_number`, `invoice_forward_emails`, `invoice_logo_url`, `invoice_banner_color`
-- `default_vat_rate`, `payment_terms_days`
-- `last_processed_payment_id`
-
-### club_profiles
-- `mollie_customer_id`, `stripe_customer_id`
-- `subscription_id`, `subscription_status`, `subscription_tier`, `subscription_ends_at`, `trial_ends_at`
-- `last_processed_payment_id`
-
-## Solution
-
-The `_safe` views (`trainer_profiles_safe`, `academy_profiles_safe`, `club_profiles_safe`) already exist but the **base table SELECT policies still allow full row access to anyone**. The fix:
-
-1. **Tighten base table SELECT policies** — remove overly permissive public SELECT; only owners/managers/admins get full row access
-2. **Verify `_safe` views exclude all sensitive columns** listed above; update if needed
-3. **Update frontend code** — public-facing queries (profile pages, search, booking flow) must use `_safe` views
-4. **Keep owner access** — dashboards and settings pages keep querying base tables since owners need full column access
-
-## Migration
-
-### Step 1: Replace public SELECT policies on base tables
+### Migration SQL
 
 ```sql
--- trainer_profiles: drop public SELECT, add owner+admin only
-DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON trainer_profiles;
-CREATE POLICY "Owners and admins can view trainer profiles"
-  ON trainer_profiles FOR SELECT TO authenticated
-  USING (user_id = auth.uid() OR public.is_admin(auth.uid()) OR public.is_active_academy_trainer(auth.uid(), id));
+DROP POLICY IF EXISTS "Anyone can view availability slots" ON availability_slots;
 
--- academy_profiles: drop public SELECT, add manager+admin only  
-DROP POLICY IF EXISTS "Public academy profiles are viewable by everyone" ON academy_profiles;
-CREATE POLICY "Managers and admins can view academy profiles"
-  ON academy_profiles FOR SELECT TO authenticated
-  USING (public.is_academy_manager(auth.uid(), id) OR public.is_admin(auth.uid()));
+-- Public slots: anyone can see (marketplace, booking pages)
+CREATE POLICY "Public slots are viewable by everyone"
+  ON availability_slots FOR SELECT
+  USING (is_public = true);
 
--- club_profiles: same pattern
-DROP POLICY IF EXISTS "Public club profiles are viewable" ON club_profiles;
-CREATE POLICY "Managers and admins can view club profiles"
-  ON club_profiles FOR SELECT TO authenticated
-  USING (public.is_club_manager(auth.uid(), id) OR public.is_admin(auth.uid()));
+-- Private slots: only owner/managers/admins
+CREATE POLICY "Owners and managers can view all their slots"
+  ON availability_slots FOR SELECT
+  TO authenticated
+  USING (
+    trainer_id IN (SELECT id FROM trainer_profiles WHERE user_id = auth.uid())
+    OR academy_profile_id IN (SELECT get_user_academy_ids(auth.uid()))
+    OR trainer_id IN (
+      SELECT tl.trainer_id FROM trainer_locations tl
+      JOIN club_profiles cp ON cp.location_id = tl.location_id
+      WHERE cp.id IN (SELECT get_user_club_ids(auth.uid()))
+    )
+    OR public.is_admin(auth.uid())
+  );
 ```
 
-### Step 2: Ensure _safe views have SELECT policies for public access
+No frontend changes needed — public-facing pages already filter `is_public = true`, and dashboard pages run as authenticated owners who match the second policy.
 
-The safe views (with `security_invoker=on`) only expose non-sensitive columns. These get the permissive public SELECT policy so anyone can browse profiles.
+---
 
-### Step 3: Verify _safe view column lists
+## Issue 4: Email Queue Open to Anonymous INSERT
 
-Check each `_safe` view and confirm it **excludes** all financial/internal fields listed above. Update if any sensitive columns leak through.
+**Problem**: The INSERT policies on `onboarding_email_queue` and `onboarding_email_logs` are granted to the `public` role with `WITH CHECK (true)`. This means unauthenticated users could insert fake queue entries or log records via the API.
 
-## Frontend Changes
+These tables are only written to by:
+- Database triggers (`queue_onboarding_emails` — runs as `SECURITY DEFINER`)
+- Edge functions (using service role key — bypasses RLS entirely)
 
-| Context | Current query | Change to |
-|---------|--------------|-----------|
-| Trainer public profile page | `trainer_profiles` | `trainer_profiles_safe` |
-| Academy public profile page | `academy_profiles` | `academy_profiles_safe` |
-| Club public profile page | `club_profiles` | `club_profiles_safe` |
-| Search / listing pages | Base tables | Safe views |
-| Booking flow (trainer info) | Base tables | Safe views |
-| Trainer dashboard / settings | `trainer_profiles` | Keep as-is (owner needs full access) |
-| Academy dashboard / settings | `academy_profiles` | Keep as-is (manager needs full access) |
+Neither path needs a client-facing INSERT policy at all.
+
+**Fix**: Drop both INSERT policies. The SECURITY DEFINER functions and service role calls bypass RLS, so they keep working.
+
+### Migration SQL
+
+```sql
+DROP POLICY IF EXISTS "Service role can insert to queue" ON onboarding_email_queue;
+DROP POLICY IF EXISTS "Service role can insert logs" ON onboarding_email_logs;
+```
+
+---
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| Migration SQL | Drop public SELECT on base tables, add owner/manager-only SELECT |
-| Migration SQL | Verify and update `_safe` views to exclude all financial columns |
-| `src/pages/TrainerProfile.tsx` | Query `trainer_profiles_safe` for public view |
-| `src/pages/AcademyProfile.tsx` | Query `academy_profiles_safe` for public view |
-| `src/pages/ClubProfile.tsx` | Query `club_profiles_safe` for public view |
-| Search/listing components | Switch to safe views |
-| Booking flow components | Switch to safe views for trainer info |
-| Edge functions (public-api) | Already selects specific columns — verify no sensitive fields |
+| Migration SQL | Drop `"Anyone can view availability slots"`, add public + owner/manager SELECT policies |
+| Migration SQL | Drop anonymous INSERT policies on `onboarding_email_queue` and `onboarding_email_logs` |
+
+Both fixes are pure database migrations — no frontend or edge function changes required.
+
