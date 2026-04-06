@@ -1,94 +1,73 @@
 
 
-# Bring Trainer Side to Feature Parity with Academy
+# Add Testing & Monitoring to Prevent Breakages
 
-## Overview
+## Summary
 
-The academy side has received significant upgrades (dedicated pages for invoices, slot detail, cycles overview with search/filters, attendance, mobile optimization). The trainer side still uses the older patterns — dialogs instead of pages, a simpler schedule overview, and no dedicated invoicing pages. This plan brings the trainer up to par while keeping the architecture ready for shared changes in the future.
+The codebase has ~14 unit test files covering utilities but **zero tests on the two riskiest modules**: invoice calculation (`invoiceSync.ts`) and cycle management (`cycles.ts`). The VAT calculation logic, split-payment math, and line-item building are all pure computation that can be extracted and tested without mocking Supabase.
 
-## Key Differences to Account For
+## Strategy
 
-- **Academy** = multi-trainer (uses `useAcademyContext`, filters by trainer). **Trainer** = single trainer (uses `useAuth` + `trainer_profiles` lookup).
-- Routes: `/app/trainer/...` vs `/app/academy/...`
-- Context: `activeAcademy.id` vs `trainerId` (from trainer_profiles)
+### 1. Extract Pure Computation from `invoiceSync.ts` into Testable Functions
 
-## Changes by Area
+The invoice recalculation logic (lines 80-267) contains pure math that's currently buried inside async Supabase-calling functions. Extract these into standalone pure functions:
 
-### 1. Invoices — Dedicated Pages (replace dialog)
+- **`detectSplitCount(lineItems)`** — already exists, just needs exporting
+- **`buildLineItems(bookings, splitCount, cyclusName, extraCosts)`** — extract the line-item builder (lines 96-200)
+- **`calculateVatTotals(lineItems, defaultVatRate, pricesIncludeVat)`** — extract the VAT computation (lines 202-267)
 
-**Current state:** TrainerEarnings.tsx uses a `CreateInvoiceDialog` popup. No edit page exists.
+Then write ~15 unit tests covering:
+- Single-rate VAT (inclusive and exclusive)
+- Multi-rate VAT with extra costs at different rates
+- Split payment math (1/2, 1/3, 1/4 players)
+- Edge cases: zero price, single booking, all bookings removed
+- Rounding precision (the `Math.round * 100 / 100` pattern)
 
-**New:**
-- **`/app/trainer/invoices`** — New page mirroring `AcademyInvoices.tsx` (table + mobile cards, filters by status, search, sort by amount/date/status, settings tab)
-- **`/app/trainer/invoices/new`** — New page mirroring `AcademyCreateInvoice.tsx` (full-page form with line items, VAT, customer details, responsive mobile layout)
-- **`/app/trainer/invoices/:invoiceId/edit`** — New page mirroring `AcademyEditInvoice.tsx` (edit + PDF download + payment link + mark paid)
-- Remove `CreateInvoiceDialog` usage from TrainerEarnings; link to `/app/trainer/invoices` instead
-- Move the "Invoices" tab from TrainerEarnings into its own top-level nav item
+### 2. Add Unit Tests for `cycles.ts` Pure Logic
 
-### 2. Slot Detail Page
+- `DEFAULT_SCORING_WEIGHTS` sums to 100 (already tested)
+- `toCycle()` / `toIntakeRequest()` type converters — test with edge-case JSON
+- `exportIntakeRequestsToCsv()` — test CSV output format
+- Rate-limiting logic in `submitIntakeRequest` — test the time-window check
 
-**Current state:** Trainer calendar opens inline edit or small dialogs for slots. No dedicated slot page.
+### 3. Edge Function Integration Tests
 
-**New:**
-- **`/app/trainer/slot/:slotId`** — New page mirroring `AcademySlotDetail.tsx` (auto-edit mode, player list with ages/ratings, warnings, invoices card, attendance card)
-- Simplified version: no trainer dropdown (it's always the logged-in trainer), no academy context
-- Calendar slot clicks navigate to this page instead of opening a dialog
+Expand the existing `rls-health.spec.ts` pattern to cover the critical edge functions:
 
-### 3. Cycles/Schedule Overview Enhancement
+- **`auto-create-invoice`** — call with a test booking ID, verify invoice structure returned
+- **`split-invoice`** — call with known data, verify split math
+- **`generate-invoice`** — verify PDF URL is returned
+- **`health-check`** — already exists, add assertions for each sub-check
 
-**Current state:** `TrainerScheduleOverview.tsx` (1865 lines) has an edit dialog for cycles. `TrainerCyclus.tsx` is a separate legacy page.
+### 4. Add a CI Smoke Test for Invoice Math
 
-**New:**
-- Replace the inline edit dialog in `TrainerScheduleOverview.tsx` with navigation to the cycle edit page (`/app/trainer/cycles/:cycleId/edit`)
-- Add the Cycles tab from `AcademyCyclusOverview.tsx` as a component in the trainer calendar (search by player name, mobile card view, bulk visibility/pricing updates)
-- Keep `TrainerScheduleOverview` but remove the large inline edit dialog
+Create a lightweight Vitest test that runs the extracted pure functions through real-world scenarios based on the bugs we've already fixed (€0 invoices, missing splits, pagination limits).
 
-### 4. Attendance Integration
+### 5. Runtime Monitoring: Invoice Anomaly Detection
 
-**Current state:** Attendance components (`TrainerAttendanceForm`, `SlotAttendanceCard`) were created but the trainer slot detail page doesn't exist yet.
+Add a periodic edge function (`invoice-health-check`) that queries for common anomalies:
+- Invoices with `total = 0` but `status != cancelled`
+- Invoices where `booking_ids` is empty but status is `sent`
+- Split invoices where sibling totals don't match
+- Invoices with `due_date` in the past and status still `draft`
 
-**New:**
-- The new trainer slot detail page includes the attendance card (same as academy slot detail)
-- `TrainerScheduleOverview` already has attendance form integration — keep it
-
-### 5. Route Changes
-
-Add to DomainRouter.tsx under trainer routes:
-```
-/app/trainer/invoices          → TrainerInvoices
-/app/trainer/invoices/new      → TrainerCreateInvoice
-/app/trainer/invoices/:id/edit → TrainerEditInvoice
-/app/trainer/slot/:slotId      → TrainerSlotDetail
-```
-
-### 6. Shared Component Strategy (Future-proofing)
-
-To avoid divergence, extract shared logic where possible:
-- **`InvoiceForm` component** — shared between academy and trainer create/edit pages, receiving `ownerId` + `ownerType` props
-- **`SlotDetailContent` component** — shared layout receiving slot data, with academy-specific extras (trainer dropdown) conditionally rendered
-- This refactoring can happen incrementally — start by creating trainer-specific pages that mirror the academy ones, then consolidate shared code in a follow-up
-
-## Implementation Order
-
-1. Trainer Invoices page (list) — highest value, replaces dialog
-2. Trainer Create Invoice page
-3. Trainer Edit Invoice page
-4. Trainer Slot Detail page
-5. Route registration + navigation updates
-6. Remove old dialog-based invoice creation from TrainerEarnings
-7. Localization keys for new trainer pages
+This runs on a cron (weekly) and sends a Slack alert via the existing `slack-notify` function.
 
 ## File Summary
 
 | File | Change |
 |------|--------|
-| `src/pages/trainer/TrainerInvoices.tsx` | New — invoice list page mirroring AcademyInvoices |
-| `src/pages/trainer/TrainerCreateInvoice.tsx` | New — full-page invoice creation form |
-| `src/pages/trainer/TrainerEditInvoice.tsx` | New — invoice edit/view page |
-| `src/pages/trainer/TrainerSlotDetail.tsx` | New — slot detail page with players, invoices, attendance |
-| `src/components/DomainRouter.tsx` | Add 4 new trainer routes |
-| `src/pages/TrainerEarnings.tsx` | Remove CreateInvoiceDialog, link to invoices page |
-| `src/pages/TrainerCalendar.tsx` | Navigate to slot detail page on click |
-| `src/pages/TrainerScheduleOverview.tsx` | Replace edit dialog with navigation to edit page |
-| `src/i18n/locales/*/trainer.json` | Add translation keys for new pages |
+| `src/lib/invoiceCalc.ts` | New — extracted pure functions for line items + VAT math |
+| `src/lib/invoiceCalc.test.ts` | New — ~20 unit tests for invoice calculation edge cases |
+| `src/lib/invoiceSync.ts` | Refactor to use `invoiceCalc.ts` functions internally |
+| `src/lib/cycles.test.ts` | Expand with CSV export + type converter tests |
+| `e2e/invoice-health.spec.ts` | New — integration tests calling invoice edge functions |
+| `supabase/functions/invoice-health-check/index.ts` | New — weekly anomaly detection, Slack alerts |
+
+## Implementation Priority
+
+1. Extract + test invoice math (highest value — prevents €0 invoice bugs)
+2. Invoice anomaly detection edge function (catches issues in production)
+3. Expand cycles tests
+4. Edge function integration tests
 
