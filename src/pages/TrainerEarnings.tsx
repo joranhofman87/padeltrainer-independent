@@ -139,7 +139,7 @@ export default function TrainerEarnings() {
   // Handle return from Mollie Connect onboarding
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
-      toast({ title: 'Mollie Connected!', description: 'Your account is now set up to receive payments' });
+      toast({ title: t('earningsPage.mollieConnectedToast'), description: t('earningsPage.mollieConnectedDescription') });
       checkConnectStatus();
     }
     if (searchParams.get('refresh') === 'true') {
@@ -191,7 +191,7 @@ export default function TrainerEarnings() {
 
     if (error) {
       logger.error('Error fetching earnings', undefined, { error, component: 'TrainerEarnings' });
-      toast({ title: 'Error', description: 'Failed to load earnings data', variant: 'destructive' });
+      toast({ title: t('earningsPage.title'), description: t('earningsPage.subtitle'), variant: 'destructive' });
     } else {
       setBookings((data as any) || []);
     }
@@ -255,14 +255,14 @@ export default function TrainerEarnings() {
       .eq('user_id', user!.id);
 
     if (error) {
-      toast({ title: 'Error', description: 'Failed to update settings', variant: 'destructive' });
+      toast({ title: t('earningsPage.title'), description: t('earningsPage.subtitle'), variant: 'destructive' });
     } else {
       setTrainerInfo(prev => prev ? { ...prev, use_manual_invoicing: checked } : null);
       toast({ 
-        title: checked ? 'Manual invoicing enabled' : 'Automatic payments enabled',
+        title: checked ? t('earningsPage.manualEnabledToast') : t('earningsPage.autoEnabledToast'),
         description: checked 
-          ? 'You create invoices and handle payments yourself' 
-          : 'Players pay online via Mollie when booking'
+          ? t('earningsPage.manualEnabledDescription')
+          : t('earningsPage.autoEnabledDescription')
       });
     }
   };
@@ -278,9 +278,9 @@ export default function TrainerEarnings() {
       .eq('id', bookingId);
 
     if (error) {
-      toast({ title: 'Error', description: 'Failed to mark as paid', variant: 'destructive' });
+      toast({ title: t('earningsPage.title'), description: t('earningsPage.subtitle'), variant: 'destructive' });
     } else {
-      toast({ title: 'Payment Recorded', description: 'The booking has been marked as paid' });
+      toast({ title: t('earningsPage.paymentRecorded'), description: t('earningsPage.paymentRecordedDescription') });
       fetchEarnings();
     }
   };
@@ -347,8 +347,8 @@ export default function TrainerEarnings() {
                 <ArrowLeft className="h-5 w-5" />
               </Button>
               <div>
-                <h1 className="text-xl font-bold">Earnings</h1>
-                <p className="text-sm text-muted-foreground">Track your income and payments</p>
+                <h1 className="text-xl font-bold">{t('earningsPage.title')}</h1>
+                <p className="text-sm text-muted-foreground">{t('earningsPage.subtitle')}</p>
               </div>
             </div>
             <Button 
@@ -357,7 +357,7 @@ export default function TrainerEarnings() {
               onClick={() => setShowSettings(!showSettings)}
             >
               <Settings className="h-4 w-4 mr-2" />
-              {showSettings ? 'Hide Settings' : 'Invoice Settings'}
+              {showSettings ? t('earningsPage.hideSettings') : t('earningsPage.invoiceSettings')}
             </Button>
           </div>
         </div>
@@ -416,11 +416,11 @@ export default function TrainerEarnings() {
                     <FileText className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <p className="font-medium">Manual payments by invoice</p>
+                    <p className="font-medium">{t('earningsPage.manualPayments')}</p>
                     <p className="text-sm text-muted-foreground max-w-md">
                       {useManualInvoicing 
-                        ? 'You create invoices and players pay you directly (bank transfer, cash, etc.)' 
-                        : 'Players pay you online via Mollie when booking. Money goes to your bank automatically.'}
+                        ? t('earningsPage.manualEnabled')
+                        : t('earningsPage.manualDisabled')}
                     </p>
                   </div>
                 </div>
@@ -456,11 +456,11 @@ export default function TrainerEarnings() {
             <CardContent className="p-4 flex items-center gap-4">
               <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
               <div className="flex-1">
-                <p className="font-medium text-orange-800 dark:text-orange-200">Complete your business details</p>
-                <p className="text-sm text-orange-600 dark:text-orange-300">Add your KvK, BTW, and bank details to create invoices</p>
+                <p className="font-medium text-orange-800 dark:text-orange-200">{t('earningsPage.completeBusinessDetails')}</p>
+                <p className="text-sm text-orange-600 dark:text-orange-300">{t('earningsPage.addBusinessDetails')}</p>
               </div>
               <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
-                Add Details
+                {t('earningsPage.addDetails')}
               </Button>
             </CardContent>
           </Card>
@@ -500,9 +500,9 @@ export default function TrainerEarnings() {
                   <Wallet className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg">Connect Your Bank Account</CardTitle>
+                  <CardTitle className="text-lg">{t('earningsPage.connectBank')}</CardTitle>
                   <CardDescription>
-                    Receive payments directly to your bank account with Mollie
+                    {t('earningsPage.connectBankDescription')}
                   </CardDescription>
                 </div>
               </div>
@@ -512,15 +512,15 @@ export default function TrainerEarnings() {
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    Automatic payouts to your bank
+                    {t('earningsPage.autoPayout')}
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    Accept iDEAL, cards, and Bancontact
+                    {t('earningsPage.acceptMethods')}
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    Platform fee: 5% per transaction
+                    {t('earningsPage.platformFee')}
                   </div>
                 </div>
                 <Button onClick={handleConnectMollie} disabled={connectLoading} size="lg">
@@ -529,7 +529,7 @@ export default function TrainerEarnings() {
                   ) : (
                     <ExternalLink className="h-4 w-4 mr-2" />
                   )}
-                  Connect with Mollie
+                  {t('earningsPage.connectMollie')}
                 </Button>
               </div>
             </CardContent>
@@ -546,12 +546,12 @@ export default function TrainerEarnings() {
                     <Wallet className="h-6 w-6 text-green-600" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Mollie Balance</p>
-                    <div className="flex items-baseline gap-3">
-                      <span className="text-2xl font-bold text-green-600">
-                        €{connectStatus.balance.available.toFixed(2)}
-                      </span>
-                      <span className="text-sm text-muted-foreground">available</span>
+                     <p className="text-sm text-muted-foreground">{t('earningsPage.mollieBalance')}</p>
+                     <div className="flex items-baseline gap-3">
+                       <span className="text-2xl font-bold text-green-600">
+                         €{connectStatus.balance.available.toFixed(2)}
+                       </span>
+                       <span className="text-sm text-muted-foreground">{t('earningsPage.available')}</span>
                       {connectStatus.balance.pending > 0 && (
                         <span className="text-sm text-orange-600">
                           +€{connectStatus.balance.pending.toFixed(2)} pending
@@ -562,7 +562,7 @@ export default function TrainerEarnings() {
                 </div>
                 <Badge variant="outline" className="border-green-300 text-green-600">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Mollie Connected
+                  {t('earningsPage.mollieConnected')}
                 </Badge>
               </div>
             </CardContent>
@@ -580,9 +580,9 @@ export default function TrainerEarnings() {
                     <Wallet className="h-6 w-6 text-green-600" />
                   </div>
                   <div>
-                    <p className="font-medium">Mollie Connected</p>
+                    <p className="font-medium">{t('earningsPage.mollieConnected')}</p>
                     <p className="text-sm text-muted-foreground">
-                      Your account is set up to receive payments
+                      {t('earningsPage.accountSetUp')}
                     </p>
                   </div>
                 </div>
@@ -601,11 +601,11 @@ export default function TrainerEarnings() {
             <CardContent className="p-4 flex items-center gap-4">
               <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
               <div className="flex-1">
-                <p className="font-medium text-orange-800 dark:text-orange-200">Complete your Mollie setup</p>
-                <p className="text-sm text-orange-600 dark:text-orange-300">Finish onboarding to start receiving payments</p>
+                <p className="font-medium text-orange-800 dark:text-orange-200">{t('earningsPage.completeMollieSetup')}</p>
+                <p className="text-sm text-orange-600 dark:text-orange-300">{t('earningsPage.finishOnboarding')}</p>
               </div>
               <Button variant="outline" onClick={handleConnectMollie} disabled={connectLoading}>
-                Continue Setup
+                {t('earningsPage.continueSetup')}
               </Button>
             </CardContent>
           </Card>
@@ -617,7 +617,7 @@ export default function TrainerEarnings() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-green-100 text-sm">Total Earned</p>
+                  <p className="text-green-100 text-sm">{t('earningsPage.totalEarned')}</p>
                   <p className="text-3xl font-bold">€{totalEarnings.toFixed(0)}</p>
                 </div>
                 <Euro className="h-10 w-10 text-green-200" />
@@ -629,7 +629,7 @@ export default function TrainerEarnings() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-muted-foreground text-sm">This Month</p>
+                  <p className="text-muted-foreground text-sm">{t('earningsPage.thisMonth')}</p>
                   <p className="text-2xl font-bold">€{thisMonthEarnings.toFixed(0)}</p>
                   <div className="flex items-center gap-1 mt-1">
                     <TrendingUp className={`h-4 w-4 ${Number(monthlyGrowth) >= 0 ? 'text-green-500' : 'text-red-500'}`} />
@@ -647,7 +647,7 @@ export default function TrainerEarnings() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-muted-foreground text-sm">Last Month</p>
+                  <p className="text-muted-foreground text-sm">{t('earningsPage.lastMonth')}</p>
                   <p className="text-2xl font-bold">€{lastMonthEarnings.toFixed(0)}</p>
                 </div>
                 <Clock className="h-8 w-8 text-muted-foreground" />
@@ -671,16 +671,16 @@ export default function TrainerEarnings() {
 
         {/* Payments Section */}
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Payments</h2>
+          <h2 className="text-lg font-semibold">{t('earningsPage.payments')}</h2>
           <Tabs defaultValue="pending" className="space-y-4">
             <TabsList className="w-full sm:w-auto">
               <TabsTrigger value="pending" className="gap-1 flex-1 sm:flex-none">
-                Pending
+                {t('manageBookings.pending')}
                 {pendingPayments.length > 0 && (
                   <Badge variant="secondary" className="ml-1">{pendingPayments.length}</Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="history" className="flex-1 sm:flex-none">History</TabsTrigger>
+              <TabsTrigger value="history" className="flex-1 sm:flex-none">{t('earningsPage.history')}</TabsTrigger>
               <TabsTrigger value="invoices" className="flex-1 sm:flex-none">
                 Invoices
               </TabsTrigger>
@@ -690,8 +690,8 @@ export default function TrainerEarnings() {
             {pendingPayments.length === 0 ? (
               <Card className="p-8 text-center">
                 <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">All caught up!</h3>
-                <p className="text-muted-foreground">No pending payments to collect</p>
+                <h3 className="font-semibold text-lg mb-2">{t('earningsPage.allCaughtUp')}</h3>
+                <p className="text-muted-foreground">{t('earningsPage.noPendingPayments')}</p>
               </Card>
             ) : (
               pendingPayments.map(booking => (
@@ -700,7 +700,7 @@ export default function TrainerEarnings() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="font-semibold">{booking.availability_slots.cyclus_name || 'Training Session'}</p>
+                          <p className="font-semibold">{booking.availability_slots.cyclus_name || t('earningsPage.trainingSession')}</p>
                           {booking.payment_status === 'invoiced' && (
                             <Badge variant="secondary">Invoiced</Badge>
                           )}
@@ -728,18 +728,18 @@ export default function TrainerEarnings() {
                                 disabled={!isBusinessInfoComplete}
                               >
                                 <FileText className="h-4 w-4 mr-2" />
-                                Create Invoice
+                                {t('earningsPage.createInvoice')}
                               </Button>
                             )}
                             <Button onClick={() => handleMarkPaid(booking.id, getAmount(booking))}>
                               <CheckCircle2 className="h-4 w-4 mr-2" />
-                              Mark Paid
+                              {t('earningsPage.markPaid')}
                             </Button>
                           </div>
                         ) : (
                           <Button onClick={() => handleMarkPaid(booking.id, getAmount(booking))}>
                             <CheckCircle2 className="h-4 w-4 mr-2" />
-                            Mark Paid
+                            {t('earningsPage.markPaid')}
                           </Button>
                         )}
                       </div>
@@ -754,8 +754,8 @@ export default function TrainerEarnings() {
             {completedBookings.filter(b => b.payment_status === 'paid').length === 0 ? (
               <Card className="p-8 text-center">
                 <Euro className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">No payment history yet</h3>
-                <p className="text-muted-foreground">Completed payments will appear here</p>
+                <h3 className="font-semibold text-lg mb-2">{t('earningsPage.noPaymentHistory')}</h3>
+                <p className="text-muted-foreground">{t('earningsPage.completedPaymentsAppear')}</p>
               </Card>
             ) : (
               completedBookings
@@ -766,7 +766,7 @@ export default function TrainerEarnings() {
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold">{booking.availability_slots.cyclus_name || 'Training Session'}</p>
+                            <p className="font-semibold">{booking.availability_slots.cyclus_name || t('earningsPage.trainingSession')}</p>
                             <Badge variant="outline" className="border-green-300 text-green-600">
                               {(booking as any).paid_externally ? t('bookings.paidExternally', 'Paid (external)') : 'Paid'}
                             </Badge>
@@ -779,7 +779,7 @@ export default function TrainerEarnings() {
                             </span>
                             {booking.paid_at && (
                               <span className="text-xs">
-                                Paid on {format(parseISO(booking.paid_at), 'MMM d')}
+                                {t('earningsPage.paidOn', { date: format(parseISO(booking.paid_at), 'MMM d') })}
                               </span>
                             )}
                           </div>
