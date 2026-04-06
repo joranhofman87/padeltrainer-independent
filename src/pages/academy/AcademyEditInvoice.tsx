@@ -440,7 +440,8 @@ export default function AcademyEditInvoice() {
                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                     <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
-                </div>
+            </div>
+            </div>
               ))}
             </div>
             {/* Mobile stacked cards */}
