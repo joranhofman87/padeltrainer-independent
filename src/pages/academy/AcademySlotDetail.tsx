@@ -84,8 +84,6 @@ interface SlotInvoice {
 }
 
 export default function AcademySlotDetail() {
-
-export default function AcademySlotDetail() {
   const { slotId } = useParams<{ slotId: string }>();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('academy');
