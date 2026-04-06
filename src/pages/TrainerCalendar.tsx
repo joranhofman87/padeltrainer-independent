@@ -29,7 +29,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
-import { BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 // EditBookingDialog removed — navigating to slot detail page instead
@@ -62,16 +61,13 @@ export default function TrainerCalendar() {
   });
 
   // Dialog states
-  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
   
-  const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
-  const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
-  const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
+  
   // Auth is now handled by TrainerLayout
 
   useEffect(() => {
@@ -316,9 +312,9 @@ export default function TrainerCalendar() {
   }
 
   const handleCellClick = (date: Date, hour: number) => {
-    setDefaultSlotDate(date);
-    setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
-    setBulkCreateOpen(true);
+    const dateStr = format(date, "yyyy-MM-dd");
+    const timeStr = `${String(hour).padStart(2, "0")}:00`;
+    navigate(`/app/trainer/slot/new?date=${dateStr}&time=${timeStr}`);
   };
 
   const handleSlotsCreated = () => {
@@ -332,8 +328,7 @@ export default function TrainerCalendar() {
   };
 
   const handleDuplicateCyclus = (cyclusId: string) => {
-    setPreselectedCyclusId(cyclusId);
-    setBulkCreateOpen(true);
+    navigate(`/app/trainer/slot/new?cyclus=${cyclusId}`);
   };
 
   const handleDeleteSlot = (slot: SlotWithBookings) => {
@@ -409,11 +404,7 @@ export default function TrainerCalendar() {
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              onClick={() => {
-                setDefaultSlotDate(undefined);
-                setDefaultSlotTime(undefined);
-                setBulkCreateOpen(true);
-              }}
+              onClick={() => navigate("/app/trainer/slot/new")}
               className="gap-2"
             >
               <Plus className="h-4 w-4" />
@@ -523,25 +514,6 @@ export default function TrainerCalendar() {
           </CardContent>
         </Card>
       </main>
-
-      {/* Bulk Create Sheet */}
-      <BulkCreateSheet
-        open={bulkCreateOpen}
-        onOpenChange={(open) => {
-          setBulkCreateOpen(open);
-          if (!open) {
-            setPreselectedCyclusId(undefined);
-          }
-        }}
-        trainerId={trainerId}
-        
-        defaultDate={defaultSlotDate}
-        defaultTime={defaultSlotTime}
-        defaultDuration={settings.slot_duration_minutes}
-        defaultWeeks={settings.schedule_weeks_ahead}
-        onSlotsCreated={handleSlotsCreated}
-        prefillFromCyclusId={preselectedCyclusId}
-      />
 
       {/* Book for Player Dialog */}
       {selectedSlot && (
