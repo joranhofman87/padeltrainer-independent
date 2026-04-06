@@ -451,7 +451,8 @@ export default function TrainerPlayers() {
                 )}
               </div>
             ) : (
-            {/* Desktop Table */}
+              <>
+              {/* Desktop Table */}
               <div className="hidden md:block">
               <Table>
                 <TableHeader>
