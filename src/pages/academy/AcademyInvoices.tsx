@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 import { format } from "date-fns";
 import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
@@ -414,7 +415,7 @@ export default function AcademyInvoices() {
         printWindow.onload = () => printWindow.print();
       }
     } catch (err) {
-      console.error('Invoice download failed:', err);
+      logger.error('Invoice download failed:', err);
       toast.error(t("invoices.noPdf", "No PDF available"));
     }
   };

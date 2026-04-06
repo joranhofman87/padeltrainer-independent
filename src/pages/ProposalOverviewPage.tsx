@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, differenceInWeeks, parseISO, getDay, eachWeekOfInterval, addDays, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -129,7 +130,7 @@ export default function ProposalOverviewPage() {
         setCycle(c);
         setExcludedDates(c.settings?.excluded_dates ?? []);
       }
-    }).catch(console.error);
+    }).catch((err) => logger.error('Failed to load cycle', err));
   }, [cycleId]);
 
   // If no slots were passed via state, fetch them using cycleId
@@ -138,7 +139,7 @@ export default function ProposalOverviewPage() {
       setIsLoading(true);
       getAvailableSlotsForCycle(cycleId)
         .then(setFetchedSlots)
-        .catch(console.error)
+        .catch((err) => logger.error('Failed to load slots', err))
         .finally(() => setIsLoading(false));
     }
   }, [cycleId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -282,7 +283,7 @@ export default function ProposalOverviewPage() {
     try {
       await updateCycleSettings(cycleId, { ...cycle.settings, excluded_dates: newDates });
     } catch (err) {
-      console.error('Failed to save excluded dates', err);
+      logger.error('Failed to save excluded dates', err);
       setExcludedDates(excludedDates); // rollback
       toast.error('Failed to save holiday date');
     }
@@ -295,7 +296,7 @@ export default function ProposalOverviewPage() {
     try {
       await updateCycleSettings(cycleId, { ...cycle.settings, excluded_dates: newDates });
     } catch (err) {
-      console.error('Failed to save excluded dates', err);
+      logger.error('Failed to save excluded dates', err);
       setExcludedDates(excludedDates); // rollback
       toast.error('Failed to save holiday date');
     }
@@ -348,7 +349,7 @@ export default function ProposalOverviewPage() {
       }
       setPageStatus('booked');
     } catch (err: any) {
-      console.error('Error finalizing proposals:', err);
+      logger.error('Error finalizing proposals:', err);
       toast.error(err.message || 'Failed to finalize proposals');
       setPageStatus('idle');
     }
@@ -377,7 +378,7 @@ export default function ProposalOverviewPage() {
       }
       setPageStatus('notified');
     } catch (err: any) {
-      console.error('Error sending schedule emails:', err);
+      logger.error('Error sending schedule emails:', err);
       toast.error(err.message || 'Failed to send emails');
       setPageStatus('booked');
     }

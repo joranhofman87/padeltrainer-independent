@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { SafeHtml } from '@/components/ui/SafeHtml';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -765,9 +766,9 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
               <p className="font-medium">{subject.replace(/\{\{name\}\}/gi, 'Jan de Vries')}</p>
             </div>
             <Separator />
-            <div
+            <SafeHtml
+              html={getPreviewHtml()}
               className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
             />
           </div>
           <AlertDialogFooter>

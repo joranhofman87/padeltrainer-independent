@@ -16,6 +16,7 @@ import { format, addDays } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useQueryClient } from '@tanstack/react-query';
@@ -161,7 +162,7 @@ export default function AcademyCreateInvoice() {
           .single();
 
         if (guestError) {
-          console.error('Guest player creation failed:', guestError);
+          logger.error('Guest player creation failed:', guestError);
         } else {
           guestPlayerId = guestPlayer.id;
         }
@@ -209,7 +210,7 @@ export default function AcademyCreateInvoice() {
       queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
       navigate('/app/academy/invoices');
     } catch (err) {
-      console.error('Failed to create invoice:', err);
+      logger.error('Failed to create invoice:', err);
       toast.error('Kon factuur niet aanmaken');
     } finally {
       setSaving(false);
