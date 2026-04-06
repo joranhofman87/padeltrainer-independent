@@ -1112,6 +1112,70 @@ export default function AcademySlotDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Invoices */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                {t('calendar.invoices', 'Invoices')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {slotInvoices.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {t('calendar.noInvoices', 'No invoices linked to this slot')}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {slotInvoices.map(inv => {
+                    const isOverdue = inv.status === 'sent' && new Date(inv.due_date) < new Date();
+                    const displayStatus = isOverdue ? 'overdue' : inv.status;
+                    return (
+                      <button
+                        key={inv.id}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent/50 transition-colors text-left"
+                        onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}
+                      >
+                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-mono font-medium truncate">{inv.invoice_number}</p>
+                          <p className="text-xs text-muted-foreground truncate">{inv.player_name}</p>
+                        </div>
+                        <span className="text-sm font-medium shrink-0">€{inv.total.toFixed(2)}</span>
+                        {displayStatus === 'paid' && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300">
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                            {t('invoices.paid', 'Paid')}
+                          </Badge>
+                        )}
+                        {displayStatus === 'sent' && (
+                          <Badge variant="default" className="text-[10px] h-5 px-1.5">
+                            {t('invoices.sent', 'Sent')}
+                          </Badge>
+                        )}
+                        {displayStatus === 'draft' && (
+                          <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                            {t('invoices.draft', 'Draft')}
+                          </Badge>
+                        )}
+                        {displayStatus === 'overdue' && (
+                          <Badge variant="destructive" className="text-[10px] h-5 px-1.5">
+                            {t('invoices.overdue', 'Overdue')}
+                          </Badge>
+                        )}
+                        {displayStatus === 'cancelled' && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                            {t('invoices.cancelled', 'Cancelled')}
+                          </Badge>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </main>
 
