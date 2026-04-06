@@ -1,0 +1,1 @@
+ALTER TABLE public.session_reports ADD COLUMN public_notes text;

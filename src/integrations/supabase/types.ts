@@ -3655,6 +3655,7 @@ export type Database = {
           created_at: string | null
           id: string
           notes: string | null
+          public_notes: string | null
           reporter_id: string
           reporter_role: string
           session_happened: boolean
@@ -3666,6 +3667,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           notes?: string | null
+          public_notes?: string | null
           reporter_id: string
           reporter_role: string
           session_happened?: boolean
@@ -3677,6 +3679,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           notes?: string | null
+          public_notes?: string | null
           reporter_id?: string
           reporter_role?: string
           session_happened?: boolean
