@@ -1,46 +1,43 @@
 
 
-# Mobile Optimization: Remaining Pages Without Mobile Views
+# Action Items Widget for Trainers and Players
 
-## Current state
+## What it does
 
-Several pages already have proper mobile treatment with `hidden md:block` tables + `md:hidden` card views:
-- Academy Invoices, Trainer Invoices
-- Academy Cycles Overview
-- Academy/Trainer Create/Edit Invoice (line items)
+When trainers or players open their dashboard, the first thing they see is an "Action Required" card listing past sessions that still need attendance reporting. Each item shows the session date, name, and a quick action to confirm/dismiss. Once reported, the item disappears. This replaces the current pattern of burying attendance forms deep inside slot detail or booking pages.
 
-## Pages that still need mobile card views
+## How it works
 
-These pages render raw `<Table>` components that overflow horizontally on mobile:
+### Data query
 
-### 1. TrainerPlayers — Players table (6 columns, no mobile cards)
-Add `hidden md:block` on the table, add `md:hidden` card list showing name, contact, status, and action menu.
+For **trainers**: fetch past `availability_slots` (where `start_time < now`) that have confirmed bookings but no matching `session_reports` entry from this trainer. Limited to the last 14 days to avoid overwhelming backlog.
 
-### 2. AcademyPlayers — Players table (7 columns including Trainer, no mobile cards)
-Same treatment. Cards show name, trainer, status, contact.
+For **players**: fetch past `bookings` (via `availability_slots.start_time < now`, status = confirmed/completed) where no `session_reports` entry exists for this player + slot. Same 14-day window.
 
-### 3. AcademyTrainers — Trainers table (4 columns, no mobile cards)
-Add mobile card view with avatar, name, locations, visibility toggle, and action buttons.
+### UI component
 
-### 4. TrainerCyclus — Header layout issue
-The header has title + button side-by-side which can overflow on small screens. The stats section (upcoming/players counts) in each card also crowds on mobile. Fix with `flex-wrap` and stacked layout on small screens.
+A shared `PendingActionsCard` component rendered at the top of both dashboards (above stats cards). Mobile-first design:
 
-## Other mobile tweaks
+- Compact card with amber/orange accent and a count badge ("3 sessions need your input")
+- Each action item is a row: date, session name, two buttons — "Report" (expands inline form) and "Dismiss" (X, marks as skipped)
+- The inline form is a simplified version of the existing `TrainerAttendanceForm` / `PlayerAttendanceForm` — toggle for "session happened", quick notes field, save button
+- When all items are handled, the card disappears
+- Collapsible on mobile — shows count header, tap to expand the list
 
-### 5. AcademyDashboard — Trainer grid cards
-The trainer cards grid uses `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` which is fine, but the trainer detail cards inside have horizontal stat layouts that could benefit from tighter spacing on mobile.
+### Trainer version extras
+- Shows player names and attendance checkboxes (who showed up)
+- Two note fields (session summary + private notes) — same as existing form
 
-### 6. Slot detail pages (Academy + Trainer)
-The two-column grid already stacks on mobile (`grid-cols-1 lg:grid-cols-2`), but the edit form inside uses `grid-cols-2` without a responsive prefix — should be `grid-cols-1 sm:grid-cols-2`.
+### Player version
+- Simpler: just "did the session happen?" toggle + private notes
+- Shows trainer's session summary if already submitted (read-only)
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/TrainerPlayers.tsx` | Add mobile card view for players table |
-| `src/pages/academy/AcademyPlayers.tsx` | Add mobile card view for players table |
-| `src/pages/academy/AcademyTrainers.tsx` | Add mobile card view for trainers table |
-| `src/pages/TrainerCyclus.tsx` | Responsive header + card stats layout |
-| `src/pages/academy/AcademySlotDetail.tsx` | Fix edit form grid to `grid-cols-1 sm:grid-cols-2` |
-| `src/pages/trainer/TrainerSlotDetail.tsx` | Same edit form grid fix |
+| `src/components/dashboard/PendingAttendanceCard.tsx` | New — shared action items widget with trainer/player mode |
+| `src/pages/TrainerDashboard.tsx` | Import and render `PendingAttendanceCard` above stats cards |
+| `src/pages/PlayerDashboard.tsx` | Import and render `PendingAttendanceCard` above upcoming bookings |
+| Locale JSON files (EN, NL, ES, DE, FR) | Add ~10 translation keys for action items UI |
 
