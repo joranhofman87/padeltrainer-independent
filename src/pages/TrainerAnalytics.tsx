@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ interface RatingTrend {
 export default function TrainerAnalytics() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('trainer');
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
@@ -242,8 +244,8 @@ export default function TrainerAnalytics() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">Analytics</h1>
-            <p className="text-sm text-muted-foreground">Track your performance and growth</p>
+            <h1 className="text-xl font-bold">{t('analyticsPage.title')}</h1>
+            <p className="text-sm text-muted-foreground">{t('analyticsPage.subtitle')}</p>
           </div>
         </div>
       </header>
@@ -252,25 +254,25 @@ export default function TrainerAnalytics() {
         {/* Summary Stats */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard 
-            title="Total Bookings" 
+            title={t('analyticsPage.totalBookings')} 
             value={summary.totalBookings} 
             icon={Calendar}
             change={summary.bookingsChange}
           />
           <StatCard 
-            title="Total Earnings" 
+            title={t('analyticsPage.totalEarnings')} 
             value={summary.totalEarnings} 
             icon={Euro}
             prefix="€"
             change={summary.earningsChange}
           />
           <StatCard 
-            title="Unique Students" 
+            title={t('analyticsPage.uniqueStudents')} 
             value={summary.totalStudents} 
             icon={Users}
           />
           <StatCard 
-            title="Average Rating" 
+            title={t('analyticsPage.averageRating')} 
             value={summary.averageRating.toFixed(1)} 
             icon={Star}
             suffix={` (${summary.reviewCount})`}
@@ -280,16 +282,16 @@ export default function TrainerAnalytics() {
         {/* Charts */}
         <Tabs defaultValue="bookings" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3 max-w-md">
-            <TabsTrigger value="bookings">Bookings</TabsTrigger>
-            <TabsTrigger value="earnings">Earnings</TabsTrigger>
-            <TabsTrigger value="ratings">Ratings</TabsTrigger>
+            <TabsTrigger value="bookings">{t('analyticsPage.bookings')}</TabsTrigger>
+            <TabsTrigger value="earnings">{t('analyticsPage.earnings')}</TabsTrigger>
+            <TabsTrigger value="ratings">{t('analyticsPage.ratings')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="bookings">
             <Card>
               <CardHeader>
-                <CardTitle>Booking Trends</CardTitle>
-                <CardDescription>Monthly bookings over the last 6 months</CardDescription>
+                <CardTitle>{t('analyticsPage.bookingTrends')}</CardTitle>
+                <CardDescription>{t('analyticsPage.bookingTrendsDescription')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[350px]">
@@ -321,8 +323,8 @@ export default function TrainerAnalytics() {
           <TabsContent value="earnings">
             <Card>
               <CardHeader>
-                <CardTitle>Earnings Trends</CardTitle>
-                <CardDescription>Monthly earnings over the last 6 months</CardDescription>
+                <CardTitle>{t('analyticsPage.earningsTrends')}</CardTitle>
+                <CardDescription>{t('analyticsPage.earningsTrendsDescription')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[350px]">
@@ -356,8 +358,8 @@ export default function TrainerAnalytics() {
           <TabsContent value="ratings">
             <Card>
               <CardHeader>
-                <CardTitle>Rating Trends</CardTitle>
-                <CardDescription>Average rating by month</CardDescription>
+                <CardTitle>{t('analyticsPage.ratingTrends')}</CardTitle>
+                <CardDescription>{t('analyticsPage.ratingTrendsDescription')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[350px]">
@@ -373,8 +375,8 @@ export default function TrainerAnalytics() {
                           borderRadius: '8px'
                         }}
                         formatter={(value: number, name: string) => {
-                          if (name === 'rating') return [value.toFixed(1), 'Avg Rating'];
-                          return [value, 'Reviews'];
+                          if (name === 'rating') return [value.toFixed(1), t('analyticsPage.avgRating')];
+                          return [value, t('analyticsPage.reviews')];
                         }}
                       />
                       <Line 
@@ -400,11 +402,11 @@ export default function TrainerAnalytics() {
                 <div className="flex items-center justify-center gap-6 mt-4 text-sm">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-primary"></div>
-                    <span>Average Rating</span>
+                     <span>{t('analyticsPage.averageRating')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-0.5 bg-muted-foreground"></div>
-                    <span>Number of Reviews</span>
+                    <span>{t('analyticsPage.numberOfReviews')}</span>
                   </div>
                 </div>
               </CardContent>
@@ -416,8 +418,8 @@ export default function TrainerAnalytics() {
         <div className="grid md:grid-cols-2 gap-6 mt-8">
           <Card>
             <CardHeader>
-              <CardTitle>Students Overview</CardTitle>
-              <CardDescription>Unique students per month</CardDescription>
+                <CardTitle>{t('analyticsPage.studentsOverview')}</CardTitle>
+                <CardDescription>{t('analyticsPage.studentsOverviewDescription')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-[200px]">
@@ -447,34 +449,34 @@ export default function TrainerAnalytics() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Quick Insights</CardTitle>
-              <CardDescription>Key performance indicators</CardDescription>
+                <CardTitle>{t('analyticsPage.quickInsights')}</CardTitle>
+                <CardDescription>{t('analyticsPage.keyPerformance')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <span className="text-sm">Avg. Bookings per Month</span>
+                <span className="text-sm">{t('analyticsPage.avgBookingsPerMonth')}</span>
                 <span className="font-semibold">
                   {(summary.totalBookings / 6).toFixed(1)}
                 </span>
               </div>
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <span className="text-sm">Avg. Earnings per Month</span>
+                <span className="text-sm">{t('analyticsPage.avgEarningsPerMonth')}</span>
                 <span className="font-semibold">
                   €{(summary.totalEarnings / 6).toFixed(0)}
                 </span>
               </div>
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <span className="text-sm">Avg. per Booking</span>
+                <span className="text-sm">{t('analyticsPage.avgPerBooking')}</span>
                 <span className="font-semibold">
                   €{summary.totalBookings > 0 ? (summary.totalEarnings / summary.totalBookings).toFixed(0) : 0}
                 </span>
               </div>
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <span className="text-sm">Student Retention</span>
+                <span className="text-sm">{t('analyticsPage.studentRetention')}</span>
                 <span className="font-semibold">
                   {summary.totalStudents > 0 
                     ? Math.round((summary.totalBookings / summary.totalStudents)) 
-                    : 0} bookings/student
+                    : 0} {t('analyticsPage.bookingsPerStudent')}
                 </span>
               </div>
             </CardContent>
