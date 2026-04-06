@@ -28,8 +28,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { BookForPlayerDialog } from '@/components/trainer/BookForPlayerDialog';
-import { EditBookingDialog } from '@/components/trainer/EditBookingDialog';
+import { InlineBookPlayer } from '@/components/trainer/InlineBookPlayer';
+import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
 import { SlotRatingPicker } from '@/components/trainer/SlotRatingPicker';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
