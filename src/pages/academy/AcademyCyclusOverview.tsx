@@ -541,7 +541,7 @@ export default function AcademyCyclusOverview() {
     try {
       const slotIds = await getSelectedSlotIds();
       if (slotIds.length === 0) {
-        toast({ title: 'Geen slots gevonden voor geselecteerde cycli' });
+        toast({ title: t('cyclesTab.noSlotsFound') });
         return;
       }
       for (let i = 0; i < slotIds.length; i += 500) {
@@ -551,12 +551,12 @@ export default function AcademyCyclusOverview() {
           .update({ is_public: makePublic })
           .in('id', chunk);
       }
-      toast({ title: `${slotIds.length} slots ${makePublic ? 'zichtbaar' : 'verborgen'} gemaakt` });
+      toast({ title: t('cyclesTab.visibilityUpdated', { count: slotIds.length, state: makePublic ? t('cyclesTab.visible') : t('cyclesTab.hidden') }) });
       setSelectedIds(new Set());
       fetchCyclusData();
     } catch (error) {
       logger.error('Bulk visibility update failed', error as Error);
-      toast({ title: 'Er ging iets mis', variant: 'destructive' });
+      toast({ title: t('cyclesTab.error'), variant: 'destructive' });
     } finally {
       setBulkUpdating(false);
     }
@@ -565,14 +565,14 @@ export default function AcademyCyclusOverview() {
   const handleBulkPriceUpdate = async () => {
     const price = parseFloat(bulkPrice);
     if (isNaN(price) || price < 0) {
-      toast({ title: 'Voer een geldig bedrag in', variant: 'destructive' });
+      toast({ title: t('cyclesTab.invalidPrice'), variant: 'destructive' });
       return;
     }
     setBulkUpdating(true);
     try {
       const slotIds = await getSelectedSlotIds();
       if (slotIds.length === 0) {
-        toast({ title: 'Geen slots gevonden voor geselecteerde cycli' });
+        toast({ title: t('cyclesTab.noSlotsFound') });
         return;
       }
       for (let i = 0; i < slotIds.length; i += 500) {
@@ -584,14 +584,14 @@ export default function AcademyCyclusOverview() {
       }
       // Sync invoices
       await syncInvoicesAfterPriceChange(slotIds);
-      toast({ title: `Prijs bijgewerkt voor ${slotIds.length} slots` });
+      toast({ title: t('cyclesTab.priceUpdated', { count: slotIds.length }) });
       setPriceDialogOpen(false);
       setBulkPrice('');
       setSelectedIds(new Set());
       fetchCyclusData();
     } catch (error) {
       logger.error('Bulk price update failed', error as Error);
-      toast({ title: 'Er ging iets mis', variant: 'destructive' });
+      toast({ title: t('cyclesTab.error'), variant: 'destructive' });
     } finally {
       setBulkUpdating(false);
     }
@@ -607,7 +607,7 @@ export default function AcademyCyclusOverview() {
 
   const getStatusBadge = (group: CyclusGroup) => {
     if (!group.has_slots && group.sessions === 0) {
-      return <Badge variant="outline" className="text-xs">Geen sessies</Badge>;
+      return <Badge variant="outline" className="text-xs">{t('cyclesTab.noSessions')}</Badge>;
     }
     return (
       <Badge variant={group.max_booked >= group.max_participants ? 'destructive' : 'secondary'}>
@@ -618,8 +618,8 @@ export default function AcademyCyclusOverview() {
 
   const getTypeBadge = (type: string) => {
     switch (type) {
-      case 'registration': return <Badge variant="outline" className="text-xs">Registratie</Badge>;
-      case 'event': return <Badge variant="outline" className="text-xs">Event</Badge>;
+      case 'registration': return <Badge variant="outline" className="text-xs">{t('cyclesTab.registration')}</Badge>;
+      case 'event': return <Badge variant="outline" className="text-xs">{t('cyclesTab.event')}</Badge>;
       default: return null;
     }
   };
@@ -649,10 +649,10 @@ export default function AcademyCyclusOverview() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="current">Huidig</SelectItem>
-                <SelectItem value="future">Toekomstig</SelectItem>
-                <SelectItem value="past">Afgelopen</SelectItem>
-                <SelectItem value="all">Alle</SelectItem>
+                <SelectItem value="current">{t('cyclesTab.current')}</SelectItem>
+                <SelectItem value="future">{t('cyclesTab.future')}</SelectItem>
+                <SelectItem value="past">{t('cyclesTab.past')}</SelectItem>
+                <SelectItem value="all">{t('cyclesTab.all')}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -690,8 +690,8 @@ export default function AcademyCyclusOverview() {
       {/* Summary + Bulk Actions */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          {sortedData.length} {sortedData.length === 1 ? 'cyclus' : 'cycli'}
-          {selectedIds.size > 0 && ` · ${selectedIds.size} geselecteerd`}
+          {sortedData.length} {sortedData.length === 1 ? t('cyclesTab.cycle') : t('cyclesTab.cycles')}
+          {selectedIds.size > 0 && ` · ${selectedIds.size} ${t('cyclesTab.selected')}`}
         </div>
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2">
@@ -702,7 +702,7 @@ export default function AcademyCyclusOverview() {
               onClick={() => handleBulkVisibility(true)}
             >
               <Eye className="h-3.5 w-3.5 mr-1.5" />
-              Zichtbaar
+              {t('cyclesTab.makeVisible')}
             </Button>
             <Button
               variant="outline"
@@ -711,7 +711,7 @@ export default function AcademyCyclusOverview() {
               onClick={() => handleBulkVisibility(false)}
             >
               <EyeOff className="h-3.5 w-3.5 mr-1.5" />
-              Verbergen
+              {t('cyclesTab.hide')}
             </Button>
             <Button
               variant="outline"
@@ -720,7 +720,7 @@ export default function AcademyCyclusOverview() {
               onClick={() => { setBulkPrice(''); setPriceDialogOpen(true); }}
             >
               <Euro className="h-3.5 w-3.5 mr-1.5" />
-              Prijs wijzigen
+              {t('cyclesTab.changePrice')}
             </Button>
           </div>
         )}
@@ -744,7 +744,7 @@ export default function AcademyCyclusOverview() {
                   currentDirection={sortConfig.direction}
                   onSort={handleSort as (key: string) => void}
                 >
-                  Naam
+                  {t('cyclesTab.name')}
                 </SortableTableHead>
                 <SortableTableHead
                   sortKey="trainer_name"
@@ -752,17 +752,17 @@ export default function AcademyCyclusOverview() {
                   currentDirection={sortConfig.direction}
                   onSort={handleSort as (key: string) => void}
                 >
-                  Trainer
+                  {t('cyclesTab.trainer')}
                 </SortableTableHead>
-                <TableHead>Locatie</TableHead>
-                <TableHead>Dag / Tijd</TableHead>
+                <TableHead>{t('cyclesTab.location')}</TableHead>
+                <TableHead>{t('cyclesTab.dayTime')}</TableHead>
                 <SortableTableHead
                   sortKey="period_start"
                   currentSortKey={sortConfig.key as string}
                   currentDirection={sortConfig.direction}
                   onSort={handleSort as (key: string) => void}
                 >
-                  Periode
+                  {t('cyclesTab.period')}
                 </SortableTableHead>
                 <SortableTableHead
                   sortKey="sessions"
@@ -770,7 +770,7 @@ export default function AcademyCyclusOverview() {
                   currentDirection={sortConfig.direction}
                   onSort={handleSort as (key: string) => void}
                 >
-                  Sessies
+                  {t('cyclesTab.sessions')}
                 </SortableTableHead>
                 <SortableTableHead
                   sortKey="player_count"
@@ -778,17 +778,17 @@ export default function AcademyCyclusOverview() {
                   currentDirection={sortConfig.direction}
                   onSort={handleSort as (key: string) => void}
                 >
-                  Spelers
+                  {t('cyclesTab.players')}
                 </SortableTableHead>
-                <TableHead>Prijs</TableHead>
-                <TableHead>Bezetting</TableHead>
+                <TableHead>{t('cyclesTab.price')}</TableHead>
+                <TableHead>{t('cyclesTab.occupancy')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
-                    Geen cycli gevonden
+                    {t('cyclesTab.noCyclesFound')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -861,11 +861,11 @@ export default function AcademyCyclusOverview() {
       <Dialog open={priceDialogOpen} onOpenChange={setPriceDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Prijs wijzigen voor {selectedIds.size} cycli</DialogTitle>
+            <DialogTitle>{t('cyclesTab.changePriceTitle', { count: selectedIds.size })}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Prijs per sessie (€)</Label>
+              <Label>{t('cyclesTab.pricePerSession')}</Label>
               <Input
                 type="number"
                 min="0"
@@ -876,15 +876,15 @@ export default function AcademyCyclusOverview() {
               />
             </div>
             <p className="text-sm text-muted-foreground">
-              Dit past de prijs aan op alle slots van de geselecteerde cycli en synchroniseert openstaande facturen.
+              {t('cyclesTab.priceChangeDescription')}
             </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPriceDialogOpen(false)}>
-              Annuleren
+              {t('cyclesTab.cancel')}
             </Button>
             <Button onClick={handleBulkPriceUpdate} disabled={bulkUpdating}>
-              {bulkUpdating ? 'Bezig...' : 'Opslaan'}
+              {bulkUpdating ? t('cyclesTab.saving') : t('cyclesTab.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

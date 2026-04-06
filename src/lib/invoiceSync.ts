@@ -49,7 +49,7 @@ export async function recalculateInvoiceAfterRemoval(
         total: 0,
         pdf_url: null,
         vat_breakdown: null,
-        notes: "Invoice cancelled — all sessions were removed",
+        notes: "Factuur geannuleerd — alle sessies zijn verwijderd",
       })
       .eq("id", invoice.id);
     return;

@@ -99,6 +99,7 @@ function getSlotWarnings(
   slot: SlotSummary,
   maxRatingSpread: number | null | undefined,
   maxAgeDiffYears: number | null | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): string[] {
   const warnings: string[] = [];
   const players = slot.players || [];
@@ -109,7 +110,7 @@ function getSlotWarnings(
     if (ratings.length >= 2) {
       const spread = Math.max(...ratings) - Math.min(...ratings);
       if (spread > maxRatingSpread) {
-        warnings.push(`Rating spread: ${spread.toFixed(1)}`);
+        warnings.push(t('academy:warnings.ratingSpread', { spread: spread.toFixed(1) }));
       }
     }
   }
@@ -130,7 +131,7 @@ function getSlotWarnings(
     if (ages.length >= 2) {
       const diff = Math.max(...ages) - Math.min(...ages);
       if (diff > maxAgeDiffYears) {
-        warnings.push(`Age diff: ${diff} yr`);
+        warnings.push(t('academy:warnings.ageDiff', { diff }));
       }
     }
   }
@@ -200,7 +201,7 @@ function TrainerDayBlock({
         <CollapsibleContent>
           <div className="px-2 pb-1.5 space-y-0.5">
             {slots.map(slot => {
-              const warnings = getSlotWarnings(slot, warningMaxRatingSpread, warningMaxAgeDiffYears);
+              const warnings = getSlotWarnings(slot, warningMaxRatingSpread, warningMaxAgeDiffYears, t);
               return (
                 <button
                   key={slot.id}

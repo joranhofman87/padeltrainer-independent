@@ -422,5 +422,14 @@
     "backfillError": "Facturen genereren mislukt",
     "shareLink": "Delen",
     "shareLinkCopied": "Factuurlink gekopieerd naar klembord"
+  },
+  "warnings": {
+    "ratingSpread": "Niveauverschil: {{spread}}",
+    "ageDiff": "Leeftijdsverschil: {{diff}} jr"
+  },
+  "slotDetail": {
+    "level": "Niveau",
+    "years": "jr",
+    "guest": "Gast"
   }
 }

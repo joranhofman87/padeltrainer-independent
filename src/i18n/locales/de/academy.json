@@ -388,5 +388,14 @@
     "backfillError": "Rechnungen konnten nicht erstellt werden",
     "shareLink": "Teilen",
     "shareLinkCopied": "Rechnungslink in Zwischenablage kopiert"
+  },
+  "warnings": {
+    "ratingSpread": "Niveauunterschied: {{spread}}",
+    "ageDiff": "Altersunterschied: {{diff}} J."
+  },
+  "slotDetail": {
+    "level": "Niveau",
+    "years": "J.",
+    "guest": "Gast"
   }
 }

@@ -942,7 +942,7 @@ export default function AcademySlotDetail() {
                     )}
                     {(detail.min_rating != null || detail.max_rating != null) && (
                       <Badge variant="outline" className="gap-1">
-                        Level {detail.min_rating ?? '?'} – {detail.max_rating ?? '?'}
+                        {t('slotDetail.level', 'Level')} {detail.min_rating ?? '?'} – {detail.max_rating ?? '?'}
                       </Badge>
                     )}
                   </div>
@@ -1056,12 +1056,12 @@ export default function AcademySlotDetail() {
                         <p className="text-xs text-muted-foreground">
                           {[
                             player.skillRating != null ? `${player.ratingSystem?.toUpperCase()} ${player.skillRating}` : null,
-                            calculateAge(player.birthDate) != null ? `${calculateAge(player.birthDate)} yr` : null,
+                            calculateAge(player.birthDate) != null ? `${calculateAge(player.birthDate)} ${t('slotDetail.years', 'yr')}` : null,
                           ].filter(Boolean).join(' · ') || '\u00A0'}
                         </p>
                       </div>
                       {player.isGuest && (
-                        <Badge variant="outline" className="text-[10px] h-5 px-1.5">Guest</Badge>
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5">{t('slotDetail.guest', 'Guest')}</Badge>
                       )}
                       {player.status === 'confirmed' ? (
                         <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300">
