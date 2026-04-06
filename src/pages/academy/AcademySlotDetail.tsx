@@ -70,6 +70,9 @@ interface SlotDetail {
   booked_players: BookedPlayer[];
 }
 
+interface TrainerOption { id: string; name: string; }
+interface LocationOption { id: string; name: string; }
+
 interface SlotInvoice {
   id: string;
   invoice_number: string;
