@@ -136,6 +136,9 @@ export default function AcademySlotDetail() {
   const [dismissedWarnings, setDismissedWarnings] = useState<string[]>([]);
   const [dismissingWarning, setDismissingWarning] = useState<string | null>(null);
 
+  // Invoice state
+  const [slotInvoices, setSlotInvoices] = useState<SlotInvoice[]>([]);
+
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
 
   const fetchSlotDetail = useCallback(async () => {
