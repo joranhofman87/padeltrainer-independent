@@ -165,6 +165,8 @@ const AcademyWaitingList = lazy(() => import('@/pages/academy/AcademyWaitingList
 const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
 
 const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
+const AcademyCreateInvoice = lazy(() => import('@/pages/academy/AcademyCreateInvoice'));
+const AcademyEditInvoice = lazy(() => import('@/pages/academy/AcademyEditInvoice'));
 
 // Public pages
 const PublicInvoicePay = lazy(() => import('@/pages/PublicInvoicePay'));
@@ -317,6 +319,8 @@ export function DomainRouter() {
           <Route path="subscription" element={<AcademySubscription />} />
           
           <Route path="invoices" element={<AcademyInvoices />} />
+          <Route path="invoices/new" element={<AcademyCreateInvoice />} />
+          <Route path="invoices/:invoiceId/edit" element={<AcademyEditInvoice />} />
         </Route>
         <Route path="/app/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
 

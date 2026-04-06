@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
@@ -19,8 +19,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { EditInvoiceDialog } from "@/components/invoices/EditInvoiceDialog";
-import { CreateCustomInvoiceDialog } from "@/components/invoices/CreateCustomInvoiceDialog";
 import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { nl, enUS } from "date-fns/locale";
@@ -57,6 +55,7 @@ interface Invoice {
 
 export default function AcademyInvoices() {
   const { t, i18n } = useTranslation("academy");
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeAcademy } = useAcademyContext();
   const queryClient = useQueryClient();
@@ -69,8 +68,6 @@ export default function AcademyInvoices() {
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
-  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
   const formatEuro = (amount: number) =>
@@ -515,7 +512,7 @@ export default function AcademyInvoices() {
       <div className="flex gap-2">
         <Button
           size="sm"
-          onClick={() => setCreateDialogOpen(true)}
+          onClick={() => navigate('/app/academy/invoices/new')}
         >
           <PlusCircle className="h-4 w-4 mr-2" />
           {t("invoices.createInvoice", "Nieuwe factuur")}
@@ -658,7 +655,7 @@ export default function AcademyInvoices() {
                         <TableRow
                           key={inv.id}
                           className="cursor-pointer"
-                          onClick={() => setEditInvoice(inv)}
+                          onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}
                         >
                           <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                           <TableCell>{inv.player_name}</TableCell>
@@ -711,7 +708,7 @@ export default function AcademyInvoices() {
               {/* Mobile Cards */}
               <div className="md:hidden space-y-3">
                 {filteredInvoices.map((inv) => (
-                  <Card key={inv.id} className="cursor-pointer" onClick={() => setEditInvoice(inv)}>
+                  <Card key={inv.id} className="cursor-pointer" onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-2">
                         <div>
@@ -768,32 +765,6 @@ export default function AcademyInvoices() {
         onSubmit={handleEmailSubmitAndSend}
       />
 
-      <EditInvoiceDialog
-        open={!!editInvoice}
-        onClose={() => setEditInvoice(null)}
-        invoice={editInvoice}
-        onSaved={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
-        academyProfileId={activeAcademy?.id}
-        onDownloadPdf={editInvoice ? () => handleDownloadPdf(editInvoice) : undefined}
-        onMarkPaid={editInvoice && editInvoice.status !== "paid" ? () => {
-          markPaidMutation.mutate(editInvoice.id);
-          setEditInvoice(null);
-        } : undefined}
-        onDelete={editInvoice && editInvoice.status !== "cancelled" ? () => {
-          deleteMutation.mutate(editInvoice);
-          setEditInvoice(null);
-        } : undefined}
-        invoiceStatus={editInvoice?.status}
-      />
-
-      {activeAcademy?.id && (
-        <CreateCustomInvoiceDialog
-          open={createDialogOpen}
-          onClose={() => setCreateDialogOpen(false)}
-          academyProfileId={activeAcademy.id}
-          onCreated={() => queryClient.invalidateQueries({ queryKey: ["academy-invoices"] })}
-        />
-      )}
     </div>
   );
 }
