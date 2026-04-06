@@ -99,6 +99,7 @@ function getSlotWarnings(
   slot: SlotSummary,
   maxRatingSpread: number | null | undefined,
   maxAgeDiffYears: number | null | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): string[] {
   const warnings: string[] = [];
   const players = slot.players || [];
@@ -200,7 +201,7 @@ function TrainerDayBlock({
         <CollapsibleContent>
           <div className="px-2 pb-1.5 space-y-0.5">
             {slots.map(slot => {
-              const warnings = getSlotWarnings(slot, warningMaxRatingSpread, warningMaxAgeDiffYears);
+              const warnings = getSlotWarnings(slot, warningMaxRatingSpread, warningMaxAgeDiffYears, t);
               return (
                 <button
                   key={slot.id}
