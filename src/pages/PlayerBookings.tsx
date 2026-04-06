@@ -17,9 +17,11 @@ import { getPlayerReview } from '@/lib/reviews';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
 import { downloadIcsFile } from '@/lib/icsGenerator';
+import { PlayerAttendanceForm } from '@/components/attendance/PlayerAttendanceForm';
 
 interface BookingWithDetails {
   id: string;
+  slot_id: string;
   status: string;
   payment_status: string | null;
   notes: string | null;
@@ -60,6 +62,7 @@ export default function PlayerBookings() {
       .from('bookings')
       .select(`
         id,
+        slot_id,
         status,
         payment_status,
         notes,
@@ -88,7 +91,7 @@ export default function PlayerBookings() {
 
     if (data) {
       const rawBookings = data as unknown as Array<{
-        id: string; status: string; payment_status: string | null; notes: string | null; created_at: string;
+        id: string; slot_id: string; status: string; payment_status: string | null; notes: string | null; created_at: string;
         availability_slots: { start_time: string; end_time: string; trainer_id: string; price_per_session: number | null; cyclus_name: string | null; locations: { name: string } | null };
       }>;
 
@@ -415,6 +418,13 @@ export default function PlayerBookings() {
                             </Dialog>
                           )}
                         </div>
+                        {/* Attendance confirmation for past non-cancelled bookings */}
+                        {booking.status !== 'cancelled' && isPast(parseISO(booking.availability_slots.start_time)) && (
+                          <PlayerAttendanceForm
+                            slotId={booking.slot_id}
+                            bookingId={booking.id}
+                          />
+                        )}
                       </CardContent>
                     </Card>
                   );

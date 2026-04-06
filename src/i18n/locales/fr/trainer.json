@@ -727,5 +727,18 @@
     "cancel": "Annuler",
     "saving": "Enregistrement...",
     "save": "Enregistrer"
+  },
+  "attendance": {
+    "title": "Présence",
+    "reported": "Rapporté",
+    "sessionHappened": "La séance a eu lieu",
+    "whoAttended": "Qui était présent ?",
+    "sessionSummary": "Résumé de la séance (visible pour les joueurs)",
+    "sessionSummaryPlaceholder": "Ce qui a été pratiqué aujourd'hui...",
+    "privateNotes": "Notes privées (non visibles pour les joueurs)",
+    "privateNotesPlaceholder": "Notes internes...",
+    "save": "Enregistrer la présence",
+    "saved": "Présence enregistrée",
+    "saveError": "Échec de l'enregistrement"
   }
 }

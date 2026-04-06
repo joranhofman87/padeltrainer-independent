@@ -8,6 +8,7 @@ import {
   Trash2, UserPlus, DollarSign, Loader2, Save, X, Check, Plus, Minus,
   AlertTriangle, Settings, FileText, CheckCircle2,
 } from 'lucide-react';
+import { isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
@@ -37,6 +38,7 @@ import { EditBookingDialog } from '@/components/trainer/EditBookingDialog';
 import { SlotRatingPicker } from '@/components/trainer/SlotRatingPicker';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
+import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
@@ -1110,6 +1112,19 @@ export default function AcademySlotDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Attendance */}
+          {detail && isPast(new Date(detail.end_time)) && (
+            <SlotAttendanceCard
+              slotId={detail.id}
+              bookedPlayers={detail.booked_players.map(p => ({
+                id: p.id,
+                name: p.name,
+                profileId: p.id,
+              }))}
+              isPastSlot={true}
+            />
+          )}
 
           {/* Invoices */}
           <Card>

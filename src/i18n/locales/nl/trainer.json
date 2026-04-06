@@ -91,6 +91,19 @@
     "evening": "Avond",
     "clearFilters": "Filters wissen"
   },
+  "attendance": {
+    "title": "Aanwezigheid",
+    "reported": "Gerapporteerd",
+    "sessionHappened": "Training heeft plaatsgevonden",
+    "whoAttended": "Wie was aanwezig?",
+    "sessionSummary": "Samenvatting training (zichtbaar voor spelers)",
+    "sessionSummaryPlaceholder": "Wat is er vandaag geoefend...",
+    "privateNotes": "Privénotities (niet zichtbaar voor spelers)",
+    "privateNotesPlaceholder": "Interne notities...",
+    "save": "Aanwezigheid opslaan",
+    "saved": "Aanwezigheid opgeslagen",
+    "saveError": "Opslaan mislukt"
+  },
   "profile": {
     "shareProfile": "Profiel delen",
     "copyLink": "Link kopiëren",

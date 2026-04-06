@@ -397,5 +397,21 @@
     "level": "Niveau",
     "years": "J.",
     "guest": "Gast"
+  },
+  "attendance": {
+    "title": "Anwesenheit",
+    "noReports": "Noch keine Anwesenheitsberichte eingereicht",
+    "conflict": "Konflikt",
+    "trainerReport": "Trainerbericht",
+    "sessionHappened": "Training hat stattgefunden",
+    "sessionCancelled": "Training abgesagt",
+    "attendees": "Anwesende",
+    "players": "Spieler",
+    "sessionSummary": "Trainingszusammenfassung",
+    "trainerNotes": "Trainernotizen (privat)",
+    "playerConfirmations": "Spielerbestätigungen",
+    "unknownPlayer": "Spieler",
+    "confirmed": "Bestätigt",
+    "denied": "Abgelehnt"
   }
 }

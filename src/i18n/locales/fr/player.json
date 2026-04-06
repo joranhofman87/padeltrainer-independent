@@ -277,5 +277,16 @@
     "unfollowConfirm": "Ne plus suivre {{name}} ?",
     "unfollowed": "Désabonné",
     "unfollowedDescription": "Vous ne suivez plus {{name}}"
+  },
+  "attendance": {
+    "title": "Présence",
+    "reported": "Rapporté",
+    "sessionHappened": "Cette séance a-t-elle eu lieu ?",
+    "sessionSummary": "Résumé de la séance",
+    "myNotes": "Mes notes (privé)",
+    "myNotesPlaceholder": "Notes pour vous-même...",
+    "save": "Enregistrer",
+    "saved": "Présence enregistrée",
+    "saveError": "Échec de l'enregistrement"
   }
 }

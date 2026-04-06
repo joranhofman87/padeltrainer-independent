@@ -277,5 +277,16 @@
     "unfollowConfirm": "{{name}} entfolgen?",
     "unfollowed": "Entfolgt",
     "unfollowedDescription": "Du folgst {{name}} nicht mehr"
+  },
+  "attendance": {
+    "title": "Anwesenheit",
+    "reported": "Gemeldet",
+    "sessionHappened": "Hat dieses Training stattgefunden?",
+    "sessionSummary": "Trainingszusammenfassung",
+    "myNotes": "Meine Notizen (privat)",
+    "myNotesPlaceholder": "Notizen für dich selbst...",
+    "save": "Speichern",
+    "saved": "Anwesenheit gespeichert",
+    "saveError": "Speichern fehlgeschlagen"
   }
 }

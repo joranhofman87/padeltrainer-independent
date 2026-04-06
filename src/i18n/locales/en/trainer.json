@@ -91,6 +91,19 @@
     "evening": "Evening",
     "clearFilters": "Clear filters"
   },
+  "attendance": {
+    "title": "Attendance",
+    "reported": "Reported",
+    "sessionHappened": "Session happened",
+    "whoAttended": "Who attended?",
+    "sessionSummary": "Session summary (visible to players)",
+    "sessionSummaryPlaceholder": "What was practiced today...",
+    "privateNotes": "Private notes (not visible to players)",
+    "privateNotesPlaceholder": "Internal notes...",
+    "save": "Save attendance",
+    "saved": "Attendance saved",
+    "saveError": "Failed to save"
+  },
   "profile": {
     "shareProfile": "Share Profile",
     "copyLink": "Copy Link",

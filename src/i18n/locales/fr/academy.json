@@ -357,5 +357,21 @@
     "level": "Niveau",
     "years": "ans",
     "guest": "Invité"
+  },
+  "attendance": {
+    "title": "Présence",
+    "noReports": "Aucun rapport de présence soumis",
+    "conflict": "Conflit",
+    "trainerReport": "Rapport de l'entraîneur",
+    "sessionHappened": "La séance a eu lieu",
+    "sessionCancelled": "Séance annulée",
+    "attendees": "Présents",
+    "players": "joueurs",
+    "sessionSummary": "Résumé de la séance",
+    "trainerNotes": "Notes de l'entraîneur (privé)",
+    "playerConfirmations": "Confirmations des joueurs",
+    "unknownPlayer": "Joueur",
+    "confirmed": "Confirmé",
+    "denied": "Refusé"
   }
 }

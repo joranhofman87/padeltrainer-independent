@@ -3649,6 +3649,53 @@ export type Database = {
           },
         ]
       }
+      session_reports: {
+        Row: {
+          attendees: string[] | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          public_notes: string | null
+          reporter_id: string
+          reporter_role: string
+          session_happened: boolean
+          slot_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          attendees?: string[] | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          public_notes?: string | null
+          reporter_id: string
+          reporter_role: string
+          session_happened?: boolean
+          slot_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          attendees?: string[] | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          public_notes?: string | null
+          reporter_id?: string
+          reporter_role?: string
+          session_happened?: boolean
+          slot_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_reports_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sources: {
         Row: {
           allowed_to_use: boolean

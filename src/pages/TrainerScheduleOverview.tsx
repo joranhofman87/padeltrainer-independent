@@ -65,6 +65,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TrainerAttendanceForm } from "@/components/attendance/TrainerAttendanceForm";
 import { useToast } from "@/hooks/use-toast";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 
@@ -1414,6 +1415,20 @@ export default function TrainerScheduleOverview() {
                                 </div>
                               );
                             })}
+                          </div>
+                        )}
+
+                        {/* Attendance form for past slots */}
+                        {slotExpanded && isPastSlot && (
+                          <div className="px-6 pb-3">
+                            <TrainerAttendanceForm
+                              slotId={slot.id}
+                              players={active.map(b => ({
+                                id: b.id,
+                                name: b.profiles?.full_name || b.guest_players?.full_name || t("scheduleOverview.unknownPlayer", "Unknown"),
+                                playerId: b.player_id || b.guest_player_id || undefined,
+                              }))}
+                            />
                           </div>
                         )}
                       </div>
