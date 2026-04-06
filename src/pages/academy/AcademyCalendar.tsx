@@ -880,23 +880,8 @@ export default function AcademyCalendar() {
       {/* Dialogs */}
       {activeAcademy && (
         <>
-          <BulkCreateSheet
-            open={bulkCreateOpen}
-            onOpenChange={(open) => {
-              setBulkCreateOpen(open);
-              if (!open) setPreselectedCyclusId(undefined);
-            }}
-            trainerId={selectedSlotTrainerId}
-            defaultDate={defaultSlotDate}
-            defaultTime={defaultSlotTime}
-            defaultDuration={60}
-            defaultWeeks={8}
-            onSlotsCreated={handleSlotsCreated}
-            availableLocations={locations}
-            availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
-            academyId={activeAcademy?.id}
-            prefillFromCyclusId={preselectedCyclusId}
-          />
+          {/* BulkCreateSheet removed — using /app/academy/slot/new page */}
+
 
           {selectedSlot && (
             <BookForPlayerDialog
