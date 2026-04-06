@@ -474,6 +474,7 @@ export default function AcademyEditInvoice() {
                 </div>
               ))}
             </div>
+            </div>
           </CardContent>
         </Card>
 
