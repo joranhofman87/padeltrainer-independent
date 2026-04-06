@@ -127,9 +127,9 @@ export default function AcademySlotDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteCyclus, setDeleteCyclus] = useState(false);
-  const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
-  const [editBookingOpen, setEditBookingOpen] = useState(false);
-  const [bookingToEdit, setBookingToEdit] = useState<any>(null);
+  const [showBookPlayer, setShowBookPlayer] = useState(false);
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
+  const [editingBookingData, setEditingBookingData] = useState<any>(null);
 
   // Warning state
   const [warningThresholds, setWarningThresholds] = useState<{ maxRatingSpread: number | null; maxAgeDiff: number | null }>({ maxRatingSpread: null, maxAgeDiff: null });
