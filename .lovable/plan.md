@@ -1,68 +1,47 @@
 
 
-# Replace Large Academy Dialogs with Dedicated Pages
+# Add Invoices Box to Slot Detail Page
 
-## Priority candidates
+## What it does
+Below the Players card on the slot detail page, show a compact "Invoices" card listing all invoices linked to this slot (via `booking_ids`) or the parent cycle. Each row shows invoice number, player name, amount, status badge, and links to the invoice edit page.
 
-The biggest wins come from converting the most complex dialogs first. Here's the recommended order:
+## How it works
 
-### Tier 1 — High complexity, should definitely become pages
+### Data fetching
+After the slot detail loads, query the `invoices` table where `booking_ids` overlaps with the booking IDs from `detail.booked_players`. This covers both single-slot and cycle-level invoices since cycle invoices store all their booking IDs in the `booking_ids` array.
 
-1. **CreateCustomInvoiceDialog → `/app/academy/invoices/new`**
-   - Currently a massive form with receiver details, line items grid, VAT calculations, date picker, and notes
-   - As a page: more room for the form, better UX on mobile, bookmarkable
+### Display
+A compact card with a table-like layout:
+- Invoice number (monospace, clickable link to `/app/academy/invoices/:id/edit`)
+- Player name
+- Amount (€)
+- Status badge (reuse the same status config pattern from `PlayerInvoicesTab`)
 
-2. **EditInvoiceDialog → `/app/academy/invoices/:id/edit`**
-   - Same complexity as create, plus management actions (download, mark paid, delete)
-   - Route param picks up the invoice ID
+### File changes
 
-3. **GenerateProposalsWizard → Already part of CycleDetail flow**
-   - Multi-step wizard crammed into a dialog
-   - Should render inline within the cycle detail page instead of overlaying it
+**`src/pages/academy/AcademySlotDetail.tsx`**
+- After `fetchSlotDetail`, add a second query to fetch invoices where `booking_ids` overlaps with the slot's booking IDs
+- Add an "Invoices" Card below the Players card in the right column
+- Each invoice row is a clickable link using `navigate()` to the edit page
+- Show status badges (Draft, Sent, Paid, Overdue, Cancelled) with appropriate colors
+- If no invoices exist, show a simple "No invoices" message
 
-### Tier 2 — Medium complexity, good candidates
+No new files or migrations needed — this is purely a UI addition reading existing data.
 
-4. **AddIntakeRequestDialog → Inline form or `/app/academy/cycles/:id/registrations/new`**
-   - Used on CycleDetail and IntakeRequests pages
-   - Could become an inline expandable form or a sub-route
+## Technical details
 
-5. **EditIntakeRequestDialog → Similar treatment**
+```typescript
+// Fetch invoices linked to this slot's bookings
+const bookingIds = detail.booked_players.map(p => p.bookingId);
+const { data: slotInvoices } = await supabase
+  .from('invoices')
+  .select('id, invoice_number, player_name, total, status, due_date, paid_at')
+  .overlaps('booking_ids', bookingIds);
+```
 
-6. **SlotDetailDialog → Already has a page (`/app/academy/slot/:id`)**
-   - The dialog version in the calendar overview can simply navigate to the existing slot detail page instead of opening a dialog
-
-### Tier 3 — Small forms, lower priority
-
-7. **AddAcademyLocationDialog / EditAcademyLocationDialog / RequestLocationDialog** — Could become inline forms on the Locations page
-8. **InviteAcademyTrainerDialog / CreateAcademyTrainerDialog** — Could become inline forms or sub-routes on the Trainers page
-9. **CycleApplicationModal** — Player-facing, could become a dedicated registration page
-
-### Keep as dialogs (no change needed)
-- All `AlertDialog` confirmations (delete, remove, send confirm)
-- `BookForPlayerDialog` / `EditBookingDialog` — small contextual actions
-- `ReassignPlayerDialog` — contextual within proposals
-- `ScoringWeightsDialog` — tiny settings form
-- Bulk price dialog on CyclesOverview — single input
-
-## Recommended implementation order
-
-Start with **Tier 1** (invoices create/edit + proposals wizard) since those are the most impactful UX improvements. Each conversion follows the same pattern:
-
-1. Create a new route in `DomainRouter.tsx`
-2. Move the form content from the Dialog component into a new page component
-3. Replace dialog open/close with `navigate()` / back navigation
-4. Update the parent page to use a link/button that navigates instead of opening a dialog
-
-## File summary (Tier 1 only)
+## File summary
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyCreateInvoice.tsx` | New page with the form from `CreateCustomInvoiceDialog` |
-| `src/pages/academy/AcademyEditInvoice.tsx` | New page with the form from `EditInvoiceDialog` |
-| `src/pages/academy/AcademyInvoices.tsx` | Replace dialog opens with `navigate()` calls |
-| `src/components/DomainRouter.tsx` | Add routes for `/app/academy/invoices/new` and `/app/academy/invoices/:id/edit` |
-| `src/components/cycles/GenerateProposalsWizard.tsx` | Convert from Dialog to inline component |
-| `src/pages/academy/AcademyCycleDetail.tsx` | Render wizard inline instead of in dialog |
-| `src/components/academy/SlotDetailDialog.tsx` | Replace with navigation to `/app/academy/slot/:id` |
-| `src/components/academy/AcademyCalendarOverview.tsx` | Navigate to slot page instead of opening dialog |
+| `src/pages/academy/AcademySlotDetail.tsx` | Fetch linked invoices, render Invoices card below Players |
 
