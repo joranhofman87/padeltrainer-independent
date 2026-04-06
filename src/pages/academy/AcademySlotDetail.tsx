@@ -1252,33 +1252,6 @@ export default function AcademySlotDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Book For Player Dialog */}
-      <BookForPlayerDialog
-        open={bookForPlayerOpen}
-        onOpenChange={setBookForPlayerOpen}
-        trainerId={detail.trainer_id}
-        slot={{
-          id: detail.id,
-          start_time: detail.start_time,
-          end_time: detail.end_time,
-          cyclus_id: detail.cyclus_id,
-          cyclus_name: detail.cyclus_name,
-          booked_players: detail.booked_players,
-        }}
-        onBookingCreated={fetchSlotDetail}
-      />
-
-      {/* Edit Booking Dialog */}
-      <EditBookingDialog
-        open={editBookingOpen}
-        onOpenChange={open => {
-          setEditBookingOpen(open);
-          if (!open) setBookingToEdit(null);
-        }}
-        booking={bookingToEdit}
-        trainerId={detail.trainer_id}
-        onBookingUpdated={fetchSlotDetail}
-      />
     </div>
   );
 }
