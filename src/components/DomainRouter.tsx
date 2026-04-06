@@ -165,6 +165,8 @@ const AcademyWaitingList = lazy(() => import('@/pages/academy/AcademyWaitingList
 const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
 
 const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
+const AcademyCreateInvoice = lazy(() => import('@/pages/academy/AcademyCreateInvoice'));
+const AcademyEditInvoice = lazy(() => import('@/pages/academy/AcademyEditInvoice'));
 
 // Public pages
 const PublicInvoicePay = lazy(() => import('@/pages/PublicInvoicePay'));
