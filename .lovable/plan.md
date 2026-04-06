@@ -1,96 +1,68 @@
 
 
-# Localize Hardcoded Strings in Recently Changed Files
+# Replace Large Academy Dialogs with Dedicated Pages
 
-## Summary of findings
+## Priority candidates
 
-There are hardcoded strings across 4 files. Most are in **Dutch** (which is fine for invoice descriptions stored in the DB) but UI-facing text needs to go through `t()`. Here's the full inventory:
+The biggest wins come from converting the most complex dialogs first. Here's the recommended order:
 
-## File 1: `src/pages/academy/AcademyCyclusOverview.tsx`
+### Tier 1 — High complexity, should definitely become pages
 
-**Hardcoded Dutch UI text (needs `t()`):**
-- Line 544: `'Geen slots gevonden voor geselecteerde cycli'`
-- Line 554: `'${slotIds.length} slots ${makePublic ? 'zichtbaar' : 'verborgen'} gemaakt'`
-- Line 559: `'Er ging iets mis'`
-- Line 568: `'Voer een geldig bedrag in'`
-- Line 575: `'Geen slots gevonden voor geselecteerde cycli'`
-- Line 587: `'Prijs bijgewerkt voor ${slotIds.length} slots'`
-- Line 594: `'Er ging iets mis'`
-- Line 610: `'Geen sessies'` (Badge)
-- Line 621: `'Registratie'` (Badge)
-- Line 622: `'Event'` (Badge)
-- Line 652-655: `'Huidig'`, `'Toekomstig'`, `'Afgelopen'`, `'Alle'` (time filter)
-- Line 693: `'cyclus'` / `'cycli'` + `'geselecteerd'`
-- Line 705: `'Zichtbaar'`
-- Line 714: `'Verbergen'`
-- Line 723: `'Prijs wijzigen'`
-- Line 747: `'Naam'` (table header)
-- Line 755: `'Trainer'` (table header)
-- Line 757: `'Locatie'` (table header)
-- Line 758: `'Dag / Tijd'` (table header)
-- Line 765: `'Periode'` (table header)
-- Line 773: `'Sessies'` (table header)
-- Line 781: `'Spelers'` (table header)
-- Line 783: `'Prijs'` (table header)
-- Line 784: `'Bezetting'` (table header)
-- Line 791: `'Geen cycli gevonden'`
-- Line 864: `'Prijs wijzigen voor ${selectedIds.size} cycli'`
-- Line 868: `'Prijs per sessie (€)'`
-- Line 879: `'Dit past de prijs aan...'`
-- Line 884: `'Annuleren'`
-- Line 887: `'Bezig...'` / `'Opslaan'`
+1. **CreateCustomInvoiceDialog → `/app/academy/invoices/new`**
+   - Currently a massive form with receiver details, line items grid, VAT calculations, date picker, and notes
+   - As a page: more room for the form, better UX on mobile, bookmarkable
 
-## File 2: `src/pages/academy/AcademySlotDetail.tsx`
+2. **EditInvoiceDialog → `/app/academy/invoices/:id/edit`**
+   - Same complexity as create, plus management actions (download, mark paid, delete)
+   - Route param picks up the invoice ID
 
-**Hardcoded English UI text (needs `t()`):**
-- Line 945: `'Level'` in badge text
-- Line 1059: `'yr'` (age suffix)
-- Line 1064: `'Guest'` badge
+3. **GenerateProposalsWizard → Already part of CycleDetail flow**
+   - Multi-step wizard crammed into a dialog
+   - Should render inline within the cycle detail page instead of overlaying it
 
-## File 3: `src/components/academy/AcademyCalendarOverview.tsx`
+### Tier 2 — Medium complexity, good candidates
 
-**Hardcoded English UI text (needs `t()`):**
-- Line 112: `'Rating spread: ${spread.toFixed(1)}'`
-- Line 133: `'Age diff: ${diff} yr'`
+4. **AddIntakeRequestDialog → Inline form or `/app/academy/cycles/:id/registrations/new`**
+   - Used on CycleDetail and IntakeRequests pages
+   - Could become an inline expandable form or a sub-route
 
-## File 4: `src/lib/invoiceSync.ts`
+5. **EditIntakeRequestDialog → Similar treatment**
 
-**Hardcoded Dutch text in invoice line items:**
-- Line 52: `"Invoice cancelled — all sessions were removed"` (notes field)
-- Line 97: `"Training cyclus"` (fallback)
-- Line 110-111: `"weken"` in descriptions
-- Line 147: `"Training sessie"` fallback
-- Line 191: `"per sessie"`
-- Line 422: `"Training cyclus"` fallback
-- Line 430: `"weken"`
-- Line 461: `"per sessie"`
+6. **SlotDetailDialog → Already has a page (`/app/academy/slot/:id`)**
+   - The dialog version in the calendar overview can simply navigate to the existing slot detail page instead of opening a dialog
 
-**Note on invoiceSync.ts**: These strings are written into invoice records (stored in DB, shown on PDFs). They can't easily use `t()` since this is a non-component utility. Options: (a) accept Dutch-only for invoices (common for NL businesses), (b) pass a locale/translate function as parameter. I recommend **(a)** — keep Dutch for invoice line items since invoices are legal documents tied to the business locale.
+### Tier 3 — Small forms, lower priority
 
-## Plan
+7. **AddAcademyLocationDialog / EditAcademyLocationDialog / RequestLocationDialog** — Could become inline forms on the Locations page
+8. **InviteAcademyTrainerDialog / CreateAcademyTrainerDialog** — Could become inline forms or sub-routes on the Trainers page
+9. **CycleApplicationModal** — Player-facing, could become a dedicated registration page
 
-### 1. Add translation keys to locale files
-Add ~35 new keys to `trainer` namespace (since `AcademyCyclusOverview` uses `trainer` namespace) and `academy` namespace.
+### Keep as dialogs (no change needed)
+- All `AlertDialog` confirmations (delete, remove, send confirm)
+- `BookForPlayerDialog` / `EditBookingDialog` — small contextual actions
+- `ReassignPlayerDialog` — contextual within proposals
+- `ScoringWeightsDialog` — tiny settings form
+- Bulk price dialog on CyclesOverview — single input
 
-### 2. `src/pages/academy/AcademyCyclusOverview.tsx`
-Replace all hardcoded Dutch strings with `t()` calls using the new keys.
+## Recommended implementation order
 
-### 3. `src/pages/academy/AcademySlotDetail.tsx`
-Replace `'Level'`, `'yr'`, and `'Guest'` with `t()` calls.
+Start with **Tier 1** (invoices create/edit + proposals wizard) since those are the most impactful UX improvements. Each conversion follows the same pattern:
 
-### 4. `src/components/academy/AcademyCalendarOverview.tsx`
-Replace `'Rating spread: ...'` and `'Age diff: ...'` with `t()` calls.
+1. Create a new route in `DomainRouter.tsx`
+2. Move the form content from the Dialog component into a new page component
+3. Replace dialog open/close with `navigate()` / back navigation
+4. Update the parent page to use a link/button that navigates instead of opening a dialog
 
-### 5. `src/lib/invoiceSync.ts`
-Keep as-is (Dutch invoice descriptions for legal/business reasons). Only change the English `notes` field to Dutch for consistency: `"Factuur geannuleerd — alle sessies zijn verwijderd"`.
-
-## File summary
+## File summary (Tier 1 only)
 
 | File | Change |
 |------|--------|
-| Locale JSON files (EN, NL, ES, DE, FR) | Add ~35 translation keys for cycles tab + slot detail + calendar overview |
-| `src/pages/academy/AcademyCyclusOverview.tsx` | Replace ~30 hardcoded Dutch strings with `t()` |
-| `src/pages/academy/AcademySlotDetail.tsx` | Replace 3 hardcoded English strings with `t()` |
-| `src/components/academy/AcademyCalendarOverview.tsx` | Replace 2 hardcoded warning strings with `t()` |
-| `src/lib/invoiceSync.ts` | Minor: fix English notes string to Dutch |
+| `src/pages/academy/AcademyCreateInvoice.tsx` | New page with the form from `CreateCustomInvoiceDialog` |
+| `src/pages/academy/AcademyEditInvoice.tsx` | New page with the form from `EditInvoiceDialog` |
+| `src/pages/academy/AcademyInvoices.tsx` | Replace dialog opens with `navigate()` calls |
+| `src/components/DomainRouter.tsx` | Add routes for `/app/academy/invoices/new` and `/app/academy/invoices/:id/edit` |
+| `src/components/cycles/GenerateProposalsWizard.tsx` | Convert from Dialog to inline component |
+| `src/pages/academy/AcademyCycleDetail.tsx` | Render wizard inline instead of in dialog |
+| `src/components/academy/SlotDetailDialog.tsx` | Replace with navigation to `/app/academy/slot/:id` |
+| `src/components/academy/AcademyCalendarOverview.tsx` | Navigate to slot page instead of opening dialog |
 
