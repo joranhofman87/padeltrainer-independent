@@ -91,7 +91,7 @@ export default function PlayerBookings() {
 
     if (data) {
       const rawBookings = data as unknown as Array<{
-        id: string; status: string; payment_status: string | null; notes: string | null; created_at: string;
+        id: string; slot_id: string; status: string; payment_status: string | null; notes: string | null; created_at: string;
         availability_slots: { start_time: string; end_time: string; trainer_id: string; price_per_session: number | null; cyclus_name: string | null; locations: { name: string } | null };
       }>;
 
