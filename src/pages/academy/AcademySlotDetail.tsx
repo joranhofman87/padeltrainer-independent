@@ -70,8 +70,17 @@ interface SlotDetail {
   booked_players: BookedPlayer[];
 }
 
-interface TrainerOption { id: string; name: string; }
-interface LocationOption { id: string; name: string; }
+interface SlotInvoice {
+  id: string;
+  invoice_number: string;
+  player_name: string;
+  total: number;
+  status: string;
+  due_date: string;
+  paid_at: string | null;
+}
+
+export default function AcademySlotDetail() {
 
 export default function AcademySlotDetail() {
   const { slotId } = useParams<{ slotId: string }>();
