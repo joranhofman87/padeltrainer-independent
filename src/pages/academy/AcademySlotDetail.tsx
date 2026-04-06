@@ -6,7 +6,7 @@ import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
   ArrowLeft, Calendar, Clock, Lock, MapPin, Users, Pencil,
   Trash2, UserPlus, DollarSign, Loader2, Save, X, Check, Plus, Minus,
-  AlertTriangle, Settings,
+  AlertTriangle, Settings, FileText, CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
@@ -73,6 +73,16 @@ interface SlotDetail {
 interface TrainerOption { id: string; name: string; }
 interface LocationOption { id: string; name: string; }
 
+interface SlotInvoice {
+  id: string;
+  invoice_number: string;
+  player_name: string;
+  total: number;
+  status: string;
+  due_date: string;
+  paid_at: string | null;
+}
+
 export default function AcademySlotDetail() {
   const { slotId } = useParams<{ slotId: string }>();
   const navigate = useNavigate();
@@ -123,6 +133,9 @@ export default function AcademySlotDetail() {
   const [warningThresholds, setWarningThresholds] = useState<{ maxRatingSpread: number | null; maxAgeDiff: number | null }>({ maxRatingSpread: null, maxAgeDiff: null });
   const [dismissedWarnings, setDismissedWarnings] = useState<string[]>([]);
   const [dismissingWarning, setDismissingWarning] = useState<string | null>(null);
+
+  // Invoice state
+  const [slotInvoices, setSlotInvoices] = useState<SlotInvoice[]>([]);
 
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
 
@@ -246,6 +259,23 @@ export default function AcademySlotDetail() {
       setDismissedWarnings((dismissedRes.data || []).map(d => d.warning_type));
     })();
   }, [activeAcademy?.id, slotId]);
+
+  // Fetch invoices linked to this slot's bookings
+  useEffect(() => {
+    if (!detail || detail.booked_players.length === 0) {
+      setSlotInvoices([]);
+      return;
+    }
+    const bookingIds = detail.booked_players.map(p => p.bookingId);
+    (async () => {
+      const { data } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, player_name, total, status, due_date, paid_at')
+        .overlaps('booking_ids', bookingIds)
+        .order('invoice_number');
+      setSlotInvoices((data as SlotInvoice[]) || []);
+    })();
+  }, [detail]);
 
   useEffect(() => {
     if (!activeAcademy) return;
@@ -1076,6 +1106,70 @@ export default function AcademySlotDetail() {
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     </button>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Invoices */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                {t('calendar.invoices', 'Invoices')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {slotInvoices.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {t('calendar.noInvoices', 'No invoices linked to this slot')}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {slotInvoices.map(inv => {
+                    const isOverdue = inv.status === 'sent' && new Date(inv.due_date) < new Date();
+                    const displayStatus = isOverdue ? 'overdue' : inv.status;
+                    return (
+                      <button
+                        key={inv.id}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent/50 transition-colors text-left"
+                        onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}
+                      >
+                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-mono font-medium truncate">{inv.invoice_number}</p>
+                          <p className="text-xs text-muted-foreground truncate">{inv.player_name}</p>
+                        </div>
+                        <span className="text-sm font-medium shrink-0">€{inv.total.toFixed(2)}</span>
+                        {displayStatus === 'paid' && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300">
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                            {t('invoices.paid', 'Paid')}
+                          </Badge>
+                        )}
+                        {displayStatus === 'sent' && (
+                          <Badge variant="default" className="text-[10px] h-5 px-1.5">
+                            {t('invoices.sent', 'Sent')}
+                          </Badge>
+                        )}
+                        {displayStatus === 'draft' && (
+                          <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                            {t('invoices.draft', 'Draft')}
+                          </Badge>
+                        )}
+                        {displayStatus === 'overdue' && (
+                          <Badge variant="destructive" className="text-[10px] h-5 px-1.5">
+                            {t('invoices.overdue', 'Overdue')}
+                          </Badge>
+                        )}
+                        {displayStatus === 'cancelled' && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                            {t('invoices.cancelled', 'Cancelled')}
+                          </Badge>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
