@@ -247,6 +247,7 @@ export default function AcademyTrainers() {
               </CardContent>
             </Card>
           ) : (
+            <>
             {/* Desktop Table */}
             <div className="hidden md:block rounded-md border">
               <Table>

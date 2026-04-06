@@ -631,6 +631,7 @@ export default function TrainerPlayers() {
                   );
                 })}
               </div>
+              </>
             )}
           </CardContent>
         </Card>
