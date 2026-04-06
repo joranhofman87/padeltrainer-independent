@@ -23,7 +23,7 @@ interface TrainerWithProfile {
   slug: string | null;
   experience_years: number | null;
   is_verified: boolean;
-  subscription_status: string | null;
+  is_active_subscription?: boolean;
   profile: {
     full_name: string | null;
     avatar_url: string | null;
