@@ -54,6 +54,7 @@ interface Invoice {
 }
 
 export default function AcademyInvoices() {
+  const { t, i18n } = useTranslation("academy");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeAcademy } = useAcademyContext();
