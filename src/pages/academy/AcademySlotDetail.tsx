@@ -6,7 +6,7 @@ import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
   ArrowLeft, Calendar, Clock, Lock, MapPin, Users, Pencil,
   Trash2, UserPlus, DollarSign, Loader2, Save, X, Check, Plus, Minus,
-  AlertTriangle, Settings,
+  AlertTriangle, Settings, FileText, CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
