@@ -17,7 +17,6 @@ import { ReferralWidget } from '@/components/ReferralWidget';
 import { 
   checkClubSubscription, 
   getTrialDaysRemaining, 
-  CLUB_SUBSCRIPTION,
   type ClubSubscriptionInfo 
 } from '@/lib/clubSubscription';
 import { logger } from '@/lib/logger';

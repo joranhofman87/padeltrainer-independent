@@ -10,9 +10,9 @@ import {
   checkAcademySubscription, 
   createAcademyCheckout, 
   getTrialDaysRemaining,
-  ACADEMY_SUBSCRIPTION,
   type AcademySubscriptionInfo 
 } from "@/lib/academySubscription";
+import { useAcademyPlan } from "@/hooks/usePricingPlans";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
@@ -40,6 +40,7 @@ export default function AcademySubscription() {
   const [subscription, setSubscription] = useState<AcademySubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const { data: plan, isLoading: planLoading } = useAcademyPlan();
 
   useEffect(() => {
     async function loadSubscription() {
@@ -125,7 +126,7 @@ export default function AcademySubscription() {
     }
   };
 
-  if (loading) {
+  if (loading || planLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto space-y-6">
@@ -194,7 +195,7 @@ export default function AcademySubscription() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  {ACADEMY_SUBSCRIPTION.name}
+                  {plan?.name ?? "Academy Plan"}
                   {isActive && (
                     <Badge className="bg-emerald-500">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -213,10 +214,10 @@ export default function AcademySubscription() {
                 </CardDescription>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-bold">€{ACADEMY_SUBSCRIPTION.monthlyPrice}</div>
+                <div className="text-3xl font-bold">€{plan?.monthly_price ?? 79}</div>
                 <div className="text-sm text-muted-foreground">{t("subscription.perMonth")}</div>
                 <div className="text-xs text-muted-foreground">
-                  {t("subscription.billedAnnually", { amount: ACADEMY_SUBSCRIPTION.yearlyPrice })}
+                  {t("subscription.billedAnnually", { amount: plan?.yearly_price ?? 758 })}
                 </div>
               </div>
             </div>

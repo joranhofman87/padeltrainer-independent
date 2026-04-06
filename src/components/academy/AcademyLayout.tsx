@@ -15,7 +15,6 @@ import { useQuery } from '@tanstack/react-query';
 import { 
   checkAcademySubscription, 
   getTrialDaysRemaining, 
-  ACADEMY_SUBSCRIPTION,
   type AcademySubscriptionInfo 
 } from '@/lib/academySubscription';
 

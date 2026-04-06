@@ -18,7 +18,7 @@ export interface SubscriptionPlan {
   display_order: number;
   is_highlighted: boolean;
   badge: string | null;
-  plan_type: "trainer" | "club";
+  plan_type: "trainer" | "club" | "academy";
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +54,15 @@ export function useClubPlan() {
   
   return {
     data: plans?.find((p) => p.plan_type === "club"),
+    ...rest,
+  };
+}
+
+export function useAcademyPlan() {
+  const { data: plans, ...rest } = usePricingPlans();
+  
+  return {
+    data: plans?.find((p) => p.plan_type === "academy"),
     ...rest,
   };
 }

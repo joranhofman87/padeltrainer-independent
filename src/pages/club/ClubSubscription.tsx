@@ -11,9 +11,9 @@ import {
   checkClubSubscription, 
   createClubCheckout, 
   getTrialDaysRemaining,
-  CLUB_SUBSCRIPTION,
   type ClubSubscriptionInfo 
 } from "@/lib/clubSubscription";
+import { useClubPlan } from "@/hooks/usePricingPlans";
 import { getUserClubProfiles, type ClubProfile } from "@/lib/club";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +43,7 @@ export default function ClubSubscription() {
   const [subscription, setSubscription] = useState<ClubSubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const { data: plan, isLoading: planLoading } = useClubPlan();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -148,7 +149,7 @@ export default function ClubSubscription() {
     }
   };
 
-  if (authLoading || loading) {
+  if (authLoading || loading || planLoading) {
     return (
       <div className="min-h-screen bg-background p-4 md:p-8">
         <div className="max-w-4xl mx-auto space-y-6">
@@ -218,7 +219,7 @@ export default function ClubSubscription() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  {CLUB_SUBSCRIPTION.name}
+                  {plan?.name ?? "Club Plan"}
                   {isActive && (
                     <Badge className="bg-emerald-500">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -237,10 +238,10 @@ export default function ClubSubscription() {
                 </CardDescription>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-bold">€{CLUB_SUBSCRIPTION.monthlyPrice}</div>
+                <div className="text-3xl font-bold">€{plan?.monthly_price ?? 19}</div>
                 <div className="text-sm text-muted-foreground">{t("subscription.perMonth")}</div>
                 <div className="text-xs text-muted-foreground">
-                  {t("subscription.billedAnnually", { amount: CLUB_SUBSCRIPTION.yearlyPrice })}
+                  {t("subscription.billedAnnually", { amount: plan?.yearly_price ?? 2388 })}
                 </div>
               </div>
             </div>
