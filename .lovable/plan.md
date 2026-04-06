@@ -1,87 +1,89 @@
 
 
-# Fix Remaining Security & Production Issues
+# Pre-Launch QA Report — PadelTrainer.ai
 
-## 4 fixes in one pass
+## Overall Verdict: 2 Critical Issues Must Be Fixed Before Go-Live
 
-### 1. Review Tag Manipulation — RLS migration
+---
 
-Current INSERT policy allows any authenticated user to insert tags for any review. Fix: restrict to review owner or admin.
+## 1. Security
 
-```sql
--- Drop permissive INSERT
-DROP POLICY "Authenticated users can insert tag selections" ON review_tag_selections;
+### CRITICAL — Must fix before launch
 
--- Owner or admin can insert
-CREATE POLICY "Review owner can insert tags"
-  ON review_tag_selections FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM reviews r
-      WHERE r.id = review_id
-        AND (r.player_id = public.get_profile_id_for_user(auth.uid())
-             OR public.is_admin(auth.uid()))
-    )
-  );
+| Issue | Risk | Details |
+|-------|------|---------|
+| **Club manager takeover** | Any authenticated user can claim manager access to any club that has no managers | The INSERT policy on `club_managers` has `OR (NOT club_has_managers(club_profile_id))` — an attacker can enumerate club UUIDs and insert themselves as manager of unmanaged clubs, gaining full control over that club's data, trainers, and Mollie payment account |
+| **Academy manager takeover** | Same pattern on `academy_managers` | `OR (NOT academy_has_managers(academy_profile_id))` allows the same attack on academies |
 
--- Owner or admin can delete
-CREATE POLICY "Review owner can delete tags"
-  ON review_tag_selections FOR DELETE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM reviews r
-      WHERE r.id = review_id
-        AND (r.player_id = public.get_profile_id_for_user(auth.uid())
-             OR public.is_admin(auth.uid()))
-    )
-  );
-```
+**Fix**: Remove the `NOT club_has_managers()` / `NOT academy_has_managers()` bypass from the INSERT policies. Initial manager assignment should only happen via edge functions using the service role key (during onboarding signup).
 
-### 2. XSS Prevention — DOMPurify SafeHtml component
+### RESOLVED — Previously fixed items (verified)
 
-Install `dompurify` + `@types/dompurify`. Create `src/components/ui/SafeHtml.tsx` that sanitizes HTML before rendering.
+- User roles self-insert → Fixed (admin-only INSERT)
+- Financial data leaks (IBAN/BIC) → Fixed (safe views)
+- Public availability slots → Fixed (is_public filter)
+- Onboarding email queue public INSERT → Fixed (policy dropped)
+- Club profiles public SELECT → Fixed (policy dropped)
+- Review tag manipulation → Fixed (owner-only)
+- XSS via dangerouslySetInnerHTML → Fixed (SafeHtml component)
+- Slack notify auth → Fixed (service role key)
+- Bootstrap admin password → Fixed (kill switch + audit)
 
-Replace `dangerouslySetInnerHTML` in 7 files:
-- `CycleRegistration.tsx` — cycle description
-- `CycleCard.tsx` — cycle description
-- `CycleDetailDisplay.tsx` — pricing note
-- `OnboardingEmailPreview.tsx` — email body preview
-- `EmailCampaignTab.tsx` — campaign preview
-- `AdminBlogEditor.tsx` — blog preview
-- `TrainerTerms.tsx` — academy terms
+### Known Acceptable Warnings
 
-Skip `chart.tsx` (internal CSS) and `FAQSection.tsx` (JSON-LD, no user content).
+- Leaked password protection disabled (requires Cloud UI toggle — manual step)
+- pg_net extension in public schema (Supabase limitation, cannot move)
+- SECURITY DEFINER views are intentional safe views (trainer_profiles_safe, etc.)
+- subscription_payments / notification_queue have no RLS (service-role-only by design)
 
-### 3. Console.error → logger.error (5 files)
+---
 
-Replace all `console.error` calls with `logger.error` in:
-- `ProposalOverviewPage.tsx` (6 instances)
-- `TrainerCreateInvoice.tsx` (1)
-- `AcademyInvoices.tsx` (1)
-- `AcademyCreateInvoice.tsx` (2)
-- `CreateCustomInvoiceDialog.tsx` (2)
+## 2. Error Logging & Monitoring
 
-### 4. Leaked Password Protection
+**Status: GOOD**
 
-Enable HIBP password check via the Cloud auth settings tool.
+- All `console.error` calls migrated to `logger.error()` (only remaining `console.error` is inside the logger itself — correct)
+- PostHog exception tracking via `$exception` events
+- Global `window.error` and `unhandledrejection` handlers in `main.tsx`
+- FeatureErrorBoundary on critical flows
+- Health-check edge function for uptime monitoring
+- Slack alerts on critical payment function failures
+- Session storage fallback for dev debugging
 
-## File summary
+**One manual step**: Set up external uptime monitoring (UptimeRobot/BetterStack) pointing to the health-check endpoint, as noted in the launch checklist.
 
-| File | Change |
-|---|---|
-| Migration SQL | Drop permissive INSERT on `review_tag_selections`, add owner-only INSERT + DELETE |
-| `src/components/ui/SafeHtml.tsx` | New — DOMPurify wrapper |
-| `src/pages/CycleRegistration.tsx` | Use `SafeHtml` |
-| `src/components/cycles/CycleCard.tsx` | Use `SafeHtml` |
-| `src/components/cycles/CycleDetailDisplay.tsx` | Use `SafeHtml` |
-| `src/components/admin/OnboardingEmailPreview.tsx` | Use `SafeHtml` |
-| `src/components/academy/EmailCampaignTab.tsx` | Use `SafeHtml` |
-| `src/pages/admin/AdminBlogEditor.tsx` | Use `SafeHtml` |
-| `src/pages/TrainerTerms.tsx` | Use `SafeHtml` |
-| `src/pages/ProposalOverviewPage.tsx` | `console.error` → `logger.error` |
-| `src/pages/trainer/TrainerCreateInvoice.tsx` | `console.error` → `logger.error` |
-| `src/pages/academy/AcademyInvoices.tsx` | `console.error` → `logger.error` |
-| `src/pages/academy/AcademyCreateInvoice.tsx` | `console.error` → `logger.error` |
-| `src/components/invoices/CreateCustomInvoiceDialog.tsx` | `console.error` → `logger.error` |
-| Auth settings | Enable HIBP check |
+---
+
+## 3. Tests
+
+**Status: GOOD**
+
+- **Unit tests**: Vitest suite covering pricing calculations, invoice math, logger behavior (~30 files with test coverage)
+- **E2E tests**: Playwright suite with 45 tests covering auth flows, navigation, booking, role-based access, i18n, accessibility, performance, and error handling
+- **RLS smoke test**: Dedicated edge function + E2E test that checks critical tables for infinite recursion
+- **Invoice health check**: Weekly automated auditor checking for anomalies (€0 invoices, missing booking links, mismatched splits)
+- **CI**: GitHub Actions runs unit tests on push/PR
+
+**3 tests blocked**: TEST-004, 006, 007 crash due to browser automation limitation with auth redirects — not a code issue.
+
+---
+
+## 4. Remaining `dangerouslySetInnerHTML`
+
+Only 2 instances remain — both are safe:
+- `FAQSection.tsx` — JSON-LD structured data (no user input)
+- `chart.tsx` — CSS color variables from controlled config (no user input)
+
+---
+
+## Summary: What to do before go-live
+
+| Priority | Action | Effort |
+|----------|--------|--------|
+| **P0** | Fix club_managers + academy_managers INSERT policies (remove `NOT *_has_managers()` bypass) | 1 migration, ~5 min |
+| **P1** | Enable Leaked Password Protection in Cloud UI (Users → Auth Settings → Email → HIBP check) | Manual toggle |
+| **P1** | Set up uptime monitoring on health-check endpoint | Manual setup |
+| **P2** | Click "Update" in publish dialog to deploy latest frontend changes | 1 click |
+
+**Everything else is production-ready.** The two manager takeover policies are the only blockers.
 
