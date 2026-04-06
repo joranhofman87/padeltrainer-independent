@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { MapPin, FileText, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { differenceInWeeks } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import type { Cycle, PriceTableRow, CyclusOption } from '@/lib/cycles';
@@ -55,7 +55,7 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
 
       {/* Description */}
       {hasDescription && (
-        <SafeHTML
+        <SafeHtml
           html={cycle.description!}
           className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none"
         />
@@ -239,9 +239,9 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
 
       {/* Pricing note */}
       {(cycle.settings as any)?.pricing_note && (
-        <div 
+        <SafeHtml
+          html={(cycle.settings as any).pricing_note}
           className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none [&_p]:my-1"
-          ref={undefined}
         />
       )}
       {/* Terms */}
