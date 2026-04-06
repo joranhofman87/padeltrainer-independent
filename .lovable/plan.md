@@ -1,46 +1,96 @@
-
-
-# Fix Privilege Escalation on user_roles
+# Secure Financial Data: Strip Sensitive Columns from Public Views
 
 ## Problem
 
-The current INSERT policy on `user_roles` is:
+When `is_public = true`, the current SELECT policies on `trainer_profiles`, `academy_profiles`, and `club_profiles` expose the **entire row** — including banking details (IBAN, BIC), tax numbers (KVK, BTW), payment provider IDs (mollie_customer_id, stripe_customer_id), and internal config (platform_fee_override, invoice settings).
+
+Anyone can query these directly via the API, bypassing the frontend.
+
+## Affected Tables & Sensitive Fields
+
+### trainer_profiles
+- `mollie_customer_id`, `stripe_customer_id`
+- `subscription_id`, `subscription_status`, `subscription_tier`, `subscription_ends_at`, `trial_ends_at`
+- `platform_fee_override`
+- `use_manual_invoicing`
+
+### academy_profiles
+- `iban`, `bic`, `kvk_number`, `btw_number`
+- `business_address`, `business_name`
+- `mollie_customer_id`, `stripe_customer_id`
+- `subscription_id`, `subscription_status`, `subscription_tier`, `subscription_ends_at`, `trial_ends_at`
+- `platform_fee_override`
+- `invoice_prefix`, `invoice_next_number`, `invoice_forward_emails`, `invoice_logo_url`, `invoice_banner_color`
+- `default_vat_rate`, `payment_terms_days`
+- `last_processed_payment_id`
+
+### club_profiles
+- `mollie_customer_id`, `stripe_customer_id`
+- `subscription_id`, `subscription_status`, `subscription_tier`, `subscription_ends_at`, `trial_ends_at`
+- `last_processed_payment_id`
+
+## Solution
+
+The `_safe` views (`trainer_profiles_safe`, `academy_profiles_safe`, `club_profiles_safe`) already exist but the **base table SELECT policies still allow full row access to anyone**. The fix:
+
+1. **Tighten base table SELECT policies** — remove overly permissive public SELECT; only owners/managers/admins get full row access
+2. **Verify `_safe` views exclude all sensitive columns** listed above; update if needed
+3. **Update frontend code** — public-facing queries (profile pages, search, booking flow) must use `_safe` views
+4. **Keep owner access** — dashboards and settings pages keep querying base tables since owners need full column access
+
+## Migration
+
+### Step 1: Replace public SELECT policies on base tables
+
 ```sql
-WITH CHECK (auth.uid() = user_id)
+-- trainer_profiles: drop public SELECT, add owner+admin only
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON trainer_profiles;
+CREATE POLICY "Owners and admins can view trainer profiles"
+  ON trainer_profiles FOR SELECT TO authenticated
+  USING (user_id = auth.uid() OR public.is_admin(auth.uid()) OR public.is_active_academy_trainer(auth.uid(), id));
+
+-- academy_profiles: drop public SELECT, add manager+admin only  
+DROP POLICY IF EXISTS "Public academy profiles are viewable by everyone" ON academy_profiles;
+CREATE POLICY "Managers and admins can view academy profiles"
+  ON academy_profiles FOR SELECT TO authenticated
+  USING (public.is_academy_manager(auth.uid(), id) OR public.is_admin(auth.uid()));
+
+-- club_profiles: same pattern
+DROP POLICY IF EXISTS "Public club profiles are viewable" ON club_profiles;
+CREATE POLICY "Managers and admins can view club profiles"
+  ON club_profiles FOR SELECT TO authenticated
+  USING (public.is_club_manager(auth.uid(), id) OR public.is_admin(auth.uid()));
 ```
 
-This allows any authenticated user to insert **any role** for themselves, including `admin`. A malicious user could simply call:
-```sql
-INSERT INTO user_roles (user_id, role) VALUES (auth.uid(), 'admin');
-```
+### Step 2: Ensure _safe views have SELECT policies for public access
 
-## Fix
+The safe views (with `security_invoker=on`) only expose non-sensitive columns. These get the permissive public SELECT policy so anyone can browse profiles.
 
-Drop the permissive INSERT policy entirely. Role assignment should only happen through:
-- Edge functions using the service role key (signup-user, toggle-player-role)
-- Database triggers (link_guest_invoices_on_signup)
-- Admin actions via service role
+### Step 3: Verify _safe view column lists
 
-No regular user should ever directly INSERT into `user_roles`.
+Check each `_safe` view and confirm it **excludes** all financial/internal fields listed above. Update if any sensitive columns leak through.
 
-## Migration SQL
+## Frontend Changes
 
-```sql
-DROP POLICY IF EXISTS "Users can insert their own role" ON public.user_roles;
-
--- Only admins can manually insert roles (for admin dashboard use)
-CREATE POLICY "Admins can insert roles"
-  ON public.user_roles
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (public.is_admin(auth.uid()));
-```
-
-The existing `SECURITY DEFINER` functions and edge functions using the service role key will continue to work since they bypass RLS.
+| Context | Current query | Change to |
+|---------|--------------|-----------|
+| Trainer public profile page | `trainer_profiles` | `trainer_profiles_safe` |
+| Academy public profile page | `academy_profiles` | `academy_profiles_safe` |
+| Club public profile page | `club_profiles` | `club_profiles_safe` |
+| Search / listing pages | Base tables | Safe views |
+| Booking flow (trainer info) | Base tables | Safe views |
+| Trainer dashboard / settings | `trainer_profiles` | Keep as-is (owner needs full access) |
+| Academy dashboard / settings | `academy_profiles` | Keep as-is (manager needs full access) |
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| Migration SQL | Drop self-service INSERT policy, add admin-only INSERT policy |
-
+| Migration SQL | Drop public SELECT on base tables, add owner/manager-only SELECT |
+| Migration SQL | Verify and update `_safe` views to exclude all financial columns |
+| `src/pages/TrainerProfile.tsx` | Query `trainer_profiles_safe` for public view |
+| `src/pages/AcademyProfile.tsx` | Query `academy_profiles_safe` for public view |
+| `src/pages/ClubProfile.tsx` | Query `club_profiles_safe` for public view |
+| Search/listing components | Switch to safe views |
+| Booking flow components | Switch to safe views for trainer info |
+| Edge functions (public-api) | Already selects specific columns — verify no sensitive fields |
