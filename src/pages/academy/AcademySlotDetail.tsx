@@ -678,7 +678,7 @@ export default function AcademySlotDetail() {
               {isEditing ? (
                 /* Edit form */
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t('calendar.date', 'Date')}</Label>
                       <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
@@ -736,7 +736,7 @@ export default function AcademySlotDetail() {
                     const isCycleSlot = !!detail.cyclus_id;
                     return (
                       <>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1.5">
                             <Label className="text-xs">{tTrainer('calendar.maxParticipants', 'Max participants')}</Label>
                             <Input

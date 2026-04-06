@@ -376,7 +376,7 @@ export default function TrainerSlotDetail() {
             <CardContent className="space-y-4">
               {isEditing ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5"><Label className="text-xs">{t('calendar.date', 'Datum')}</Label><Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} /></div>
                     <div className="space-y-1.5"><Label className="text-xs">{t('calendar.time', 'Tijd')}</Label><Input type="time" value={editStartTime} onChange={e => setEditStartTime(e.target.value)} /></div>
                   </div>
@@ -407,7 +407,7 @@ export default function TrainerSlotDetail() {
                     const isCycleSlot = !!detail.cyclus_id;
                     return (
                       <>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1.5"><Label className="text-xs">{t('calendar.maxParticipants', 'Max deelnemers')}</Label>
                             <Input type="number" min={1} max={20} value={editMaxParticipants} onChange={e => setEditMaxParticipants(Number(e.target.value))} /></div>
                           <div className="space-y-1.5"><Label className="text-xs">{t('calendar.price', 'Prijs')}</Label>
