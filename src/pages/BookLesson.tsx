@@ -120,7 +120,7 @@ export default function BookLesson() {
 
     const trainerResult = await supabase
       .from('trainer_profiles_safe')
-      .select(`id, user_id, hourly_rate, experience_years, specializations, require_booking_approval, use_manual_invoicing`)
+      .select(`id, user_id, hourly_rate, experience_years, specializations, require_booking_approval, use_manual_invoicing` as any)
       .eq(isUUID ? 'user_id' : 'slug', trainerId!)
       .maybeSingle();
 

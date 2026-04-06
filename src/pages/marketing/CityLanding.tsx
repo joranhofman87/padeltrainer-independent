@@ -111,17 +111,16 @@ export default function CityLanding() {
         if (trainerIdsAtLocations.size > 0) {
           const { data: trainerProfiles } = await supabase
             .from('trainer_profiles_safe')
-            .select('id, user_id, slug, experience_years, specializations, is_verified, is_public, subscription_status, trial_ends_at')
+            .select('id, user_id, slug, experience_years, specializations, is_verified, is_public, is_active_subscription')
             .eq('is_public', true)
             .in('id', Array.from(trainerIdsAtLocations));
 
           if (trainerProfiles && trainerProfiles.length > 0) {
-            const allTrainerIds = trainerProfiles.map(t => t.id);
+            const allTrainerIds = (trainerProfiles as any[]).map(t => t.id);
             const paidAcademyTrainerIds = await getTrainerIdsInPaidAcademies(allTrainerIds);
 
-            const activeTrainers = trainerProfiles.filter(t =>
-              t.subscription_status === 'active' ||
-              (t.trial_ends_at && t.trial_ends_at > now) ||
+            const activeTrainers = (trainerProfiles as any[]).filter(t =>
+              t.is_active_subscription ||
               paidAcademyTrainerIds.has(t.id)
             );
 
