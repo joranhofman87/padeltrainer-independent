@@ -319,5 +319,12 @@
     "save": "Opslaan",
     "saved": "Aanwezigheid opgeslagen",
     "saveError": "Opslaan mislukt"
+  },
+  "pendingAttendance": {
+    "title": "Actie vereist",
+    "subtitle": "{{count}} sessie(s) wacht(en) op je aanwezigheidsrapport",
+    "report": "Rapporteren",
+    "trainingSession": "Trainingssessie",
+    "players": "spelers"
   }
 }

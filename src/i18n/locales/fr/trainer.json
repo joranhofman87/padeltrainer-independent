@@ -740,5 +740,12 @@
     "save": "Enregistrer la présence",
     "saved": "Présence enregistrée",
     "saveError": "Échec de l'enregistrement"
+  },
+  "pendingAttendance": {
+    "title": "Action requise",
+    "subtitle": "{{count}} session(s) nécessitent votre rapport de présence",
+    "report": "Signaler",
+    "trainingSession": "Séance d'entraînement",
+    "players": "joueurs"
   }
 }

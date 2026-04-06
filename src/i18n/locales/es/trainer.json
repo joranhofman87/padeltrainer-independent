@@ -740,5 +740,12 @@
     "save": "Guardar asistencia",
     "saved": "Asistencia guardada",
     "saveError": "Error al guardar"
+  },
+  "pendingAttendance": {
+    "title": "Acción requerida",
+    "subtitle": "{{count}} sesión(es) necesitan tu informe de asistencia",
+    "report": "Reportar",
+    "trainingSession": "Sesión de entrenamiento",
+    "players": "jugadores"
   }
 }

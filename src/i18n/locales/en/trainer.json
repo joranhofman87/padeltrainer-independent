@@ -567,7 +567,7 @@
     "addSlot": "Add Slot",
     "createCyclus": "Create Cyclus",
     "chooseSlotType": "What would you like to create?",
-    "singleSlot": "Single Slot",
+    "singleSlot": "This slot only",
     "singleSlotDesc": "One-time availability",
     "cyclusDesc": "Recurring sessions",
     "cyclus": "Cyclus",
@@ -608,9 +608,7 @@
     "slotsGenerated": "Cyclus generated!",
     "slotsGeneratedDescription": "Created {{count}} recurring slots ({{total}} total sessions)",
     "bookingScope": "Booking Scope",
-    "singleSlot": "This slot only",
     "session": "session",
-    "sessions": "sessions",
     "entireCyclus": "Entire training cyclus",
     "entireCyclusDescription": "Book all {{count}} remaining sessions",
     "duplicateCyclus": "Duplicate Cyclus",
@@ -637,7 +635,6 @@
     "cyclusMarkedFull": "Cyclus marked as private",
     "cyclusMarkedOpen": "Cyclus opened to players",
     "privateBadge": "Private",
-    "deleteSlot": "Delete Slot",
     "deleteSlotDescription": "This action cannot be undone.",
     "slotDeleted": "Slot deleted",
     "slotDeletedDescription": "The time slot has been removed",
@@ -845,5 +842,12 @@
     "cancel": "Cancel",
     "saving": "Saving...",
     "save": "Save"
+  },
+  "pendingAttendance": {
+    "title": "Action Required",
+    "subtitle": "{{count}} session(s) need your attendance report",
+    "report": "Report",
+    "trainingSession": "Training Session",
+    "players": "players"
   }
 }

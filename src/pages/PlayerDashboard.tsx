@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 import { MyWaitingListEntries } from '@/components/waitingList';
+import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { logger } from '@/lib/logger';
 
@@ -302,6 +303,9 @@ export default function PlayerDashboard() {
           {t('dashboard.subtitle')}
         </p>
       </div>
+
+      {/* Pending Attendance Actions */}
+      <PendingAttendanceCard mode="player" profileId={profileId ?? undefined} />
 
       {/* Rating History Chart */}
       {profile?.id && (

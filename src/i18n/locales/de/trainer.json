@@ -740,5 +740,12 @@
     "save": "Anwesenheit speichern",
     "saved": "Anwesenheit gespeichert",
     "saveError": "Speichern fehlgeschlagen"
+  },
+  "pendingAttendance": {
+    "title": "Aktion erforderlich",
+    "subtitle": "{{count}} Sitzung(en) benötigen Ihren Anwesenheitsbericht",
+    "report": "Melden",
+    "trainingSession": "Trainingseinheit",
+    "players": "Spieler"
   }
 }
