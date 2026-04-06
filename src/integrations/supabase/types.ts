@@ -4953,8 +4953,10 @@ export type Database = {
           created_at: string | null
           experience_years: number | null
           favourite_quote: string | null
+          general_terms: string | null
           hourly_rate: number | null
           id: string | null
+          is_active_subscription: boolean | null
           is_public: boolean | null
           is_verified: boolean | null
           knltb_rating: number | null
@@ -4972,10 +4974,12 @@ export type Database = {
           specializations: string[] | null
           trainer_rating_system: string | null
           updated_at: string | null
+          use_manual_invoicing: boolean | null
           user_id: string | null
           video_url: string | null
           waiting_list_enabled: boolean | null
           website_url: string | null
+          welcome_message: string | null
         }
         Insert: {
           certifications?: string[] | null
@@ -4983,8 +4987,10 @@ export type Database = {
           created_at?: string | null
           experience_years?: never
           favourite_quote?: string | null
+          general_terms?: string | null
           hourly_rate?: number | null
           id?: string | null
+          is_active_subscription?: never
           is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
@@ -5002,10 +5008,12 @@ export type Database = {
           specializations?: string[] | null
           trainer_rating_system?: string | null
           updated_at?: string | null
+          use_manual_invoicing?: boolean | null
           user_id?: string | null
           video_url?: string | null
           waiting_list_enabled?: boolean | null
           website_url?: string | null
+          welcome_message?: string | null
         }
         Update: {
           certifications?: string[] | null
@@ -5013,8 +5021,10 @@ export type Database = {
           created_at?: string | null
           experience_years?: never
           favourite_quote?: string | null
+          general_terms?: string | null
           hourly_rate?: number | null
           id?: string | null
+          is_active_subscription?: never
           is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
@@ -5032,10 +5042,12 @@ export type Database = {
           specializations?: string[] | null
           trainer_rating_system?: string | null
           updated_at?: string | null
+          use_manual_invoicing?: boolean | null
           user_id?: string | null
           video_url?: string | null
           waiting_list_enabled?: boolean | null
           website_url?: string | null
+          welcome_message?: string | null
         }
         Relationships: []
       }
