@@ -417,6 +417,8 @@ export default function AcademyEditInvoice() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
+              {/* Desktop grid */}
+              <div className="hidden md:block space-y-2">
               <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
                 <span>Omschrijving</span>
                 <span>Aantal</span>
@@ -428,14 +430,7 @@ export default function AcademyEditInvoice() {
               {lineItems.map((li, i) => (
                 <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
                   <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder="Omschrijving" className="text-sm" />
-                  <Input
-                    type="number"
-                    value={li.quantity === 0 ? '' : li.quantity}
-                    onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
-                    onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }}
-                    className="text-sm"
-                    min={1}
-                  />
+                  <Input type="number" value={li.quantity === 0 ? '' : li.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))} onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }} className="text-sm" min={1} />
                   <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
                   <div className="relative">
                     <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
@@ -447,6 +442,38 @@ export default function AcademyEditInvoice() {
                   </Button>
                 </div>
               ))}
+              </div>
+            {/* Mobile stacked cards */}
+            <div className="md:hidden space-y-3">
+              {lineItems.map((li, i) => (
+                <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder="Omschrijving" className="text-sm flex-1" />
+                    <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Aantal</Label>
+                      <Input type="number" value={li.quantity === 0 ? '' : li.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))} onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }} className="text-sm" min={1} />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Prijs</Label>
+                      <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">BTW %</Label>
+                      <div className="relative">
+                        <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
+                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right text-sm font-medium">Totaal: €{(li.quantity * li.unit_price).toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
             </div>
           </CardContent>
         </Card>
