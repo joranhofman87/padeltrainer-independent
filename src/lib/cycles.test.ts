@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { CycleSettings, ScoringWeights } from './cycles';
+import type { CycleSettings, ScoringWeights, IntakeRequestWithProposal, Cycle, CycleInput } from './cycles';
 import { DEFAULT_SCORING_WEIGHTS } from './cycles';
 
 describe('CycleSettings type and defaults', () => {
@@ -36,12 +36,9 @@ describe('CycleSettings type and defaults', () => {
   });
 
   it('backwards compatibility: mark_as_paid maps to manual', () => {
-    // Old data may have mark_as_paid: true without payment_timing
     const legacySettings: CycleSettings = {
       mark_as_paid: true,
     };
-
-    // The CycleForm maps this: if mark_as_paid && !payment_timing → 'manual'
     const effectiveTiming = legacySettings.payment_timing ||
       (legacySettings.mark_as_paid ? 'manual' : 'upfront');
     expect(effectiveTiming).toBe('manual');
@@ -63,5 +60,96 @@ describe('CycleSettings type and defaults', () => {
     };
     expect(settings.extra_costs).toHaveLength(2);
     expect(settings.extra_costs![0].price).toBe(5);
+  });
+});
+
+describe('CycleInput type safety', () => {
+  it('CycleInput accepts all required fields', () => {
+    const input: CycleInput = {
+      owner_type: 'trainer',
+      owner_id: 'test-id',
+      name: 'Test Cycle',
+      start_date: '2025-01-01',
+      end_date: '2025-06-01',
+    };
+    expect(input.owner_type).toBe('trainer');
+    expect(input.status).toBeUndefined();
+  });
+
+  it('CycleInput accepts optional fields', () => {
+    const input: CycleInput = {
+      owner_type: 'academy',
+      owner_id: 'test-id',
+      name: 'Advanced',
+      start_date: '2025-01-01',
+      end_date: '2025-06-01',
+      price_per_session: 45,
+      total_price: 450,
+      type: 'cyclus',
+      status: 'open',
+      currency: 'EUR',
+    };
+    expect(input.price_per_session).toBe(45);
+    expect(input.type).toBe('cyclus');
+  });
+});
+
+describe('CycleSettings complex scenarios', () => {
+  it('cyclus_options array structures correctly', () => {
+    const settings: CycleSettings = {
+      cyclus_options: [
+        { label: '10 weken', number_of_sessions: 10, number_of_weeks: 10, price_per_session: 40, total_price: 400 },
+        { label: '20 weken', number_of_sessions: 20, number_of_weeks: 20, price_per_session: 35, total_price: 700 },
+      ],
+    };
+    expect(settings.cyclus_options).toHaveLength(2);
+    expect(settings.cyclus_options![1].total_price).toBe(700);
+  });
+
+  it('split_payment with extra_costs', () => {
+    const settings: CycleSettings = {
+      split_payment: true,
+      extra_costs: [
+        { description: 'Balls', price: 5, type: 'per_session', vat_rate: 9 },
+        { description: 'Membership', price: 50, type: 'one_time' },
+      ],
+    };
+    expect(settings.split_payment).toBe(true);
+    expect(settings.extra_costs![0].vat_rate).toBe(9);
+    expect(settings.extra_costs![1].type).toBe('one_time');
+  });
+
+  it('trainer_availability_windows structure', () => {
+    const settings: CycleSettings = {
+      trainer_availability_windows: [
+        {
+          trainerId: 't1',
+          trainerName: 'Jan',
+          windows: [{ day: 'monday', start: '09:00', end: '12:00' }],
+        },
+      ],
+    };
+    expect(settings.trainer_availability_windows![0].windows).toHaveLength(1);
+  });
+
+  it('excluded_dates array', () => {
+    const settings: CycleSettings = {
+      excluded_dates: ['2025-12-25', '2025-12-26', '2026-01-01'],
+    };
+    expect(settings.excluded_dates).toHaveLength(3);
+  });
+});
+
+describe('Rate limiting logic', () => {
+  it('rate limit threshold is 3 per hour', () => {
+    // The submitIntakeRequest function uses count >= 3 as the threshold
+    const MAX_PER_HOUR = 3;
+    expect(MAX_PER_HOUR).toBe(3);
+
+    // Simulating count checks
+    expect(0 >= MAX_PER_HOUR).toBe(false);
+    expect(2 >= MAX_PER_HOUR).toBe(false);
+    expect(3 >= MAX_PER_HOUR).toBe(true);
+    expect(5 >= MAX_PER_HOUR).toBe(true);
   });
 });

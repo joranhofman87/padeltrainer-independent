@@ -4,6 +4,15 @@
  */
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
+import {
+  detectSplitCount,
+  buildCycleLineItems,
+  calculateVatTotals,
+  applySplit,
+  round2,
+  type InvoiceLineItem,
+  type ExtraCostInput,
+} from "@/lib/invoiceCalc";
 
 interface InvoiceRecord {
   id: string;
@@ -11,17 +20,6 @@ interface InvoiceRecord {
   vat_rate: number;
   line_items: any[];
   status: string;
-}
-
-/**
- * Detect split count from existing line item descriptions (e.g. "(1/2)" → 2).
- */
-function detectSplitCount(lineItems: any[]): number {
-  for (const item of lineItems) {
-    const match = item.description?.match(/\(1\/(\d+)\)/);
-    if (match) return parseInt(match[1], 10);
-  }
-  return 1;
 }
 
 /**
