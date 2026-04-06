@@ -18,7 +18,7 @@ import { format, addDays } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-
+import { logger } from '@/lib/logger';
 interface LineItem {
   description: string;
   quantity: number;
@@ -175,7 +175,7 @@ export default function TrainerCreateInvoice() {
       queryClient.invalidateQueries({ queryKey: ['trainer-invoices'] });
       navigate('/app/trainer/invoices');
     } catch (err) {
-      console.error('Failed to create invoice:', err);
+      logger.error('Failed to create invoice:', err);
       toast.error('Kon factuur niet aanmaken');
     } finally {
       setSaving(false);

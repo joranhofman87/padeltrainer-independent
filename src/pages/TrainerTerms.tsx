@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { SafeHtml } from '@/components/ui/SafeHtml';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -147,9 +148,9 @@ export default function TrainerTerms() {
                 <CardDescription>{t('terms.academyTermsDescription', 'These terms are shown to players booking your academy lessons.')}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div
+                <SafeHtml
+                  html={academyTerms.terms}
                   className="prose prose-sm dark:prose-invert max-w-none p-4 border rounded-lg bg-muted/30"
-                  dangerouslySetInnerHTML={{ __html: academyTerms.terms }}
                 />
               </CardContent>
             </Card>

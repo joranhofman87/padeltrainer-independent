@@ -13,6 +13,7 @@ import { format, addDays } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 
 interface LineItem {
@@ -170,7 +171,7 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
           .single();
 
         if (guestError) {
-          console.error('Guest player creation failed:', guestError);
+          logger.error('Guest player creation failed:', guestError);
         } else {
           guestPlayerId = guestPlayer.id;
         }
@@ -220,7 +221,7 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
       onCreated();
       onClose();
     } catch (err) {
-      console.error('Failed to create invoice:', err);
+      logger.error('Failed to create invoice:', err);
       toast.error('Kon factuur niet aanmaken');
     } finally {
       setSaving(false);

@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Save, Globe, Loader2, ImageIcon, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { SafeHtml } from '@/components/ui/SafeHtml';
 
 const LOCALES = ['en', 'nl', 'es', 'de', 'fr'];
 
@@ -258,7 +259,7 @@ export default function AdminBlogEditor() {
               <Textarea value={form.body_html} onChange={e => setForm(f => ({ ...f, body_html: e.target.value }))} rows={20} className="font-mono text-sm" placeholder="<p>HTML content...</p>" />
             </TabsContent>
             <TabsContent value="preview">
-              <div className="prose prose-lg max-w-none dark:prose-invert p-4 border rounded-lg min-h-[300px]" dangerouslySetInnerHTML={{ __html: form.body_html || '<p class="text-muted-foreground">No HTML content yet</p>' }} />
+              <SafeHtml html={form.body_html || '<p class="text-muted-foreground">No HTML content yet</p>'} className="prose prose-lg max-w-none dark:prose-invert p-4 border rounded-lg min-h-[300px]" />
             </TabsContent>
           </Tabs>
         </div>
