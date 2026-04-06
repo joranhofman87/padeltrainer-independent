@@ -623,7 +623,8 @@ Deno.serve(async (req) => {
                 slotsToInsert.push({
                   trainer_id: ta.trainerId,
                   start_time: startDateTime.toISOString(),
-                  end_time: endDateTime.toISOString(): (inputMaxGroupSize || cycle.settings?.max_group_size || 4) < 4,
+                  end_time: endDateTime.toISOString(),
+                  allow_single_booking: (inputMaxGroupSize || cycle.settings?.max_group_size || 4) < 4,
                   is_public: false,
                   is_recurring: false,
                   cyclus_id: cycleId,
