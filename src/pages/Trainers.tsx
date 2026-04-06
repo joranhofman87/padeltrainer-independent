@@ -225,7 +225,7 @@ export default function Trainers() {
       const now = new Date().toISOString();
       const { data: allPublicTrainers, error: trainerError } = await supabase
         .from('trainer_profiles_safe')
-        .select('id, user_id, slug, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
+        .select('id, user_id, slug, experience_years, certifications, specializations, is_verified, is_public, is_active_subscription')
         .eq('is_public', true);
       
       if (trainerError) {
@@ -233,12 +233,11 @@ export default function Trainers() {
         return { trainers: [], clubLocations: [], trainerLocationMap: new Map<string, string[]>(), allSpecializations: [], allCertifications: [] };
       }
 
-      const allTrainerIds = allPublicTrainers.map(t => t.id);
+      const allTrainerIds = (allPublicTrainers as any[]).map(t => t.id);
       const paidAcademyTrainerIds = await getTrainerIdsInPaidAcademies(allTrainerIds);
 
-      const trainerProfiles = allPublicTrainers.filter(t =>
-        t.subscription_status === 'active' ||
-        (t.trial_ends_at && t.trial_ends_at > now) ||
+      const trainerProfiles = (allPublicTrainers as any[]).filter(t =>
+        t.is_active_subscription ||
         paidAcademyTrainerIds.has(t.id)
       );
 

@@ -119,12 +119,12 @@ export default function BookLesson() {
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trainerId!);
 
     const trainerResult = await supabase
-      .from('trainer_profiles_safe')
+      .from('trainer_profiles_safe' as any)
       .select(`id, user_id, hourly_rate, experience_years, specializations, require_booking_approval, use_manual_invoicing`)
       .eq(isUUID ? 'user_id' : 'slug', trainerId!)
       .maybeSingle();
 
-    const trainerData = trainerResult.data;
+    const trainerData = trainerResult.data as any;
     if (!trainerData) { setLoadingData(false); return; }
 
     const resolvedUserId = trainerData.user_id;

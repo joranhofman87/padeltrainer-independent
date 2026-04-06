@@ -23,7 +23,7 @@ interface TrainerWithProfile {
   slug: string | null;
   experience_years: number | null;
   is_verified: boolean;
-  subscription_status: string | null;
+  is_active_subscription?: boolean;
   profile: {
     full_name: string | null;
     avatar_url: string | null;
@@ -38,9 +38,9 @@ async function fetchFeaturedData() {
   const [trainersResult, academiesData, locationsData, claimedData, clubProfilesResult] = await Promise.all([
     supabase
       .from('trainer_profiles_safe')
-      .select('id, user_id, slug, experience_years, is_verified, subscription_status')
+      .select('id, user_id, slug, experience_years, is_verified, is_active_subscription')
       .eq('is_public', true)
-      .eq('subscription_status', 'active'),
+      .eq('is_active_subscription', true),
     getPublicAcademies(),
     getActiveLocationsSummary(),
     getClaimedLocationIds(),
