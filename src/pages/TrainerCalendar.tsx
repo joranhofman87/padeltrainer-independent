@@ -31,9 +31,8 @@ import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import { BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
-
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
-import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
+// EditBookingDialog removed — navigating to slot detail page instead
 
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -67,10 +66,8 @@ export default function TrainerCalendar() {
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
-  const [editBookingOpen, setEditBookingOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
-  const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
@@ -345,31 +342,10 @@ export default function TrainerCalendar() {
   };
 
   const handleEditBooking = async (bookingId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("bookings")
-        .select(`
-          id,
-          status,
-          notes,
-          payment_status,
-          payment_amount,
-          guest_player_id,
-          availability_slots (id, start_time, end_time),
-          profiles:player_id (id, full_name, email)
-        `)
-        .eq("id", bookingId)
-        .single();
-
-      if (error) throw error;
-
-      setBookingToEdit({
-        ...data,
-        player: data.profiles,
-      });
-      setEditBookingOpen(true);
-    } catch (error) {
-      logger.error("Error fetching booking", error instanceof Error ? error : new Error(String(error)), { component: 'TrainerCalendar' });
+    // Find which slot this booking belongs to and navigate to slot detail
+    const slot = slots.find(s => s.booked_players.some(p => p.bookingId === bookingId));
+    if (slot) {
+      navigate(`/app/trainer/slot/${slot.id}`);
     }
   };
 
@@ -610,19 +586,7 @@ export default function TrainerCalendar() {
         onSlotDeleted={handleSlotsCreated}
       />
 
-      {/* Edit Booking Dialog */}
-      <EditBookingDialog
-        open={editBookingOpen}
-        onOpenChange={(open) => {
-          setEditBookingOpen(open);
-          if (!open) {
-            setBookingToEdit(null);
-          }
-        }}
-        booking={bookingToEdit}
-        trainerId={trainerId || ""}
-        onBookingUpdated={handleSlotsCreated}
-      />
+      {/* EditBookingDialog removed — navigating to slot detail page */}
 
     </>
   );

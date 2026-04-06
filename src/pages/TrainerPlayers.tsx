@@ -50,6 +50,7 @@ import { format } from "date-fns";
 import { AddPlayerDialog, GuestPlayer } from "@/components/trainer/AddPlayerDialog";
 import { EditPlayerDialog } from "@/components/trainer/EditPlayerDialog";
 import { ImportPlayersDialog } from "@/components/trainer/ImportPlayersDialog";
+import { ImportPlayersTab } from "@/components/trainer/ImportPlayersTab";
 
 // Computed player status
 type PlayerStatus = "waiting_list" | "active" | "available" | "prospect" | "registered";

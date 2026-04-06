@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
-import { CreateInvoiceDialog } from '@/components/trainer/CreateInvoiceDialog';
+// CreateInvoiceDialog removed — now using /app/trainer/invoices/new page
 import { InvoiceList } from '@/components/trainer/InvoiceList';
 import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
@@ -97,8 +97,7 @@ export default function TrainerEarnings() {
   const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
   const [connectLoading, setConnectLoading] = useState(false);
   const [trainerInfo, setTrainerInfo] = useState<TrainerBusinessInfo | null>(null);
-  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  // invoiceDialogOpen removed — using page navigation now
   const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [academyPaymentInfo, setAcademyPaymentInfo] = useState<AcademyPaymentInfo | null>(null);
@@ -286,18 +285,8 @@ export default function TrainerEarnings() {
     }
   };
 
-  const handleCreateInvoice = (booking: EarningsBooking) => {
-    setSelectedBooking({
-      id: booking.id,
-      lessonTitle: booking.availability_slots.cyclus_name || 'Training Session',
-      playerName: booking.player?.full_name || 'Unknown',
-      playerEmail: booking.player?.email || '',
-      playerId: (booking as any).player_id || undefined,
-      date: format(parseISO(booking.availability_slots.start_time), 'yyyy-MM-dd'),
-      time: format(parseISO(booking.availability_slots.start_time), 'HH:mm'),
-      price: booking.availability_slots.price_per_session || 0,
-    });
-    setInvoiceDialogOpen(true);
+  const handleCreateInvoice = () => {
+    navigate('/app/trainer/invoices/new');
   };
 
   // Calculate earnings
@@ -735,7 +724,7 @@ export default function TrainerEarnings() {
                             {booking.payment_status !== 'invoiced' && (
                               <Button 
                                 variant="outline"
-                                onClick={() => handleCreateInvoice(booking)}
+                                onClick={() => handleCreateInvoice()}
                                 disabled={!isBusinessInfoComplete}
                               >
                                 <FileText className="h-4 w-4 mr-2" />
@@ -817,30 +806,7 @@ export default function TrainerEarnings() {
         </div>
       </main>
 
-      {/* Invoice Dialog */}
-      {trainerInfo && (
-        <CreateInvoiceDialog
-          open={invoiceDialogOpen}
-          onOpenChange={setInvoiceDialogOpen}
-          booking={selectedBooking}
-          trainerId={trainerInfo.id}
-          trainerBusinessInfo={{
-            business_name: trainerInfo.business_name,
-            business_address: trainerInfo.business_address,
-            kvk_number: trainerInfo.kvk_number,
-            btw_number: trainerInfo.btw_number,
-            iban: trainerInfo.iban,
-            bic: trainerInfo.bic,
-            payment_terms_days: trainerInfo.payment_terms_days,
-            invoice_prefix: trainerInfo.invoice_prefix,
-          }}
-          defaultVatRate={trainerInfo.default_vat_rate ?? 21}
-          onInvoiceCreated={() => {
-            setInvoiceRefreshTrigger(prev => prev + 1);
-            fetchEarnings();
-          }}
-        />
-      )}
+      {/* CreateInvoiceDialog removed — using /app/trainer/invoices/new page */}
     </div>
   );
 }

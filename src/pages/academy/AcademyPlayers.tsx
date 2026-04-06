@@ -41,6 +41,7 @@ import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDial
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
+import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
 import { useSearchParams } from 'react-router-dom';
 import { EmailCampaignTab } from '@/components/academy/EmailCampaignTab';
 
