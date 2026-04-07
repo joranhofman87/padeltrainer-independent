@@ -189,13 +189,21 @@ Deno.serve(async (req) => {
         .eq('is_active', true);
 
       // Fetch only city column to count unique cities
-      const allCities = await fetchAllRows<{ city: string }>(
-        supabase, 'locations', 'city',
-        [{ column: 'is_active', operator: 'eq', value: true }]
-      );
+      const [allCities, sanityCityIndex] = await Promise.all([
+        fetchAllRows<{ city: string }>(
+          supabase, 'locations', 'city',
+          [{ column: 'is_active', operator: 'eq', value: true }]
+        ),
+        sanity.fetch<{ citySlug: string }[]>(
+          `*[_type == "cityPage" && !(_id in path("drafts.**"))]{ citySlug }`
+        ).catch(() => [] as { citySlug: string }[]),
+      ]);
       const citySet = new Set(allCities.map(loc =>
         loc.city.toLowerCase().replace(/\s+/g, '-')
       ));
+      for (const doc of sanityCityIndex) {
+        if (doc.citySlug) citySet.add(doc.citySlug);
+      }
 
       const locationPages = Math.ceil((locationCount || 0) / LOCATIONS_PER_PAGE);
       const cityPages = Math.ceil(citySet.size / CITIES_PER_PAGE);
