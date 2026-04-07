@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Globe } from 'lucide-react';
+import { Globe, Check } from 'lucide-react';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
 import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
@@ -71,11 +71,12 @@ export function LanguageSwitcher() {
             <DropdownMenuItem
               key={language.code}
               onClick={() => handleLanguageChange(language.code)}
-              className={i18n.language === language.code ? 'bg-accent' : ''}
+              className={i18n.language === language.code ? 'bg-primary/10 text-primary font-semibold' : ''}
               disabled={!hasTranslation}
             >
               <span className="mr-2">{language.flag}</span>
               {language.name}
+              {i18n.language === language.code && <Check className="ml-auto h-4 w-4" />}
               {!hasTranslation && <span className="ml-auto text-xs text-muted-foreground">—</span>}
             </DropdownMenuItem>
           );
