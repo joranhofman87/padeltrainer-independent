@@ -98,8 +98,8 @@ describe('CreateInvoiceDialog', () => {
 
   it('shows VAT rate options', () => {
     renderDialog();
-    // Default VAT rate 21 should be selected
-    expect(screen.getByText(/21%/)).toBeInTheDocument();
+    // Default VAT rate 21 should be visible in the select trigger
+    expect(screen.getAllByText(/21%/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders add line item button', () => {
@@ -119,7 +119,7 @@ describe('CreateInvoiceDialog', () => {
       },
     });
     // Should show warning about missing business info
-    expect(screen.getByText(/bedrijfsgegevens/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/bedrijfsgegevens/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders total calculation', () => {

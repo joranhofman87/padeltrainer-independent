@@ -73,7 +73,7 @@ const baseCycle = {
   price_table: null,
   terms: null,
   currency: 'EUR',
-  settings: null,
+  settings: { default_duration_minutes: 60, available_duration_minutes: [60] },
   created_at: '2026-01-01',
   updated_at: '2026-01-01',
 };
