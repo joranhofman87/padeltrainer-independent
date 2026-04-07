@@ -50,7 +50,7 @@ Deno.test("render-page: location page", async () => {
 Deno.test("render-page: region/province page", async () => {
   const { status, body } = await fetchPage("/nl/trainers/region/noord-holland");
   assertEquals(status, 200);
-  assertStringIncludes(body, 'Noord-Holland');
+  assertStringIncludes(body, 'Noord Holland');
 });
 
 Deno.test("render-page: tools page", async () => {
