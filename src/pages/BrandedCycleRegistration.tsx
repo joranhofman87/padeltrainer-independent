@@ -77,7 +77,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
               .select('id, logo_url, banner_url, welcome_message, location_id')
               .eq('id', slug)
               .maybeSingle()
-              .then(async ({ data: club }) => {
+              .then(async ({ data: club }: any) => {
                 if (!club) return null;
                 const { data: loc } = await supabase
                   .from('locations')
