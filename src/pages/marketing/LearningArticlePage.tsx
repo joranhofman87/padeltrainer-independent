@@ -67,7 +67,7 @@ function buildStructuredData(article: LearningArticleDetail, slug: string, curre
       "logo": { "@type": "ImageObject", "url": `${MARKETING_DOMAIN}/favicon.png` }
     },
     "inLanguage": currentLang,
-    "image": article.seo?.ogImage || `${MARKETING_DOMAIN}/og-image.png`,
+    "image": `${MARKETING_DOMAIN}/og-image.png`,
     "mainEntityOfPage": { "@type": "WebPage", "@id": url },
   };
 
