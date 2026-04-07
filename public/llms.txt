@@ -114,7 +114,6 @@ This platform is available in:
 - `/{lang}/blog` - Padel tips and news
 - `/{lang}/blog/:slug` - Individual blog post
 - `/{lang}/padel/:city` - City landing page with local clubs, courts & coaches
-- `/{lang}/trainers/region/:province` - Trainers filtered by province/region
 - `/{lang}/founding-trainers` - Founding trainers program
 - `/{lang}/pricing` - Subscription plans for trainers
 - `/{lang}/about` - About the platform
