@@ -1,0 +1,331 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "bookings": "Prenotazioni",
+    "following": "Following",
+    "account": "Account",
+    "settings": "Impostazioni",
+    "editProfile": "Edit Profile",
+    "notifications": "Notifiche",
+    "calendarSync": "Calendar Sync",
+    "levelTest": "Level Test",
+    "profile": "My Profile"
+  },
+  "settings": {
+    "title": "Impostazioni",
+    "subtitle": "Manage your account settings",
+    "profileDescription": "Update your profile information and preferences",
+    "calendarSyncDescription": "Sync your bookings with external calendars",
+    "notificationsDescription": "Manage your notification preferences",
+    "dangerZone": "Danger Zone",
+    "emailChangeVerification": "A verification email will be sent to your new address.",
+    "emailChangeSent": "Verification email sent",
+    "emailChangeDescription": "Please check your new email address to confirm the change."
+  },
+  "badge": "Giocatore",
+  "birthDate": "Date of birth",
+  "editProfile": {
+    "title": "Edit Profile",
+    "saving": "Salvataggio...",
+    "save": "Salva",
+    "saveChanges": "Save Changes",
+    "yourName": "Your Name",
+    "user": "User",
+    "uploading": "Uploading...",
+    "changePhoto": "Change photo",
+    "basicInformation": "Basic Information",
+    "fullName": "Full Name",
+    "phone": "Telefono",
+    "location": "Posizione",
+    "bio": "Bio",
+    "bioPlaceholder": "Tell us about yourself...",
+    "playerDetails": "Player Details",
+    "playerDetailsDescription": "Your padel skill information",
+    "padelRating": "Padel Rating",
+    "lowerIsBetter": "(lower is better)",
+    "registrationNumber": "Your official {{system}} registration number",
+    "avatarUpdated": "Avatar updated",
+    "avatarUpdatedDescription": "Your profile picture has been updated.",
+    "uploadFailed": "Upload failed",
+    "invalidFileType": "Invalid file type",
+    "invalidFileTypeDescription": "Please select an image file",
+    "fileTooLarge": "File too large",
+    "fileTooLargeDescription": "Please select an image smaller than 5MB",
+    "profileUpdated": "Profile updated",
+    "profileUpdatedDescription": "Your changes have been saved.",
+    "error": "Errore"
+  },
+  "ratingSystem": {
+    "label": "Rating System",
+    "knltb": "KNLTB",
+    "playtomic": "Playtomic",
+    "description": "Select which rating system you use",
+    "range": "{{min}} - {{max}}"
+  },
+  "ratingHistory": {
+    "title": "Rating Progress",
+    "noData": "No rating history yet",
+    "noDataDescription": "Your rating history will appear here as you update it",
+    "trackingDescription": "Tracking your padel improvement over time",
+    "started": "Started",
+    "current": "Current",
+    "best": "Best",
+    "improvement": "Improvement",
+    "knltbNote": "In KNLTB, a lower rating means better performance",
+    "downloadImage": "Download",
+    "downloadSuccess": "Image downloaded",
+    "downloadError": "Failed to download image",
+    "share": "Share"
+  },
+  "dashboard": {
+    "welcome": "Welcome back, {{name}}! 👋",
+    "subtitle": "Find your next training session and improve your padel skills",
+    "skillRating": {
+      "title": "Your Skill Rating",
+      "noRating": "Add your rating or ask a trainer to set your level"
+    },
+    "stats": {
+      "upcoming": "Prossimi",
+      "completed": "Completato",
+      "totalBookings": "Total Bookings",
+      "following": "Following"
+    },
+    "nextUp": "Next Up",
+    "allBookings": "All Bookings",
+    "with": "with",
+    "following": "Following",
+    "manage": "Manage",
+    "quickActions": {
+      "findTrainers": {
+        "title": "Find Trainers",
+        "description": "Browse all available trainers and find the perfect match for your skill level"
+      },
+      "myBookings": {
+        "title": "My Bookings",
+        "description": "View and manage your upcoming and past training sessions"
+      },
+      "editProfile": {
+        "title": "Edit Profile",
+        "description": "Update your profile, skill rating, and KNLTB number"
+      }
+    },
+    "featuredTrainers": {
+      "title": "Featured Trainers",
+      "viewAll": "View All Trainers",
+      "book": "Book"
+    },
+    "myProfile": {
+      "title": "My Profile",
+      "description": "Update your details"
+    },
+    "viewSchedule": "View your schedule",
+    "browseAvailableTrainers": "Browse available trainers",
+    "upcomingBookings": "Upcoming Bookings",
+    "viewAll": "View all",
+    "noUpcomingBookings": "No upcoming bookings",
+    "followedTrainers": "Followed Trainers",
+    "allTrainers": "All trainers",
+    "notFollowingYet": "Not following any trainers yet",
+    "openSlots": "Open Slots",
+    "browse": "Browse",
+    "openSlotsDescription": "Available sessions from trainers you follow",
+    "noOpenSlots": "No open slots from followed trainers",
+    "openSession": "Open Session",
+    "sessions": "sessions",
+    "starting": "Starting {{date}}",
+    "myClubs": "My Clubs",
+    "allClubs": "All clubs",
+    "noClubsYet": "Not a member of any club yet",
+    "tableSession": "Session",
+    "tableDate": "Data",
+    "tableStatus": "Stato",
+    "tableTrainer": "Trainer",
+    "tableProfile": "Profilo",
+    "tableClub": "Club",
+    "status": {
+      "confirmed": "Confermato",
+      "pendingPayment": "Pending Payment",
+      "awaitingApproval": "Awaiting Approval"
+    }
+  },
+  "trainers": {
+    "title": "Find Trainers",
+    "searchPlaceholder": "Search trainers by name, specialty...",
+    "sort": {
+      "label": "Sort by",
+      "topRated": "Top Rated",
+      "priceLow": "Price: Low to High",
+      "priceHigh": "Price: High to Low",
+      "experience": "Most Experienced"
+    },
+    "filters": {
+      "activeFilters": "Active filters:",
+      "location": "Posizione",
+      "allLocations": "All Locations",
+      "priceRange": "Price Range",
+      "minRating": "Min Rating",
+      "anyRating": "Any rating",
+      "stars": "{{count}}+ stars",
+      "experience": "Experience",
+      "anyExperience": "Any experience",
+      "yearsPlus": "{{count}}+ years",
+      "specializations": "Specializations",
+      "knltbRating": "KNLTB Rating",
+      "anyKnltb": "Any rating",
+      "ratingPlus": "{{count}}+",
+      "verifiedOnly": "Verified Only",
+      "applyFilters": "Apply Filters",
+      "resetFilters": "Reset Filters"
+    },
+    "results": "{{count}} trainer found",
+    "results_plural": "{{count}} trainers found",
+    "noResults": "No trainers found",
+    "beFirst": "Be the first trainer to join!"
+  },
+  "trainerProfile": {
+    "about": "Info",
+    "experience": "Experience",
+    "yearsExperience": "{{count}} years experience",
+    "certifications": "Certifications",
+    "specializations": "Specializations",
+    "knltbRating": "KNLTB Rating",
+    "lessons": "Available Sessions",
+    "noLessons": "No sessions available at this time",
+    "bookLesson": "Book Session",
+    "reviews": "Reviews",
+    "noReviews": "No reviews yet",
+    "follow": "Follow",
+    "following": "Following",
+    "followers": "{{count}} followers"
+  },
+  "booking": {
+    "title": "Book a Session",
+    "selectSlot": "Select a Time Slot",
+    "noSlots": "No available slots for this session",
+    "notes": "Notes for the trainer (optional)",
+    "notesPlaceholder": "Any special requests or information for the trainer...",
+    "summary": "Booking Summary",
+    "lesson": "Session",
+    "trainer": "Trainer",
+    "date": "Data",
+    "time": "Ora",
+    "duration": "Durata",
+    "price": "Prezzo",
+    "confirmAndPay": "Confirm & Pay",
+    "processing": "Processing...",
+    "success": {
+      "title": "Booking Confirmed!",
+      "description": "Your session has been booked successfully."
+    }
+  },
+  "bookings": {
+    "title": "My Bookings",
+    "subtitle": "View and manage your lesson bookings",
+    "empty": "No bookings yet",
+    "emptyDescription": "Book your first session to get started!",
+    "findTrainer": "Find a Trainer",
+    "tabs": {
+      "upcoming": "Prossimi",
+      "past": "Passati"
+    },
+    "invoices": "Fatture",
+    "noUpcoming": "No upcoming bookings",
+    "findTrainerDescription": "Find a trainer and book your first lesson!",
+    "browseTrainers": "Browse Trainers",
+    "noPast": "No past bookings",
+    "trainingSession": "Training Session",
+    "coach": "Coach",
+    "reviewed": "Reviewed",
+    "leaveReview": "Leave Review",
+    "confirmCancel": "Are you sure you want to cancel this booking?",
+    "cancelSuccess": "Booking cancelled",
+    "cancelError": "Failed to cancel booking",
+    "loadError": "Failed to load bookings",
+    "status": {
+      "confirmed": "Confermato",
+      "pending": "In attesa",
+      "cancelled": "Annullato",
+      "pendingPayment": "Pending Payment",
+      "awaitingApproval": "Awaiting Approval",
+      "completed": "Completato"
+    },
+    "payment": {
+      "paid": "Pagato",
+      "waived": "Waived",
+      "refunded": "Refunded",
+      "unpaid": "Non pagato"
+    },
+    "cancelBooking": "Cancel Booking"
+  },
+  "bookingSuccess": {
+    "verifying": "Verifying Payment",
+    "verifyingDescription": "Please wait while we confirm your payment...",
+    "success": "Payment Successful!",
+    "successDescription": "Your booking has been confirmed",
+    "issue": "Payment Issue",
+    "somethingWrong": "Something went wrong",
+    "whatsNext": "What's next?",
+    "confirmationSent": "Confirmation email sent",
+    "addToCalendar": "Add to your calendar",
+    "viewBookings": "View My Bookings",
+    "bookAnother": "Book Another Lesson",
+    "noBookingId": "No booking ID provided.",
+    "paymentNotCompleted": "Payment was not completed. Please try again or contact support.",
+    "paymentSuccessToast": "Payment Successful",
+    "bookingConfirmedToast": "Your booking has been confirmed!"
+  },
+  "bookingCancelled": {
+    "title": "Payment not completed",
+    "description": "The payment was cancelled or not completed. No amount was charged.",
+    "tryAgain": "Try again",
+    "viewBookings": "View my bookings"
+  },
+  "bookLesson": {
+    "title": "Book a Lesson",
+    "with": "with {{name}}",
+    "trainerNotFound": "Trainer not found",
+    "browseTrainers": "Browse Trainers",
+    "requestSent": "Request Sent!",
+    "requestSentDescription": "The trainer will review your booking request.",
+    "termsRequired": "Terms Required",
+    "termsRequiredDescription": "Please accept the general terms before booking.",
+    "bookingFailed": "Booking Failed",
+    "paymentNotAvailable": "Payment Not Available"
+  },
+  "followingList": {
+    "title": "Trainers You Follow",
+    "subtitle": "Manage your followed trainers and notification preferences.",
+    "empty": "You're not following any trainers yet",
+    "emptyDescription": "Follow trainers to get notified when they add new availability.",
+    "browseTrainers": "Browse Trainers",
+    "notifyAvailability": "Notify me of new availability",
+    "notFollowingYet": "Not following any trainers yet",
+    "followDescription": "Follow trainers to get notified when they add new availability slots.",
+    "findMore": "Find More Trainers",
+    "notificationsEnabled": "Notifications enabled",
+    "notificationsDisabled": "Notifications disabled",
+    "notificationsEnabledDescription": "You'll receive emails when this trainer adds availability",
+    "notificationsDisabledDescription": "You won't receive availability notifications",
+    "unfollowConfirm": "Unfollow {{name}}?",
+    "unfollowed": "Unfollowed",
+    "unfollowedDescription": "You unfollowed {{name}}"
+  },
+  "attendance": {
+    "title": "Attendance",
+    "reported": "Reported",
+    "sessionHappened": "Did this session happen?",
+    "sessionSummary": "Session summary",
+    "myNotes": "My notes (private)",
+    "myNotesPlaceholder": "Notes for yourself...",
+    "save": "Salva",
+    "saved": "Attendance saved",
+    "saveError": "Failed to save"
+  },
+  "pendingAttendance": {
+    "title": "Action Required",
+    "subtitle": "{{count}} session(s) need your attendance report",
+    "report": "Report",
+    "trainingSession": "Training Session",
+    "players": "players"
+  }
+}
