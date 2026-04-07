@@ -16,6 +16,8 @@
  *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page)
  *    - SITEMAP_FUNCTION_URL: Your Supabase sitemap Edge Function URL
  *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap)
+ *    - LLMS_FUNCTION_URL: Your Supabase llms-full-txt Edge Function URL
+ *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt)
  */
 
 const BOT_USER_AGENTS = [
@@ -94,9 +96,9 @@ const STATIC_FALLBACK_HTML = `<!DOCTYPE html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PadelTrainer.ai — Find & Book Padel Trainers</title>
-  <meta name="description" content="Find and book certified padel trainers near you. PadelTrainer.ai connects players with the best coaches in the Netherlands.">
+  <meta name="description" content="Find and book certified padel trainers near you. PadelTrainer.ai connects players with the best coaches across Europe.">
   <meta property="og:title" content="PadelTrainer.ai — Find & Book Padel Trainers">
-  <meta property="og:description" content="Find and book certified padel trainers near you.">
+  <meta property="og:description" content="Find and book certified padel trainers near you across Europe.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://padeltrainer.ai">
   <meta property="og:image" content="https://padeltrainer.ai/og-image.png">
@@ -115,6 +117,13 @@ function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
   if (pathname === '/sitemap.xml') return `${sitemapFunctionUrl}?type=index`;
   if (pathname === '/sitemaps/sitemap-static.xml') return `${sitemapFunctionUrl}?type=static`;
   if (pathname === '/sitemaps/sitemap-content.xml') return `${sitemapFunctionUrl}?type=content`;
+  return null;
+}
+
+// ─── LLMs.txt Proxy ─────────────────────────────────────────────
+function getLlmsProxyUrl(pathname, llmsFunctionUrl) {
+  if (!llmsFunctionUrl) return null;
+  if (pathname === '/llms-full.txt') return llmsFunctionUrl;
   if (pathname === '/sitemaps/sitemap-provinces.xml') return `${sitemapFunctionUrl}?type=provinces`;
   const locMatch = pathname.match(/^\/sitemaps\/sitemap-locations-(\d+)\.xml$/);
   if (locMatch) return `${sitemapFunctionUrl}?type=locations&page=${locMatch[1]}`;
@@ -159,8 +168,31 @@ export default {
           console.error(`Sitemap proxy error for ${url.pathname}:`, error);
         }
       }
+
+      // --- LLMs.txt proxy ---
+      const llmsUrl = getLlmsProxyUrl(url.pathname, env.LLMS_FUNCTION_URL);
+      if (llmsUrl) {
+        try {
+          const response = await fetch(llmsUrl, {
+            headers: { 'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}` },
+          });
+          if (response.ok) {
+            return new Response(response.body, {
+              status: 200,
+              headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'public, max-age=3600',
+                'X-LLMs-Source': 'edge-function',
+              },
+            });
+          }
+          console.error(`LLMs edge function returned ${response.status}`);
+        } catch (error) {
+          console.error(`LLMs proxy error:`, error);
+        }
+      }
     }
-    
+
     // --- Bot pre-rendering with rate limiting + circuit breaker ---
     if (request.method === 'GET' && isBot(userAgent) && shouldPrerender(url.pathname)) {
       const clientIP = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || '';
