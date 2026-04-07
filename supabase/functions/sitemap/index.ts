@@ -311,7 +311,8 @@ Deno.serve(async (req) => {
       xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6');
       for (const topic of sanityTopics || []) {
         if (!topic.isIndexable) continue;
-        xml += generateUrlEntry(`/topics/${topic.slug}`, today, 'weekly', '0.6');
+        const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
+        xml += generateUrlEntry(`/topics/${topic.slug}`, topicLastmod, 'weekly', '0.6');
       }
 
       xml += '</urlset>';
