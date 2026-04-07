@@ -347,6 +347,7 @@ function renderPath(cleanPath: string, lang: string): string {
     '/privacy': { title: 'Privacy Policy — PadelTrainer.ai', desc: 'Read the PadelTrainer.ai privacy policy.' },
     '/terms': { title: 'Terms of Service — PadelTrainer.ai', desc: 'Read the PadelTrainer.ai terms of service.' },
     '/racket-finder': { title: 'Padel Racket Finder | PadelTrainer.ai', desc: 'Find the perfect padel racket for your playing style and level.' },
+    '/tools/padel-level-test': { title: 'Padel Level Test | PadelTrainer.ai', desc: 'Discover your padel level with our free assessment tool. Get personalized training recommendations.' },
   };
 
   const staticMatch = staticPages[cleanPath];

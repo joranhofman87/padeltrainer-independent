@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
         { path: '/racket-finder', priority: '0.7', changefreq: 'monthly' },
         { path: '/founding-trainers', priority: '0.6', changefreq: 'monthly' },
         { path: '/gear/rackets', priority: '0.7', changefreq: 'weekly' },
-        { path: '/padel-level-test', priority: '0.7', changefreq: 'monthly' },
+        { path: '/tools/padel-level-test', priority: '0.7', changefreq: 'monthly' },
         { path: '/terms', priority: '0.3', changefreq: 'yearly' },
         { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
       ];
@@ -396,11 +396,19 @@ Deno.serve(async (req) => {
       xml = xmlHeader();
 
       const provinceSlugs = [
+        // Netherlands
         'noord-holland', 'zuid-holland', 'noord-brabant', 'gelderland', 'utrecht',
         'overijssel', 'limburg', 'friesland', 'groningen', 'drenthe', 'flevoland', 'zeeland',
+        // Belgium
         'antwerpen', 'vlaams-brabant', 'oost-vlaanderen', 'west-vlaanderen',
+        // Spain
         'cataluna', 'comunidad-de-madrid', 'comunidad-valenciana', 'andalucia',
-        'nordrhein-westfalen', 'bayern', 'baden-wurttemberg'
+        // Germany
+        'nordrhein-westfalen', 'bayern', 'baden-wurttemberg',
+        // France
+        'ile-de-france', 'provence-alpes-cote-d-azur', 'occitanie',
+        'nouvelle-aquitaine', 'auvergne-rhone-alpes', 'hauts-de-france',
+        'pays-de-la-loire', 'grand-est'
       ];
 
       for (const provinceSlug of provinceSlugs) {
