@@ -87,11 +87,29 @@ Pillar pages grouping related content by theme.
 **Listing**: `https://padeltrainer.ai/{lang}/topics`
 
 ### Padel Racket Reviews
-Equipment reviews with specs and comparisons.
+Equipment reviews with specs, pricing, and comparisons.
+
+**Attributes**: name, brand, level (beginner/intermediate/advanced), playing style (control/allround/power), shape (round/diamond/teardrop), weight, arm-friendly flag, price range, specs, affiliate links.
 
 **URL pattern**: `https://padeltrainer.ai/{lang}/gear/rackets/{slug}`
 **Directory**: `https://padeltrainer.ai/{lang}/gear/rackets`
 **Finder tool**: `https://padeltrainer.ai/{lang}/racket-finder`
+
+### Padel Coaches / Content Creators
+Featured padel coaches and content creators with video libraries.
+
+**Attributes**: name, slug, bio, location, languages, specialties, social media links (Instagram, YouTube, TikTok), best-for levels, profile image.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/padel-coaches/{slug}`
+**Directory**: `https://padeltrainer.ai/{lang}/padel-coaches`
+
+### Video Tips
+Expert coaching videos with coach attribution and stroke associations.
+
+**Attributes**: title, slug, video URL, platform (YouTube/Instagram/TikTok), short summary, skill level, tags, associated coach, related strokes.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/video-tips/{slug}`
+**Listing**: `https://padeltrainer.ai/{lang}/video-tips`
 
 ---
 

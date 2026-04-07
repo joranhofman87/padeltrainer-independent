@@ -159,11 +159,14 @@ export default function RacketDetail() {
   const specItems = parseSpecs(racket.specs);
   const prices = parsePriceRange(racket.priceRange);
 
+  const pageUrl = `https://padeltrainer.ai/${lang}/gear/rackets/${slug}`;
+
   const productJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: racket.name,
     description: racket.shortDescription,
+    url: pageUrl,
     brand: { '@type': 'Brand', name: racket.brand },
     category: 'Padel Racket',
     ...(prices.low && prices.high ? {
@@ -176,6 +179,16 @@ export default function RacketDetail() {
     } : {}),
   };
 
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    'itemListElement': [
+      { '@type': 'ListItem', 'position': 1, 'name': 'Home', 'item': `https://padeltrainer.ai/${lang}` },
+      { '@type': 'ListItem', 'position': 2, 'name': t('gear.breadcrumb.rackets', 'Rackets'), 'item': `https://padeltrainer.ai/${lang}/gear/rackets` },
+      { '@type': 'ListItem', 'position': 3, 'name': breadcrumbLabel },
+    ],
+  };
+
   const breadcrumbs = [
     { label: t('gear.breadcrumb.home', 'Home'), href: '/' },
     { label: t('gear.breadcrumb.rackets', 'Rackets'), href: '/gear/rackets' },
@@ -184,7 +197,7 @@ export default function RacketDetail() {
 
   return (
     <MarketingLayout>
-      <SEO title={seoTitle} description={seoDesc} url={`/${lang}/gear/rackets/${slug}`} structuredData={productJsonLd} />
+      <SEO title={seoTitle} description={seoDesc} url={`/${lang}/gear/rackets/${slug}`} structuredData={[productJsonLd, breadcrumbJsonLd]} />
 
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Breadcrumbs */}
