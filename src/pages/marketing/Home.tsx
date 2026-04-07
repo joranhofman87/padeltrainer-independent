@@ -19,7 +19,7 @@ const FinalCTASection = lazy(() => import('@/components/home/FinalCTASection').t
 
 
 export default function Home() {
-  const { t } = useTranslation('marketing');
+  const { t, i18n } = useTranslation('marketing');
 
   useEffect(() => {
     trackEvent('home_page_viewed');
