@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const SITE_URL = 'https://padeltrainer.ai';
-const LANGUAGES = ['en', 'nl', 'es', 'de', 'fr'];
+const LANGUAGES = ['en', 'nl', 'es', 'de', 'fr', 'it'];
 const SITEMAP_BASE_URL = `${SITE_URL}/sitemaps`;
 const LOCATIONS_PER_PAGE = 2500;
 const CITIES_PER_PAGE = 2500;

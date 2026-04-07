@@ -20,6 +20,7 @@ This platform is available in:
 - **Spanish (Español)**: https://padeltrainer.ai/es/
 - **German (Deutsch)**: https://padeltrainer.ai/de/
 - **French (Français)**: https://padeltrainer.ai/fr/
+- **Italian (Italiano)**: https://padeltrainer.ai/it/
 
 ## Key Features
 
@@ -86,7 +87,7 @@ This platform is available in:
 
 ## URL Structure
 
-- `/{lang}/` - Homepage with platform overview (lang: en, nl, es, de, fr)
+- `/{lang}/` - Homepage with platform overview (lang: en, nl, es, de, fr, it)
 - `/{lang}/trainers` - Browse all trainers with filters
 - `/{lang}/trainers/:city` - Trainers in a specific city
 - `/{lang}/trainers/region/:province` - Trainers in a province

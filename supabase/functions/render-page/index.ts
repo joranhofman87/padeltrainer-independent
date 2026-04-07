@@ -14,9 +14,9 @@ const corsHeaders = {
 };
 
 const SITE_URL = 'https://padeltrainer.ai';
-const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr'];
+const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr', 'it'];
 const OG_LOCALE_MAP: Record<string, string> = {
-  en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR',
+  en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR', it: 'it_IT',
 };
 
 Deno.serve(async (req) => {
@@ -29,9 +29,9 @@ Deno.serve(async (req) => {
     const path = url.searchParams.get('path') || '/';
 
     // Strip language prefix
-    const langMatch = path.match(/^\/(en|nl|es|de|fr)/);
+    const langMatch = path.match(/^\/(en|nl|es|de|fr|it)/);
     const lang = langMatch ? langMatch[1] : 'en';
-    const cleanPath = path.replace(/^\/(en|nl|es|de|fr)/, '') || '/';
+    const cleanPath = path.replace(/^\/(en|nl|es|de|fr|it)/, '') || '/';
 
     const html = renderPath(cleanPath, lang);
 
@@ -56,12 +56,42 @@ Deno.serve(async (req) => {
 function renderPath(cleanPath: string, lang: string): string {
   // Homepage
   if (cleanPath === '/' || cleanPath === '') {
+    const titles: Record<string, string> = {
+      nl: 'PadelTrainer.ai - Planning, Boekingen & Betalingen voor Padel Trainers',
+      es: 'PadelTrainer.ai - Reservas y Pagos para Entrenadores de Pádel',
+      de: 'PadelTrainer.ai - Buchungen & Zahlungen für Padel Trainer',
+      fr: 'PadelTrainer.ai - Réservations et Paiements pour Entraîneurs de Padel',
+      it: 'PadelTrainer.ai - Prenotazioni e Pagamenti per Istruttori di Padel',
+    };
+    const descs: Record<string, string> = {
+      nl: 'Beheer je padel coaching vanuit één plek. Online boekingen, veilige betalingen en agenda synchronisatie.',
+      es: 'Gestiona tu negocio de pádel desde un solo lugar. Reservas en línea, pagos seguros y sincronización de calendario.',
+      de: 'Verwalte dein Padel-Coaching an einem Ort. Online-Buchungen, sichere Zahlungen und Kalender-Sync.',
+      fr: 'Gérez votre coaching padel depuis un seul endroit. Réservations en ligne, paiements sécurisés et synchronisation du calendrier.',
+      it: 'Gestisci la tua attività di padel da un unico posto. Prenotazioni online, pagamenti sicuri e sincronizzazione del calendario.',
+    };
+    const h1s: Record<string, string> = {
+      nl: 'Vind Jouw Perfecte Padel Trainer',
+      es: 'Encuentra Tu Entrenador de Pádel Perfecto',
+      de: 'Finde Deinen Perfekten Padel Trainer',
+      fr: 'Trouvez Votre Entraîneur de Padel Idéal',
+      it: 'Trova il Tuo Istruttore di Padel Ideale',
+    };
+    const subs: Record<string, string> = {
+      nl: 'Ontdek gecertificeerde padel trainers bij jou in de buurt.',
+      es: 'Descubre entrenadores de pádel certificados cerca de ti.',
+      de: 'Entdecke zertifizierte Padel Trainer in deiner Nähe.',
+      fr: 'Découvrez des entraîneurs de padel certifiés près de chez vous.',
+      it: 'Scopri istruttori di padel certificati vicino a te.',
+    };
+    const defaultTitle = 'PadelTrainer.ai - Scheduling, Bookings & Payments for Padel Trainers';
+    const defaultDesc = 'Run your padel coaching business from one place. Online booking, secure payments, and calendar sync.';
     return page(
-      lang === 'nl' ? 'PadelTrainer.ai - Planning, Boekingen & Betalingen voor Padel Trainers' : 'PadelTrainer.ai - Scheduling, Bookings & Payments for Padel Trainers',
-      lang === 'nl' ? 'Beheer je padel coaching vanuit één plek. Online boekingen, veilige betalingen en agenda synchronisatie.' : 'Run your padel coaching business from one place. Online booking, secure payments, and calendar sync.',
+      titles[lang] || defaultTitle,
+      descs[lang] || defaultDesc,
       '/', lang,
-      `<h1>${lang === 'nl' ? 'Vind Jouw Perfecte Padel Trainer' : 'Find Your Perfect Padel Trainer'}</h1>
-       <p>${lang === 'nl' ? 'Ontdek gecertificeerde padel trainers bij jou in de buurt.' : 'Discover certified padel trainers near you.'}</p>`,
+      `<h1>${h1s[lang] || 'Find Your Perfect Padel Trainer'}</h1>
+       <p>${subs[lang] || 'Discover certified padel trainers near you.'}</p>`,
       [websiteSchema(), organizationSchema()]
     );
   }

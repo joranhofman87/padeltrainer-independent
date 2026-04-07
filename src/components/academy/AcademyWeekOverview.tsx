@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, startOfWeek, addDays, getDay } from 'date-fns';
-import { nl, es, de, fr, enUS, type Locale } from 'date-fns/locale';
+import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -9,7 +9,7 @@ import { Users, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type SlotWithBookings } from '@/components/trainer/CalendarSlotCard';
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 
 interface AcademyWeekOverviewProps {
   slots: SlotWithBookings[];

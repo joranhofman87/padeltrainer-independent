@@ -17,6 +17,7 @@ const languages = [
   { code: 'es', name: 'Español', flag: '🇪🇸' },
   { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
   { code: 'fr', name: 'Français', flag: '🇫🇷' },
+  { code: 'it', name: 'Italiano', flag: '🇮🇹' },
 ];
 
 export function LanguageSwitcher() {
@@ -44,7 +45,7 @@ export function LanguageSwitcher() {
     
     if (isLanguagePrefixedRoute) {
       // Replace the language prefix in the URL
-      const pathWithoutLang = location.pathname.replace(/^\/(en|nl|es|de|fr)/, '');
+      const pathWithoutLang = location.pathname.replace(/^\/(en|nl|es|de|fr|it)/, '');
       const newPath = `/${newLang}${pathWithoutLang || ''}${location.search}`;
       navigate(newPath);
     } else {

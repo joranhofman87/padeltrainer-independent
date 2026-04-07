@@ -67,6 +67,36 @@ test.describe('Internationalization (i18n)', () => {
     });
   });
 
+  test.describe('Italian Routes', () => {
+    test('should display Italian content on /it/', async ({ page }) => {
+      await page.goto('/it/');
+      await waitForNavigation(page);
+      
+      await expect(page.locator('body')).toBeVisible();
+    });
+
+    test('should display Italian trainers page', async ({ page }) => {
+      await page.goto('/it/trainers');
+      await waitForNavigation(page);
+      
+      await expect(page.locator('body')).toBeVisible();
+    });
+
+    test('should display Italian locations page', async ({ page }) => {
+      await page.goto('/it/locations');
+      await waitForNavigation(page);
+      
+      await expect(page.locator('body')).toBeVisible();
+    });
+
+    test('should display Italian pricing page', async ({ page }) => {
+      await page.goto('/it/pricing');
+      await waitForNavigation(page);
+      
+      await expect(page.locator('body')).toBeVisible();
+    });
+  });
+
   test.describe('Language Switching', () => {
     test('should navigate from EN to NL trainers page', async ({ page }) => {
       await page.goto('/en/trainers');

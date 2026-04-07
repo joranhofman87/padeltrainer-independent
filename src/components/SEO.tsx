@@ -25,7 +25,7 @@ interface SEOProps {
 }
 
 const OG_LOCALE_MAP: Record<string, string> = {
-  en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR',
+  en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR', it: 'it_IT',
 };
 
 export function SEO({ 
@@ -49,7 +49,7 @@ export function SEO({
   
   const baseUrl = MARKETING_DOMAIN;
   
-  const pathWithoutLang = url?.replace(/^\/(en|nl|es|de|fr)/, '') || '';
+  const pathWithoutLang = url?.replace(/^\/(en|nl|es|de|fr|it)/, '') || '';
   
   const fullUrl = url 
     ? `${baseUrl}/${currentLang}${pathWithoutLang}` 
