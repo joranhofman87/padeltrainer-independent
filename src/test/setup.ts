@@ -13,3 +13,12 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+// Polyfill ResizeObserver for radix-ui components
+if (typeof window.ResizeObserver === 'undefined') {
+  window.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as any;
+}
