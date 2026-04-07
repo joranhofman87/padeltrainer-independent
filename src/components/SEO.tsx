@@ -16,6 +16,12 @@ interface SEOProps {
   translations?: Translation[];
   /** URL path prefix for translated content, e.g. 'blog', 'padel-rules' */
   pathPrefix?: string;
+  /** ISO date string for article:published_time OG tag */
+  publishedTime?: string;
+  /** ISO date string for article:modified_time OG tag */
+  modifiedTime?: string;
+  /** Author name for article:author OG tag */
+  author?: string;
 }
 
 const OG_LOCALE_MAP: Record<string, string> = {
@@ -32,6 +38,9 @@ export function SEO({
   noIndex = false,
   translations,
   pathPrefix,
+  publishedTime,
+  modifiedTime,
+  author,
 }: SEOProps) {
   const { lang } = useParams<{ lang: string }>();
   const currentLang = lang && SUPPORTED_LANGUAGES.includes(lang) ? lang : DEFAULT_LANGUAGE;

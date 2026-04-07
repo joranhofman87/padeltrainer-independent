@@ -114,14 +114,28 @@ export default function BlogPost() {
   const readTime = calculateReadTime(post.bodySections, post.content);
   const headings = post.content ? extractHeadings(post.content) : [];
 
+  const postUrl = `https://padeltrainer.ai/${lang}/blog/${slug}`;
+  const postImage = post.seo?.ogImage || post.coverImage || 'https://padeltrainer.ai/og-image.png';
+
+  // BreadcrumbList structured data for all blog posts
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": `https://padeltrainer.ai/${lang}` },
+      { "@type": "ListItem", "position": 2, "name": "Blog", "item": `https://padeltrainer.ai/${lang}/blog` },
+      { "@type": "ListItem", "position": 3, "name": post.h1 || post.title },
+    ],
+  };
+
   // Build structured data based on hub vs regular
-  const structuredData = hub
+  const articleSchema = hub
     ? {
         "@context": "https://schema.org",
         "@type": "CollectionPage",
         "name": post.h1 || post.title,
         "description": post.seo?.metaDescription || post.excerpt || post.title,
-        "url": `https://padeltrainer.ai/${lang}/blog/${slug}`,
+        "url": postUrl,
         "mainEntity": {
           "@type": "Article",
           "headline": post.h1 || post.title,
@@ -141,6 +155,9 @@ export default function BlogPost() {
         "headline": post.h1 || post.title,
         "datePublished": post.datePublished,
         "dateModified": post.dateModified,
+        "url": postUrl,
+        "image": postImage,
+        "mainEntityOfPage": { "@type": "WebPage", "@id": postUrl },
         "author": {
           "@type": "Person",
           "name": post.authorName || "PadelTrainer.ai",
@@ -151,7 +168,18 @@ export default function BlogPost() {
           "logo": { "@type": "ImageObject", "url": "https://padeltrainer.ai/favicon.png" },
         },
         "description": post.seo?.metaDescription || post.excerpt || post.title,
+        "speakable": {
+          "@type": "SpeakableSpecification",
+          "cssSelector": ["h1", ".prose"],
+        },
+        "isPartOf": {
+          "@type": "Blog",
+          "name": "PadelTrainer.ai Blog",
+          "url": `https://padeltrainer.ai/${lang}/blog`,
+        },
       };
+
+  const structuredData = [breadcrumbSchema, articleSchema];
 
   // ─── Hub Page Layout ───
   if (hub) {
