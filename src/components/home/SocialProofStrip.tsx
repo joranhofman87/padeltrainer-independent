@@ -97,7 +97,7 @@ export function SocialProofStrip() {
                 key={m.key}
                 className="flex flex-col items-center gap-1"
               >
-                <span className="text-4xl md:text-5xl font-extrabold text-[hsl(var(--brand-navy))]">
+                <span className="text-4xl md:text-5xl font-extrabold text-foreground">
                   {t(`homev2.socialProof.metric_${m.key}_value`)}
                 </span>
                 <span className="text-sm text-muted-foreground">
