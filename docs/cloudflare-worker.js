@@ -16,6 +16,8 @@
  *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page)
  *    - SITEMAP_FUNCTION_URL: Your Supabase sitemap Edge Function URL
  *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap)
+ *    - LLMS_FUNCTION_URL: Your Supabase llms-full-txt Edge Function URL
+ *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt)
  */
 
 const BOT_USER_AGENTS = [
@@ -166,8 +168,31 @@ export default {
           console.error(`Sitemap proxy error for ${url.pathname}:`, error);
         }
       }
+
+      // --- LLMs.txt proxy ---
+      const llmsUrl = getLlmsProxyUrl(url.pathname, env.LLMS_FUNCTION_URL);
+      if (llmsUrl) {
+        try {
+          const response = await fetch(llmsUrl, {
+            headers: { 'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}` },
+          });
+          if (response.ok) {
+            return new Response(response.body, {
+              status: 200,
+              headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'public, max-age=3600',
+                'X-LLMs-Source': 'edge-function',
+              },
+            });
+          }
+          console.error(`LLMs edge function returned ${response.status}`);
+        } catch (error) {
+          console.error(`LLMs proxy error:`, error);
+        }
+      }
     }
-    
+
     // --- Bot pre-rendering with rate limiting + circuit breaker ---
     if (request.method === 'GET' && isBot(userAgent) && shouldPrerender(url.pathname)) {
       const clientIP = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || '';
