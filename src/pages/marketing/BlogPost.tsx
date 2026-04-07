@@ -115,7 +115,7 @@ export default function BlogPost() {
   const headings = post.content ? extractHeadings(post.content) : [];
 
   const postUrl = `https://padeltrainer.ai/${lang}/blog/${slug}`;
-  const postImage = post.seo?.ogImage || post.coverImage || 'https://padeltrainer.ai/og-image.png';
+  const postImage = 'https://padeltrainer.ai/og-image.png';
 
   // BreadcrumbList structured data for all blog posts
   const breadcrumbSchema = {
