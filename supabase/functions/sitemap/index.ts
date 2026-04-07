@@ -174,18 +174,23 @@ Deno.serve(async (req) => {
     let xml = '';
 
     if (type === 'index') {
-      // Count locations and cities to determine pagination
-      const locations = await fetchAllRows<{ slug: string; city: string }>(
-        supabase, 'locations', 'slug, city', [{ column: 'is_active', operator: 'eq', value: true }]
-      );
-      const cityMap = new Map<string, boolean>();
-      locations.forEach(loc => {
-        const citySlug = encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'));
-        cityMap.set(citySlug, true);
-      });
+      // Use count query for locations (avoids fetching all rows)
+      const { count: locationCount } = await supabase
+        .from('locations')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
 
-      const locationPages = Math.ceil(locations.length / LOCATIONS_PER_PAGE);
-      const cityPages = Math.ceil(cityMap.size / CITIES_PER_PAGE);
+      // Fetch only city column to count unique cities
+      const allCities = await fetchAllRows<{ city: string }>(
+        supabase, 'locations', 'city',
+        [{ column: 'is_active', operator: 'eq', value: true }]
+      );
+      const citySet = new Set(allCities.map(loc =>
+        encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'))
+      ));
+
+      const locationPages = Math.ceil((locationCount || 0) / LOCATIONS_PER_PAGE);
+      const cityPages = Math.ceil(citySet.size / CITIES_PER_PAGE);
 
       xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
       xml += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
@@ -328,16 +333,17 @@ Deno.serve(async (req) => {
     } else if (type === 'locations') {
       xml = xmlHeader();
 
-      const allLocations = await fetchAllRows<{ slug: string; city: string; updated_at: string }>(
-        supabase, 'locations', 'slug, city, updated_at',
-        [{ column: 'is_active', operator: 'eq', value: true }],
-        'slug'
-      );
-
       const start = (page - 1) * LOCATIONS_PER_PAGE;
-      const pageLocations = allLocations.slice(start, start + LOCATIONS_PER_PAGE);
+      const { data: pageLocations, error: locError } = await supabase
+        .from('locations')
+        .select('slug, city, updated_at')
+        .eq('is_active', true)
+        .order('slug')
+        .range(start, start + LOCATIONS_PER_PAGE - 1);
 
-      for (const location of pageLocations) {
+      if (locError) { console.error('Error fetching locations page:', locError); }
+
+      for (const location of (pageLocations || [])) {
         const lastmod = location.updated_at ? new Date(location.updated_at).toISOString().split('T')[0] : today;
         xml += generateUrlEntry(`/locations/${location.slug}`, lastmod, 'weekly', '0.6');
       }
