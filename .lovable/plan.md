@@ -1,74 +1,38 @@
 
 
-# Critical Flow Test Coverage — Gap Analysis & Plan
+# Fix: Sitemap Generation Taking 14+ Minutes
 
-## Current Coverage
+## Root Cause
 
-| Critical Flow | Unit Tests | Component Tests | E2E Tests | Verdict |
-|---|---|---|---|---|
-| **Form Registrations** (CycleApplicationForm) | `cycles.test.ts` (submitIntakeRequest logic) | None | `registration.spec.ts` (7 tests, E2E only) | **Component test missing** |
-| **Calendar Bookings** (SlotList, BookingSummary) | `calendar.test.ts` (date helpers) | `BookingConfirmation.test.tsx` (confirmation only) | `booking.spec.ts` (shallow, no slot selection) | **Component test missing for slot selection + summary** |
-| **Sign Ups** (Player, Trainer, Academy) | `auth.test.ts` (signUpWithEmail, setUserRole — 13 tests) | None | `auth.spec.ts` + `roles.spec.ts` (E2E page loading) | **Component tests missing for form validation** |
-| **Login** | `auth.test.ts` (signInWithEmail, signInWithGoogle — 4 tests) | None | `auth.spec.ts` (3 E2E tests) | **Component test missing** |
-| **Invoice Creation** (CreateInvoiceDialog) | `invoiceCalc.test.ts` (math — 36 tests) | None | `payments.spec.ts` (public pay page only) | **Component test missing for creation flow** |
+The bottleneck is the `?type=static` edge function call. It makes **10 sequential/parallel external API calls** in a single invocation:
+- 3 Supabase queries (trainers, academies, blog articles)
+- 7 Sanity CMS queries (rules, strokes, coaches, video tips, learning articles, topics, products)
 
-## The Gaps
+Edge Functions have a wall-clock timeout (~150s). If any Sanity query is slow or the function cold-starts, it can **time out silently** — causing `curl` to hang waiting for a response with no timeout set. The workflow has **zero curl timeouts**, so a failed/hung edge function call blocks the entire job indefinitely.
 
-Your **pure logic** is well-tested (auth functions, invoice math, validation). Your **E2E tests** cover page loading but not user interactions. The missing layer is **component tests** that verify form behavior, validation, and state transitions without needing a real backend.
+The `?type=index` call also fetches ALL locations just to count pagination — another heavy call.
 
-## Plan — 5 Component Test Files
+## Fix — 2 Changes
 
-### 1. `src/components/cycles/CycleApplicationForm.test.tsx`
-Tests the 1,091-line registration form that guests use to sign up for training cycles:
-- Renders all required fields (name, email, phone, lesson type)
-- Group-of-4 pre-selected by default
-- Phone validation rejects invalid numbers
-- Email validation
-- Shows price breakdown when lesson type selected
-- Submits with correct payload structure (mock `submitIntakeRequest`)
+### 1. Add curl timeouts to the workflow (`.github/workflows/sitemap.yml`)
 
-### 2. `src/components/booking/SlotList.test.tsx`
-Tests the slot selection component:
-- Renders available slots with price, time, location
-- Highlights selected slot
-- Calls `onSelect` callback with correct slot data
-- Shows empty state when no slots available
-- Displays "Individual Sessions" label when cycles exist
+Add `--max-time 120 --retry 2 --retry-delay 5` to every curl call. This ensures:
+- No single call hangs longer than 2 minutes
+- Failed calls get 2 retries with 5s delay
+- Total worst case: ~15 min → ~8 min (with retries) or fails fast
 
-### 3. `src/pages/TrainerSignup.test.tsx`
-Tests the trainer signup page form (same pattern applies to Player/Academy):
-- Renders email, password, full name, phone fields
-- Validates required fields on submit
-- Shows password strength indicator
-- Calls `signUpWithEmail` with correct arguments (mocked)
-- Shows error toast on failure
-- Google OAuth button present and clickable
+### 2. Split the heavy `static` sitemap into `static` + `content` (`supabase/functions/sitemap/index.ts`)
 
-### 4. `src/pages/Auth.test.tsx`
-Tests the login page:
-- Renders email and password inputs
-- Shows error for empty submission
-- Calls `signInWithEmail` on submit (mocked)
-- Shows error toast for invalid credentials
-- Links to forgot-password, player signup, trainer signup
-- Google OAuth button present
+Move the 7 Sanity CMS fetches into a new `?type=content` sub-sitemap. This splits one 10-query call into:
+- `static`: 3 DB queries (trainers, academies, blog) — fast
+- `content`: 7 Sanity queries (rules, strokes, coaches, etc.) — isolated
 
-### 5. `src/components/trainer/CreateInvoiceDialog.test.tsx`
-Tests the invoice creation dialog:
-- Renders player name, line items, VAT rate selector
-- Pre-fills from booking data when provided
-- Adds/removes line items
-- Calculates subtotal, VAT, and total correctly
-- Validates required fields before submit
-- Calls Supabase insert with correct payload (mocked)
+Add a corresponding step in the workflow and a new entry in the sitemap index.
 
 ## File Summary
 
 | File | Change |
 |---|---|
-| `src/components/cycles/CycleApplicationForm.test.tsx` | New — registration form validation, defaults, submission |
-| `src/components/booking/SlotList.test.tsx` | New — slot rendering, selection, empty states |
-| `src/pages/TrainerSignup.test.tsx` | New — signup form validation, submission, OAuth |
-| `src/pages/Auth.test.tsx` | New — login form validation, submission, navigation links |
-| `src/components/trainer/CreateInvoiceDialog.test.tsx` | New — invoice creation form, line items, VAT calculation |
+| `.github/workflows/sitemap.yml` | Add `--max-time 120 --retry 2` to all curl calls; add `content` sitemap fetch step |
+| `supabase/functions/sitemap/index.ts` | Split `static` type: move Sanity fetches to new `content` type; add `content` to sitemap index |
 
