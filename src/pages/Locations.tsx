@@ -257,10 +257,19 @@ export default function Locations() {
           "streetAddress": location.street_address,
           "addressLocality": location.city,
           "postalCode": location.postal_code,
-          "addressCountry": "NL"
+          "addressCountry": location.country || "NL"
         }
       }
     }))
+  };
+
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": t('navigation.home'), "item": "https://padeltrainer.ai" },
+      { "@type": "ListItem", "position": 2, "name": t('locations.title') }
+    ]
   };
 
   return (
@@ -270,7 +279,7 @@ export default function Locations() {
         description={t('locations.seoDescription', { count: totalCount })}
         url="/locations"
         type="website"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema]}
       />
       <div className="min-h-screen bg-background">
         {/* Hero Section */}

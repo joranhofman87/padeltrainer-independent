@@ -261,22 +261,49 @@ export default function LocationDetail() {
 
   const getStructuredData = () => {
     if (!location) return null;
+
+    const sameAs: string[] = [];
+    if (location.website_url) sameAs.push(location.website_url);
+    if (clubProfile?.social_instagram) sameAs.push(`https://instagram.com/${clubProfile.social_instagram.replace(/^@/, '')}`);
+    if (clubProfile?.social_facebook) sameAs.push(clubProfile.social_facebook.startsWith('http') ? clubProfile.social_facebook : `https://facebook.com/${clubProfile.social_facebook}`);
+    if (clubProfile?.social_youtube) sameAs.push(clubProfile.social_youtube.startsWith('http') ? clubProfile.social_youtube : `https://youtube.com/${clubProfile.social_youtube}`);
+    if (clubProfile?.social_linkedin) sameAs.push(clubProfile.social_linkedin.startsWith('http') ? clubProfile.social_linkedin : `https://linkedin.com/company/${clubProfile.social_linkedin}`);
+    if (clubProfile?.social_tiktok) sameAs.push(`https://tiktok.com/@${clubProfile.social_tiktok.replace(/^@/, '')}`);
+
     return {
       "@context": "https://schema.org",
       "@type": "SportsClub",
       "name": location.name,
+      "url": profileUrl,
       "address": {
         "@type": "PostalAddress",
         "streetAddress": location.street_address,
         "addressLocality": location.city,
         "postalCode": location.postal_code,
-        "addressCountry": "NL"
+        "addressCountry": location.country || "NL"
       },
-      "url": location.website_url,
+      ...((location as any).latitude && (location as any).longitude && {
+        "geo": {
+          "@type": "GeoCoordinates",
+          "latitude": (location as any).latitude,
+          "longitude": (location as any).longitude
+        }
+      }),
+      ...((location as any).phone && { "telephone": (location as any).phone }),
+      ...((location as any).opening_hours && { "openingHours": (location as any).opening_hours }),
+      ...((location as any).google_rating && (location as any).google_review_count && {
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": (location as any).google_rating,
+          "reviewCount": (location as any).google_review_count,
+          "bestRating": 5
+        }
+      }),
       "sport": "Padel",
       ...(location.number_of_courts && { "numberOfRooms": location.number_of_courts }),
       ...(displayDescription && { "description": displayDescription }),
-      ...(displayLogo && { "image": displayLogo })
+      ...(displayLogo && { "image": displayLogo }),
+      ...(sameAs.length > 0 && { "sameAs": sameAs })
     };
   };
 
