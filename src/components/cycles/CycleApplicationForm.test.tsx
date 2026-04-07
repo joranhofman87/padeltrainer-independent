@@ -3,11 +3,11 @@ import { render, screen } from '@testing-library/react';
 
 // Polyfill ResizeObserver for radix-ui
 beforeAll(() => {
-  global.ResizeObserver = class {
+  (window as any).ResizeObserver = class {
     observe() {}
     unobserve() {}
     disconnect() {}
-  } as any;
+  };
 });
 
 vi.mock('react-i18next', () => ({
