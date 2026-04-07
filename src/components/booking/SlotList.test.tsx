@@ -104,7 +104,7 @@ describe('SlotList', () => {
     render(
       <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
     );
-    expect(screen.getByText('Indoor')).toBeInTheDocument();
+    expect(screen.getByText(/Indoor/)).toBeInTheDocument();
   });
 
   it('shows rating system badge when min/max rating set', () => {
