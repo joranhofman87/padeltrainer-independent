@@ -128,6 +128,29 @@ const introTemplates: Record<string, (d: CityData) => string> = {
     parts.push(`La scene du padel a ${d.cityName} est en pleine expansion. Comparez les terrains, trouvez des entraineurs et reservez un cours aujourd'hui.`);
     return parts.join(' ');
   },
+  it: (d) => {
+    const parts: string[] = [];
+    parts.push(`${d.cityName} è una delle città in più rapida crescita per il padel in Italia.`);
+    if (d.clubCount > 0) {
+      parts.push(`Con ${d.clubCount} ${d.clubCount === 1 ? 'club' : 'club'} distribuiti in città e nelle zone limitrofe, troverai sempre un campo da padel nelle vicinanze.`);
+    }
+    if (d.indoorCount > 0 && d.outdoorCount > 0) {
+      parts.push(`La maggior parte dei club offre campi sia indoor che outdoor, permettendoti di giocare tutto l'anno.`);
+    } else if (d.indoorCount > 0) {
+      parts.push(`Sono disponibili campi indoor, così puoi giocare anche durante l'inverno.`);
+    }
+    if (d.topClubs.length > 0) {
+      parts.push(`Tra i club più popolari ci sono ${d.topClubs.join(', ')}.`);
+    }
+    if (d.trainerCount > 0) {
+      parts.push(`${d.trainerCount === 1 ? 'C\'è 1 allenatore attivo' : `Ci sono ${d.trainerCount} allenatori attivi`} a ${d.cityName} che offrono lezioni private e di gruppo.`);
+    }
+    if (d.totalIndoorCourts > 0 || d.totalOutdoorCourts > 0) {
+      parts.push(`In totale, ${d.cityName} dispone di ${d.totalIndoorCourts > 0 ? `${d.totalIndoorCourts} campi indoor` : ''}${d.totalIndoorCourts > 0 && d.totalOutdoorCourts > 0 ? ' e ' : ''}${d.totalOutdoorCourts > 0 ? `${d.totalOutdoorCourts} campi outdoor` : ''}.`);
+    }
+    parts.push(`La scena del padel a ${d.cityName} è in rapida crescita, con sempre più giocatori che scoprono questo sport. Che tu sia un principiante o un giocatore esperto, a ${d.cityName} troverai l'allenatore giusto. Confronta i campi, scopri i trainer disponibili e prenota una lezione oggi.`);
+    return parts.join(' ');
+  },
 };
 
 const clubIntroTemplates: Record<string, (d: CityData) => string> = {
@@ -145,6 +168,7 @@ const lessonsTemplates: Record<string, (d: CityData) => string> = {
   de: (d) => `Padel-Unterricht in ${d.cityName} ist der schnellste Weg, dein Spiel zu verbessern. Wahle zwischen Privatunterricht oder Gruppentraining. Privatstunden kosten durchschnittlich 40 bis 80 Euro pro Stunde, Gruppenstunden ab 25 Euro pro Person. Eine typische erste Stunde umfasst Grundstellung, Griffhaltung und einfache Schlage. Uber PadelTrainer.ai buchst du direkt online, ohne anrufen oder Nachrichten schreiben zu mussen.`,
   es: (d) => `Tomar clases de padel en ${d.cityName} es la forma mas rapida de mejorar tu juego. Elige entre clases privadas o entrenamientos grupales. Las clases privadas cuestan entre 40 y 80 euros por hora, las grupales desde 25 euros por persona. Una primera clase tipica cubre la posicion basica, el agarre y los golpes simples. Con PadelTrainer.ai reservas directamente online, sin necesidad de llamar.`,
   fr: (d) => `Prendre des cours de padel a ${d.cityName} est le moyen le plus rapide de progresser. Choisissez entre des cours prives ou des entrainements collectifs. Les cours prives coutent entre 40 et 80 euros de l'heure, les cours collectifs a partir de 25 euros par personne. Un premier cours typique couvre la position de base, la prise et les coups simples. Avec PadelTrainer.ai, vous reservez directement en ligne, sans avoir a appeler.`,
+  it: (d) => `Prendere lezioni di padel a ${d.cityName} è il modo più veloce per migliorare il tuo gioco. Scegli tra lezioni private per un'attenzione personalizzata o allenamenti di gruppo per imparare insieme. Le lezioni private costano mediamente tra i 30 e i 60 euro l'ora, le lezioni di gruppo partono da 20 euro a persona. La maggior parte degli allenatori a ${d.cityName} offre una lezione di prova. Una prima lezione tipica copre la posizione base, l'impugnatura e i colpi semplici. Con PadelTrainer.ai prenoti direttamente online, senza dover chiamare.`,
 };
 
 export function generateCityIntro(cityName: string, locations: Location[], trainerCounts: Record<string, number>, lang: string): string {
