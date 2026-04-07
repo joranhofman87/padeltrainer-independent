@@ -14,6 +14,8 @@ import { sanityClient, VIDEO_TIP_BY_SLUG_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields } from '@/lib/sanity';
 import { useTranslation } from 'react-i18next';
 import { parseVideoUrl } from '@/lib/videoEmbed';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 interface VideoTipDetail {
   _id: string;

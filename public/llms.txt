@@ -62,10 +62,18 @@ This platform is available in:
 
 ### Learn & Improve
 - Learning Hub: https://padeltrainer.ai/en/learn
-- Padel Strokes: https://padeltrainer.ai/en/strokes
+- Padel Strokes: https://padeltrainer.ai/en/padel-strokes
 - Padel Rules: https://padeltrainer.ai/en/padel-rules
 - Video Tips: https://padeltrainer.ai/en/video-tips
 - Topics: https://padeltrainer.ai/en/topics
+- Padel Coaches: https://padeltrainer.ai/en/padel-coaches
+
+### Tools
+- Racket Finder: https://padeltrainer.ai/en/racket-finder
+- Padel Level Test: https://padeltrainer.ai/en/padel-level-test
+
+### Gear
+- Racket Reviews: https://padeltrainer.ai/en/gear/rackets
 
 ### Blog
 - Blog: https://padeltrainer.ai/en/blog
@@ -85,16 +93,24 @@ This platform is available in:
 - `/{lang}/trainer/:id` - Individual trainer profile with booking
 - `/{lang}/locations` - Browse all padel clubs/locations
 - `/{lang}/locations/:slug` - Individual club page
+- `/{lang}/academies/:slug` - Academy profile page
+- `/{lang}/academies/:slug/register/:cycle-id` - Academy registration form
 - `/{lang}/learn` - Learning hub with guides and articles
 - `/{lang}/learn/:slug` - Individual learning article
-- `/{lang}/strokes` - Padel stroke techniques
-- `/{lang}/strokes/:slug` - Individual stroke guide
+- `/{lang}/padel-strokes` - Padel stroke techniques
+- `/{lang}/padel-strokes/:slug` - Individual stroke guide
 - `/{lang}/padel-rules` - Padel rules overview
 - `/{lang}/padel-rules/:slug` - Individual rule article
 - `/{lang}/video-tips` - Video tip library
 - `/{lang}/video-tips/:slug` - Individual video tip
+- `/{lang}/padel-coaches` - Featured padel coaches
+- `/{lang}/padel-coaches/:slug` - Individual coach profile
 - `/{lang}/topics` - Topic clusters
 - `/{lang}/topics/:slug` - Individual topic page
+- `/{lang}/gear/rackets` - Padel racket directory
+- `/{lang}/gear/rackets/:slug` - Individual racket review
+- `/{lang}/racket-finder` - Interactive racket finder tool
+- `/{lang}/padel-level-test` - Padel skill level self-assessment
 - `/{lang}/blog` - Padel tips and news
 - `/{lang}/blog/:slug` - Individual blog post
 - `/{lang}/pricing` - Subscription plans for trainers

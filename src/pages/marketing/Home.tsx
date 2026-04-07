@@ -43,7 +43,7 @@ export default function Home() {
     "description": t('homev2.hero.subheadline'),
     "potentialAction": {
       "@type": "SearchAction",
-      "target": "https://padeltrainer.ai/en/trainers?search={search_term}",
+      "target": `https://padeltrainer.ai/${i18n.language || 'en'}/trainers?search={search_term}`,
       "query-input": "required name=search_term"
     }
   };
