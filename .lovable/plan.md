@@ -1,29 +1,31 @@
 
 
-# Make Phone Field Mandatory on Registration Form
+# Fix: Registration Page Should Use Safe View
 
-## What changes
+## Root Cause
 
-One line in `src/components/cycles/CycleApplicationForm.tsx` — change the phone validation from optional to required.
+A recent security migration (April 6) correctly removed the public SELECT policy from `academy_profiles` to hide sensitive financial columns (IBAN, Mollie IDs, Stripe IDs). A safe view `academy_profiles_safe` was created that exposes only public columns — but `BrandedCycleRegistration.tsx` still queries the base table directly, which now returns empty for anonymous visitors → "Registration Not Found."
 
-### Change
+## Fix
 
-**Line 154** — replace:
+**One file change** in `src/pages/BrandedCycleRegistration.tsx`:
+
+Change the academy query (around line 81) from:
 ```typescript
-phone: z.string().optional(),
+supabase.from('academy_profiles').select('id, name, slug, logo_url, banner_url, welcome_message')
 ```
-with:
+to:
 ```typescript
-phone: phoneSchemaRequired,
+supabase.from('academy_profiles_safe' as any).select('id, name, slug, logo_url, banner_url, welcome_message')
 ```
 
-Import `phoneSchemaRequired` from `@/lib/validation` (already exists — validates Dutch phone format and requires non-empty input).
+The `academy_profiles_safe` view already contains all the columns the registration page needs (`id`, `name`, `slug`, `logo_url`, `banner_url`, `welcome_message`) and bypasses RLS (no `security_invoker`), so it works for anonymous visitors.
 
-This gives you both "required" enforcement and proper Dutch phone number format validation, with the existing translated error messages (`validation.phoneRequired`, `validation.phoneInvalid`).
+Similarly, check if `club_profiles` is also affected — the club query on line 86 should use `club_profiles_safe` instead.
 
 ## File summary
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/CycleApplicationForm.tsx` | Import `phoneSchemaRequired`, use it for phone field validation |
+| `src/pages/BrandedCycleRegistration.tsx` | Query `academy_profiles_safe` and `club_profiles_safe` views instead of base tables |
 
