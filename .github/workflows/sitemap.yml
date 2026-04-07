@@ -1,3 +1,4 @@
+# Sitemap generation workflow - syncs weekly
 name: Regenerate Sitemap
 
 on:
