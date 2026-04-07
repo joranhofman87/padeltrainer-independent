@@ -55,7 +55,7 @@ Deno.test("sitemap locations page 1 returns valid XML", async () => {
   const body = await res.text();
   assertStringIncludes(body, '<urlset');
   assertStringIncludes(body, '<url>');
-  assertStringIncludes(body, '/padel/');
+  assertStringIncludes(body, '/locations/');
 });
 
 Deno.test("sitemap provinces returns valid XML", async () => {
