@@ -114,6 +114,7 @@ function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
   if (!sitemapFunctionUrl) return null;
   if (pathname === '/sitemap.xml') return `${sitemapFunctionUrl}?type=index`;
   if (pathname === '/sitemaps/sitemap-static.xml') return `${sitemapFunctionUrl}?type=static`;
+  if (pathname === '/sitemaps/sitemap-content.xml') return `${sitemapFunctionUrl}?type=content`;
   if (pathname === '/sitemaps/sitemap-provinces.xml') return `${sitemapFunctionUrl}?type=provinces`;
   const locMatch = pathname.match(/^\/sitemaps\/sitemap-locations-(\d+)\.xml$/);
   if (locMatch) return `${sitemapFunctionUrl}?type=locations&page=${locMatch[1]}`;

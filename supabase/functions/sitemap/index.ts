@@ -63,23 +63,29 @@ async function fetchAllRows<T>(
   return allRows;
 }
 
+function escapeXml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
 function xmlHeader(): string {
   return '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n';
 }
 
 function generateUrlEntry(path: string, lastmod: string, changefreq: string, priority: string): string {
+  const safePath = escapeXml(path);
   let entry = '';
   for (const lang of LANGUAGES) {
-    const fullUrl = `${SITE_URL}/${lang}${path}`;
+    const fullUrl = `${SITE_URL}/${lang}${safePath}`;
     entry += '  <url>\n';
     entry += `    <loc>${fullUrl}</loc>\n`;
     entry += `    <lastmod>${lastmod}</lastmod>\n`;
     entry += `    <changefreq>${changefreq}</changefreq>\n`;
     entry += `    <priority>${priority}</priority>\n`;
     for (const altLang of LANGUAGES) {
-      entry += `    <xhtml:link rel="alternate" hreflang="${altLang}" href="${SITE_URL}/${altLang}${path}"/>\n`;
+      entry += `    <xhtml:link rel="alternate" hreflang="${altLang}" href="${SITE_URL}/${altLang}${safePath}"/>\n`;
     }
-    entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${path}"/>\n`;
+    entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${safePath}"/>\n`;
     entry += '  </url>\n';
   }
   return entry;
@@ -97,17 +103,18 @@ function generateBlogEntries(blogArticles: { slug: string; locale: string; canon
   for (const [, group] of articlesByCanonical) {
     for (const article of group) {
       const lastmod = (article.updated_at || article.published_at || today).split('T')[0];
-      const articleUrl = `${SITE_URL}/${article.locale}/blog/${article.slug}`;
+      const safeSlug = escapeXml(article.slug);
+      const articleUrl = `${SITE_URL}/${article.locale}/blog/${safeSlug}`;
       xml += '  <url>\n';
       xml += `    <loc>${articleUrl}</loc>\n`;
       xml += `    <lastmod>${lastmod}</lastmod>\n`;
       xml += `    <changefreq>weekly</changefreq>\n`;
       xml += `    <priority>0.7</priority>\n`;
       for (const alt of group) {
-        xml += `    <xhtml:link rel="alternate" hreflang="${alt.locale}" href="${SITE_URL}/${alt.locale}/blog/${alt.slug}"/>\n`;
+        xml += `    <xhtml:link rel="alternate" hreflang="${alt.locale}" href="${SITE_URL}/${alt.locale}/blog/${escapeXml(alt.slug)}"/>\n`;
       }
       const nlVersion = group.find(a => a.locale === 'nl') || group[0];
-      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.locale}/blog/${nlVersion.slug}"/>\n`;
+      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.locale}/blog/${escapeXml(nlVersion.slug)}"/>\n`;
       xml += '  </url>\n';
     }
   }
@@ -139,17 +146,18 @@ function generateSanityEntries(
   for (const [, group] of groups) {
     for (const doc of group) {
       const lastmod = doc._updatedAt ? doc._updatedAt.split('T')[0] : today;
-      const fullUrl = `${SITE_URL}/${doc.language}/${pathPrefix}/${doc.slug}`;
+      const safeSlug = escapeXml(doc.slug);
+      const fullUrl = `${SITE_URL}/${doc.language}/${pathPrefix}/${safeSlug}`;
       result += '  <url>\n';
       result += `    <loc>${fullUrl}</loc>\n`;
       result += `    <lastmod>${lastmod}</lastmod>\n`;
       result += `    <changefreq>weekly</changefreq>\n`;
       result += `    <priority>${priority}</priority>\n`;
       for (const alt of group) {
-        result += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${pathPrefix}/${alt.slug}"/>\n`;
+        result += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${pathPrefix}/${escapeXml(alt.slug)}"/>\n`;
       }
       const nlVersion = group.find((a: { language: string }) => a.language === 'nl') || group[0];
-      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.language}/${pathPrefix}/${nlVersion.slug}"/>\n`;
+      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.language}/${pathPrefix}/${escapeXml(nlVersion.slug)}"/>\n`;
       result += '  </url>\n';
     }
   }
@@ -186,7 +194,7 @@ Deno.serve(async (req) => {
         [{ column: 'is_active', operator: 'eq', value: true }]
       );
       const citySet = new Set(allCities.map(loc =>
-        encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'))
+        loc.city.toLowerCase().replace(/\s+/g, '-')
       ));
 
       const locationPages = Math.ceil((locationCount || 0) / LOCATIONS_PER_PAGE);
@@ -247,41 +255,37 @@ Deno.serve(async (req) => {
         xml += generateUrlEntry(p.path, today, p.changefreq, p.priority);
       }
 
-      // Trainers
-      const { data: trainers } = await supabase
-        .from('trainer_profiles')
-        .select('user_id, slug, updated_at');
+      // Trainers (use fetchAllRows to bypass 1000-row limit)
+      const trainers = await fetchAllRows<{ user_id: string; slug: string; updated_at: string }>(
+        supabase, 'trainer_profiles', 'user_id, slug, updated_at'
+      );
 
-      if (trainers) {
-        for (const trainer of trainers) {
-          const lastmod = trainer.updated_at ? new Date(trainer.updated_at).toISOString().split('T')[0] : today;
-          xml += generateUrlEntry(`/trainer/${trainer.slug || trainer.user_id}`, lastmod, 'weekly', '0.7');
-        }
+      for (const trainer of trainers) {
+        const lastmod = trainer.updated_at ? new Date(trainer.updated_at).toISOString().split('T')[0] : today;
+        xml += generateUrlEntry(`/trainer/${trainer.slug || trainer.user_id}`, lastmod, 'weekly', '0.7');
       }
 
-      // Academies
-      const { data: academies } = await supabase
-        .from('academy_profiles')
-        .select('slug, updated_at')
-        .eq('is_verified', true)
-        .eq('is_public', true);
+      // Academies (use fetchAllRows to bypass 1000-row limit)
+      const academies = await fetchAllRows<{ slug: string; updated_at: string }>(
+        supabase, 'academy_profiles', 'slug, updated_at',
+        [
+          { column: 'is_verified', operator: 'eq', value: true },
+          { column: 'is_public', operator: 'eq', value: true },
+        ]
+      );
 
-      if (academies) {
-        for (const academy of academies) {
-          const lastmod = academy.updated_at ? new Date(academy.updated_at).toISOString().split('T')[0] : today;
-          xml += generateUrlEntry(`/academies/${academy.slug}`, lastmod, 'weekly', '0.7');
-        }
+      for (const academy of academies) {
+        const lastmod = academy.updated_at ? new Date(academy.updated_at).toISOString().split('T')[0] : today;
+        xml += generateUrlEntry(`/academies/${academy.slug}`, lastmod, 'weekly', '0.7');
       }
 
-      // Blog
-      const { data: blogArticles } = await supabase
-        .from('articles')
-        .select('slug, locale, canonical_id, published_at, updated_at')
-        .eq('status', 'published');
+      // Blog (use fetchAllRows to bypass 1000-row limit)
+      const blogArticles = await fetchAllRows<{ slug: string; locale: string; canonical_id: string; published_at: string; updated_at: string }>(
+        supabase, 'articles', 'slug, locale, canonical_id, published_at, updated_at',
+        [{ column: 'status', operator: 'eq', value: 'published' }]
+      );
 
-      if (blogArticles) {
-        xml += generateBlogEntries(blogArticles, today);
-      }
+      xml += generateBlogEntries(blogArticles, today);
 
       xml += '</urlset>';
 
@@ -363,7 +367,7 @@ Deno.serve(async (req) => {
 
       const cityMap = new Map<string, string>();
       allLocations.forEach(loc => {
-        const citySlug = encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'));
+        const citySlug = loc.city.toLowerCase().replace(/\s+/g, '-');
         if (!cityMap.has(citySlug)) cityMap.set(citySlug, loc.city);
       });
 
