@@ -229,6 +229,13 @@ export function generateFAQs(cityName: string, locations: Location[], trainerCou
       { question: `Faut-il apporter sa propre raquette?`, answer: `La plupart des clubs de ${cityName} proposent la location de raquettes pour 5 a 10 euros. Ideal pour les debutants.` },
       { question: `Comment trouver le meilleur coach de padel a ${cityName}?`, answer: `${data.trainerCount > 0 ? `Il y a ${data.trainerCount} entraineurs actifs a ${cityName}.` : ''} Comparez les entraineurs sur PadelTrainer.ai par experience, avis et disponibilite.` },
     ],
+    it: [
+      { question: `Quanti club di padel ci sono a ${cityName}?`, answer: `Attualmente ci sono ${data.clubCount} ${data.clubCount === 1 ? 'club di padel attivo' : 'club di padel attivi'} a ${cityName} e dintorni. ${data.indoorCount > 0 ? `${data.indoorCount} di questi offrono campi indoor.` : ''} ${topClubNames ? `Tra i club più popolari: ${topClubNames}.` : ''}` },
+      { question: `Quanto costa una lezione di padel a ${cityName}?`, answer: `Le lezioni di gruppo costano in media tra 20 e 40 euro l'ora. Le lezioni private tra 30 e 60 euro l'ora. Su PadelTrainer.ai puoi facilmente confrontare i prezzi dei diversi allenatori a ${cityName}.` },
+      { question: `Si può giocare a padel indoor a ${cityName}?`, answer: `${data.indoorCount > 0 ? `Sì, ${data.indoorCount} ${data.indoorCount === 1 ? 'club offre' : 'club offrono'} campi indoor a ${cityName}, per un totale di ${data.totalIndoorCourts} campi coperti.` : `Attualmente a ${cityName} ci sono principalmente campi all'aperto.`}` },
+      { question: `Devo portare la mia racchetta?`, answer: `La maggior parte dei club a ${cityName} offre il noleggio racchette per 5-10 euro. Perfetto se stai iniziando con il padel.` },
+      { question: `Come trovo il miglior allenatore di padel a ${cityName}?`, answer: `${data.trainerCount > 0 ? `Ci sono ${data.trainerCount} allenatori attivi a ${cityName}.` : ''} Confronta gli allenatori su PadelTrainer.ai per esperienza, recensioni e disponibilità. Prenota una lezione di prova per trovare il match giusto.` },
+    ],
   };
   return faqs[lang] || faqs.en;
 }
