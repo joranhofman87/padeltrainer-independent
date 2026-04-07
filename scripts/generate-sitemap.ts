@@ -31,8 +31,12 @@ async function generateSitemap() {
   const staticCount = await fetchAndSave(`${BASE_URL}?type=static`, `${SITEMAPS_DIR}/sitemap-static.xml`);
   console.log(`   Static: ${staticCount} URLs`);
 
+  // Content (Sanity CMS)
+  const contentCount = await fetchAndSave(`${BASE_URL}?type=content`, `${SITEMAPS_DIR}/sitemap-content.xml`);
+  console.log(`   Content: ${contentCount} URLs`);
+
   // Locations (paginated)
-  let total = staticCount;
+  let total = staticCount + contentCount;
   for (let page = 1; ; page++) {
     const count = await fetchAndSave(`${BASE_URL}?type=locations&page=${page}`, `${SITEMAPS_DIR}/sitemap-locations-${page}.xml`);
     if (count === 0) { fs.unlinkSync(`${SITEMAPS_DIR}/sitemap-locations-${page}.xml`); break; }
