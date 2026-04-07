@@ -194,6 +194,9 @@ export default function BlogPost() {
           noIndex={post.seo?.indexable === false}
           translations={translationsList}
           pathPrefix="blog"
+          publishedTime={post.datePublished || undefined}
+          modifiedTime={post.dateModified || undefined}
+          author={post.authorName || 'PadelTrainer.ai'}
         />
 
         {/* Back Button */}
@@ -265,6 +268,9 @@ export default function BlogPost() {
         noIndex={post.seo?.indexable === false}
         translations={translationsList}
         pathPrefix="blog"
+        publishedTime={post.datePublished || undefined}
+        modifiedTime={post.dateModified || undefined}
+        author={post.authorName || 'PadelTrainer.ai'}
       />
 
       {/* Back Button */}
