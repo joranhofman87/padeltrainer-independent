@@ -271,12 +271,27 @@ function renderPath(cleanPath: string, lang: string): string {
 
   // Topics
   if (cleanPath === '/topics') {
-    return page('Padel Topics | PadelTrainer.ai', 'Explore padel topics from beginner to advanced.', '/topics', lang, `<h1>Padel Topics</h1>`);
+    const topicsMeta: Record<string, { title: string; desc: string; h1: string }> = {
+      nl: { title: 'Padel Onderwerpen | PadelTrainer.ai', desc: 'Ontdek padel onderwerpen van beginner tot gevorderd.', h1: 'Padel Onderwerpen' },
+      es: { title: 'Temas de Pádel | PadelTrainer.ai', desc: 'Explora temas de pádel desde principiante hasta avanzado.', h1: 'Temas de Pádel' },
+      de: { title: 'Padel Themen | PadelTrainer.ai', desc: 'Entdecke Padel-Themen von Anfänger bis Fortgeschrittene.', h1: 'Padel Themen' },
+      fr: { title: 'Sujets de Padel | PadelTrainer.ai', desc: 'Explorez les sujets de padel du débutant au confirmé.', h1: 'Sujets de Padel' },
+    };
+    const tm = topicsMeta[lang] || { title: 'Padel Topics | PadelTrainer.ai', desc: 'Explore padel topics from beginner to advanced.', h1: 'Padel Topics' };
+    return page(tm.title, tm.desc, '/topics', lang, `<h1>${esc(tm.h1)}</h1>`);
   }
   const topicsMatch = cleanPath.match(/^\/topics\/([^/]+)$/);
   if (topicsMatch) {
     const title = slugToDisplay(topicsMatch[1]);
-    return page(`${title} | Padel Topics`, `Everything about ${title.toLowerCase()} in padel.`, `/topics/${topicsMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+    const topicDetailDesc: Record<string, string> = {
+      nl: `Alles over ${title.toLowerCase()} in padel.`,
+      es: `Todo sobre ${title.toLowerCase()} en pádel.`,
+      de: `Alles über ${title.toLowerCase()} im Padel.`,
+      fr: `Tout sur ${title.toLowerCase()} au padel.`,
+    };
+    const desc = topicDetailDesc[lang] || `Everything about ${title.toLowerCase()} in padel.`;
+    const topicLabel: Record<string, string> = { nl: 'Padel Onderwerpen', es: 'Temas de Pádel', de: 'Padel Themen', fr: 'Sujets de Padel' };
+    return page(`${title} | ${topicLabel[lang] || 'Padel Topics'}`, desc, `/topics/${topicsMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
   }
 
   // Gear / Rackets
@@ -300,11 +315,16 @@ function renderPath(cleanPath: string, lang: string): string {
 
   // Registration routes (no DB needed — generic meta)
   if (/^\/(academies|clubs)\/[^/]+\/register\/[^/]+$/.test(cleanPath) || /^\/register\/[^/]+$/.test(cleanPath)) {
+    const regMeta: Record<string, { title: string; desc: string; h1: string; p: string }> = {
+      nl: { title: 'Inschrijven voor Padeltraining | PadelTrainer.ai', desc: 'Schrijf je in voor padel trainingen. Boek je plek in een groeps- of privéles.', h1: 'Inschrijven voor Padeltraining', p: 'Boek je plek in een padeltraining.' },
+      es: { title: 'Inscríbete en Clases de Pádel | PadelTrainer.ai', desc: 'Apúntate a clases de pádel. Reserva tu plaza en una clase grupal o privada.', h1: 'Inscríbete en Clases de Pádel', p: 'Reserva tu plaza en una clase de pádel.' },
+      de: { title: 'Anmeldung zum Padel-Training | PadelTrainer.ai', desc: 'Melde dich für Padel-Training an. Buche deinen Platz in einer Gruppen- oder Privatstunde.', h1: 'Anmeldung zum Padel-Training', p: 'Buche deinen Platz im Padel-Training.' },
+      fr: { title: 'Inscription au Padel | PadelTrainer.ai', desc: 'Inscrivez-vous aux cours de padel. Réservez votre place dans un cours collectif ou privé.', h1: 'Inscription au Padel', p: 'Réservez votre place dans un cours de padel.' },
+    };
+    const rm = regMeta[lang] || { title: 'Register for Padel Training | PadelTrainer.ai', desc: 'Sign up for padel training sessions. Book your spot in a group or private padel lesson.', h1: 'Register for Padel Training', p: 'Book your spot in a padel training session.' };
     return page(
-      'Register for Padel Training | PadelTrainer.ai',
-      'Sign up for padel training sessions. Book your spot in a group or private padel lesson.',
-      cleanPath, lang,
-      `<h1>Register for Padel Training</h1><p>Book your spot in a padel training session.</p>`
+      rm.title, rm.desc, cleanPath, lang,
+      `<h1>${esc(rm.h1)}</h1><p>${esc(rm.p)}</p>`
     );
   }
 
