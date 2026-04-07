@@ -395,23 +395,37 @@ Deno.serve(async (req) => {
     } else if (type === 'provinces') {
       xml = xmlHeader();
 
-      const provinceSlugs = [
-        // Netherlands
+      // Data-driven: fetch distinct provinces from the locations table
+      const allProvinceRows = await fetchAllRows<{ province: string }>(
+        supabase, 'locations', 'province',
+        [{ column: 'is_active', operator: 'eq', value: true }]
+      );
+
+      const provinceSlugSet = new Set<string>();
+      for (const row of allProvinceRows) {
+        if (row.province) {
+          const slug = row.province.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+          if (slug) provinceSlugSet.add(slug);
+        }
+      }
+
+      // Fallback: ensure key provinces are always included even if no locations exist yet
+      const fallbackSlugs = [
         'noord-holland', 'zuid-holland', 'noord-brabant', 'gelderland', 'utrecht',
         'overijssel', 'limburg', 'friesland', 'groningen', 'drenthe', 'flevoland', 'zeeland',
-        // Belgium
         'antwerpen', 'vlaams-brabant', 'oost-vlaanderen', 'west-vlaanderen',
-        // Spain
         'cataluna', 'comunidad-de-madrid', 'comunidad-valenciana', 'andalucia',
-        // Germany
         'nordrhein-westfalen', 'bayern', 'baden-wurttemberg',
-        // France
         'ile-de-france', 'provence-alpes-cote-d-azur', 'occitanie',
         'nouvelle-aquitaine', 'auvergne-rhone-alpes', 'hauts-de-france',
-        'pays-de-la-loire', 'grand-est'
+        'pays-de-la-loire', 'grand-est',
       ];
+      for (const slug of fallbackSlugs) {
+        provinceSlugSet.add(slug);
+      }
 
-      for (const provinceSlug of provinceSlugs) {
+      const sortedSlugs = Array.from(provinceSlugSet).sort();
+      for (const provinceSlug of sortedSlugs) {
         xml += generateUrlEntry(`/trainers/region/${provinceSlug}`, today, 'weekly', '0.7');
       }
 

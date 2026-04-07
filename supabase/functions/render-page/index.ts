@@ -328,6 +328,21 @@ function renderPath(cleanPath: string, lang: string): string {
     );
   }
 
+  // Province/region pages: /trainers/region/:slug
+  const provinceMatch = cleanPath.match(/^\/trainers\/region\/([^/]+)$/);
+  if (provinceMatch) {
+    const province = slugToDisplay(provinceMatch[1]);
+    const provinceMeta: Record<string, { title: string; desc: string }> = {
+      en: { title: `Padel Trainers in ${province} | PadelTrainer.ai`, desc: `Find and book certified padel trainers in ${province}. Compare prices, read reviews and book your first lesson.` },
+      nl: { title: `Padel Trainers in ${province} | PadelTrainer.ai`, desc: `Vind en boek gecertificeerde padel trainers in ${province}. Vergelijk prijzen, lees reviews en boek je eerste les.` },
+      es: { title: `Entrenadores de Pádel en ${province} | PadelTrainer.ai`, desc: `Encuentra y reserva entrenadores de pádel certificados en ${province}. Compara precios, lee reseñas y reserva tu primera clase.` },
+      de: { title: `Padel Trainer in ${province} | PadelTrainer.ai`, desc: `Finde und buche zertifizierte Padel-Trainer in ${province}. Vergleiche Preise, lies Bewertungen und buche deine erste Stunde.` },
+      fr: { title: `Coachs de Padel à ${province} | PadelTrainer.ai`, desc: `Trouvez et réservez des coachs de padel certifiés à ${province}. Comparez les prix, lisez les avis et réservez votre premier cours.` },
+    };
+    const pm = provinceMeta[lang] || provinceMeta['en']!;
+    return page(pm.title, pm.desc, cleanPath, lang, `<h1>${esc(pm.title.split('|')[0].trim())}</h1>`);
+  }
+
   // Rating page: /rating/:id
   if (/^\/rating\/[^/]+$/.test(cleanPath)) {
     return page(
