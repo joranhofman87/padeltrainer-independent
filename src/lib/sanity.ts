@@ -392,3 +392,40 @@ export const RELATED_RACKETS_QUERY = `*[_type == "product" && category == "racke
   && slug.current != $slug && !(_id in path("drafts.**"))] | order(priceMidpoint asc) [0..3] {
   _id, name, "slug": slug.current, brand, priceRange, shortDescription, shape, image, level, playingStyle
 }`;
+
+// ── City Page Queries ──
+
+export interface CityPage {
+  _id: string;
+  citySlug: string;
+  cityName: string;
+  province?: string;
+  language: string;
+  estimatedClubs?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  intro?: any[];
+  faqs?: { question: string; answer: string }[];
+  nearbyCities?: string[];
+  seo?: {
+    titleTag?: string;
+    metaDescription?: string;
+  };
+}
+
+export const CITY_PAGE_QUERY = `*[_type == "cityPage" && citySlug == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
+  _id,
+  citySlug,
+  cityName,
+  province,
+  language,
+  estimatedClubs,
+  intro,
+  faqs,
+  nearbyCities,
+  seo
+}`;
+
+export const ALL_CITY_SLUGS_QUERY = `*[_type == "cityPage" && !(_id in path("drafts.**"))] {
+  citySlug,
+  language
+}`;

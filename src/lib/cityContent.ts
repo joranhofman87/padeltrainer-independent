@@ -136,6 +136,7 @@ const clubIntroTemplates: Record<string, (d: CityData) => string> = {
   de: (d) => `Jeder Club in ${d.cityName} hat seinen eigenen Charakter. Einige konzentrieren sich auf Wettkampfspieler, andere eignen sich besser fur Anfanger oder Familien. Unten findest du eine Ubersicht mit Adresse, Platzanzahl und Typ (Indoor/Outdoor).`,
   es: (d) => `Cada club en ${d.cityName} tiene su propio caracter. Algunos se enfocan en jugadores competitivos, otros son mas adecuados para principiantes o familias. A continuacion encontraras un resumen con direccion, numero de pistas y tipo (indoor/outdoor).`,
   fr: (d) => `Chaque club a ${d.cityName} a son propre caractere. Certains se concentrent sur les joueurs competitifs, d'autres conviennent mieux aux debutants ou aux familles. Vous trouverez ci-dessous un apercu avec adresse, nombre de terrains et type (couvert/exterieur).`,
+  it: (d) => `Ogni club a ${d.cityName} ha il suo carattere. Alcuni si concentrano sui giocatori agonistici, altri sono più adatti a principianti o famiglie. Qui sotto trovi una panoramica con indirizzo, numero di campi e tipo (indoor/outdoor) per aiutarti a scegliere rapidamente.`,
 };
 
 const lessonsTemplates: Record<string, (d: CityData) => string> = {
