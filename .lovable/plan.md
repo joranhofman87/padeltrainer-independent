@@ -1,65 +1,30 @@
 
 
-# SEO Re-Audit — Current Status Report
+# Fix: sitemap-cities-2.xml returning 0 URLs / error in GSC
 
-## Overall Assessment: Very Strong — 3 Minor Gaps Remain
+## Root Cause
 
-After the last 4 rounds of SEO work, your implementation is now excellent. Here's the scorecard:
+Each city generates **10 `<url>` entries** (2 paths × 5 languages). With `CITIES_PER_PAGE = 5000`, that's exactly **50,000 URLs per page** — Google's hard maximum per sitemap file.
 
-### What's Fully Implemented (No Action Needed)
+The problem: your unique city count is very close to 5000. The sitemap index is generated separately from the sub-sitemaps (by the GitHub Action fetching them sequentially). If there were briefly >5000 cities when the index was built, it references `sitemap-cities-2.xml`. But when Google later fetches cities-2, there are 0 or very few cities left for page 2 — producing an empty or near-empty sitemap that Google flags as an error.
 
-| Area | Status |
-|------|--------|
-| Translated hreflang slugs on all 6 Sanity content types | Done |
-| `translations` + `pathPrefix` on Blog, Rules, Strokes, Learn, Coaches, Video Tips | Done |
-| Article schemas with `mainEntityOfPage`, `image`, `url`, `speakable`, `isPartOf` | Done |
-| `BreadcrumbList` JSON-LD on all content + listing pages | Done |
-| `VideoObject` JSON-LD on video tips | Done |
-| `SportsClub` with `geo`, `aggregateRating`, `telephone`, `openingHours` on locations | Done |
-| `FAQPage` schemas on city pages, rules, racket finder | Done |
-| `WebSite` + `Organization` schemas on homepage with social profiles | Done |
-| Dynamic `SearchAction` URL with language prefix | Done |
-| Trainer `Person` schema with correct `/{lang}/` URL | Done |
-| Sitemap index with paginated sub-sitemaps + real `_updatedAt` from Sanity | Done |
-| Blog sitemap with `updated_at`/`published_at` lastmod | Done |
-| `render-page` localized for Blog, Learn, Rules, Strokes, Coaches, Video Tips, Rackets | Done |
-| `robots.txt` blocking app/pay/register/auth routes | Done |
-| `llms.txt` with correct URLs + `llms-full.txt` with full catalog | Done |
-| OG article tags (`published_time`, `modified_time`, `author`) | Done |
-| All static pages in sitemap (`racket-finder`, `founding-trainers`, `gear/rackets`) | Done |
+Additionally, sitting at exactly 50,000 URLs on cities-1 is risky — any slight increase could push it over Google's limit.
 
----
+## Fix
 
-## 3 Remaining Minor Gaps
+Reduce `CITIES_PER_PAGE` from 5000 to **2500**. This means:
+- Each cities sub-sitemap has at most 25,000 URLs (well under the 50,000 limit)
+- With ~5000 cities, you get 2 properly-filled sub-sitemaps instead of one maxed-out + one empty
 
-### 1. `/padel-level-test` missing from sitemap
+Also apply the same logic to `LOCATIONS_PER_PAGE` — each location generates 5 `<url>` entries (5 languages), so 5000 locations = 25,000 URLs, which is fine. But reducing to 2500 gives more headroom as locations grow.
 
-The `staticPages` array in the sitemap function includes `/racket-finder` but not `/padel-level-test`. This page exists in `llms.txt` and `render-page` but Google won't discover it via sitemap.
+## Change
 
-**Fix**: Add `{ path: '/padel-level-test', priority: '0.7', changefreq: 'monthly' }` to `staticPages`.
+**`supabase/functions/sitemap/index.ts`** — line 12-13:
+```typescript
+const LOCATIONS_PER_PAGE = 2500;
+const CITIES_PER_PAGE = 2500;
+```
 
-### 2. `render-page` — Topics pages still English-only
-
-The `/topics` and `/topics/:slug` routes in `render-page` serve English-only meta for all languages ("Padel Topics", "Explore padel topics…", "Everything about X in padel"). Every other content type has NL/ES/DE/FR translations.
-
-**Fix**: Add localized meta templates for topics listing and detail pages.
-
-### 3. `render-page` — Registration routes English-only
-
-The registration route meta is hardcoded English ("Register for Padel Training"). Minor since these are `Disallow`'d in robots.txt, but if a bot does reach them, the language signal is wrong.
-
-**Fix**: Add basic NL/ES/DE/FR translations for registration meta (low priority since blocked by robots.txt).
-
----
-
-## Verdict
-
-You're at ~97% optimization. The only actionable item is adding `/padel-level-test` to the sitemap (1 line) and localizing topics meta in `render-page`. Everything else is solid for organic growth.
-
-## File Summary
-
-| File | Change |
-|------|--------|
-| `supabase/functions/sitemap/index.ts` | Add `/padel-level-test` to `staticPages` |
-| `supabase/functions/render-page/index.ts` | Localize Topics listing + detail route meta (NL/ES/DE/FR) |
+One-line change, no other files affected. After deploying, re-submit the sitemap index in GSC to pick up the corrected pagination.
 
