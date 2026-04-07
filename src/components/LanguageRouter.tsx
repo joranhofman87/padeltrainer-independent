@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-const SUPPORTED_LANGUAGES = ['en', 'nl', 'es', 'de', 'fr'];
+const SUPPORTED_LANGUAGES = ['en', 'nl', 'es', 'de', 'fr', 'it'];
 const DEFAULT_LANGUAGE = 'en';
 
 export function LanguageRouter() {
@@ -22,7 +22,7 @@ export function LanguageRouter() {
   // If invalid language, redirect to default
   useEffect(() => {
     if (lang && !SUPPORTED_LANGUAGES.includes(lang)) {
-      const newPath = `/${DEFAULT_LANGUAGE}${location.pathname}${location.search}`;
+      const newPath = `/${DEFAULT_LANGUAGE}${location.pathname.replace(/^\/(en|nl|es|de|fr|it)/, '')}${location.search}`;
       navigate(newPath, { replace: true });
     }
   }, [lang, location, navigate]);
