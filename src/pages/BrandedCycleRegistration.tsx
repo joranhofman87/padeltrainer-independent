@@ -67,17 +67,17 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
         // Parallel: fetch owner branding + cycle data
         const ownerPromise = ownerType === 'academy'
           ? supabase
-              .from('academy_profiles')
+              .from('academy_profiles_safe' as any)
               .select('id, name, slug, logo_url, banner_url, welcome_message')
               .eq('slug', slug)
               .maybeSingle()
-              .then(({ data }) => data)
+              .then(({ data }: any) => data)
           : supabase
-              .from('club_profiles')
+              .from('club_profiles_safe' as any)
               .select('id, logo_url, banner_url, welcome_message, location_id')
               .eq('id', slug)
               .maybeSingle()
-              .then(async ({ data: club }) => {
+              .then(async ({ data: club }: any) => {
                 if (!club) return null;
                 const { data: loc } = await supabase
                   .from('locations')
