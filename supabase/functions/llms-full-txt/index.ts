@@ -7,6 +7,45 @@ const corsHeaders = {
 
 const SITE_URL = 'https://padeltrainer.ai';
 
+// deno-lint-ignore no-explicit-any
+async function fetchAllRows<T>(
+  supabase: any,
+  table: string,
+  selectColumns: string,
+  filters?: { column: string; operator: string; value: boolean | string | number }[],
+): Promise<T[]> {
+  const allRows: T[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    let query = supabase
+      .from(table)
+      .select(selectColumns)
+      .range(from, from + pageSize - 1);
+
+    if (filters) {
+      for (const filter of filters) {
+        if (filter.operator === 'eq') {
+          query = query.eq(filter.column, filter.value);
+        }
+      }
+    }
+
+    const { data, error } = await query;
+    if (error) { console.error(`Error fetching ${table}:`, error); break; }
+    if (data) {
+      allRows.push(...(data as T[]));
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
+  }
+  return allRows;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -17,25 +56,23 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch trainers, locations, and academies in parallel
-    const [trainersRes, locationsRes, academiesRes] = await Promise.all([
-      supabase
-        .from('trainer_profiles')
-        .select('id, user_id, slug, specializations, is_verified, hourly_rate'),
-      supabase
-        .from('locations')
-        .select('id, name, city, slug, indoor_courts, outdoor_courts')
-        .eq('is_active', true),
-      supabase
-        .from('academy_profiles')
-        .select('name, slug, description')
-        .eq('is_verified', true)
-        .eq('is_public', true),
+    // Fetch trainers, locations, and academies using fetchAllRows (bypasses 1000-row limit)
+    const [trainers, locations, academies] = await Promise.all([
+      fetchAllRows<{ id: string; user_id: string; slug: string; specializations: string[] | null; is_verified: boolean; hourly_rate: number | null }>(
+        supabase, 'trainer_profiles', 'id, user_id, slug, specializations, is_verified, hourly_rate'
+      ),
+      fetchAllRows<{ id: string; name: string; city: string; slug: string; indoor_courts: number | null; outdoor_courts: number | null }>(
+        supabase, 'locations', 'id, name, city, slug, indoor_courts, outdoor_courts',
+        [{ column: 'is_active', operator: 'eq', value: true }]
+      ),
+      fetchAllRows<{ name: string; slug: string; description: string | null }>(
+        supabase, 'academy_profiles', 'name, slug, description',
+        [
+          { column: 'is_verified', operator: 'eq', value: true },
+          { column: 'is_public', operator: 'eq', value: true },
+        ]
+      ),
     ]);
-
-    const trainers = trainersRes.data || [];
-    const locations = locationsRes.data || [];
-    const academies = academiesRes.data || [];
 
     // Fetch trainer names from profiles
     const userIds = trainers.map(t => t.user_id);
@@ -49,7 +86,7 @@ Deno.serve(async (req) => {
         .select('user_id, full_name, location')
         .in('user_id', batch);
       
-      profiles?.forEach(p => {
+      profiles?.forEach((p: { user_id: string; full_name: string | null; location: string | null }) => {
         profilesMap[p.user_id] = { full_name: p.full_name, location: p.location };
       });
     }
@@ -100,7 +137,7 @@ Deno.serve(async (req) => {
     Object.entries(cityCounts)
       .sort((a, b) => b[1].trainers - a[1].trainers)
       .forEach(([city, counts]) => {
-        const citySlug = encodeURIComponent(city.toLowerCase().replace(/\s+/g, '-'));
+        const citySlug = city.toLowerCase().replace(/\s+/g, '-');
         output += `- **${city}** | ${counts.trainers} trainers | ${counts.locations} clubs | ${SITE_URL}/en/trainers/${citySlug}\n`;
       });
 

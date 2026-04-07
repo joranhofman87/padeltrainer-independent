@@ -338,15 +338,24 @@ Deno.serve(async (req) => {
       xml = xmlHeader();
 
       const start = (page - 1) * LOCATIONS_PER_PAGE;
+      const end = start + LOCATIONS_PER_PAGE - 1;
 
-      // Use fetchAllRows to bypass 1000-row limit, then slice for this page
-      const allLocations = await fetchAllRows<{ slug: string; city: string; updated_at: string }>(
-        supabase, 'locations', 'slug, city, updated_at',
-        [{ column: 'is_active', operator: 'eq', value: true }],
-        'slug'
-      );
-
-      const pageLocations = allLocations.slice(start, start + LOCATIONS_PER_PAGE);
+      // True server-side pagination: fetch only the rows for this page window
+      // Batch in chunks of 1000 within the page window to bypass Supabase's 1000-row limit
+      const pageLocations: { slug: string; city: string; updated_at: string }[] = [];
+      const batchSize = 1000;
+      for (let offset = start; offset <= end; offset += batchSize) {
+        const batchEnd = Math.min(offset + batchSize - 1, end);
+        const { data, error } = await supabase
+          .from('locations')
+          .select('slug, city, updated_at')
+          .eq('is_active', true)
+          .order('slug')
+          .range(offset, batchEnd);
+        if (error) { console.error('Error fetching locations page:', error); break; }
+        if (data) pageLocations.push(...data);
+        if (!data || data.length < batchSize) break;
+      }
 
       for (const location of pageLocations) {
         const lastmod = location.updated_at
@@ -360,13 +369,14 @@ Deno.serve(async (req) => {
     } else if (type === 'cities') {
       xml = xmlHeader();
 
-      const allLocations = await fetchAllRows<{ city: string }>(
+      // Fetch only distinct cities using fetchAllRows (lighter than fetching all location columns)
+      const allCityRows = await fetchAllRows<{ city: string }>(
         supabase, 'locations', 'city',
         [{ column: 'is_active', operator: 'eq', value: true }]
       );
 
       const cityMap = new Map<string, string>();
-      allLocations.forEach(loc => {
+      allCityRows.forEach(loc => {
         const citySlug = loc.city.toLowerCase().replace(/\s+/g, '-');
         if (!cityMap.has(citySlug)) cityMap.set(citySlug, loc.city);
       });

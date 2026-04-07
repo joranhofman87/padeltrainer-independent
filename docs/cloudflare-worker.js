@@ -94,9 +94,9 @@ const STATIC_FALLBACK_HTML = `<!DOCTYPE html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PadelTrainer.ai — Find & Book Padel Trainers</title>
-  <meta name="description" content="Find and book certified padel trainers near you. PadelTrainer.ai connects players with the best coaches in the Netherlands.">
+  <meta name="description" content="Find and book certified padel trainers near you. PadelTrainer.ai connects players with the best coaches across Europe.">
   <meta property="og:title" content="PadelTrainer.ai — Find & Book Padel Trainers">
-  <meta property="og:description" content="Find and book certified padel trainers near you.">
+  <meta property="og:description" content="Find and book certified padel trainers near you across Europe.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://padeltrainer.ai">
   <meta property="og:image" content="https://padeltrainer.ai/og-image.png">
@@ -115,6 +115,13 @@ function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
   if (pathname === '/sitemap.xml') return `${sitemapFunctionUrl}?type=index`;
   if (pathname === '/sitemaps/sitemap-static.xml') return `${sitemapFunctionUrl}?type=static`;
   if (pathname === '/sitemaps/sitemap-content.xml') return `${sitemapFunctionUrl}?type=content`;
+  return null;
+}
+
+// ─── LLMs.txt Proxy ─────────────────────────────────────────────
+function getLlmsProxyUrl(pathname, llmsFunctionUrl) {
+  if (!llmsFunctionUrl) return null;
+  if (pathname === '/llms-full.txt') return llmsFunctionUrl;
   if (pathname === '/sitemaps/sitemap-provinces.xml') return `${sitemapFunctionUrl}?type=provinces`;
   const locMatch = pathname.match(/^\/sitemaps\/sitemap-locations-(\d+)\.xml$/);
   if (locMatch) return `${sitemapFunctionUrl}?type=locations&page=${locMatch[1]}`;
