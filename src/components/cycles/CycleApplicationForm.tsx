@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote, Calculator, Info } from 'lucide-react';
 import { formatPrice } from '@/lib/pricing';
+import { phoneSchemaRequired } from '@/lib/validation';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import { logger } from '@/lib/logger';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
@@ -151,7 +152,7 @@ export default function CycleApplicationForm({
   const formSchema = z.object({
     full_name: z.string().min(2, t('application.form.nameMin')),
     email: z.string().email(t('application.form.emailInvalid')),
-    phone: z.string().optional(),
+    phone: phoneSchemaRequired,
     password: z.string().optional(),
     birth_date: z.string().min(1, t('application.form.birthDateRequired')),
     rating: z.coerce.number().optional(),
