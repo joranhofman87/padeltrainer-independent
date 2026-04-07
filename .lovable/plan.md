@@ -1,79 +1,89 @@
 
 
-# Blog SEO Super-Optimization Plan
+# SEO Optimization Audit — Remaining Gaps
 
-## Current State — What's Already Good
+Your blog pages are now well-optimized after the last round. Here's what's still missing across the rest of your Sanity-driven content pages.
 
-Your blog pages already have solid foundations: Article structured data, BreadcrumbList schemas on listing pages, hreflang tags, canonical URLs, OG/Twitter cards, and a `render-page` edge function for bot pre-rendering.
+---
 
-## What's Missing — 7 Improvements
+## Priority 1 — Translated hreflang slugs missing on 4 content types
 
-### 1. Add `mainEntityOfPage`, `image`, and `url` to Article structured data
-Google requires `image` and recommends `mainEntityOfPage` for Article rich results eligibility. Currently missing from `BlogPost.tsx`.
+**Problem**: Only `BlogPost.tsx` passes `translations` + `pathPrefix` to the `<SEO>` component for proper hreflang with actual translated slugs. The other 4 Sanity content types that fetch translations (`RulesPage`, `StrokePage`, `LearningArticlePage`, `CoachPage`) all call `getTranslations()` but never pass the result to `<SEO>`. This means their hreflang tags use the same slug across all languages instead of the correct translated slug — bad for multilingual SEO.
 
-**Change in `BlogPost.tsx`**: Add these properties to the Article schema:
+**Fix**: Pass `translations={translationsList}` and `pathPrefix="padel-rules"` (etc.) to `<SEO>` on each page, matching the BlogPost pattern.
+
+| Page | pathPrefix |
+|------|-----------|
+| `RulesPage.tsx` | `padel-rules` |
+| `StrokePage.tsx` | `padel-strokes` |
+| `LearningArticlePage.tsx` | `learn` |
+| `CoachPage.tsx` | `padel-coaches` |
+
+---
+
+## Priority 2 — Missing `mainEntityOfPage`, `image`, `url` on Article schemas
+
+**Problem**: Blog posts now have `mainEntityOfPage`, `image`, and `url` in their Article schema (from the last update). But Rules, Strokes, Learning Articles, and Coach pages are missing these — reducing Google rich result eligibility.
+
+**Fix**: Add to each page's `structuredData` object:
 ```json
-"mainEntityOfPage": { "@type": "WebPage", "@id": "https://padeltrainer.ai/{lang}/blog/{slug}" },
-"image": "post.seo?.ogImage || defaultOgImage",
-"url": "https://padeltrainer.ai/{lang}/blog/{slug}"
+"url": "https://padeltrainer.ai/{lang}/{prefix}/{slug}",
+"mainEntityOfPage": { "@type": "WebPage", "@id": "..." },
+"image": "ogImage or default"
 ```
 
-### 2. Add BreadcrumbList structured data to individual blog posts
-The blog listing page has BreadcrumbList schema, but individual posts do not — only a visual breadcrumb component. Google needs the JSON-LD version.
+| Page | Currently missing |
+|------|------------------|
+| `RulesPage.tsx` | `url`, `mainEntityOfPage`, `image` |
+| `StrokePage.tsx` | `url`, `mainEntityOfPage`, `image` |
+| `LearningArticlePage.tsx` | `image` (has url + mainEntityOfPage via WebPage schema but not on Article) |
+| `VideoTipPage.tsx` | No structured data at all — needs `VideoObject` JSON-LD |
+| `CoachPage.tsx` | `url` is hardcoded without lang prefix |
 
-**Change in `BlogPost.tsx`**: Add a `BreadcrumbList` schema alongside the Article schema:
-```json
-{ "@type": "BreadcrumbList", "itemListElement": [
-  { "position": 1, "name": "Home", "item": ".../{lang}" },
-  { "position": 2, "name": "Blog", "item": ".../{lang}/blog" },
-  { "position": 3, "name": "{post title}" }
-]}
-```
+---
 
-### 3. Create `llms-full.txt` — currently referenced but missing (404)
-`robots.txt` and `llms.txt` both point to `/llms-full.txt` but the file doesn't exist. AI crawlers hitting this get a 404.
+## Priority 3 — VideoTipPage has no structured data
 
-**Create `public/llms-full.txt`**: An expanded version of `llms.txt` with detailed entity descriptions — all content types, trainer/club/academy concepts, URL patterns with parameter docs, and data model summaries. This helps LLMs like ChatGPT and Perplexity understand and cite your platform.
+**Problem**: `VideoTipPage.tsx` renders no `structuredData` to `<SEO>`. Video pages are prime candidates for `VideoObject` schema, which enables rich video snippets in Google Search.
 
-### 4. Add `article:published_time` and `article:author` OG meta tags
-These Open Graph article-specific tags are missing. Facebook and LinkedIn use them for article previews.
+**Fix**: Add `VideoObject` JSON-LD with `name`, `description`, `thumbnailUrl`, `uploadDate`, `contentUrl`/`embedUrl`, and `duration` (if available).
 
-**Change in `SEO.tsx`**: When `type === 'article'`, accept optional `publishedTime` and `author` props and render:
-```html
-<meta property="article:published_time" content="2025-01-15" />
-<meta property="article:modified_time" content="2025-02-01" />
-<meta property="article:author" content="Author Name" />
-```
+---
 
-### 5. Add `render-page` blog route for bot pre-rendering
-The edge function handles `/trainer/:slug`, homepage, etc. but has no route for `/blog/:slug`. Bots that hit the pre-renderer get generic fallback HTML instead of article-specific meta tags.
+## Priority 4 — Article OG tags missing on non-blog article pages
 
-**Change in `render-page/index.ts`**: Add a `/blog/:slug` route that renders title/description from the slug (display-name style, same zero-DB pattern as trainer pages).
+**Problem**: `publishedTime`, `modifiedTime`, and `author` OG tags are only passed on `BlogPost.tsx`. Rules and Learning Articles have `datePublished`/`dateModified` from Sanity but don't pass them to `<SEO>`.
 
-### 6. Add `SpeakableSpecification` to Article schema for voice search
-Google uses this to identify content suitable for voice assistants (Google Assistant, Alexa).
+**Fix**: Add `publishedTime`, `modifiedTime`, and `author` props to `<SEO>` on `RulesPage.tsx` and `LearningArticlePage.tsx`.
 
-**Change in `BlogPost.tsx`**: Add to Article structured data:
-```json
-"speakable": { "@type": "SpeakableSpecification", "cssSelector": ["h1", ".prose"] }
-```
+---
 
-### 7. Add `isPartOf` linking to Blog schema
-Individual articles should reference the parent Blog entity for better knowledge graph connections.
+## Priority 5 — Racket listing page missing BreadcrumbList schema
 
-**Change in `BlogPost.tsx`**: Add to Article schema:
-```json
-"isPartOf": { "@type": "Blog", "name": "PadelTrainer.ai Blog", "url": "https://padeltrainer.ai/{lang}/blog" }
-```
+**Problem**: `RacketListing.tsx` and `RacketDetail.tsx` render visual breadcrumbs but no `BreadcrumbList` JSON-LD. Google needs the structured data version.
+
+**Fix**: Add `BreadcrumbList` schema to both pages.
+
+---
+
+## Priority 6 — `llms-full.txt` should include Sanity content types
+
+**Problem**: The file was just created with a good structure but it's static. As you add more content in Sanity, the entity catalog becomes stale.
+
+**Fix**: Add the new content types (Rackets/Gear, Coaches, Video Tips) to `llms-full.txt` with their URL patterns.
 
 ---
 
 ## File Summary
 
-| File | Change |
-|------|--------|
-| `src/pages/marketing/BlogPost.tsx` | Add `mainEntityOfPage`, `image`, `url`, `speakable`, `isPartOf` to Article schema; add `BreadcrumbList` JSON-LD |
-| `src/components/SEO.tsx` | Add optional `publishedTime`, `modifiedTime`, `author` props; render `article:*` OG tags when type is article |
-| `public/llms-full.txt` | Create the missing file with full entity catalog |
-| `supabase/functions/render-page/index.ts` | Add `/blog/:slug` route for bot pre-rendering |
+| File | Changes |
+|------|---------|
+| `src/pages/marketing/RulesPage.tsx` | Add `translations`/`pathPrefix` to SEO; add `url`, `mainEntityOfPage`, `image` to schema; add `publishedTime`/`modifiedTime` |
+| `src/pages/marketing/StrokePage.tsx` | Add `translations`/`pathPrefix` to SEO; add `url`, `mainEntityOfPage`, `image` to schema |
+| `src/pages/marketing/LearningArticlePage.tsx` | Add `translations`/`pathPrefix` to SEO; add `image` to Article schema; add `publishedTime`/`modifiedTime` |
+| `src/pages/marketing/VideoTipPage.tsx` | Add `VideoObject` JSON-LD structured data |
+| `src/pages/marketing/CoachPage.tsx` | Add `translations`/`pathPrefix` to SEO; fix hardcoded URL in schema |
+| `src/pages/marketing/RacketListing.tsx` | Add `BreadcrumbList` JSON-LD |
+| `src/pages/marketing/RacketDetail.tsx` | Add `BreadcrumbList` JSON-LD |
+| `public/llms-full.txt` | Add Rackets, Coaches, Video Tips URL patterns |
 
