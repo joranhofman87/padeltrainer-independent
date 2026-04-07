@@ -49,6 +49,17 @@ export default function VideoTipPage() {
     staleTime: 1000 * 60 * 5,
   });
 
+  const { setTranslations } = useTranslationsContext();
+  const { data: translationsList = [] } = useQuery({
+    queryKey: ['translations', 'videoTip', video?._id],
+    queryFn: () => getTranslations(video!._id, 'videoTip', lang, video!.translationOf?._ref),
+    enabled: !!video?._id,
+    staleTime: 1000 * 60 * 10,
+  });
+  if (translationsList.length > 0) {
+    setTranslations(translationsList);
+  }
+
   if (isLoading) {
     return (
       <MarketingLayout>
@@ -114,6 +125,8 @@ export default function VideoTipPage() {
         image={video.thumbnailUrl || undefined}
         noIndex={video.seo?.indexable === false}
         structuredData={structuredData}
+        translations={translationsList}
+        pathPrefix="video-tips"
       />
 
       <article className="container mx-auto px-4 py-8 max-w-3xl">
