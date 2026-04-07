@@ -1,0 +1,177 @@
+# PadelTrainer.ai — Full Entity & Content Catalog
+
+> Complete reference for AI systems to understand PadelTrainer.ai's content, entities, and URL structure.
+> For a concise overview, see: https://padeltrainer.ai/llms.txt
+> Generated: 2025-04-07
+
+---
+
+## Platform Summary
+
+PadelTrainer.ai is the leading platform for padel trainers, academies, and clubs in Europe. It connects players with certified coaches, handles scheduling, bookings, payments, and provides educational content about padel.
+
+## Entity Types
+
+### 1. Trainers
+Padel coaches who offer individual or group lessons.
+
+**Attributes**: name, slug, city, specializations (e.g. beginners, advanced, competition prep), hourly rate (EUR), certifications, verified status, rating system (KNLTB, WPT, UTR), years of experience, languages spoken.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/trainer/{slug}`
+**Directory**: `https://padeltrainer.ai/{lang}/trainers`
+**City filter**: `https://padeltrainer.ai/{lang}/trainers/{city-slug}`
+**Region filter**: `https://padeltrainer.ai/{lang}/trainers/region/{province-slug}`
+
+### 2. Padel Clubs & Locations
+Physical padel venues with courts.
+
+**Attributes**: name, slug, city, address, indoor courts count, outdoor courts count, amenities, associated trainers and academies.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/locations/{slug}`
+**Directory**: `https://padeltrainer.ai/{lang}/locations`
+
+### 3. Academies
+Padel training organizations that manage multiple trainers and offer structured programs.
+
+**Attributes**: name, slug, description, country, logo, verified status, associated trainers, associated locations.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/academies/{slug}`
+
+### 4. City Pages
+Programmatic landing pages for cities with padel activity.
+
+**Attributes**: city name, trainer count, club count, featured trainers and clubs.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/padel/{city-slug}`
+
+---
+
+## Content Types
+
+### Blog Articles
+Padel tips, strategy guides, fitness advice, and industry news. Published in 5 languages via Sanity CMS.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/blog/{slug}`
+**Listing**: `https://padeltrainer.ai/{lang}/blog`
+**Categories**: strategy, technique, fitness, gear, coaching, rules, news
+**Schema**: Article (standard posts), CollectionPage (hub/pillar pages)
+
+### Learning Articles
+In-depth educational content organized by topic.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/learn/{slug}`
+**Listing**: `https://padeltrainer.ai/{lang}/learn`
+
+### Padel Rules
+Official padel rules explained with illustrations.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/padel-rules/{slug}`
+**Overview**: `https://padeltrainer.ai/{lang}/padel-rules`
+
+### Padel Strokes & Techniques
+Detailed stroke guides with difficulty ratings.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/padel-strokes/{slug}`
+**Directory**: `https://padeltrainer.ai/{lang}/padel-strokes`
+
+### Video Tips
+Expert coaching videos with coach attribution.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/video-tips/{slug}`
+**Listing**: `https://padeltrainer.ai/{lang}/video-tips`
+
+### Topic Clusters
+Pillar pages grouping related content by theme.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/topics/{slug}`
+**Listing**: `https://padeltrainer.ai/{lang}/topics`
+
+### Padel Racket Reviews
+Equipment reviews with specs and comparisons.
+
+**URL pattern**: `https://padeltrainer.ai/{lang}/gear/rackets/{slug}`
+**Directory**: `https://padeltrainer.ai/{lang}/gear/rackets`
+**Finder tool**: `https://padeltrainer.ai/{lang}/racket-finder`
+
+---
+
+## Languages
+
+All content is available in five languages with dedicated URL prefixes:
+
+| Language | Prefix | Example |
+|----------|--------|---------|
+| English | `/en/` | `https://padeltrainer.ai/en/blog` |
+| Dutch | `/nl/` | `https://padeltrainer.ai/nl/blog` |
+| Spanish | `/es/` | `https://padeltrainer.ai/es/blog` |
+| German | `/de/` | `https://padeltrainer.ai/de/blog` |
+| French | `/fr/` | `https://padeltrainer.ai/fr/blog` |
+
+Dutch (`/nl/`) is the default/primary language (x-default hreflang).
+
+---
+
+## Key Pages
+
+| Page | URL |
+|------|-----|
+| Homepage | `https://padeltrainer.ai/en/` |
+| Trainer Directory | `https://padeltrainer.ai/en/trainers` |
+| Location Directory | `https://padeltrainer.ai/en/locations` |
+| Blog | `https://padeltrainer.ai/en/blog` |
+| Learning Hub | `https://padeltrainer.ai/en/learn` |
+| Padel Rules | `https://padeltrainer.ai/en/padel-rules` |
+| Padel Strokes | `https://padeltrainer.ai/en/padel-strokes` |
+| Video Tips | `https://padeltrainer.ai/en/video-tips` |
+| Racket Finder | `https://padeltrainer.ai/en/racket-finder` |
+| Pricing | `https://padeltrainer.ai/en/pricing` |
+| About | `https://padeltrainer.ai/en/about` |
+| Partner | `https://padeltrainer.ai/en/partner` |
+
+---
+
+## Popular Cities (Netherlands)
+
+- Amsterdam: `https://padeltrainer.ai/en/trainers/amsterdam`
+- Rotterdam: `https://padeltrainer.ai/en/trainers/rotterdam`
+- Utrecht: `https://padeltrainer.ai/en/trainers/utrecht`
+- Den Haag: `https://padeltrainer.ai/en/trainers/den-haag`
+- Eindhoven: `https://padeltrainer.ai/en/trainers/eindhoven`
+- Amstelveen: `https://padeltrainer.ai/en/trainers/amstelveen`
+- Haarlem: `https://padeltrainer.ai/en/trainers/haarlem`
+
+---
+
+## Structured Data Implemented
+
+- **WebSite** — homepage with search action
+- **Organization** — PadelTrainer.ai brand entity
+- **Article** — blog posts with author, publisher, speakable
+- **CollectionPage** — hub/pillar blog pages with hasPart
+- **BreadcrumbList** — all pages
+- **FAQPage** — rules, city pages, racket finder
+- **LocalBusiness** — city landing pages
+- **VideoObject** — video tips
+- **Blog** — blog listing
+
+---
+
+## Technical Details
+
+- **Stack**: React, TypeScript, Tailwind CSS, Vite
+- **CMS**: Sanity (blog, learning content, strokes, rules, video tips, rackets)
+- **Backend**: Supabase (trainers, locations, academies, bookings, payments)
+- **Payments**: Mollie
+- **Sitemap**: `https://padeltrainer.ai/sitemap.xml` (sitemap index with paginated sub-sitemaps)
+- **Robots**: `https://padeltrainer.ai/robots.txt`
+
+---
+
+## Contact
+
+- Email: hello@padeltrainer.ai
+- Website: https://padeltrainer.ai
+
+## API Access
+
+No public API is currently available. All entity data is accessible through the public-facing website. For partnership or data inquiries, contact hello@padeltrainer.ai.

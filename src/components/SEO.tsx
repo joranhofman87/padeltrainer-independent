@@ -16,6 +16,12 @@ interface SEOProps {
   translations?: Translation[];
   /** URL path prefix for translated content, e.g. 'blog', 'padel-rules' */
   pathPrefix?: string;
+  /** ISO date string for article:published_time OG tag */
+  publishedTime?: string;
+  /** ISO date string for article:modified_time OG tag */
+  modifiedTime?: string;
+  /** Author name for article:author OG tag */
+  author?: string;
 }
 
 const OG_LOCALE_MAP: Record<string, string> = {
@@ -32,6 +38,9 @@ export function SEO({
   noIndex = false,
   translations,
   pathPrefix,
+  publishedTime,
+  modifiedTime,
+  author,
 }: SEOProps) {
   const { lang } = useParams<{ lang: string }>();
   const currentLang = lang && SUPPORTED_LANGUAGES.includes(lang) ? lang : DEFAULT_LANGUAGE;
@@ -111,6 +120,17 @@ export function SEO({
       {SUPPORTED_LANGUAGES.filter(l => l !== currentLang).map(l => (
         <meta key={l} property="og:locale:alternate" content={OG_LOCALE_MAP[l] || 'en_US'} />
       ))}
+      
+      {/* Article-specific OG tags */}
+      {type === 'article' && publishedTime && (
+        <meta property="article:published_time" content={publishedTime} />
+      )}
+      {type === 'article' && modifiedTime && (
+        <meta property="article:modified_time" content={modifiedTime} />
+      )}
+      {type === 'article' && author && (
+        <meta property="article:author" content={author} />
+      )}
       
       {/* Twitter Card */}
       <meta name="twitter:card" content="summary_large_image" />
