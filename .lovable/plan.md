@@ -1,90 +1,88 @@
 
 
-# QA Testing Audit — PadelTrainer.ai
+# Add Italian Language Support
 
-## Current State
+## Scope
 
-| Layer | Coverage | Detail |
-|---|---|---|
-| **Unit tests (Vitest)** | 16 of 53 lib files tested (~30%) | ~350 test cases across auth, validation, invoiceCalc, pricing, etc. |
-| **Component tests** | 6 of 262 components tested (~2%) | Only booking, cycles, invoice dialog, slider, Auth, TrainerSignup |
-| **E2E (Playwright)** | 12 spec files, weekly CI | Navigation, i18n, a11y, error handling, health checks. No auth-flow E2E. |
-| **Edge function tests** | 1 of 78 functions tested (~1%) | Only `generate-proposals` has a test |
-| **CI workflows** | Unit tests on every push/PR. E2E weekly (Sundays). | Solid gating on unit tests. |
-
-## Verdict: Yes, you should add more tests. Here's what matters most.
+Adding Italian (`it`) as the 6th supported language requires changes across ~15 files spanning frontend routing, i18n config, SEO infrastructure, and edge functions.
 
 ---
 
-## Priority 1: HIGH IMPACT — Add to CI on every push
+## Changes Required
 
-### A. Critical business logic unit tests (missing)
+### 1. i18n Translation Files (NEW)
 
-These lib files handle money, bookings, and subscriptions — bugs here directly cost revenue:
+Create `src/i18n/locales/it/` directory with all 11 namespace JSON files:
+- `common.json`, `marketing.json`, `notifications.json`, `auth.json`, `player.json`, `trainer.json`, `club.json`, `cycles.json`, `admin.json`, `academy.json`, `waitingList.json`
 
-- **`academyPayments.ts`** — academy payment calculations
-- **`academySubscription.ts` / `clubSubscription.ts` / `sharedSubscription.ts`** — subscription tier logic (partially tested)
-- **`invoiceSync.ts`** — invoice synchronization logic
-- **`cycles.ts`** — cycle scheduling (partially tested, expand edge cases)
-- **`locations.ts` / `cities.ts` / `provinces.ts`** — slug generation and lookups (SEO-critical)
+Each file will be a copy of the English version with all values translated to Italian. This is the bulk of the work.
 
-### B. Sitemap edge function test
+### 2. i18n Configuration — `src/i18n/index.ts`
 
-Your sitemap is your growth engine. One broken deploy could de-index thousands of pages. Add a test that:
-- Calls the sitemap function with `type=index` and validates XML structure
-- Calls `type=static` and checks for correct `/tools/padel-level-test` path
-- Calls `type=locations&page=1` and validates hreflang tags exist
+- Add `'it'` to `SUPPORTED_LANGS` array (line 13)
+- Add `it` lazy loader in `lazyLoaders` (line 74)
+- Add `it` to language detection regex (line 112)
 
-### C. Render-page edge function test
+### 3. Frontend Routing & Language Support
 
-This generates all your meta tags for bots. A regression here kills SEO silently. Test that:
-- Each route type returns correct `<title>`, `<meta name="description">`, canonical, and hreflang
-- Unknown routes return a sensible fallback
+| File | Change |
+|---|---|
+| `src/components/LanguageRouter.tsx` | Add `'it'` to `SUPPORTED_LANGUAGES` array + redirect regex |
+| `src/components/LanguageSwitcher.tsx` | Add `{ code: 'it', name: 'Italiano', flag: '🇮🇹' }` to languages list |
+| `src/components/SEO.tsx` | Add `it: 'it_IT'` to `OG_LOCALE_MAP` |
+| `src/hooks/useLocalizedPath.ts` | No change needed (reads from `SUPPORTED_LANGUAGES`) |
+
+### 4. date-fns Locale Imports (~9 files)
+
+Add `it` import from `date-fns/locale` and add to `dateFnsLocaleMap` / `localeMap` in:
+- `src/components/cycles/ProposalScheduleGrid.tsx`
+- `src/components/academy/AcademyCalendarOverview.tsx`
+- `src/components/academy/AcademyWeekOverview.tsx`
+- `src/components/academy/AcademyTrainerHours.tsx`
+- `src/components/academy/AcademyDayGrid.tsx`
+- `src/components/academy/AcademyReportsTab.tsx`
+- `src/pages/TrainerScheduleOverview.tsx`
+- `src/components/trainer/CalendarSlotCard.tsx`
+- Files currently only importing `nl, enUS` (LocationDetail, OpenSlots, etc.) — add `it`
+
+### 5. Edge Functions — SEO Infrastructure
+
+| File | Change |
+|---|---|
+| `supabase/functions/sitemap/index.ts` | Add `'it'` to `LANGUAGES` array (line 10). All hreflang generation is automatic. |
+| `supabase/functions/render-page/index.ts` | Add `'it'` to `SUPPORTED_LANGS` (line 17), `OG_LOCALE_MAP` (line 19), language regex (lines 32, 34). Add Italian meta text variants in `renderPath`. |
+| `supabase/functions/render-page/index.test.ts` | Add `'it'` to the language loop test |
+| `supabase/functions/sitemap/index.test.ts` | Add hreflang `"it"` assertion |
+| `supabase/functions/llms-full-txt/index.ts` | No structural change needed (URLs are language-agnostic) |
+
+### 6. Static SEO Files
+
+| File | Change |
+|---|---|
+| `public/robots.txt` | No change needed (language-agnostic) |
+| `public/llms.txt` | Update "Available in: EN, NL, ES, DE, FR" → add IT |
+| `docs/cloudflare-worker.js` | No change needed (proxies all paths, language-agnostic) |
+
+### 7. Tests
+
+| File | Change |
+|---|---|
+| `e2e/i18n.spec.ts` | Add Italian route tests (`/it/`, `/it/trainers`, etc.) |
 
 ---
 
-## Priority 2: MODERATE — Add within next sprint
+## Implementation Order
 
-### D. Component tests for revenue-critical flows
-
-Currently untested components that handle real user interactions:
-
-- **Payment/checkout components** — Mollie/Stripe integration UI
-- **Cycle registration form** — the full intake flow
-- **Academy/Club dashboard** — management actions
-- **Trainer availability editor** — slot CRUD
-
-### E. Expand E2E to cover auth flows
-
-Currently your Playwright suite skips all authenticated specs. Add at least:
-- Login → redirect to correct dashboard per role
-- Booking flow (as player)
-- Trainer creating an availability slot
+1. Create all 11 Italian locale JSON files (translated from English)
+2. Update `src/i18n/index.ts` + `LanguageRouter.tsx` + `LanguageSwitcher.tsx` + `SEO.tsx`
+3. Add `it` to all `dateFnsLocaleMap` instances
+4. Update edge functions (sitemap, render-page) + their tests
+5. Update `public/llms.txt`
+6. Add E2E tests for Italian routes
 
 ---
 
-## Priority 3: LOW — Nice to have
+## Note on Translation Quality
 
-### F. Visual regression testing
-
-For a content-heavy multilingual site, consider adding Playwright screenshot comparisons for key landing pages to catch layout breaks across languages.
-
-### G. Edge function smoke tests in CI
-
-You have `rls-health.spec.ts` and `invoice-health.spec.ts` in Playwright, but the 78 edge functions have almost no test coverage. The most critical ones to test:
-- `auto-invoice-cycles` — automated billing
-- `create-mollie-payment` / `create-stripe-checkout` — payment initiation
-- `generate-invoice` — PDF generation
-
----
-
-## Recommended Plan — 3 Changes
-
-| # | What | Files | Runs on |
-|---|---|---|---|
-| 1 | Add unit tests for `locations.ts`, `cities.ts`, `invoiceSync.ts` | New `*.test.ts` files in `src/lib/` | Every push (existing `test.yml`) |
-| 2 | Add sitemap + render-page edge function tests | New test files in `supabase/functions/` | Manual or weekly CI |
-| 3 | Expand E2E with one authenticated booking flow | New `e2e/booking-auth.spec.ts` | Weekly CI |
-
-This gives you the highest ROI: protecting SEO infrastructure and revenue flows without massive test-writing overhead. The existing CI already runs unit tests on every push, so adding tests to `src/lib/` is zero-config.
+The 11 JSON files contain hundreds of translation keys. I'll generate Italian translations programmatically. You may want to have a native speaker review them afterward, especially the marketing namespace which is customer-facing.
 
