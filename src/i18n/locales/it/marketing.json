@@ -2,1170 +2,1170 @@
   "nav": {
     "home": "Home",
     "pricing": "Prezzi",
-    "about": "Info",
+    "about": "Chi siamo",
     "blog": "Blog",
     "signIn": "Accedi",
     "getStarted": "Inizia",
-    "language": "Language"
+    "language": "Lingua"
   },
   "footer": {
-    "tagline": "Everything you need to improve your padel game.",
-    "platform": "Platform",
-    "findTrainers": "Find Padel Trainers",
-    "locations": "Padel Clubs",
-    "academies": "Padel Academies",
-    "learnPadel": "Learn Padel",
-    "popularCities": "Popular Cities",
-    "registerClub": "Register your club",
-    "company": "Company",
-    "aboutUs": "About Us",
-    "becomePartner": "Become a Partner",
+    "tagline": "Tutto ciò che ti serve per migliorare nel padel.",
+    "platform": "Piattaforma",
+    "findTrainers": "Trova allenatori di padel",
+    "locations": "Club di padel",
+    "academies": "Accademie di padel",
+    "learnPadel": "Impara il padel",
+    "popularCities": "Città popolari",
+    "registerClub": "Registra il tuo club",
+    "company": "Azienda",
+    "aboutUs": "Chi siamo",
+    "becomePartner": "Diventa partner",
     "contact": "Contatti",
-    "legal": "Legal",
-    "privacyPolicy": "Privacy Policy",
-    "termsOfService": "Terms of Service",
-    "copyright": "© {{year}} PadelTrainer.ai. All rights reserved."
+    "legal": "Note legali",
+    "privacyPolicy": "Informativa sulla privacy",
+    "termsOfService": "Termini di servizio",
+    "copyright": "© {{year}} PadelTrainer.ai. Tutti i diritti riservati."
   },
   "home": {
-    "badge": "From beginner to pro",
+    "badge": "Da principiante a professionista",
     "hero": {
-      "title": "Find Your Perfect",
-      "titleHighlight": "Padel Trainer",
-      "subtitle": "Connect with certified trainers, book lessons that match your skill level, and start improving your game today.",
-      "cta": "Start as Player",
-      "ctaSecondary": "Join as Trainer"
+      "title": "Trova il tuo",
+      "titleHighlight": "Allenatore di Padel",
+      "subtitle": "Connettiti con allenatori certificati, prenota lezioni adatte al tuo livello e inizia a migliorare il tuo gioco oggi stesso.",
+      "cta": "Inizia come giocatore",
+      "ctaSecondary": "Iscriviti come allenatore"
     },
     "trust": {
-      "freeToJoin": "Free to join",
-      "knltbVerified": "KNLTB verified",
-      "securePayments": "Secure payments"
+      "freeToJoin": "Iscrizione gratuita",
+      "knltbVerified": "Verificato KNLTB",
+      "securePayments": "Pagamenti sicuri"
     },
     "stats": {
-      "trainers": "Certified Trainers",
-      "lessons": "Sessions Booked",
-      "rating": "Average Rating",
-      "cities": "Cities Covered"
+      "trainers": "Allenatori certificati",
+      "lessons": "Sessioni prenotate",
+      "rating": "Valutazione media",
+      "cities": "Città coperte"
     },
     "features": {
-      "title": "Everything you need to improve your game",
-      "subtitle": "From finding the right trainer to booking and paying, we make the entire process seamless.",
+      "title": "Tutto ciò che ti serve per migliorare il tuo gioco",
+      "subtitle": "Dalla ricerca dell'allenatore giusto alla prenotazione e al pagamento, rendiamo l'intero processo semplice e veloce.",
       "verified": {
-        "title": "Verified Trainers",
-        "description": "Every trainer is verified with their KNLTB credentials and real reviews from players."
+        "title": "Allenatori verificati",
+        "description": "Ogni allenatore è verificato con le proprie credenziali KNLTB e recensioni reali dei giocatori."
       },
       "booking": {
-        "title": "Easy Booking",
-        "description": "Book lessons with just a few clicks. Flexible scheduling that fits your life."
+        "title": "Prenotazione facile",
+        "description": "Prenota lezioni con pochi clic. Orari flessibili che si adattano alla tua vita."
       },
       "matching": {
-        "title": "Skill Matching",
-        "description": "Find trainers that specialize in your skill level, from beginner to advanced."
+        "title": "Abbinamento per livello",
+        "description": "Trova allenatori specializzati nel tuo livello di gioco, dal principiante all'avanzato."
       },
       "local": {
-        "title": "Local Trainers",
-        "description": "Connect with trainers near you across all major cities worldwide."
+        "title": "Allenatori vicino a te",
+        "description": "Connettiti con allenatori nella tua zona nelle principali città di tutto il mondo."
       },
       "payments": {
-        "title": "Secure Payments",
-        "description": "Pay securely through our platform with iDEAL and card support."
+        "title": "Pagamenti sicuri",
+        "description": "Paga in sicurezza attraverso la nostra piattaforma con supporto iDEAL e carta."
       },
       "progress": {
-        "title": "Track Progress",
-        "description": "Monitor your improvement and get insights on your padel journey."
+        "title": "Monitora i progressi",
+        "description": "Monitora i tuoi miglioramenti e ottieni informazioni sul tuo percorso nel padel."
       }
     },
     "howItWorks": {
-      "title": "How it works",
-      "subtitle": "Get started in 3 simple steps",
+      "title": "Come funziona",
+      "subtitle": "Inizia in 3 semplici passaggi",
       "step1": {
-        "title": "Create your profile",
-        "description": "Sign up and add your KNLTB rating to get personalized trainer recommendations."
+        "title": "Crea il tuo profilo",
+        "description": "Registrati e aggiungi la tua classificazione KNLTB per ricevere raccomandazioni personalizzate di allenatori."
       },
       "step2": {
-        "title": "Find your trainer",
-        "description": "Browse verified trainers, read reviews, and find the perfect match for your goals."
+        "title": "Trova il tuo allenatore",
+        "description": "Sfoglia allenatori verificati, leggi le recensioni e trova il match perfetto per i tuoi obiettivi."
       },
       "step3": {
-        "title": "Book & play",
-        "description": "Select a time slot, pay securely, and start improving your padel game."
+        "title": "Prenota e gioca",
+        "description": "Scegli un orario, paga in sicurezza e inizia a migliorare il tuo gioco."
       }
     },
     "testimonials": {
-      "title": "Loved by players & trainers",
-      "subtitle": "See what our community has to say",
+      "title": "Amato da giocatori e allenatori",
+      "subtitle": "Scopri cosa dice la nostra community",
       "items": {
         "1": {
           "name": "Thomas de Vries",
-          "role": "Player since 2023",
-          "content": "Found an amazing trainer within minutes. My game has improved significantly in just 2 months!"
+          "role": "Giocatore dal 2023",
+          "content": "Ho trovato un allenatore fantastico in pochi minuti. Il mio gioco è migliorato enormemente in soli 2 mesi!"
         },
         "2": {
           "name": "Lisa van den Berg",
-          "role": "KNLTB Level 6",
-          "content": "The skill matching is spot-on. My trainer knows exactly how to push me to the next level."
+          "role": "KNLTB Livello 6",
+          "content": "L'abbinamento per livello è preciso. Il mio allenatore sa esattamente come portarmi al livello successivo."
         },
         "3": {
           "name": "Mark Jansen",
-          "role": "Padel Trainer",
-          "content": "As a trainer, PadelTrainer.ai has helped me fill my schedule and connect with motivated players."
+          "role": "Allenatore di padel",
+          "content": "Come allenatore, PadelTrainer.ai mi ha aiutato a riempire il mio calendario e a connettermi con giocatori motivati."
         }
       }
     },
     "cta": {
-      "title": "Ready to level up your padel game?",
-      "subtitle": "Join thousands of players who are already improving with PadelTrainer.ai",
-      "button": "Get Started Free",
-      "browseTrainers": "Browse Trainers"
+      "title": "Pronto a portare il tuo gioco al livello successivo?",
+      "subtitle": "Unisciti a migliaia di giocatori che stanno già migliorando con PadelTrainer.ai",
+      "button": "Inizia gratis",
+      "browseTrainers": "Sfoglia allenatori"
     }
   },
   "pricing": {
     "hero": {
-      "title": "Simple, transparent pricing",
-      "subtitle": "Free for players. Flexible plans for trainers to grow their business."
+      "title": "Prezzi semplici e trasparenti",
+      "subtitle": "Gratuito per i giocatori. Piani flessibili per gli allenatori che vogliono far crescere la propria attività."
     },
     "players": {
-      "badge": "For Players",
-      "title": "Always Free",
-      "description": "No subscription fees. Just pay for the lessons you book.",
-      "cta": "Get Started Free",
+      "badge": "Per i giocatori",
+      "title": "Sempre gratuito",
+      "description": "Nessun abbonamento. Paghi solo le lezioni che prenoti.",
+      "cta": "Inizia gratis",
       "features": {
-        "browse": "Browse all verified trainers",
-        "reviews": "Read reviews and ratings",
-        "book": "Book lessons online",
-        "payments": "Secure iDEAL & card payments",
-        "calendar": "Google Calendar sync",
-        "notifications": "Email notifications",
-        "tracking": "Track your bookings"
+        "browse": "Sfoglia tutti gli allenatori verificati",
+        "reviews": "Leggi recensioni e valutazioni",
+        "book": "Prenota lezioni online",
+        "payments": "Pagamenti sicuri con iDEAL e carta",
+        "calendar": "Sincronizzazione con Google Calendar",
+        "notifications": "Notifiche via email",
+        "tracking": "Monitora le tue prenotazioni"
       }
     },
     "trainers": {
-      "badge": "For Trainers",
-      "title": "Choose your plan",
-      "subtitle": "Start free and upgrade as your business grows. Lower platform fees with higher tiers.",
-      "platformFee": "per booking",
-      "feeTooltip": "A flat fee is deducted from each lesson payment. Higher tiers pay less.",
-      "mostPopular": "Most Popular",
-      "monthly": "Monthly",
-      "yearly": "Yearly",
-      "month": "month",
-      "year": "year",
-      "save20": "Save 30%",
-      "saveAmount": "Save €{{amount}}/year",
+      "badge": "Per gli allenatori",
+      "title": "Scegli il tuo piano",
+      "subtitle": "Inizia gratis e passa a un piano superiore man mano che la tua attività cresce. Commissioni inferiori con i piani più avanzati.",
+      "platformFee": "per prenotazione",
+      "feeTooltip": "Una commissione fissa viene detratta da ogni pagamento di lezione. I piani superiori pagano meno.",
+      "mostPopular": "Più popolare",
+      "monthly": "Mensile",
+      "yearly": "Annuale",
+      "month": "mese",
+      "year": "anno",
+      "save20": "Risparmia il 30%",
+      "saveAmount": "Risparmia €{{amount}}/anno",
       "plans": {
         "starter": {
           "name": "Starter",
           "price": "€9",
-          "description": "Everything you need to streamline your admin.",
-          "cta": "Start Free",
+          "description": "Tutto ciò che ti serve per semplificare la tua amministrazione.",
+          "cta": "Inizia gratis",
           "featureList": [
             {
-              "title": "Trainer profile",
-              "description": "Showcase yourself to players"
+              "title": "Profilo allenatore",
+              "description": "Presentati ai giocatori"
             },
             {
-              "title": "Add to marketplace",
-              "description": "Be found & receive new bookings"
+              "title": "Aggiungi al marketplace",
+              "description": "Fatti trovare e ricevi nuove prenotazioni"
             },
             {
-              "title": "Unlimited players",
-              "description": "No limitation on the number of players"
+              "title": "Giocatori illimitati",
+              "description": "Nessun limite al numero di giocatori"
             },
             {
-              "title": "Unlimited trainings",
-              "description": "No limitations on the number of sessions"
+              "title": "Allenamenti illimitati",
+              "description": "Nessun limite al numero di sessioni"
             },
             {
-              "title": "Waiting list",
-              "description": "Allow players to sign up to your waiting list"
+              "title": "Lista d'attesa",
+              "description": "Permetti ai giocatori di iscriversi alla tua lista d'attesa"
             },
             {
-              "title": "Open registration",
-              "description": "Open up a registration & have our system plan things for you"
+              "title": "Registrazione aperta",
+              "description": "Apri una registrazione e lascia che il nostro sistema pianifichi per te"
             },
             {
-              "title": "€1.00 per booking fee",
-              "description": "Charge players right when they book a session, no need to chase money anymore"
+              "title": "€1,00 di commissione per prenotazione",
+              "description": "Addebita ai giocatori al momento della prenotazione, senza dover più rincorrere i pagamenti"
             }
           ]
         },
         "professional": {
           "name": "Professional",
           "price": "€29",
-          "period": "/month",
-          "yearlyPrice": "€243.60/year (save 30%)",
-          "description": "For serious trainers",
-          "cta": "Get Professional",
+          "period": "/mese",
+          "yearlyPrice": "€243,60/anno (risparmia il 30%)",
+          "description": "Per allenatori professionisti",
+          "cta": "Passa a Professional",
           "featureList": [
             {
-              "title": "Everything from Starter",
-              "description": "All the features you need to streamline your admin processes"
+              "title": "Tutto dallo Starter",
+              "description": "Tutte le funzionalità per semplificare la tua amministrazione"
             },
             {
-              "title": "Manual invoicing",
-              "description": "Send invoices yourself, we can auto generate these for you"
+              "title": "Fatturazione manuale",
+              "description": "Invia fatture manualmente, possiamo generarle automaticamente per te"
             },
             {
-              "title": "€0.75 per booking fee",
-              "description": "Reduced fee for charging players when they book a session with you"
+              "title": "€0,75 di commissione per prenotazione",
+              "description": "Commissione ridotta per l'addebito ai giocatori al momento della prenotazione"
             }
           ]
         },
         "academy": {
           "name": "Accademia",
           "price": "€99",
-          "period": "/month",
-          "yearlyPrice": "€831.60/year (save 30%)",
-          "description": "For training academies",
-          "cta": "Contact Sales",
+          "period": "/mese",
+          "yearlyPrice": "€831,60/anno (risparmia il 30%)",
+          "description": "Per accademie di padel",
+          "cta": "Contatta le vendite",
           "featureList": [
             {
-              "title": "Add up to 15 trainers",
-              "description": "Manage & add your team to streamline the bookings"
+              "title": "Aggiungi fino a 15 allenatori",
+              "description": "Gestisci e aggiungi il tuo team per semplificare le prenotazioni"
             },
             {
-              "title": "Add players to the marketplace",
-              "description": "Add your branding to their profile & increase bookings for your team"
+              "title": "Aggiungi giocatori al marketplace",
+              "description": "Aggiungi il tuo brand al loro profilo e aumenta le prenotazioni per il tuo team"
             },
             {
-              "title": "Add academy to the marketplace",
-              "description": "Be marked as featured in the marketplace to receive more bookings"
+              "title": "Aggiungi accademia al marketplace",
+              "description": "Appari in evidenza nel marketplace per ricevere più prenotazioni"
             },
             {
-              "title": "€0.50 per booking fee",
-              "description": "Streamline your book keeping. Charge clients upfront and sync invoices to your book keeping software. Lowest fee per booking"
+              "title": "€0,50 di commissione per prenotazione",
+              "description": "Semplifica la contabilità. Addebita ai clienti in anticipo e sincronizza le fatture con il tuo software di contabilità. Commissione per prenotazione più bassa"
             }
           ]
         }
       }
     },
     "clubs": {
-      "badge": "For Clubs",
-      "title": "Club Plan",
-      "subtitle": "Complete platform for managing your club's training operations",
+      "badge": "Per i club",
+      "title": "Piano Club",
+      "subtitle": "Piattaforma completa per gestire le attività di allenamento del tuo club",
       "price": "€199",
-      "period": "/month",
-      "billedAnnually": "Billed annually at €2,388/year",
-      "trialBadge": "14-day free trial",
-      "cta": "Start Free Trial",
+      "period": "/mese",
+      "billedAnnually": "Fatturato annualmente a €2.388/anno",
+      "trialBadge": "Prova gratuita di 14 giorni",
+      "cta": "Inizia la prova gratuita",
       "features": {
-        "trainers": "Unlimited trainers",
-        "calendar": "Unified trainer calendar",
-        "players": "Player management",
-        "bookings": "Centralized booking system",
-        "analytics": "Club analytics dashboard",
-        "profile": "Custom club profile page",
-        "support": "Priority support",
-        "branding": "Club branding"
+        "trainers": "Allenatori illimitati",
+        "calendar": "Calendario unificato degli allenatori",
+        "players": "Gestione giocatori",
+        "bookings": "Sistema di prenotazione centralizzato",
+        "analytics": "Dashboard di analisi del club",
+        "profile": "Pagina profilo personalizzata del club",
+        "support": "Supporto prioritario",
+        "branding": "Branding del club"
       }
     },
     "faq": {
-      "title": "Frequently asked questions",
+      "title": "Domande frequenti",
       "questions": {
         "platformFee": {
-          "q": "How does the platform fee work?",
-          "a": "A flat fee is deducted from each lesson payment based on your subscription tier. Starter pays €1.00 per booking, Professional pays €0.75, and Academy pays €0.50."
+          "q": "Come funziona la commissione della piattaforma?",
+          "a": "Una commissione fissa viene detratta da ogni pagamento di lezione in base al tuo piano di abbonamento. Lo Starter paga €1,00 per prenotazione, il Professional €0,75 e l'Accademia €0,50."
         },
         "changePlans": {
-          "q": "Can I change plans later?",
-          "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
+          "q": "Posso cambiare piano in seguito?",
+          "a": "Sì! Puoi passare a un piano superiore o inferiore in qualsiasi momento. Con l'upgrade, accedi subito alle nuove funzionalità. Con il downgrade, le modifiche hanno effetto alla fine del ciclo di fatturazione."
         },
         "contract": {
-          "q": "Is there a contract or commitment?",
-          "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
+          "q": "C'è un contratto o un vincolo?",
+          "a": "Nessun contratto a lungo termine. Tutti i piani sono fatturati mensilmente o annualmente, e puoi disdire in qualsiasi momento. I piani annuali offrono un risparmio del 20%."
         },
         "payouts": {
-          "q": "How do payouts work?",
-          "a": "Payments are processed through Mollie, our trusted payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
+          "q": "Come funzionano i pagamenti?",
+          "a": "I pagamenti vengono elaborati tramite Mollie, il nostro partner di pagamento affidabile. Dopo il completamento di una lezione, i fondi vengono trasferiti sul tuo conto bancario collegato, generalmente entro 2-3 giorni lavorativi."
         },
         "clubTrial": {
-          "q": "How does the club free trial work?",
-          "a": "Clubs get a 14-day free trial with full access to all features. No credit card required to start. After the trial, you'll be billed annually at €2,388/year."
+          "q": "Come funziona la prova gratuita per i club?",
+          "a": "I club hanno una prova gratuita di 14 giorni con accesso completo a tutte le funzionalità. Non è richiesta la carta di credito per iniziare. Al termine della prova, la fatturazione sarà annuale a €2.388/anno."
         }
       }
     }
   },
   "about": {
     "hero": {
-      "title": "Making padel training",
-      "titleHighlight": "accessible to everyone",
-      "subtitle": "We're on a mission to connect every padel player in the Netherlands with the perfect trainer to help them improve their game."
+      "title": "Rendere l'allenamento di padel",
+      "titleHighlight": "accessibile a tutti",
+      "subtitle": "La nostra missione è connettere ogni giocatore di padel con l'allenatore perfetto per aiutarlo a migliorare il proprio gioco."
     },
     "story": {
-      "title": "Our Story",
-      "p1": "PadelTrainer.ai was born from a simple frustration: finding a good padel trainer shouldn't be this hard. As padel exploded in popularity across the Netherlands, we saw players struggling to find quality training, while talented trainers had no easy way to reach new students.",
-      "p2": "We set out to build the platform we wished existed. One where players could easily find verified trainers matched to their skill level, and where trainers could grow their business without the hassle of managing bookings, payments, and scheduling.",
-      "p3": "Today, PadelTrainer.ai connects hundreds of trainers with thousands of players across the Netherlands. We're proud to be part of the growing padel community and excited about where we're heading next."
+      "title": "La nostra storia",
+      "p1": "PadelTrainer.ai è nato da una semplice frustrazione: trovare un buon allenatore di padel non dovrebbe essere così difficile. Con l'esplosione della popolarità del padel, abbiamo visto giocatori fare fatica a trovare allenamenti di qualità, mentre allenatori di talento non avevano un modo facile per raggiungere nuovi allievi.",
+      "p2": "Ci siamo proposti di costruire la piattaforma che avremmo voluto esistesse. Una dove i giocatori possano facilmente trovare allenatori verificati abbinati al loro livello di gioco, e dove gli allenatori possano far crescere la propria attività senza il fastidio di gestire prenotazioni, pagamenti e programmazione.",
+      "p3": "Oggi, PadelTrainer.ai connette centinaia di allenatori con migliaia di giocatori. Siamo orgogliosi di far parte della comunità padel in crescita e entusiasti di dove stiamo andando."
     },
     "values": {
-      "title": "Our Values",
-      "subtitle": "The principles that guide everything we do",
+      "title": "I nostri valori",
+      "subtitle": "I principi che guidano tutto ciò che facciamo",
       "quality": {
-        "title": "Quality First",
-        "description": "We verify every trainer to ensure players get the best possible experience."
+        "title": "Qualità prima di tutto",
+        "description": "Verifichiamo ogni allenatore per garantire ai giocatori la migliore esperienza possibile."
       },
       "playerFocused": {
-        "title": "Player Focused",
-        "description": "Every feature we build starts with the question: how does this help players improve?"
+        "title": "Focus sul giocatore",
+        "description": "Ogni funzionalità che costruiamo parte dalla domanda: come aiuta i giocatori a migliorare?"
       },
       "community": {
-        "title": "Community Driven",
-        "description": "We believe in the power of the padel community to help each other grow."
+        "title": "Guidati dalla community",
+        "description": "Crediamo nel potere della community del padel di aiutarsi a vicenda a crescere."
       },
       "simplicity": {
-        "title": "Simplicity",
-        "description": "Booking a lesson should be as easy as sending a text message."
+        "title": "Semplicità",
+        "description": "Prenotare una lezione dovrebbe essere facile come inviare un messaggio."
       }
     },
     "stats": {
-      "founded": "Founded",
-      "trainers": "Trainer",
-      "cities": "Cities"
+      "founded": "Fondata",
+      "trainers": "Allenatori",
+      "cities": "Città"
     },
     "cta": {
-      "title": "Join our community",
-      "subtitle": "Whether you're a player looking to improve or a trainer looking to grow, we'd love to have you.",
+      "title": "Unisciti alla nostra community",
+      "subtitle": "Che tu sia un giocatore che vuole migliorare o un allenatore che vuole crescere, saremo felici di averti con noi.",
       "getStarted": "Inizia",
-      "contact": "Contact Us"
+      "contact": "Contattaci"
     }
   },
   "blog": {
     "title": "Blog",
-    "subtitle": "Tips, tactics, and insights for padel players at every level",
-    "recentArticles": "Recent Articles",
+    "subtitle": "Consigli, tattiche e approfondimenti per giocatori di padel di ogni livello",
+    "recentArticles": "Articoli recenti",
     "categories": {
-      "tips": "Tips & Advice",
-      "industry": "Industry",
-      "training": "Training",
-      "spotlight": "Spotlight",
-      "guides": "Guides"
+      "tips": "Consigli e suggerimenti",
+      "industry": "Settore",
+      "training": "Allenamento",
+      "spotlight": "In evidenza",
+      "guides": "Guide"
     },
     "newsletter": {
-      "title": "Stay in the loop",
-      "subtitle": "Get the latest padel tips and platform updates delivered to your inbox.",
-      "placeholder": "Enter your email",
-      "subscribe": "Subscribe"
+      "title": "Resta aggiornato",
+      "subtitle": "Ricevi i migliori consigli sul padel e gli aggiornamenti della piattaforma direttamente nella tua casella email.",
+      "placeholder": "Inserisci la tua email",
+      "subscribe": "Iscriviti"
     },
     "notFound": {
-      "title": "Article not found",
-      "description": "The article you're looking for doesn't exist or has been moved.",
-      "backToBlog": "Back to Blog"
+      "title": "Articolo non trovato",
+      "description": "L'articolo che stai cercando non esiste o è stato spostato.",
+      "backToBlog": "Torna al blog"
     },
-    "share": "Share",
-    "backToBlog": "Back to Blog",
-    "readyToFind": "Ready to find your perfect trainer?",
-    "browseTrainers": "Browse verified trainers matched to your skill level.",
-    "findTrainers": "Find Trainers"
+    "share": "Condividi",
+    "backToBlog": "Torna al blog",
+    "readyToFind": "Pronto a trovare l'allenatore perfetto?",
+    "browseTrainers": "Sfoglia allenatori verificati abbinati al tuo livello.",
+    "findTrainers": "Trova allenatori"
   },
   "privacy": {
-    "title": "Privacy Policy",
-    "lastUpdated": "Last updated: {{date}}",
+    "title": "Informativa sulla privacy",
+    "lastUpdated": "Ultimo aggiornamento: {{date}}",
     "sections": {
       "introduction": {
-        "title": "1. Introduction",
-        "content": "Welcome to PadelTrainer.ai (\"we,\" \"our,\" or \"us\"). We are committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform."
+        "title": "1. Introduzione",
+        "content": "Benvenuto su PadelTrainer.ai (\"noi\" o \"nostro\"). Ci impegniamo a proteggere le tue informazioni personali e il tuo diritto alla privacy. Questa Informativa sulla privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra piattaforma."
       },
       "dataCollection": {
-        "title": "2. Information We Collect",
-        "intro": "We collect information that you provide directly to us, including:",
+        "title": "2. Informazioni che raccogliamo",
+        "intro": "Raccogliamo le informazioni che ci fornisci direttamente, tra cui:",
         "items": {
-          "account": "Account Information: Name, email address, phone number, and profile photo when you create an account.",
-          "profile": "Profile Data: For trainers, this includes certifications, experience, specializations, KNLTB ratings, and availability schedules.",
-          "booking": "Booking Information: Lesson details, booking history, and communication between players and trainers.",
-          "payment": "Payment Information: We use Mollie for payment processing. We do not store your full credit card details on our servers.",
-          "communications": "Communications: When you contact us or respond to surveys, we collect the information you provide."
+          "account": "Informazioni sull'account: nome, indirizzo email, numero di telefono e foto del profilo quando crei un account.",
+          "profile": "Dati del profilo: per gli allenatori, questo include certificazioni, esperienza, specializzazioni, classifiche KNLTB e disponibilità.",
+          "booking": "Informazioni sulle prenotazioni: dettagli delle lezioni, storico delle prenotazioni e comunicazioni tra giocatori e allenatori.",
+          "payment": "Informazioni di pagamento: utilizziamo Mollie per l'elaborazione dei pagamenti. Non memorizziamo i dati completi della tua carta di credito sui nostri server.",
+          "communications": "Comunicazioni: quando ci contatti o rispondi a sondaggi, raccogliamo le informazioni che fornisci."
         }
       },
       "usage": {
-        "title": "3. How We Use Your Information",
-        "intro": "We use the collected information for:",
+        "title": "3. Come utilizziamo le tue informazioni",
+        "intro": "Utilizziamo le informazioni raccolte per:",
         "items": {
-          "provide": "Providing, maintaining, and improving our platform",
-          "process": "Processing bookings and payments",
-          "send": "Sending booking confirmations, reminders, and updates",
-          "facilitate": "Facilitating communication between players and trainers",
-          "support": "Providing customer support",
-          "promo": "Sending promotional communications (with your consent)",
-          "analyze": "Analyzing usage patterns to improve user experience",
-          "prevent": "Preventing fraud and ensuring platform security"
+          "provide": "Fornire, mantenere e migliorare la nostra piattaforma",
+          "process": "Elaborare prenotazioni e pagamenti",
+          "send": "Inviare conferme di prenotazione, promemoria e aggiornamenti",
+          "facilitate": "Facilitare la comunicazione tra giocatori e allenatori",
+          "support": "Fornire assistenza clienti",
+          "promo": "Inviare comunicazioni promozionali (con il tuo consenso)",
+          "analyze": "Analizzare i modelli di utilizzo per migliorare l'esperienza utente",
+          "prevent": "Prevenire frodi e garantire la sicurezza della piattaforma"
         }
       },
       "sharing": {
-        "title": "4. Information Sharing",
-        "intro": "We may share your information in the following situations:",
+        "title": "4. Condivisione delle informazioni",
+        "intro": "Potremmo condividere le tue informazioni nelle seguenti situazioni:",
         "items": {
-          "users": "With Trainers/Players: To facilitate bookings, we share relevant contact and booking information between parties.",
-          "providers": "Service Providers: We use third-party services for payment processing (Mollie), email delivery (Resend), and hosting infrastructure.",
-          "legal": "Legal Requirements: We may disclose information if required by law or to protect our rights, privacy, safety, or property.",
-          "business": "Business Transfers: In connection with a merger, acquisition, or sale of assets."
+          "users": "Con allenatori/giocatori: per facilitare le prenotazioni, condividiamo le informazioni di contatto e prenotazione pertinenti tra le parti.",
+          "providers": "Fornitori di servizi: utilizziamo servizi di terze parti per l'elaborazione dei pagamenti (Mollie), l'invio di email (Resend) e l'infrastruttura di hosting.",
+          "legal": "Obblighi legali: potremmo divulgare informazioni se richiesto dalla legge o per proteggere i nostri diritti, la nostra privacy, sicurezza o proprietà.",
+          "business": "Trasferimenti aziendali: in relazione a una fusione, acquisizione o vendita di beni."
         }
       },
       "cookies": {
-        "title": "5. Cookies and Tracking",
-        "intro": "We use cookies and similar tracking technologies to:",
+        "title": "5. Cookie e tracciamento",
+        "intro": "Utilizziamo cookie e tecnologie di tracciamento simili per:",
         "items": {
-          "login": "Keep you logged in to your account",
-          "preferences": "Remember your preferences",
-          "analyze": "Analyze how you use our platform",
-          "improve": "Improve our services"
+          "login": "Mantenerti connesso al tuo account",
+          "preferences": "Ricordare le tue preferenze",
+          "analyze": "Analizzare come utilizzi la nostra piattaforma",
+          "improve": "Migliorare i nostri servizi"
         },
-        "control": "You can control cookies through your browser settings, but disabling them may affect platform functionality."
+        "control": "Puoi controllare i cookie tramite le impostazioni del tuo browser, ma disabilitarli potrebbe influire sulla funzionalità della piattaforma."
       },
       "security": {
-        "title": "6. Data Security",
-        "content": "We implement appropriate technical and organizational security measures to protect your personal information. However, no method of transmission over the Internet or electronic storage is 100% secure. We strive to use commercially acceptable means to protect your data but cannot guarantee absolute security."
+        "title": "6. Sicurezza dei dati",
+        "content": "Implementiamo misure di sicurezza tecniche e organizzative appropriate per proteggere le tue informazioni personali. Tuttavia, nessun metodo di trasmissione su Internet o archiviazione elettronica è sicuro al 100%. Ci impegniamo a utilizzare mezzi commercialmente accettabili per proteggere i tuoi dati, ma non possiamo garantire una sicurezza assoluta."
       },
       "gdpr": {
-        "title": "7. Your Rights (GDPR)",
-        "intro": "Under the General Data Protection Regulation (GDPR), you have the following rights:",
+        "title": "7. I tuoi diritti (GDPR)",
+        "intro": "In base al Regolamento generale sulla protezione dei dati (GDPR), hai i seguenti diritti:",
         "items": {
-          "access": "Access: Request a copy of your personal data",
-          "rectification": "Rectification: Request correction of inaccurate data",
-          "erasure": "Erasure: Request deletion of your data (\"right to be forgotten\")",
-          "restriction": "Restriction: Request limitation of data processing",
-          "portability": "Portability: Request transfer of your data to another service",
-          "objection": "Objection: Object to processing of your data",
-          "withdraw": "Withdraw Consent: Withdraw previously given consent"
+          "access": "Accesso: richiedere una copia dei tuoi dati personali",
+          "rectification": "Rettifica: richiedere la correzione di dati inesatti",
+          "erasure": "Cancellazione: richiedere l'eliminazione dei tuoi dati (\"diritto all'oblio\")",
+          "restriction": "Limitazione: richiedere la limitazione del trattamento dei dati",
+          "portability": "Portabilità: richiedere il trasferimento dei tuoi dati a un altro servizio",
+          "objection": "Opposizione: opporti al trattamento dei tuoi dati",
+          "withdraw": "Revoca del consenso: revocare il consenso precedentemente dato"
         },
-        "contact": "To exercise these rights, please contact us at privacy@padeltrainer.ai."
+        "contact": "Per esercitare questi diritti, contattaci a privacy@padeltrainer.ai."
       },
       "retention": {
-        "title": "8. Data Retention",
-        "content": "We retain your personal information for as long as your account is active or as needed to provide you services. We may retain certain information for legitimate business purposes or as required by law, such as for tax, legal reporting, and auditing obligations."
+        "title": "8. Conservazione dei dati",
+        "content": "Conserviamo le tue informazioni personali per il tempo in cui il tuo account è attivo o per il tempo necessario a fornirti i servizi. Potremmo conservare determinate informazioni per legittimi scopi aziendali o come richiesto dalla legge, ad esempio per obblighi fiscali, di rendicontazione legale e di revisione contabile."
       },
       "children": {
-        "title": "9. Children's Privacy",
-        "content": "Our platform is not intended for children under 16 years of age. We do not knowingly collect personal information from children under 16. If we become aware that we have collected data from a child under 16, we will take steps to delete that information."
+        "title": "9. Privacy dei minori",
+        "content": "La nostra piattaforma non è destinata a minori di 16 anni. Non raccogliamo consapevolmente informazioni personali da minori di 16 anni. Se veniamo a conoscenza di aver raccolto dati da un minore di 16 anni, adotteremo le misure necessarie per eliminare tali informazioni."
       },
       "changes": {
-        "title": "10. Changes to This Policy",
-        "content": "We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the \"Last updated\" date. We encourage you to review this policy periodically."
+        "title": "10. Modifiche a questa informativa",
+        "content": "Potremmo aggiornare questa Informativa sulla privacy di tanto in tanto. Ti informeremo di eventuali modifiche pubblicando la nuova informativa su questa pagina e aggiornando la data di \"Ultimo aggiornamento\". Ti invitiamo a consultare periodicamente questa informativa."
       },
       "contact": {
-        "title": "11. Contact Us",
-        "content": "If you have any questions about this Privacy Policy or our data practices, please contact us at:",
+        "title": "11. Contattaci",
+        "content": "Per qualsiasi domanda su questa Informativa sulla privacy o sulle nostre pratiche relative ai dati, contattaci a:",
         "company": "PadelTrainer.ai",
         "emailPrivacy": "Email: privacy@padeltrainer.ai",
-        "emailGeneral": "General inquiries: hello@padeltrainer.ai"
+        "emailGeneral": "Richieste generali: hello@padeltrainer.ai"
       }
     }
   },
   "terms": {
-    "title": "Terms of Service",
-    "lastUpdated": "Last updated: {{date}}",
+    "title": "Termini di servizio",
+    "lastUpdated": "Ultimo aggiornamento: {{date}}",
     "sections": {
       "agreement": {
-        "title": "1. Agreement to Terms",
-        "content": "By accessing or using PadelTrainer.ai (\"Platform\"), you agree to be bound by these Terms of Service (\"Terms\"). If you disagree with any part of these terms, you may not access the Platform. These Terms apply to all visitors, users, and others who access or use the Platform."
+        "title": "1. Accettazione dei termini",
+        "content": "Accedendo o utilizzando PadelTrainer.ai (\"Piattaforma\"), accetti di essere vincolato da questi Termini di servizio (\"Termini\"). Se non sei d'accordo con qualsiasi parte di questi termini, non puoi accedere alla Piattaforma. Questi Termini si applicano a tutti i visitatori, utenti e altre persone che accedono o utilizzano la Piattaforma."
       },
       "description": {
-        "title": "2. Description of Service",
-        "content": "PadelTrainer.ai is an online platform that connects padel players (\"Players\") with padel trainers (\"Trainers\"). We provide scheduling, booking, and payment processing tools to facilitate training sessions. PadelTrainer.ai acts as an intermediary and is not a party to the agreements between Players and Trainers."
+        "title": "2. Descrizione del servizio",
+        "content": "PadelTrainer.ai è una piattaforma online che mette in contatto giocatori di padel (\"Giocatori\") con allenatori di padel (\"Allenatori\"). Forniamo strumenti di pianificazione, prenotazione ed elaborazione dei pagamenti per facilitare le sessioni di allenamento. PadelTrainer.ai agisce come intermediario e non è parte degli accordi tra Giocatori e Allenatori."
       },
       "accounts": {
-        "title": "3. User Accounts",
-        "intro": "When you create an account with us, you must provide accurate, complete, and current information. You are responsible for:",
+        "title": "3. Account utente",
+        "intro": "Quando crei un account presso di noi, devi fornire informazioni accurate, complete e aggiornate. Sei responsabile di:",
         "items": {
-          "confidentiality": "Maintaining the confidentiality of your account and password",
-          "access": "Restricting access to your account",
-          "activities": "All activities that occur under your account",
-          "notify": "Notifying us immediately of any unauthorized use of your account"
+          "confidentiality": "Mantenere la riservatezza del tuo account e della tua password",
+          "access": "Limitare l'accesso al tuo account",
+          "activities": "Tutte le attività che avvengono sotto il tuo account",
+          "notify": "Notificarci immediatamente qualsiasi uso non autorizzato del tuo account"
         }
       },
       "players": {
-        "title": "4. For Players",
-        "intro": "As a Player using our Platform, you agree to:",
+        "title": "4. Per i giocatori",
+        "intro": "Come Giocatore che utilizza la nostra Piattaforma, accetti di:",
         "items": {
-          "accurate": "Provide accurate information when booking lessons",
-          "pay": "Pay for booked lessons as agreed",
-          "arrive": "Arrive on time for scheduled sessions",
-          "respect": "Treat Trainers with respect and professionalism",
-          "cancellation": "Follow the cancellation policy outlined below",
-          "reviews": "Leave honest and fair reviews based on your actual experience"
+          "accurate": "Fornire informazioni accurate al momento della prenotazione delle lezioni",
+          "pay": "Pagare le lezioni prenotate come concordato",
+          "arrive": "Presentarti puntuale alle sessioni programmate",
+          "respect": "Trattare gli Allenatori con rispetto e professionalità",
+          "cancellation": "Seguire la politica di cancellazione indicata di seguito",
+          "reviews": "Lasciare recensioni oneste e corrette basate sulla tua esperienza reale"
         }
       },
       "trainers": {
-        "title": "5. For Trainers",
-        "intro": "As a Trainer using our Platform, you agree to:",
+        "title": "5. Per gli allenatori",
+        "intro": "Come Allenatore che utilizza la nostra Piattaforma, accetti di:",
         "items": {
-          "qualifications": "Provide accurate information about your qualifications and experience",
-          "certifications": "Maintain appropriate certifications and insurance",
-          "bookings": "Honor all confirmed bookings",
-          "quality": "Provide professional, safe, and quality training sessions",
-          "respond": "Respond to booking requests in a timely manner",
-          "comply": "Comply with all applicable laws and regulations",
-          "fees": "Pay platform fees as specified in your subscription plan"
+          "qualifications": "Fornire informazioni accurate sulle tue qualifiche ed esperienza",
+          "certifications": "Mantenere certificazioni e assicurazioni adeguate",
+          "bookings": "Onorare tutte le prenotazioni confermate",
+          "quality": "Fornire sessioni di allenamento professionali, sicure e di qualità",
+          "respond": "Rispondere alle richieste di prenotazione in modo tempestivo",
+          "comply": "Rispettare tutte le leggi e i regolamenti applicabili",
+          "fees": "Pagare le commissioni della piattaforma come specificato nel tuo piano di abbonamento"
         }
       },
       "payments": {
-        "title": "6. Payments and Fees",
+        "title": "6. Pagamenti e commissioni",
         "forPlayers": {
-          "title": "For Players:",
-          "content": "Payment is processed through Mollie at the time of booking. The full lesson price is charged to your payment method. Refunds are handled according to our cancellation policy."
+          "title": "Per i giocatori:",
+          "content": "Il pagamento viene elaborato tramite Mollie al momento della prenotazione. L'intero prezzo della lezione viene addebitato sul tuo metodo di pagamento. I rimborsi sono gestiti secondo la nostra politica di cancellazione."
         },
         "forTrainers": {
-          "title": "For Trainers:",
-          "content": "PadelTrainer.ai charges a flat platform fee per completed booking, which varies by subscription plan (e.g., €1.00 for Starter, €0.75 for Professional, €0.50 for Academy). The remaining amount is transferred to your connected Mollie account. Subscription fees are billed according to your chosen plan."
+          "title": "Per gli allenatori:",
+          "content": "PadelTrainer.ai addebita una commissione fissa per ogni prenotazione completata, che varia in base al piano di abbonamento (es. €1,00 per lo Starter, €0,75 per il Professional, €0,50 per l'Accademia). L'importo rimanente viene trasferito sul tuo conto Mollie collegato. Le quote di abbonamento vengono fatturate secondo il piano scelto."
         }
       },
       "cancellation": {
-        "title": "7. Cancellation Policy",
+        "title": "7. Politica di cancellazione",
         "items": {
-          "24h": "More than 24 hours before: Full refund",
-          "12h": "12-24 hours before: 50% refund",
-          "less12h": "Less than 12 hours before: No refund",
-          "trainer": "Trainer cancellations: Players receive a full refund for any trainer-initiated cancellation"
+          "24h": "Più di 24 ore prima: rimborso completo",
+          "12h": "Da 12 a 24 ore prima: rimborso del 50%",
+          "less12h": "Meno di 12 ore prima: nessun rimborso",
+          "trainer": "Cancellazioni dell'allenatore: i giocatori ricevono un rimborso completo per qualsiasi cancellazione da parte dell'allenatore"
         },
-        "note": "Repeated cancellations by either party may result in account restrictions or termination."
+        "note": "Cancellazioni ripetute da parte di entrambe le parti possono comportare restrizioni o la chiusura dell'account."
       },
       "ip": {
-        "title": "8. Intellectual Property",
-        "content": "The Platform and its original content, features, and functionality are owned by PadelTrainer.ai and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws. You may not reproduce, distribute, modify, create derivative works of, publicly display, or exploit any content from our Platform without prior written permission."
+        "title": "8. Proprietà intellettuale",
+        "content": "La Piattaforma e i suoi contenuti originali, funzionalità e caratteristiche sono di proprietà di PadelTrainer.ai e sono protetti da leggi internazionali su copyright, marchi, brevetti, segreti commerciali e altre proprietà intellettuali. Non è consentito riprodurre, distribuire, modificare, creare opere derivate, mostrare pubblicamente o sfruttare alcun contenuto dalla nostra Piattaforma senza previa autorizzazione scritta."
       },
       "userContent": {
-        "title": "9. User Content",
-        "content": "You retain ownership of any content you submit to the Platform (reviews, profile information, etc.). By submitting content, you grant us a worldwide, non-exclusive, royalty-free license to use, reproduce, modify, and display such content in connection with operating the Platform. You are solely responsible for the content you submit and must ensure it does not violate any third-party rights or applicable laws."
+        "title": "9. Contenuti degli utenti",
+        "content": "Mantieni la proprietà di qualsiasi contenuto che invii alla Piattaforma (recensioni, informazioni del profilo, ecc.). Inviando contenuti, ci concedi una licenza mondiale, non esclusiva e gratuita per utilizzare, riprodurre, modificare e visualizzare tali contenuti in relazione al funzionamento della Piattaforma. Sei l'unico responsabile dei contenuti che invii e devi assicurarti che non violino diritti di terzi o leggi applicabili."
       },
       "prohibited": {
-        "title": "10. Prohibited Activities",
-        "intro": "You agree not to:",
+        "title": "10. Attività vietate",
+        "intro": "Accetti di non:",
         "items": {
-          "illegal": "Use the Platform for any illegal purpose",
-          "harass": "Harass, abuse, or harm other users",
-          "false": "Provide false or misleading information",
-          "circumvent": "Attempt to circumvent the Platform to avoid fees",
-          "scrape": "Scrape or collect user data without consent",
-          "malicious": "Upload malicious code or attempt to compromise Platform security",
-          "impersonate": "Impersonate another person or entity",
-          "spam": "Spam or send unsolicited communications"
+          "illegal": "Utilizzare la Piattaforma per scopi illegali",
+          "harass": "Molestare, offendere o danneggiare altri utenti",
+          "false": "Fornire informazioni false o fuorvianti",
+          "circumvent": "Tentare di aggirare la Piattaforma per evitare le commissioni",
+          "scrape": "Raccogliere dati degli utenti senza consenso",
+          "malicious": "Caricare codice dannoso o tentare di compromettere la sicurezza della Piattaforma",
+          "impersonate": "Impersonare un'altra persona o entità",
+          "spam": "Inviare spam o comunicazioni non richieste"
         }
       },
       "disclaimer": {
-        "title": "11. Disclaimer of Warranties",
-        "content": "The Platform is provided on an \"AS IS\" and \"AS AVAILABLE\" basis. We make no warranties, expressed or implied, regarding the Platform's operation or the information, content, or materials included. We do not guarantee the accuracy, reliability, or completeness of any information on the Platform. We are not responsible for the quality, safety, or legality of training sessions arranged through the Platform."
+        "title": "11. Esclusione di garanzie",
+        "content": "La Piattaforma è fornita \"COSÌ COM'È\" e \"COME DISPONIBILE\". Non offriamo garanzie, esplicite o implicite, riguardo al funzionamento della Piattaforma o alle informazioni, contenuti o materiali inclusi. Non garantiamo l'accuratezza, l'affidabilità o la completezza delle informazioni sulla Piattaforma. Non siamo responsabili della qualità, sicurezza o legalità delle sessioni di allenamento organizzate tramite la Piattaforma."
       },
       "liability": {
-        "title": "12. Limitation of Liability",
-        "content": "To the maximum extent permitted by law, PadelTrainer.ai shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or other intangible losses, resulting from your use or inability to use the Platform, any conduct of third parties on the Platform, or unauthorized access to your account."
+        "title": "12. Limitazione di responsabilità",
+        "content": "Nella misura massima consentita dalla legge, PadelTrainer.ai non sarà responsabile per danni indiretti, incidentali, speciali, consequenziali o punitivi, inclusa la perdita di profitti, dati o altre perdite immateriali, derivanti dall'uso o dall'impossibilità di utilizzare la Piattaforma, dalla condotta di terzi sulla Piattaforma o dall'accesso non autorizzato al tuo account."
       },
       "indemnification": {
-        "title": "13. Indemnification",
-        "content": "You agree to indemnify and hold harmless PadelTrainer.ai, its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including legal fees) arising from your use of the Platform, violation of these Terms, or infringement of any third-party rights."
+        "title": "13. Indennizzo",
+        "content": "Accetti di indennizzare e tenere indenni PadelTrainer.ai, i suoi dirigenti, direttori, dipendenti e agenti da qualsiasi reclamo, danno, perdita, responsabilità e spesa (incluse le spese legali) derivanti dal tuo utilizzo della Piattaforma, dalla violazione di questi Termini o dalla violazione di diritti di terzi."
       },
       "disputes": {
-        "title": "14. Dispute Resolution",
-        "intro": "In case of disputes:",
+        "title": "14. Risoluzione delle controversie",
+        "intro": "In caso di controversie:",
         "items": {
-          "users": "Between Users: We encourage Players and Trainers to resolve disputes directly. We may assist in mediation but are not obligated to do so.",
-          "platform": "With PadelTrainer.ai: Any disputes with the Platform shall be resolved through binding arbitration in accordance with Dutch law, or through the courts of the Netherlands."
+          "users": "Tra utenti: incoraggiamo Giocatori e Allenatori a risolvere le controversie direttamente. Possiamo assistere nella mediazione ma non siamo obbligati a farlo.",
+          "platform": "Con PadelTrainer.ai: qualsiasi controversia con la Piattaforma sarà risolta tramite arbitrato vincolante in conformità con la legge olandese, o tramite i tribunali dei Paesi Bassi."
         }
       },
       "termination": {
-        "title": "15. Termination",
-        "content": "We may terminate or suspend your account immediately, without prior notice, for any reason, including breach of these Terms. Upon termination, your right to use the Platform will immediately cease. All provisions of the Terms which should survive termination shall survive, including ownership provisions, warranty disclaimers, and limitations of liability."
+        "title": "15. Chiusura dell'account",
+        "content": "Possiamo chiudere o sospendere il tuo account immediatamente, senza preavviso, per qualsiasi motivo, inclusa la violazione di questi Termini. Alla chiusura, il tuo diritto di utilizzare la Piattaforma cesserà immediatamente. Tutte le disposizioni dei Termini che dovrebbero sopravvivere alla chiusura continueranno ad avere effetto, incluse le disposizioni sulla proprietà, le esclusioni di garanzia e le limitazioni di responsabilità."
       },
       "changes": {
-        "title": "16. Changes to Terms",
-        "content": "We reserve the right to modify or replace these Terms at any time. If changes are material, we will provide at least 30 days' notice before the new terms take effect. What constitutes a material change will be determined at our sole discretion. Continued use of the Platform after changes constitutes acceptance of the new Terms."
+        "title": "16. Modifiche ai termini",
+        "content": "Ci riserviamo il diritto di modificare o sostituire questi Termini in qualsiasi momento. Se le modifiche sono sostanziali, forniremo almeno 30 giorni di preavviso prima dell'entrata in vigore dei nuovi termini. Ciò che costituisce una modifica sostanziale sarà determinato a nostra esclusiva discrezione. L'uso continuato della Piattaforma dopo le modifiche costituisce accettazione dei nuovi Termini."
       },
       "governing": {
-        "title": "17. Governing Law",
-        "content": "These Terms shall be governed by and construed in accordance with the laws of the Netherlands, without regard to its conflict of law provisions. Our failure to enforce any right or provision of these Terms will not be considered a waiver of those rights."
+        "title": "17. Legge applicabile",
+        "content": "Questi Termini saranno disciplinati e interpretati in conformità con le leggi dei Paesi Bassi, senza riguardo alle disposizioni sul conflitto di leggi. La nostra mancata applicazione di qualsiasi diritto o disposizione di questi Termini non costituirà rinuncia a tali diritti."
       },
       "contact": {
-        "title": "18. Contact Us",
-        "content": "If you have any questions about these Terms, please contact us at:",
+        "title": "18. Contattaci",
+        "content": "Per qualsiasi domanda su questi Termini, contattaci a:",
         "company": "PadelTrainer.ai",
         "emailLegal": "Email: legal@padeltrainer.ai",
-        "emailGeneral": "General inquiries: hello@padeltrainer.ai"
+        "emailGeneral": "Richieste generali: hello@padeltrainer.ai"
       }
     }
   },
   "partner": {
-    "title": "Become a Partner",
-    "subtitle": "Interested in partnering with PadelTrainer.ai? Let's discuss how we can work together to grow padel in the Netherlands.",
-    "thankYouTitle": "Thank you for your interest!",
-    "thankYouMessage": "We've received your inquiry and will get back to you within 2 business days.",
-    "successTitle": "Message sent!",
-    "successMessage": "We'll be in touch soon.",
-    "errorTitle": "Something went wrong",
-    "errorMessage": "Please try again or email us directly at info@padeltrainer.ai",
+    "title": "Diventa partner",
+    "subtitle": "Interessato a collaborare con PadelTrainer.ai? Parliamo di come possiamo lavorare insieme per far crescere il padel.",
+    "thankYouTitle": "Grazie per il tuo interesse!",
+    "thankYouMessage": "Abbiamo ricevuto la tua richiesta e ti risponderemo entro 2 giorni lavorativi.",
+    "successTitle": "Messaggio inviato!",
+    "successMessage": "Ti contatteremo presto.",
+    "errorTitle": "Si è verificato un errore",
+    "errorMessage": "Riprova o scrivici direttamente a info@padeltrainer.ai",
     "form": {
-      "name": "Your name",
-      "namePlaceholder": "John Doe",
-      "companyName": "Company name",
-      "companyNamePlaceholder": "Padel Club Amsterdam",
-      "email": "Email address",
-      "emailPlaceholder": "john@example.com",
-      "phone": "Phone number",
-      "phonePlaceholder": "+31 6 12345678",
-      "message": "How can we help?",
-      "messagePlaceholder": "Tell us about your company and how you'd like to partner with PadelTrainer.ai...",
-      "submit": "Send Message",
-      "sending": "Sending..."
+      "name": "Il tuo nome",
+      "namePlaceholder": "Mario Rossi",
+      "companyName": "Nome azienda",
+      "companyNamePlaceholder": "Padel Club Milano",
+      "email": "Indirizzo email",
+      "emailPlaceholder": "mario@esempio.com",
+      "phone": "Numero di telefono",
+      "phonePlaceholder": "+39 333 1234567",
+      "message": "Come possiamo aiutarti?",
+      "messagePlaceholder": "Raccontaci della tua azienda e di come vorresti collaborare con PadelTrainer.ai...",
+      "submit": "Invia messaggio",
+      "sending": "Invio in corso..."
     }
   },
   "homev2": {
     "hero": {
-      "h1": "You coach. We handle the rest.",
-      "subheadline": "Bookings, payments, cancellations, and your schedule on autopilot. So you're on the court, not on your phone.",
+      "h1": "Tu alleni. Al resto pensiamo noi.",
+      "subheadline": "Prenotazioni, pagamenti, cancellazioni e il tuo calendario in automatico. Così sei in campo, non al telefono.",
       "tab_booking": "Prenotazioni",
-      "tab_payments": "Payments",
-      "tab_profile": "Your profile page",
-      "mock_booking_title": "Today's Schedule",
-      "mock_booking_slot": "Available",
-      "mock_booking_booked": "Booked",
-      "mock_booking_sync": "Synced with Google Calendar",
-      "mock_reg_title": "Open Registration",
-      "mock_reg_subtitle": "registrations this week",
-      "mock_reg_groups": "groups planned",
-      "mock_reg_ai": "Auto-planned into your calendar with AI",
-      "mock_reg_cta": "Register",
-      "mock_payments_title": "Recent payments",
-      "mock_payments_auto": "Auto-invoice",
-      "mock_payments_powered": "Automate payments by connecting",
-      "mock_profile_slots": "open slots this week",
-      "mock_profile_cta": "Book now",
-      "tab_players": "Player management"
+      "tab_payments": "Pagamenti",
+      "tab_profile": "La tua pagina profilo",
+      "mock_booking_title": "Programma di oggi",
+      "mock_booking_slot": "Disponibile",
+      "mock_booking_booked": "Prenotato",
+      "mock_booking_sync": "Sincronizzato con Google Calendar",
+      "mock_reg_title": "Registrazione aperta",
+      "mock_reg_subtitle": "iscrizioni questa settimana",
+      "mock_reg_groups": "gruppi pianificati",
+      "mock_reg_ai": "Pianificato automaticamente nel tuo calendario con l'IA",
+      "mock_reg_cta": "Iscriviti",
+      "mock_payments_title": "Pagamenti recenti",
+      "mock_payments_auto": "Fattura automatica",
+      "mock_payments_powered": "Automatizza i pagamenti collegando",
+      "mock_profile_slots": "posti disponibili questa settimana",
+      "mock_profile_cta": "Prenota ora",
+      "tab_players": "Gestione giocatori"
     },
     "cta": {
-      "startTrial": "Start your free trial",
-      "watchDemo": "See how it works",
-      "trustMicrocopy": "No credit card required. Set up in 10 minutes."
+      "startTrial": "Inizia la tua prova gratuita",
+      "watchDemo": "Scopri come funziona",
+      "trustMicrocopy": "Nessuna carta di credito richiesta. Configurazione in 10 minuti."
     },
     "socialProof": {
-      "headline": "Trusted by padel coaches and academies across Europe.",
-      "testimonial1": "I have my evenings back. No more lesson planning over WhatsApp.",
+      "headline": "Scelto da allenatori di padel e accademie in tutta Europa.",
+      "testimonial1": "Ho riconquistato le mie serate. Niente più pianificazione delle lezioni su WhatsApp.",
       "author1": "Bram Meijer",
       "author1role": "Head Trainer, Bramos Padel Academy",
-      "testimonial2": "Players book themselves now. No more chasing payments.",
+      "testimonial2": "I giocatori si prenotano da soli. Niente più rincorse ai pagamenti.",
       "author2": "René Lindenbergh",
-      "author2role": "Founder, RL Padel Performance",
-      "metric_hours_value": "10h/month",
-      "metric_hours_label": "less admin",
-      "metric_slots_value": "5+ slots",
-      "metric_slots_label": "filled from cancellations",
+      "author2role": "Fondatore, RL Padel Performance",
+      "metric_hours_value": "10h/mese",
+      "metric_hours_label": "di amministrazione in meno",
+      "metric_slots_value": "5+ posti",
+      "metric_slots_label": "riempiti dopo le cancellazioni",
       "metric_noshows_value": "50%",
-      "metric_noshows_label": "fewer no-shows",
-      "disclaimer": "Based on trainers using PadelTrainer.ai. Results vary."
+      "metric_noshows_label": "di assenze in meno",
+      "disclaimer": "Basato su allenatori che usano PadelTrainer.ai. I risultati possono variare."
     },
     "chaos": {
-      "headline": "Most padel trainers run their business on chaos",
-      "intro": "You became a coach to be on court. Not to manage a calendar. But without a proper system, your day looks something like this:",
-      "item_whatsapp": "WhatsApp & voice notes to coordinate availability and confirmations",
-      "item_spreadsheet": "Spreadsheet or notepad to track your schedule",
-      "item_calendar": "Separate calendar + separate payment tool",
-      "item_rescheduling": "DM-based rescheduling that never ends",
-      "item_generic": "Generic scheduling tools that break on group sessions and courts",
-      "closing": "It works… until it doesn't."
+      "headline": "La maggior parte degli allenatori di padel gestisce la propria attività nel caos",
+      "intro": "Sei diventato allenatore per stare in campo. Non per gestire un calendario. Ma senza un sistema adeguato, la tua giornata è più o meno così:",
+      "item_whatsapp": "WhatsApp e note vocali per coordinare disponibilità e conferme",
+      "item_spreadsheet": "Fogli di calcolo o appunti per tracciare il tuo programma",
+      "item_calendar": "Calendario separato + strumento di pagamento separato",
+      "item_rescheduling": "Riprogrammazioni via messaggi che non finiscono mai",
+      "item_generic": "Strumenti generici di prenotazione che non funzionano con lezioni di gruppo e campi",
+      "closing": "Funziona... finché non funziona più."
     },
     "impact": {
-      "headline": "This isn't just annoying. It costs sessions.",
-      "item_revenue": "Unfilled gaps after cancellations = lost revenue you can't recover.",
-      "item_admin": "Admin steals hours you could spend coaching (or resting).",
-      "item_noshows": "No-shows make income unpredictable.",
-      "item_lateReply": "Late replies hurt your conversion from 'interested' to 'booked'."
+      "headline": "Non è solo fastidioso. Ti costa sessioni.",
+      "item_revenue": "Buchi in programma dopo le cancellazioni = entrate perse che non puoi recuperare.",
+      "item_admin": "L'amministrazione ruba ore che potresti dedicare all'allenamento (o al riposo).",
+      "item_noshows": "Le assenze rendono il reddito imprevedibile.",
+      "item_lateReply": "Le risposte in ritardo compromettono la conversione da 'interessato' a 'prenotato'."
     },
     "solution": {
-      "headline": "Built for padel coaches. Not another generic booking app.",
-      "category": "We handle group lessons, court types, cancellations, and everything else that generic tools weren't designed for.",
-      "value_filled_title": "Fill cancellations automatically",
-      "value_filled_desc": "When a slot opens up, players who follow you get notified. No more posting in group chats hoping someone sees it.",
-      "value_admin_title": "Syncs with your life",
-      "value_admin_desc": "Connects with Google Calendar. Your personal appointments and padel sessions, all in one view. Set it up once, it stays in sync.",
-      "value_noshows_title": "Get paid before the lesson starts",
-      "value_noshows_desc": "Online payments via iDEAL and card. Players who pay upfront actually show up. No more chasing Tikkies.",
-      "value_player_title": "A booking page your players will actually use",
-      "value_player_desc": "Simple, fast, mobile-first. Players see your availability and book in seconds. Put the link in your WhatsApp bio, Instagram, or send it directly."
+      "headline": "Costruito per allenatori di padel. Non l'ennesima app di prenotazione generica.",
+      "category": "Gestiamo lezioni di gruppo, tipologie di campo, cancellazioni e tutto ciò per cui gli strumenti generici non sono stati progettati.",
+      "value_filled_title": "Riempi automaticamente le cancellazioni",
+      "value_filled_desc": "Quando un posto si libera, i giocatori che ti seguono vengono avvisati. Niente più post nei gruppi sperando che qualcuno li veda.",
+      "value_admin_title": "Si sincronizza con la tua vita",
+      "value_admin_desc": "Si collega a Google Calendar. I tuoi impegni personali e le sessioni di padel, tutto in un'unica vista. Configuralo una volta, resta sincronizzato.",
+      "value_noshows_title": "Ricevi il pagamento prima della lezione",
+      "value_noshows_desc": "Pagamenti online tramite iDEAL e carta. I giocatori che pagano in anticipo si presentano davvero. Niente più rincorse ai pagamenti.",
+      "value_player_title": "Una pagina di prenotazione che i tuoi giocatori useranno davvero",
+      "value_player_desc": "Semplice, veloce, mobile-first. I giocatori vedono la tua disponibilità e prenotano in pochi secondi. Inserisci il link nella tua bio WhatsApp, su Instagram o invialo direttamente."
     },
     "whyPadelTrainer": {
-      "headline": "Why Padel Trainer wins for padel trainers",
-      "focus_title": "Padel-only focus",
-      "focus_desc": "Everything is designed for padel coaches.",
-      "paid_title": "Get paid upfront",
-      "paid_desc": "Online payments in EUR (iDEAL + cards) to reduce no-shows.",
-      "visibility_title": "Public profile",
-      "visibility_desc": "Create a public profile and share your booking link. Marketplace visibility in our network."
+      "headline": "Perché Padel Trainer è la scelta giusta per gli allenatori di padel",
+      "focus_title": "Focus esclusivo sul padel",
+      "focus_desc": "Tutto è progettato per gli allenatori di padel.",
+      "paid_title": "Pagamento anticipato",
+      "paid_desc": "Pagamenti online in EUR (iDEAL + carte) per ridurre le assenze.",
+      "visibility_title": "Profilo pubblico",
+      "visibility_desc": "Crea un profilo pubblico e condividi il tuo link di prenotazione. Visibilità nel marketplace della nostra rete."
     },
     "howItWorks": {
-      "headline": "Set it up once. Then it runs.",
-      "step1_title": "Add your availability",
-      "step1_desc": "Set your times, locations, group sizes, and prices. Takes about 10 minutes.",
-      "step2_title": "Share your link",
-      "step2_desc": "padeltrainer.ai/your-name. Put it in your WhatsApp bio, Instagram, or send it directly to players.",
-      "step3_title": "Coach. We handle the rest.",
-      "step3_desc": "Bookings, confirmations, payments, reminders, cancellations. It just works."
+      "headline": "Configuralo una volta. Poi funziona da solo.",
+      "step1_title": "Aggiungi la tua disponibilità",
+      "step1_desc": "Imposta orari, sedi, dimensioni dei gruppi e prezzi. Ci vogliono circa 10 minuti.",
+      "step2_title": "Condividi il tuo link",
+      "step2_desc": "padeltrainer.ai/il-tuo-nome. Inseriscilo nella tua bio WhatsApp, su Instagram o invialo direttamente ai giocatori.",
+      "step3_title": "Allena. Al resto pensiamo noi.",
+      "step3_desc": "Prenotazioni, conferme, pagamenti, promemoria, cancellazioni. Funziona e basta."
     },
     "realities": {
-      "headline": "How it actually changes your day",
-      "intro": "Real problems trainers deal with. And how we solve them.",
-      "label_before": "Before",
-      "label_after": "With Padel Trainer",
-      "chat_current": "Bookings scattered across WhatsApp threads",
-      "chat_with": "Everything in one dashboard",
-      "oncourt_current": "Miss booking requests while you're on court",
-      "oncourt_with": "Players book themselves, anytime",
-      "noshows_current": "No-shows waste your time and income",
-      "noshows_with": "Upfront payments + automatic reminders",
-      "payments_current": "Chasing Tikkie payments after every session",
-      "payments_with": "Paid before the lesson starts (iDEAL + cards)",
-      "calendar_current": "Manually updating your personal calendar",
-      "calendar_with": "Auto-syncs to Google Calendar",
-      "scale_current": "Rescheduling turns into an admin nightmare",
-      "scale_with": "Players manage their own changes",
-      "result": "Less time on your phone. More time on court."
+      "headline": "Come cambia davvero la tua giornata",
+      "intro": "Problemi reali che gli allenatori affrontano. E come li risolviamo.",
+      "label_before": "Prima",
+      "label_after": "Con Padel Trainer",
+      "chat_current": "Prenotazioni sparse nelle chat di WhatsApp",
+      "chat_with": "Tutto in un'unica dashboard",
+      "oncourt_current": "Perdi richieste di prenotazione mentre sei in campo",
+      "oncourt_with": "I giocatori prenotano da soli, in qualsiasi momento",
+      "noshows_current": "Le assenze sprecano il tuo tempo e il tuo reddito",
+      "noshows_with": "Pagamenti anticipati + promemoria automatici",
+      "payments_current": "Rincorrere i pagamenti dopo ogni sessione",
+      "payments_with": "Pagato prima dell'inizio della lezione (iDEAL + carte)",
+      "calendar_current": "Aggiornare manualmente il calendario personale",
+      "calendar_with": "Sincronizzazione automatica con Google Calendar",
+      "scale_current": "Le riprogrammazioni diventano un incubo amministrativo",
+      "scale_with": "I giocatori gestiscono da soli le modifiche",
+      "result": "Meno tempo al telefono. Più tempo in campo."
     },
     "jtbd": {
-      "headline": "Independent trainer, academy, or club. We built it for all three.",
+      "headline": "Allenatore indipendente, accademia o club. L'abbiamo costruito per tutti e tre.",
       "intro": "",
-      "cta": "Start free trial",
-      "academy_title": "Academy owners",
-      "academy_subtitle": "Manage multiple trainers from one place.",
-      "academy_b1": "See every trainer's schedule at a glance.",
-      "academy_b2": "Fill gaps when someone cancels.",
-      "academy_b3": "Collect per session or per cycle.",
-      "academy_b4": "Give each trainer their own booking page.",
-      "trainer_title": "Independent trainers",
-      "trainer_subtitle": "Run your own thing without the admin headache.",
-      "trainer_b1": "Players book and pay online. Done.",
-      "trainer_b2": "Your Google Calendar stays up to date.",
-      "trainer_b3": "Reminders go out automatically.",
-      "trainer_b4": "Your own profile and booking page.",
-      "club_title": "Clubs",
-      "club_subtitle": "Offer coaching sessions through your club.",
-      "club_b1": "Members book directly via your club page.",
-      "club_b2": "Less admin for your front desk.",
-      "club_b3": "Trainers manage their own availability.",
-      "club_b4": "Payments handled cleanly."
+      "cta": "Inizia la prova gratuita",
+      "academy_title": "Proprietari di accademie",
+      "academy_subtitle": "Gestisci più allenatori da un unico punto.",
+      "academy_b1": "Visualizza il programma di ogni allenatore a colpo d'occhio.",
+      "academy_b2": "Riempi i buchi quando qualcuno cancella.",
+      "academy_b3": "Riscuoti per sessione o per ciclo.",
+      "academy_b4": "Dai a ogni allenatore la propria pagina di prenotazione.",
+      "trainer_title": "Allenatori indipendenti",
+      "trainer_subtitle": "Gestisci la tua attività senza il mal di testa dell'amministrazione.",
+      "trainer_b1": "I giocatori prenotano e pagano online. Fatto.",
+      "trainer_b2": "Il tuo Google Calendar resta aggiornato.",
+      "trainer_b3": "I promemoria vengono inviati automaticamente.",
+      "trainer_b4": "Il tuo profilo e la tua pagina di prenotazione personale.",
+      "club_title": "Club",
+      "club_subtitle": "Offri sessioni di allenamento tramite il tuo club.",
+      "club_b1": "I soci prenotano direttamente dalla pagina del club.",
+      "club_b2": "Meno lavoro amministrativo per la reception.",
+      "club_b3": "Gli allenatori gestiscono la propria disponibilità.",
+      "club_b4": "Pagamenti gestiti in modo pulito."
     },
     "criticalEvents": {
-      "headline": "When trainers switch to Padel Trainer",
-      "event_season": "A new season or cycle starts and you want structure.",
-      "event_independent": "You're going independent and need a real booking system.",
-      "event_noshows": "Cancellations and no-shows are killing utilization.",
-      "event_volume": "You're growing. More sessions, more locations.",
-      "event_fulltime": "You want to go full-time coaching without admin overload.",
-      "closing": "If any of this is you, start your free trial today."
+      "headline": "Quando gli allenatori passano a Padel Trainer",
+      "event_season": "Inizia una nuova stagione o ciclo e vuoi organizzarti.",
+      "event_independent": "Stai diventando indipendente e hai bisogno di un vero sistema di prenotazione.",
+      "event_noshows": "Cancellazioni e assenze stanno rovinando l'utilizzo del tuo tempo.",
+      "event_volume": "Stai crescendo. Più sessioni, più sedi.",
+      "event_fulltime": "Vuoi allenarti a tempo pieno senza il sovraccarico amministrativo.",
+      "closing": "Se ti riconosci in uno di questi, inizia oggi la tua prova gratuita."
     },
     "pricing": {
-      "headline": "Simple, transparent pricing.",
+      "headline": "Prezzi semplici e trasparenti.",
       "players_title": "Giocatori",
-      "players_price": "Free",
-      "players_desc": "Find trainers, book lessons, and pay online. Always free, no catch.",
+      "players_price": "Gratuito",
+      "players_desc": "Trova allenatori, prenota lezioni e paga online. Sempre gratuito, senza sorprese.",
       "players_desc2": "",
-      "players_cta": "Sign up for free",
-      "trainers_title": "Trainer",
-      "trainers_price": "Free trial → from €9/month",
-      "trainers_desc": "Bookings, payments, calendar sync, and your own profile page. Everything you need.",
-      "no_cc": "No credit card required. Try it free, upgrade from €9/month when you're ready.",
+      "players_cta": "Iscriviti gratis",
+      "trainers_title": "Allenatori",
+      "trainers_price": "Prova gratuita → da €9/mese",
+      "trainers_desc": "Prenotazioni, pagamenti, sincronizzazione calendario e la tua pagina profilo. Tutto ciò che ti serve.",
+      "no_cc": "Nessuna carta di credito richiesta. Provalo gratis, passa a da €9/mese quando sei pronto.",
       "trainers_microcopy": "",
-      "seeAllPlans": "See all plans →"
+      "seeAllPlans": "Vedi tutti i piani →"
     },
     "faq": {
-      "headline": "Got questions?",
-      "onlyPadel_q": "Is this only for padel?",
-      "onlyPadel_a": "Yes. We built it specifically for padel coaches, academies, and clubs. That's why it handles things like group lessons, court types, and cancellations properly, unlike generic booking tools.",
-      "playersFree_q": "Is it really free for players?",
-      "playersFree_a": "Yes. Players never pay for the platform. They only pay for the lessons they book.",
-      "trialHow_q": "How does the free trial work?",
-      "trialHow_a": "You get full access for 14 days. No credit card required. After that, plans start from €9/month.",
-      "needWebsite_q": "Do I need my own website?",
-      "needWebsite_a": "Nope. You get a booking page you can share directly.",
-      "onlineBooking_q": "Can players book online?",
-      "onlineBooking_a": "Yes. They see your available slots and book in a few taps. You get a notification when someone books.",
-      "payments_q": "How do payments work?",
-      "payments_a": "Players pay when they book via iDEAL or card. The money goes to your account. No more chasing.",
-      "calendarSync_q": "Does it sync with Google Calendar?",
-      "calendarSync_a": "Yes. Two-way sync. Your padel sessions appear in your personal calendar and vice versa.",
-      "europe_q": "Is this only for the Netherlands?",
-      "europe_a": "No. We have trainers across Europe. The platform works in multiple languages.",
-      "gdpr_q": "Is it GDPR compliant?",
-      "gdpr_a": "Yes."
+      "headline": "Hai domande?",
+      "onlyPadel_q": "È solo per il padel?",
+      "onlyPadel_a": "Sì. L'abbiamo costruito specificamente per allenatori di padel, accademie e club. Ecco perché gestisce correttamente lezioni di gruppo, tipologie di campo e cancellazioni, a differenza degli strumenti di prenotazione generici.",
+      "playersFree_q": "È davvero gratuito per i giocatori?",
+      "playersFree_a": "Sì. I giocatori non pagano mai per la piattaforma. Pagano solo le lezioni che prenotano.",
+      "trialHow_q": "Come funziona la prova gratuita?",
+      "trialHow_a": "Hai accesso completo per 14 giorni. Nessuna carta di credito richiesta. Dopodiché, i piani partono da €9/mese.",
+      "needWebsite_q": "Ho bisogno di un mio sito web?",
+      "needWebsite_a": "No. Ricevi una pagina di prenotazione che puoi condividere direttamente.",
+      "onlineBooking_q": "I giocatori possono prenotare online?",
+      "onlineBooking_a": "Sì. Vedono i tuoi posti disponibili e prenotano in pochi tocchi. Ricevi una notifica quando qualcuno prenota.",
+      "payments_q": "Come funzionano i pagamenti?",
+      "payments_a": "I giocatori pagano al momento della prenotazione tramite iDEAL o carta. I soldi arrivano sul tuo conto. Niente più rincorse.",
+      "calendarSync_q": "Si sincronizza con Google Calendar?",
+      "calendarSync_a": "Sì. Sincronizzazione bidirezionale. Le tue sessioni di padel appaiono nel tuo calendario personale e viceversa.",
+      "europe_q": "È solo per i Paesi Bassi?",
+      "europe_a": "No. Abbiamo allenatori in tutta Europa. La piattaforma funziona in più lingue.",
+      "gdpr_q": "È conforme al GDPR?",
+      "gdpr_a": "Sì."
     },
     "finalCta": {
-      "headline": "Ready to stop doing admin between your lessons?",
-      "body": "Set up takes 10 minutes. Your first booking can come in today."
+      "headline": "Pronto a smettere di fare amministrazione tra una lezione e l'altra?",
+      "body": "La configurazione richiede 10 minuti. La tua prima prenotazione può arrivare oggi."
     },
     "playerBanner": {
-      "headline": "Looking to play padel?",
-      "subtitle": "Find trainers, learn the rules, and improve your game. All for free.",
-      "trainersDesc": "Book a session near you",
-      "locationsDesc": "Find clubs near you",
-      "rules": "Padel Rules",
-      "rulesDesc": "Learn the official rules",
-      "videoTips": "Video Tips",
-      "videoTipsDesc": "Watch & improve",
-      "blogDesc": "Tips, guides & news"
+      "headline": "Vuoi giocare a padel?",
+      "subtitle": "Trova allenatori, impara le regole e migliora il tuo gioco. Tutto gratis.",
+      "trainersDesc": "Prenota una sessione vicino a te",
+      "locationsDesc": "Trova club vicino a te",
+      "rules": "Regole del padel",
+      "rulesDesc": "Impara le regole ufficiali",
+      "videoTips": "Video consigli",
+      "videoTipsDesc": "Guarda e migliora",
+      "blogDesc": "Consigli, guide e novità"
     },
     "dualCta": {
-      "headline": "Ready to stop doing admin between your lessons?",
-      "body": "Set up takes 10 minutes. Your first booking can come in today.",
-      "trainerCta": "Start free trial",
-      "playerCta": "Sign up as player",
-      "microcopy": "Players are always free. Trainers start with a free trial, then from €9/month."
+      "headline": "Pronto a smettere di fare amministrazione tra una lezione e l'altra?",
+      "body": "La configurazione richiede 10 minuti. La tua prima prenotazione può arrivare oggi.",
+      "trainerCta": "Inizia la prova gratuita",
+      "playerCta": "Iscriviti come giocatore",
+      "microcopy": "Per i giocatori è sempre gratuito. Per gli allenatori prova gratuita, poi da €9/mese."
     },
     "pain": {
-      "headline": "Sound familiar?",
-      "whatsapp_story": "Your phone buzzes at 22:00. \"Can I switch to Thursday?\" You open WhatsApp, check your notes, scroll back through three group chats, and realize you've lost track of who's confirmed for tomorrow.",
-      "whatsapp_solution": "With PadelTrainer.ai: Players book and reschedule themselves. You just coach.",
-      "cancellation_story": "A player cancels 2 hours before the session. The slot stays empty. You lose the income, and three other players who would've loved that spot never even knew it was available.",
-      "cancellation_solution": "With PadelTrainer.ai: Followers get notified instantly. Empty slots fill themselves.",
-      "payments_story": "End of the month: who's paid, who hasn't? You're scrolling through Tikkie requests, bank transfers, and \"I'll pay you next week\" messages. You feel like an accountant, not a coach.",
-      "payments_solution": "With PadelTrainer.ai: Players pay upfront when they book. Automatic. Done."
+      "headline": "Ti suona familiare?",
+      "whatsapp_story": "Il telefono vibra alle 22:00. \"Posso spostare a giovedì?\" Apri WhatsApp, controlli i tuoi appunti, scorri tre chat di gruppo e realizzi che hai perso il conto di chi ha confermato per domani.",
+      "whatsapp_solution": "Con PadelTrainer.ai: i giocatori prenotano e riprogrammano da soli. Tu devi solo allenare.",
+      "cancellation_story": "Un giocatore cancella 2 ore prima della sessione. Il posto resta vuoto. Perdi il guadagno, e tre altri giocatori che avrebbero adorato quel posto non hanno neanche saputo che era disponibile.",
+      "cancellation_solution": "Con PadelTrainer.ai: i follower vengono avvisati istantaneamente. I posti vuoti si riempiono da soli.",
+      "payments_story": "Fine mese: chi ha pagato, chi no? Scorri tra richieste di pagamento, bonifici e messaggi \"ti pago la settimana prossima\". Ti senti un contabile, non un allenatore.",
+      "payments_solution": "Con PadelTrainer.ai: i giocatori pagano in anticipo quando prenotano. Automatico. Fatto."
     }
   },
   "cityPage": {
-    "title": "Padel Trainers in {{city}} | Find & Book Lessons",
-    "heroTitle": "Padel Trainers in {{city}}",
-    "heroSubtitle": "Discover {{count}} certified padel trainer{{plural}} in {{city}}. Compare rates, read reviews, and book lessons that match your skill level.",
-    "heroSubtitleEmpty": "Looking for padel trainers in {{city}}? Check back soon or explore nearby cities.",
-    "description": "Find {{count}} certified padel trainers in {{city}}. Compare rates from €{{minRate}}/hour, read reviews, and book your first lesson today.",
-    "searchPlaceholder": "Search trainers by name, specialty...",
-    "sortTopRated": "Top Rated",
-    "sortPriceLow": "Price: Low to High",
-    "sortPriceHigh": "Price: High to Low",
-    "sortExperience": "Most Experienced",
-    "trainersFound": "{{count}} trainer{{plural}} found in {{city}}",
-    "noTrainersFound": "No trainers found in {{city}}",
-    "viewAllTrainers": "View All Trainers",
-    "becomeTrainer": "Become a Trainer",
+    "title": "Allenatori di padel a {{city}} | Trova e prenota lezioni",
+    "heroTitle": "Allenatori di padel a {{city}}",
+    "heroSubtitle": "Scopri {{count}} allenator{{plural}} di padel certificat{{plural}} a {{city}}. Confronta tariffe, leggi recensioni e prenota lezioni adatte al tuo livello.",
+    "heroSubtitleEmpty": "Cerchi allenatori di padel a {{city}}? Torna presto o esplora le città vicine.",
+    "description": "Trova {{count}} allenatori di padel certificati a {{city}}. Confronta le tariffe da €{{minRate}}/ora, leggi le recensioni e prenota la tua prima lezione oggi.",
+    "searchPlaceholder": "Cerca allenatori per nome, specialità...",
+    "sortTopRated": "Più votati",
+    "sortPriceLow": "Prezzo: dal più basso",
+    "sortPriceHigh": "Prezzo: dal più alto",
+    "sortExperience": "Più esperienza",
+    "trainersFound": "{{count}} allenator{{plural}} trovat{{plural}} a {{city}}",
+    "noTrainersFound": "Nessun allenatore trovato a {{city}}",
+    "viewAllTrainers": "Vedi tutti gli allenatori",
+    "becomeTrainer": "Diventa allenatore",
     "verified": "Verificato",
-    "perHour": "/hour",
-    "yearsExp": "y exp.",
-    "review": "review",
-    "reviews": "reviews",
-    "clubsTitle": "Padel Clubs in {{city}}",
-    "clubsCount": "{{count}} padel club{{plural}} in {{city}}",
-    "aboutTitle": "About Padel Training in {{city}}",
-    "aboutIntro": "Whether you're a beginner looking to learn the basics or an experienced player wanting to refine your technique, finding the right padel trainer in {{city}} is essential for your development. Our certified trainers offer personalized coaching tailored to your skill level and goals.",
-    "expectTitle": "What to Expect from Padel Lessons",
-    "expect1": "Technical training covering serves, volleys, and defensive play",
-    "expect2": "Tactical strategies for singles and doubles matches",
-    "expect3": "Physical conditioning specific to padel",
-    "expect4": "Match play analysis and improvement tips",
-    "popularClubsTitle": "Popular Padel Clubs in {{city}}",
-    "popularClubsIntro": "{{city}} is home to {{count}} padel club{{plural}} where you can take lessons and practice:",
-    "andMore": "and {{count}} more",
-    "academiesTitle": "Padel Academies in {{city}}",
-    "academiesOffer": "offer structured training programs in {{city}}.",
-    "faqTitle": "Frequently Asked Questions",
-    "faq1q": "How much do padel lessons cost in {{city}}?",
-    "faq1aWithData": "Padel lessons in {{city}} typically range from €{{min}} to €{{max}} per hour. Prices vary based on trainer experience, certifications, and lesson type.",
-    "faq1aNoData": "Padel lesson prices in {{city}} vary based on trainer experience and qualifications. Contact trainers directly for current rates.",
-    "faq2q": "What padel clubs are in {{city}}?",
-    "faq2aWithData": "There are {{count}} padel club{{plural}} in {{city}}, including {{clubs}}. Each club offers courts where you can take lessons with local trainers.",
-    "faq2aNoData": "We're still adding padel clubs in {{city}} to our directory. Check back soon or explore nearby cities for available clubs.",
-    "faq3q": "Are there any padel academies in {{city}}?",
-    "faq3aWithData": "Yes! {{city}} has {{count}} padel {{academyWord}}: {{academies}}. Academies offer structured training programs, group lessons, and coaching cycles for all levels.",
-    "faq3aNoData": "There are currently no registered padel academies in {{city}}. However, individual trainers in {{city}} offer professional coaching and structured lessons.",
-    "faq4q": "How do I find a padel trainer near me in {{city}}?",
-    "faq4a": "Browse our directory of {{count}} certified padel trainers in {{city}}. Compare ratings, read reviews, and book lessons directly through PadelTrainer.ai.",
-    "faq5q": "What level do I need to be to take padel lessons in {{city}}?",
-    "faq5a": "Padel lessons in {{city}} are available for all levels, from complete beginners to advanced competitive players. Most trainers offer customized sessions based on your current skill level and goals.",
-    "faq6q": "How do I book a padel lesson in {{city}}?",
-    "faq6a": "Simply browse the trainers listed above, view their profiles with ratings and availability, and book a lesson directly through PadelTrainer.ai. You can filter by price, experience, and specialization to find the perfect match.",
-    "academy": "academy",
-    "academies_word": "academies",
-    "nearbyCitiesTitle": "Explore Nearby Cities",
-    "nearbyCitiesSubtitle": "Find padel trainers in other cities",
-    "trainersCount": "{{count}} trainers",
+    "perHour": "/ora",
+    "yearsExp": "anni esp.",
+    "review": "recensione",
+    "reviews": "recensioni",
+    "clubsTitle": "Club di padel a {{city}}",
+    "clubsCount": "{{count}} club di padel a {{city}}",
+    "aboutTitle": "L'allenamento di padel a {{city}}",
+    "aboutIntro": "Che tu sia un principiante che vuole imparare le basi o un giocatore esperto che desidera affinare la tecnica, trovare il giusto allenatore di padel a {{city}} è essenziale per il tuo sviluppo. I nostri allenatori certificati offrono coaching personalizzato in base al tuo livello e ai tuoi obiettivi.",
+    "expectTitle": "Cosa aspettarsi dalle lezioni di padel",
+    "expect1": "Allenamento tecnico su servizio, volley e gioco difensivo",
+    "expect2": "Strategie tattiche per singolare e doppio",
+    "expect3": "Preparazione fisica specifica per il padel",
+    "expect4": "Analisi del gioco e consigli per migliorare",
+    "popularClubsTitle": "Club di padel popolari a {{city}}",
+    "popularClubsIntro": "{{city}} ospita {{count}} club di padel dove puoi prendere lezioni e allenarti:",
+    "andMore": "e altri {{count}}",
+    "academiesTitle": "Accademie di padel a {{city}}",
+    "academiesOffer": "offrono programmi di allenamento strutturati a {{city}}.",
+    "faqTitle": "Domande frequenti",
+    "faq1q": "Quanto costano le lezioni di padel a {{city}}?",
+    "faq1aWithData": "Le lezioni di padel a {{city}} vanno generalmente da €{{min}} a €{{max}} all'ora. I prezzi variano in base all'esperienza dell'allenatore, alle certificazioni e al tipo di lezione.",
+    "faq1aNoData": "I prezzi delle lezioni di padel a {{city}} variano in base all'esperienza e alle qualifiche dell'allenatore. Contatta direttamente gli allenatori per le tariffe attuali.",
+    "faq2q": "Quali club di padel ci sono a {{city}}?",
+    "faq2aWithData": "Ci sono {{count}} club di padel a {{city}}, tra cui {{clubs}}. Ogni club offre campi dove puoi prendere lezioni con allenatori locali.",
+    "faq2aNoData": "Stiamo ancora aggiungendo club di padel a {{city}} alla nostra directory. Torna presto o esplora le città vicine per i club disponibili.",
+    "faq3q": "Ci sono accademie di padel a {{city}}?",
+    "faq3aWithData": "Sì! {{city}} ha {{count}} {{academyWord}} di padel: {{academies}}. Le accademie offrono programmi di allenamento strutturati, lezioni di gruppo e cicli di coaching per tutti i livelli.",
+    "faq3aNoData": "Al momento non ci sono accademie di padel registrate a {{city}}. Tuttavia, allenatori individuali a {{city}} offrono coaching professionale e lezioni strutturate.",
+    "faq4q": "Come trovo un allenatore di padel vicino a me a {{city}}?",
+    "faq4a": "Sfoglia la nostra directory di {{count}} allenatori di padel certificati a {{city}}. Confronta valutazioni, leggi recensioni e prenota lezioni direttamente su PadelTrainer.ai.",
+    "faq5q": "Di che livello devo essere per prendere lezioni di padel a {{city}}?",
+    "faq5a": "Le lezioni di padel a {{city}} sono disponibili per tutti i livelli, dal principiante assoluto al giocatore competitivo avanzato. La maggior parte degli allenatori offre sessioni personalizzate in base al tuo livello e ai tuoi obiettivi.",
+    "faq6q": "Come prenoto una lezione di padel a {{city}}?",
+    "faq6a": "Sfoglia gli allenatori elencati qui sopra, visualizza i loro profili con valutazioni e disponibilità, e prenota una lezione direttamente su PadelTrainer.ai. Puoi filtrare per prezzo, esperienza e specializzazione per trovare il match perfetto.",
+    "academy": "accademia",
+    "academies_word": "accademie",
+    "nearbyCitiesTitle": "Esplora le città vicine",
+    "nearbyCitiesSubtitle": "Trova allenatori di padel in altre città",
+    "trainersCount": "{{count}} allenatori",
     "home": "Home",
-    "trainers": "Trainer",
-    "cities": "Cities",
-    "clubs": "Clubs",
-    "exploreOtherRegions": "Explore other regions"
+    "trainers": "Allenatori",
+    "cities": "Città",
+    "clubs": "Club",
+    "exploreOtherRegions": "Esplora altre regioni"
   },
   "provincePage": {
-    "title": "Padel Trainers in {{province}} | Find & Book Lessons",
-    "description": "Find {{count}} padel trainers across {{cities}} cities in {{province}}. Compare rates, read reviews, and book lessons.",
-    "descriptionEmpty": "Explore padel training options across {{province}}.",
-    "heading": "Padel Trainers in {{province}}",
-    "subtitle": "Discover {{count}} padel trainers across {{cities}} cities in {{province}}. Find the perfect trainer near you.",
-    "subtitleEmpty": "Explore padel training options across {{province}}."
+    "title": "Allenatori di padel in {{province}} | Trova e prenota lezioni",
+    "description": "Trova {{count}} allenatori di padel in {{cities}} città della {{province}}. Confronta tariffe, leggi recensioni e prenota lezioni.",
+    "descriptionEmpty": "Esplora le opzioni di allenamento di padel in {{province}}.",
+    "heading": "Allenatori di padel in {{province}}",
+    "subtitle": "Scopri {{count}} allenatori di padel in {{cities}} città della {{province}}. Trova l'allenatore perfetto vicino a te.",
+    "subtitleEmpty": "Esplora le opzioni di allenamento di padel in {{province}}."
   },
   "seo": {
     "home": {
-      "title": "Padel Trainer | Scheduling, Bookings & Payments for Padel Trainers",
-      "description": "Run your padel coaching business from one place. Online booking, secure payments, calendar sync, and fewer no-shows. Free trial, then from €9/month."
+      "title": "Padel Trainer | Prenotazioni, pagamenti e gestione per allenatori di padel",
+      "description": "Gestisci la tua attività di coaching di padel da un unico punto. Prenotazioni online, pagamenti sicuri, sincronizzazione calendario e meno assenze. Prova gratuita, poi da €9/mese."
     },
     "location": {
-      "title": "{{name}} - Padel Training in {{city}}",
-      "description": "Book padel lessons at {{name}} in {{city}}. {{count}} certified trainers available."
+      "title": "{{name}} - Allenamento di padel a {{city}}",
+      "description": "Prenota lezioni di padel presso {{name}} a {{city}}. {{count}} allenatori certificati disponibili."
     },
     "academy": {
-      "title": "{{name}} - Padel Academy{{city}}",
-      "description": "{{name}} - Professional padel training academy with {{trainers}} certified trainer{{trainerPlural}} at {{locations}} location{{locationPlural}}."
+      "title": "{{name}} - Accademia di padel{{city}}",
+      "description": "{{name}} - Accademia di padel professionale con {{trainers}} allenator{{trainerPlural}} certificat{{trainerPlural}} in {{locations}} sed{{locationPlural}}."
     },
     "trainer": {
-      "description": "Book padel lessons with {{name}} in {{location}}. {{experience}}{{rate}}"
+      "description": "Prenota lezioni di padel con {{name}} a {{location}}. {{experience}}{{rate}}"
     }
   },
   "quiz": {
-    "title": "Find Your Perfect Padel Racket",
-    "subtitle": "Answer 5 quick questions",
-    "intro": "Not sure which padel racket to buy? Our racket finder quiz matches you with the ideal racket based on your playing level, style, budget, and physical needs. Whether you're a beginner looking for your first racket or an advanced player upgrading your weapon, we'll point you in the right direction.",
-    "start": "Start Quiz",
-    "back": "← Back",
+    "title": "Trova la tua racchetta da padel perfetta",
+    "subtitle": "Rispondi a 5 domande veloci",
+    "intro": "Non sai quale racchetta da padel comprare? Il nostro quiz ti abbina alla racchetta ideale in base al tuo livello di gioco, stile, budget e necessità fisiche. Che tu sia un principiante alla ricerca della prima racchetta o un giocatore avanzato che vuole fare l'upgrade, ti indicheremo la direzione giusta.",
+    "start": "Inizia il quiz",
+    "back": "← Indietro",
     "seo": {
-      "title": "Padel Racket Finder — Find Your Perfect Racket",
-      "description": "Answer 5 quick questions and we'll recommend the perfect padel racket for your level, playing style, and budget."
+      "title": "Trova la tua racchetta da padel — Racket Finder",
+      "description": "Rispondi a 5 domande veloci e ti consiglieremo la racchetta da padel perfetta per il tuo livello, stile di gioco e budget."
     },
-    "q1": "What's your padel level?",
-    "q2": "How would you describe your game?",
-    "q3": "What's your budget?",
-    "q4": "Do you have any arm or elbow issues?",
-    "q5": "Do you have a weight preference?",
-    "q6": "Do you know which shape you prefer?",
+    "q1": "Qual è il tuo livello nel padel?",
+    "q2": "Come descriveresti il tuo gioco?",
+    "q3": "Qual è il tuo budget?",
+    "q4": "Hai problemi al braccio o al gomito?",
+    "q5": "Hai una preferenza di peso?",
+    "q6": "Sai quale forma preferisci?",
     "a1": {
-      "beginner": "Just starting out",
-      "intermediate": "I play regularly (1-2x per week)",
-      "advanced": "I compete in tournaments"
+      "beginner": "Sto appena iniziando",
+      "intermediate": "Gioco regolarmente (1-2 volte a settimana)",
+      "advanced": "Partecipo a tornei"
     },
     "a2": {
-      "control": "Defend and control the rally",
-      "allround": "A mix of everything",
-      "power": "Attack and finish points with power"
+      "control": "Difesa e controllo dello scambio",
+      "allround": "Un mix di tutto",
+      "power": "Attacco e chiusura dei punti con potenza"
     },
     "a3": {
-      "under100": "Under €100"
+      "under100": "Meno di €100"
     },
     "a4": {
-      "yes": "Yes, I need something soft on my arm",
-      "no": "No issues"
+      "yes": "Sì, ho bisogno di qualcosa di delicato sul braccio",
+      "no": "Nessun problema"
     },
     "a5": {
-      "light": "Light racket (easier to swing)",
-      "medium": "Standard weight",
-      "heavy": "Heavier (more stability)",
-      "any": "No preference"
+      "light": "Racchetta leggera (più facile da muovere)",
+      "medium": "Peso standard",
+      "heavy": "Più pesante (più stabilità)",
+      "any": "Nessuna preferenza"
     },
     "a6": {
-      "round": "Round (maximum control)",
-      "teardrop": "Teardrop (balance of control & power)",
-      "diamond": "Diamond (maximum power)",
-      "any": "Not sure — recommend for me"
+      "round": "Rotonda (massimo controllo)",
+      "teardrop": "A goccia (equilibrio tra controllo e potenza)",
+      "diamond": "A diamante (massima potenza)",
+      "any": "Non sono sicuro — consigliami tu"
     },
     "results": {
-      "title": "Your Perfect Racket Match",
-      "noResults": "No exact matches found. Try adjusting your preferences.",
-      "topPick": "#1 Pick for You",
-      "alternative": "Great Alternative",
-      "budget": "Budget-Friendly",
-      "checkPrice": "Check Price",
-      "readReview": "Read Review",
-      "retake": "Not quite right? Retake Quiz",
-      "viewAll": "View Full Racket Catalogue →"
+      "title": "La tua racchetta perfetta",
+      "noResults": "Nessun risultato esatto trovato. Prova a modificare le tue preferenze.",
+      "topPick": "Scelta #1 per te",
+      "alternative": "Ottima alternativa",
+      "budget": "Scelta economica",
+      "checkPrice": "Verifica il prezzo",
+      "readReview": "Leggi la recensione",
+      "retake": "Non ti convince? Rifai il quiz",
+      "viewAll": "Vedi il catalogo completo →"
     },
-    "share": "Share your result"
+    "share": "Condividi il tuo risultato"
   },
   "gear": {
     "listing": {
-      "title": "Best Padel Rackets 2026 — Compare & Choose",
-      "description": "Browse and compare all padel rackets. Filter by level, playing style, shape, weight, and price to find your perfect match.",
-      "h1": "Padel Rackets",
-      "subtitle": "Find and compare the best padel rackets for every level and playing style.",
-      "noResults": "No rackets match your filters."
+      "title": "Migliori racchette da padel 2026 — Confronta e scegli",
+      "description": "Sfoglia e confronta tutte le racchette da padel. Filtra per livello, stile di gioco, forma, peso e prezzo per trovare la tua racchetta perfetta.",
+      "h1": "Racchette da padel",
+      "subtitle": "Trova e confronta le migliori racchette da padel per ogni livello e stile di gioco.",
+      "noResults": "Nessuna racchetta corrisponde ai tuoi filtri."
     },
-    "showingCount": "Showing {{filtered}} of {{total}} rackets",
-    "clearAll": "Clear all",
+    "showingCount": "Mostrando {{filtered}} di {{total}} racchette",
+    "clearAll": "Cancella tutto",
     "filter": {
       "title": "Filtri",
-      "level": "Level",
-      "style": "Playing Style",
-      "shape": "Shape",
-      "weight": "Weight",
+      "level": "Livello",
+      "style": "Stile di gioco",
+      "shape": "Forma",
+      "weight": "Peso",
       "price": "Prezzo",
-      "brand": "Brand",
-      "armFriendly": "Arm-friendly",
-      "armFriendlyOnly": "Only arm-friendly rackets"
+      "brand": "Marca",
+      "armFriendly": "Delicata sul braccio",
+      "armFriendlyOnly": "Solo racchette delicate sul braccio"
     },
     "breadcrumb": {
       "home": "Home",
-      "rackets": "Rackets"
+      "rackets": "Racchette"
     },
     "detail": {
-      "notFound": "Racket not found.",
-      "buyAt": "Buy at {{shop}}",
-      "checkLocal": "Check availability at your local padel shop",
-      "takeQuiz": "Take the Quiz",
-      "quickSpecs": "Quick Specs",
-      "atAGlance": "At a Glance",
-      "level": "Level",
-      "style": "Style",
-      "armFriendlyLabel": "Arm-friendly",
+      "notFound": "Racchetta non trovata.",
+      "buyAt": "Acquista su {{shop}}",
+      "checkLocal": "Verifica la disponibilità nel tuo negozio di padel locale",
+      "takeQuiz": "Fai il quiz",
+      "quickSpecs": "Specifiche rapide",
+      "atAGlance": "In sintesi",
+      "level": "Livello",
+      "style": "Stile",
+      "armFriendlyLabel": "Delicata sul braccio",
       "priceLabel": "Prezzo",
-      "fullDescription": "Full Review",
-      "similarRackets": "Similar Rackets"
+      "fullDescription": "Recensione completa",
+      "similarRackets": "Racchette simili"
     }
   },
   "levelQuiz": {
-    "title": "What's Your Padel Level?",
-    "subtitle": "Answer 10 questions about your skills and find out your rating",
-    "selectCountry": "Select your country for a localized rating",
-    "startQuiz": "Start Quiz",
-    "question": "Question",
+    "title": "Qual è il tuo livello nel padel?",
+    "subtitle": "Rispondi a 10 domande sulle tue abilità e scopri la tua classificazione",
+    "selectCountry": "Seleziona il tuo paese per una classificazione localizzata",
+    "startQuiz": "Inizia il quiz",
+    "question": "Domanda",
     "of": "di",
     "back": "Indietro",
     "next": "Avanti",
-    "seeResults": "See My Results",
-    "yourLevel": "Your Padel Level",
+    "seeResults": "Vedi i miei risultati",
+    "yourLevel": "Il tuo livello nel padel",
     "equivalentIn": "In {{country}}",
-    "strengths": "Your Strengths",
-    "focusAreas": "Focus Areas to Reach Level {{nextLevel}}",
-    "recommendedReading": "Recommended Reading",
-    "strokesToMaster": "Strokes to Master",
-    "fromBlog": "From Our Blog",
-    "findRacket": "Find Your Perfect Racket",
-    "takeRacketQuiz": "Take the Racket Finder Quiz",
-    "shareResult": "Share My Result",
-    "retakeQuiz": "Retake Quiz",
-    "shareText": "I'm a level {{level}} padel player ({{title}})! 🎾 What's your level?",
-    "linkCopied": "Link copied!"
+    "strengths": "I tuoi punti di forza",
+    "focusAreas": "Aree di miglioramento per raggiungere il livello {{nextLevel}}",
+    "recommendedReading": "Letture consigliate",
+    "strokesToMaster": "Colpi da padroneggiare",
+    "fromBlog": "Dal nostro blog",
+    "findRacket": "Trova la tua racchetta perfetta",
+    "takeRacketQuiz": "Fai il quiz Racket Finder",
+    "shareResult": "Condividi il mio risultato",
+    "retakeQuiz": "Rifai il quiz",
+    "shareText": "Sono un giocatore di padel di livello {{level}} ({{title}})! 🎾 Tu che livello sei?",
+    "linkCopied": "Link copiato!"
   },
   "cityLanding": {
-    "metaTitle": "Padel in {{city}}",
-    "metaDescription": "Find {{count}} padel clubs and coaches in {{city}}. Compare courts, book lessons and start playing padel today.",
-    "heroSubtitle": "Find padel courts, clubs and coaches in {{city}}. Book a lesson or find your nearest court.",
-    "findCourt": "Find a court",
-    "bookCoach": "Book a coach",
-    "clubs": "Clubs",
-    "coaches": "Coaches",
-    "clubsHeading": "Padel clubs in {{city}}",
-    "trainersHeading": "Padel coaches in {{city}}",
-    "lessonsHeading": "Padel lessons in {{city}}",
-    "faqHeading": "Frequently asked questions about padel in {{city}}",
-    "showAllClubs": "Show all {{count}} clubs",
-    "viewAllTrainers": "View all coaches in {{city}}",
-    "startTrial": "Start your free trial",
-    "nearbyCities": "Also popular",
-    "unknownTrainer": "Trainer",
+    "metaTitle": "Padel a {{city}}",
+    "metaDescription": "Trova {{count}} club e allenatori di padel a {{city}}. Confronta campi, prenota lezioni e inizia a giocare a padel oggi.",
+    "heroSubtitle": "Trova campi, club e allenatori di padel a {{city}}. Prenota una lezione o trova il campo più vicino a te.",
+    "findCourt": "Trova un campo",
+    "bookCoach": "Prenota un allenatore",
+    "clubs": "Club",
+    "coaches": "Allenatori",
+    "clubsHeading": "Club di padel a {{city}}",
+    "trainersHeading": "Allenatori di padel a {{city}}",
+    "lessonsHeading": "Lezioni di padel a {{city}}",
+    "faqHeading": "Domande frequenti sul padel a {{city}}",
+    "showAllClubs": "Mostra tutti i {{count}} club",
+    "viewAllTrainers": "Vedi tutti gli allenatori a {{city}}",
+    "startTrial": "Inizia la tua prova gratuita",
+    "nearbyCities": "Anche popolari",
+    "unknownTrainer": "Allenatore",
     "indoor": "Indoor",
     "outdoor": "Outdoor",
-    "noTrainersMessage": "No trainers available yet in {{city}}. Are you a padel trainer? Sign up and start coaching.",
-    "becomeTrainer": "Become a trainer",
-    "moreAboutPadel": "More about padel",
-    "viewProfile": "View profile"
+    "noTrainersMessage": "Nessun allenatore ancora disponibile a {{city}}. Sei un allenatore di padel? Iscriviti e inizia ad allenare.",
+    "becomeTrainer": "Diventa allenatore",
+    "moreAboutPadel": "Scopri di più sul padel",
+    "viewProfile": "Vedi il profilo"
   },
   "rules": {
-    "title": "Padel Rules & Regulations",
-    "subtitle": "Everything you need to know about the rules of padel.",
-    "metaDescription": "Learn the official padel court rules, serving regulations, and scoring system. Master the fundamentals every player needs to know.",
-    "introText": "Padel rules govern everything from court dimensions to scoring and serving regulations. Whether you're new to the sport or brushing up on the fundamentals, this guide covers the essential rules you need to know. Understanding the rules is the first step to playing confidently and fairly.",
-    "breadcrumbLearn": "Learn",
-    "guide": "Guide",
-    "readMore": "Read more",
-    "specificRules": "Specific Rules",
-    "empty": "No rules articles yet",
-    "emptyDescription": "Check back soon for padel rules content.",
-    "ctaTitle": "Ready to play by the rules?",
-    "ctaDescription": "Find a certified padel trainer near you.",
-    "relatedLearning": "Related Learning",
-    "relatedStrokes": "Master Padel Strokes & Techniques",
-    "relatedVideoTips": "Watch Video Tips & Tutorials",
-    "relatedBlog": "Read the Latest Blog Posts",
+    "title": "Regole e regolamento del padel",
+    "subtitle": "Tutto ciò che devi sapere sulle regole del padel.",
+    "metaDescription": "Scopri le regole ufficiali del padel: dimensioni del campo, regole del servizio e sistema di punteggio. Padroneggia i fondamentali che ogni giocatore deve conoscere.",
+    "introText": "Le regole del padel disciplinano tutto, dalle dimensioni del campo al punteggio e alle regole del servizio. Che tu sia nuovo nello sport o voglia ripassare i fondamentali, questa guida copre le regole essenziali che devi conoscere. Capire le regole è il primo passo per giocare con sicurezza e correttezza.",
+    "breadcrumbLearn": "Impara",
+    "guide": "Guida",
+    "readMore": "Leggi di più",
+    "specificRules": "Regole specifiche",
+    "empty": "Ancora nessun articolo sulle regole",
+    "emptyDescription": "Torna presto per i contenuti sulle regole del padel.",
+    "ctaTitle": "Pronto a giocare secondo le regole?",
+    "ctaDescription": "Trova un allenatore di padel certificato vicino a te.",
+    "relatedLearning": "Approfondimenti correlati",
+    "relatedStrokes": "Padroneggia colpi e tecniche del padel",
+    "relatedVideoTips": "Guarda video consigli e tutorial",
+    "relatedBlog": "Leggi gli ultimi articoli del blog",
     "faq": {
-      "q1": "What is the correct serving height in padel?",
-      "a1": "In padel, the serve must be hit at or below waist height. The ball must bounce on the ground before being struck, and the server must stand behind the service line.",
-      "q2": "How many bounces are allowed on the serve in padel?",
-      "a2": "The serve must bounce once in the diagonal service box before the receiver hits it. After the serve, the ball can bounce off the walls but must only bounce on the ground once before being returned.",
-      "q3": "What happens if the ball hits the net in padel?",
-      "a3": "During a rally, if the ball hits the net and lands in the correct area, play continues. On a serve, if the ball hits the net and lands in the correct service box, it is a let and the serve is replayed.",
-      "q4": "Can you hit the ball off the walls in padel?",
-      "a4": "Yes! The walls are in play in padel. After the ball bounces on the ground, it can hit the back or side walls, and you can still play it. This is one of the unique and exciting aspects of padel.",
-      "q5": "How does scoring work in padel?",
-      "a5": "Padel uses the same scoring system as tennis: 15, 30, 40, game. Matches are typically best of 3 sets, with each set played to 6 games. A tiebreak is played at 6-6."
+      "q1": "Qual è l'altezza corretta del servizio nel padel?",
+      "a1": "Nel padel, il servizio deve essere colpito all'altezza della vita o al di sotto. La palla deve rimbalzare a terra prima di essere colpita, e il battitore deve trovarsi dietro la linea di servizio.",
+      "q2": "Quanti rimbalzi sono consentiti al servizio nel padel?",
+      "a2": "Il servizio deve rimbalzare una volta nel riquadro di servizio diagonale prima che il ricevitore lo colpisca. Dopo il servizio, la palla può rimbalzare sulle pareti ma deve rimbalzare a terra solo una volta prima di essere restituita.",
+      "q3": "Cosa succede se la palla colpisce la rete nel padel?",
+      "a3": "Durante lo scambio, se la palla colpisce la rete e atterra nell'area corretta, il gioco continua. Al servizio, se la palla colpisce la rete e atterra nel riquadro di servizio corretto, è un let e il servizio viene ripetuto.",
+      "q4": "Si può colpire la palla dalle pareti nel padel?",
+      "a4": "Sì! Le pareti sono in gioco nel padel. Dopo che la palla rimbalza a terra, può colpire le pareti posteriori o laterali, e puoi ancora giocarla. Questo è uno degli aspetti unici e più entusiasmanti del padel.",
+      "q5": "Come funziona il punteggio nel padel?",
+      "a5": "Il padel utilizza lo stesso sistema di punteggio del tennis: 15, 30, 40, game. Le partite si giocano al meglio dei 3 set, con ogni set giocato a 6 game. Si gioca un tiebreak sul 6-6."
     }
   },
   "strokes": {
-    "title": "Padel Strokes & Techniques",
-    "subtitle": "Learn every shot in padel with expert tips, video tutorials, and detailed technique breakdowns.",
-    "metaDescription": "Master every padel stroke – from the bandeja to the vibora. Video tutorials, tips, and technique breakdowns.",
-    "introText": "Master the fundamental strokes that form the foundation of competitive padel play. Each stroke serves a specific purpose on the court, from defensive shots to aggressive winners. Whether you're starting out or refining your technique, this guide breaks down the essential movements every player should master.",
-    "breadcrumbLearn": "Learn",
-    "defaultDescription": "Learn this essential padel stroke and improve your game.",
-    "learnMore": "Learn more",
-    "startHere": "Start Here",
-    "startHereDescription": "New to padel? Begin with these essential strokes.",
+    "title": "Colpi e tecniche del padel",
+    "subtitle": "Impara ogni colpo del padel con consigli degli esperti, video tutorial e analisi dettagliate della tecnica.",
+    "metaDescription": "Padroneggia ogni colpo del padel — dalla bandeja alla vibora. Video tutorial, consigli e analisi della tecnica.",
+    "introText": "Padroneggia i colpi fondamentali che costituiscono la base del padel competitivo. Ogni colpo ha uno scopo specifico in campo, dai tiri difensivi ai vincenti aggressivi. Che tu stia iniziando o affinando la tecnica, questa guida analizza i movimenti essenziali che ogni giocatore dovrebbe padroneggiare.",
+    "breadcrumbLearn": "Impara",
+    "defaultDescription": "Impara questo colpo essenziale del padel e migliora il tuo gioco.",
+    "learnMore": "Scopri di più",
+    "startHere": "Inizia da qui",
+    "startHereDescription": "Nuovo nel padel? Inizia con questi colpi essenziali.",
     "filterAll": "Tutti",
-    "filterBeginner": "Beginner",
-    "filterIntermediate": "Intermediate",
-    "filterAdvanced": "Advanced",
-    "viewFlat": "Flat view",
-    "viewGrouped": "Group by category",
-    "noResults": "No strokes found",
-    "noResultsDescription": "Try a different filter or check back soon."
+    "filterBeginner": "Principiante",
+    "filterIntermediate": "Intermedio",
+    "filterAdvanced": "Avanzato",
+    "viewFlat": "Vista lista",
+    "viewGrouped": "Raggruppa per categoria",
+    "noResults": "Nessun colpo trovato",
+    "noResultsDescription": "Prova un filtro diverso o torna presto."
   },
   "videoTips": {
-    "title": "Padel Video Tips & Tutorials",
-    "metaDescription": "Watch expert padel coaching videos. Learn strokes, tactics, and techniques from certified coaches with short, focused video lessons for every level.",
-    "subtitle": "Expert coaching videos to improve every aspect of your game. Filter by stroke, skill level, or trainer.",
-    "introText": "Learn from experienced padel coaches through short, focused video lessons. Our coaches break down technique, strategy, and game-winning tactics to help you improve faster. Browse by coach to follow your favorite instructors.",
-    "badge": "Video Library",
-    "breadcrumbLearn": "Learn",
-    "filterStroke": "Stroke",
-    "filterLevel": "Level",
-    "filterCoach": "Coach",
-    "filterTags": "Tags",
-    "clearFilters": "Clear filters",
-    "noMatch": "No videos match your filters",
-    "empty": "No video tips yet",
-    "adjustFilters": "Try adjusting your filters to find more videos.",
-    "emptyDescription": "Check back soon for expert padel coaching videos.",
-    "matchingFilters": "matching your filters",
-    "wantMore": "Looking for a specific coach or skill?",
-    "wantMoreDescription": "Browse our trainer directory to find coaches near you or book private sessions.",
-    "findCoach": "Find a Coach"
+    "title": "Video consigli e tutorial di padel",
+    "metaDescription": "Guarda video di coaching di padel esperti. Impara colpi, tattiche e tecniche da allenatori certificati con brevi video lezioni per ogni livello.",
+    "subtitle": "Video di coaching esperti per migliorare ogni aspetto del tuo gioco. Filtra per colpo, livello o allenatore.",
+    "introText": "Impara da allenatori di padel esperti attraverso brevi video lezioni mirate. I nostri allenatori analizzano tecnica, strategia e tattiche vincenti per aiutarti a migliorare più velocemente. Sfoglia per allenatore per seguire i tuoi istruttori preferiti.",
+    "badge": "Videoteca",
+    "breadcrumbLearn": "Impara",
+    "filterStroke": "Colpo",
+    "filterLevel": "Livello",
+    "filterCoach": "Allenatore",
+    "filterTags": "Tag",
+    "clearFilters": "Cancella filtri",
+    "noMatch": "Nessun video corrisponde ai tuoi filtri",
+    "empty": "Ancora nessun video",
+    "adjustFilters": "Prova a modificare i filtri per trovare più video.",
+    "emptyDescription": "Torna presto per video di coaching esperti di padel.",
+    "matchingFilters": "che corrispondono ai tuoi filtri",
+    "wantMore": "Cerchi un allenatore o una tecnica specifica?",
+    "wantMoreDescription": "Sfoglia la nostra directory di allenatori per trovare coach vicino a te o prenota sessioni private.",
+    "findCoach": "Trova un allenatore"
   },
   "foundingTrainers": {
-    "pageTitle": "Founding 100 Trainers — Free Premium Racket",
-    "metaDescription": "Be one of the first 100 padel coaches on PadelTrainer.ai and receive a free premium racket worth €275+. Sign up for the Founding Trainer Annual plan at €349/year.",
-    "badge": "Only 100 Spots Available",
-    "headline": "Become a Founding Trainer",
-    "subheadline": "Join the first 100 coaches shaping the future of padel — and get a premium racket worth €275+ on us.",
-    "cta": "Claim Your Spot",
-    "spotsClaimed": "spots claimed",
-    "spotsRemaining": "remaining",
-    "whatYouGetTitle": "What You Get",
-    "whatYouGetSub": "Everything you need to launch your padel coaching career.",
-    "benefit1Title": "Premium Padel Racket",
-    "benefit1Desc": "Choose from top brands like Bullpadel, Head, and Nox. Worth €275+. Delivered after your first 5 bookings.",
-    "benefit2Title": "Professional Plan (€349/year)",
-    "benefit2Desc": "Manage bookings, build your profile, grow your client base. Only €0.75/booking fee.",
-    "benefit3Title": "Founding Trainer Status",
-    "benefit3Desc": "Shape the platform with direct feedback access. Your name on our Founding Trainers wall.",
-    "howItWorksTitle": "How It Works",
-    "step1": "Sign up for the Founding Trainer Annual plan (€349/year)",
-    "step2": "Set up your trainer profile and start accepting bookings",
-    "step3": "Complete 5 bookings to qualify for your racket",
-    "step4": "Choose your premium racket — delivered to your door",
-    "valueTitle": "The Value Breakdown",
-    "valueRacket": "Racket value",
-    "valuePlan": "Professional plan (12 months)",
-    "valuePerks": "Founding Trainer perks",
-    "priceless": "Priceless",
-    "totalValue": "Total value",
-    "youPay": "You pay",
-    "valueHighlight": "That's getting paid €274 to join the best padel coaching platform.",
-    "whoTitle": "Who Is This For?",
-    "audience1": "Independent padel coaches looking to grow their client base",
-    "audience2": "Club instructors wanting better booking management",
-    "audience3": "Coaches who want a professional online presence",
-    "audience4": "Anyone serious about building their padel coaching career",
-    "faqTitle": "Frequently Asked Questions",
-    "faq1Q": "When do I get the racket?",
-    "faq1A": "After 5 completed bookings (usually within your first 30 days).",
-    "faq2Q": "Which rackets can I choose from?",
-    "faq2A": "Top brands including Bullpadel, Head, and Nox. We'll send you the selection after qualifying.",
-    "faq3Q": "What happens after the first year?",
-    "faq3A": "Continue at the standard Professional rate (€29/mo or renew annually). The racket is yours to keep forever.",
-    "faq4Q": "Can I cancel?",
-    "faq4A": "The annual plan is a 12-month commitment. The racket offer requires completing 5 bookings within 60 days.",
-    "faq5Q": "What if the 100 spots are full?",
-    "faq5A": "Join the waitlist and we'll notify you about future promotions.",
-    "faq6Q": "Is this available in my country?",
-    "faq6A": "Currently available in the Netherlands and Spain. More countries coming soon.",
-    "finalCtaTitle": "Ready to Become a Founding Trainer?",
-    "finalCtaSub": "Only {{count}} spots remaining",
-    "finalCtaButton": "Become a Founding Trainer",
-    "bannerText": "Founding 100 Trainers — Get a FREE premium racket worth €275+"
+    "pageTitle": "Founding 100 Trainers — Racchetta premium gratuita",
+    "metaDescription": "Sii uno dei primi 100 allenatori di padel su PadelTrainer.ai e ricevi una racchetta premium gratuita del valore di €275+. Iscriviti al piano annuale Founding Trainer a €349/anno.",
+    "badge": "Solo 100 posti disponibili",
+    "headline": "Diventa un Founding Trainer",
+    "subheadline": "Unisciti ai primi 100 allenatori che stanno plasmando il futuro del padel — e ricevi una racchetta premium del valore di €275+ da parte nostra.",
+    "cta": "Riserva il tuo posto",
+    "spotsClaimed": "posti occupati",
+    "spotsRemaining": "rimanenti",
+    "whatYouGetTitle": "Cosa ottieni",
+    "whatYouGetSub": "Tutto ciò che ti serve per lanciare la tua carriera di allenatore di padel.",
+    "benefit1Title": "Racchetta da padel premium",
+    "benefit1Desc": "Scegli tra i migliori brand come Bullpadel, Head e Nox. Valore €275+. Consegnata dopo le tue prime 5 prenotazioni.",
+    "benefit2Title": "Piano Professional (€349/anno)",
+    "benefit2Desc": "Gestisci prenotazioni, costruisci il tuo profilo, fai crescere la tua clientela. Solo €0,75 di commissione per prenotazione.",
+    "benefit3Title": "Status di Founding Trainer",
+    "benefit3Desc": "Plasmi la piattaforma con accesso diretto al feedback. Il tuo nome sulla nostra bacheca dei Founding Trainers.",
+    "howItWorksTitle": "Come funziona",
+    "step1": "Iscriviti al piano annuale Founding Trainer (€349/anno)",
+    "step2": "Configura il tuo profilo allenatore e inizia ad accettare prenotazioni",
+    "step3": "Completa 5 prenotazioni per qualificarti per la tua racchetta",
+    "step4": "Scegli la tua racchetta premium — consegnata a domicilio",
+    "valueTitle": "Il valore in dettaglio",
+    "valueRacket": "Valore racchetta",
+    "valuePlan": "Piano Professional (12 mesi)",
+    "valuePerks": "Vantaggi Founding Trainer",
+    "priceless": "Inestimabile",
+    "totalValue": "Valore totale",
+    "youPay": "Tu paghi",
+    "valueHighlight": "In pratica, ricevi €274 per unirti alla migliore piattaforma di coaching di padel.",
+    "whoTitle": "Per chi è?",
+    "audience1": "Allenatori di padel indipendenti che vogliono far crescere la propria clientela",
+    "audience2": "Istruttori di club che desiderano una gestione migliore delle prenotazioni",
+    "audience3": "Allenatori che vogliono una presenza online professionale",
+    "audience4": "Chiunque sia serio nel costruire la propria carriera di allenatore di padel",
+    "faqTitle": "Domande frequenti",
+    "faq1Q": "Quando ricevo la racchetta?",
+    "faq1A": "Dopo 5 prenotazioni completate (di solito entro i primi 30 giorni).",
+    "faq2Q": "Quali racchette posso scegliere?",
+    "faq2A": "I migliori brand tra cui Bullpadel, Head e Nox. Ti invieremo la selezione dopo la qualificazione.",
+    "faq3Q": "Cosa succede dopo il primo anno?",
+    "faq3A": "Continui alla tariffa Professional standard (€29/mese o rinnovo annuale). La racchetta è tua per sempre.",
+    "faq4Q": "Posso cancellare?",
+    "faq4A": "Il piano annuale è un impegno di 12 mesi. L'offerta della racchetta richiede il completamento di 5 prenotazioni entro 60 giorni.",
+    "faq5Q": "E se i 100 posti sono esauriti?",
+    "faq5A": "Iscriviti alla lista d'attesa e ti informeremo sulle prossime promozioni.",
+    "faq6Q": "È disponibile nel mio paese?",
+    "faq6A": "Attualmente disponibile nei Paesi Bassi e in Spagna. Altri paesi in arrivo.",
+    "finalCtaTitle": "Pronto a diventare un Founding Trainer?",
+    "finalCtaSub": "Solo {{count}} posti rimanenti",
+    "finalCtaButton": "Diventa un Founding Trainer",
+    "bannerText": "Founding 100 Trainers — Ricevi una racchetta premium GRATUITA del valore di €275+"
   }
 }
