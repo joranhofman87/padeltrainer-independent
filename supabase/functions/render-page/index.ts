@@ -14,9 +14,9 @@ const corsHeaders = {
 };
 
 const SITE_URL = 'https://padeltrainer.ai';
-const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr'];
+const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr', 'it'];
 const OG_LOCALE_MAP: Record<string, string> = {
-  en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR',
+  en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR', it: 'it_IT',
 };
 
 Deno.serve(async (req) => {
@@ -29,9 +29,9 @@ Deno.serve(async (req) => {
     const path = url.searchParams.get('path') || '/';
 
     // Strip language prefix
-    const langMatch = path.match(/^\/(en|nl|es|de|fr)/);
+    const langMatch = path.match(/^\/(en|nl|es|de|fr|it)/);
     const lang = langMatch ? langMatch[1] : 'en';
-    const cleanPath = path.replace(/^\/(en|nl|es|de|fr)/, '') || '/';
+    const cleanPath = path.replace(/^\/(en|nl|es|de|fr|it)/, '') || '/';
 
     const html = renderPath(cleanPath, lang);
 
