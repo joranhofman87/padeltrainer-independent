@@ -1,98 +1,65 @@
 
 
-# Full SEO & LLM Audit — PadelTrainer.ai
+# Growth/SEO Manager Audit — Ranking Faster with Existing Content
 
-## Overall Assessment: Strong Foundation, 8 Remaining Gaps
+## Executive Summary
 
-Your SEO implementation is already well above average — structured data on all major page types, hreflang tags, sitemap index with pagination, `render-page` bot pre-rendering, `llms.txt` + `llms-full.txt`, OG/Twitter cards everywhere. Here are the remaining gaps ranked by impact.
-
----
-
-## CRITICAL — Priority 1: Translated hreflang slugs still missing on 4 content types
-
-**Status**: This was approved in the last plan but **never implemented**. Only `BlogPost.tsx` passes `translations` + `pathPrefix` to `<SEO>`. The other 4 Sanity content types that fetch translations still generate incorrect hreflang tags (same slug across all languages instead of actual translated slugs).
-
-**Impact**: Google may index the wrong language version or treat pages as duplicates. This is your biggest multilingual SEO issue.
-
-**Fix**: Pass `translations={translationsList}` and `pathPrefix` to `<SEO>` on each page:
-
-| Page | pathPrefix |
-|------|-----------|
-| `RulesPage.tsx` | `padel-rules` |
-| `StrokePage.tsx` | `padel-strokes` |
-| `LearningArticlePage.tsx` | `learn` |
-| `CoachPage.tsx` | `padel-coaches` |
+Your technical SEO foundation is strong — structured data, hreflang, sitemap index, bot pre-rendering, `llms.txt`. But there are **5 actionable gaps** that are slowing down how fast Google discovers, understands, and ranks your content. These are ordered by expected impact on organic growth velocity.
 
 ---
 
-## Priority 2: Trainer profile structured data — missing `/{lang}/` prefix
+## 1. `llms.txt` has wrong URLs — confusing AI crawlers
 
-The `TrainerProfile.tsx` page builds its `url` as `https://padeltrainer.ai/trainer/${trainerSlug}` — missing the language segment. Should be `https://padeltrainer.ai/${currentLang}/trainer/${trainerSlug}`. Same issue in the breadcrumb `item` URLs (they already use `currentLang` correctly, but the Person schema `url` does not).
+**Problem**: `public/llms.txt` references `/strokes` and `/strokes/:slug` (lines 65, 90-91) but your actual routes are `/padel-strokes` and `/padel-strokes/:slug`. Any AI crawler following these links gets 404s.
 
-**Fix**: One-line change in `TrainerProfile.tsx` line ~322.
-
----
-
-## Priority 3: Homepage Organization schema — empty `sameAs` array
-
-`Home.tsx` has `"sameAs": []` in the Organization schema. Either populate it with your actual social profiles (LinkedIn, Instagram, etc.) or remove the property entirely. An empty array signals "no social presence" to Google.
-
-**Fix**: Add your social media URLs or remove the empty array.
+**Fix**: Update `llms.txt` to use `/padel-strokes` everywhere. Also add missing content types: Racket Finder, Gear/Rackets, Padel Coaches, Topics.
 
 ---
 
-## Priority 4: Homepage SearchAction URL missing `/{lang}/` prefix
+## 2. VideoTipPage missing translations + hreflang
 
-The WebSite schema `SearchAction` target is `https://padeltrainer.ai/trainers?search={search_term}` — missing the language prefix. Should include `/{lang}/` or use `/en/` as default.
+**Problem**: `VideoTipPage.tsx` never calls `getTranslations()` and doesn't pass `translations`/`pathPrefix` to `<SEO>`. This means all language versions of a video tip page have identical hreflang tags pointing to the same slug — Google may deduplicate or pick the wrong version.
 
-**Fix**: Update the target URL in `Home.tsx`.
-
----
-
-## Priority 5: `render-page` edge function — all text is English-only
-
-The `render-page` function serves the same English meta descriptions regardless of language prefix. For example, a Dutch bot hitting `/nl/blog/mijn-artikel` gets "Read 'Mijn Artikel' on the PadelTrainer.ai blog" — English text with a Dutch slug. This confuses language signals for Google.
-
-**Fix**: Add basic Dutch translations for the most common route templates (homepage is already bilingual, but blog/learn/rules/locations are not). Even just translating "Read", "Find", "Discover", "Book" for NL/ES/DE/FR would help significantly.
+**Fix**: Add translation fetching and pass `translations={translationsList}` + `pathPrefix="video-tips"` to `<SEO>`, matching the pattern already used on Rules, Strokes, Learning, Coach, and Blog pages.
 
 ---
 
-## Priority 6: Missing `racket-finder` and `founding-trainers` in sitemap
+## 3. Sanity sitemap entries missing `lastmod` from CMS
 
-The sitemap `staticPages` array includes `/padel-coaches`, `/video-tips`, `/learn`, etc. but is missing `/racket-finder` and `/founding-trainers`. These pages exist in the `render-page` function but aren't being indexed via the sitemap.
+**Problem**: The `generateSanityEntries()` function in the sitemap edge function hardcodes `lastmod` to `today` for all Sanity content. This means Google sees every Sanity page as "just updated" every day, which dilutes the crawl budget signal. Google prioritizes crawling pages with genuinely recent `lastmod` changes.
 
-**Fix**: Add both paths to the `staticPages` array in the sitemap edge function.
-
----
-
-## Priority 7: `llms-full.txt` — stale "Generated" date and missing academies URL pattern
-
-The file says "Generated: 2025-04-07" (a year ago). The `Academies` entity type is described but has no URL pattern section like the others. Also missing: the racket-finder tool URL and the padel level test tool URL.
-
-**Fix**: Update the date, add academy URL patterns, add tool URLs.
+**Fix**: Fetch `_updatedAt` from each Sanity document in the GROQ queries and use it as `lastmod`. This tells Google which content actually changed, so it recrawls updated pages faster and doesn't waste budget on stale ones.
 
 ---
 
-## Priority 8: `robots.txt` — missing `Disallow` for `/app/auth` and other app routes
+## 4. Homepage `SearchAction` URL uses hardcoded `/en/`
 
-Currently `Disallow: /app/` blocks the app. But auth callback pages like `/app/auth` could still be crawled if linked externally. Also, the `Disallow: /*/pay/` pattern might not catch all payment routes. Consider adding explicit blocks for registration form routes (`/*/register/*`) to avoid thin content indexing.
+**Problem**: The `SearchAction` target in `Home.tsx` (line 46) is `https://padeltrainer.ai/en/trainers?search={search_term}` — always English regardless of current language. Google may present the English search result to Dutch users.
 
-**Fix**: Minor additions to `robots.txt`.
+**Fix**: Use `currentLang` from `useParams` or `i18n.language` to build the URL dynamically: `https://padeltrainer.ai/${currentLang}/trainers?search={search_term}`.
 
 ---
 
-## What's Already Good (no action needed)
+## 5. `render-page` edge function — video tips, coaches, rackets still English-only
 
-- Article, BreadcrumbList, FAQPage, VideoObject, SportsClub, LocalBusiness, CollectionPage schemas all implemented
-- `mainEntityOfPage`, `image`, `url`, `speakable`, `isPartOf` on blog posts
-- `geo`, `aggregateRating`, `telephone`, `openingHours` on location pages
-- Proper `x-default` pointing to Dutch
-- Sitemap index with paginated sub-sitemaps + Sanity content with hreflang alternates
-- `render-page` covers all route patterns
-- OG article tags (`published_time`, `modified_time`, `author`) on article pages
-- `WebSite` + `Organization` schemas on homepage
-- `SearchAction` on homepage
-- Bot pre-rendering via Cloudflare worker
+**Problem**: The `render-page` function has proper NL/ES/DE/FR translations for blog, learn, rules, and strokes pages. But video tips (line 245-251), coaches (line 234-241), and rackets (line 264-271) still serve English-only meta regardless of language prefix. When Googlebot crawls `/nl/video-tips/bandeja-uitleg`, it gets "Watch: Bandeja Uitleg" in English.
+
+**Fix**: Add localized templates for these 3 route groups, matching the pattern used for blog/learn/rules/strokes.
+
+---
+
+## What's Already Working Well (No Changes Needed)
+
+- All 4 Sanity content types now pass `translations`/`pathPrefix` to SEO (Rules, Strokes, Learning, Coaches)
+- Article schemas with `mainEntityOfPage`, `image`, `url` on all article pages
+- `VideoObject` JSON-LD on video tip pages
+- `SportsClub` with `geo`, `aggregateRating`, `telephone`, `openingHours` on locations
+- `BreadcrumbList` JSON-LD on all content pages
+- Sitemap index with paginated sub-sitemaps + Sanity hreflang groups
+- `FAQPage` schemas on city pages, rules overview, racket finder
+- `robots.txt` blocking app/pay/register/auth routes
+- Internal linking via related content sections (Related Rules, Related Strokes, Related Guides)
+- Topic cluster architecture with pillar pages
 
 ---
 
@@ -100,14 +67,9 @@ Currently `Disallow: /app/` blocks the app. But auth callback pages like `/app/a
 
 | File | Change |
 |------|--------|
-| `src/pages/marketing/RulesPage.tsx` | Add `translations`/`pathPrefix="padel-rules"` to SEO |
-| `src/pages/marketing/StrokePage.tsx` | Add `translations`/`pathPrefix="padel-strokes"` to SEO |
-| `src/pages/marketing/LearningArticlePage.tsx` | Add `translations`/`pathPrefix="learn"` to SEO |
-| `src/pages/marketing/CoachPage.tsx` | Add `translations`/`pathPrefix="padel-coaches"` to SEO |
-| `src/pages/TrainerProfile.tsx` | Fix missing `/${lang}/` in Person schema `url` |
-| `src/pages/marketing/Home.tsx` | Populate `sameAs` array; fix SearchAction URL |
-| `supabase/functions/render-page/index.ts` | Add basic NL translations for common routes |
-| `supabase/functions/sitemap/index.ts` | Add `/racket-finder` and `/founding-trainers` to static pages |
-| `public/llms-full.txt` | Update date, add academy/tool URL patterns |
-| `public/robots.txt` | Add `Disallow` for registration routes |
+| `public/llms.txt` | Fix `/strokes` → `/padel-strokes`; add missing content type URLs |
+| `src/pages/marketing/VideoTipPage.tsx` | Add `getTranslations()` + pass `translations`/`pathPrefix="video-tips"` to SEO |
+| `supabase/functions/sitemap/index.ts` | Fetch `_updatedAt` from Sanity; use real dates instead of `today` |
+| `src/pages/marketing/Home.tsx` | Make `SearchAction` URL use current language |
+| `supabase/functions/render-page/index.ts` | Add NL/ES/DE/FR meta for video tips, coaches, rackets routes |
 
