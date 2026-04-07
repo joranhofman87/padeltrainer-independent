@@ -1,106 +1,91 @@
 
 
-# Technical SEO Audit: Sitemap, Robots.txt & LLMs.txt
+# Full Technical SEO Audit — PadelTrainer.ai
 
-## Overall Status: Mostly Solid — 7 Issues Found
-
----
-
-## ROBOTS.TXT
-
-### Issue 1: MODERATE — Missing Disallow for `/app` variants
-Currently `Disallow: /app/` only blocks paths with a trailing slash. The path `/app` itself (without slash) is not blocked. Also, authenticated pages like `/*/settings` or `/*/dashboard` are not explicitly blocked — though they redirect anyway, it's cleaner to block them.
-
-**Fix**: Add `Disallow: /app` (without trailing slash).
-
-### Issue 2: LOW — No Crawl-delay directive
-Not critical, but for aggressive bots like AhrefsBot and SemrushBot, a `Crawl-delay: 2` can prevent excessive crawling of your 65,000+ URL site.
-
-**Fix**: Add bot-specific crawl-delay rules.
-
-### Issue 3: PASS — Sitemap reference is correct
-Points to `https://padeltrainer.ai/sitemap.xml` — correct.
+## Audit Status: 6 Issues Found (2 Critical, 2 Moderate, 2 Low)
 
 ---
 
-## SITEMAP
+## CRITICAL Issues
 
-### Issue 4: CRITICAL — `type=locations` fetches ALL rows on every page request
-The current code fetches all ~13,000 locations into memory for every single page request (`fetchAllRows`), then slices. With 6 page requests during CI, that's 6 × 13,000 row fetches. This is wasteful and will cause timeouts as the dataset grows.
+### 1. Cloudflare Worker: `getLlmsProxyUrl` has sitemap routes mixed in with a broken reference
 
-**Fix**: Implement true server-side pagination — fetch only the rows for the requested page using batched `.range()` calls within the page window (e.g., for page 2: rows 2500–4999, fetched in 1000-row batches).
+The `getLlmsProxyUrl` function (lines 124–132 of `docs/cloudflare-worker.js`) contains sitemap proxy routes (`sitemap-provinces`, `sitemap-locations-N`, `sitemap-cities-N`) that reference `sitemapFunctionUrl` — but the function's parameter is `llmsFunctionUrl`. This means:
 
-### Issue 5: CRITICAL — `type=cities` also fetches ALL locations on every page request
-Same issue — all locations are fetched just to extract unique city names, then sliced. This runs 3 times (3 city pages).
+- `/sitemaps/sitemap-provinces.xml` → **broken** (uses undefined `sitemapFunctionUrl`)
+- `/sitemaps/sitemap-locations-*.xml` → **broken**
+- `/sitemaps/sitemap-cities-*.xml` → **broken**
 
-**Fix**: Same approach — or cache the city list in-memory within the function invocation and reuse.
+These routes are **not in `getSitemapProxyUrl` either**, so when Google directly requests any paginated sitemap, the Cloudflare Worker cannot proxy them to the edge function.
 
-### Issue 6: MODERATE — Provinces list is hardcoded and incomplete
-The provinces sitemap contains a static list of 23 provinces (12 NL, 4 BE, 4 ES, 3 DE). As you expand to France and other countries, this will silently miss new provinces. There's no French province despite FR being a supported language.
+**Fix**: Move the provinces/locations/cities routes into `getSitemapProxyUrl`, using the correct `sitemapFunctionUrl` parameter.
 
-**Fix**: Either make this data-driven (query distinct provinces from locations table) or add a comment/reminder to update when expanding. At minimum, add French provinces.
+### 2. Sitemap vs Frontend URL mismatch: `/padel-level-test` vs `/tools/padel-level-test`
 
-### PASS — XML escaping is in place
-The `escapeXml` helper correctly handles `&`, `<`, `>`, `"`, `'`.
+The sitemap `static` type lists `/padel-level-test` (line 249 of sitemap function), but the actual frontend route is `/tools/padel-level-test` (as seen in `DomainRouter.tsx` line 394). Google will index a URL that 404s.
 
-### PASS — Hreflang implementation is correct
-All 5 languages get proper `xhtml:link` alternates with `x-default` pointing to NL.
+Similarly, the render-page function maps `/racket-finder` as a static page (line 349), but we should confirm the frontend route matches.
 
-### PASS — Blog hreflang groups by `canonical_id`
-Translated articles correctly cross-reference each other.
-
-### PASS — Workflow uses exact page counts from sitemap index
-No more infinite loop risk.
+**Fix**: Update the sitemap entry from `/padel-level-test` to `/tools/padel-level-test`. Also update the render-page static pages map.
 
 ---
 
-## LLMs.txt
+## MODERATE Issues
 
-### PASS — `public/llms.txt` is comprehensive
-Covers all entity types, URL patterns, languages, key pages.
+### 3. `public/llms-full.txt` is a stale static file (dated 2026-04-07)
 
-### Issue 7: MODERATE — `public/llms-full.txt` is a static snapshot, not the dynamic edge function
-You have both:
-- `public/llms-full.txt` — a static file committed to the repo (stale, dated 2026-04-07)
-- `supabase/functions/llms-full-txt/` — a dynamic edge function that queries live data
+The static file at `public/llms-full.txt` (206 lines, hand-written) is what gets served to crawlers when the Cloudflare Worker is not in the path. Even with the Worker proxy now routing `/llms-full.txt` to the edge function, the static file remains as a stale fallback. It should be regenerated by CI (like sitemaps) or removed to avoid confusion.
 
-The `robots.txt` points to `https://padeltrainer.ai/llms-full.txt`, which serves the **static file** from Lovable's origin. The dynamic edge function is never called because:
-1. The Cloudflare worker's `shouldPrerender` skips `.txt` files
-2. There's no proxy route for `/llms-full.txt` to the edge function
+**Fix**: Add an `llms-full.txt` regeneration step to `.github/workflows/sitemap.yml` that calls the edge function and writes the output to `public/llms-full.txt`.
 
-So AI crawlers get stale data with truncated lists (1,000 row limit on trainers, locations, academies).
+### 4. Provinces sitemap is hardcoded — missing French provinces
 
-**Fix**: Either:
-- **Option A**: Add a Cloudflare worker route to proxy `/llms-full.txt` to the edge function (best — always fresh)
-- **Option B**: Add `llms-full.txt` regeneration to the weekly GitHub Actions workflow (same approach as sitemaps)
+The provinces list (lines 398–404 of the sitemap function) has 23 entries for NL, BE, ES, DE — but **zero for France**, despite FR being a fully supported language. French users searching for "padel [French city/region]" won't find province landing pages.
 
-### PASS — `llms-full-txt` edge function handles >1000 rows for profiles
-It batches profile fetches in groups of 1000. However, the initial trainer/location/academy queries still use single `.select()` calls (1000-row limit). This is the same bug we fixed in the sitemap.
-
-### Sub-issue within Issue 7: `llms-full-txt` edge function has 1000-row limits
-The three main queries (trainers, locations, academies) are single queries without pagination — they'll silently truncate at 1000 rows.
+**Fix**: Add French provinces (e.g., `ile-de-france`, `provence-alpes-cote-d-azur`, `occitanie`, `nouvelle-aquitaine`, `auvergne-rhone-alpes`). Ideally make this data-driven from the locations table.
 
 ---
 
-## Cloudflare Worker
+## LOW Issues
 
-### PASS — All sitemap routes are mapped
-Including the recently added `sitemap-content.xml`.
+### 5. Render-page function missing `/padel-level-test` route
 
-### PASS — Fallback HTML exists for circuit breaker scenarios
+The render-page edge function doesn't handle `/tools/padel-level-test`, so bots hitting that URL get the generic fallback meta tags instead of descriptive ones.
 
-### Issue (previously noted): Static fallback mentions "Netherlands"
-Line 97: `"PadelTrainer.ai connects players with the best coaches in the Netherlands."` — contradicts the global positioning branding guideline.
+**Fix**: Add a route match for `/tools/padel-level-test` in the render-page function.
+
+### 6. Structured data in render-page is minimal
+
+Only the homepage gets `WebSite` + `Organization` schemas. High-value pages like trainer profiles, location pages, and city pages have no structured data in the pre-rendered HTML. The SPA adds it client-side, but bots see the pre-rendered version.
+
+**Impact**: Low — Google can still discover structured data from the SPA render, and the pre-rendered version has correct meta tags. But for maximum reliability, key schemas could be added to the render function.
+
+**No fix needed now** — this is an optimization for later.
 
 ---
 
-## Recommended Changes
+## PASS — What's Working Correctly
+
+- **robots.txt**: Correctly blocks `/app`, `/app/`, auth/settings/dashboard/pay/register paths. Has crawl-delay for aggressive bots. Points to correct sitemap.
+- **Sitemap XML escaping**: `escapeXml` helper properly handles `&`, `<`, `>`, `"`, `'`.
+- **Sitemap hreflang**: All 5 languages get proper alternates with `x-default` → NL.
+- **Blog hreflang**: Groups by `canonical_id` for cross-language linking.
+- **Sitemap pagination**: Locations use true server-side pagination in 1000-row batches.
+- **Trainers/academies/blog**: All use `fetchAllRows` to bypass 1000-row limit.
+- **SEO component**: Correct canonical, hreflang, OG tags, Twitter cards, structured data.
+- **CI workflow**: Exact page counts from sitemap index, timeout + retry on all curl calls.
+- **llms.txt**: Comprehensive overview with all entity types and URL patterns.
+- **Cloudflare Worker**: Bot detection, rate limiting, circuit breaker, caching — all solid.
+
+---
+
+## Plan — Files to Change
 
 | File | Change | Priority |
 |---|---|---|
-| `public/robots.txt` | Add `Disallow: /app`, add crawl-delay for aggressive bots | Moderate |
-| `supabase/functions/sitemap/index.ts` | Implement true paginated fetch for locations (fetch only the page window, not all rows) | Critical |
-| `supabase/functions/llms-full-txt/index.ts` | Replace single queries with `fetchAllRows` pattern for trainers, locations, academies | Moderate |
-| `docs/cloudflare-worker.js` | Add proxy route for `/llms-full.txt` to edge function; fix "Netherlands" in fallback HTML | Moderate |
-| `supabase/functions/sitemap/index.ts` | Consider making provinces data-driven or add French provinces | Low |
+| `docs/cloudflare-worker.js` | Move provinces/locations/cities routes from `getLlmsProxyUrl` to `getSitemapProxyUrl` | Critical |
+| `supabase/functions/sitemap/index.ts` | Fix `/padel-level-test` → `/tools/padel-level-test` in static pages | Critical |
+| `supabase/functions/render-page/index.ts` | Fix `/racket-finder` path, add `/tools/padel-level-test` route | Low |
+| `.github/workflows/sitemap.yml` | Add step to regenerate `public/llms-full.txt` from edge function | Moderate |
+| `supabase/functions/sitemap/index.ts` | Add French provinces to provinces list | Moderate |
 
