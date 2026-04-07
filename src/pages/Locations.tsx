@@ -279,7 +279,7 @@ export default function Locations() {
         description={t('locations.seoDescription', { count: totalCount })}
         url="/locations"
         type="website"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema]}
       />
       <div className="min-h-screen bg-background">
         {/* Hero Section */}
