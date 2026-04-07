@@ -106,18 +106,36 @@ export default function StrokePage() {
     );
   }
 
-  const structuredData = {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": stroke.h1,
-    "description": stroke.seo?.metaDescription || stroke.shortDescription,
-    "author": { "@type": "Organization", "name": "PadelTrainer.ai" },
-    "publisher": {
-      "@type": "Organization",
-      "name": "PadelTrainer.ai",
-      "logo": { "@type": "ImageObject", "url": "https://padeltrainer.ai/favicon.png" }
+  const pageUrl = `https://padeltrainer.ai/${lang}/padel-strokes/${slug}`;
+  const defaultImage = 'https://padeltrainer.ai/og-image.png';
+
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": stroke.h1,
+      "url": pageUrl,
+      "mainEntityOfPage": { "@type": "WebPage", "@id": pageUrl },
+      "image": defaultImage,
+      "description": stroke.seo?.metaDescription || stroke.shortDescription,
+      "author": { "@type": "Organization", "name": "PadelTrainer.ai" },
+      "publisher": {
+        "@type": "Organization",
+        "name": "PadelTrainer.ai",
+        "logo": { "@type": "ImageObject", "url": "https://padeltrainer.ai/favicon.png" }
+      },
+      "inLanguage": lang,
     },
-  };
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": `https://padeltrainer.ai/${lang}` },
+        { "@type": "ListItem", "position": 2, "name": t('common:breadcrumbs.strokes', 'Strokes'), "item": `https://padeltrainer.ai/${lang}/padel-strokes` },
+        { "@type": "ListItem", "position": 3, "name": stroke.seo?.breadcrumbLabel || stroke.h1 },
+      ],
+    },
+  ];
 
   return (
     <MarketingLayout>
