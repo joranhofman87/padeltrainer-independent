@@ -233,22 +233,40 @@ function renderPath(cleanPath: string, lang: string): string {
 
   // Padel coaches
   if (cleanPath === '/padel-coaches') {
-    return page('Padel Coaches — Expert Coaching Tips', 'Discover expert padel coaches and their training tips.', '/padel-coaches', lang, `<h1>Padel Coaches</h1>`);
+    const coachesMeta: Record<string, { title: string; desc: string }> = {
+      nl: { title: 'Padel Coaches — Tips van Experts', desc: 'Ontdek padel coaches en hun trainingstips.' },
+      es: { title: 'Entrenadores de Pádel — Consejos de Expertos', desc: 'Descubre entrenadores de pádel y sus consejos de entrenamiento.' },
+      de: { title: 'Padel Coaches — Expertentipps', desc: 'Entdecken Sie Padel-Coaches und ihre Trainingstipps.' },
+      fr: { title: 'Coaches de Padel — Conseils d\'Experts', desc: 'Découvrez des coaches de padel et leurs conseils d\'entraînement.' },
+    };
+    const cm = coachesMeta[lang] || { title: 'Padel Coaches — Expert Coaching Tips', desc: 'Discover expert padel coaches and their training tips.' };
+    return page(cm.title, cm.desc, '/padel-coaches', lang, `<h1>${esc(cm.title.split('—')[0].trim())}</h1>`);
   }
   const coachesMatch = cleanPath.match(/^\/padel-coaches\/([^/]+)$/);
   if (coachesMatch) {
     const title = slugToDisplay(coachesMatch[1]);
-    return page(`${title} | Padel Coaches`, `Learn from ${title}.`, `/padel-coaches/${coachesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+    const learnFrom: Record<string, string> = { nl: 'Leer van', es: 'Aprende de', de: 'Lerne von', fr: 'Apprenez de' };
+    const verb = learnFrom[lang] || 'Learn from';
+    return page(`${title} | ${lang === 'nl' ? 'Padel Coaches' : lang === 'es' ? 'Entrenadores de Pádel' : lang === 'de' ? 'Padel Coaches' : lang === 'fr' ? 'Coaches de Padel' : 'Padel Coaches'}`, `${verb} ${title}.`, `/padel-coaches/${coachesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
   }
 
   // Video tips
   if (cleanPath === '/video-tips') {
-    return page('Padel Video Tips & Tutorials', 'Watch expert padel coaching videos.', '/video-tips', lang, `<h1>Padel Video Tips</h1>`);
+    const videoMeta: Record<string, { title: string; desc: string }> = {
+      nl: { title: 'Padel Video Tips & Tutorials', desc: 'Bekijk padel coaching video\'s van experts.' },
+      es: { title: 'Consejos en Vídeo de Pádel & Tutoriales', desc: 'Mira vídeos de entrenamiento de pádel de expertos.' },
+      de: { title: 'Padel Video-Tipps & Tutorials', desc: 'Sehen Sie sich Padel-Coaching-Videos von Experten an.' },
+      fr: { title: 'Conseils Vidéo Padel & Tutoriels', desc: 'Regardez des vidéos de coaching padel par des experts.' },
+    };
+    const vm = videoMeta[lang] || { title: 'Padel Video Tips & Tutorials', desc: 'Watch expert padel coaching videos.' };
+    return page(vm.title, vm.desc, '/video-tips', lang, `<h1>${esc(vm.title.split('&')[0].trim())}</h1>`);
   }
   const videoMatch = cleanPath.match(/^\/video-tips\/([^/]+)$/);
   if (videoMatch) {
     const title = slugToDisplay(videoMatch[1]);
-    return page(`${title} | Video Tips`, `Watch: ${title}`, `/video-tips/${videoMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+    const watchVerb: Record<string, string> = { nl: 'Bekijk', es: 'Mira', de: 'Ansehen', fr: 'Regardez' };
+    const verb = watchVerb[lang] || 'Watch';
+    return page(`${title} | ${lang === 'nl' ? 'Video Tips' : lang === 'es' ? 'Consejos en Vídeo' : lang === 'de' ? 'Video-Tipps' : lang === 'fr' ? 'Conseils Vidéo' : 'Video Tips'}`, `${verb}: ${title}`, `/video-tips/${videoMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
   }
 
   // Topics
@@ -263,12 +281,21 @@ function renderPath(cleanPath: string, lang: string): string {
 
   // Gear / Rackets
   if (cleanPath === '/gear/rackets') {
-    return page('Padel Rackets — Find Your Perfect Racket', 'Browse padel rackets. Compare specs and find the perfect racket.', '/gear/rackets', lang, `<h1>Padel Rackets</h1>`);
+    const racketsMeta: Record<string, { title: string; desc: string }> = {
+      nl: { title: 'Padel Rackets — Vind Jouw Perfecte Racket', desc: 'Vergelijk padel rackets. Vind het perfecte racket voor jouw speelstijl.' },
+      es: { title: 'Palas de Pádel — Encuentra Tu Pala Perfecta', desc: 'Compara palas de pádel. Encuentra la pala perfecta para tu estilo de juego.' },
+      de: { title: 'Padel Schläger — Finde Deinen Perfekten Schläger', desc: 'Vergleiche Padel-Schläger und finde den perfekten für deinen Spielstil.' },
+      fr: { title: 'Raquettes de Padel — Trouvez Votre Raquette Parfaite', desc: 'Comparez les raquettes de padel et trouvez celle qui correspond à votre style de jeu.' },
+    };
+    const rm = racketsMeta[lang] || { title: 'Padel Rackets — Find Your Perfect Racket', desc: 'Browse padel rackets. Compare specs and find the perfect racket.' };
+    return page(rm.title, rm.desc, '/gear/rackets', lang, `<h1>${esc(rm.title.split('—')[0].trim())}</h1>`);
   }
   const racketMatch = cleanPath.match(/^\/gear\/rackets\/([^/]+)$/);
   if (racketMatch) {
     const title = slugToDisplay(racketMatch[1]);
-    return page(`${title} | Padel Racket Review`, `Read the full review of the ${title} padel racket.`, `/gear/rackets/${racketMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+    const readVerb: Record<string, string> = { nl: 'Lees de volledige review van de', es: 'Lee la reseña completa de la', de: 'Lesen Sie die vollständige Bewertung des', fr: 'Lisez l\'avis complet de la' };
+    const verb = readVerb[lang] || 'Read the full review of the';
+    return page(`${title} | ${lang === 'nl' ? 'Padel Racket Review' : lang === 'es' ? 'Reseña de Pala' : lang === 'de' ? 'Padel Schläger Bewertung' : lang === 'fr' ? 'Avis Raquette Padel' : 'Padel Racket Review'}`, `${verb} ${title}.`, `/gear/rackets/${racketMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
   }
 
   // Registration routes (no DB needed — generic meta)

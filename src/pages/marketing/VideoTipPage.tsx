@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,8 @@ import { sanityClient, VIDEO_TIP_BY_SLUG_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields } from '@/lib/sanity';
 import { useTranslation } from 'react-i18next';
 import { parseVideoUrl } from '@/lib/videoEmbed';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 interface VideoTipDetail {
   _id: string;
@@ -30,6 +33,7 @@ interface VideoTipDetail {
   cta: CtaFields | null;
   datePublished: string | null;
   dateModified: string | null;
+  translationOf: { _ref: string } | null;
   trainer: { _id: string; name: string; slug: string; profileImageUrl: string | null } | null;
   strokes: { _id: string; title: string; slug: string }[] | null;
 }
@@ -45,6 +49,21 @@ export default function VideoTipPage() {
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });
+
+  const { setTranslations, clearTranslations } = useTranslationsContext();
+  const { data: translationsList = [] } = useQuery({
+    queryKey: ['translations', 'videoTip', video?._id],
+    queryFn: () => getTranslations(video!._id, 'videoTip', lang, video!.translationOf?._ref),
+    enabled: !!video?._id,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  useEffect(() => {
+    if (translationsList.length > 0) {
+      setTranslations(translationsList, 'video-tips');
+    }
+    return () => clearTranslations();
+  }, [translationsList, setTranslations, clearTranslations]);
 
   if (isLoading) {
     return (
@@ -111,6 +130,8 @@ export default function VideoTipPage() {
         image={video.thumbnailUrl || undefined}
         noIndex={video.seo?.indexable === false}
         structuredData={structuredData}
+        translations={translationsList}
+        pathPrefix="video-tips"
       />
 
       <article className="container mx-auto px-4 py-8 max-w-3xl">

@@ -234,26 +234,26 @@ Deno.serve(async (req) => {
       // Sanity CMS content: Rules, Strokes, Coaches, Video Tips, Learning Articles
       // Fetch with language + translationOf to build proper hreflang groups
       const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles, sanityTopics, sanityProducts] = await Promise.all([
-        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
-          `*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; _updatedAt: string }[]>(
+          `*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, _updatedAt }`
         ),
-        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
-          `*[_type == "stroke" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; _updatedAt: string }[]>(
+          `*[_type == "stroke" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, _updatedAt }`
         ),
-        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
-          `*[_type == "trainer" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; _updatedAt: string }[]>(
+          `*[_type == "trainer" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, _updatedAt }`
         ),
-        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
-          `*[_type == "videoTip" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; _updatedAt: string }[]>(
+          `*[_type == "videoTip" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, _updatedAt }`
         ),
-        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; seo: { indexable?: boolean } | null }[]>(
-          `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, seo }`
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; seo: { indexable?: boolean } | null; _updatedAt: string }[]>(
+          `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, seo, _updatedAt }`
         ),
-        sanity.fetch<{ slug: string; isIndexable: boolean }[]>(
-          `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, "isIndexable": coalesce(isIndexable, true) }`
+        sanity.fetch<{ slug: string; isIndexable: boolean; _updatedAt: string }[]>(
+          `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, "isIndexable": coalesce(isIndexable, true), _updatedAt }`
         ),
-        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
-          `*[_type == "product" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; _updatedAt: string }[]>(
+          `*[_type == "product" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, _updatedAt }`
         ),
       ]);
 
@@ -281,10 +281,11 @@ Deno.serve(async (req) => {
 
         for (const [, group] of groups) {
           for (const doc of group) {
+            const lastmod = doc._updatedAt ? doc._updatedAt.split('T')[0] : today;
             const fullUrl = `${SITE_URL}/${doc.language}/${pathPrefix}/${doc.slug}`;
             result += '  <url>\n';
             result += `    <loc>${fullUrl}</loc>\n`;
-            result += `    <lastmod>${today}</lastmod>\n`;
+            result += `    <lastmod>${lastmod}</lastmod>\n`;
             result += `    <changefreq>weekly</changefreq>\n`;
             result += `    <priority>${priority}</priority>\n`;
             // Add hreflang alternates for all translations in the group
@@ -310,7 +311,8 @@ Deno.serve(async (req) => {
       xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6');
       for (const topic of sanityTopics || []) {
         if (!topic.isIndexable) continue;
-        xml += generateUrlEntry(`/topics/${topic.slug}`, today, 'weekly', '0.6');
+        const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
+        xml += generateUrlEntry(`/topics/${topic.slug}`, topicLastmod, 'weekly', '0.6');
       }
 
       xml += '</urlset>';
