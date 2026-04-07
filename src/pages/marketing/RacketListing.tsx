@@ -89,9 +89,18 @@ export default function RacketListing() {
   const seoTitle = t('gear.listing.title', 'Best Padel Rackets 2026 — Compare & Choose');
   const seoDesc = t('gear.listing.description', 'Browse and compare all padel rackets. Filter by level, playing style, shape, weight, and price to find your perfect match.');
 
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    'itemListElement': [
+      { '@type': 'ListItem', 'position': 1, 'name': 'Home', 'item': `https://padeltrainer.ai/${lang}` },
+      { '@type': 'ListItem', 'position': 2, 'name': t('gear.breadcrumb.rackets', 'Rackets') },
+    ],
+  };
+
   return (
     <MarketingLayout>
-      <SEO title={seoTitle} description={seoDesc} url={`/${lang}/gear/rackets`} />
+      <SEO title={seoTitle} description={seoDesc} url={`/${lang}/gear/rackets`} structuredData={breadcrumbJsonLd} />
 
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Header */}

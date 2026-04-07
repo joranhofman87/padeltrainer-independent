@@ -98,20 +98,38 @@ export default function RulesPage() {
     );
   }
 
-  const structuredData = {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": article.h1,
-    "datePublished": article.datePublished,
-    "dateModified": article.dateModified,
-    "author": { "@type": "Organization", "name": "PadelTrainer.ai" },
-    "publisher": {
-      "@type": "Organization",
-      "name": "PadelTrainer.ai",
-      "logo": { "@type": "ImageObject", "url": "https://padeltrainer.ai/favicon.png" }
+  const pageUrl = `https://padeltrainer.ai/${lang}/padel-rules/${slug}`;
+  const defaultImage = 'https://padeltrainer.ai/og-image.png';
+
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": article.h1,
+      "url": pageUrl,
+      "mainEntityOfPage": { "@type": "WebPage", "@id": pageUrl },
+      "image": defaultImage,
+      "datePublished": article.datePublished,
+      "dateModified": article.dateModified,
+      "author": { "@type": "Organization", "name": "PadelTrainer.ai" },
+      "publisher": {
+        "@type": "Organization",
+        "name": "PadelTrainer.ai",
+        "logo": { "@type": "ImageObject", "url": "https://padeltrainer.ai/favicon.png" }
+      },
+      "description": article.seo?.metaDescription || article.intro,
+      "inLanguage": lang,
     },
-    "description": article.seo?.metaDescription || article.intro
-  };
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": `https://padeltrainer.ai/${lang}` },
+        { "@type": "ListItem", "position": 2, "name": t('rules.breadcrumbRules', 'Padel Rules'), "item": `https://padeltrainer.ai/${lang}/padel-rules` },
+        { "@type": "ListItem", "position": 3, "name": article.seo?.breadcrumbLabel || article.h1 },
+      ],
+    },
+  ];
 
   return (
     <MarketingLayout>
@@ -122,6 +140,9 @@ export default function RulesPage() {
         type="article"
         structuredData={structuredData}
         noIndex={article.seo?.indexable === false}
+        publishedTime={article.datePublished || undefined}
+        modifiedTime={article.dateModified || undefined}
+        author="PadelTrainer.ai"
       />
 
       {/* Back Button */}

@@ -72,6 +72,35 @@ export default function VideoTipPage() {
     );
   }
 
+  const pageUrl = `https://padeltrainer.ai/${lang}/video-tips/${slug}`;
+  const embedInfo = video.videoUrl ? parseVideoUrl(video.videoUrl) : null;
+
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": video.title,
+      "description": video.shortSummary || video.title,
+      "url": pageUrl,
+      ...(video.thumbnailUrl ? { "thumbnailUrl": video.thumbnailUrl } : {}),
+      ...(video.datePublished ? { "uploadDate": video.datePublished } : {}),
+      ...(video.videoUrl ? { "contentUrl": video.videoUrl } : {}),
+      ...(embedInfo ? { "embedUrl": embedInfo.embedUrl } : {}),
+      "author": video.trainer
+        ? { "@type": "Person", "name": video.trainer.name }
+        : { "@type": "Organization", "name": "PadelTrainer.ai" },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": `https://padeltrainer.ai/${lang}` },
+        { "@type": "ListItem", "position": 2, "name": t('common:breadcrumbs.videoTips', 'Video Tips'), "item": `https://padeltrainer.ai/${lang}/video-tips` },
+        { "@type": "ListItem", "position": 3, "name": video.seo?.breadcrumbLabel || video.title },
+      ],
+    },
+  ];
+
   return (
     <MarketingLayout>
       <SEO
@@ -81,6 +110,7 @@ export default function VideoTipPage() {
         type="article"
         image={video.thumbnailUrl || undefined}
         noIndex={video.seo?.indexable === false}
+        structuredData={structuredData}
       />
 
       <article className="container mx-auto px-4 py-8 max-w-3xl">

@@ -67,6 +67,8 @@ function buildStructuredData(article: LearningArticleDetail, slug: string, curre
       "logo": { "@type": "ImageObject", "url": `${MARKETING_DOMAIN}/favicon.png` }
     },
     "inLanguage": currentLang,
+    "image": `${MARKETING_DOMAIN}/og-image.png`,
+    "mainEntityOfPage": { "@type": "WebPage", "@id": url },
   };
 
   const articleSchema = article.pageType === 'hub'
@@ -208,6 +210,9 @@ export default function LearningArticlePage() {
         type="article"
         structuredData={structuredData}
         noIndex={article.seo?.indexable === false}
+        publishedTime={article.datePublished || undefined}
+        modifiedTime={article.dateModified || undefined}
+        author="PadelTrainer.ai"
       />
 
       {/* Back Button */}
