@@ -1,30 +1,30 @@
 
 
-# Fix: sitemap-cities-2.xml returning 0 URLs / error in GSC
+# Optimize GitHub Actions Sitemap Workflow
 
-## Root Cause
+## Problem
 
-Each city generates **10 `<url>` entries** (2 paths × 5 languages). With `CITIES_PER_PAGE = 5000`, that's exactly **50,000 URLs per page** — Google's hard maximum per sitemap file.
+The sitemap workflow runs **daily**, and every commit it pushes triggers a Lovable sync and rebuild — consuming credits even when content hasn't meaningfully changed. With sitemaps, weekly regeneration is the industry standard.
 
-The problem: your unique city count is very close to 5000. The sitemap index is generated separately from the sub-sitemaps (by the GitHub Action fetching them sequentially). If there were briefly >5000 cities when the index was built, it references `sitemap-cities-2.xml`. But when Google later fetches cities-2, there are 0 or very few cities left for page 2 — producing an empty or near-empty sitemap that Google flags as an error.
+## Changes
 
-Additionally, sitting at exactly 50,000 URLs on cities-1 is risky — any slight increase could push it over Google's limit.
+### `.github/workflows/sitemap.yml`
 
-## Fix
+1. **Change schedule from daily to weekly** — run every Monday at 6:00 AM UTC instead of every day
+2. **Keep `workflow_dispatch`** so you can manually trigger it anytime you publish a batch of new content
 
-Reduce `CITIES_PER_PAGE` from 5000 to **2500**. This means:
-- Each cities sub-sitemap has at most 25,000 URLs (well under the 50,000 limit)
-- With ~5000 cities, you get 2 properly-filled sub-sitemaps instead of one maxed-out + one empty
-
-Also apply the same logic to `LOCATIONS_PER_PAGE` — each location generates 5 `<url>` entries (5 languages), so 5000 locations = 25,000 URLs, which is fine. But reducing to 2500 gives more headroom as locations grow.
-
-## Change
-
-**`supabase/functions/sitemap/index.ts`** — line 12-13:
-```typescript
-const LOCATIONS_PER_PAGE = 2500;
-const CITIES_PER_PAGE = 2500;
+```yaml
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 6:00 AM UTC
+  workflow_dispatch:
 ```
 
-One-line change, no other files affected. After deploying, re-submit the sitemap index in GSC to pick up the corrected pagination.
+That's it — one line change. This cuts your GitHub Actions usage by ~85% (from 365 runs/year to 52).
+
+## Impact
+
+- Sitemaps still update regularly enough for Google (weekly is standard practice)
+- You can always trigger manually after a big content push
+- Saves ~6 workflow runs per week worth of GitHub Actions minutes and Lovable rebuild credits
 
