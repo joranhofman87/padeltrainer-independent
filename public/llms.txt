@@ -110,7 +110,7 @@ This platform is available in:
 - `/{lang}/gear/rackets` - Padel racket directory
 - `/{lang}/gear/rackets/:slug` - Individual racket review
 - `/{lang}/racket-finder` - Interactive racket finder tool
-- `/{lang}/padel-level-test` - Padel skill level self-assessment
+- `/{lang}/tools/padel-level-test` - Padel skill level self-assessment
 - `/{lang}/blog` - Padel tips and news
 - `/{lang}/blog/:slug` - Individual blog post
 - `/{lang}/pricing` - Subscription plans for trainers
