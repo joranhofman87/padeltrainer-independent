@@ -90,9 +90,8 @@ describe('TrainerSignup', () => {
   });
 
   it('validates email format via zod schema', () => {
-    // The browser's native email validation may interfere with fireEvent submit,
+    // The browser's native email validation interferes with fireEvent submit,
     // so we test the zod schema directly which the form uses
-    const { z } = require('zod');
     const schema = z.object({
       fullName: z.string().trim().min(2),
       email: z.string().trim().email('Please enter a valid email address'),
