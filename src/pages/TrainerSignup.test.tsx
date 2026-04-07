@@ -19,7 +19,10 @@ vi.mock('@/hooks/use-toast', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback || key,
+    t: (key: string, fallbackOrParams?: string | Record<string, unknown>) => {
+      if (typeof fallbackOrParams === 'string') return fallbackOrParams;
+      return key;
+    },
     i18n: { language: 'en' },
   }),
 }));
