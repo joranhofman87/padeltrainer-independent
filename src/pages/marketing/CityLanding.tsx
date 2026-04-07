@@ -22,6 +22,8 @@ import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
 import { getLearningArticles, type LearningArticleSummary } from '@/lib/learningArticles';
 import { Helmet } from 'react-helmet-async';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+import { sanityClient, CITY_PAGE_QUERY, type CityPage } from '@/lib/sanity';
+import { PortableTextRenderer } from '@/components/sanity/PortableTextRenderer';
 
 interface TrainerWithProfile {
   id: string;
@@ -54,6 +56,7 @@ export default function CityLanding() {
   const [claimedLocationIds, setClaimedLocationIds] = useState<Set<string>>(new Set());
   const [nearbyCities, setNearbyCities] = useState<CityWithTrainerCount[]>([]);
   const [articles, setArticles] = useState<LearningArticleSummary[]>([]);
+  const [cityPage, setCityPage] = useState<CityPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAllClubs, setShowAllClubs] = useState(false);
   const { t } = useTranslation('marketing');
@@ -63,8 +66,10 @@ export default function CityLanding() {
 
   const displayCity = useMemo(() => {
     if (!city) return '';
+    // Use Sanity cityName if available for proper casing/accents
+    if (cityPage?.cityName) return cityPage.cityName;
     return toTitleCase(decodeURIComponent(city));
-  }, [city]);
+  }, [city, cityPage]);
 
   useEffect(() => {
     if (city) fetchData();
@@ -73,13 +78,16 @@ export default function CityLanding() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [allLocations, allTrainerCounts, allClaimedIds, allCities, learningArticles] = await Promise.all([
+      const [allLocations, allTrainerCounts, allClaimedIds, allCities, learningArticles, sanityCity] = await Promise.all([
         getActiveLocations(),
         getLocationTrainerCounts(),
         getClaimedLocationIds(),
         getCitiesWithTrainers(),
         getLearningArticles(currentLang).catch(() => [] as LearningArticleSummary[]),
+        sanityClient.fetch<CityPage | null>(CITY_PAGE_QUERY, { slug: city?.toLowerCase(), lang: currentLang }).catch(() => null),
       ]);
+
+      setCityPage(sanityCity);
 
       const cityLocations = allLocations.filter(
         l => l.city.toLowerCase().replace(/\s+/g, '-') === city?.toLowerCase()
@@ -89,12 +97,38 @@ export default function CityLanding() {
       setClaimedLocationIds(allClaimedIds);
       setArticles(learningArticles.slice(0, 3));
 
-      // Nearby cities
+      // Nearby cities: merge Sanity nearby cities with DB-driven ones
       const currentSlug = city?.toLowerCase();
-      const nearby = allCities
+      const dbNearbyCities = allCities
         .filter(c => c.slug !== currentSlug && c.trainerCount > 0)
         .slice(0, 10);
-      setNearbyCities(nearby);
+
+      if (sanityCity?.nearbyCities && sanityCity.nearbyCities.length > 0) {
+        // Create entries for Sanity nearby cities that might not exist in DB
+        const sanityNearbySlugs = new Set(sanityCity.nearbyCities.map(s => s.toLowerCase()));
+        const dbSlugsSet = new Set(dbNearbyCities.map(c => c.slug));
+
+        // Add Sanity cities that aren't already in DB results
+        const sanityCityEntries: CityWithTrainerCount[] = sanityCity.nearbyCities
+          .filter(slug => !dbSlugsSet.has(slug.toLowerCase()))
+          .map(slug => ({
+            city: toTitleCase(slug),
+            slug: slug.toLowerCase(),
+            trainerCount: 0,
+            locationCount: 0,
+          }));
+
+        // Put Sanity-suggested cities first, then DB cities
+        const combined = [
+          ...dbNearbyCities.filter(c => sanityNearbySlugs.has(c.slug)),
+          ...sanityCityEntries,
+          ...dbNearbyCities.filter(c => !sanityNearbySlugs.has(c.slug)),
+        ].slice(0, 12);
+
+        setNearbyCities(combined);
+      } else {
+        setNearbyCities(dbNearbyCities);
+      }
 
       // Fetch trainers linked to locations in this city
       if (cityLocations.length > 0) {
@@ -155,6 +189,9 @@ export default function CityLanding() {
   const indoorClubs = locations.filter(l => (l.indoor_courts ?? 0) > 0).length;
   const outdoorClubs = locations.filter(l => (l.outdoor_courts ?? 0) > 0).length;
 
+  // Use Sanity estimatedClubs only when no real location data exists
+  const displayClubCount = locations.length > 0 ? locations.length : (cityPage?.estimatedClubs ?? 0);
+
   const cityIntro = useMemo(
     () => generateCityIntro(displayCity, locations, trainerCounts, currentLang),
     [displayCity, locations, trainerCounts, currentLang]
@@ -170,10 +207,22 @@ export default function CityLanding() {
     [displayCity, locations, trainerCounts, currentLang]
   );
 
-  const faqs = useMemo(
+  const generatedFaqs = useMemo(
     () => generateFAQs(displayCity, locations, trainerCounts, currentLang),
     [displayCity, locations, trainerCounts, currentLang]
   );
+
+  // Use Sanity FAQs if available, otherwise generated
+  const faqs = cityPage?.faqs && cityPage.faqs.length > 0 ? cityPage.faqs : generatedFaqs;
+
+  // SEO: prefer Sanity SEO fields
+  const metaTitle = cityPage?.seo?.titleTag || t('cityLanding.metaTitle', { city: displayCity });
+  const metaDescription = cityPage?.seo?.metaDescription || t('cityLanding.metaDescription', { city: displayCity, count: displayClubCount });
+
+  // Province subtitle from Sanity
+  const heroSubtitle = cityPage?.province
+    ? `${cityPage.province} — ${t('cityLanding.heroSubtitle', { city: displayCity })}`
+    : t('cityLanding.heroSubtitle', { city: displayCity });
 
   // SEO structured data
   const faqSchema = {
@@ -221,9 +270,7 @@ export default function CityLanding() {
       ...((l as any).phone && { telephone: (l as any).phone }),
     }));
 
-  const metaTitle = t('cityLanding.metaTitle', { city: displayCity });
-  const metaDescription = t('cityLanding.metaDescription', { city: displayCity, count: locations.length });
-  const ogImageUrl = `https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/og-image?city=${encodeURIComponent(displayCity)}&count=${locations.length}`;
+  const ogImageUrl = `https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/og-image?city=${encodeURIComponent(displayCity)}&count=${displayClubCount}`;
 
   if (loading) {
     return (
@@ -265,7 +312,7 @@ export default function CityLanding() {
             Padel in {displayCity}
           </h1>
           <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-            {t('cityLanding.heroSubtitle', { city: displayCity })}
+            {heroSubtitle}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button size="lg" asChild>
@@ -277,11 +324,11 @@ export default function CityLanding() {
           </div>
 
           {/* Quick stats - expanded */}
-          {(locations.length > 0 || totalTrainers > 0) && (
+          {(displayClubCount > 0 || totalTrainers > 0) && (
             <div className="flex justify-center gap-6 md:gap-8 mt-10 flex-wrap">
-              {locations.length > 0 && (
+              {displayClubCount > 0 && (
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">{locations.length}</div>
+                  <div className="text-2xl font-bold text-primary">{displayClubCount}</div>
                   <div className="text-sm text-muted-foreground">{t('cityLanding.clubs')}</div>
                 </div>
               )}
@@ -308,10 +355,14 @@ export default function CityLanding() {
         </div>
       </section>
 
-      {/* City intro */}
+      {/* City intro — Sanity Portable Text or generated */}
       <section className="py-12 bg-muted/30">
         <div className="container mx-auto px-4 max-w-3xl">
-          <p className="text-base leading-relaxed text-muted-foreground">{cityIntro}</p>
+          {cityPage?.intro && cityPage.intro.length > 0 ? (
+            <PortableTextRenderer content={cityPage.intro} />
+          ) : (
+            <p className="text-base leading-relaxed text-muted-foreground">{cityIntro}</p>
+          )}
         </div>
       </section>
 

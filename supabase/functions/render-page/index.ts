@@ -137,9 +137,32 @@ function renderPath(cleanPath: string, lang: string): string {
   if (padelCityMatch) {
     const citySlug = padelCityMatch[1];
     const city = slugToDisplay(citySlug);
+
+    // Try to fetch Sanity SEO fields for this city
+    let seoTitle = `Padel in ${city} — Courts, Clubs & Coaches`;
+    let seoDesc = `Find padel clubs and coaches in ${city}. Compare courts, book lessons and start playing padel today.`;
+
+    try {
+      const { createClient: createSanityClient } = await import("npm:@sanity/client@6");
+      const sanityCli = createSanityClient({
+        projectId: 'ru3aqhjn',
+        dataset: 'production',
+        apiVersion: '2024-01-01',
+        useCdn: true,
+      });
+      const cityPage = await sanityCli.fetch(
+        `*[_type == "cityPage" && citySlug == $slug && language == $lang && !(_id in path("drafts.**"))][0]{ "titleTag": seo.titleTag, "metaDescription": seo.metaDescription, cityName, province }`,
+        { slug: citySlug, lang }
+      );
+      if (cityPage?.titleTag) seoTitle = cityPage.titleTag;
+      if (cityPage?.metaDescription) seoDesc = cityPage.metaDescription;
+    } catch {
+      // Sanity fetch failed — use defaults
+    }
+
     return page(
-      `Padel in ${city} — Courts, Clubs & Coaches`,
-      `Find padel clubs and coaches in ${city}. Compare courts, book lessons and start playing padel today.`,
+      seoTitle,
+      seoDesc,
       `/padel/${citySlug}`, lang,
       `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>`
     );

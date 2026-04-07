@@ -189,13 +189,21 @@ Deno.serve(async (req) => {
         .eq('is_active', true);
 
       // Fetch only city column to count unique cities
-      const allCities = await fetchAllRows<{ city: string }>(
-        supabase, 'locations', 'city',
-        [{ column: 'is_active', operator: 'eq', value: true }]
-      );
+      const [allCities, sanityCityIndex] = await Promise.all([
+        fetchAllRows<{ city: string }>(
+          supabase, 'locations', 'city',
+          [{ column: 'is_active', operator: 'eq', value: true }]
+        ),
+        sanity.fetch<{ citySlug: string }[]>(
+          `*[_type == "cityPage" && !(_id in path("drafts.**"))]{ citySlug }`
+        ).catch(() => [] as { citySlug: string }[]),
+      ]);
       const citySet = new Set(allCities.map(loc =>
         loc.city.toLowerCase().replace(/\s+/g, '-')
       ));
+      for (const doc of sanityCityIndex) {
+        if (doc.citySlug) citySet.add(doc.citySlug);
+      }
 
       const locationPages = Math.ceil((locationCount || 0) / LOCATIONS_PER_PAGE);
       const cityPages = Math.ceil(citySet.size / CITIES_PER_PAGE);
@@ -369,7 +377,7 @@ Deno.serve(async (req) => {
     } else if (type === 'cities') {
       xml = xmlHeader();
 
-      // Fetch only distinct cities using fetchAllRows (lighter than fetching all location columns)
+      // Fetch distinct cities from DB
       const allCityRows = await fetchAllRows<{ city: string }>(
         supabase, 'locations', 'city',
         [{ column: 'is_active', operator: 'eq', value: true }]
@@ -380,6 +388,17 @@ Deno.serve(async (req) => {
         const citySlug = loc.city.toLowerCase().replace(/\s+/g, '-');
         if (!cityMap.has(citySlug)) cityMap.set(citySlug, loc.city);
       });
+
+      // Also fetch Sanity cityPage slugs to include cities that may not have DB locations yet
+      const sanityCitySlugs = await sanity.fetch<{ citySlug: string }[]>(
+        `*[_type == "cityPage" && !(_id in path("drafts.**"))]{ citySlug }`
+      ).catch(() => [] as { citySlug: string }[]);
+
+      for (const doc of sanityCitySlugs) {
+        if (doc.citySlug && !cityMap.has(doc.citySlug)) {
+          cityMap.set(doc.citySlug, doc.citySlug);
+        }
+      }
 
       const allCitySlugs = Array.from(cityMap.keys()).sort();
       const start = (page - 1) * CITIES_PER_PAGE;
