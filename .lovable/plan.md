@@ -1,62 +1,78 @@
 
 
-# Fix: Supabase 1000-Row Default Limit on Location Sitemaps
+# Sitemap Audit — Issues Found & Fixes
 
-## Problem
+## Issues Identified
 
-The `type=locations` handler uses a single `supabase.from('locations').range(start, end)` query. Supabase has a **default maximum of 1,000 rows per query**. So even though `LOCATIONS_PER_PAGE = 2500`, only 1,000 rows come back.
+### 1. CRITICAL: Cloudflare Worker missing `content` sitemap route
+The `getSitemapProxyUrl` function in `docs/cloudflare-worker.js` handles `static`, `provinces`, `locations-N`, and `cities-N` — but **not** `sitemap-content.xml`. When Google requests `/sitemaps/sitemap-content.xml` directly (not via CI), the Cloudflare worker falls through to the origin static file instead of proxying to the edge function. This means live/real-time content sitemap requests from crawlers won't work if the static file is stale or missing.
 
-Evidence from your screenshot:
-- 5,000 `<url>` tags per page = 1,000 locations × 5 languages
-- Expected: 12,500 `<url>` tags = 2,500 locations × 5 languages
-- Total locations in sitemap: ~5,005 instead of ~13,000+
+### 2. CRITICAL: Trainers query hits 1000-row limit
+Line 251–253 fetches trainers with a single `supabase.from('trainer_profiles').select(...)` — no pagination. If you have more than 1,000 trainer profiles, the rest are silently dropped from the sitemap.
 
-Cities work correctly because they use the `fetchAllRows` helper which internally paginates in batches of 1,000.
+### 3. MODERATE: Blog articles query hits 1000-row limit
+Line 277–280 fetches blog articles with a single query. Same truncation risk if you grow past 1,000 published articles.
 
-## Fix
+### 4. MODERATE: Academies query hits 1000-row limit
+Line 263–267 — same pattern. Lower risk now but will bite you as you grow.
 
-**`supabase/functions/sitemap/index.ts`** — Replace the single `.range()` query in the `type === 'locations'` handler with the existing `fetchAllRows` helper, then slice the results for the requested page:
+### 5. MODERATE: No XML escaping on slugs
+Slugs and city names are inserted directly into XML without escaping `&`, `<`, `>`. A single slug containing `&` (e.g., a location called "Bar & Restaurant") will produce malformed XML that Google will reject entirely for that sitemap file.
 
+### 6. LOW: City slug double-encoding
+`encodeURIComponent()` on line 189/366 encodes special characters like `ñ` → `%C3%B1`, `ü` → `%C3%BC`. If your frontend routes use raw UTF-8 slugs (e.g., `/trainers/logroño`), the sitemap URLs won't match and Google will see 404s.
+
+## Plan
+
+### File 1: `supabase/functions/sitemap/index.ts`
+
+**A) Add XML escape helper**
 ```typescript
-} else if (type === 'locations') {
-  xml = xmlHeader();
+function escapeXml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+```
+Apply in `generateUrlEntry`, `generateBlogEntries`, and `generateSanityEntries` — wrap all dynamic path/slug values with `escapeXml()`.
 
-  const start = (page - 1) * LOCATIONS_PER_PAGE;
+**B) Fix trainers, academies, blog queries to use `fetchAllRows`**
+Replace the three single queries with:
+```typescript
+// Trainers
+const trainers = await fetchAllRows<{user_id: string; slug: string; updated_at: string}>(
+  supabase, 'trainer_profiles', 'user_id, slug, updated_at'
+);
 
-  // Use fetchAllRows to bypass 1000-row limit, then slice for this page
-  const allLocations = await fetchAllRows<{ slug: string; city: string; updated_at: string }>(
-    supabase, 'locations', 'slug, city, updated_at',
-    [{ column: 'is_active', operator: 'eq', value: true }],
-    'slug'
-  );
+// Academies
+const academies = await fetchAllRows<{slug: string; updated_at: string}>(
+  supabase, 'academy_profiles', 'slug, updated_at',
+  [
+    { column: 'is_verified', operator: 'eq', value: true },
+    { column: 'is_public', operator: 'eq', value: true }
+  ]
+);
 
-  const pageLocations = allLocations.slice(start, start + LOCATIONS_PER_PAGE);
-
-  for (const location of pageLocations) {
-    const lastmod = location.updated_at
-      ? new Date(location.updated_at).toISOString().split('T')[0]
-      : today;
-    xml += generateUrlEntry(`/locations/${location.slug}`, lastmod, 'weekly', '0.6');
-  }
-
-  xml += '</urlset>';
+// Blog
+const blogArticles = await fetchAllRows<{slug: string; locale: string; canonical_id: string; published_at: string; updated_at: string}>(
+  supabase, 'articles', 'slug, locale, canonical_id, published_at, updated_at',
+  [{ column: 'status', operator: 'eq', value: 'published' }]
+);
 ```
 
-This reuses the same `fetchAllRows` pattern that already works for cities. Each page will now correctly contain up to 2,500 locations (12,500 `<url>` entries).
+**C) Fix city slug encoding**
+Replace `encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'))` with just `loc.city.toLowerCase().replace(/\s+/g, '-')` — no URI encoding. The XML `escapeXml` helper handles any special XML chars. This ensures URLs match your frontend routing.
 
-## Expected Result After Fix
+### File 2: `docs/cloudflare-worker.js`
 
-- Location pages 1-5: ~12,500 URLs each
-- Location page 6: remaining URLs
-- Total location URLs: ~65,000+ (13,000 locations × 5 languages)
+Add the missing content sitemap route to `getSitemapProxyUrl`:
+```javascript
+if (pathname === '/sitemaps/sitemap-content.xml') return `${sitemapFunctionUrl}?type=content`;
+```
 
-## Performance Note
-
-This fetches all ~13,000 location rows on every location-page request, which is heavier than a single range query. But since this runs once per week via CI, it's acceptable. If it causes timeouts, a follow-up optimization would be to implement true server-side pagination in batches of 1,000 within the range window.
-
-## Files Changed
+## File Summary
 
 | File | Change |
 |---|---|
-| `supabase/functions/sitemap/index.ts` | Replace single `.range()` query with `fetchAllRows` + `.slice()` in locations handler |
+| `supabase/functions/sitemap/index.ts` | Add XML escaping; use `fetchAllRows` for trainers/academies/blog; fix city slug encoding |
+| `docs/cloudflare-worker.js` | Add missing `sitemap-content.xml` proxy route |
 
