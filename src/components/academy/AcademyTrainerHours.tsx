@@ -15,7 +15,7 @@ import {
 import { Download, Calendar, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
 
 interface TrainerInfo {
   id: string;

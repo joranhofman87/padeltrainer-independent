@@ -63,7 +63,7 @@ interface UndoItem {
 }
 
 // ── Helpers ──
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
 
 /** Get English day name (used as internal key) */
 function getDayKey(isoString: string): string {

@@ -16,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
 
 interface TrainerOption { id: string; name: string; }
 interface LocationOption { id: string; name: string; }

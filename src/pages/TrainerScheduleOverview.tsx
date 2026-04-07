@@ -69,7 +69,7 @@ import { TrainerAttendanceForm } from "@/components/attendance/TrainerAttendance
 import { useToast } from "@/hooks/use-toast";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 
-const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es };
+const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es, it };
 
 type ExtraCost = { description: string; price: number; type?: 'per_session' | 'one_time'; vat_rate?: number };
 

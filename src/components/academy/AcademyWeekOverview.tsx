@@ -9,7 +9,7 @@ import { Users, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type SlotWithBookings } from '@/components/trainer/CalendarSlotCard';
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
 
 interface AcademyWeekOverviewProps {
   slots: SlotWithBookings[];

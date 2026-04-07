@@ -49,7 +49,7 @@ export function SEO({
   
   const baseUrl = MARKETING_DOMAIN;
   
-  const pathWithoutLang = url?.replace(/^\/(en|nl|es|de|fr)/, '') || '';
+  const pathWithoutLang = url?.replace(/^\/(en|nl|es|de|fr|it)/, '') || '';
   
   const fullUrl = url 
     ? `${baseUrl}/${currentLang}${pathWithoutLang}` 

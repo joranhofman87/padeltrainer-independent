@@ -51,7 +51,7 @@ interface AcademyDayGridProps {
 
 // ── Helpers ──
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
 
 function formatRating(r: number): string {
   return r.toFixed(1);
