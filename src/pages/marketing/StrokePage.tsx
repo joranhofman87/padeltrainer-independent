@@ -73,6 +73,22 @@ export default function StrokePage() {
     staleTime: 1000 * 60 * 5,
   });
 
+  // Fetch translations for hreflang + language switcher
+  const { setTranslations, clearTranslations } = useTranslationsContext();
+  const { data: translationsList = [] } = useQuery({
+    queryKey: ['translations', 'stroke', stroke?._id],
+    queryFn: () => getTranslations(stroke!._id, 'stroke', lang, (stroke as any).translationOf?._ref),
+    enabled: !!stroke?._id,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  useEffect(() => {
+    if (translationsList.length > 0) {
+      setTranslations(translationsList, 'padel-strokes');
+    }
+    return () => clearTranslations();
+  }, [translationsList, setTranslations, clearTranslations]);
+
   if (isLoading) {
     return (
       <MarketingLayout>
@@ -146,6 +162,8 @@ export default function StrokePage() {
         type="article"
         structuredData={structuredData}
         noIndex={stroke.seo?.indexable === false}
+        translations={translationsList}
+        pathPrefix="padel-strokes"
       />
 
       <div className="container mx-auto px-4 pt-8">

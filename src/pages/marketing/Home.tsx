@@ -43,7 +43,7 @@ export default function Home() {
     "description": t('homev2.hero.subheadline'),
     "potentialAction": {
       "@type": "SearchAction",
-      "target": "https://padeltrainer.ai/trainers?search={search_term}",
+      "target": "https://padeltrainer.ai/en/trainers?search={search_term}",
       "query-input": "required name=search_term"
     }
   };
@@ -54,7 +54,11 @@ export default function Home() {
     "name": "PadelTrainer.ai",
     "url": "https://padeltrainer.ai",
     "logo": "https://padeltrainer.ai/favicon.png",
-    "sameAs": [],
+    "sameAs": [
+      "https://www.instagram.com/padeltrainer.ai",
+      "https://www.linkedin.com/company/padeltrainer-ai",
+      "https://www.tiktok.com/@padeltrainer.ai"
+    ],
     "contactPoint": {
       "@type": "ContactPoint",
       "contactType": "customer service",

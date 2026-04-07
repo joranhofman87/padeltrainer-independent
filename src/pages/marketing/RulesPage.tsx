@@ -68,6 +68,22 @@ export default function RulesPage() {
     staleTime: 1000 * 60 * 5,
   });
 
+  // Fetch translations for hreflang + language switcher
+  const { setTranslations, clearTranslations } = useTranslationsContext();
+  const { data: translationsList = [] } = useQuery({
+    queryKey: ['translations', 'rulesArticle', article?._id],
+    queryFn: () => getTranslations(article!._id, 'rulesArticle', lang, (article as any).translationOf?._ref),
+    enabled: !!article?._id,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  useEffect(() => {
+    if (translationsList.length > 0) {
+      setTranslations(translationsList, 'padel-rules');
+    }
+    return () => clearTranslations();
+  }, [translationsList, setTranslations, clearTranslations]);
+
   if (isLoading) {
     return (
       <MarketingLayout>
@@ -143,6 +159,8 @@ export default function RulesPage() {
         publishedTime={article.datePublished || undefined}
         modifiedTime={article.dateModified || undefined}
         author="PadelTrainer.ai"
+        translations={translationsList}
+        pathPrefix="padel-rules"
       />
 
       {/* Back Button */}
