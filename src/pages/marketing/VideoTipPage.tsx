@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
@@ -49,16 +50,20 @@ export default function VideoTipPage() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { setTranslations } = useTranslationsContext();
+  const { setTranslations, clearTranslations } = useTranslationsContext();
   const { data: translationsList = [] } = useQuery({
     queryKey: ['translations', 'videoTip', video?._id],
     queryFn: () => getTranslations(video!._id, 'videoTip', lang, video!.translationOf?._ref),
     enabled: !!video?._id,
     staleTime: 1000 * 60 * 10,
   });
-  if (translationsList.length > 0) {
-    setTranslations(translationsList);
-  }
+
+  useEffect(() => {
+    if (translationsList.length > 0) {
+      setTranslations(translationsList, 'video-tips');
+    }
+    return () => clearTranslations();
+  }, [translationsList, setTranslations, clearTranslations]);
 
   if (isLoading) {
     return (
