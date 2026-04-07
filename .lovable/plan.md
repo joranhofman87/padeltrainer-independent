@@ -1,48 +1,64 @@
 
 
-# Fix Dark Mode Text Visibility
+# Connect City Pages to Sanity CMS — Implementation Plan
 
-## Problem
+## Prompt Assessment: Ready to implement as-is
 
-Two hardcoded color values break dark mode:
+The uploaded prompt is accurate and well-aligned with the current `CityLanding.tsx` architecture. A few refinements:
 
-1. **All section headings** use `text-[hsl(var(--brand-navy))]` — a dark navy (`220 60% 20%`) that's invisible on dark backgrounds. This affects **9 files** across the homepage.
+### What the prompt gets right
+- Correct graceful fallback pattern (Sanity content → template-generated content)
+- Correct sections to replace (intro, FAQs, nearby cities, SEO meta, estimated clubs)
+- Correct instruction to NOT touch clubs/trainers/lessons sections (those stay data-driven)
+- Correct use of existing `PortableTextRenderer` for the intro field
 
-2. **`.section-alt` background** in `src/index.css` is hardcoded `#F8F8F6` (light beige) — creates a jarring light block in dark mode.
+### Small additions needed beyond the prompt
 
-## Solution
+1. **Province in hero subtitle** — the prompt suggests showing province, but the hero subtitle currently comes from an i18n key (`cityLanding.heroSubtitle`). We should use province from Sanity when available but keep the i18n fallback.
 
-### 1. Replace heading color class (9 files)
+2. **Nearby cities from Sanity vs database** — currently `nearbyCities` comes from `getCitiesWithTrainers()` (database query for cities with active trainers). The Sanity `nearbyCities` field contains just 3 city names. We should: use Sanity nearby cities when available, but **also** keep showing database-driven nearby cities below them (more = better for internal linking).
 
-Replace all instances of `text-[hsl(var(--brand-navy))]` with `text-foreground` which automatically adapts to dark mode (dark navy in light → light text in dark).
+3. **`estimatedClubs` usage** — show Sanity's `estimatedClubs` in the hero stats ONLY when no real location data exists (`locations.length === 0`). When we have real data, real counts are always better.
 
-**Files affected:**
-- `src/components/home/HeroSection.tsx`
-- `src/components/home/PainStoriesSection.tsx`
-- `src/components/home/SolutionOverview.tsx`
-- `src/components/home/HowItWorksSection.tsx`
-- `src/components/home/JobsToBeDoneSection.tsx`
-- `src/components/home/PlayerBanner.tsx`
-- `src/components/home/PricingPreview.tsx`
-- `src/components/home/FAQSection.tsx`
-- `src/components/home/SocialProofStrip.tsx`
+4. **Italian templates in `cityContent.ts`** — still needed as fallback for Italian cities not yet in Sanity. The prompt doesn't mention this but it's required for completeness.
 
-### 2. Fix `.section-alt` background (`src/index.css`)
+---
 
-Change from hardcoded `#F8F8F6` to a dark-mode-aware approach:
+## Changes
 
-```css
-.section-alt {
-  background-color: hsl(var(--secondary));
-}
-```
+### 1. Add GROQ queries to `src/lib/sanity.ts`
 
-This uses the existing `--secondary` token which is `220 30% 94%` in light (similar to current beige) and `220 30% 18%` in dark.
+Add `CITY_PAGE_QUERY` and `ALL_CITY_SLUGS_QUERY` constants plus a `CityPage` TypeScript interface.
 
-## Summary
+### 2. Update `src/pages/marketing/CityLanding.tsx`
+
+- Import `sanityClient` and `CITY_PAGE_QUERY`
+- Import `PortableTextRenderer` for intro rendering
+- Add Sanity fetch to `fetchData()` alongside existing parallel queries
+- Use Sanity data for: intro (Portable Text), FAQs, nearby cities, SEO meta, province subtitle, estimated clubs fallback
+- Keep all existing club/trainer/lessons sections unchanged
+
+### 3. Add Italian fallback templates to `src/lib/cityContent.ts`
+
+Add `it` entries to `introTemplates`, `clubIntroTemplates`, `lessonsTemplates`, and FAQ generation so Italian cities without Sanity content still get reasonable text.
+
+### 4. Update sitemap edge function
+
+In `supabase/functions/sitemap/index.ts`, add a Sanity query for `cityPage` slugs to include in the cities sitemap alongside database-driven ones. This ensures all 66 Sanity cities appear even without location data.
+
+### 5. Update render-page edge function
+
+In `supabase/functions/render-page/index.ts`, fetch Sanity `cityPage` SEO fields for the `/padel/:city` route and use `seo.titleTag` / `seo.metaDescription` when available.
+
+---
+
+## File Summary
 
 | File | Change |
 |---|---|
-| 9 home section components | `text-[hsl(var(--brand-navy))]` → `text-foreground` |
-| `src/index.css` | `.section-alt` background → `hsl(var(--secondary))` |
+| `src/lib/sanity.ts` | Add `CITY_PAGE_QUERY`, `ALL_CITY_SLUGS_QUERY`, `CityPage` type |
+| `src/pages/marketing/CityLanding.tsx` | Fetch Sanity city content, use for intro/FAQs/nearby/SEO/province |
+| `src/lib/cityContent.ts` | Add `it` fallback templates |
+| `supabase/functions/sitemap/index.ts` | Query Sanity for city slugs to include in sitemap |
+| `supabase/functions/render-page/index.ts` | Fetch Sanity SEO fields for city pages |
 
