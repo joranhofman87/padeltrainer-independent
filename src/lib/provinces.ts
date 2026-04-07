@@ -36,6 +36,15 @@ export const PROVINCES: Province[] = [
   { slug: 'nordrhein-westfalen', name: 'Nordrhein-Westfalen', country: 'DE', cities: ['koln', 'cologne', 'dusseldorf', 'dortmund', 'essen', 'duisburg', 'bonn', 'munster', 'bielefeld', 'aachen', 'paderborn'] },
   { slug: 'bayern', name: 'Bayern', country: 'DE', cities: ['munchen', 'munich', 'nurnberg', 'augsburg', 'regensburg', 'wurzburg', 'ingolstadt'] },
   { slug: 'baden-wurttemberg', name: 'Baden-Württemberg', country: 'DE', cities: ['stuttgart', 'karlsruhe', 'mannheim', 'freiburg', 'heidelberg', 'ulm', 'heilbronn'] },
+  // French regions
+  { slug: 'ile-de-france', name: 'Île-de-France', country: 'FR', cities: ['paris', 'boulogne-billancourt', 'saint-denis', 'montreuil', 'versailles'] },
+  { slug: 'provence-alpes-cote-d-azur', name: "Provence-Alpes-Côte d'Azur", country: 'FR', cities: ['marseille', 'nice', 'toulon', 'aix-en-provence', 'avignon', 'cannes'] },
+  { slug: 'occitanie', name: 'Occitanie', country: 'FR', cities: ['toulouse', 'montpellier', 'nimes', 'perpignan', 'beziers'] },
+  { slug: 'nouvelle-aquitaine', name: 'Nouvelle-Aquitaine', country: 'FR', cities: ['bordeaux', 'limoges', 'poitiers', 'pau', 'bayonne', 'biarritz'] },
+  { slug: 'auvergne-rhone-alpes', name: 'Auvergne-Rhône-Alpes', country: 'FR', cities: ['lyon', 'grenoble', 'saint-etienne', 'clermont-ferrand', 'annecy'] },
+  { slug: 'hauts-de-france', name: 'Hauts-de-France', country: 'FR', cities: ['lille', 'amiens', 'roubaix', 'tourcoing', 'dunkerque'] },
+  { slug: 'pays-de-la-loire', name: 'Pays de la Loire', country: 'FR', cities: ['nantes', 'angers', 'le-mans', 'saint-nazaire'] },
+  { slug: 'grand-est', name: 'Grand Est', country: 'FR', cities: ['strasbourg', 'reims', 'metz', 'mulhouse', 'nancy'] },
 ];
 
 export function getProvinceBySlug(slug: string): Province | undefined {
