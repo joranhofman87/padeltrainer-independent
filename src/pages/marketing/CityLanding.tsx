@@ -193,7 +193,7 @@ export default function CityLanding() {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: `${MARKETING_DOMAIN}/${currentLang}` },
+      { '@type': 'ListItem', position: 1, name: tc('navigation.home'), item: `${MARKETING_DOMAIN}/${currentLang}` },
       { '@type': 'ListItem', position: 2, name: 'Padel', item: `${MARKETING_DOMAIN}/${currentLang}/padel` },
       { '@type': 'ListItem', position: 3, name: `Padel in ${displayCity}` },
     ],
@@ -218,6 +218,7 @@ export default function CityLanding() {
         longitude: l.longitude,
       },
       url: `${MARKETING_DOMAIN}/${currentLang}/locations/${l.slug}`,
+      ...((l as any).phone && { telephone: (l as any).phone }),
     }));
 
   const metaTitle = t('cityLanding.metaTitle', { city: displayCity });
@@ -249,9 +250,9 @@ export default function CityLanding() {
         <div className="container mx-auto px-4 py-3">
           <nav className="text-sm text-muted-foreground" aria-label="Breadcrumb">
             <ol className="flex items-center gap-1.5">
-              <li><LocalizedLink to="/" className="hover:text-foreground">Home</LocalizedLink></li>
+              <li><LocalizedLink to="/" className="hover:text-foreground">{tc('navigation.home')}</LocalizedLink></li>
               <li><ChevronRight className="h-3 w-3" /></li>
-              <li><span className="text-foreground font-medium">Padel in {displayCity}</span></li>
+              <li><span className="text-foreground font-medium">{t('cityLanding.heroTitle', { city: displayCity, defaultValue: `Padel in ${displayCity}` })}</span></li>
             </ol>
           </nav>
         </div>
