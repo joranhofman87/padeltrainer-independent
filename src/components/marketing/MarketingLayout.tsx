@@ -107,7 +107,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   ];
 
   const isActive = (path: string) => {
-    const currentPath = location.pathname.replace(/^\/(en|nl|es|de|fr)/, '');
+    const currentPath = location.pathname.replace(/^\/(en|nl|es|de|fr|it)/, '');
     return currentPath === path || (path === '/' && currentPath === '');
   };
 
