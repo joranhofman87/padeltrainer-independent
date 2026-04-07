@@ -115,7 +115,7 @@ Interactive tool to find the perfect padel racket based on playing style, level,
 ### Padel Level Test
 Self-assessment tool to determine your padel skill level.
 
-**URL**: `https://padeltrainer.ai/{lang}/padel-level-test`
+**URL**: `https://padeltrainer.ai/{lang}/tools/padel-level-test`
 
 ---
 

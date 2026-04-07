@@ -70,7 +70,7 @@ This platform is available in:
 
 ### Tools
 - Racket Finder: https://padeltrainer.ai/en/racket-finder
-- Padel Level Test: https://padeltrainer.ai/en/padel-level-test
+- Padel Level Test: https://padeltrainer.ai/en/tools/padel-level-test
 
 ### Gear
 - Racket Reviews: https://padeltrainer.ai/en/gear/rackets
@@ -113,6 +113,9 @@ This platform is available in:
 - `/{lang}/tools/padel-level-test` - Padel skill level self-assessment
 - `/{lang}/blog` - Padel tips and news
 - `/{lang}/blog/:slug` - Individual blog post
+- `/{lang}/padel/:city` - City landing page with local clubs, courts & coaches
+- `/{lang}/trainers/region/:province` - Trainers filtered by province/region
+- `/{lang}/founding-trainers` - Founding trainers program
 - `/{lang}/pricing` - Subscription plans for trainers
 - `/{lang}/about` - About the platform
 - `/{lang}/partner` - Partnership inquiry form
