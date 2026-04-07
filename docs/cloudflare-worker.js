@@ -117,6 +117,11 @@ function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
   if (pathname === '/sitemap.xml') return `${sitemapFunctionUrl}?type=index`;
   if (pathname === '/sitemaps/sitemap-static.xml') return `${sitemapFunctionUrl}?type=static`;
   if (pathname === '/sitemaps/sitemap-content.xml') return `${sitemapFunctionUrl}?type=content`;
+  if (pathname === '/sitemaps/sitemap-provinces.xml') return `${sitemapFunctionUrl}?type=provinces`;
+  const locMatch = pathname.match(/^\/sitemaps\/sitemap-locations-(\d+)\.xml$/);
+  if (locMatch) return `${sitemapFunctionUrl}?type=locations&page=${locMatch[1]}`;
+  const cityMatch = pathname.match(/^\/sitemaps\/sitemap-cities-(\d+)\.xml$/);
+  if (cityMatch) return `${sitemapFunctionUrl}?type=cities&page=${cityMatch[1]}`;
   return null;
 }
 
@@ -124,11 +129,6 @@ function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
 function getLlmsProxyUrl(pathname, llmsFunctionUrl) {
   if (!llmsFunctionUrl) return null;
   if (pathname === '/llms-full.txt') return llmsFunctionUrl;
-  if (pathname === '/sitemaps/sitemap-provinces.xml') return `${sitemapFunctionUrl}?type=provinces`;
-  const locMatch = pathname.match(/^\/sitemaps\/sitemap-locations-(\d+)\.xml$/);
-  if (locMatch) return `${sitemapFunctionUrl}?type=locations&page=${locMatch[1]}`;
-  const cityMatch = pathname.match(/^\/sitemaps\/sitemap-cities-(\d+)\.xml$/);
-  if (cityMatch) return `${sitemapFunctionUrl}?type=cities&page=${cityMatch[1]}`;
   return null;
 }
 
