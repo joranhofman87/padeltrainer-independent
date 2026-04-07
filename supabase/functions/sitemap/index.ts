@@ -328,16 +328,17 @@ Deno.serve(async (req) => {
     } else if (type === 'locations') {
       xml = xmlHeader();
 
-      const allLocations = await fetchAllRows<{ slug: string; city: string; updated_at: string }>(
-        supabase, 'locations', 'slug, city, updated_at',
-        [{ column: 'is_active', operator: 'eq', value: true }],
-        'slug'
-      );
-
       const start = (page - 1) * LOCATIONS_PER_PAGE;
-      const pageLocations = allLocations.slice(start, start + LOCATIONS_PER_PAGE);
+      const { data: pageLocations, error: locError } = await supabase
+        .from('locations')
+        .select('slug, city, updated_at')
+        .eq('is_active', true)
+        .order('slug')
+        .range(start, start + LOCATIONS_PER_PAGE - 1);
 
-      for (const location of pageLocations) {
+      if (locError) { console.error('Error fetching locations page:', locError); }
+
+      for (const location of (pageLocations || [])) {
         const lastmod = location.updated_at ? new Date(location.updated_at).toISOString().split('T')[0] : today;
         xml += generateUrlEntry(`/locations/${location.slug}`, lastmod, 'weekly', '0.6');
       }

@@ -18,6 +18,16 @@ async function fetchAndSave(url: string, path: string): Promise<number> {
   return (xml.match(/<url>/g) || []).length;
 }
 
+function countPagesFromIndex(indexXml: string, prefix: string): number {
+  const regex = new RegExp(`${prefix}(\\d+)\\.xml`, 'g');
+  let max = 0;
+  let match;
+  while ((match = regex.exec(indexXml)) !== null) {
+    max = Math.max(max, parseInt(match[1], 10));
+  }
+  return max;
+}
+
 async function generateSitemap() {
   console.log('🗺️  Generating sitemaps...');
   const fs = await import('fs');
@@ -27,6 +37,8 @@ async function generateSitemap() {
   await fetchAndSave(`${BASE_URL}?type=index`, `${OUTPUT_DIR}/sitemap.xml`);
   console.log('✅ Index saved');
 
+  const indexXml = fs.readFileSync(`${OUTPUT_DIR}/sitemap.xml`, 'utf-8');
+
   // Static
   const staticCount = await fetchAndSave(`${BASE_URL}?type=static`, `${SITEMAPS_DIR}/sitemap-static.xml`);
   console.log(`   Static: ${staticCount} URLs`);
@@ -35,19 +47,19 @@ async function generateSitemap() {
   const contentCount = await fetchAndSave(`${BASE_URL}?type=content`, `${SITEMAPS_DIR}/sitemap-content.xml`);
   console.log(`   Content: ${contentCount} URLs`);
 
-  // Locations (paginated)
+  // Locations (exact page count from index)
   let total = staticCount + contentCount;
-  for (let page = 1; ; page++) {
+  const locationPages = countPagesFromIndex(indexXml, 'sitemap-locations-');
+  for (let page = 1; page <= locationPages; page++) {
     const count = await fetchAndSave(`${BASE_URL}?type=locations&page=${page}`, `${SITEMAPS_DIR}/sitemap-locations-${page}.xml`);
-    if (count === 0) { fs.unlinkSync(`${SITEMAPS_DIR}/sitemap-locations-${page}.xml`); break; }
     console.log(`   Locations page ${page}: ${count} URLs`);
     total += count;
   }
 
-  // Cities (paginated)
-  for (let page = 1; ; page++) {
+  // Cities (exact page count from index)
+  const cityPages = countPagesFromIndex(indexXml, 'sitemap-cities-');
+  for (let page = 1; page <= cityPages; page++) {
     const count = await fetchAndSave(`${BASE_URL}?type=cities&page=${page}`, `${SITEMAPS_DIR}/sitemap-cities-${page}.xml`);
-    if (count === 0) { fs.unlinkSync(`${SITEMAPS_DIR}/sitemap-cities-${page}.xml`); break; }
     console.log(`   Cities page ${page}: ${count} URLs`);
     total += count;
   }
