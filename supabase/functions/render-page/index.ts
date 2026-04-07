@@ -153,12 +153,14 @@ function renderPath(cleanPath: string, lang: string): string {
 
   // Blog listing
   if (cleanPath === '/blog') {
-    return page(
-      'Padel Blog — Tips, News & Training Advice | PadelTrainer.ai',
-      'Read the latest padel articles, training tips, match strategies, and industry news.',
-      '/blog', lang,
-      `<h1>Padel Blog</h1><p>Tips, news and training advice for padel players.</p>`
-    );
+    const blogMeta: Record<string, { title: string; desc: string }> = {
+      nl: { title: 'Padel Blog — Tips, Nieuws & Trainingsadvies | PadelTrainer.ai', desc: 'Lees de nieuwste padel artikelen, trainingstips, wedstrijdstrategieën en het laatste nieuws.' },
+      es: { title: 'Blog de Pádel — Consejos, Noticias y Entrenamiento | PadelTrainer.ai', desc: 'Lee los últimos artículos de pádel, consejos de entrenamiento y estrategias de partido.' },
+      de: { title: 'Padel Blog — Tipps, News & Trainingsratgeber | PadelTrainer.ai', desc: 'Lesen Sie die neuesten Padel-Artikel, Trainingstipps und Matchstrategien.' },
+      fr: { title: 'Blog Padel — Conseils, Actualités & Entraînement | PadelTrainer.ai', desc: 'Lisez les derniers articles padel, conseils d\'entraînement et stratégies de match.' },
+    };
+    const m = blogMeta[lang] || { title: 'Padel Blog — Tips, News & Training Advice | PadelTrainer.ai', desc: 'Read the latest padel articles, training tips, match strategies, and industry news.' };
+    return page(m.title, m.desc, '/blog', lang, `<h1>${esc(m.title.split('|')[0].trim())}</h1>`);
   }
 
   // Blog article: /blog/:slug
@@ -166,9 +168,11 @@ function renderPath(cleanPath: string, lang: string): string {
   if (blogMatch) {
     const slug = blogMatch[1];
     const title = slugToDisplay(slug);
+    const readVerb: Record<string, string> = { nl: 'Lees', es: 'Lee', de: 'Lesen', fr: 'Lire' };
+    const verb = readVerb[lang] || 'Read';
     return page(
       `${title} | PadelTrainer.ai Blog`,
-      `Read "${title}" on the PadelTrainer.ai blog.`,
+      `${verb} "${title}" — PadelTrainer.ai`,
       `/blog/${slug}`, lang,
       `<h1>${esc(title)}</h1>`
     );
@@ -176,32 +180,55 @@ function renderPath(cleanPath: string, lang: string): string {
 
   // Learn
   if (cleanPath === '/learn') {
-    return page('Learn Padel — Guides, Tactics & Drills', 'Guides, tactics, drills, and everything you need to improve your padel game.', '/learn', lang, `<h1>Learn Padel</h1>`);
+    const learnMeta: Record<string, { title: string; desc: string }> = {
+      nl: { title: 'Leer Padel — Gidsen, Tactieken & Oefeningen', desc: 'Gidsen, tactieken, oefeningen en alles wat je nodig hebt om je padel te verbeteren.' },
+      es: { title: 'Aprende Pádel — Guías, Tácticas y Ejercicios', desc: 'Guías, tácticas, ejercicios y todo lo que necesitas para mejorar tu juego de pádel.' },
+      de: { title: 'Padel Lernen — Anleitungen, Taktiken & Übungen', desc: 'Anleitungen, Taktiken, Übungen und alles, was du brauchst, um dein Padel-Spiel zu verbessern.' },
+      fr: { title: 'Apprendre le Padel — Guides, Tactiques & Exercices', desc: 'Guides, tactiques, exercices et tout ce dont vous avez besoin pour améliorer votre jeu de padel.' },
+    };
+    const lm = learnMeta[lang] || { title: 'Learn Padel — Guides, Tactics & Drills', desc: 'Guides, tactics, drills, and everything you need to improve your padel game.' };
+    return page(lm.title, lm.desc, '/learn', lang, `<h1>${esc(lm.title.split('—')[0].trim())}</h1>`);
   }
   const learnMatch = cleanPath.match(/^\/learn\/([^/]+)$/);
   if (learnMatch) {
     const title = slugToDisplay(learnMatch[1]);
-    return page(`${title} | Learn Padel`, `Learn about ${title.toLowerCase()} in padel.`, `/learn/${learnMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+    const learnVerb: Record<string, string> = { nl: 'Leer alles over', es: 'Aprende sobre', de: 'Erfahre mehr über', fr: 'Découvrez' };
+    const verb = learnVerb[lang] || 'Learn about';
+    return page(`${title} | ${lang === 'nl' ? 'Leer Padel' : lang === 'es' ? 'Aprende Pádel' : lang === 'de' ? 'Padel Lernen' : lang === 'fr' ? 'Apprendre le Padel' : 'Learn Padel'}`, `${verb} ${title.toLowerCase()}.`, `/learn/${learnMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
   }
 
   // Padel rules
   if (cleanPath === '/padel-rules') {
-    return page('Padel Rules — Complete Guide', 'Learn all the official padel rules, scoring, serving, and match play.', '/padel-rules', lang, `<h1>Padel Rules</h1>`);
+    const rulesMeta: Record<string, { title: string; desc: string }> = {
+      nl: { title: 'Padel Regels — Complete Gids', desc: 'Leer alle officiële padel regels, scoring, serveren en wedstrijdspel.' },
+      es: { title: 'Reglas del Pádel — Guía Completa', desc: 'Aprende todas las reglas oficiales del pádel, puntuación, servicio y juego.' },
+      de: { title: 'Padel Regeln — Vollständiger Leitfaden', desc: 'Lernen Sie alle offiziellen Padel-Regeln, Punktzählung, Aufschlag und Spielverlauf.' },
+      fr: { title: 'Règles du Padel — Guide Complet', desc: 'Apprenez toutes les règles officielles du padel, le comptage des points, le service et le jeu.' },
+    };
+    const rm = rulesMeta[lang] || { title: 'Padel Rules — Complete Guide', desc: 'Learn all the official padel rules, scoring, serving, and match play.' };
+    return page(rm.title, rm.desc, '/padel-rules', lang, `<h1>${esc(rm.title.split('—')[0].trim())}</h1>`);
   }
   const rulesMatch = cleanPath.match(/^\/padel-rules\/([^/]+)$/);
   if (rulesMatch) {
     const title = slugToDisplay(rulesMatch[1]);
-    return page(`${title} | Padel Rules`, `Learn about ${title.toLowerCase()}.`, `/padel-rules/${rulesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+    return page(`${title} | ${lang === 'nl' ? 'Padel Regels' : lang === 'es' ? 'Reglas del Pádel' : lang === 'de' ? 'Padel Regeln' : lang === 'fr' ? 'Règles du Padel' : 'Padel Rules'}`, title, `/padel-rules/${rulesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
   }
 
   // Padel strokes
   if (cleanPath === '/padel-strokes') {
-    return page('Padel Strokes — Master Every Shot', 'Explore all padel strokes and techniques.', '/padel-strokes', lang, `<h1>Padel Strokes</h1>`);
+    const strokesMeta: Record<string, { title: string; desc: string }> = {
+      nl: { title: 'Padel Slagen — Beheers Elke Slag', desc: 'Ontdek alle padel slagen en technieken.' },
+      es: { title: 'Golpes de Pádel — Domina Cada Golpe', desc: 'Explora todos los golpes y técnicas de pádel.' },
+      de: { title: 'Padel Schläge — Meistere Jeden Schlag', desc: 'Entdecken Sie alle Padel-Schläge und -Techniken.' },
+      fr: { title: 'Coups de Padel — Maîtrisez Chaque Coup', desc: 'Explorez tous les coups et techniques de padel.' },
+    };
+    const sm = strokesMeta[lang] || { title: 'Padel Strokes — Master Every Shot', desc: 'Explore all padel strokes and techniques.' };
+    return page(sm.title, sm.desc, '/padel-strokes', lang, `<h1>${esc(sm.title.split('—')[0].trim())}</h1>`);
   }
   const strokesMatch = cleanPath.match(/^\/padel-strokes\/([^/]+)$/);
   if (strokesMatch) {
     const title = slugToDisplay(strokesMatch[1]);
-    return page(`${title} | Padel Strokes`, `Master the ${title.toLowerCase()} in padel.`, `/padel-strokes/${strokesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
+    return page(`${title} | ${lang === 'nl' ? 'Padel Slagen' : lang === 'es' ? 'Golpes de Pádel' : lang === 'de' ? 'Padel Schläge' : lang === 'fr' ? 'Coups de Padel' : 'Padel Strokes'}`, title, `/padel-strokes/${strokesMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
   }
 
   // Padel coaches

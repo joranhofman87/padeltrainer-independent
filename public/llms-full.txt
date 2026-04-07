@@ -2,7 +2,7 @@
 
 > Complete reference for AI systems to understand PadelTrainer.ai's content, entities, and URL structure.
 > For a concise overview, see: https://padeltrainer.ai/llms.txt
-> Generated: 2025-04-07
+> Generated: 2026-04-07
 
 ---
 
@@ -25,7 +25,7 @@ Padel coaches who offer individual or group lessons.
 ### 2. Padel Clubs & Locations
 Physical padel venues with courts.
 
-**Attributes**: name, slug, city, address, indoor courts count, outdoor courts count, amenities, associated trainers and academies.
+**Attributes**: name, slug, city, address, indoor courts count, outdoor courts count, amenities, associated trainers and academies, Google rating, opening hours, phone.
 
 **URL pattern**: `https://padeltrainer.ai/{lang}/locations/{slug}`
 **Directory**: `https://padeltrainer.ai/{lang}/locations`
@@ -36,6 +36,7 @@ Padel training organizations that manage multiple trainers and offer structured 
 **Attributes**: name, slug, description, country, logo, verified status, associated trainers, associated locations.
 
 **URL pattern**: `https://padeltrainer.ai/{lang}/academies/{slug}`
+**Registration**: `https://padeltrainer.ai/{lang}/academies/{slug}/register/{cycle-id}`
 
 ### 4. City Pages
 Programmatic landing pages for cities with padel activity.
@@ -93,7 +94,6 @@ Equipment reviews with specs, pricing, and comparisons.
 
 **URL pattern**: `https://padeltrainer.ai/{lang}/gear/rackets/{slug}`
 **Directory**: `https://padeltrainer.ai/{lang}/gear/rackets`
-**Finder tool**: `https://padeltrainer.ai/{lang}/racket-finder`
 
 ### Padel Coaches / Content Creators
 Featured padel coaches and content creators with video libraries.
@@ -103,13 +103,19 @@ Featured padel coaches and content creators with video libraries.
 **URL pattern**: `https://padeltrainer.ai/{lang}/padel-coaches/{slug}`
 **Directory**: `https://padeltrainer.ai/{lang}/padel-coaches`
 
-### Video Tips
-Expert coaching videos with coach attribution and stroke associations.
+---
 
-**Attributes**: title, slug, video URL, platform (YouTube/Instagram/TikTok), short summary, skill level, tags, associated coach, related strokes.
+## Tools
 
-**URL pattern**: `https://padeltrainer.ai/{lang}/video-tips/{slug}`
-**Listing**: `https://padeltrainer.ai/{lang}/video-tips`
+### Racket Finder
+Interactive tool to find the perfect padel racket based on playing style, level, and preferences.
+
+**URL**: `https://padeltrainer.ai/{lang}/racket-finder`
+
+### Padel Level Test
+Self-assessment tool to determine your padel skill level.
+
+**URL**: `https://padeltrainer.ai/{lang}/padel-level-test`
 
 ---
 
@@ -142,9 +148,12 @@ Dutch (`/nl/`) is the default/primary language (x-default hreflang).
 | Padel Strokes | `https://padeltrainer.ai/en/padel-strokes` |
 | Video Tips | `https://padeltrainer.ai/en/video-tips` |
 | Racket Finder | `https://padeltrainer.ai/en/racket-finder` |
+| Racket Directory | `https://padeltrainer.ai/en/gear/rackets` |
+| Padel Coaches | `https://padeltrainer.ai/en/padel-coaches` |
 | Pricing | `https://padeltrainer.ai/en/pricing` |
 | About | `https://padeltrainer.ai/en/about` |
 | Partner | `https://padeltrainer.ai/en/partner` |
+| Founding Trainers | `https://padeltrainer.ai/en/founding-trainers` |
 
 ---
 
@@ -163,21 +172,23 @@ Dutch (`/nl/`) is the default/primary language (x-default hreflang).
 ## Structured Data Implemented
 
 - **WebSite** — homepage with search action
-- **Organization** — PadelTrainer.ai brand entity
+- **Organization** — PadelTrainer.ai brand entity with social profiles
 - **Article** — blog posts with author, publisher, speakable
 - **CollectionPage** — hub/pillar blog pages with hasPart
 - **BreadcrumbList** — all pages
 - **FAQPage** — rules, city pages, racket finder
+- **SportsClub** — location pages with geo, aggregateRating, openingHours
 - **LocalBusiness** — city landing pages
 - **VideoObject** — video tips
 - **Blog** — blog listing
+- **Person** — trainer profiles, coach profiles
 
 ---
 
 ## Technical Details
 
 - **Stack**: React, TypeScript, Tailwind CSS, Vite
-- **CMS**: Sanity (blog, learning content, strokes, rules, video tips, rackets)
+- **CMS**: Sanity (blog, learning content, strokes, rules, video tips, rackets, coaches)
 - **Backend**: Supabase (trainers, locations, academies, bookings, payments)
 - **Payments**: Mollie
 - **Sitemap**: `https://padeltrainer.ai/sitemap.xml` (sitemap index with paginated sub-sitemaps)

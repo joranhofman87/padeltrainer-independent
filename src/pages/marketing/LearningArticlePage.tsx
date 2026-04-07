@@ -149,6 +149,22 @@ export default function LearningArticlePage() {
     staleTime: 1000 * 60 * 10,
   });
 
+  // Fetch translations for hreflang + language switcher
+  const { setTranslations, clearTranslations } = useTranslationsContext();
+  const { data: translationsList = [] } = useQuery({
+    queryKey: ['translations', 'learningArticle', article?._id],
+    queryFn: () => getTranslations(article!._id, 'learningArticle', currentLang, article?.translationOf?._ref),
+    enabled: !!article?._id,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  useEffect(() => {
+    if (translationsList.length > 0) {
+      setTranslations(translationsList, 'learn');
+    }
+    return () => clearTranslations();
+  }, [translationsList, setTranslations, clearTranslations]);
+
   if (isLoading) {
     return (
       <MarketingLayout>
@@ -213,6 +229,8 @@ export default function LearningArticlePage() {
         publishedTime={article.datePublished || undefined}
         modifiedTime={article.dateModified || undefined}
         author="PadelTrainer.ai"
+        translations={translationsList}
+        pathPrefix="learn"
       />
 
       {/* Back Button */}

@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +17,8 @@ import { ArrowLeft, ExternalLink, MapPin, Globe, User, Instagram, Youtube, Info 
 import { sanityClient, COACH_BY_SLUG_QUERY, VIDEO_TIPS_BY_TRAINER_QUERY } from '@/lib/sanity';
 import { useTranslation } from 'react-i18next';
 import type { SeoFields, CtaFields } from '@/lib/sanity';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 interface CoachDetail {
   _id: string;
@@ -64,6 +67,22 @@ export default function CoachPage() {
     enabled: !!coach?._id,
     staleTime: 1000 * 60 * 5,
   });
+
+  // Fetch translations for hreflang + language switcher
+  const { setTranslations, clearTranslations } = useTranslationsContext();
+  const { data: translationsList = [] } = useQuery({
+    queryKey: ['translations', 'trainer', coach?._id],
+    queryFn: () => getTranslations(coach!._id, 'trainer', lang, (coach as any).translationOf?._ref),
+    enabled: !!coach?._id,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  useEffect(() => {
+    if (translationsList.length > 0) {
+      setTranslations(translationsList, 'padel-coaches');
+    }
+    return () => clearTranslations();
+  }, [translationsList, setTranslations, clearTranslations]);
 
   if (isLoading) {
     return (
@@ -141,6 +160,8 @@ export default function CoachPage() {
         image={coach.profileImageUrl || undefined}
         structuredData={structuredData}
         noIndex={coach.seo?.indexable === false}
+        translations={translationsList}
+        pathPrefix="padel-coaches"
       />
 
       <div className="container mx-auto px-4 pt-8">

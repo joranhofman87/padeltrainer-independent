@@ -319,7 +319,7 @@ export default function TrainerProfile() {
     "name": profile.full_name,
     "jobTitle": "Padel Trainer",
     "image": profile.avatar_url,
-    "url": `https://padeltrainer.ai/trainer/${trainerSlug}`,
+    "url": `https://padeltrainer.ai/${currentLang}/trainer/${trainerSlug}`,
     "address": profile.location ? { "@type": "PostalAddress", "addressLocality": profile.location } : undefined,
     ...(averageRating !== null && reviewCount > 0 ? {
       "aggregateRating": { "@type": "AggregateRating", "ratingValue": averageRating, "reviewCount": reviewCount, "bestRating": 5, "worstRating": 1 }
