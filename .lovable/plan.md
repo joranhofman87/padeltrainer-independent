@@ -1,78 +1,106 @@
 
 
-# Sitemap Audit — Issues Found & Fixes
+# Technical SEO Audit: Sitemap, Robots.txt & LLMs.txt
 
-## Issues Identified
+## Overall Status: Mostly Solid — 7 Issues Found
 
-### 1. CRITICAL: Cloudflare Worker missing `content` sitemap route
-The `getSitemapProxyUrl` function in `docs/cloudflare-worker.js` handles `static`, `provinces`, `locations-N`, and `cities-N` — but **not** `sitemap-content.xml`. When Google requests `/sitemaps/sitemap-content.xml` directly (not via CI), the Cloudflare worker falls through to the origin static file instead of proxying to the edge function. This means live/real-time content sitemap requests from crawlers won't work if the static file is stale or missing.
+---
 
-### 2. CRITICAL: Trainers query hits 1000-row limit
-Line 251–253 fetches trainers with a single `supabase.from('trainer_profiles').select(...)` — no pagination. If you have more than 1,000 trainer profiles, the rest are silently dropped from the sitemap.
+## ROBOTS.TXT
 
-### 3. MODERATE: Blog articles query hits 1000-row limit
-Line 277–280 fetches blog articles with a single query. Same truncation risk if you grow past 1,000 published articles.
+### Issue 1: MODERATE — Missing Disallow for `/app` variants
+Currently `Disallow: /app/` only blocks paths with a trailing slash. The path `/app` itself (without slash) is not blocked. Also, authenticated pages like `/*/settings` or `/*/dashboard` are not explicitly blocked — though they redirect anyway, it's cleaner to block them.
 
-### 4. MODERATE: Academies query hits 1000-row limit
-Line 263–267 — same pattern. Lower risk now but will bite you as you grow.
+**Fix**: Add `Disallow: /app` (without trailing slash).
 
-### 5. MODERATE: No XML escaping on slugs
-Slugs and city names are inserted directly into XML without escaping `&`, `<`, `>`. A single slug containing `&` (e.g., a location called "Bar & Restaurant") will produce malformed XML that Google will reject entirely for that sitemap file.
+### Issue 2: LOW — No Crawl-delay directive
+Not critical, but for aggressive bots like AhrefsBot and SemrushBot, a `Crawl-delay: 2` can prevent excessive crawling of your 65,000+ URL site.
 
-### 6. LOW: City slug double-encoding
-`encodeURIComponent()` on line 189/366 encodes special characters like `ñ` → `%C3%B1`, `ü` → `%C3%BC`. If your frontend routes use raw UTF-8 slugs (e.g., `/trainers/logroño`), the sitemap URLs won't match and Google will see 404s.
+**Fix**: Add bot-specific crawl-delay rules.
 
-## Plan
+### Issue 3: PASS — Sitemap reference is correct
+Points to `https://padeltrainer.ai/sitemap.xml` — correct.
 
-### File 1: `supabase/functions/sitemap/index.ts`
+---
 
-**A) Add XML escape helper**
-```typescript
-function escapeXml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-```
-Apply in `generateUrlEntry`, `generateBlogEntries`, and `generateSanityEntries` — wrap all dynamic path/slug values with `escapeXml()`.
+## SITEMAP
 
-**B) Fix trainers, academies, blog queries to use `fetchAllRows`**
-Replace the three single queries with:
-```typescript
-// Trainers
-const trainers = await fetchAllRows<{user_id: string; slug: string; updated_at: string}>(
-  supabase, 'trainer_profiles', 'user_id, slug, updated_at'
-);
+### Issue 4: CRITICAL — `type=locations` fetches ALL rows on every page request
+The current code fetches all ~13,000 locations into memory for every single page request (`fetchAllRows`), then slices. With 6 page requests during CI, that's 6 × 13,000 row fetches. This is wasteful and will cause timeouts as the dataset grows.
 
-// Academies
-const academies = await fetchAllRows<{slug: string; updated_at: string}>(
-  supabase, 'academy_profiles', 'slug, updated_at',
-  [
-    { column: 'is_verified', operator: 'eq', value: true },
-    { column: 'is_public', operator: 'eq', value: true }
-  ]
-);
+**Fix**: Implement true server-side pagination — fetch only the rows for the requested page using batched `.range()` calls within the page window (e.g., for page 2: rows 2500–4999, fetched in 1000-row batches).
 
-// Blog
-const blogArticles = await fetchAllRows<{slug: string; locale: string; canonical_id: string; published_at: string; updated_at: string}>(
-  supabase, 'articles', 'slug, locale, canonical_id, published_at, updated_at',
-  [{ column: 'status', operator: 'eq', value: 'published' }]
-);
-```
+### Issue 5: CRITICAL — `type=cities` also fetches ALL locations on every page request
+Same issue — all locations are fetched just to extract unique city names, then sliced. This runs 3 times (3 city pages).
 
-**C) Fix city slug encoding**
-Replace `encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'))` with just `loc.city.toLowerCase().replace(/\s+/g, '-')` — no URI encoding. The XML `escapeXml` helper handles any special XML chars. This ensures URLs match your frontend routing.
+**Fix**: Same approach — or cache the city list in-memory within the function invocation and reuse.
 
-### File 2: `docs/cloudflare-worker.js`
+### Issue 6: MODERATE — Provinces list is hardcoded and incomplete
+The provinces sitemap contains a static list of 23 provinces (12 NL, 4 BE, 4 ES, 3 DE). As you expand to France and other countries, this will silently miss new provinces. There's no French province despite FR being a supported language.
 
-Add the missing content sitemap route to `getSitemapProxyUrl`:
-```javascript
-if (pathname === '/sitemaps/sitemap-content.xml') return `${sitemapFunctionUrl}?type=content`;
-```
+**Fix**: Either make this data-driven (query distinct provinces from locations table) or add a comment/reminder to update when expanding. At minimum, add French provinces.
 
-## File Summary
+### PASS — XML escaping is in place
+The `escapeXml` helper correctly handles `&`, `<`, `>`, `"`, `'`.
 
-| File | Change |
-|---|---|
-| `supabase/functions/sitemap/index.ts` | Add XML escaping; use `fetchAllRows` for trainers/academies/blog; fix city slug encoding |
-| `docs/cloudflare-worker.js` | Add missing `sitemap-content.xml` proxy route |
+### PASS — Hreflang implementation is correct
+All 5 languages get proper `xhtml:link` alternates with `x-default` pointing to NL.
+
+### PASS — Blog hreflang groups by `canonical_id`
+Translated articles correctly cross-reference each other.
+
+### PASS — Workflow uses exact page counts from sitemap index
+No more infinite loop risk.
+
+---
+
+## LLMs.txt
+
+### PASS — `public/llms.txt` is comprehensive
+Covers all entity types, URL patterns, languages, key pages.
+
+### Issue 7: MODERATE — `public/llms-full.txt` is a static snapshot, not the dynamic edge function
+You have both:
+- `public/llms-full.txt` — a static file committed to the repo (stale, dated 2026-04-07)
+- `supabase/functions/llms-full-txt/` — a dynamic edge function that queries live data
+
+The `robots.txt` points to `https://padeltrainer.ai/llms-full.txt`, which serves the **static file** from Lovable's origin. The dynamic edge function is never called because:
+1. The Cloudflare worker's `shouldPrerender` skips `.txt` files
+2. There's no proxy route for `/llms-full.txt` to the edge function
+
+So AI crawlers get stale data with truncated lists (1,000 row limit on trainers, locations, academies).
+
+**Fix**: Either:
+- **Option A**: Add a Cloudflare worker route to proxy `/llms-full.txt` to the edge function (best — always fresh)
+- **Option B**: Add `llms-full.txt` regeneration to the weekly GitHub Actions workflow (same approach as sitemaps)
+
+### PASS — `llms-full-txt` edge function handles >1000 rows for profiles
+It batches profile fetches in groups of 1000. However, the initial trainer/location/academy queries still use single `.select()` calls (1000-row limit). This is the same bug we fixed in the sitemap.
+
+### Sub-issue within Issue 7: `llms-full-txt` edge function has 1000-row limits
+The three main queries (trainers, locations, academies) are single queries without pagination — they'll silently truncate at 1000 rows.
+
+---
+
+## Cloudflare Worker
+
+### PASS — All sitemap routes are mapped
+Including the recently added `sitemap-content.xml`.
+
+### PASS — Fallback HTML exists for circuit breaker scenarios
+
+### Issue (previously noted): Static fallback mentions "Netherlands"
+Line 97: `"PadelTrainer.ai connects players with the best coaches in the Netherlands."` — contradicts the global positioning branding guideline.
+
+---
+
+## Recommended Changes
+
+| File | Change | Priority |
+|---|---|---|
+| `public/robots.txt` | Add `Disallow: /app`, add crawl-delay for aggressive bots | Moderate |
+| `supabase/functions/sitemap/index.ts` | Implement true paginated fetch for locations (fetch only the page window, not all rows) | Critical |
+| `supabase/functions/llms-full-txt/index.ts` | Replace single queries with `fetchAllRows` pattern for trainers, locations, academies | Moderate |
+| `docs/cloudflare-worker.js` | Add proxy route for `/llms-full.txt` to edge function; fix "Netherlands" in fallback HTML | Moderate |
+| `supabase/functions/sitemap/index.ts` | Consider making provinces data-driven or add French provinces | Low |
 
