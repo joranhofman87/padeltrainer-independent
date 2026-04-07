@@ -135,7 +135,7 @@ All colors MUST be HSL.
 
 /* Homepage section utilities */
 .section-alt {
-  background-color: #F8F8F6;
+  background-color: hsl(var(--secondary));
 }
 
 .card-elevated {

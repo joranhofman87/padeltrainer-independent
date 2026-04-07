@@ -19,7 +19,7 @@ export function PlayerBanner() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           {/* Left: text */}
           <div className="md:max-w-sm">
-            <h2 className="text-2xl md:text-3xl font-bold mb-2 text-[hsl(var(--brand-navy))]">
+            <h2 className="text-2xl md:text-3xl font-bold mb-2 text-foreground">
               {t('homev2.playerBanner.headline')}
             </h2>
             <p className="text-muted-foreground">

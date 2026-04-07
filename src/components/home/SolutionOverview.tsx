@@ -73,7 +73,7 @@ export function SolutionOverview() {
     <section id="features" className="py-16 md:py-20 section-alt">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
         <div className="mb-14 max-w-2xl">
-          <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] mb-4 text-[hsl(var(--brand-navy))]">
+          <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] mb-4 text-foreground">
             {t('homev2.solution.headline')}
           </h2>
           <p className="text-lg text-muted-foreground">
