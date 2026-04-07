@@ -1,54 +1,90 @@
 
 
-# Final Technical SEO Audit — PadelTrainer.ai
+# QA Testing Audit — PadelTrainer.ai
 
-## Overall Verdict: 2 Issues Remaining (1 Moderate, 1 Low). Everything else is PASS.
+## Current State
 
----
-
-## Issues Found
-
-### 1. MODERATE: Stale committed `sitemap-static.xml` has wrong `/padel-level-test` URLs
-
-The edge function correctly generates `/tools/padel-level-test`, but the **committed file** at `public/sitemaps/sitemap-static.xml` still contains 10 URLs pointing to the old `/padel-level-test` path (5 `<loc>` entries + their hreflang alternates). Google is indexing these stale URLs from the committed file until the next CI run regenerates it.
-
-**Fix**: Re-trigger the GitHub Actions workflow manually (or wait for Monday). No code change needed — the edge function is already correct.
-
-### 2. LOW: Duplicate entry in `llms.txt` URL Structure
-
-`/{lang}/trainers/region/:province` appears **twice** — on line 92 and line 117. This is cosmetic but looks unprofessional to AI crawlers.
-
-**Fix**: Remove line 117 (the duplicate).
-
----
-
-## PASS — Full Checklist
-
-| Component | Status | Notes |
+| Layer | Coverage | Detail |
 |---|---|---|
-| **robots.txt** | PASS | Blocks `/app`, `/app/`, `*/pay/`, `*/register/`, `*/auth`, `*/settings`, `*/dashboard`. Crawl-delay for aggressive bots. Sitemap + llms.txt references correct. |
-| **Sitemap index** | PASS | Includes static, content, locations-1..N, cities-1..N, provinces. Dynamically generated from DB counts. |
-| **Sitemap — static type** | PASS | 20 static pages, trainers via `fetchAllRows`, academies filtered by `is_verified` + `is_public`, blog grouped by `canonical_id` with proper cross-language hreflang. |
-| **Sitemap — content type** | PASS | 7 parallel Sanity queries (rules, strokes, coaches, video tips, learning articles, topics, products). `generateSanityEntries` groups by `translationOf` for correct hreflang. Learning articles respect `seo.indexable` flag. |
-| **Sitemap — locations** | PASS | True paginated fetch in 1000-row batches within the page window. Ordered by slug for consistency. |
-| **Sitemap — cities** | PASS | Generates both `/trainers/:city` and `/padel/:city` URLs per city. Uses `fetchAllRows` for full coverage. |
-| **Sitemap — provinces** | PASS | Data-driven from `locations.province` column + fallback list covering NL, BE, ES, DE, FR regions. |
-| **Hreflang (all sitemaps)** | PASS | All 5 languages + `x-default` → NL on every URL entry. Blog and Sanity content use translated slugs. |
-| **XML escaping** | PASS | `escapeXml` handles `&`, `<`, `>`, `"`, `'` on all slugs. |
-| **Cloudflare Worker** | PASS | All sitemap routes (index, static, content, provinces, locations-N, cities-N) correctly in `getSitemapProxyUrl`. `getLlmsProxyUrl` handles `/llms-full.txt` only. Bot detection, rate limiting, circuit breaker, caching all solid. |
-| **Render-page** | PASS | Handles all route types: homepage, trainer, city trainers, `/padel/:city`, location, academy, blog, learn, rules, strokes, coaches, video tips, topics, gear/rackets, registration, `/trainers/region/:slug`, `/tools/padel-level-test`, static pages. Localized meta in all 5 languages. Proper canonical, hreflang, OG, Twitter cards. |
-| **SEO component (client)** | PASS | Correct canonical, hreflang with translated slug support, OG locale alternates, article-specific OG tags, structured data injection. |
-| **CI workflow** | PASS | Exact page count parsing from sitemap index. `--max-time 120 --retry 2` on all curls. Includes `llms-full.txt` regeneration. Summary step with total URL count. |
-| **llms.txt** | PASS (except duplicate) | Comprehensive overview, all URL patterns documented, correct `/tools/padel-level-test` path. |
-| **llms-full.txt** | PASS | Correct entity types, content types, tools, structured data documentation, correct paths. |
+| **Unit tests (Vitest)** | 16 of 53 lib files tested (~30%) | ~350 test cases across auth, validation, invoiceCalc, pricing, etc. |
+| **Component tests** | 6 of 262 components tested (~2%) | Only booking, cycles, invoice dialog, slider, Auth, TrainerSignup |
+| **E2E (Playwright)** | 12 spec files, weekly CI | Navigation, i18n, a11y, error handling, health checks. No auth-flow E2E. |
+| **Edge function tests** | 1 of 78 functions tested (~1%) | Only `generate-proposals` has a test |
+| **CI workflows** | Unit tests on every push/PR. E2E weekly (Sundays). | Solid gating on unit tests. |
+
+## Verdict: Yes, you should add more tests. Here's what matters most.
 
 ---
 
-## Plan — Files to Change
+## Priority 1: HIGH IMPACT — Add to CI on every push
 
-| File | Change | Priority |
-|---|---|---|
-| `public/llms.txt` | Remove duplicate `/{lang}/trainers/region/:province` on line 117 | Low |
+### A. Critical business logic unit tests (missing)
 
-The stale `sitemap-static.xml` will self-heal on the next CI run. If you want it fixed immediately, just re-trigger the "Regenerate Sitemap" workflow on GitHub.
+These lib files handle money, bookings, and subscriptions — bugs here directly cost revenue:
+
+- **`academyPayments.ts`** — academy payment calculations
+- **`academySubscription.ts` / `clubSubscription.ts` / `sharedSubscription.ts`** — subscription tier logic (partially tested)
+- **`invoiceSync.ts`** — invoice synchronization logic
+- **`cycles.ts`** — cycle scheduling (partially tested, expand edge cases)
+- **`locations.ts` / `cities.ts` / `provinces.ts`** — slug generation and lookups (SEO-critical)
+
+### B. Sitemap edge function test
+
+Your sitemap is your growth engine. One broken deploy could de-index thousands of pages. Add a test that:
+- Calls the sitemap function with `type=index` and validates XML structure
+- Calls `type=static` and checks for correct `/tools/padel-level-test` path
+- Calls `type=locations&page=1` and validates hreflang tags exist
+
+### C. Render-page edge function test
+
+This generates all your meta tags for bots. A regression here kills SEO silently. Test that:
+- Each route type returns correct `<title>`, `<meta name="description">`, canonical, and hreflang
+- Unknown routes return a sensible fallback
+
+---
+
+## Priority 2: MODERATE — Add within next sprint
+
+### D. Component tests for revenue-critical flows
+
+Currently untested components that handle real user interactions:
+
+- **Payment/checkout components** — Mollie/Stripe integration UI
+- **Cycle registration form** — the full intake flow
+- **Academy/Club dashboard** — management actions
+- **Trainer availability editor** — slot CRUD
+
+### E. Expand E2E to cover auth flows
+
+Currently your Playwright suite skips all authenticated specs. Add at least:
+- Login → redirect to correct dashboard per role
+- Booking flow (as player)
+- Trainer creating an availability slot
+
+---
+
+## Priority 3: LOW — Nice to have
+
+### F. Visual regression testing
+
+For a content-heavy multilingual site, consider adding Playwright screenshot comparisons for key landing pages to catch layout breaks across languages.
+
+### G. Edge function smoke tests in CI
+
+You have `rls-health.spec.ts` and `invoice-health.spec.ts` in Playwright, but the 78 edge functions have almost no test coverage. The most critical ones to test:
+- `auto-invoice-cycles` — automated billing
+- `create-mollie-payment` / `create-stripe-checkout` — payment initiation
+- `generate-invoice` — PDF generation
+
+---
+
+## Recommended Plan — 3 Changes
+
+| # | What | Files | Runs on |
+|---|---|---|---|
+| 1 | Add unit tests for `locations.ts`, `cities.ts`, `invoiceSync.ts` | New `*.test.ts` files in `src/lib/` | Every push (existing `test.yml`) |
+| 2 | Add sitemap + render-page edge function tests | New test files in `supabase/functions/` | Manual or weekly CI |
+| 3 | Expand E2E with one authenticated booking flow | New `e2e/booking-auth.spec.ts` | Weekly CI |
+
+This gives you the highest ROI: protecting SEO infrastructure and revenue flows without massive test-writing overhead. The existing CI already runs unit tests on every push, so adding tests to `src/lib/` is zero-config.
 
