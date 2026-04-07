@@ -22,20 +22,25 @@ jobs:
 
       - name: Fetch sitemap index
         run: |
-          curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=index" > public/sitemap.xml
+          curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=index" > public/sitemap.xml
           echo "Sitemap index generated"
 
       - name: Fetch static sitemap
         run: |
-          curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=static" > public/sitemaps/sitemap-static.xml
+          curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=static" > public/sitemaps/sitemap-static.xml
           echo "Static: $(grep -c '<url>' public/sitemaps/sitemap-static.xml) URLs"
+
+      - name: Fetch content sitemap
+        run: |
+          curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=content" > public/sitemaps/sitemap-content.xml
+          echo "Content: $(grep -c '<url>' public/sitemaps/sitemap-content.xml) URLs"
 
       - name: Fetch location sitemaps
         run: |
           PAGE=1
           while true; do
             FILE="public/sitemaps/sitemap-locations-${PAGE}.xml"
-            curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=locations&page=${PAGE}" > "$FILE"
+            curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=locations&page=${PAGE}" > "$FILE"
             URL_COUNT=$(grep -c '<url>' "$FILE" || echo 0)
             echo "Locations page ${PAGE}: ${URL_COUNT} URLs"
             if [ "$URL_COUNT" -eq 0 ]; then
@@ -50,7 +55,7 @@ jobs:
           PAGE=1
           while true; do
             FILE="public/sitemaps/sitemap-cities-${PAGE}.xml"
-            curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=cities&page=${PAGE}" > "$FILE"
+            curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=cities&page=${PAGE}" > "$FILE"
             URL_COUNT=$(grep -c '<url>' "$FILE" || echo 0)
             echo "Cities page ${PAGE}: ${URL_COUNT} URLs"
             if [ "$URL_COUNT" -eq 0 ]; then
@@ -62,7 +67,7 @@ jobs:
 
       - name: Fetch provinces sitemap
         run: |
-          curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=provinces" > public/sitemaps/sitemap-provinces.xml
+          curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=provinces" > public/sitemaps/sitemap-provinces.xml
           echo "Provinces: $(grep -c '<url>' public/sitemaps/sitemap-provinces.xml) URLs"
 
       - name: Summary

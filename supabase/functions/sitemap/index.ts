@@ -114,6 +114,48 @@ function generateBlogEntries(blogArticles: { slug: string; locale: string; canon
   return xml;
 }
 
+// Helper to generate language-aware entries with proper hreflang alternates from Sanity docs
+function generateSanityEntries(
+  // deno-lint-ignore no-explicit-any
+  docs: any[],
+  pathPrefix: string,
+  priority: string,
+  today: string,
+  // deno-lint-ignore no-explicit-any
+  filterFn?: (doc: any) => boolean
+): string {
+  let result = '';
+  // deno-lint-ignore no-explicit-any
+  const groups = new Map<string, any[]>();
+  for (const doc of docs) {
+    if (filterFn && !filterFn(doc)) continue;
+    const lang = doc.language || 'en';
+    const rootId = doc.translationOf?._ref || doc._id;
+    const group = groups.get(rootId) || [];
+    group.push({ ...doc, language: lang });
+    groups.set(rootId, group);
+  }
+
+  for (const [, group] of groups) {
+    for (const doc of group) {
+      const lastmod = doc._updatedAt ? doc._updatedAt.split('T')[0] : today;
+      const fullUrl = `${SITE_URL}/${doc.language}/${pathPrefix}/${doc.slug}`;
+      result += '  <url>\n';
+      result += `    <loc>${fullUrl}</loc>\n`;
+      result += `    <lastmod>${lastmod}</lastmod>\n`;
+      result += `    <changefreq>weekly</changefreq>\n`;
+      result += `    <priority>${priority}</priority>\n`;
+      for (const alt of group) {
+        result += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${pathPrefix}/${alt.slug}"/>\n`;
+      }
+      const nlVersion = group.find((a: { language: string }) => a.language === 'nl') || group[0];
+      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.language}/${pathPrefix}/${nlVersion.slug}"/>\n`;
+      result += '  </url>\n';
+    }
+  }
+  return result;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -151,6 +193,9 @@ Deno.serve(async (req) => {
       // Static sitemap (static pages + trainers + academies + blog)
       xml += `  <sitemap>\n    <loc>${SITEMAP_BASE_URL}/sitemap-static.xml</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>\n`;
 
+      // Content sitemap (Sanity CMS content: rules, strokes, coaches, etc.)
+      xml += `  <sitemap>\n    <loc>${SITEMAP_BASE_URL}/sitemap-content.xml</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>\n`;
+
       // Location sitemaps (paginated)
       for (let i = 1; i <= locationPages; i++) {
         xml += `  <sitemap>\n    <loc>${SITEMAP_BASE_URL}/sitemap-locations-${i}.xml</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>\n`;
@@ -167,6 +212,7 @@ Deno.serve(async (req) => {
       xml += '</sitemapindex>';
 
     } else if (type === 'static') {
+      // Only static pages + Supabase DB queries (trainers, academies, blog)
       xml = xmlHeader();
 
       const staticPages = [
@@ -232,8 +278,12 @@ Deno.serve(async (req) => {
         xml += generateBlogEntries(blogArticles, today);
       }
 
-      // Sanity CMS content: Rules, Strokes, Coaches, Video Tips, Learning Articles
-      // Fetch with language + translationOf to build proper hreflang groups
+      xml += '</urlset>';
+
+    } else if (type === 'content') {
+      // Sanity CMS content only — isolated from DB queries for faster execution
+      xml = xmlHeader();
+
       const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles, sanityTopics, sanityProducts] = await Promise.all([
         sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; _updatedAt: string }[]>(
           `*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, _updatedAt }`
@@ -258,58 +308,15 @@ Deno.serve(async (req) => {
         ),
       ]);
 
-      // Helper to generate language-aware entries with proper hreflang alternates
-      function generateSanityEntries(
-        // deno-lint-ignore no-explicit-any
-        docs: any[],
-        pathPrefix: string,
-        priority: string,
-        // deno-lint-ignore no-explicit-any
-        filterFn?: (doc: any) => boolean
-      ): string {
-        let result = '';
-        // Group by translation chain
-        // deno-lint-ignore no-explicit-any
-        const groups = new Map<string, any[]>();
-        for (const doc of docs) {
-          if (filterFn && !filterFn(doc)) continue;
-          const lang = doc.language || 'en';
-          const rootId = doc.translationOf?._ref || doc._id;
-          const group = groups.get(rootId) || [];
-          group.push({ ...doc, language: lang });
-          groups.set(rootId, group);
-        }
-
-        for (const [, group] of groups) {
-          for (const doc of group) {
-            const lastmod = doc._updatedAt ? doc._updatedAt.split('T')[0] : today;
-            const fullUrl = `${SITE_URL}/${doc.language}/${pathPrefix}/${doc.slug}`;
-            result += '  <url>\n';
-            result += `    <loc>${fullUrl}</loc>\n`;
-            result += `    <lastmod>${lastmod}</lastmod>\n`;
-            result += `    <changefreq>weekly</changefreq>\n`;
-            result += `    <priority>${priority}</priority>\n`;
-            // Add hreflang alternates for all translations in the group
-            for (const alt of group) {
-              result += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${pathPrefix}/${alt.slug}"/>\n`;
-            }
-            const nlVersion = group.find((a: { language: string }) => a.language === 'nl') || group[0];
-            result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.language}/${pathPrefix}/${nlVersion.slug}"/>\n`;
-            result += '  </url>\n';
-          }
-        }
-        return result;
-      }
-
-      xml += generateSanityEntries(sanityRules, 'padel-rules', '0.7');
-      xml += generateSanityEntries(sanityStrokes, 'padel-strokes', '0.7');
-      xml += generateSanityEntries(sanityCoaches, 'padel-coaches', '0.7');
-      xml += generateSanityEntries(sanityVideoTips, 'video-tips', '0.6');
+      xml += generateSanityEntries(sanityRules, 'padel-rules', '0.7', today);
+      xml += generateSanityEntries(sanityStrokes, 'padel-strokes', '0.7', today);
+      xml += generateSanityEntries(sanityCoaches, 'padel-coaches', '0.7', today);
+      xml += generateSanityEntries(sanityVideoTips, 'video-tips', '0.6', today);
       xml += generateSanityEntries(
-        sanityLearningArticles, 'learn', '0.7',
+        sanityLearningArticles, 'learn', '0.7', today,
         (doc) => doc.seo?.indexable !== false
       );
-      xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6');
+      xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6', today);
       for (const topic of sanityTopics || []) {
         if (!topic.isIndexable) continue;
         const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
