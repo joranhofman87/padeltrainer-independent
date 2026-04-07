@@ -1,75 +1,65 @@
 
 
-# Growth/SEO Manager Audit — Ranking Faster with Existing Content
+# SEO Re-Audit — Current Status Report
 
-## Executive Summary
+## Overall Assessment: Very Strong — 3 Minor Gaps Remain
 
-Your technical SEO foundation is strong — structured data, hreflang, sitemap index, bot pre-rendering, `llms.txt`. But there are **5 actionable gaps** that are slowing down how fast Google discovers, understands, and ranks your content. These are ordered by expected impact on organic growth velocity.
+After the last 4 rounds of SEO work, your implementation is now excellent. Here's the scorecard:
 
----
+### What's Fully Implemented (No Action Needed)
 
-## 1. `llms.txt` has wrong URLs — confusing AI crawlers
-
-**Problem**: `public/llms.txt` references `/strokes` and `/strokes/:slug` (lines 65, 90-91) but your actual routes are `/padel-strokes` and `/padel-strokes/:slug`. Any AI crawler following these links gets 404s.
-
-**Fix**: Update `llms.txt` to use `/padel-strokes` everywhere. Also add missing content types: Racket Finder, Gear/Rackets, Padel Coaches, Topics.
-
----
-
-## 2. VideoTipPage missing translations + hreflang
-
-**Problem**: `VideoTipPage.tsx` never calls `getTranslations()` and doesn't pass `translations`/`pathPrefix` to `<SEO>`. This means all language versions of a video tip page have identical hreflang tags pointing to the same slug — Google may deduplicate or pick the wrong version.
-
-**Fix**: Add translation fetching and pass `translations={translationsList}` + `pathPrefix="video-tips"` to `<SEO>`, matching the pattern already used on Rules, Strokes, Learning, Coach, and Blog pages.
-
----
-
-## 3. Sanity sitemap entries missing `lastmod` from CMS
-
-**Problem**: The `generateSanityEntries()` function in the sitemap edge function hardcodes `lastmod` to `today` for all Sanity content. This means Google sees every Sanity page as "just updated" every day, which dilutes the crawl budget signal. Google prioritizes crawling pages with genuinely recent `lastmod` changes.
-
-**Fix**: Fetch `_updatedAt` from each Sanity document in the GROQ queries and use it as `lastmod`. This tells Google which content actually changed, so it recrawls updated pages faster and doesn't waste budget on stale ones.
+| Area | Status |
+|------|--------|
+| Translated hreflang slugs on all 6 Sanity content types | Done |
+| `translations` + `pathPrefix` on Blog, Rules, Strokes, Learn, Coaches, Video Tips | Done |
+| Article schemas with `mainEntityOfPage`, `image`, `url`, `speakable`, `isPartOf` | Done |
+| `BreadcrumbList` JSON-LD on all content + listing pages | Done |
+| `VideoObject` JSON-LD on video tips | Done |
+| `SportsClub` with `geo`, `aggregateRating`, `telephone`, `openingHours` on locations | Done |
+| `FAQPage` schemas on city pages, rules, racket finder | Done |
+| `WebSite` + `Organization` schemas on homepage with social profiles | Done |
+| Dynamic `SearchAction` URL with language prefix | Done |
+| Trainer `Person` schema with correct `/{lang}/` URL | Done |
+| Sitemap index with paginated sub-sitemaps + real `_updatedAt` from Sanity | Done |
+| Blog sitemap with `updated_at`/`published_at` lastmod | Done |
+| `render-page` localized for Blog, Learn, Rules, Strokes, Coaches, Video Tips, Rackets | Done |
+| `robots.txt` blocking app/pay/register/auth routes | Done |
+| `llms.txt` with correct URLs + `llms-full.txt` with full catalog | Done |
+| OG article tags (`published_time`, `modified_time`, `author`) | Done |
+| All static pages in sitemap (`racket-finder`, `founding-trainers`, `gear/rackets`) | Done |
 
 ---
 
-## 4. Homepage `SearchAction` URL uses hardcoded `/en/`
+## 3 Remaining Minor Gaps
 
-**Problem**: The `SearchAction` target in `Home.tsx` (line 46) is `https://padeltrainer.ai/en/trainers?search={search_term}` — always English regardless of current language. Google may present the English search result to Dutch users.
+### 1. `/padel-level-test` missing from sitemap
 
-**Fix**: Use `currentLang` from `useParams` or `i18n.language` to build the URL dynamically: `https://padeltrainer.ai/${currentLang}/trainers?search={search_term}`.
+The `staticPages` array in the sitemap function includes `/racket-finder` but not `/padel-level-test`. This page exists in `llms.txt` and `render-page` but Google won't discover it via sitemap.
 
----
+**Fix**: Add `{ path: '/padel-level-test', priority: '0.7', changefreq: 'monthly' }` to `staticPages`.
 
-## 5. `render-page` edge function — video tips, coaches, rackets still English-only
+### 2. `render-page` — Topics pages still English-only
 
-**Problem**: The `render-page` function has proper NL/ES/DE/FR translations for blog, learn, rules, and strokes pages. But video tips (line 245-251), coaches (line 234-241), and rackets (line 264-271) still serve English-only meta regardless of language prefix. When Googlebot crawls `/nl/video-tips/bandeja-uitleg`, it gets "Watch: Bandeja Uitleg" in English.
+The `/topics` and `/topics/:slug` routes in `render-page` serve English-only meta for all languages ("Padel Topics", "Explore padel topics…", "Everything about X in padel"). Every other content type has NL/ES/DE/FR translations.
 
-**Fix**: Add localized templates for these 3 route groups, matching the pattern used for blog/learn/rules/strokes.
+**Fix**: Add localized meta templates for topics listing and detail pages.
 
----
+### 3. `render-page` — Registration routes English-only
 
-## What's Already Working Well (No Changes Needed)
+The registration route meta is hardcoded English ("Register for Padel Training"). Minor since these are `Disallow`'d in robots.txt, but if a bot does reach them, the language signal is wrong.
 
-- All 4 Sanity content types now pass `translations`/`pathPrefix` to SEO (Rules, Strokes, Learning, Coaches)
-- Article schemas with `mainEntityOfPage`, `image`, `url` on all article pages
-- `VideoObject` JSON-LD on video tip pages
-- `SportsClub` with `geo`, `aggregateRating`, `telephone`, `openingHours` on locations
-- `BreadcrumbList` JSON-LD on all content pages
-- Sitemap index with paginated sub-sitemaps + Sanity hreflang groups
-- `FAQPage` schemas on city pages, rules overview, racket finder
-- `robots.txt` blocking app/pay/register/auth routes
-- Internal linking via related content sections (Related Rules, Related Strokes, Related Guides)
-- Topic cluster architecture with pillar pages
+**Fix**: Add basic NL/ES/DE/FR translations for registration meta (low priority since blocked by robots.txt).
 
 ---
+
+## Verdict
+
+You're at ~97% optimization. The only actionable item is adding `/padel-level-test` to the sitemap (1 line) and localizing topics meta in `render-page`. Everything else is solid for organic growth.
 
 ## File Summary
 
 | File | Change |
 |------|--------|
-| `public/llms.txt` | Fix `/strokes` → `/padel-strokes`; add missing content type URLs |
-| `src/pages/marketing/VideoTipPage.tsx` | Add `getTranslations()` + pass `translations`/`pathPrefix="video-tips"` to SEO |
-| `supabase/functions/sitemap/index.ts` | Fetch `_updatedAt` from Sanity; use real dates instead of `today` |
-| `src/pages/marketing/Home.tsx` | Make `SearchAction` URL use current language |
-| `supabase/functions/render-page/index.ts` | Add NL/ES/DE/FR meta for video tips, coaches, rackets routes |
+| `supabase/functions/sitemap/index.ts` | Add `/padel-level-test` to `staticPages` |
+| `supabase/functions/render-page/index.ts` | Localize Topics listing + detail route meta (NL/ES/DE/FR) |
 
