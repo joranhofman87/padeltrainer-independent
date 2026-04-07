@@ -1,89 +1,72 @@
 
 
-# SEO Optimization Audit — Remaining Gaps
+# Location Page SEO Optimization
 
-Your blog pages are now well-optimized after the last round. Here's what's still missing across the rest of your Sanity-driven content pages.
+## Current State
 
----
+Your location pages have a decent foundation — `SportsClub` schema, `BreadcrumbList`, and `SEO` component with OG tags. But several high-value properties are missing that would significantly improve rich result eligibility now that these pages are ranking.
 
-## Priority 1 — Translated hreflang slugs missing on 4 content types
+## Issues Found
 
-**Problem**: Only `BlogPost.tsx` passes `translations` + `pathPrefix` to the `<SEO>` component for proper hreflang with actual translated slugs. The other 4 Sanity content types that fetch translations (`RulesPage`, `StrokePage`, `LearningArticlePage`, `CoachPage`) all call `getTranslations()` but never pass the result to `<SEO>`. This means their hreflang tags use the same slug across all languages instead of the correct translated slug — bad for multilingual SEO.
+### LocationDetail.tsx — 6 gaps
 
-**Fix**: Pass `translations={translationsList}` and `pathPrefix="padel-rules"` (etc.) to `<SEO>` on each page, matching the BlogPost pattern.
+| Gap | Impact |
+|-----|--------|
+| **No `geo` coordinates** in structured data | Location data has `latitude`/`longitude` but they're not in the schema — Google needs `GeoCoordinates` for map pack eligibility |
+| **No `telephone`** | `location.phone` exists in the data model but isn't in schema |
+| **No `openingHours`** | `location.opening_hours` exists but isn't in schema |
+| **No `aggregateRating`** | Google reviews (`google_rating`, `google_review_count`) are available but not in schema — missing star snippets |
+| **Hardcoded `addressCountry: "NL"`** | Location model has a `country` field but the schema ignores it |
+| **No `url` pointing to canonical page** | The `url` field uses `location.website_url` (external) — should also have the PadelTrainer canonical URL |
 
-| Page | pathPrefix |
-|------|-----------|
-| `RulesPage.tsx` | `padel-rules` |
-| `StrokePage.tsx` | `padel-strokes` |
-| `LearningArticlePage.tsx` | `learn` |
-| `CoachPage.tsx` | `padel-coaches` |
+### CityLanding.tsx — 2 gaps
 
----
+| Gap | Impact |
+|-----|--------|
+| **`LocalBusiness` schemas missing `telephone`/`openingHours`** | Same data available but not used |
+| **Hardcoded English text in breadcrumb/hero** | `"Home"`, `"Padel in {city}"` not translated — bad for non-EN rankings |
 
-## Priority 2 — Missing `mainEntityOfPage`, `image`, `url` on Article schemas
+### Locations.tsx (listing) — 1 gap
 
-**Problem**: Blog posts now have `mainEntityOfPage`, `image`, and `url` in their Article schema (from the last update). But Rules, Strokes, Learning Articles, and Coach pages are missing these — reducing Google rich result eligibility.
+| Gap | Impact |
+|-----|--------|
+| **No `BreadcrumbList` JSON-LD** | Listing page has no breadcrumb schema |
 
-**Fix**: Add to each page's `structuredData` object:
-```json
-"url": "https://padeltrainer.ai/{lang}/{prefix}/{slug}",
-"mainEntityOfPage": { "@type": "WebPage", "@id": "..." },
-"image": "ogImage or default"
-```
+### render-page edge function — minor
 
-| Page | Currently missing |
-|------|------------------|
-| `RulesPage.tsx` | `url`, `mainEntityOfPage`, `image` |
-| `StrokePage.tsx` | `url`, `mainEntityOfPage`, `image` |
-| `LearningArticlePage.tsx` | `image` (has url + mainEntityOfPage via WebPage schema but not on Article) |
-| `VideoTipPage.tsx` | No structured data at all — needs `VideoObject` JSON-LD |
-| `CoachPage.tsx` | `url` is hardcoded without lang prefix |
+The location pre-render uses generic English text. Not blocking but could match the actual location name from DB for better bot meta.
 
 ---
 
-## Priority 3 — VideoTipPage has no structured data
+## Changes
 
-**Problem**: `VideoTipPage.tsx` renders no `structuredData` to `<SEO>`. Video pages are prime candidates for `VideoObject` schema, which enables rich video snippets in Google Search.
+### 1. `src/pages/LocationDetail.tsx` — Enrich `SportsClub` schema
 
-**Fix**: Add `VideoObject` JSON-LD with `name`, `description`, `thumbnailUrl`, `uploadDate`, `contentUrl`/`embedUrl`, and `duration` (if available).
+Add to `getStructuredData()`:
+- `geo: { @type: GeoCoordinates, latitude, longitude }` (when available)
+- `telephone` from `location.phone`
+- `openingHoursSpecification` from `location.opening_hours` (if parseable) or raw `openingHours`
+- `aggregateRating` from `location.google_rating` + `location.google_review_count`
+- `addressCountry` from `location.country` instead of hardcoded `"NL"`
+- `sameAs` array with `location.website_url`, social links from clubProfile
+- `url` pointing to the canonical PadelTrainer page URL
 
----
+### 2. `src/pages/marketing/CityLanding.tsx` — Enrich `LocalBusiness` + fix i18n
 
-## Priority 4 — Article OG tags missing on non-blog article pages
+- Add `telephone` to `LocalBusiness` schemas (need to fetch phone from location data)
+- Translate hardcoded breadcrumb text (`"Home"`) — use `t()` keys
 
-**Problem**: `publishedTime`, `modifiedTime`, and `author` OG tags are only passed on `BlogPost.tsx`. Rules and Learning Articles have `datePublished`/`dateModified` from Sanity but don't pass them to `<SEO>`.
+### 3. `src/pages/Locations.tsx` — Add `BreadcrumbList`
 
-**Fix**: Add `publishedTime`, `modifiedTime`, and `author` props to `<SEO>` on `RulesPage.tsx` and `LearningArticlePage.tsx`.
-
----
-
-## Priority 5 — Racket listing page missing BreadcrumbList schema
-
-**Problem**: `RacketListing.tsx` and `RacketDetail.tsx` render visual breadcrumbs but no `BreadcrumbList` JSON-LD. Google needs the structured data version.
-
-**Fix**: Add `BreadcrumbList` schema to both pages.
-
----
-
-## Priority 6 — `llms-full.txt` should include Sanity content types
-
-**Problem**: The file was just created with a good structure but it's static. As you add more content in Sanity, the entity catalog becomes stale.
-
-**Fix**: Add the new content types (Rackets/Gear, Coaches, Video Tips) to `llms-full.txt` with their URL patterns.
+Add breadcrumb JSON-LD: Home → Locations
 
 ---
 
 ## File Summary
 
-| File | Changes |
-|------|---------|
-| `src/pages/marketing/RulesPage.tsx` | Add `translations`/`pathPrefix` to SEO; add `url`, `mainEntityOfPage`, `image` to schema; add `publishedTime`/`modifiedTime` |
-| `src/pages/marketing/StrokePage.tsx` | Add `translations`/`pathPrefix` to SEO; add `url`, `mainEntityOfPage`, `image` to schema |
-| `src/pages/marketing/LearningArticlePage.tsx` | Add `translations`/`pathPrefix` to SEO; add `image` to Article schema; add `publishedTime`/`modifiedTime` |
-| `src/pages/marketing/VideoTipPage.tsx` | Add `VideoObject` JSON-LD structured data |
-| `src/pages/marketing/CoachPage.tsx` | Add `translations`/`pathPrefix` to SEO; fix hardcoded URL in schema |
-| `src/pages/marketing/RacketListing.tsx` | Add `BreadcrumbList` JSON-LD |
-| `src/pages/marketing/RacketDetail.tsx` | Add `BreadcrumbList` JSON-LD |
-| `public/llms-full.txt` | Add Rackets, Coaches, Video Tips URL patterns |
+| File | Change |
+|------|--------|
+| `src/pages/LocationDetail.tsx` | Add `geo`, `telephone`, `aggregateRating`, `sameAs`, fix `addressCountry`, add canonical `url` |
+| `src/pages/marketing/CityLanding.tsx` | Translate hardcoded breadcrumb text |
+| `src/pages/Locations.tsx` | Add `BreadcrumbList` JSON-LD |
 
