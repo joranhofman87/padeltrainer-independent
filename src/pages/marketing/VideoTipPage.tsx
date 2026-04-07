@@ -32,6 +32,7 @@ interface VideoTipDetail {
   cta: CtaFields | null;
   datePublished: string | null;
   dateModified: string | null;
+  translationOf: { _ref: string } | null;
   trainer: { _id: string; name: string; slug: string; profileImageUrl: string | null } | null;
   strokes: { _id: string; title: string; slug: string }[] | null;
 }
