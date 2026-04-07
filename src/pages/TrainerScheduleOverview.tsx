@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Locale } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { format, isPast, isFuture, parseISO, differenceInCalendarDays, addDays } from "date-fns";
-import { nl, enUS, de, fr, es } from "date-fns/locale";
+import { nl, enUS, de, fr, es, it as itLocale } from "date-fns/locale";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { getTrainerProfile } from "@/lib/auth";
@@ -69,7 +69,7 @@ import { TrainerAttendanceForm } from "@/components/attendance/TrainerAttendance
 import { useToast } from "@/hooks/use-toast";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 
-const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es, it };
+const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es, it: itLocale };
 
 type ExtraCost = { description: string; price: number; type?: 'per_session' | 'one_time'; vat_rate?: number };
 

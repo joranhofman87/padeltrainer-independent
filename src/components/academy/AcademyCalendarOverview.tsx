@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   format, parseISO, startOfWeek, endOfWeek, addDays, isToday, isBefore,
 } from 'date-fns';
-import { nl, es, de, fr, enUS, type Locale } from 'date-fns/locale';
+import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -20,7 +20,7 @@ import {
 import { ChevronLeft, ChevronRight, ChevronDown, Lock, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 
 interface SlotSummary {
   id: string;

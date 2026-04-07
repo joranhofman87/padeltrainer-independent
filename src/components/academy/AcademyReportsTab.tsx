@@ -4,7 +4,7 @@ import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   addWeeks, subWeeks, addMonths, subMonths, parseISO, differenceInMinutes,
 } from 'date-fns';
-import { nl, es, de, fr, enUS, type Locale } from 'date-fns/locale';
+import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle, CalendarX2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 
 interface TrainerOption { id: string; name: string; }
 interface LocationOption { id: string; name: string; }

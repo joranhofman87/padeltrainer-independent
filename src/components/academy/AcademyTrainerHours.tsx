@@ -4,7 +4,7 @@ import {
   format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   differenceInMinutes,
 } from 'date-fns';
-import { nl, es, de, fr, enUS, type Locale } from 'date-fns/locale';
+import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import {
 import { Download, Calendar, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 
 interface TrainerInfo {
   id: string;

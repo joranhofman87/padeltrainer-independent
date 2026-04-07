@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, addMinutes, addDays, getDay, type Locale } from 'date-fns';
-import { nl, es, de, fr, enUS } from 'date-fns/locale';
+import { nl, es, de, fr, enUS, it as itLocale } from 'date-fns/locale';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
   type DragStartEvent, type DragEndEvent,
@@ -63,7 +63,7 @@ interface UndoItem {
 }
 
 // ── Helpers ──
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 
 /** Get English day name (used as internal key) */
 function getDayKey(isoString: string): string {

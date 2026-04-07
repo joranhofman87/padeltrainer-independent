@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, getDay, startOfWeek, addDays } from 'date-fns';
-import { nl, es, de, fr, enUS, type Locale } from 'date-fns/locale';
+import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
   type DragStartEvent, type DragEndEvent,
@@ -51,7 +51,7 @@ interface AcademyDayGridProps {
 
 // ── Helpers ──
 
-const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it };
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 
 function formatRating(r: number): string {
   return r.toFixed(1);
