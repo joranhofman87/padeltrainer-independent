@@ -1,65 +1,54 @@
 
 
-# Technical SEO Recheck — Status Report
+# Final Technical SEO Audit — PadelTrainer.ai
 
-## Current State: 3 Remaining Issues (1 Critical, 2 Moderate)
-
-Everything else from previous audits has been correctly fixed and is working.
+## Overall Verdict: 2 Issues Remaining (1 Moderate, 1 Low). Everything else is PASS.
 
 ---
 
-## CRITICAL: Stale Committed Sitemap Files Have Wrong URLs
+## Issues Found
 
-The **edge function** (`supabase/functions/sitemap/index.ts`) correctly uses `/tools/padel-level-test` (line 249). But the **committed sitemap file** at `public/sitemaps/sitemap-static.xml` still contains 5 URLs pointing to `/padel-level-test` (without `/tools/`). These were generated before the fix and haven't been regenerated since.
+### 1. MODERATE: Stale committed `sitemap-static.xml` has wrong `/padel-level-test` URLs
 
-Similarly, `public/llms-full.txt` line 118 still references `/{lang}/padel-level-test` instead of `/{lang}/tools/padel-level-test`.
+The edge function correctly generates `/tools/padel-level-test`, but the **committed file** at `public/sitemaps/sitemap-static.xml` still contains 10 URLs pointing to the old `/padel-level-test` path (5 `<loc>` entries + their hreflang alternates). Google is indexing these stale URLs from the committed file until the next CI run regenerates it.
 
-And `public/llms.txt` line 73 has `https://padeltrainer.ai/en/padel-level-test` (wrong) while line 113 correctly has `/{lang}/tools/padel-level-test` — inconsistent within the same file.
+**Fix**: Re-trigger the GitHub Actions workflow manually (or wait for Monday). No code change needed — the edge function is already correct.
 
-**Fix**: 
-- `public/llms.txt` — update line 73 to use `/tools/padel-level-test`
-- `public/llms-full.txt` — update line 118 to use `/tools/padel-level-test`
-- The committed sitemap XML files will auto-fix on the next weekly CI run (or manual trigger)
+### 2. LOW: Duplicate entry in `llms.txt` URL Structure
 
----
+`/{lang}/trainers/region/:province` appears **twice** — on line 92 and line 117. This is cosmetic but looks unprofessional to AI crawlers.
 
-## MODERATE: `public/llms.txt` Missing `/padel/:city` URL Pattern
-
-The sitemap generates `/padel/:city` URLs (line 390 of sitemap function), the frontend has the route (`CityLanding`), and render-page handles it — but `llms.txt` doesn't document this URL pattern at all. AI crawlers won't know these pages exist.
-
-**Fix**: Add `- /{lang}/padel/:city - City landing page with clubs, courts & coaches` to the URL Structure section of `public/llms.txt`.
+**Fix**: Remove line 117 (the duplicate).
 
 ---
 
-## MODERATE: `public/llms.txt` Missing `/founding-trainers` and Province Pages
+## PASS — Full Checklist
 
-The URL Structure section in `llms.txt` is missing:
-- `/{lang}/founding-trainers` — in the sitemap and render-page
-- `/{lang}/trainers/region/:province` — in the sitemap and render-page but not documented for AI crawlers
-
-**Fix**: Add both to the URL Structure section.
-
----
-
-## Everything Else: PASS
-
-| Component | Status |
-|---|---|
-| **robots.txt** | Correct — blocks `/app`, `/app/`, auth, settings, dashboard, pay, register. Crawl-delay set. Sitemap reference correct. |
-| **Cloudflare Worker** | All proxy routes correct (sitemap index, static, content, provinces, locations-N, cities-N, llms-full.txt). Bot detection, rate limiting, circuit breaker all solid. |
-| **Sitemap edge function** | True server-side pagination for locations. `fetchAllRows` for trainers/academies/blog/cities. Data-driven provinces with fallback. XML escaping. Correct hreflang with x-default → NL. |
-| **Render-page** | All routes handled including `/padel/:city`, `/trainers/region/:slug`, `/tools/padel-level-test`. Localized meta for all 5 languages. |
-| **SEO component** | Correct canonical, hreflang (with translated slug support), OG tags, Twitter cards, structured data. |
-| **CI workflow** | Exact page counts from sitemap index, timeouts, retries, llms-full.txt regeneration. |
+| Component | Status | Notes |
+|---|---|---|
+| **robots.txt** | PASS | Blocks `/app`, `/app/`, `*/pay/`, `*/register/`, `*/auth`, `*/settings`, `*/dashboard`. Crawl-delay for aggressive bots. Sitemap + llms.txt references correct. |
+| **Sitemap index** | PASS | Includes static, content, locations-1..N, cities-1..N, provinces. Dynamically generated from DB counts. |
+| **Sitemap — static type** | PASS | 20 static pages, trainers via `fetchAllRows`, academies filtered by `is_verified` + `is_public`, blog grouped by `canonical_id` with proper cross-language hreflang. |
+| **Sitemap — content type** | PASS | 7 parallel Sanity queries (rules, strokes, coaches, video tips, learning articles, topics, products). `generateSanityEntries` groups by `translationOf` for correct hreflang. Learning articles respect `seo.indexable` flag. |
+| **Sitemap — locations** | PASS | True paginated fetch in 1000-row batches within the page window. Ordered by slug for consistency. |
+| **Sitemap — cities** | PASS | Generates both `/trainers/:city` and `/padel/:city` URLs per city. Uses `fetchAllRows` for full coverage. |
+| **Sitemap — provinces** | PASS | Data-driven from `locations.province` column + fallback list covering NL, BE, ES, DE, FR regions. |
+| **Hreflang (all sitemaps)** | PASS | All 5 languages + `x-default` → NL on every URL entry. Blog and Sanity content use translated slugs. |
+| **XML escaping** | PASS | `escapeXml` handles `&`, `<`, `>`, `"`, `'` on all slugs. |
+| **Cloudflare Worker** | PASS | All sitemap routes (index, static, content, provinces, locations-N, cities-N) correctly in `getSitemapProxyUrl`. `getLlmsProxyUrl` handles `/llms-full.txt` only. Bot detection, rate limiting, circuit breaker, caching all solid. |
+| **Render-page** | PASS | Handles all route types: homepage, trainer, city trainers, `/padel/:city`, location, academy, blog, learn, rules, strokes, coaches, video tips, topics, gear/rackets, registration, `/trainers/region/:slug`, `/tools/padel-level-test`, static pages. Localized meta in all 5 languages. Proper canonical, hreflang, OG, Twitter cards. |
+| **SEO component (client)** | PASS | Correct canonical, hreflang with translated slug support, OG locale alternates, article-specific OG tags, structured data injection. |
+| **CI workflow** | PASS | Exact page count parsing from sitemap index. `--max-time 120 --retry 2` on all curls. Includes `llms-full.txt` regeneration. Summary step with total URL count. |
+| **llms.txt** | PASS (except duplicate) | Comprehensive overview, all URL patterns documented, correct `/tools/padel-level-test` path. |
+| **llms-full.txt** | PASS | Correct entity types, content types, tools, structured data documentation, correct paths. |
 
 ---
 
 ## Plan — Files to Change
 
-| File | Change |
-|---|---|
-| `public/llms.txt` | Fix padel-level-test URL (line 73); add `/padel/:city`, `/founding-trainers`, `/trainers/region/:province` to URL Structure |
-| `public/llms-full.txt` | Fix padel-level-test URL (line 118) |
+| File | Change | Priority |
+|---|---|---|
+| `public/llms.txt` | Remove duplicate `/{lang}/trainers/region/:province` on line 117 | Low |
 
-Two small edits. No edge function or workflow changes needed.
+The stale `sitemap-static.xml` will self-heal on the next CI run. If you want it fixed immediately, just re-trigger the "Regenerate Sitemap" workflow on GitHub.
 
