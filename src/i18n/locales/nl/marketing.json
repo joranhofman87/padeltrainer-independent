@@ -907,7 +907,7 @@
     "start": "Start quiz",
     "back": "← terug",
     "seo": {
-      "title": "Padel racket finder — vind jouw perfecte racket",
+      "title": "Padel racket finder | vind jouw perfecte racket",
       "description": "Beantwoord 5 snelle vragen en wij adviseren het perfecte padelracket voor jouw niveau, speelstijl en budget."
     },
     "q1": "Wat is je padel niveau?",
@@ -943,7 +943,7 @@
       "round": "Rond (maximale controle)",
       "teardrop": "Druppel (balans controle & power)",
       "diamond": "Diamant (maximale power)",
-      "any": "Weet ik niet — adviseer mij"
+      "any": "Weet ik niet. adviseer mij"
     },
     "results": {
       "title": "Jouw perfecte racket",
@@ -960,7 +960,7 @@
   },
   "gear": {
     "listing": {
-      "title": "Beste Padel rackets 2026 — vergelijk & kies",
+      "title": "Beste Padel rackets 2026 | vergelijk & kies",
       "description": "Bekijk en vergelijk alle padel rackets. filter op niveau, speelstijl, vorm, gewicht en prijs.",
       "h1": "Padel rackets",
       "subtitle": "Vind en vergelijk de beste padel rackets voor elk niveau en speelstijl.",
@@ -1117,11 +1117,11 @@
     "findCoach": "Vind een coach"
   },
   "foundingTrainers": {
-    "pageTitle": "Founding 100 trainers — gratis premium racket",
+    "pageTitle": "Founding 100 trainers | gratis premium racket",
     "metaDescription": "Wees een van de eerste 100 padelcoaches op PadelTrainer.ai en ontvang een gratis premium racket t.w.v. €275+. Schrijf je in voor het Founding Trainer jaarplan voor €349/jaar.",
     "badge": "Slechts 100 plekken beschikbaar",
     "headline": "Word een Founding Trainer",
-    "subheadline": "Sluit je aan bij de eerste 100 coaches die de toekomst van padel vormgeven — en krijg een premium racket t.w.v. €275+ cadeau.",
+    "subheadline": "Sluit je aan bij de eerste 100 coaches die de toekomst van padel vormgeven. en krijg een premium racket t.w.v. €275+ cadeau.",
     "cta": "Claim jouw plek",
     "spotsClaimed": "plekken bezet",
     "spotsRemaining": "beschikbaar",
@@ -1137,7 +1137,7 @@
     "step1": "Schrijf je in voor het Founding Trainer jaarplan (€349/jaar)",
     "step2": "Stel je trainerprofiel in en begin boekingen te accepteren",
     "step3": "Voltooi 5 boekingen om je racket te verdienen",
-    "step4": "Kies je premium racket — geleverd aan je deur",
+    "step4": "Kies je premium racket. geleverd aan je deur",
     "valueTitle": "De waarde op een rij",
     "valueRacket": "Racket waarde",
     "valuePlan": "Professional plan (12 maanden)",
@@ -1167,7 +1167,7 @@
     "finalCtaTitle": "Klaar om Founding Trainer te worden?",
     "finalCtaSub": "Nog {{count}} plekken beschikbaar",
     "finalCtaButton": "Word Founding Trainer",
-    "bannerText": "Founding 100 Trainers — ontvang een GRATIS premium racket t.w.v. €275+"
+    "bannerText": "Founding 100 Trainers. ontvang een GRATIS premium racket t.w.v. €275+"
   },
   "megamenu": {
     "playgroundDesc": "Quizzen, tools & fun"
@@ -1177,7 +1177,7 @@
     "subtitle": "Leuke quizzen, tools en interactieve ervaringen voor padel liefhebbers.",
     "playNow": "Speel nu →",
     "seo": {
-      "title": "Padel Speeltuin — Leuke Quizzen & Tools | PadelTrainer.ai",
+      "title": "Padel Speeltuin | Leuke Quizzen & Tools | PadelTrainer.ai",
       "description": "Doe leuke padel quizzen, vind je perfecte racket en test je niveau."
     },
     "redFlagQuiz": {
@@ -1195,7 +1195,7 @@
   },
   "redFlagQuiz": {
     "seo": {
-      "title": "Wat is jouw padel red flag? | Leuke quiz — PadelTrainer.ai",
+      "title": "Wat is jouw padel red flag? | Leuke quiz | PadelTrainer.ai",
       "description": "Elke padel speler heeft een red flag. Doe deze quiz van 2 minuten en ontdek de jouwe."
     },
     "intro": {
@@ -1216,25 +1216,25 @@
     "q1": {
       "title": "De warming-up",
       "scenario": "Je warmt op voor een wedstrijd. Je partner begint smashes cross-court recht op je af te slaan. Jij...",
-      "a": "Ontwijkt en zegt niks — maar je onthoudt het wel",
+      "a": "Ontwijkt en zegt niks. maar je onthoudt het wel",
       "b": "Begint meteen tips te geven over warming-up etiquette",
-      "c": "Smasht er eentje recht terug — oog om oog",
+      "c": "Smasht er eentje recht terug. oog om oog",
       "d": "Lacht het weg en schreeuwt \"VAMOS!\""
     },
     "q2": {
       "title": "De outfit check",
       "scenario": "Je komt bij een wedstrijd. Wat heb je aan?",
-      "a": "Volledig matchende outfit, lange sokken, verse overgrip — lijkt gesponsord",
+      "a": "Volledig matchende outfit, lange sokken, verse overgrip. lijkt gesponsord",
       "b": "Wat er schoon was... enkelsokken, geen zakken, het is prima",
       "c": "Degelijke kleding maar eerlijk gezegd is je overgrip al weken niet verwisseld",
-      "d": "Zakken vol ballen, handdoek aan het hek, waterfles perfect geplaatst — ik ben er klaar voor"
+      "d": "Zakken vol ballen, handdoek aan het hek, waterfles perfect geplaatst. ik ben er klaar voor"
     },
     "q3": {
       "title": "De korte lob",
       "scenario": "Je partner slaat een korte lob. De tegenstanders smashen hem recht op je. Je partner zegt 'geeft niet.' Jij...",
       "a": "Zegt niks, maar je houdt absoluut de score bij in je hoofd",
       "b": "Legt precies uit waarom de lob te kort was en wat de juiste slag had moeten zijn",
-      "c": "Zegt \"geen probleem!\" ook al ben je net vernietigd — jij bent de aardige",
+      "c": "Zegt \"geen probleem!\" ook al ben je net vernietigd. jij bent de aardige",
       "d": "Staart naar je racket alsof het je persoonlijk heeft verraden"
     },
     "q4": {
@@ -1243,12 +1243,12 @@
       "a": "Je hebt altijd beide ballen bij je want je hebt lang geleden geleerd om op niemand te vertrouwen",
       "b": "Je broek heeft geen zakken dus... dit is awkward",
       "c": "Je schopt de bal over het veld naar ze toe als een voetbal",
-      "d": "Je rolt hem over de grond — laat hun rug maar lijden"
+      "d": "Je rolt hem over de grond. laat hun rug maar lijden"
     },
     "q5": {
       "title": "Het grote punt",
       "scenario": "Je wint een cruciaal punt. Je directe reactie:",
-      "a": "\"VAMOOOOS!\" — vol volume, vuist in de lucht, de hele show",
+      "a": "\"VAMOOOOS!\". vol volume, vuist in de lucht, de hele show",
       "b": "Tactisch racket tikje met je partner, knikje, focus terug",
       "c": "Begint je partner instructies te geven voor het volgende punt voordat ze ook maar hebben gevierd",
       "d": "Filmt jezelf voor de Instagram Story die je later post"
@@ -1256,7 +1256,7 @@
     "q6": {
       "title": "De fout",
       "scenario": "Je slaat de bal recht in het net op een makkelijke volley. Jij...",
-      "a": "Staart ongelovig naar je racket — duidelijk de schuld van het racket",
+      "a": "Staart ongelovig naar je racket. duidelijk de schuld van het racket",
       "b": "Zegt drie keer \"sorry!\" ook al zegt je partner dat het prima is",
       "c": "Vertelt je partner meteen wat ZIJ anders hadden moeten doen dat punt",
       "d": "Zegt niks. Letterlijk niks. Doodse stilte"
@@ -1264,16 +1264,16 @@
     "q7": {
       "title": "De post-match analyse",
       "scenario": "De wedstrijd is voorbij. Je hebt verloren. Wat is het gesprek?",
-      "a": "Je ontleedt elk punt dat fout ging — een volledige tactische review waar niemand om vroeg",
+      "a": "Je ontleedt elk punt dat fout ging. een volledige tactische review waar niemand om vroeg",
       "b": "\"Goed gespeeld!\" en dan meteen je andere padel groep appen om een betere partner te vinden",
       "c": "Is al bezig met het bewerken van je match highlights voor Instagram",
-      "d": "Geef de ballen, het veld, de zon, het glas de schuld — alles behalve jezelf"
+      "d": "Geef de ballen, het veld, de zon, het glas de schuld. alles behalve jezelf"
     },
     "q8": {
       "title": "De overgrip situatie",
       "scenario": "Iemand wijst erop dat je overgrip er... versleten uitziet. Jij...",
       "a": "Wat is een overgrip?",
-      "b": "Het is een zwarte overgrip dus je kunt het niet zien — dat is het hele punt",
+      "b": "Het is een zwarte overgrip dus je kunt het niet zien. dat is het hele punt",
       "c": "Verwisselt hem meteen en biedt je partner ook een verse aan",
       "d": "Vertelt ze dat de versleten grip je \"meer gevoel\" geeft"
     },
@@ -1282,7 +1282,7 @@
       "scenario": "Je vaste partner kan niet komen. Een onbekende wil invallen. Jij...",
       "a": "Begint meteen met uitleggen over je favoriete opstellingen",
       "b": "Speelt mee, zegt niks als ze fouten maken, oordeelt stilletjes over alles",
-      "c": "Maakt niet uit wie het is — je bent hier om te winnen",
+      "c": "Maakt niet uit wie het is. je bent hier om te winnen",
       "d": "Besteedt meer tijd aan jezelf voorstellen en een pre-match selfie nemen"
     },
     "q10": {
@@ -1297,24 +1297,24 @@
       "sidelineCoach": {
         "name": "De Zijlijn Coach",
         "tagline": "Je bent geen coach, maar je speelt er wel één op de padelbaan.",
-        "description": "Je kunt er niks aan doen — je ziet een verbeterbare fout en je MOET er iets van zeggen.",
+        "description": "Je kunt er niks aan doen. je ziet een verbeterbare fout en je MOET er iets van zeggen.",
         "redFlags": [
           "Geeft ongevraagd tactisch advies midden in een rally",
           "Doet een volledige post-match analyse waar niemand om vroeg",
           "Vertelt hun partner waar ze moeten staan, wat ze moeten slaan en hoe ze moeten ademen"
         ],
-        "greenFlag": "Je kent het spel echt goed — je zou een geweldige echte coach zijn"
+        "greenFlag": "Je kent het spel echt goed. je zou een geweldige echte coach zijn"
       },
       "vamosSpammer": {
         "name": "De Vamos Spammer",
         "tagline": "Je hebt vandaag vaker 'Vamos' gezegd dan de meeste Spanjaarden in een jaar.",
-        "description": "Elk punt — gewonnen of verloren — krijgt een \"VAMOS.\" De energie wordt gewaardeerd... in kleine doses.",
+        "description": "Elk punt, gewonnen of verloren, krijgt een \"VAMOS.\" De energie wordt gewaardeerd... in kleine doses.",
         "redFlags": [
           "Schreeuwt VAMOS bij de return van de service",
           "Zegt VAMOS als de tegenstander in het net slaat",
           "Staat erom bekend om \"vamos\" te fluisteren tijdens het strikken van hun schoenen"
         ],
-        "greenFlag": "Je brengt ongeëvenaarde hype energie — het is nooit saai met jou op de baan"
+        "greenFlag": "Je brengt ongeëvenaarde hype energie. het is nooit saai met jou op de baan"
       },
       "blameShifter": {
         "name": "De Schuldafschuiver",
@@ -1322,10 +1322,10 @@
         "description": "Je hebt nog nooit, in de geschiedenis van padel, een fout gemaakt. Het racket glipte weg. De baan was nat. De ballen waren dood.",
         "redFlags": [
           "Staart naar hun racket na elke fout",
-          "Geeft de ballen, het weer en het baanoppervlak de schuld — in die volgorde",
+          "Geeft de ballen, het weer en het baanoppervlak de schuld. in die volgorde",
           "Heeft minstens 6 keer per wedstrijd gezegd \"ik mis dat schot normaal nooit\""
         ],
-        "greenFlag": "Je zelfvertrouwen is oprecht onwankelbaar — je bent mentaal sterk"
+        "greenFlag": "Je zelfvertrouwen is oprecht onwankelbaar. je bent mentaal sterk"
       },
       "silentGrudgeHolder": {
         "name": "De Stille Wrokhouder",
@@ -1336,7 +1336,7 @@
           "Stelt mentaal een blunderreel samen van partner fouten",
           "Appt hun andere padel groep tijdens de waterbreak"
         ],
-        "greenFlag": "Je bent de kalmste speler op de baan — nooit toxic, altijd beheerst"
+        "greenFlag": "Je bent de kalmste speler op de baan. nooit toxic, altijd beheerst"
       },
       "fashionCriminal": {
         "name": "De Mode Crimineel",
@@ -1344,10 +1344,10 @@
         "description": "Je kwam padel spelen alsof je van een andere sport bent binnengelopen.",
         "redFlags": [
           "Draagt schaamteloos enkelsokken",
-          "Heeft nul zakken — houdt altijd een bal vast of vraagt jou er eentje vast te houden",
+          "Heeft nul zakken. houdt altijd een bal vast of vraagt jou er eentje vast te houden",
           "Pet achterstevoren, oren ingestopt, vol commitment aan de look"
         ],
-        "greenFlag": "Je ziet er goed uit en je weet het — zelfvertrouwen is een wapen"
+        "greenFlag": "Je ziet er goed uit en je weet het. zelfvertrouwen is een wapen"
       },
       "overgripOffender": {
         "name": "De Overgrip Overtreder",
@@ -1358,7 +1358,7 @@
           "Gebruikt zwarte overgrip specifiek om de schade te verbergen",
           "Laat grip residu achter op alles wat ze aanraken"
         ],
-        "greenFlag": "Je racket heeft karakter — je hebt serieuze baan-uren gemaakt"
+        "greenFlag": "Je racket heeft karakter. je hebt serieuze baan-uren gemaakt"
       },
       "padelInfluencer": {
         "name": "De Padel Influencer",
@@ -1369,29 +1369,29 @@
           "Neemt een selfie voor, tijdens en na de wedstrijd",
           "Heeft geroepen \"wacht, kunnen we dat opnieuw doen? Ik nam niet op\""
         ],
-        "greenFlag": "Je laat de sport groeien — padel heeft meer zichtbaarheid nodig"
+        "greenFlag": "Je laat de sport groeien. padel heeft meer zichtbaarheid nodig"
       },
       "peoplePleaser": {
         "name": "De People Pleaser",
-        "tagline": "Sorry! Sorry. Wacht — nogmaals sorry.",
+        "tagline": "Sorry! Sorry. Wacht. nogmaals sorry.",
         "description": "Je verontschuldigt je voor alles. Je verliest liever een wedstrijd dan dat je partner denkt dat je boos bent.",
         "redFlags": [
           "Zegt vaker \"sorry\" dan \"vamos\"",
           "Neemt de schuld op zich voor ballen die 100% de fout van hun partner waren",
           "Verandert hun hele spel om hun partner niet ongemakkelijk te laten voelen"
         ],
-        "greenFlag": "Je bent de aardigste persoon op de baan — iedereen wil met je spelen"
+        "greenFlag": "Je bent de aardigste persoon op de baan. iedereen wil met je spelen"
       },
       "chaosAgent": {
         "name": "De Chaos Agent",
         "tagline": "Je bent geen red flag. Je bent een hele rode circustent.",
-        "description": "Je schopt ballen over het veld. Je serveert met de reservebal in je hand. Je bent niet kwaadaardig — je bent gewoon pure, mooie chaos.",
+        "description": "Je schopt ballen over het veld. Je serveert met de reservebal in je hand. Je bent niet kwaadaardig. je bent gewoon pure, mooie chaos.",
         "redFlags": [
           "Schopt de bal naar hun partner als een voetbal",
           "Is betrapt op serveren met de reservebal in hun niet-dominante hand",
           "Heeft het ooit \"paddle tennis\" genoemd en begreep niet waarom iedereen keek"
         ],
-        "greenFlag": "Je bent de meest vermakelijke persoon in de club — pure vreugde"
+        "greenFlag": "Je bent de meest vermakelijke persoon in de club. pure vreugde"
       }
     }
   }
