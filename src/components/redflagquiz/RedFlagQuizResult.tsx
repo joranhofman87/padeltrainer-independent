@@ -100,10 +100,10 @@ export function RedFlagQuizResult({ profile, onRetake }: Props) {
       {/* Screenshot-worthy result card */}
       <div
         className="rounded-2xl p-6 text-white relative overflow-hidden"
-        style={{ backgroundColor: `hsl(${profile.color})` }}
+        style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' }}
       >
-        <div className="flex justify-center mb-4 opacity-80">
-          <Logo className="h-5 brightness-0 invert" />
+        <div className="flex justify-center mb-4">
+          <Logo className="h-6" variant="dark" />
         </div>
         <div className="text-6xl text-center mb-3">{profile.emoji}</div>
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-2">
