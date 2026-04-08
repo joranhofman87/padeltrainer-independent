@@ -89,7 +89,7 @@ export default function ChallengeCard({ challenge, isFlipping }: ChallengeCardPr
 
         {/* Logo */}
         <div className="flex items-center justify-center pb-4 pt-2">
-          <img src={logoWhite} alt="PadelTrainer.ai" className="h-5 opacity-60" />
+          <img src={logoWhite} alt="PadelTrainer.ai" className="h-5" />
         </div>
       </motion.div>
     </div>
