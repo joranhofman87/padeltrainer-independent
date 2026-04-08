@@ -112,6 +112,7 @@ export default function LocationDetail() {
   const [similarTrainerCounts, setSimilarTrainerCounts] = useState<Record<string, number>>({});
   const [similarClaimedIds, setSimilarClaimedIds] = useState<Set<string>>(new Set());
   const [similarLogos, setSimilarLogos] = useState<Record<string, string>>({});
+  const { data: communityStats } = useLocationReviewStats(location?.id);
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
   const profileUrl = location ? getMarketingUrl(`locations/${slug}`, currentLang) : '';
