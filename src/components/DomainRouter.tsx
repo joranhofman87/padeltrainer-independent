@@ -62,6 +62,7 @@ const PublicRatingCard = lazy(() => import('@/pages/marketing/PublicRatingCard')
 const FoundingTrainers = lazy(() => import('@/pages/marketing/FoundingTrainers'));
 const Playground = lazy(() => import('@/pages/marketing/Playground'));
 const RedFlagQuiz = lazy(() => import('@/pages/marketing/RedFlagQuiz'));
+const RateMyCourtPage = lazy(() => import('@/pages/marketing/RateMyCourtPage'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
@@ -140,6 +141,7 @@ const AdminBlogTopics = lazy(() => import('@/pages/admin/AdminBlogTopics'));
 const AdminBlogSources = lazy(() => import('@/pages/admin/AdminBlogSources'));
 const AdminBackups = lazy(() => import('@/pages/admin/AdminBackups'));
 const AdminGuestPlayers = lazy(() => import('@/pages/admin/AdminGuestPlayers'));
+const AdminCourtReviews = lazy(() => import('@/pages/admin/AdminCourtReviews'));
 
 // Club pages
 const ClubDashboard = lazy(() => import('@/pages/club/ClubDashboard'));
@@ -291,6 +293,7 @@ export function DomainRouter() {
           <Route path="blog/:id/sources" element={<AdminBlogSources />} />
           <Route path="backups" element={<AdminBackups />} />
           <Route path="guest-players" element={<AdminGuestPlayers />} />
+          <Route path="court-reviews" element={<AdminCourtReviews />} />
         </Route>
         
         {/* Club routes */}
@@ -395,6 +398,7 @@ export function DomainRouter() {
           <Route path="playground/red-flag-quiz" element={<RedFlagQuiz />} />
           <Route path="playground/racket-finder" element={<RacketFinder />} />
           <Route path="playground/level-test" element={<PadelLevelTest />} />
+          <Route path="playground/rate-my-court" element={<RateMyCourtPage />} />
           {/* Legacy redirects */}
           <Route path="racket-finder" element={<Navigate to="../playground/racket-finder" replace />} />
           <Route path="tools/padel-level-test" element={<Navigate to="../playground/level-test" replace />} />

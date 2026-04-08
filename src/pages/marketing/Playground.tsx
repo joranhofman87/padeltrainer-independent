@@ -2,7 +2,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
-import { Target, AlertTriangle, BarChart3 } from 'lucide-react';
+import { Target, AlertTriangle, BarChart3, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const tools = [
@@ -30,6 +30,14 @@ const tools = [
     colorClass: 'from-green-500/10 to-emerald-500/10',
     icon: BarChart3,
   },
+  {
+    titleKey: 'playground.rateMyCourt.title',
+    descKey: 'playground.rateMyCourt.desc',
+    emoji: '⭐',
+    to: '/playground/rate-my-court',
+    colorClass: 'from-yellow-500/10 to-amber-500/10',
+    icon: Star,
+  },
 ];
 
 export default function Playground() {
@@ -51,7 +59,7 @@ export default function Playground() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
           {tools.map((tool) => (
             <LocalizedLink
               key={tool.to}
