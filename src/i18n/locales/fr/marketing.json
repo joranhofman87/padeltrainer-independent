@@ -1433,5 +1433,10 @@
         "greenFlag": "Vous êtes la personne la plus divertissante du club. pure joie"
       }
     }
+  },
+  "communityRatings": {
+    "title": "Évaluations de la communauté",
+    "noReviews": "Pas encore d'évaluations. Sois le premier !",
+    "rateThisClub": "Évaluer ce club"
   }
 }

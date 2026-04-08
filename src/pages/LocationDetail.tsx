@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
+import { useLocationReviewStats } from '@/hooks/useCourtReviews';
 import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award, Home, Sun } from 'lucide-react';
 import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
 import { WaitingListCard } from '@/components/waitingList';
@@ -28,6 +29,7 @@ import { recordClubProfileView } from '@/lib/clubProfileViews';
 import { ClaimClubDialog } from '@/components/club/ClaimClubDialog';
 import { ClubFollowButton } from '@/components/club/ClubFollowButton';
 import { LocationLearnSection } from '@/components/locations/LocationLearnSection';
+import { CommunityRatings } from '@/components/locations/CommunityRatings';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
@@ -110,6 +112,7 @@ export default function LocationDetail() {
   const [similarTrainerCounts, setSimilarTrainerCounts] = useState<Record<string, number>>({});
   const [similarClaimedIds, setSimilarClaimedIds] = useState<Set<string>>(new Set());
   const [similarLogos, setSimilarLogos] = useState<Record<string, string>>({});
+  const { data: communityStats } = useLocationReviewStats(location?.id);
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
   const profileUrl = location ? getMarketingUrl(`locations/${slug}`, currentLang) : '';
@@ -291,14 +294,21 @@ export default function LocationDetail() {
       }),
       ...((location as any).phone && { "telephone": (location as any).phone }),
       ...((location as any).opening_hours && { "openingHours": (location as any).opening_hours }),
-      ...((location as any).google_rating && (location as any).google_review_count && {
+      ...((communityStats && communityStats.total_count > 0) ? {
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": communityStats.avg_overall,
+          "reviewCount": communityStats.total_count,
+          "bestRating": 5
+        }
+      } : ((location as any).google_rating && (location as any).google_review_count && {
         "aggregateRating": {
           "@type": "AggregateRating",
           "ratingValue": (location as any).google_rating,
           "reviewCount": (location as any).google_review_count,
           "bestRating": 5
         }
-      }),
+      })),
       "sport": "Padel",
       ...(location.number_of_courts && { "numberOfRooms": location.number_of_courts }),
       ...(displayDescription && { "description": displayDescription }),
@@ -791,6 +801,11 @@ export default function LocationDetail() {
             </div>
           </ProfileFullWidthSection>
         )}
+
+        {/* Community Ratings Section */}
+        <ProfileFullWidthSection>
+          <CommunityRatings locationId={location.id} locationSlug={location.slug} />
+        </ProfileFullWidthSection>
 
         {/* Full Width - Similar Clubs Section */}
         {similarLocations.length > 0 && (

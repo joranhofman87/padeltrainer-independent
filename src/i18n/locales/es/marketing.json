@@ -1433,5 +1433,10 @@
         "greenFlag": "Eres la persona más entretenida del club. pura alegría"
       }
     }
+  },
+  "communityRatings": {
+    "title": "Valoraciones de la comunidad",
+    "noReviews": "Aún no hay valoraciones. ¡Sé el primero!",
+    "rateThisClub": "Valorar este club"
   }
 }

@@ -1454,5 +1454,10 @@
         "greenFlag": "You're the most entertaining person at the club. pure joy"
       }
     }
+  },
+  "communityRatings": {
+    "title": "Community Ratings",
+    "noReviews": "No community reviews yet. Be the first!",
+    "rateThisClub": "Rate This Club"
   }
 }
