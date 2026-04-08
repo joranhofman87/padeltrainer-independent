@@ -1718,6 +1718,86 @@ export type Database = {
         }
         Relationships: []
       }
+      court_reviews: {
+        Row: {
+          best_thing: string | null
+          created_at: string
+          id: string
+          improvement: string | null
+          location_id: string
+          overall_rating: number
+          play_frequency: Database["public"]["Enums"]["play_frequency"] | null
+          player_level: Database["public"]["Enums"]["player_level"] | null
+          rating_atmosphere: number
+          rating_beginner_friendly: number
+          rating_booking: number
+          rating_changing_rooms: number
+          rating_glass: number
+          rating_lighting: number
+          rating_parking: number
+          rating_space: number
+          rating_surface: number
+          rating_value: number
+          status: Database["public"]["Enums"]["review_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          best_thing?: string | null
+          created_at?: string
+          id?: string
+          improvement?: string | null
+          location_id: string
+          overall_rating?: number
+          play_frequency?: Database["public"]["Enums"]["play_frequency"] | null
+          player_level?: Database["public"]["Enums"]["player_level"] | null
+          rating_atmosphere: number
+          rating_beginner_friendly: number
+          rating_booking: number
+          rating_changing_rooms: number
+          rating_glass: number
+          rating_lighting: number
+          rating_parking: number
+          rating_space: number
+          rating_surface: number
+          rating_value: number
+          status?: Database["public"]["Enums"]["review_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          best_thing?: string | null
+          created_at?: string
+          id?: string
+          improvement?: string | null
+          location_id?: string
+          overall_rating?: number
+          play_frequency?: Database["public"]["Enums"]["play_frequency"] | null
+          player_level?: Database["public"]["Enums"]["player_level"] | null
+          rating_atmosphere?: number
+          rating_beginner_friendly?: number
+          rating_booking?: number
+          rating_changing_rooms?: number
+          rating_glass?: number
+          rating_lighting?: number
+          rating_parking?: number
+          rating_space?: number
+          rating_surface?: number
+          rating_value?: number
+          status?: Database["public"]["Enums"]["review_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "court_reviews_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cycles: {
         Row: {
           created_at: string
@@ -5072,6 +5152,10 @@ export type Database = {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
       }
+      get_location_review_stats: {
+        Args: { _location_id: string }
+        Returns: Json
+      }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
       get_user_academy_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
@@ -5159,6 +5243,9 @@ export type Database = {
       banner_budget_type: "unlimited" | "impression_cap" | "click_cap"
       banner_event_type: "impression" | "click"
       banner_format: "image" | "html"
+      play_frequency: "first_time" | "few_times" | "regularly" | "home_club"
+      player_level: "beginner" | "intermediate" | "advanced" | "pro"
+      review_status: "pending" | "approved" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -5297,6 +5384,9 @@ export const Constants = {
       banner_budget_type: ["unlimited", "impression_cap", "click_cap"],
       banner_event_type: ["impression", "click"],
       banner_format: ["image", "html"],
+      play_frequency: ["first_time", "few_times", "regularly", "home_club"],
+      player_level: ["beginner", "intermediate", "advanced", "pro"],
+      review_status: ["pending", "approved", "rejected"],
     },
   },
 } as const
