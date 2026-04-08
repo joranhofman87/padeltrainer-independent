@@ -793,6 +793,11 @@ export default function LocationDetail() {
           </ProfileFullWidthSection>
         )}
 
+        {/* Community Ratings Section */}
+        <ProfileFullWidthSection>
+          <CommunityRatings locationId={location.id} locationSlug={location.slug} />
+        </ProfileFullWidthSection>
+
         {/* Full Width - Similar Clubs Section */}
         {similarLocations.length > 0 && (
           <ProfileFullWidthSection>
