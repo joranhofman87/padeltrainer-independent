@@ -1454,5 +1454,10 @@
         "greenFlag": "Je bent de meest vermakelijke persoon in de club. pure vreugde"
       }
     }
+  },
+  "communityRatings": {
+    "title": "Community beoordelingen",
+    "noReviews": "Nog geen community beoordelingen. Wees de eerste!",
+    "rateThisClub": "Beoordeel deze club"
   }
 }
