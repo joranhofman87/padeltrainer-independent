@@ -1,7 +1,7 @@
 import { Challenge, DIFFICULTY_COLORS } from '@/lib/challengeModeData';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import logoWhite from '@/assets/logo-white.svg';
+import logoLight from '@/assets/logo-light.svg';
 
 interface ChallengeCardProps {
   challenge: Challenge;
@@ -89,7 +89,7 @@ export default function ChallengeCard({ challenge, isFlipping }: ChallengeCardPr
 
         {/* Logo */}
         <div className="flex items-center justify-center pb-4 pt-2">
-          <img src={logoWhite} alt="PadelTrainer.ai" className="h-5" />
+          <img src={logoLight} alt="PadelTrainer.ai" className="h-5" />
         </div>
       </motion.div>
     </div>
