@@ -86,7 +86,7 @@ export function useLocationReviewStats(locationId: string | undefined) {
         _location_id: locationId!,
       });
       if (error) throw error;
-      return data as ReviewStats | null;
+      return data as unknown as ReviewStats | null;
     },
     enabled: !!locationId,
   });
@@ -121,7 +121,7 @@ export function useSubmitReview() {
       if (!user) throw new Error('Must be logged in');
       const { data, error } = await supabase
         .from('court_reviews')
-        .insert({ ...review, user_id: user.id })
+        .insert([{ ...review, user_id: user.id }] as any)
         .select()
         .single();
       if (error) throw error;
@@ -150,7 +150,7 @@ export function useAdminReviews(statusFilter: string = 'all') {
         .limit(200);
 
       if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+        query = query.eq('status', statusFilter as any);
       }
 
       const { data, error } = await query;
@@ -167,7 +167,7 @@ export function useUpdateReviewStatus() {
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const { error } = await supabase
         .from('court_reviews')
-        .update({ status })
+        .update({ status } as any)
         .eq('id', id);
       if (error) throw error;
     },
