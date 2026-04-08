@@ -1191,7 +1191,67 @@
     "levelTest": {
       "title": "What's Your Level?",
       "desc": "Take our quick assessment to discover your padel level and get training tips."
+    },
+    "rateMyCourt": {
+      "title": "Rate My Padel Court",
+      "desc": "Rate your club across 10 categories and help others find the best courts."
     }
+  },
+  "rateMyCourtPage": {
+    "seo": {
+      "title": "Rate My Padel Court | PadelTrainer.ai",
+      "description": "Rate your padel club across 10 categories. Help other players find the best courts."
+    },
+    "title": "Rate My Padel Court",
+    "subtitle": "Help the community by rating your club across 10 categories.",
+    "searchPlaceholder": "Search by club name or city...",
+    "searching": "Searching...",
+    "noResults": "No clubs found. Try a different search.",
+    "progress": "{{count}}/10 categories rated",
+    "back": "Back",
+    "categories": {
+      "surface": "Court Surface",
+      "glass": "Glass Quality",
+      "lighting": "Lighting",
+      "space": "Space Between Courts",
+      "changing_rooms": "Changing Rooms",
+      "booking": "Booking Ease",
+      "value": "Value for Money",
+      "atmosphere": "Atmosphere",
+      "parking": "Parking",
+      "beginner_friendly": "Beginner Friendly"
+    },
+    "bestThing": "What did you like most?",
+    "bestThingPlaceholder": "Great courts, friendly atmosphere...",
+    "improvement": "What could be improved?",
+    "improvementPlaceholder": "Better lighting, more parking...",
+    "yourLevel": "Your level",
+    "selectLevel": "Select...",
+    "levels": {
+      "beginner": "Beginner",
+      "intermediate": "Intermediate",
+      "advanced": "Advanced",
+      "pro": "Pro"
+    },
+    "howOften": "How often do you play here?",
+    "selectFrequency": "Select...",
+    "frequency": {
+      "first_time": "First time",
+      "few_times": "A few times",
+      "regularly": "Regularly",
+      "home_club": "Home club"
+    },
+    "submitting": "Submitting...",
+    "submitReview": "Submit Review",
+    "alreadyReviewed": "You already reviewed this club!",
+    "error": "Something went wrong. Please try again.",
+    "signInTitle": "Sign in to submit your review",
+    "signInSubtitle": "We need to verify your identity. Your review will be submitted right after.",
+    "signIn": "Sign In / Sign Up",
+    "thankYou": "Thank you for your review!",
+    "pendingApproval": "Your review is pending approval and will be visible soon.",
+    "rateAnother": "Rate another club",
+    "viewClub": "View Club Page"
   },
   "redFlagQuiz": {
     "seo": {

@@ -1170,7 +1170,67 @@
     "levelTest": {
       "title": "Was ist dein Level?",
       "desc": "Mache unsere Schnellbewertung, um dein Padel-Level zu entdecken."
+    },
+    "rateMyCourt": {
+      "title": "Bewerte deinen Padel-Club",
+      "desc": "Bewerte deinen Club in 10 Kategorien und hilf anderen, die besten Plätze zu finden."
     }
+  },
+  "rateMyCourtPage": {
+    "seo": {
+      "title": "Bewerte deinen Padel-Club | PadelTrainer.ai",
+      "description": "Bewerte deinen Padel-Club in 10 Kategorien. Hilf anderen Spielern, die besten Plätze zu finden."
+    },
+    "title": "Bewerte deinen Padel-Club",
+    "subtitle": "Hilf der Community, indem du deinen Club in 10 Kategorien bewertest.",
+    "searchPlaceholder": "Nach Clubname oder Stadt suchen...",
+    "searching": "Suche...",
+    "noResults": "Keine Clubs gefunden. Versuche eine andere Suche.",
+    "progress": "{{count}}/10 Kategorien bewertet",
+    "back": "Zurück",
+    "categories": {
+      "surface": "Platzoberfläche",
+      "glass": "Glasqualität",
+      "lighting": "Beleuchtung",
+      "space": "Platz zwischen den Courts",
+      "changing_rooms": "Umkleiden",
+      "booking": "Buchungsfreundlichkeit",
+      "value": "Preis-Leistung",
+      "atmosphere": "Atmosphäre",
+      "parking": "Parkplätze",
+      "beginner_friendly": "Anfängerfreundlich"
+    },
+    "bestThing": "Was hat dir am besten gefallen?",
+    "bestThingPlaceholder": "Tolle Plätze, freundliche Atmosphäre...",
+    "improvement": "Was könnte verbessert werden?",
+    "improvementPlaceholder": "Bessere Beleuchtung, mehr Parkplätze...",
+    "yourLevel": "Dein Level",
+    "selectLevel": "Auswählen...",
+    "levels": {
+      "beginner": "Anfänger",
+      "intermediate": "Fortgeschritten",
+      "advanced": "Erfahren",
+      "pro": "Pro"
+    },
+    "howOften": "Wie oft spielst du hier?",
+    "selectFrequency": "Auswählen...",
+    "frequency": {
+      "first_time": "Erstes Mal",
+      "few_times": "Ein paar Mal",
+      "regularly": "Regelmäßig",
+      "home_club": "Heimclub"
+    },
+    "submitting": "Wird gesendet...",
+    "submitReview": "Bewertung abgeben",
+    "alreadyReviewed": "Du hast diesen Club bereits bewertet!",
+    "error": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+    "signInTitle": "Melde dich an, um deine Bewertung einzureichen",
+    "signInSubtitle": "Wir müssen deine Identität verifizieren. Deine Bewertung wird direkt danach eingereicht.",
+    "signIn": "Anmelden / Registrieren",
+    "thankYou": "Danke für deine Bewertung!",
+    "pendingApproval": "Deine Bewertung wird geprüft und ist bald sichtbar.",
+    "rateAnother": "Einen anderen Club bewerten",
+    "viewClub": "Clubseite ansehen"
   },
   "redFlagQuiz": {
     "seo": {

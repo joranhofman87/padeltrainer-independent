@@ -44,7 +44,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Mail,
-  
+  MessageSquareMore,
   FileText,
   ListTodo,
   Database,
@@ -67,6 +67,7 @@ const mainNavItems = [
 const contentNavItems = [
   { title: "Blog Articles", url: "/app/admin/blog", icon: FileText },
   { title: "Topics Queue", url: "/app/admin/blog/topics", icon: ListTodo },
+  { title: "Court Reviews", url: "/app/admin/court-reviews", icon: MessageSquareMore },
 ];
 
 const settingsNavItems = [

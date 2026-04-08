@@ -1170,7 +1170,67 @@
     "levelTest": {
       "title": "¿Cuál es tu nivel?",
       "desc": "Haz nuestra evaluación rápida para descubrir tu nivel y recibir consejos de entrenamiento."
+    },
+    "rateMyCourt": {
+      "title": "Valora tu club de pádel",
+      "desc": "Valora tu club en 10 categorías y ayuda a otros a encontrar las mejores pistas."
     }
+  },
+  "rateMyCourtPage": {
+    "seo": {
+      "title": "Valora tu club de pádel | PadelTrainer.ai",
+      "description": "Valora tu club de pádel en 10 categorías. Ayuda a otros jugadores a encontrar las mejores pistas."
+    },
+    "title": "Valora tu club de pádel",
+    "subtitle": "Ayuda a la comunidad valorando tu club en 10 categorías.",
+    "searchPlaceholder": "Buscar por nombre del club o ciudad...",
+    "searching": "Buscando...",
+    "noResults": "No se encontraron clubs. Prueba otra búsqueda.",
+    "progress": "{{count}}/10 categorías valoradas",
+    "back": "Volver",
+    "categories": {
+      "surface": "Superficie de la pista",
+      "glass": "Calidad del cristal",
+      "lighting": "Iluminación",
+      "space": "Espacio entre pistas",
+      "changing_rooms": "Vestuarios",
+      "booking": "Facilidad de reserva",
+      "value": "Relación calidad-precio",
+      "atmosphere": "Ambiente",
+      "parking": "Aparcamiento",
+      "beginner_friendly": "Apto para principiantes"
+    },
+    "bestThing": "¿Qué es lo que más te gustó?",
+    "bestThingPlaceholder": "Buenas pistas, ambiente agradable...",
+    "improvement": "¿Qué se podría mejorar?",
+    "improvementPlaceholder": "Mejor iluminación, más aparcamiento...",
+    "yourLevel": "Tu nivel",
+    "selectLevel": "Seleccionar...",
+    "levels": {
+      "beginner": "Principiante",
+      "intermediate": "Intermedio",
+      "advanced": "Avanzado",
+      "pro": "Pro"
+    },
+    "howOften": "¿Con qué frecuencia juegas aquí?",
+    "selectFrequency": "Seleccionar...",
+    "frequency": {
+      "first_time": "Primera vez",
+      "few_times": "Algunas veces",
+      "regularly": "Regularmente",
+      "home_club": "Club habitual"
+    },
+    "submitting": "Enviando...",
+    "submitReview": "Enviar valoración",
+    "alreadyReviewed": "¡Ya valoraste este club!",
+    "error": "Algo salió mal. Inténtalo de nuevo.",
+    "signInTitle": "Inicia sesión para enviar tu valoración",
+    "signInSubtitle": "Necesitamos verificar tu identidad. Tu valoración se enviará justo después.",
+    "signIn": "Iniciar sesión / Registrarse",
+    "thankYou": "¡Gracias por tu valoración!",
+    "pendingApproval": "Tu valoración está pendiente de aprobación y será visible pronto.",
+    "rateAnother": "Valorar otro club",
+    "viewClub": "Ver página del club"
   },
   "redFlagQuiz": {
     "seo": {
