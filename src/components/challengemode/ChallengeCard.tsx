@@ -77,12 +77,19 @@ export default function ChallengeCard({ challenge, isFlipping }: ChallengeCardPr
         </div>
 
         {/* Duration badge */}
-        <div className="text-center mt-4 pb-5">
+        <div className="text-center mt-4 pb-3">
           <span
             className="inline-block text-xs px-3 py-1 rounded-full"
             style={{ background: 'rgba(255,255,255,0.08)', color: '#94A3B8' }}
           >
             ⏱ {challenge.duration}
+          </span>
+        </div>
+
+        {/* Logo */}
+        <div className="flex items-center justify-center gap-1 pb-4 opacity-40">
+          <span className="text-[10px] font-medium tracking-wide" style={{ color: '#94A3B8' }}>
+            PadelTrainer<span style={{ color: '#f45d25' }}>.ai</span>
           </span>
         </div>
       </motion.div>
