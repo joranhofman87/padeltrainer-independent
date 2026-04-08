@@ -1195,6 +1195,10 @@
     "rateMyCourt": {
       "title": "Rate My Padel Court",
       "desc": "Rate your club across 10 categories and help others find the best courts."
+    },
+    "challengeMode": {
+      "title": "Challenge Mode",
+      "desc": "Random handicaps and training constraints for practice or matches. Spin and play."
     }
   },
   "rateMyCourtPage": {
@@ -1459,12 +1463,6 @@
     "title": "Community Ratings",
     "noReviews": "No community reviews yet. Be the first!",
     "rateThisClub": "Rate This Club"
-  },
-  "playground": {
-    "challengeMode": {
-      "title": "Challenge Mode",
-      "desc": "Random handicaps and training constraints for practice or matches. Spin and play."
-    }
   },
   "challengeMode": {
     "seo": {
