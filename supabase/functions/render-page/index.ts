@@ -414,8 +414,10 @@ function renderPath(cleanPath: string, lang: string): string {
     '/partner': { title: 'Become a Partner — PadelTrainer.ai', desc: 'Partner with PadelTrainer.ai to reach thousands of padel players.' },
     '/privacy': { title: 'Privacy Policy — PadelTrainer.ai', desc: 'Read the PadelTrainer.ai privacy policy.' },
     '/terms': { title: 'Terms of Service — PadelTrainer.ai', desc: 'Read the PadelTrainer.ai terms of service.' },
-    '/racket-finder': { title: 'Padel Racket Finder | PadelTrainer.ai', desc: 'Find the perfect padel racket for your playing style and level.' },
-    '/tools/padel-level-test': { title: 'Padel Level Test | PadelTrainer.ai', desc: 'Discover your padel level with our free assessment tool. Get personalized training recommendations.' },
+    '/playground': { title: 'Padel Playground — Quizzes & Tools | PadelTrainer.ai', desc: 'Take fun padel quizzes, find your perfect racket, and test your level.' },
+    '/playground/red-flag-quiz': { title: "What's Your Padel Red Flag? | Fun Quiz — PadelTrainer.ai", desc: 'Every padel player has a red flag. Take this 2-minute quiz to find out yours — and challenge your partner.' },
+    '/playground/racket-finder': { title: 'Padel Racket Finder | PadelTrainer.ai', desc: 'Find the perfect padel racket for your playing style and level.' },
+    '/playground/level-test': { title: 'Padel Level Test | PadelTrainer.ai', desc: 'Discover your padel level with our free assessment tool. Get personalized training recommendations.' },
   };
 
   const staticMatch = staticPages[cleanPath];

@@ -6,7 +6,8 @@
     "blog": "Blog",
     "signIn": "Accedi",
     "getStarted": "Inizia",
-    "language": "Lingua"
+    "language": "Lingua",
+    "playground": "Playground"
   },
   "footer": {
     "tagline": "Tutto ciò che ti serve per migliorare nel padel.",
@@ -1167,5 +1168,231 @@
     "finalCtaSub": "Solo {{count}} posti rimanenti",
     "finalCtaButton": "Diventa un Founding Trainer",
     "bannerText": "Founding 100 Trainers — Ricevi una racchetta premium GRATUITA del valore di €275+"
+  },
+  "megamenu": {
+    "playgroundDesc": "Quiz, strumenti e divertimento"
+  },
+  "playground": {
+    "title": "Padel Playground",
+    "subtitle": "Quiz divertenti, strumenti ed esperienze interattive per gli amanti del padel.",
+    "playNow": "Gioca ora →",
+    "seo": {
+      "title": "Padel Playground — Quiz & Strumenti | PadelTrainer.ai",
+      "description": "Fai quiz divertenti sul padel, trova la tua racchetta perfetta e testa il tuo livello."
+    },
+    "redFlagQuiz": {
+      "title": "Qual è la tua red flag nel padel?",
+      "desc": "10 domande per scoprire la tua più grande red flag come partner di padel. Condividi il risultato!"
+    },
+    "racketFinder": {
+      "title": "Trova Racchetta",
+      "desc": "Rispondi a qualche domanda e ti abbineremo alla racchetta da padel perfetta."
+    },
+    "levelTest": {
+      "title": "Qual è il tuo livello?",
+      "desc": "Fai la nostra valutazione rapida per scoprire il tuo livello di padel."
+    }
+  },
+  "redFlagQuiz": {
+    "seo": {
+      "title": "Qual è la tua red flag nel padel? | Quiz divertente — PadelTrainer.ai",
+      "description": "Ogni giocatore di padel ha una red flag. Fai questo quiz di 2 minuti e scopri la tua."
+    },
+    "intro": {
+      "title": "Qual è la tua red flag nel padel?",
+      "subtitle": "10 domande. 2 minuti. Nessun giudizio (ok, forse un po'). Scopri che tipo di partner di padel sei davvero.",
+      "start": "Via! 🎾",
+      "challenge": "Il tuo amico pensa che dovresti fare questo quiz 😏"
+    },
+    "questionOf": "Domanda {{current}} di {{total}}",
+    "youAre": "Sei",
+    "redFlagsLabel": "Red Flags",
+    "greenFlagLabel": "Green Flag",
+    "shareText": "Sono {{profile}}! Qual è la tua red flag nel padel?",
+    "linkCopied": "Link copiato!",
+    "copyLink": "Copia link",
+    "retake": "Rifai il quiz",
+    "findTrainer": "Vuoi correggere le tue red flag? Trova un istruttore →",
+    "q1": {
+      "title": "Il riscaldamento",
+      "scenario": "Ti stai riscaldando prima di una partita. Il tuo partner inizia a schiacciare incrociato dritto su di te. Tu...",
+      "a": "Schivi e non dici niente — ma te lo ricorderai",
+      "b": "Inizi subito a spiegargli l'etichetta del riscaldamento",
+      "c": "Gliene schiacci uno di ritorno — occhio per occhio",
+      "d": "Ridi e urli \"VAMOS!\""
+    },
+    "q2": {
+      "title": "Il check outfit",
+      "scenario": "Arrivi a una partita. Cosa indossi?",
+      "a": "Completo coordinato, calzini lunghi, overgrip nuovo — sembri sponsorizzato",
+      "b": "Quello che era pulito... calzini alla caviglia, niente tasche, va bene così",
+      "c": "Abbigliamento decente ma onestamente il tuo overgrip non viene cambiato da settimane",
+      "d": "Tasche piene di palle, asciugamano sulla recinzione, bottiglia d'acqua posizionata perfettamente — sono pronto"
+    },
+    "q3": {
+      "title": "Il lob corto",
+      "scenario": "Il tuo partner fa un lob corto. Gli avversari schiacciano dritto su di te. Il tuo partner dice 'tranquillo.' Tu...",
+      "a": "Non dici niente, ma stai assolutamente tenendo il conto nella testa",
+      "b": "Gli spieghi esattamente perché il lob era troppo corto e quale sarebbe stato il colpo giusto",
+      "c": "Dici \"nessun problema!\" anche se sei stato distrutto — tu sei quello gentile",
+      "d": "Fissi la tua racchetta come se ti avesse tradito personalmente"
+    },
+    "q4": {
+      "title": "La situazione palla",
+      "scenario": "È il turno del tuo partner di servire ma non ha la palla. Ti guarda. Cosa succede?",
+      "a": "Hai sempre entrambe le palle perché hai imparato a non fidarti di nessuno",
+      "b": "I tuoi pantaloncini non hanno tasche quindi... imbarazzante",
+      "c": "Calci la palla attraverso il campo come un pallone da calcio",
+      "d": "La fai rotolare a terra — che soffra la loro schiena, non la tua"
+    },
+    "q5": {
+      "title": "Il punto importante",
+      "scenario": "Vinci un punto cruciale. La tua reazione immediata:",
+      "a": "\"VAMOOOOS!\" — a tutto volume, pugno in aria, lo show completo",
+      "b": "Tocco tattico di racchetta con il partner, cenno, focus",
+      "c": "Inizi a dare istruzioni per il punto successivo prima ancora che abbiano festeggiato",
+      "d": "Ti riprendi per la Story di Instagram che posterai dopo"
+    },
+    "q6": {
+      "title": "L'errore",
+      "scenario": "Metti la palla dritto nella rete su una volée facile. Tu...",
+      "a": "Fissi la racchetta incredulo — chiaramente è colpa della racchetta",
+      "b": "Dici \"scusa!\" tre volte anche se il partner dice che va bene",
+      "c": "Dici subito al partner cosa LORO avrebbero dovuto fare diversamente",
+      "d": "Non dici niente. Letteralmente niente. Silenzio totale"
+    },
+    "q7": {
+      "title": "L'analisi post-partita",
+      "scenario": "La partita è finita. Hai perso. Qual è la conversazione?",
+      "a": "Analizzi ogni singolo punto andato male — un'analisi tattica completa che nessuno ha chiesto",
+      "b": "\"Bella partita!\" poi scrivi subito all'altro gruppo padel per trovare un partner migliore",
+      "c": "Stai già montando gli highlight per Instagram",
+      "d": "Dai la colpa alle palle, al campo, al sole, al vetro — tutto tranne te stesso"
+    },
+    "q8": {
+      "title": "La situazione overgrip",
+      "scenario": "Qualcuno ti fa notare che il tuo overgrip sembra... consumato. Tu...",
+      "a": "Cos'è un overgrip?",
+      "b": "È un overgrip nero quindi non si vede — quello è il punto",
+      "c": "Lo cambi subito e ne offri uno nuovo anche al partner",
+      "d": "Gli dici che l'impugnatura consumata ti dà \"più sensibilità\""
+    },
+    "q9": {
+      "title": "Il cambio partner",
+      "scenario": "Il tuo partner abituale non può venire. Uno sconosciuto vuole sostituirlo. Tu...",
+      "a": "Inizi subito a spiegare le tue formazioni preferite",
+      "b": "Giochi, non dici niente quando sbagliano, giudichi tutto in silenzio",
+      "c": "Non ti importa chi è — sei qui per vincere",
+      "d": "Passi più tempo a presentarti e fare un selfie pre-partita"
+    },
+    "q10": {
+      "title": "La domanda del deodorante",
+      "scenario": "Sii onesto. Prima di una partita, il deodorante è...",
+      "a": "Obbligatorio. Non negoziabile. Applicato due volte",
+      "b": "Sinceramente... a volte dimentico",
+      "c": "Sono più preoccupato se il mio outfit è coordinato",
+      "d": "Ma è davvero una domanda? Chi dimentica il deodorante?"
+    },
+    "profiles": {
+      "sidelineCoach": {
+        "name": "L'Allenatore da Bordo Campo",
+        "tagline": "Non sei un allenatore, ma ne interpreti uno sul campo da padel.",
+        "description": "Non puoi farne a meno — vedi un errore correggibile e DEVI dire qualcosa.",
+        "redFlags": [
+          "Dà consigli tattici non richiesti durante il rally",
+          "Fa un'analisi post-partita completa che nessuno ha chiesto",
+          "Dice al partner dove posizionarsi, cosa colpire e come respirare"
+        ],
+        "greenFlag": "Conosci davvero bene il gioco — saresti un ottimo vero allenatore"
+      },
+      "vamosSpammer": {
+        "name": "Lo Spammer di Vamos",
+        "tagline": "Hai detto 'Vamos' più volte oggi della maggior parte degli spagnoli in un anno.",
+        "description": "Ogni punto — vinto o perso — riceve un \"VAMOS.\" L'energia è apprezzata... a piccole dosi.",
+        "redFlags": [
+          "Urla VAMOS sulla risposta al servizio",
+          "Dice VAMOS quando l'avversario mette in rete",
+          "È stato beccato a sussurrare \"vamos\" mentre si allaccia le scarpe"
+        ],
+        "greenFlag": "Porti un'energia hype imbattibile — non è mai noioso con te in campo"
+      },
+      "blameShifter": {
+        "name": "Lo Scaricabarile",
+        "tagline": "Non sei mai tu. È la racchetta. Le palle. Il sole. Il vetro.",
+        "description": "Non hai mai, nella storia del padel, commesso un errore.",
+        "redFlags": [
+          "Fissa la racchetta dopo ogni errore",
+          "Dà la colpa alle palle, al meteo e alla superficie — in quest'ordine",
+          "Ha detto \"giuro che quel colpo non lo sbaglio mai\" almeno 6 volte a partita"
+        ],
+        "greenFlag": "La tua fiducia è genuinamente incrollabile — sei mentalmente forte"
+      },
+      "silentGrudgeHolder": {
+        "name": "Il Rancoroso Silenzioso",
+        "tagline": "Non dici niente. Senti tutto.",
+        "description": "Non urli, non alleni, non ti lamenti ad alta voce. Ma dentro? Stai scrivendo un rapporto completo della partita.",
+        "redFlags": [
+          "Dice \"nessun problema\" ma ha assolutamente problemi",
+          "Compila mentalmente un reel degli errori del partner",
+          "Scrive all'altro gruppo padel durante la pausa"
+        ],
+        "greenFlag": "Sei il giocatore più calmo in campo — mai tossico, sempre composto"
+      },
+      "fashionCriminal": {
+        "name": "Il Criminale della Moda",
+        "tagline": "Calzini alla caviglia, niente tasche e vibes.",
+        "description": "Sei arrivato a giocare a padel come se venissi da un altro sport.",
+        "redFlags": [
+          "Indossa calzini alla caviglia senza vergogna",
+          "Non ha tasche — tiene sempre una palla o ti chiede di tenerne una",
+          "Cappellino al contrario, orecchie dentro, impegno totale nel look"
+        ],
+        "greenFlag": "Stai bene e lo sai — la fiducia è un'arma"
+      },
+      "overgripOffender": {
+        "name": "Il Trasgressore dell'Overgrip",
+        "tagline": "Il tuo overgrip ha visto cose. Cose marroni.",
+        "description": "Quand'è l'ultima volta che hai cambiato l'overgrip? Sii onesto.",
+        "redFlags": [
+          "L'overgrip ha assunto una tonalità marrone non identificabile",
+          "Usa overgrip nero specificamente per nascondere i danni",
+          "Lascia residui del grip su tutto ciò che tocca"
+        ],
+        "greenFlag": "La tua racchetta ha carattere — hai accumulato serie ore in campo"
+      },
+      "padelInfluencer": {
+        "name": "L'Influencer del Padel",
+        "tagline": "Hai davvero giocato se non l'hai postato?",
+        "description": "Ti riscaldi col telefono appoggiato al vetro. La partita è importante, certo, ma il contenuto? Il contenuto è tutto.",
+        "redFlags": [
+          "Accelera i propri reel Instagram (si vede)",
+          "Si fa un selfie prima, durante e dopo la partita",
+          "Ha gridato \"aspetta, possiamo rifare? Non stavo registrando\""
+        ],
+        "greenFlag": "Stai facendo crescere lo sport — il padel ha bisogno di più visibilità"
+      },
+      "peoplePleaser": {
+        "name": "Il People Pleaser",
+        "tagline": "Scusa! Scusa. Aspetta — ancora scusa.",
+        "description": "Ti scusi per tutto. Preferiresti perdere una partita piuttosto che rischiare che il tuo partner pensi che sei arrabbiato.",
+        "redFlags": [
+          "Dice \"scusa\" più di \"vamos\"",
+          "Si prende la colpa per colpi che erano al 100% colpa del partner",
+          "Cambia tutto il suo gioco per non mettere il partner a disagio"
+        ],
+        "greenFlag": "Sei la persona più gentile in campo — tutti vogliono giocare con te"
+      },
+      "chaosAgent": {
+        "name": "L'Agente del Caos",
+        "tagline": "Non sei una red flag. Sei un intero tendone da circo rosso.",
+        "description": "Calci le palle attraverso il campo. Servi con la palla di riserva in mano. Non sei cattivo — sei semplicemente puro, bellissimo caos.",
+        "redFlags": [
+          "Calcia la palla al partner come un pallone da calcio",
+          "È stato beccato a servire con la palla di riserva nella mano non dominante",
+          "L'ha chiamato \"paddle tennis\" una volta e non ha capito perché tutti lo fissavano"
+        ],
+        "greenFlag": "Sei la persona più divertente del club — pura gioia"
+      }
+    }
   }
 }

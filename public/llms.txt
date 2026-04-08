@@ -69,9 +69,11 @@ This platform is available in:
 - Topics: https://padeltrainer.ai/en/topics
 - Padel Coaches: https://padeltrainer.ai/en/padel-coaches
 
-### Tools
-- Racket Finder: https://padeltrainer.ai/en/racket-finder
-- Padel Level Test: https://padeltrainer.ai/en/tools/padel-level-test
+### Playground
+- Playground Hub: https://padeltrainer.ai/en/playground
+- Red Flag Quiz: https://padeltrainer.ai/en/playground/red-flag-quiz
+- Racket Finder: https://padeltrainer.ai/en/playground/racket-finder
+- Padel Level Test: https://padeltrainer.ai/en/playground/level-test
 
 ### Gear
 - Racket Reviews: https://padeltrainer.ai/en/gear/rackets
@@ -110,8 +112,10 @@ This platform is available in:
 - `/{lang}/topics/:slug` - Individual topic page
 - `/{lang}/gear/rackets` - Padel racket directory
 - `/{lang}/gear/rackets/:slug` - Individual racket review
-- `/{lang}/racket-finder` - Interactive racket finder tool
-- `/{lang}/tools/padel-level-test` - Padel skill level self-assessment
+- `/{lang}/playground` - Playground hub with quizzes and tools
+- `/{lang}/playground/red-flag-quiz` - Fun padel personality quiz
+- `/{lang}/playground/racket-finder` - Interactive racket finder tool
+- `/{lang}/playground/level-test` - Padel skill level self-assessment
 - `/{lang}/blog` - Padel tips and news
 - `/{lang}/blog/:slug` - Individual blog post
 - `/{lang}/padel/:city` - City landing page with local clubs, courts & coaches

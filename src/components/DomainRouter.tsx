@@ -60,6 +60,8 @@ const PadelLevelTest = lazy(() => import('@/pages/marketing/PadelLevelTest'));
 const CityLanding = lazy(() => import('@/pages/marketing/CityLanding'));
 const PublicRatingCard = lazy(() => import('@/pages/marketing/PublicRatingCard'));
 const FoundingTrainers = lazy(() => import('@/pages/marketing/FoundingTrainers'));
+const Playground = lazy(() => import('@/pages/marketing/Playground'));
+const RedFlagQuiz = lazy(() => import('@/pages/marketing/RedFlagQuiz'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
@@ -388,10 +390,16 @@ export function DomainRouter() {
           <Route path="clubs/:slug/register/:cycleId" element={<BrandedCycleRegistration ownerType="club" />} />
           <Route path="book/:trainerId" element={<BookLesson />} />
           <Route path="register/:cycleId" element={<CycleRegistration />} />
-          <Route path="racket-finder" element={<RacketFinder />} />
+          {/* Playground hub */}
+          <Route path="playground" element={<Playground />} />
+          <Route path="playground/red-flag-quiz" element={<RedFlagQuiz />} />
+          <Route path="playground/racket-finder" element={<RacketFinder />} />
+          <Route path="playground/level-test" element={<PadelLevelTest />} />
+          {/* Legacy redirects */}
+          <Route path="racket-finder" element={<Navigate to="../playground/racket-finder" replace />} />
+          <Route path="tools/padel-level-test" element={<Navigate to="../playground/level-test" replace />} />
           <Route path="gear/rackets" element={<RacketListing />} />
           <Route path="gear/rackets/:slug" element={<RacketDetail />} />
-          <Route path="tools/padel-level-test" element={<PadelLevelTest />} />
           <Route path="padel/:city" element={<CityLanding />} />
           <Route path="rating/:profileId" element={<PublicRatingCard />} />
           <Route path="founding-trainers" element={<FoundingTrainers />} />
