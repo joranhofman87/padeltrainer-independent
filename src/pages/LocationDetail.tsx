@@ -28,6 +28,7 @@ import { recordClubProfileView } from '@/lib/clubProfileViews';
 import { ClaimClubDialog } from '@/components/club/ClaimClubDialog';
 import { ClubFollowButton } from '@/components/club/ClubFollowButton';
 import { LocationLearnSection } from '@/components/locations/LocationLearnSection';
+import { CommunityRatings } from '@/components/locations/CommunityRatings';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
