@@ -1191,7 +1191,67 @@
     "levelTest": {
       "title": "Wat is jouw niveau?",
       "desc": "Doe onze snelle test om je padel niveau te ontdekken en trainingstips te krijgen."
+    },
+    "rateMyCourt": {
+      "title": "Beoordeel je padelclub",
+      "desc": "Beoordeel je club op 10 categorieën en help anderen de beste banen te vinden."
     }
+  },
+  "rateMyCourtPage": {
+    "seo": {
+      "title": "Beoordeel je padelclub | PadelTrainer.ai",
+      "description": "Beoordeel je padelclub op 10 categorieën. Help andere spelers de beste banen te vinden."
+    },
+    "title": "Beoordeel je padelclub",
+    "subtitle": "Help de community door je club op 10 categorieën te beoordelen.",
+    "searchPlaceholder": "Zoek op clubnaam of stad...",
+    "searching": "Zoeken...",
+    "noResults": "Geen clubs gevonden. Probeer een andere zoekopdracht.",
+    "progress": "{{count}}/10 categorieën beoordeeld",
+    "back": "Terug",
+    "categories": {
+      "surface": "Baanoppervlak",
+      "glass": "Glaskwaliteit",
+      "lighting": "Verlichting",
+      "space": "Ruimte tussen banen",
+      "changing_rooms": "Kleedkamers",
+      "booking": "Reserveringsgemak",
+      "value": "Prijs-kwaliteit",
+      "atmosphere": "Sfeer",
+      "parking": "Parkeren",
+      "beginner_friendly": "Beginnersvriendelijk"
+    },
+    "bestThing": "Wat vond je het beste?",
+    "bestThingPlaceholder": "Geweldige banen, gezellige sfeer...",
+    "improvement": "Wat kan beter?",
+    "improvementPlaceholder": "Betere verlichting, meer parkeerplaatsen...",
+    "yourLevel": "Je niveau",
+    "selectLevel": "Selecteer...",
+    "levels": {
+      "beginner": "Beginner",
+      "intermediate": "Gevorderd",
+      "advanced": "Ervaren",
+      "pro": "Pro"
+    },
+    "howOften": "Hoe vaak speel je hier?",
+    "selectFrequency": "Selecteer...",
+    "frequency": {
+      "first_time": "Eerste keer",
+      "few_times": "Een paar keer",
+      "regularly": "Regelmatig",
+      "home_club": "Thuisclub"
+    },
+    "submitting": "Verzenden...",
+    "submitReview": "Beoordeling verzenden",
+    "alreadyReviewed": "Je hebt deze club al beoordeeld!",
+    "error": "Er ging iets mis. Probeer het opnieuw.",
+    "signInTitle": "Log in om je beoordeling te verzenden",
+    "signInSubtitle": "We moeten je identiteit verifiëren. Je beoordeling wordt direct daarna ingediend.",
+    "signIn": "Inloggen / Registreren",
+    "thankYou": "Bedankt voor je beoordeling!",
+    "pendingApproval": "Je beoordeling wordt gecontroleerd en is binnenkort zichtbaar.",
+    "rateAnother": "Nog een club beoordelen",
+    "viewClub": "Bekijk clubpagina"
   },
   "redFlagQuiz": {
     "seo": {
