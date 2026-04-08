@@ -6,7 +6,8 @@
     "blog": "Blog",
     "signIn": "Sign In",
     "getStarted": "Get Started",
-    "language": "Language"
+    "language": "Language",
+    "playground": "Playground"
   },
   "footer": {
     "tagline": "Todo lo que necesitas para mejorar tu juego de pádel.",
@@ -1146,5 +1147,231 @@
     "finalCtaSub": "Solo quedan {{count}} plazas",
     "finalCtaButton": "Conviértete en Founding Trainer",
     "bannerText": "Founding 100 Trainers — Consigue una pala premium GRATIS valorada en €275+"
+  },
+  "megamenu": {
+    "playgroundDesc": "Quizzes, herramientas y diversión"
+  },
+  "playground": {
+    "title": "Playground de Pádel",
+    "subtitle": "Quizzes divertidos, herramientas y experiencias interactivas para amantes del pádel.",
+    "playNow": "Jugar ahora →",
+    "seo": {
+      "title": "Playground de Pádel — Quizzes y Herramientas | PadelTrainer.ai",
+      "description": "Haz quizzes divertidos de pádel, encuentra tu pala perfecta y descubre tu nivel."
+    },
+    "redFlagQuiz": {
+      "title": "¿Cuál es tu red flag del pádel?",
+      "desc": "10 preguntas para descubrir tu mayor red flag como compañero de pádel. ¡Comparte tu resultado!"
+    },
+    "racketFinder": {
+      "title": "Buscador de Palas",
+      "desc": "Responde unas preguntas y te recomendaremos la pala de pádel perfecta."
+    },
+    "levelTest": {
+      "title": "¿Cuál es tu nivel?",
+      "desc": "Haz nuestra evaluación rápida para descubrir tu nivel y recibir consejos de entrenamiento."
+    }
+  },
+  "redFlagQuiz": {
+    "seo": {
+      "title": "¿Cuál es tu red flag del pádel? | Quiz divertido — PadelTrainer.ai",
+      "description": "Todo jugador de pádel tiene una red flag. Haz este quiz de 2 minutos y descubre la tuya."
+    },
+    "intro": {
+      "title": "¿Cuál es tu red flag del pádel?",
+      "subtitle": "10 preguntas. 2 minutos. Sin juicios (bueno, quizás un poco). Descubre qué tipo de compañero de pádel eres realmente.",
+      "start": "¡Vamos! 🎾",
+      "challenge": "Tu amigo cree que necesitas hacer este quiz 😏"
+    },
+    "questionOf": "Pregunta {{current}} de {{total}}",
+    "youAre": "Eres",
+    "redFlagsLabel": "Red Flags",
+    "greenFlagLabel": "Green Flag",
+    "shareText": "¡Soy {{profile}}! ¿Cuál es tu red flag del pádel?",
+    "linkCopied": "¡Enlace copiado!",
+    "copyLink": "Copiar enlace",
+    "retake": "Repetir quiz",
+    "findTrainer": "¿Quieres arreglar tus red flags? Encuentra un entrenador →",
+    "q1": {
+      "title": "El calentamiento",
+      "scenario": "Estás calentando antes de un partido. Tu compañero empieza a rematar cruzado directo a ti. Tú...",
+      "a": "Esquivas y no dices nada — pero te acordarás de esto",
+      "b": "Empiezas a dar consejos sobre la etiqueta del calentamiento",
+      "c": "Le devuelves un remate — ojo por ojo",
+      "d": "Te ríes y gritas \"¡VAMOS!\""
+    },
+    "q2": {
+      "title": "El outfit",
+      "scenario": "Llegas a un partido. ¿Qué llevas puesto?",
+      "a": "Conjunto completo, calcetines largos, overgrip nuevo — como si estuvieras patrocinado",
+      "b": "Lo que estaba limpio... calcetines cortos, sin bolsillos, va bien",
+      "c": "Ropa decente pero tu overgrip no se ha cambiado en semanas",
+      "d": "Bolsillos cargados de pelotas, toalla en la valla, botella colocada — estoy listo"
+    },
+    "q3": {
+      "title": "El globo corto",
+      "scenario": "Tu compañero lanza un globo corto. Los rivales lo rematan directo a ti. Tu compañero dice 'no pasa nada.' Tú...",
+      "a": "No dices nada, pero llevas la cuenta mentalmente",
+      "b": "Le explicas exactamente por qué el globo fue demasiado corto",
+      "c": "Dices \"¡no pasa nada!\" aunque te han destrozado",
+      "d": "Miras tu pala como si te hubiera traicionado"
+    },
+    "q4": {
+      "title": "La situación de la pelota",
+      "scenario": "Es el turno de tu compañero de sacar pero no tiene pelota. Te mira. ¿Qué pasa?",
+      "a": "Siempre llevas las dos pelotas porque aprendiste a no depender de nadie",
+      "b": "Tu pantalón no tiene bolsillos así que... esto es incómodo",
+      "c": "Le pasas la pelota con el pie como si fuera fútbol",
+      "d": "La ruedas por el suelo — que sufra su espalda, no la tuya"
+    },
+    "q5": {
+      "title": "El punto importante",
+      "scenario": "Ganas un punto crucial. Tu reacción inmediata:",
+      "a": "\"¡VAMOOOOS!\" — a todo volumen, puño en alto, todo el show",
+      "b": "Toque táctico de pala con tu compañero, asentimiento, a enfocarse",
+      "c": "Empiezas a dar instrucciones para el siguiente punto antes de que hayan celebrado",
+      "d": "Te grabas para la Story de Instagram que publicarás después"
+    },
+    "q6": {
+      "title": "El error",
+      "scenario": "Metes la pelota en la red en una volea fácil. Tú...",
+      "a": "Miras tu pala con incredulidad — claramente es culpa de la pala",
+      "b": "Dices \"¡perdón!\" tres veces aunque tu compañero dice que está bien",
+      "c": "Le dices a tu compañero qué ELLOS deberían haber hecho diferente",
+      "d": "No dices nada. Literalmente nada. Silencio total"
+    },
+    "q7": {
+      "title": "El análisis post-partido",
+      "scenario": "El partido terminó. Perdiste. ¿Cuál es la conversación?",
+      "a": "Desglosas cada punto que salió mal — un análisis táctico completo que nadie pidió",
+      "b": "\"¡Buen partido!\" y luego escribes a tu otro grupo de pádel para buscar mejor compañero",
+      "c": "Ya estás editando tus highlights para Instagram",
+      "d": "Culpas a las pelotas, la pista, el sol, el cristal — todo menos a ti"
+    },
+    "q8": {
+      "title": "La situación del overgrip",
+      "scenario": "Alguien señala que tu overgrip se ve... deteriorado. Tú...",
+      "a": "¿Qué es un overgrip?",
+      "b": "Es un overgrip negro así que no se nota — esa es la idea",
+      "c": "Lo cambias inmediatamente y le ofreces uno nuevo a tu compañero",
+      "d": "Les dices que el grip gastado te da \"más sensación\""
+    },
+    "q9": {
+      "title": "El cambio de compañero",
+      "scenario": "Tu compañero habitual no puede venir. Un desconocido quiere entrar. Tú...",
+      "a": "Empiezas a explicarle tus formaciones preferidas",
+      "b": "Juegas, no dices nada cuando fallan, juzgas todo en silencio",
+      "c": "No te importa quién sea — estás aquí para ganar",
+      "d": "Pasas más tiempo presentándote y sacándote una selfie"
+    },
+    "q10": {
+      "title": "La pregunta del desodorante",
+      "scenario": "Sé honesto. Antes de un partido, el desodorante es...",
+      "a": "Obligatorio. No negociable. Aplicado dos veces",
+      "b": "Siendo sincero... a veces se me olvida",
+      "c": "Me preocupa más si mi outfit combina",
+      "d": "¿Esto es una pregunta en serio? ¿Quién se olvida del desodorante?"
+    },
+    "profiles": {
+      "sidelineCoach": {
+        "name": "El Entrenador de Banda",
+        "tagline": "No eres entrenador, pero actúas como uno en la pista.",
+        "description": "No puedes evitarlo — ves un error corregible y TIENES que decir algo.",
+        "redFlags": [
+          "Da consejos tácticos no solicitados en medio del rally",
+          "Hace un análisis post-partido completo que nadie pidió",
+          "Le dice a su compañero dónde pararse, qué pegar y cómo respirar"
+        ],
+        "greenFlag": "Realmente conoces bien el juego — serías un gran entrenador de verdad"
+      },
+      "vamosSpammer": {
+        "name": "El Spammer de Vamos",
+        "tagline": "Has dicho 'Vamos' más veces hoy que la mayoría de españoles en un año.",
+        "description": "Cada punto — ganes o pierdas — recibe un \"VAMOS.\" La energía se agradece... en pequeñas dosis.",
+        "redFlags": [
+          "Grita VAMOS en el resto del saque",
+          "Dice VAMOS cuando el rival mete la pelota en la red",
+          "Se le ha pillado susurrando \"vamos\" mientras se ata los cordones"
+        ],
+        "greenFlag": "Traes una energía inigualable — nunca es aburrido contigo en la pista"
+      },
+      "blameShifter": {
+        "name": "El Echador de Culpas",
+        "tagline": "Nunca eres tú. Es la pala. Las pelotas. El sol. El cristal.",
+        "description": "Nunca, en la historia del pádel, has cometido un error. La pala se resbaló. La pista estaba mojada.",
+        "redFlags": [
+          "Mira su pala después de cada error",
+          "Culpa a las pelotas, al clima y a la superficie — en ese orden",
+          "Ha dicho \"te juro que nunca fallo ese golpe\" al menos 6 veces por partido"
+        ],
+        "greenFlag": "Tu confianza es genuinamente inquebrantable — eres mentalmente fuerte"
+      },
+      "silentGrudgeHolder": {
+        "name": "El Rencoroso Silencioso",
+        "tagline": "No dices nada. Lo sientes todo.",
+        "description": "No gritas, no entrenas, no te quejas en voz alta. ¿Pero por dentro? Estás escribiendo un informe completo del partido.",
+        "redFlags": [
+          "Dice \"no hay problema\" pero absolutamente tiene problemas",
+          "Compila mentalmente un reel de errores del compañero",
+          "Escribe a su otro grupo de pádel durante el descanso"
+        ],
+        "greenFlag": "Eres el jugador más tranquilo de la pista — nunca tóxico, siempre sereno"
+      },
+      "fashionCriminal": {
+        "name": "El Criminal de la Moda",
+        "tagline": "Calcetines cortos, sin bolsillos y vibras.",
+        "description": "Llegaste a jugar pádel como si vinieras de otro deporte.",
+        "redFlags": [
+          "Lleva calcetines cortos sin vergüenza",
+          "No tiene bolsillos — siempre sujetando una pelota o pidiéndote que la sujetes",
+          "Gorra hacia atrás, orejas metidas, compromiso total con el look"
+        ],
+        "greenFlag": "Te ves bien y lo sabes — la confianza es un arma"
+      },
+      "overgripOffender": {
+        "name": "El Infractor del Overgrip",
+        "tagline": "Tu overgrip ha visto cosas. Cosas marrones.",
+        "description": "¿Cuándo fue la última vez que cambiaste tu overgrip? Sé honesto.",
+        "redFlags": [
+          "El overgrip ha adquirido un tono marrón no identificable",
+          "Usa overgrip negro específicamente para ocultar el daño",
+          "Deja residuos del grip en todo lo que toca"
+        ],
+        "greenFlag": "Tu pala tiene carácter — has acumulado horas serias en la pista"
+      },
+      "padelInfluencer": {
+        "name": "El Influencer del Pádel",
+        "tagline": "¿Jugaste de verdad si no lo publicaste?",
+        "description": "Calientas con el móvil apoyado en el cristal. El partido importa, claro, pero ¿el contenido? El contenido es todo.",
+        "redFlags": [
+          "Acelera sus reels de Instagram (se nota)",
+          "Se saca una selfie antes, durante y después del partido",
+          "Ha gritado \"espera, ¿podemos repetir eso? No estaba grabando\""
+        ],
+        "greenFlag": "Estás haciendo crecer el deporte — el pádel necesita más visibilidad"
+      },
+      "peoplePleaser": {
+        "name": "El Complaciente",
+        "tagline": "¡Perdón! Perdón. Espera — perdón otra vez.",
+        "description": "Te disculpas por todo. Preferirías perder un partido antes que arriesgarte a que tu compañero piense que estás enfadado.",
+        "redFlags": [
+          "Dice \"perdón\" más que \"vamos\"",
+          "Asume la culpa de golpes que fueron 100% culpa de su compañero",
+          "Cambia todo su juego para no incomodar a su compañero"
+        ],
+        "greenFlag": "Eres la persona más agradable de la pista — todos quieren jugar contigo"
+      },
+      "chaosAgent": {
+        "name": "El Agente del Caos",
+        "tagline": "No eres una red flag. Eres toda una carpa de circo roja.",
+        "description": "Pasas pelotas con el pie. Sacas con la pelota de reserva en la mano. No eres malicioso — eres puro y hermoso caos.",
+        "redFlags": [
+          "Pasa la pelota a su compañero con el pie como si fuera fútbol",
+          "Le han pillado sacando con la pelota de reserva en la mano no dominante",
+          "Una vez lo llamó \"paddle tennis\" y no entendió por qué todos se quedaron mirando"
+        ],
+        "greenFlag": "Eres la persona más entretenida del club — pura alegría"
+      }
+    }
   }
 }
