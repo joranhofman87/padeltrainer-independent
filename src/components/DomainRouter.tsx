@@ -63,6 +63,7 @@ const FoundingTrainers = lazy(() => import('@/pages/marketing/FoundingTrainers')
 const Playground = lazy(() => import('@/pages/marketing/Playground'));
 const RedFlagQuiz = lazy(() => import('@/pages/marketing/RedFlagQuiz'));
 const RateMyCourtPage = lazy(() => import('@/pages/marketing/RateMyCourtPage'));
+const ChallengeModePage = lazy(() => import('@/pages/marketing/ChallengeModePage'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
@@ -399,6 +400,7 @@ export function DomainRouter() {
           <Route path="playground/racket-finder" element={<RacketFinder />} />
           <Route path="playground/level-test" element={<PadelLevelTest />} />
           <Route path="playground/rate-my-court" element={<RateMyCourtPage />} />
+          <Route path="playground/challenge-mode" element={<ChallengeModePage />} />
           {/* Legacy redirects */}
           <Route path="racket-finder" element={<Navigate to="../playground/racket-finder" replace />} />
           <Route path="tools/padel-level-test" element={<Navigate to="../playground/level-test" replace />} />

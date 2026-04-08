@@ -1174,6 +1174,10 @@
     "rateMyCourt": {
       "title": "Bewerte deinen Padel-Club",
       "desc": "Bewerte deinen Club in 10 Kategorien und hilf anderen, die besten Plätze zu finden."
+    },
+    "challengeMode": {
+      "title": "Challenge Mode",
+      "desc": "Zufällige Handicaps und Trainingsherausforderungen für Übung oder Spiele."
     }
   },
   "rateMyCourtPage": {
@@ -1438,5 +1442,51 @@
     "title": "Community Bewertungen",
     "noReviews": "Noch keine Community Bewertungen. Sei der Erste!",
     "rateThisClub": "Diesen Club bewerten"
+  },
+  "challengeMode": {
+    "seo": {
+      "title": "Padel Challenge Mode",
+      "description": "Challenge mode description"
+    },
+    "title": "Challenge Mode",
+    "subtitle": "Random challenges for your padel game.",
+    "modePractice": "Übung",
+    "modeGame": "Spiel",
+    "practiceSubtitle": "Drills and skill challenges",
+    "practiceDesc": "Constraints that develop specific skills.",
+    "gameSubtitle": "Match modifiers",
+    "gameDesc": "Fun twists for real matches.",
+    "tapToStart": "Tap below to get your first challenge",
+    "nextChallenge": "Next Challenge 🎲",
+    "getChallenge": "Get Challenge 🎲",
+    "allDifficulties": "Alle",
+    "difficulty": {
+      "easy": "Easy",
+      "medium": "Medium",
+      "hard": "Hard",
+      "chaos": "Chaos"
+    },
+    "whyThisWorks": "Warum das funktioniert:",
+    "copyLink": "Copy Link",
+    "download": "Download",
+    "linkCopied": "Link kopiert!",
+    "downloadSuccess": "Bild heruntergeladen!",
+    "howToPlay": "Spielanleitung",
+    "houseRules": "Hausregeln",
+    "challengeCount": "44 challenges and counting.",
+    "suggest": {
+      "cta": "Challenge vorschlagen",
+      "title": "Challenge vorschlagen",
+      "nameLabel": "Name",
+      "descLabel": "Wie funktioniert es?",
+      "modeLabel": "Mode",
+      "diffLabel": "Schwierigkeit",
+      "skillLabel": "Welche Fähigkeit wird entwickelt?",
+      "yourName": "Dein Name",
+      "email": "Email",
+      "submit": "Absenden",
+      "success": "Danke! Wenn wir deine Challenge hinzufügen, siehst du sie im Generator.",
+      "error": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+    }
   }
 }

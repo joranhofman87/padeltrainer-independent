@@ -1174,6 +1174,10 @@
     "rateMyCourt": {
       "title": "Note ton club de padel",
       "desc": "Note ton club dans 10 catégories et aide les autres à trouver les meilleurs terrains."
+    },
+    "challengeMode": {
+      "title": "Challenge Mode",
+      "desc": "Handicaps aléatoires et défis d entraînement pour la pratique ou les matchs."
     }
   },
   "rateMyCourtPage": {
@@ -1438,5 +1442,51 @@
     "title": "Évaluations de la communauté",
     "noReviews": "Pas encore d'évaluations. Sois le premier !",
     "rateThisClub": "Évaluer ce club"
+  },
+  "challengeMode": {
+    "seo": {
+      "title": "Padel Challenge Mode",
+      "description": "Challenge mode description"
+    },
+    "title": "Challenge Mode",
+    "subtitle": "Random challenges for your padel game.",
+    "modePractice": "Entraînement",
+    "modeGame": "Match",
+    "practiceSubtitle": "Drills and skill challenges",
+    "practiceDesc": "Constraints that develop specific skills.",
+    "gameSubtitle": "Match modifiers",
+    "gameDesc": "Fun twists for real matches.",
+    "tapToStart": "Tap below to get your first challenge",
+    "nextChallenge": "Next Challenge 🎲",
+    "getChallenge": "Get Challenge 🎲",
+    "allDifficulties": "Tous",
+    "difficulty": {
+      "easy": "Easy",
+      "medium": "Medium",
+      "hard": "Hard",
+      "chaos": "Chaos"
+    },
+    "whyThisWorks": "Pourquoi ça marche :",
+    "copyLink": "Copy Link",
+    "download": "Download",
+    "linkCopied": "Lien copié !",
+    "downloadSuccess": "Image téléchargée !",
+    "howToPlay": "Comment jouer",
+    "houseRules": "Règles maison",
+    "challengeCount": "44 challenges and counting.",
+    "suggest": {
+      "cta": "Suggérer un défi",
+      "title": "Suggérer un défi",
+      "nameLabel": "Nom",
+      "descLabel": "Comment ça marche ?",
+      "modeLabel": "Mode",
+      "diffLabel": "Difficulté",
+      "skillLabel": "Quelle compétence développe-t-il ?",
+      "yourName": "Votre nom",
+      "email": "Email",
+      "submit": "Envoyer",
+      "success": "Merci ! Si nous ajoutons votre défi, vous le verrez dans le générateur.",
+      "error": "Une erreur est survenue. Veuillez réessayer."
+    }
   }
 }

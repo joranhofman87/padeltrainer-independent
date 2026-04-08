@@ -2,7 +2,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
-import { Target, AlertTriangle, BarChart3, Star } from 'lucide-react';
+import { Target, AlertTriangle, BarChart3, Star, Dices } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const tools = [
@@ -37,6 +37,14 @@ const tools = [
     to: '/playground/rate-my-court',
     colorClass: 'from-yellow-500/10 to-amber-500/10',
     icon: Star,
+  },
+  {
+    titleKey: 'playground.challengeMode.title',
+    descKey: 'playground.challengeMode.desc',
+    emoji: '🎲',
+    to: '/playground/challenge-mode',
+    colorClass: 'from-purple-500/10 to-violet-500/10',
+    icon: Dices,
   },
 ];
 

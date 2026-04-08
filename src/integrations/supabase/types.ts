@@ -1137,6 +1137,45 @@ export type Database = {
         }
         Relationships: []
       }
+      challenge_suggestions: {
+        Row: {
+          created_at: string
+          description: string
+          difficulty: string
+          id: string
+          mode: string
+          name: string
+          skill_benefit: string | null
+          status: string
+          submitter_email: string | null
+          submitter_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          difficulty?: string
+          id?: string
+          mode?: string
+          name: string
+          skill_benefit?: string | null
+          status?: string
+          submitter_email?: string | null
+          submitter_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          difficulty?: string
+          id?: string
+          mode?: string
+          name?: string
+          skill_benefit?: string | null
+          status?: string
+          submitter_email?: string | null
+          submitter_name?: string | null
+        }
+        Relationships: []
+      }
       club_followers: {
         Row: {
           club_profile_id: string

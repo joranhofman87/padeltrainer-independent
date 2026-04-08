@@ -1459,5 +1459,57 @@
     "title": "Community Ratings",
     "noReviews": "No community reviews yet. Be the first!",
     "rateThisClub": "Rate This Club"
+  },
+  "playground": {
+    "challengeMode": {
+      "title": "Challenge Mode",
+      "desc": "Random handicaps and training constraints for practice or matches. Spin and play."
+    }
+  },
+  "challengeMode": {
+    "seo": {
+      "title": "Padel Challenge Mode — Training Drills & Match Modifiers",
+      "description": "Level up your padel game with random challenges. Practice drills to build skills or match modifiers to make games more fun."
+    },
+    "title": "Challenge Mode",
+    "subtitle": "Random handicaps and training constraints. Pick your mode and spin.",
+    "modePractice": "Practice",
+    "modeGame": "Game",
+    "practiceSubtitle": "Drills and skill challenges",
+    "practiceDesc": "Constraints that develop specific skills. Not about winning, but about improving.",
+    "gameSubtitle": "Match modifiers",
+    "gameDesc": "Fun twists for real matches. Fair and competitive. Both teams play with the same rules.",
+    "tapToStart": "Tap below to get your first challenge",
+    "nextChallenge": "Next Challenge 🎲",
+    "getChallenge": "Get Challenge 🎲",
+    "allDifficulties": "All",
+    "difficulty": {
+      "easy": "Easy",
+      "medium": "Medium",
+      "hard": "Hard",
+      "chaos": "Chaos"
+    },
+    "whyThisWorks": "Why this works:",
+    "copyLink": "Copy Link",
+    "download": "Download",
+    "linkCopied": "Link copied!",
+    "downloadSuccess": "Image downloaded!",
+    "howToPlay": "How to Play",
+    "houseRules": "House Rules",
+    "challengeCount": "44 challenges and counting.",
+    "suggest": {
+      "cta": "Suggest a Challenge",
+      "title": "Suggest a Challenge",
+      "nameLabel": "Challenge name",
+      "descLabel": "How does it work?",
+      "modeLabel": "Mode",
+      "diffLabel": "Difficulty",
+      "skillLabel": "What skill does it develop?",
+      "yourName": "Your name",
+      "email": "Email",
+      "submit": "Submit Challenge",
+      "success": "Thanks! If we add your challenge, you'll see it in the generator.",
+      "error": "Something went wrong. Please try again."
+    }
   }
 }
