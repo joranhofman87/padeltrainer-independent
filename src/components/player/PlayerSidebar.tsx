@@ -40,7 +40,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Gift,
-  Target,
+  Gamepad2,
 } from "lucide-react";
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { useAuth } from "@/hooks/useAuth";
@@ -207,17 +207,17 @@ export function PlayerSidebar() {
                 </SidebarMenuButton>
                 </SidebarMenuItem>
 
-              {/* Level Test */}
+              {/* Playground */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.levelTest", "Level Test")}>
+                <SidebarMenuButton asChild tooltip={t("nav.playground", "Playground")}>
                   <a
-                    href={`/${i18n.language || 'en'}/tools/padel-level-test`}
+                    href={`/${i18n.language || 'en'}/playground`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2"
                   >
-                    <Target className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.levelTest", "Level Test")}</span>}
+                    <Gamepad2 className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.playground", "Playground")}</span>}
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
