@@ -1,64 +1,94 @@
 
 
-# Connect City Pages to Sanity CMS — Implementation Plan
+# Playground Hub + Red Flag Quiz
 
-## Prompt Assessment: Ready to implement as-is
+## What We're Building
 
-The uploaded prompt is accurate and well-aligned with the current `CityLanding.tsx` architecture. A few refinements:
+1. **Playground landing page** — a card-based hub at `/:lang/playground` showcasing all interactive tools
+2. **Red Flag Quiz** — the viral personality quiz at `/:lang/playground/red-flag-quiz`
+3. **Route migration** — move existing tools (Racket Finder, Level Test) under the playground URL namespace
+4. **Navigation update** — add "Playground" to the marketing site header
 
-### What the prompt gets right
-- Correct graceful fallback pattern (Sanity content → template-generated content)
-- Correct sections to replace (intro, FAQs, nearby cities, SEO meta, estimated clubs)
-- Correct instruction to NOT touch clubs/trainers/lessons sections (those stay data-driven)
-- Correct use of existing `PortableTextRenderer` for the intro field
+## Architecture
 
-### Small additions needed beyond the prompt
+Current tool routes:
+- `/:lang/racket-finder` → moves to `/:lang/playground/racket-finder`
+- `/:lang/tools/padel-level-test` → moves to `/:lang/playground/level-test`
 
-1. **Province in hero subtitle** — the prompt suggests showing province, but the hero subtitle currently comes from an i18n key (`cityLanding.heroSubtitle`). We should use province from Sanity when available but keep the i18n fallback.
+New routes:
+- `/:lang/playground` → hub page
+- `/:lang/playground/red-flag-quiz` → new quiz
 
-2. **Nearby cities from Sanity vs database** — currently `nearbyCities` comes from `getCitiesWithTrainers()` (database query for cities with active trainers). The Sanity `nearbyCities` field contains just 3 city names. We should: use Sanity nearby cities when available, but **also** keep showing database-driven nearby cities below them (more = better for internal linking).
-
-3. **`estimatedClubs` usage** — show Sanity's `estimatedClubs` in the hero stats ONLY when no real location data exists (`locations.length === 0`). When we have real data, real counts are always better.
-
-4. **Italian templates in `cityContent.ts`** — still needed as fallback for Italian cities not yet in Sanity. The prompt doesn't mention this but it's required for completeness.
-
----
+Old URLs get redirect routes to preserve SEO.
 
 ## Changes
 
-### 1. Add GROQ queries to `src/lib/sanity.ts`
+### 1. New: `src/pages/marketing/Playground.tsx`
+Landing page with cards for each tool:
+- Red Flag Quiz ("What's Your Padel Red Flag?")
+- Racket Finder
+- Level Test
 
-Add `CITY_PAGE_QUERY` and `ALL_CITY_SLUGS_QUERY` constants plus a `CityPage` TypeScript interface.
+Each card: icon/emoji, title, short description, CTA button. Uses `MarketingLayout` + `SEO`. Simple responsive grid (1 col mobile, 3 col desktop).
 
-### 2. Update `src/pages/marketing/CityLanding.tsx`
+### 2. New: `src/pages/marketing/RedFlagQuiz.tsx`
+Full quiz implementation following the uploaded prompt:
+- 3 phases: intro → quiz (10 questions) → results
+- Scoring system mapping answers to 8 profiles (+ hidden Chaos Agent)
+- Result card designed for Instagram Story screenshots (bold profile-specific colors, emoji, red/green flags)
+- Share buttons (copy link, WhatsApp, Twitter/X)
+- "Challenge your partner" feature via `?ref=challenge` URL param
+- Auto-advance after answer selection (0.5s delay)
+- Slide transitions between questions (reuse `AnimatePresence` pattern from existing quizzes)
+- PostHog tracking events for start/answer/complete/share
+- SEO structured data (`Quiz` schema)
+- All quiz data lives client-side in a dedicated `src/lib/redFlagQuizData.ts`
 
-- Import `sanityClient` and `CITY_PAGE_QUERY`
-- Import `PortableTextRenderer` for intro rendering
-- Add Sanity fetch to `fetchData()` alongside existing parallel queries
-- Use Sanity data for: intro (Portable Text), FAQs, nearby cities, SEO meta, province subtitle, estimated clubs fallback
-- Keep all existing club/trainer/lessons sections unchanged
+### 3. New: `src/lib/redFlagQuizData.ts`
+All 10 questions, 4 options each, profile mappings, and the 9 result profile definitions (name, emoji, tagline, description, red flags, green flag, color). Exported as typed constants.
 
-### 3. Add Italian fallback templates to `src/lib/cityContent.ts`
+### 4. New: `src/components/redflagquiz/`
+- `RedFlagQuizQuestion.tsx` — single question card with answer options
+- `RedFlagQuizResult.tsx` — the screenshot-worthy result card + share buttons below
 
-Add `it` entries to `introTemplates`, `clubIntroTemplates`, `lessonsTemplates`, and FAQ generation so Italian cities without Sanity content still get reasonable text.
+### 5. Update: `src/components/DomainRouter.tsx`
+- Add lazy imports for `Playground` and `RedFlagQuiz`
+- Add routes under `/:lang`:
+  - `playground` → Playground
+  - `playground/red-flag-quiz` → RedFlagQuiz
+  - `playground/racket-finder` → RacketFinder (existing component)
+  - `playground/level-test` → PadelLevelTest (existing component)
+- Add redirects from old paths to new playground paths
 
-### 4. Update sitemap edge function
+### 6. Update: `src/components/marketing/MarketingLayout.tsx`
+- Add "Playground" as a standalone nav link (or replace the racket-finder entry in the mega menu Content column with a Playground link)
+- Update mobile menu accordingly
 
-In `supabase/functions/sitemap/index.ts`, add a Sanity query for `cityPage` slugs to include in the cities sitemap alongside database-driven ones. This ensures all 66 Sanity cities appear even without location data.
+### 7. Update: `supabase/functions/sitemap/index.ts`
+Add `playground`, `playground/red-flag-quiz`, `playground/racket-finder`, `playground/level-test` to static pages.
 
-### 5. Update render-page edge function
+### 8. Update: `supabase/functions/render-page/index.ts`
+Add meta tags for the new playground routes.
 
-In `supabase/functions/render-page/index.ts`, fetch Sanity `cityPage` SEO fields for the `/padel/:city` route and use `seo.titleTag` / `seo.metaDescription` when available.
+### 9. Translation keys
+Add keys to all 6 language files under `marketing.json` for:
+- Playground page title/description
+- Red Flag Quiz intro, questions, profiles, share text
+- Navigation label
 
----
+### 10. Update: `public/llms.txt`
+Add playground URLs to the URL structure section.
 
-## File Summary
+## Scope Summary
 
-| File | Change |
+| Area | Files |
 |---|---|
-| `src/lib/sanity.ts` | Add `CITY_PAGE_QUERY`, `ALL_CITY_SLUGS_QUERY`, `CityPage` type |
-| `src/pages/marketing/CityLanding.tsx` | Fetch Sanity city content, use for intro/FAQs/nearby/SEO/province |
-| `src/lib/cityContent.ts` | Add `it` fallback templates |
-| `supabase/functions/sitemap/index.ts` | Query Sanity for city slugs to include in sitemap |
-| `supabase/functions/render-page/index.ts` | Fetch Sanity SEO fields for city pages |
+| New pages | 2 (Playground hub, RedFlagQuiz) |
+| New components | 2 (question + result card) |
+| New lib | 1 (quiz data) |
+| Updated routing | 1 (DomainRouter) |
+| Updated nav | 1 (MarketingLayout) |
+| Updated edge functions | 2 (sitemap, render-page) |
+| Translation files | 6 languages × marketing.json |
+| Other | llms.txt |
 
