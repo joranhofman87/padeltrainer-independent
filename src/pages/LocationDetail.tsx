@@ -294,14 +294,21 @@ export default function LocationDetail() {
       }),
       ...((location as any).phone && { "telephone": (location as any).phone }),
       ...((location as any).opening_hours && { "openingHours": (location as any).opening_hours }),
-      ...((location as any).google_rating && (location as any).google_review_count && {
+      ...((communityStats && communityStats.total_count > 0) ? {
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": communityStats.avg_overall,
+          "reviewCount": communityStats.total_count,
+          "bestRating": 5
+        }
+      } : ((location as any).google_rating && (location as any).google_review_count && {
         "aggregateRating": {
           "@type": "AggregateRating",
           "ratingValue": (location as any).google_rating,
           "reviewCount": (location as any).google_review_count,
           "bestRating": 5
         }
-      }),
+      })),
       "sport": "Padel",
       ...(location.number_of_courts && { "numberOfRooms": location.number_of_courts }),
       ...(displayDescription && { "description": displayDescription }),
