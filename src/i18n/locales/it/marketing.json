@@ -1214,12 +1214,12 @@
     "retake": "Rifai il quiz",
     "findTrainer": "Vuoi correggere le tue red flag? Trova un istruttore →",
     "q1": {
-      "title": "Il riscaldamento",
-      "scenario": "Ti stai riscaldando prima di una partita. Il tuo partner inizia a schiacciare incrociato dritto su di te. Tu...",
-      "a": "Schivi e non dici niente. ma te lo ricorderai",
-      "b": "Inizi subito a spiegargli l'etichetta del riscaldamento",
-      "c": "Gliene schiacci uno di ritorno. occhio per occhio",
-      "d": "Ridi e urli \"VAMOS!\""
+      "title": "Il momento coaching",
+      "scenario": "A metà partita, il tuo partner continua a fare lo stesso errore. Tu...",
+      "a": "Non dici niente, ma lo aggiungi mentalmente alla lista delle cose che fa male",
+      "b": "Fermi il gioco e spieghi esattamente cosa dovrebbe fare invece",
+      "c": "Ti concentri sul tuo gioco, sei qui per vincere",
+      "d": "Urli \"VAMOS!\" più forte per compensare i punti persi"
     },
     "q2": {
       "title": "Il check outfit",

@@ -1214,12 +1214,12 @@
     "retake": "Retake Quiz",
     "findTrainer": "Want to fix your red flags? Find a trainer →",
     "q1": {
-      "title": "The Warm-Up",
-      "scenario": "You're warming up before a match. Your partner starts smashing overheads cross-court right at you. You...",
-      "a": "Dodge and say nothing. you'll remember this later though",
-      "b": "Immediately start coaching them on warm-up etiquette",
-      "c": "Smash one right back at them. eye for an eye",
-      "d": "Laugh it off and yell \"VAMOS!\""
+      "title": "The Coaching Moment",
+      "scenario": "Mid-match, your partner keeps making the same mistake. You...",
+      "a": "Say nothing, but mentally add it to the list of things they do wrong",
+      "b": "Stop the game and explain exactly what they should be doing instead",
+      "c": "Just focus on your own game, you're here to win",
+      "d": "Yell \"VAMOS!\" louder to make up for the lost points"
     },
     "q2": {
       "title": "The Outfit Check",

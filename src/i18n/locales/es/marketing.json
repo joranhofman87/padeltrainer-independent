@@ -1193,12 +1193,12 @@
     "retake": "Repetir quiz",
     "findTrainer": "¿Quieres arreglar tus red flags? Encuentra un entrenador →",
     "q1": {
-      "title": "El calentamiento",
-      "scenario": "Estás calentando antes de un partido. Tu compañero empieza a rematar cruzado directo a ti. Tú...",
-      "a": "Esquivas y no dices nada. pero te acordarás de esto",
-      "b": "Empiezas a dar consejos sobre la etiqueta del calentamiento",
-      "c": "Le devuelves un remate. ojo por ojo",
-      "d": "Te ríes y gritas \"¡VAMOS!\""
+      "title": "El momento coach",
+      "scenario": "En pleno partido, tu compañero sigue cometiendo el mismo error. Tú...",
+      "a": "No dices nada, pero lo añades mentalmente a la lista de cosas que hace mal",
+      "b": "Paras el juego y le explicas exactamente lo que debería hacer",
+      "c": "Te concentras en tu propio juego, estás aquí para ganar",
+      "d": "Gritas \"¡VAMOS!\" más fuerte para compensar los puntos perdidos"
     },
     "q2": {
       "title": "El outfit",

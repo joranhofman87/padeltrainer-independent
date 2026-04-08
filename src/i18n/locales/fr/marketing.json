@@ -1193,12 +1193,12 @@
     "retake": "Refaire le quiz",
     "findTrainer": "Envie de corriger vos red flags ? Trouvez un entraîneur →",
     "q1": {
-      "title": "L'échauffement",
-      "scenario": "Vous vous échauffez avant un match. Votre partenaire commence à smasher en croisé directement sur vous. Vous...",
-      "a": "Esquivez et ne dites rien. mais vous vous en souviendrez",
-      "b": "Commencez immédiatement à leur donner des leçons sur l'étiquette de l'échauffement",
-      "c": "Smashé un en retour. œil pour œil",
-      "d": "Riez et criez \"VAMOS !\""
+      "title": "Le moment coaching",
+      "scenario": "En plein match, votre partenaire fait toujours la même erreur. Vous...",
+      "a": "Ne dites rien, mais l'ajoutez mentalement à la liste des choses qu'il fait mal",
+      "b": "Arrêtez le jeu et expliquez exactement ce qu'il devrait faire à la place",
+      "c": "Vous concentrez sur votre propre jeu, vous êtes là pour gagner",
+      "d": "Criez \"VAMOS !\" plus fort pour compenser les points perdus"
     },
     "q2": {
       "title": "Le check outfit",

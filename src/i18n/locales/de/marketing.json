@@ -1193,12 +1193,12 @@
     "retake": "Nochmal machen",
     "findTrainer": "Willst du deine Red Flags beheben? Finde einen Trainer →",
     "q1": {
-      "title": "Das Aufwärmen",
-      "scenario": "Du wärmst dich vor einem Spiel auf. Dein Partner beginnt, Schmetterbälle cross direkt auf dich zu schlagen. Du...",
-      "a": "Weichst aus und sagst nichts. aber du wirst dich daran erinnern",
-      "b": "Fängst sofort an, sie über Aufwärm-Etikette zu belehren",
-      "c": "Schmetterst einen direkt zurück. Auge um Auge",
-      "d": "Lachst es weg und rufst \"VAMOS!\""
+      "title": "Der Coaching-Moment",
+      "scenario": "Mitten im Spiel macht dein Partner immer wieder denselben Fehler. Du...",
+      "a": "Sagst nichts, fügst es aber mental zur Liste der Dinge hinzu, die sie falsch machen",
+      "b": "Stoppst das Spiel und erklärst genau, was sie stattdessen tun sollten",
+      "c": "Konzentrierst dich einfach auf dein eigenes Spiel, du bist hier um zu gewinnen",
+      "d": "Rufst \"VAMOS!\" lauter, um die verlorenen Punkte wettzumachen"
     },
     "q2": {
       "title": "Der Outfit-Check",

@@ -1214,12 +1214,12 @@
     "retake": "Opnieuw doen",
     "findTrainer": "Wil je je red flags fixen? Vind een trainer →",
     "q1": {
-      "title": "De warming-up",
-      "scenario": "Je warmt op voor een wedstrijd. Je partner begint smashes cross-court recht op je af te slaan. Jij...",
-      "a": "Ontwijkt en zegt niks. maar je onthoudt het wel",
-      "b": "Begint meteen tips te geven over warming-up etiquette",
-      "c": "Smasht er eentje recht terug. oog om oog",
-      "d": "Lacht het weg en schreeuwt \"VAMOS!\""
+      "title": "Het coachmoment",
+      "scenario": "Midden in de wedstrijd blijft je partner dezelfde fout maken. Jij...",
+      "a": "Zegt niks, maar voegt het mentaal toe aan de lijst van dingen die ze fout doen",
+      "b": "Stopt het spel en legt precies uit wat ze anders moeten doen",
+      "c": "Focust gewoon op je eigen spel, je bent hier om te winnen",
+      "d": "Schreeuwt \"VAMOS!\" harder om de verloren punten goed te maken"
     },
     "q2": {
       "title": "De outfit check",
