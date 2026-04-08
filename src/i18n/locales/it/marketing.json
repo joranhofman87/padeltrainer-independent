@@ -1195,6 +1195,10 @@
     "rateMyCourt": {
       "title": "Valuta il tuo club di padel",
       "desc": "Valuta il tuo club in 10 categorie e aiuta altri a trovare i campi migliori."
+    },
+    "challengeMode": {
+      "title": "Challenge Mode",
+      "desc": "Handicap casuali e sfide di allenamento per pratica o partite."
     }
   },
   "rateMyCourtPage": {
@@ -1459,5 +1463,51 @@
     "title": "Valutazioni della community",
     "noReviews": "Ancora nessuna valutazione. Sii il primo!",
     "rateThisClub": "Valuta questo club"
+  },
+  "challengeMode": {
+    "seo": {
+      "title": "Padel Challenge Mode",
+      "description": "Challenge mode description"
+    },
+    "title": "Challenge Mode",
+    "subtitle": "Random challenges for your padel game.",
+    "modePractice": "Pratica",
+    "modeGame": "Partita",
+    "practiceSubtitle": "Drills and skill challenges",
+    "practiceDesc": "Constraints that develop specific skills.",
+    "gameSubtitle": "Match modifiers",
+    "gameDesc": "Fun twists for real matches.",
+    "tapToStart": "Tap below to get your first challenge",
+    "nextChallenge": "Next Challenge 🎲",
+    "getChallenge": "Get Challenge 🎲",
+    "allDifficulties": "Tutti",
+    "difficulty": {
+      "easy": "Easy",
+      "medium": "Medium",
+      "hard": "Hard",
+      "chaos": "Chaos"
+    },
+    "whyThisWorks": "Perché funziona:",
+    "copyLink": "Copy Link",
+    "download": "Download",
+    "linkCopied": "Link copiato!",
+    "downloadSuccess": "Immagine scaricata!",
+    "howToPlay": "Come giocare",
+    "houseRules": "Regole della casa",
+    "challengeCount": "44 challenges and counting.",
+    "suggest": {
+      "cta": "Suggerisci una sfida",
+      "title": "Suggerisci una sfida",
+      "nameLabel": "Nome",
+      "descLabel": "Come funziona?",
+      "modeLabel": "Mode",
+      "diffLabel": "Difficoltà",
+      "skillLabel": "Quale abilità sviluppa?",
+      "yourName": "Il tuo nome",
+      "email": "Email",
+      "submit": "Invia",
+      "success": "Grazie! Se aggiungiamo la tua sfida, la vedrai nel generatore.",
+      "error": "Qualcosa è andato storto. Riprova."
+    }
   }
 }

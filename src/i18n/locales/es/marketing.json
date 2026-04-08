@@ -1174,6 +1174,10 @@
     "rateMyCourt": {
       "title": "Valora tu club de pádel",
       "desc": "Valora tu club en 10 categorías y ayuda a otros a encontrar las mejores pistas."
+    },
+    "challengeMode": {
+      "title": "Challenge Mode",
+      "desc": "Handicaps aleatorios y desafíos de entrenamiento para práctica o partidos."
     }
   },
   "rateMyCourtPage": {
@@ -1438,5 +1442,51 @@
     "title": "Valoraciones de la comunidad",
     "noReviews": "Aún no hay valoraciones. ¡Sé el primero!",
     "rateThisClub": "Valorar este club"
+  },
+  "challengeMode": {
+    "seo": {
+      "title": "Padel Challenge Mode",
+      "description": "Challenge mode description"
+    },
+    "title": "Challenge Mode",
+    "subtitle": "Random challenges for your padel game.",
+    "modePractice": "Práctica",
+    "modeGame": "Partido",
+    "practiceSubtitle": "Drills and skill challenges",
+    "practiceDesc": "Constraints that develop specific skills.",
+    "gameSubtitle": "Match modifiers",
+    "gameDesc": "Fun twists for real matches.",
+    "tapToStart": "Tap below to get your first challenge",
+    "nextChallenge": "Next Challenge 🎲",
+    "getChallenge": "Get Challenge 🎲",
+    "allDifficulties": "Todos",
+    "difficulty": {
+      "easy": "Easy",
+      "medium": "Medium",
+      "hard": "Hard",
+      "chaos": "Chaos"
+    },
+    "whyThisWorks": "Por qué funciona:",
+    "copyLink": "Copy Link",
+    "download": "Download",
+    "linkCopied": "¡Enlace copiado!",
+    "downloadSuccess": "¡Imagen descargada!",
+    "howToPlay": "Cómo jugar",
+    "houseRules": "Reglas de la casa",
+    "challengeCount": "44 challenges and counting.",
+    "suggest": {
+      "cta": "Sugiere un desafío",
+      "title": "Sugiere un desafío",
+      "nameLabel": "Nombre",
+      "descLabel": "¿Cómo funciona?",
+      "modeLabel": "Mode",
+      "diffLabel": "Dificultad",
+      "skillLabel": "¿Qué habilidad desarrolla?",
+      "yourName": "Tu nombre",
+      "email": "Email",
+      "submit": "Enviar",
+      "success": "¡Gracias! Si añadimos tu desafío, lo verás en el generador.",
+      "error": "Algo salió mal. Inténtalo de nuevo."
+    }
   }
 }

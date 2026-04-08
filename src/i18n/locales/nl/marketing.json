@@ -1195,6 +1195,10 @@
     "rateMyCourt": {
       "title": "Beoordeel je padelclub",
       "desc": "Beoordeel je club op 10 categorieën en help anderen de beste banen te vinden."
+    },
+    "challengeMode": {
+      "title": "Challenge Mode",
+      "desc": "Willekeurige handicaps en trainingsuitdagingen voor oefening of wedstrijden."
     }
   },
   "rateMyCourtPage": {
@@ -1459,5 +1463,51 @@
     "title": "Community beoordelingen",
     "noReviews": "Nog geen community beoordelingen. Wees de eerste!",
     "rateThisClub": "Beoordeel deze club"
+  },
+  "challengeMode": {
+    "seo": {
+      "title": "Padel Challenge Mode",
+      "description": "Challenge mode description"
+    },
+    "title": "Challenge Mode",
+    "subtitle": "Random challenges for your padel game.",
+    "modePractice": "Oefenen",
+    "modeGame": "Wedstrijd",
+    "practiceSubtitle": "Drills and skill challenges",
+    "practiceDesc": "Constraints that develop specific skills.",
+    "gameSubtitle": "Match modifiers",
+    "gameDesc": "Fun twists for real matches.",
+    "tapToStart": "Tap below to get your first challenge",
+    "nextChallenge": "Next Challenge 🎲",
+    "getChallenge": "Get Challenge 🎲",
+    "allDifficulties": "Alle",
+    "difficulty": {
+      "easy": "Easy",
+      "medium": "Medium",
+      "hard": "Hard",
+      "chaos": "Chaos"
+    },
+    "whyThisWorks": "Waarom dit werkt:",
+    "copyLink": "Copy Link",
+    "download": "Download",
+    "linkCopied": "Link gekopieerd!",
+    "downloadSuccess": "Afbeelding gedownload!",
+    "howToPlay": "Hoe te spelen",
+    "houseRules": "Huisregels",
+    "challengeCount": "44 challenges and counting.",
+    "suggest": {
+      "cta": "Stel een uitdaging voor",
+      "title": "Stel een uitdaging voor",
+      "nameLabel": "Naam",
+      "descLabel": "Hoe werkt het?",
+      "modeLabel": "Mode",
+      "diffLabel": "Moeilijkheid",
+      "skillLabel": "Welke vaardigheid ontwikkelt het?",
+      "yourName": "Je naam",
+      "email": "Email",
+      "submit": "Verstuur",
+      "success": "Bedankt! Als we je uitdaging toevoegen, zie je het in de generator.",
+      "error": "Er ging iets mis. Probeer het opnieuw."
+    }
   }
 }
