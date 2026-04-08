@@ -1,6 +1,7 @@
 import { Challenge, DIFFICULTY_COLORS } from '@/lib/challengeModeData';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import logoDark from '@/assets/logo-dark.svg';
 
 interface ChallengeCardProps {
   challenge: Challenge;
