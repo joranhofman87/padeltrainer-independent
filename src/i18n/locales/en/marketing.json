@@ -907,7 +907,7 @@
     "start": "Start Quiz",
     "back": "← Back",
     "seo": {
-      "title": "Padel Racket Finder — Find Your Perfect Racket",
+      "title": "Padel Racket Finder | Find Your Perfect Racket",
       "description": "Answer 5 quick questions and we'll recommend the perfect padel racket for your level, playing style, and budget."
     },
     "q1": "What's your padel level?",
@@ -943,7 +943,7 @@
       "round": "Round (maximum control)",
       "teardrop": "Teardrop (balance of control & power)",
       "diamond": "Diamond (maximum power)",
-      "any": "Not sure — recommend for me"
+      "any": "Not sure. recommend for me"
     },
     "results": {
       "title": "Your Perfect Racket Match",
@@ -960,7 +960,7 @@
   },
   "gear": {
     "listing": {
-      "title": "Best Padel Rackets 2026 — Compare & Choose",
+      "title": "Best Padel Rackets 2026 | Compare & Choose",
       "description": "Browse and compare all padel rackets. Filter by level, playing style, shape, weight, and price to find your perfect match.",
       "h1": "Padel Rackets",
       "subtitle": "Find and compare the best padel rackets for every level and playing style.",
@@ -1117,11 +1117,11 @@
     "findCoach": "Find a Coach"
   },
   "foundingTrainers": {
-    "pageTitle": "Founding 100 Trainers — Free Premium Racket",
+    "pageTitle": "Founding 100 Trainers | Free Premium Racket",
     "metaDescription": "Be one of the first 100 padel coaches on PadelTrainer.ai and receive a free premium racket worth €275+. Sign up for the Founding Trainer Annual plan at €349/year.",
     "badge": "Only 100 Spots Available",
     "headline": "Become a Founding Trainer",
-    "subheadline": "Join the first 100 coaches shaping the future of padel — and get a premium racket worth €275+ on us.",
+    "subheadline": "Join the first 100 coaches shaping the future of padel. and get a premium racket worth €275+ on us.",
     "cta": "Claim Your Spot",
     "spotsClaimed": "spots claimed",
     "spotsRemaining": "remaining",
@@ -1137,7 +1137,7 @@
     "step1": "Sign up for the Founding Trainer Annual plan (€349/year)",
     "step2": "Set up your trainer profile and start accepting bookings",
     "step3": "Complete 5 bookings to qualify for your racket",
-    "step4": "Choose your premium racket — delivered to your door",
+    "step4": "Choose your premium racket. delivered to your door",
     "valueTitle": "The Value Breakdown",
     "valueRacket": "Racket value",
     "valuePlan": "Professional plan (12 months)",
@@ -1167,7 +1167,7 @@
     "finalCtaTitle": "Ready to Become a Founding Trainer?",
     "finalCtaSub": "Only {{count}} spots remaining",
     "finalCtaButton": "Become a Founding Trainer",
-    "bannerText": "Founding 100 Trainers — Get a FREE premium racket worth €275+"
+    "bannerText": "Founding 100 Trainers. Get a FREE premium racket worth €275+"
   },
   "megamenu": {
     "playgroundDesc": "Quizzes, tools & fun"
@@ -1177,7 +1177,7 @@
     "subtitle": "Fun quizzes, tools, and interactive experiences for padel lovers.",
     "playNow": "Play Now →",
     "seo": {
-      "title": "Padel Playground — Fun Quizzes & Tools | PadelTrainer.ai",
+      "title": "Padel Playground | Fun Quizzes & Tools | PadelTrainer.ai",
       "description": "Take fun padel quizzes, find your perfect racket, and test your level. Interactive tools for padel players."
     },
     "redFlagQuiz": {
@@ -1195,8 +1195,8 @@
   },
   "redFlagQuiz": {
     "seo": {
-      "title": "What's Your Padel Red Flag? | Fun Quiz — PadelTrainer.ai",
-      "description": "Every padel player has a red flag. Take this 2-minute quiz to find out yours — and challenge your padel partner to take it too."
+      "title": "What's Your Padel Red Flag? | Fun Quiz | PadelTrainer.ai",
+      "description": "Every padel player has a red flag. Take this 2-minute quiz to find out yours. and challenge your padel partner to take it too."
     },
     "intro": {
       "title": "What's Your Padel Red Flag?",
@@ -1214,27 +1214,27 @@
     "retake": "Retake Quiz",
     "findTrainer": "Want to fix your red flags? Find a trainer →",
     "q1": {
-      "title": "The Warm-Up",
-      "scenario": "You're warming up before a match. Your partner starts smashing overheads cross-court right at you. You...",
-      "a": "Dodge and say nothing — you'll remember this later though",
-      "b": "Immediately start coaching them on warm-up etiquette",
-      "c": "Smash one right back at them — eye for an eye",
-      "d": "Laugh it off and yell \"VAMOS!\""
+      "title": "The Coaching Moment",
+      "scenario": "Mid-match, your partner keeps making the same mistake. You...",
+      "a": "Say nothing, but mentally add it to the list of things they do wrong",
+      "b": "Stop the game and explain exactly what they should be doing instead",
+      "c": "Just focus on your own game, you're here to win",
+      "d": "Yell \"VAMOS!\" louder to make up for the lost points"
     },
     "q2": {
       "title": "The Outfit Check",
       "scenario": "You show up to a match. What are you wearing?",
-      "a": "Full matching kit, long socks, fresh overgrip — looking sponsored",
+      "a": "Full matching kit, long socks, fresh overgrip. looking sponsored",
       "b": "Whatever was clean... ankle socks, no pockets, it's fine",
       "c": "Decent gear but honestly your overgrip hasn't been changed in weeks",
-      "d": "Pockets loaded with balls, towel on the fence, water bottle placed perfectly — I'm ready"
+      "d": "Pockets loaded with balls, towel on the fence, water bottle placed perfectly. I'm ready"
     },
     "q3": {
       "title": "The Short Lob",
       "scenario": "Your partner hits a short lob. The opponents smash it right at you. Your partner says 'it's alright.' You...",
       "a": "Say nothing, but you're absolutely keeping score in your head",
       "b": "Explain to them exactly why the lob was too short and what the correct shot would have been",
-      "c": "Say \"no worries!\" even though you got destroyed — you're the nice one",
+      "c": "Say \"no worries!\" even though you got destroyed. you're the nice one",
       "d": "Stare at your racket like it personally betrayed you"
     },
     "q4": {
@@ -1243,12 +1243,12 @@
       "a": "You always carry both balls because you learned long ago not to rely on anyone",
       "b": "Your shorts don't have pockets so... this is awkward",
       "c": "You kick the ball across the court to them like a football",
-      "d": "You roll it on the ground — let their back suffer, not yours"
+      "d": "You roll it on the ground. let their back suffer, not yours"
     },
     "q5": {
       "title": "The Big Point",
       "scenario": "You win a crucial point. Your immediate reaction:",
-      "a": "\"VAMOOOOS!\" — full volume, fist pump, the whole show",
+      "a": "\"VAMOOOOS!\". full volume, fist pump, the whole show",
       "b": "Tactical racket tap with your partner, nod, refocus",
       "c": "Start giving your partner instructions for the next point before they've even celebrated",
       "d": "Film yourself for the Instagram Story you're posting later"
@@ -1256,7 +1256,7 @@
     "q6": {
       "title": "The Mistake",
       "scenario": "You hit the ball straight into the net on an easy volley. You...",
-      "a": "Stare at your racket in disbelief — clearly the racket's fault",
+      "a": "Stare at your racket in disbelief. clearly the racket's fault",
       "b": "Say \"sorry!\" three times even though your partner says it's fine",
       "c": "Immediately tell your partner what THEY should have done differently that point",
       "d": "Say nothing. Literally nothing. Dead silence"
@@ -1264,16 +1264,16 @@
     "q7": {
       "title": "The Post-Match Analysis",
       "scenario": "The match is over. You lost. What's the conversation?",
-      "a": "You break down every single point that went wrong — a full tactical review no one asked for",
+      "a": "You break down every single point that went wrong. a full tactical review no one asked for",
       "b": "\"Good game!\" then immediately text your other padel group to find a better partner",
       "c": "Already editing your match highlights for Instagram",
-      "d": "Blame the balls, the court, the sun, the glass — anything but yourself"
+      "d": "Blame the balls, the court, the sun, the glass. anything but yourself"
     },
     "q8": {
       "title": "The Overgrip Situation",
       "scenario": "Someone points out your overgrip is looking... rough. You...",
       "a": "What's an overgrip?",
-      "b": "It's a black overgrip so you can't tell — that's the whole point",
+      "b": "It's a black overgrip so you can't tell. that's the whole point",
       "c": "Change it right away and offer your partner a fresh one too",
       "d": "Tell them the worn-in grip gives you \"more feel\""
     },
@@ -1282,7 +1282,7 @@
       "scenario": "Your regular partner can't make it. A stranger wants to fill in. You...",
       "a": "Immediately start coaching them on your preferred formations",
       "b": "Play along, say nothing when they mess up, silently judge everything",
-      "c": "Don't care who it is — you're here to win",
+      "c": "Don't care who it is. you're here to win",
       "d": "Spend more time introducing yourself and taking a pre-match selfie"
     },
     "q10": {
@@ -1297,24 +1297,24 @@
       "sidelineCoach": {
         "name": "The Sideline Coach",
         "tagline": "You're not a coach, but you play one on the padel court.",
-        "description": "You can't help it — you see a fixable mistake and you HAVE to say something.",
+        "description": "You can't help it. you see a fixable mistake and you HAVE to say something.",
         "redFlags": [
           "Gives unsolicited tactical advice mid-rally",
           "Does a full post-match analysis no one asked for",
           "Tells their partner where to stand, what to hit, and how to breathe"
         ],
-        "greenFlag": "You actually know the game well — you'd make a great real coach"
+        "greenFlag": "You actually know the game well. you'd make a great real coach"
       },
       "vamosSpammer": {
         "name": "The Vamos Spammer",
         "tagline": "You've said 'Vamos' more times today than most Spaniards say in a year.",
-        "description": "Every point — win or lose — gets a \"VAMOS.\" The energy is appreciated... in small doses.",
+        "description": "Every point, win or lose, gets a \"VAMOS.\" The energy is appreciated... in small doses.",
         "redFlags": [
           "Screams VAMOS on the serve return",
           "Says VAMOS when the opponent hits it into the net",
           "Has been known to whisper \"vamos\" while tying their shoes"
         ],
-        "greenFlag": "You bring unmatched hype energy — the court is never boring with you"
+        "greenFlag": "You bring unmatched hype energy. the court is never boring with you"
       },
       "blameShifter": {
         "name": "The Blame Shifter",
@@ -1322,10 +1322,10 @@
         "description": "You have never, in the history of padel, made a mistake. The racket slipped. The court was wet. The balls were dead.",
         "redFlags": [
           "Stares at their racket after every mistake",
-          "Blames the balls, the weather, and the court surface — in that order",
+          "Blames the balls, the weather, and the court surface. in that order",
           "Has said \"I swear I never miss that shot\" at least 6 times per match"
         ],
-        "greenFlag": "Your confidence is genuinely unshakable — you're mentally strong"
+        "greenFlag": "Your confidence is genuinely unshakable. you're mentally strong"
       },
       "silentGrudgeHolder": {
         "name": "The Silent Grudge Holder",
@@ -1336,7 +1336,7 @@
           "Mentally compiles a highlight reel of partner mistakes",
           "Texts their other padel group during the water break"
         ],
-        "greenFlag": "You're the calmest player on court — never toxic, always composed"
+        "greenFlag": "You're the calmest player on court. never toxic, always composed"
       },
       "fashionCriminal": {
         "name": "The Fashion Criminal",
@@ -1344,10 +1344,10 @@
         "description": "You showed up to play padel looking like you wandered in from a different sport.",
         "redFlags": [
           "Wears ankle socks without shame",
-          "Has zero pockets — always holding a ball or asking you to hold one",
+          "Has zero pockets. always holding a ball or asking you to hold one",
           "Backward cap, ears tucked, full commitment to the look"
         ],
-        "greenFlag": "You look good and you know it — confidence is a weapon"
+        "greenFlag": "You look good and you know it. confidence is a weapon"
       },
       "overgripOffender": {
         "name": "The Overgrip Offender",
@@ -1358,7 +1358,7 @@
           "Uses black overgrip specifically to hide the damage",
           "Leaves grip residue on everything they touch"
         ],
-        "greenFlag": "Your racket has character — you've put in serious court hours"
+        "greenFlag": "Your racket has character. you've put in serious court hours"
       },
       "padelInfluencer": {
         "name": "The Padel Influencer",
@@ -1369,29 +1369,29 @@
           "Takes a selfie before, during, and after the match",
           "Has yelled \"wait, can we replay that? I wasn't recording\""
         ],
-        "greenFlag": "You're growing the sport — padel needs more visibility"
+        "greenFlag": "You're growing the sport. padel needs more visibility"
       },
       "peoplePleaser": {
         "name": "The People Pleaser",
-        "tagline": "Sorry! Sorry. Wait — sorry again.",
+        "tagline": "Sorry! Sorry. Wait... sorry again.",
         "description": "You apologize for everything. You'd rather lose a match than risk your partner thinking you're upset.",
         "redFlags": [
           "Says \"sorry\" more than \"vamos\"",
           "Takes the blame for shots that were 100% their partner's fault",
           "Changes their entire game to avoid making their partner uncomfortable"
         ],
-        "greenFlag": "You're the nicest person on court — everyone wants to play with you"
+        "greenFlag": "You're the nicest person on court. everyone wants to play with you"
       },
       "chaosAgent": {
         "name": "The Chaos Agent",
         "tagline": "You're not a red flag. You're a whole red circus tent.",
-        "description": "You kick balls across the court. You serve with the spare ball in your hand. You're not malicious — you're just pure, beautiful chaos.",
+        "description": "You kick balls across the court. You serve with the spare ball in your hand. You're not malicious. you're just pure, beautiful chaos.",
         "redFlags": [
           "Kicks the ball to their partner like a football",
           "Has been caught serving with the spare ball in their non-dominant hand",
           "Once called it \"paddle tennis\" and didn't understand why everyone stared"
         ],
-        "greenFlag": "You're the most entertaining person at the club — pure joy"
+        "greenFlag": "You're the most entertaining person at the club. pure joy"
       }
     }
   }

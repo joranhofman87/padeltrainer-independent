@@ -894,11 +894,11 @@
   "quiz": {
     "title": "Finde Deinen Perfekten Padel Schläger",
     "subtitle": "Beantworte 5 kurze Fragen",
-    "intro": "Nicht sicher, welchen Padelschläger du kaufen sollst? Unser Schläger-Finder Quiz findet den idealen Schläger basierend auf deinem Spielniveau, Stil, Budget und körperlichen Bedürfnissen. Ob Anfänger auf der Suche nach dem ersten Schläger oder Fortgeschrittener beim Upgrade — wir zeigen dir die richtige Richtung.",
+    "intro": "Nicht sicher, welchen Padelschläger du kaufen sollst? Unser Schläger-Finder Quiz findet den idealen Schläger basierend auf deinem Spielniveau, Stil, Budget und körperlichen Bedürfnissen. Ob Anfänger auf der Suche nach dem ersten Schläger oder Fortgeschrittener beim Upgrade. wir zeigen dir die richtige Richtung.",
     "start": "Quiz Starten",
     "back": "← Zurück",
     "seo": {
-      "title": "Padel Schläger Finder — Finde Deinen Perfekten Schläger",
+      "title": "Padel Schläger Finder | Finde Deinen Perfekten Schläger",
       "description": "Beantworte 5 kurze Fragen und wir empfehlen dir den perfekten Padelschläger für dein Level, deinen Spielstil und dein Budget."
     },
     "q1": "Was ist dein Padel Level?",
@@ -934,7 +934,7 @@
       "round": "Rund (maximale Kontrolle)",
       "teardrop": "Tropfen (Balance aus Kontrolle & Power)",
       "diamond": "Diamant (maximale Power)",
-      "any": "Nicht sicher — empfiehl mir"
+      "any": "Nicht sicher. empfiehl mir"
     },
     "results": {
       "title": "Dein Perfekter Schläger",
@@ -951,7 +951,7 @@
   },
   "gear": {
     "listing": {
-      "title": "Beste Padel Schläger 2026 — Vergleichen & Wählen",
+      "title": "Beste Padel Schläger 2026 | Vergleichen & Wählen",
       "description": "Alle Padel Schläger durchsuchen und vergleichen. Filtere nach Level, Spielstil, Form, Gewicht und Preis.",
       "h1": "Padel Schläger",
       "subtitle": "Finde und vergleiche die besten Padel Schläger für jedes Level und jeden Spielstil.",
@@ -1096,11 +1096,11 @@
     "findCoach": "Trainer finden"
   },
   "foundingTrainers": {
-    "pageTitle": "Founding 100 Trainer — Kostenloses Premium-Racket",
+    "pageTitle": "Founding 100 Trainer | Kostenloses Premium-Racket",
     "metaDescription": "Sei einer der ersten 100 Padeltrainer auf PadelTrainer.ai und erhalte ein kostenloses Premium-Racket im Wert von €275+.",
     "badge": "Nur 100 Plätze verfügbar",
     "headline": "Werde Founding Trainer",
-    "subheadline": "Schließe dich den ersten 100 Trainern an, die die Zukunft des Padel gestalten — und erhalte ein Premium-Racket im Wert von €275+ gratis.",
+    "subheadline": "Schließe dich den ersten 100 Trainern an, die die Zukunft des Padel gestalten. und erhalte ein Premium-Racket im Wert von €275+ gratis.",
     "cta": "Sichere deinen Platz",
     "spotsClaimed": "Plätze vergeben",
     "spotsRemaining": "verfügbar",
@@ -1116,7 +1116,7 @@
     "step1": "Melde dich für den Founding Trainer Jahresplan an (€349/Jahr)",
     "step2": "Richte dein Trainerprofil ein und beginne Buchungen anzunehmen",
     "step3": "Schließe 5 Buchungen ab, um dein Racket zu erhalten",
-    "step4": "Wähle dein Premium-Racket — Lieferung an deine Tür",
+    "step4": "Wähle dein Premium-Racket. Lieferung an deine Tür",
     "valueTitle": "Die Wertübersicht",
     "valueRacket": "Racket-Wert",
     "valuePlan": "Professional Plan (12 Monate)",
@@ -1146,7 +1146,7 @@
     "finalCtaTitle": "Bereit, Founding Trainer zu werden?",
     "finalCtaSub": "Nur noch {{count}} Plätze verfügbar",
     "finalCtaButton": "Werde Founding Trainer",
-    "bannerText": "Founding 100 Trainer — Erhalte ein KOSTENLOSES Premium-Racket im Wert von €275+"
+    "bannerText": "Founding 100 Trainer. Erhalte ein KOSTENLOSES Premium-Racket im Wert von €275+"
   },
   "megamenu": {
     "playgroundDesc": "Quizze, Tools & Spaß"
@@ -1156,7 +1156,7 @@
     "subtitle": "Lustige Quizze, Tools und interaktive Erlebnisse für Padel-Liebhaber.",
     "playNow": "Jetzt spielen →",
     "seo": {
-      "title": "Padel Playground — Quizze & Tools | PadelTrainer.ai",
+      "title": "Padel Playground | Quizze & Tools | PadelTrainer.ai",
       "description": "Mache lustige Padel-Quizze, finde deinen perfekten Schläger und teste dein Level."
     },
     "redFlagQuiz": {
@@ -1174,7 +1174,7 @@
   },
   "redFlagQuiz": {
     "seo": {
-      "title": "Was ist deine Padel Red Flag? | Lustiges Quiz — PadelTrainer.ai",
+      "title": "Was ist deine Padel Red Flag? | Lustiges Quiz | PadelTrainer.ai",
       "description": "Jeder Padel-Spieler hat eine Red Flag. Mache dieses 2-Minuten-Quiz und finde deine heraus."
     },
     "intro": {
@@ -1193,27 +1193,27 @@
     "retake": "Nochmal machen",
     "findTrainer": "Willst du deine Red Flags beheben? Finde einen Trainer →",
     "q1": {
-      "title": "Das Aufwärmen",
-      "scenario": "Du wärmst dich vor einem Spiel auf. Dein Partner beginnt, Schmetterbälle cross direkt auf dich zu schlagen. Du...",
-      "a": "Weichst aus und sagst nichts — aber du wirst dich daran erinnern",
-      "b": "Fängst sofort an, sie über Aufwärm-Etikette zu belehren",
-      "c": "Schmetterst einen direkt zurück — Auge um Auge",
-      "d": "Lachst es weg und rufst \"VAMOS!\""
+      "title": "Der Coaching-Moment",
+      "scenario": "Mitten im Spiel macht dein Partner immer wieder denselben Fehler. Du...",
+      "a": "Sagst nichts, fügst es aber mental zur Liste der Dinge hinzu, die sie falsch machen",
+      "b": "Stoppst das Spiel und erklärst genau, was sie stattdessen tun sollten",
+      "c": "Konzentrierst dich einfach auf dein eigenes Spiel, du bist hier um zu gewinnen",
+      "d": "Rufst \"VAMOS!\" lauter, um die verlorenen Punkte wettzumachen"
     },
     "q2": {
       "title": "Der Outfit-Check",
       "scenario": "Du kommst zum Spiel. Was trägst du?",
-      "a": "Komplett abgestimmtes Outfit, lange Socken, frischer Overgrip — sieht gesponsert aus",
+      "a": "Komplett abgestimmtes Outfit, lange Socken, frischer Overgrip. sieht gesponsert aus",
       "b": "Was sauber war... Knöchelsocken, keine Taschen, passt schon",
       "c": "Ordentliche Kleidung, aber ehrlich gesagt wurde dein Overgrip seit Wochen nicht gewechselt",
-      "d": "Taschen voll Bälle, Handtuch am Zaun, Wasserflasche perfekt platziert — ich bin bereit"
+      "d": "Taschen voll Bälle, Handtuch am Zaun, Wasserflasche perfekt platziert. ich bin bereit"
     },
     "q3": {
       "title": "Der kurze Lob",
       "scenario": "Dein Partner schlägt einen kurzen Lob. Die Gegner schmettern ihn direkt auf dich. Dein Partner sagt 'passt schon.' Du...",
       "a": "Sagst nichts, aber du führst absolut eine mentale Strichliste",
       "b": "Erklärst genau, warum der Lob zu kurz war und was der richtige Schlag gewesen wäre",
-      "c": "Sagst \"kein Problem!\" obwohl du gerade zerstört wurdest — du bist der Nette",
+      "c": "Sagst \"kein Problem!\" obwohl du gerade zerstört wurdest. du bist der Nette",
       "d": "Starrst deinen Schläger an, als hätte er dich persönlich verraten"
     },
     "q4": {
@@ -1222,12 +1222,12 @@
       "a": "Du hast immer beide Bälle, weil du gelernt hast, dich auf niemanden zu verlassen",
       "b": "Deine Shorts haben keine Taschen, also... das ist peinlich",
       "c": "Du kickst den Ball wie einen Fußball rüber",
-      "d": "Du rollst ihn über den Boden — soll deren Rücken leiden"
+      "d": "Du rollst ihn über den Boden. soll deren Rücken leiden"
     },
     "q5": {
       "title": "Der große Punkt",
       "scenario": "Du gewinnst einen entscheidenden Punkt. Deine sofortige Reaktion:",
-      "a": "\"VAMOOOOS!\" — volle Lautstärke, Faust in die Luft, die volle Show",
+      "a": "\"VAMOOOOS!\". volle Lautstärke, Faust in die Luft, die volle Show",
       "b": "Taktisches Schläger-Tippen mit deinem Partner, Nicken, Fokus zurück",
       "c": "Gibst deinem Partner sofort Anweisungen für den nächsten Punkt, bevor sie überhaupt gefeiert haben",
       "d": "Filmst dich für die Instagram-Story, die du später postest"
@@ -1235,7 +1235,7 @@
     "q6": {
       "title": "Der Fehler",
       "scenario": "Du schlägst den Ball bei einem einfachen Volley direkt ins Netz. Du...",
-      "a": "Starrst ungläubig auf deinen Schläger — eindeutig seine Schuld",
+      "a": "Starrst ungläubig auf deinen Schläger. eindeutig seine Schuld",
       "b": "Sagst dreimal \"Entschuldigung!\" obwohl dein Partner sagt, es ist okay",
       "c": "Sagst deinem Partner sofort, was SIE in dem Punkt anders hätten machen sollen",
       "d": "Sagst nichts. Buchstäblich nichts. Totenstille"
@@ -1243,16 +1243,16 @@
     "q7": {
       "title": "Die Post-Match-Analyse",
       "scenario": "Das Spiel ist vorbei. Du hast verloren. Wie sieht das Gespräch aus?",
-      "a": "Du analysierst jeden einzelnen Punkt, der schief lief — eine komplette taktische Analyse, die niemand wollte",
+      "a": "Du analysierst jeden einzelnen Punkt, der schief lief. eine komplette taktische Analyse, die niemand wollte",
       "b": "\"Gutes Spiel!\" und dann sofort der anderen Padel-Gruppe schreiben, um einen besseren Partner zu finden",
       "c": "Bearbeitest bereits deine Match-Highlights für Instagram",
-      "d": "Gibst den Bällen, dem Platz, der Sonne, dem Glas die Schuld — alles außer dir selbst"
+      "d": "Gibst den Bällen, dem Platz, der Sonne, dem Glas die Schuld. alles außer dir selbst"
     },
     "q8": {
       "title": "Die Overgrip-Situation",
       "scenario": "Jemand bemerkt, dass dein Overgrip... abgenutzt aussieht. Du...",
       "a": "Was ist ein Overgrip?",
-      "b": "Es ist ein schwarzer Overgrip, also sieht man es nicht — das ist der Punkt",
+      "b": "Es ist ein schwarzer Overgrip, also sieht man es nicht. das ist der Punkt",
       "c": "Wechselst ihn sofort und bietest deinem Partner auch einen frischen an",
       "d": "Sagst ihnen, der abgenutzte Griff gibt dir \"mehr Gefühl\""
     },
@@ -1261,7 +1261,7 @@
       "scenario": "Dein regulärer Partner kann nicht kommen. Ein Fremder möchte einspringen. Du...",
       "a": "Fängst sofort an, deine bevorzugten Aufstellungen zu erklären",
       "b": "Spielst mit, sagst nichts bei Fehlern, urteilst still über alles",
-      "c": "Egal wer es ist — du bist hier um zu gewinnen",
+      "c": "Egal wer es ist. du bist hier um zu gewinnen",
       "d": "Verbringst mehr Zeit damit, dich vorzustellen und ein Pre-Match-Selfie zu machen"
     },
     "q10": {
@@ -1276,24 +1276,24 @@
       "sidelineCoach": {
         "name": "Der Seitenlinien-Coach",
         "tagline": "Du bist kein Trainer, aber du spielst einen auf dem Padel-Platz.",
-        "description": "Du kannst nicht anders — du siehst einen korrigierbaren Fehler und du MUSST etwas sagen.",
+        "description": "Du kannst nicht anders. du siehst einen korrigierbaren Fehler und du MUSST etwas sagen.",
         "redFlags": [
           "Gibt ungefragt taktische Ratschläge mitten im Rally",
           "Macht eine komplette Post-Match-Analyse, die niemand wollte",
           "Sagt dem Partner, wo er stehen soll, was er schlagen soll und wie er atmen soll"
         ],
-        "greenFlag": "Du kennst das Spiel wirklich gut — du wärst ein großartiger echter Trainer"
+        "greenFlag": "Du kennst das Spiel wirklich gut. du wärst ein großartiger echter Trainer"
       },
       "vamosSpammer": {
         "name": "Der Vamos-Spammer",
         "tagline": "Du hast heute öfter 'Vamos' gesagt als die meisten Spanier in einem Jahr.",
-        "description": "Jeder Punkt — gewonnen oder verloren — bekommt ein \"VAMOS.\" Die Energie wird geschätzt... in kleinen Dosen.",
+        "description": "Jeder Punkt, gewonnen oder verloren, bekommt ein \"VAMOS.\" Die Energie wird geschätzt... in kleinen Dosen.",
         "redFlags": [
           "Schreit VAMOS beim Return",
           "Sagt VAMOS wenn der Gegner ins Netz schlägt",
           "Wurde dabei erwischt, \"vamos\" beim Schuhe binden zu flüstern"
         ],
-        "greenFlag": "Du bringst unübertroffene Hype-Energie — mit dir ist es nie langweilig"
+        "greenFlag": "Du bringst unübertroffene Hype-Energie. mit dir ist es nie langweilig"
       },
       "blameShifter": {
         "name": "Der Schuld-Abschieber",
@@ -1301,10 +1301,10 @@
         "description": "Du hast noch nie, in der Geschichte des Padels, einen Fehler gemacht.",
         "redFlags": [
           "Starrt nach jedem Fehler auf seinen Schläger",
-          "Gibt den Bällen, dem Wetter und dem Belag die Schuld — in dieser Reihenfolge",
+          "Gibt den Bällen, dem Wetter und dem Belag die Schuld. in dieser Reihenfolge",
           "Hat mindestens 6 Mal pro Match gesagt \"den Schlag verfehle ich normalerweise nie\""
         ],
-        "greenFlag": "Dein Selbstvertrauen ist wirklich unerschütterlich — du bist mental stark"
+        "greenFlag": "Dein Selbstvertrauen ist wirklich unerschütterlich. du bist mental stark"
       },
       "silentGrudgeHolder": {
         "name": "Der Stille Grollheger",
@@ -1315,7 +1315,7 @@
           "Erstellt mental ein Highlight-Reel der Partner-Fehler",
           "Schreibt der anderen Padel-Gruppe während der Trinkpause"
         ],
-        "greenFlag": "Du bist der ruhigste Spieler auf dem Platz — nie toxisch, immer beherrscht"
+        "greenFlag": "Du bist der ruhigste Spieler auf dem Platz. nie toxisch, immer beherrscht"
       },
       "fashionCriminal": {
         "name": "Der Mode-Verbrecher",
@@ -1323,10 +1323,10 @@
         "description": "Du kamst zum Padel-Spielen, als wärst du aus einer anderen Sportart hereinspaziert.",
         "redFlags": [
           "Trägt schamlos Knöchelsocken",
-          "Hat null Taschen — hält immer einen Ball oder bittet dich, einen zu halten",
+          "Hat null Taschen. hält immer einen Ball oder bittet dich, einen zu halten",
           "Kappe rückwärts, Ohren reingesteckt, volles Commitment zum Look"
         ],
-        "greenFlag": "Du siehst gut aus und weißt es — Selbstvertrauen ist eine Waffe"
+        "greenFlag": "Du siehst gut aus und weißt es. Selbstvertrauen ist eine Waffe"
       },
       "overgripOffender": {
         "name": "Der Overgrip-Sünder",
@@ -1337,7 +1337,7 @@
           "Benutzt schwarzen Overgrip speziell um den Schaden zu verbergen",
           "Hinterlässt Grip-Rückstände auf allem, was er berührt"
         ],
-        "greenFlag": "Dein Schläger hat Charakter — du hast ernsthaft Platzstunden gesammelt"
+        "greenFlag": "Dein Schläger hat Charakter. du hast ernsthaft Platzstunden gesammelt"
       },
       "padelInfluencer": {
         "name": "Der Padel-Influencer",
@@ -1348,29 +1348,29 @@
           "Macht ein Selfie vor, während und nach dem Spiel",
           "Hat gerufen \"warte, können wir das wiederholen? Ich habe nicht aufgenommen\""
         ],
-        "greenFlag": "Du lässt den Sport wachsen — Padel braucht mehr Sichtbarkeit"
+        "greenFlag": "Du lässt den Sport wachsen. Padel braucht mehr Sichtbarkeit"
       },
       "peoplePleaser": {
         "name": "Der People Pleaser",
-        "tagline": "Sorry! Sorry. Warte — nochmal sorry.",
+        "tagline": "Sorry! Sorry. Warte... nochmal sorry.",
         "description": "Du entschuldigst dich für alles. Du würdest lieber ein Spiel verlieren, als dass dein Partner denkt, du wärst verärgert.",
         "redFlags": [
           "Sagt öfter \"sorry\" als \"vamos\"",
           "Nimmt die Schuld für Schläge, die zu 100% des Partners Fehler waren",
           "Ändert sein ganzes Spiel, um den Partner nicht unwohl fühlen zu lassen"
         ],
-        "greenFlag": "Du bist die netteste Person auf dem Platz — jeder will mit dir spielen"
+        "greenFlag": "Du bist die netteste Person auf dem Platz. jeder will mit dir spielen"
       },
       "chaosAgent": {
         "name": "Der Chaos-Agent",
         "tagline": "Du bist keine Red Flag. Du bist ein ganzes rotes Zirkuszelt.",
-        "description": "Du kickst Bälle über den Platz. Du servierst mit dem Reserveball in der Hand. Du bist nicht bösartig — du bist einfach reines, schönes Chaos.",
+        "description": "Du kickst Bälle über den Platz. Du servierst mit dem Reserveball in der Hand. Du bist nicht bösartig. du bist einfach reines, schönes Chaos.",
         "redFlags": [
           "Kickt den Ball zum Partner wie einen Fußball",
           "Wurde beim Aufschlag mit dem Reserveball in der nicht-dominanten Hand erwischt",
           "Hat es einmal \"Paddle Tennis\" genannt und nicht verstanden, warum alle gestarrt haben"
         ],
-        "greenFlag": "Du bist die unterhaltsamste Person im Club — pure Freude"
+        "greenFlag": "Du bist die unterhaltsamste Person im Club. pure Freude"
       }
     }
   }
