@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { MapPin, Users, Star, ChevronRight, ChevronDown, ArrowRight, Home, Sun } from 'lucide-react';
+import { TopRatedCourts } from '@/components/locations/TopRatedCourts';
 import { getActiveLocations, getLocationTrainerCounts, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { getCitiesWithTrainers, type CityWithTrainerCount } from '@/lib/cities';
 import { LocationCard } from '@/components/locations/LocationCard';
@@ -396,6 +397,9 @@ export default function CityLanding() {
           </div>
         </section>
       )}
+
+      {/* Top Rated Courts */}
+      <TopRatedCourts cityLocations={locations.map(l => ({ id: l.id, name: l.name, slug: l.slug }))} />
 
       {/* Trainers section - always show */}
       <section id="trainers" className="py-16 bg-muted/30">
