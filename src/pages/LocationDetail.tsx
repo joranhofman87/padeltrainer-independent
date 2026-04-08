@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
+import { useLocationReviewStats } from '@/hooks/useCourtReviews';
 import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award, Home, Sun } from 'lucide-react';
 import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
 import { WaitingListCard } from '@/components/waitingList';
