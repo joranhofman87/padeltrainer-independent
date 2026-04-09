@@ -55,6 +55,14 @@ export default function Auth() {
     }
   }, [toast, t]);
 
+  // Capture redirect query param and store for post-login navigation
+  useEffect(() => {
+    const redirect = searchParams.get('redirect');
+    if (redirect) {
+      sessionStorage.setItem('redirectAfterLogin', redirect);
+    }
+  }, [searchParams]);
+
   // Handle email confirmation redirect and errors
   useEffect(() => {
     const type = searchParams.get('type');
@@ -146,6 +154,7 @@ export default function Auth() {
               // Positively confirmed: no roles in DB — this is a new user
               if (redirectUrl) {
                 sessionStorage.removeItem('redirectAfterLogin');
+                localStorage.setItem('redirectAfterOnboarding', redirectUrl);
               }
               const pendingRole = localStorage.getItem('pendingRole');
               if (pendingRole) {
@@ -327,7 +336,7 @@ export default function Auth() {
           <div className="pt-4 border-t text-center">
             <p className="text-sm text-muted-foreground">
               {t('signIn.noAccount', "Don't have an account?")}{' '}
-              <Link to="/app/signup" className="font-medium text-primary hover:underline">
+              <Link to={`/app/signup${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : ''}`} className="font-medium text-primary hover:underline">
                 {t('signupPicker.signUp', 'Sign up')}
               </Link>
             </p>
