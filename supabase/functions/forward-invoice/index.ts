@@ -138,11 +138,40 @@ const handler = async (req: Request): Promise<Response> => {
 
     const pdfLink = signedUrl?.signedUrl || invoice.pdf_url || "";
 
-    // Download PDF file for attachment (fall back to HTML if PDF not available)
+    // Download PDF file for attachment, generate if missing
     let attachments: { filename: string; content: string }[] = [];
-    const { data: pdfData } = await supabase.storage
+    let pdfData: Blob | null = null;
+
+    const downloadResult = await supabase.storage
       .from("invoices")
       .download(pdfFileName);
+    pdfData = downloadResult.data;
+
+    // If PDF not found, trigger generation and retry
+    if (!pdfData) {
+      console.log("PDF not found in storage, triggering generate-invoice...");
+      try {
+        const genResponse = await fetch(`${supabaseUrl}/functions/v1/generate-invoice`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ invoiceId }),
+        });
+        if (genResponse.ok) {
+          console.log("generate-invoice completed, retrying PDF download...");
+          const retryResult = await supabase.storage
+            .from("invoices")
+            .download(pdfFileName);
+          pdfData = retryResult.data;
+        } else {
+          console.log(`generate-invoice failed with status ${genResponse.status}`);
+        }
+      } catch (genErr) {
+        console.log("Error calling generate-invoice:", String(genErr));
+      }
+    }
 
     if (pdfData) {
       const buffer = await pdfData.arrayBuffer();
@@ -155,23 +184,7 @@ const handler = async (req: Request): Promise<Response> => {
       attachments = [{ filename: `${invoice.invoice_number}.pdf`, content: base64 }];
       console.log(`Attached PDF invoice: ${invoice.invoice_number}.pdf (${bytes.length} bytes)`);
     } else {
-      // Fall back to HTML attachment
-      const { data: htmlData } = await supabase.storage
-        .from("invoices")
-        .download(htmlFileName);
-      if (htmlData) {
-        const buffer = await htmlData.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-        attachments = [{ filename: `${invoice.invoice_number}.html`, content: base64 }];
-        console.log(`Attached HTML invoice (PDF not available): ${invoice.invoice_number}.html`);
-      } else {
-        console.log("Could not download invoice file for attachment, sending without attachment");
-      }
+      console.log("Could not obtain PDF even after generation attempt, sending without attachment");
     }
 
     const emailPromises = emails.map((email: string) =>
