@@ -390,9 +390,9 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   y = Math.min(yLeft, yRight) - 20;
 
   // ── Line items table ──
-  const colWidths = [contentWidth - 190, 50, 70, 70]; // description, qty, price, amount — fills contentWidth
+  const colWidths = [contentWidth * 0.48, contentWidth * 0.10, contentWidth * 0.21, contentWidth * 0.21]; // ~238, ~50, ~104, ~104
   const tableX = margin;
-  const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+  const tableWidth = contentWidth;
 
   // Table header
   page.drawRectangle({ x: tableX, y: y - 4, width: tableWidth, height: 20, color: rgb(0.96, 0.97, 0.98) });
@@ -487,14 +487,15 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
 
   // ── Payment info ──
   if (y > 60) {
-    page.drawRectangle({ x: margin, y: y - 50, width: tableWidth, height: 60, color: rgb(0.97, 0.97, 0.98) });
+    const boxWidth = contentWidth;
+    page.drawRectangle({ x: margin, y: y - 50, width: boxWidth, height: 60, color: rgb(0.97, 0.97, 0.98) });
     page.drawRectangle({ x: margin, y: y - 50, width: 3, height: 60, color: accentColor });
 
     const payY = y;
     page.drawText('Betalingsgegevens', { x: margin + 12, y: payY, font: fontBold, size: 10 });
 
     if (invoice.payment_url) {
-      drawText(`Betaallink: ${invoice.payment_url}`, margin + 12, payY - 16, { size: 8, maxWidth: tableWidth - 24 });
+      drawText(`Betaallink: ${invoice.payment_url}`, margin + 12, payY - 16, { size: 8, maxWidth: boxWidth - 24 });
     } else {
       drawText(`IBAN: ${invoice.trainer.iban}`, margin + 12, payY - 16, { size: 9 });
       if (invoice.trainer.bic) {
