@@ -263,15 +263,20 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   };
   const accentColor = hexToRgb(invoice.banner_color || '#16a34a');
 
+  // Helper to sanitize text for pdf-lib (WinAnsi cannot encode newlines)
+  const sanitize = (t: string) => t.replace(/[\n\r]/g, ' ').replace(/\s+/g, ' ').trim();
+
   // Helper to draw text and return the y position
   const drawText = (text: string, x: number, yPos: number, options: { font?: any; size?: number; color?: any; maxWidth?: number } = {}) => {
     const f = options.font || font;
     const size = options.size || 10;
     const color = options.color || rgb(0.12, 0.16, 0.22);
+    const clean = sanitize(text);
+    if (!clean) return yPos;
 
     // Simple word wrapping
     if (options.maxWidth) {
-      const words = text.split(' ');
+      const words = clean.split(' ');
       let line = '';
       let currentY = yPos;
       for (const word of words) {
@@ -292,7 +297,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
       return currentY;
     }
 
-    page.drawText(text, { x, y: yPos, font: f, size, color });
+    page.drawText(clean, { x, y: yPos, font: f, size, color });
     return yPos - size - 4;
   };
 
@@ -382,12 +387,12 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
 
     let cx = tableX + 6;
     // Description (truncate if too long)
-    let desc = item.description;
+    let desc = sanitize(item.description);
     const maxDescWidth = colWidths[0] - 12;
-    while (font.widthOfTextAtSize(desc, 9) > maxDescWidth && desc.length > 3) {
+    while (desc.length > 3 && font.widthOfTextAtSize(desc, 9) > maxDescWidth) {
       desc = desc.slice(0, -1);
     }
-    page.drawText(desc, { x: cx, y: y + 4, font, size: 9 });
+    if (desc) page.drawText(desc, { x: cx, y: y + 4, font, size: 9 });
     cx += colWidths[0];
 
     // Quantity (center)
@@ -706,23 +711,30 @@ const handler = async (req: Request): Promise<Response> => {
       console.log('PDF invoice uploaded:', pdfFileName);
     }
 
-    // Get signed URL for download
-    const { data: signedUrl } = await supabase.storage
-      .from('invoices')
-      .createSignedUrl(fileName, 3600);
+    // Get signed URLs for download — use PDF file for pdf_url
+    const [pdfSigned, htmlSigned] = await Promise.all([
+      supabase.storage.from('invoices').createSignedUrl(pdfFileName, 3600),
+      supabase.storage.from('invoices').createSignedUrl(fileName, 3600),
+    ]);
 
-    // Update invoice with PDF URL
-    await supabase
-      .from('invoices')
-      .update({ pdf_url: signedUrl?.signedUrl })
-      .eq('id', invoiceId);
+    const pdfUrl = pdfSigned.data?.signedUrl || null;
+    const htmlUrl = htmlSigned.data?.signedUrl || null;
+
+    // Update invoice with the actual PDF URL (not HTML)
+    if (pdfUrl) {
+      await supabase
+        .from('invoices')
+        .update({ pdf_url: pdfUrl })
+        .eq('id', invoiceId);
+    }
 
     console.log('Invoice generated successfully:', invoice.invoice_number);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        pdfUrl: signedUrl?.signedUrl,
+        pdfUrl,
+        htmlUrl,
         html: htmlContent 
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
