@@ -32,6 +32,7 @@ interface InvoiceData {
   notes: string | null;
   vat_breakdown?: Record<string, { subtotal: number; vat: number }> | null;
   logo_url: string | null;
+  fallback_logo_url: string | null;
   banner_color: string | null;
   payment_url: string | null;
   trainer: {
@@ -307,41 +308,45 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   page.drawRectangle({ x: 0, y: height - headerHeight, width, height: headerHeight, color: accentColor });
 
   let logoEmbedded = false;
-  if (invoice.logo_url) {
-    const logoUrl = invoice.logo_url.toLowerCase();
-    const isSvg = logoUrl.endsWith('.svg') || logoUrl.includes('.svg?');
-    if (isSvg) {
-      console.warn('Logo is SVG — pdf-lib cannot embed SVG, falling back to text header');
-    } else {
-      try {
-        const logoResponse = await fetch(invoice.logo_url);
-        if (logoResponse.ok) {
-          const contentType = logoResponse.headers.get('content-type') || '';
-          if (contentType.includes('svg')) {
-            console.warn('Logo content-type is SVG, falling back to text header');
-          } else {
-            const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
-            let logoImage;
-            if (contentType.includes('png') || invoice.logo_url.toLowerCase().endsWith('.png')) {
-              logoImage = await pdfDoc.embedPng(logoBytes);
-            } else {
-              logoImage = await pdfDoc.embedJpg(logoBytes);
-            }
-            const logoScale = Math.min(34 / logoImage.height, 200 / logoImage.width, 1);
-            const logoW = logoImage.width * logoScale;
-            const logoH = logoImage.height * logoScale;
-            page.drawImage(logoImage, {
-              x: margin,
-              y: height - headerHeight + (headerHeight - logoH) / 2,
-              width: logoW,
-              height: logoH,
-            });
-            logoEmbedded = true;
-          }
+  const logoUrls = [invoice.logo_url, invoice.fallback_logo_url].filter(Boolean) as string[];
+  
+  for (const tryUrl of logoUrls) {
+    if (logoEmbedded) break;
+    const urlLower = tryUrl.toLowerCase();
+    // Skip unsupported formats
+    const isUnsupported = ['.svg', '.avif', '.webp', '.gif'].some(ext => urlLower.includes(ext));
+    if (isUnsupported) {
+      console.warn(`Logo format unsupported for pdf-lib (${tryUrl}), trying next`);
+      continue;
+    }
+    try {
+      const logoResponse = await fetch(tryUrl);
+      if (logoResponse.ok) {
+        const contentType = logoResponse.headers.get('content-type') || '';
+        if (contentType.includes('svg') || contentType.includes('avif') || contentType.includes('webp')) {
+          console.warn(`Logo content-type unsupported (${contentType}), trying next`);
+          continue;
         }
-      } catch (e) {
-        console.error('Failed to embed logo in PDF, falling back to text:', e);
+        const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+        let logoImage;
+        if (contentType.includes('png') || urlLower.endsWith('.png')) {
+          logoImage = await pdfDoc.embedPng(logoBytes);
+        } else {
+          logoImage = await pdfDoc.embedJpg(logoBytes);
+        }
+        const logoScale = Math.min(34 / logoImage.height, 200 / logoImage.width, 1);
+        const logoW = logoImage.width * logoScale;
+        const logoH = logoImage.height * logoScale;
+        page.drawImage(logoImage, {
+          x: margin,
+          y: height - headerHeight + (headerHeight - logoH) / 2,
+          width: logoW,
+          height: logoH,
+        });
+        logoEmbedded = true;
       }
+    } catch (e) {
+      console.error(`Failed to embed logo (${tryUrl}):`, e);
     }
   }
 
@@ -473,7 +478,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
     page.drawText(amountText, { x: cx + colWidths[3] - font.widthOfTextAtSize(amountText, 9) - 6, y: y + 4, font, size: 9 });
   }
 
-  y -= 20; // padding between table and totals
+  y -= 30; // padding between table and totals
 
   // ── Totals ──
   // Right-align totals to match the last two columns of the table
@@ -512,7 +517,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   y -= 4;
   drawTotalRow('Totaal', formatCurrency(invoice.total), true, true);
 
-  y -= 20; // padding between totals and payment info
+  y -= 30; // padding between totals and payment info
 
   // ── Payment info ──
   if (y > 60) {
@@ -607,7 +612,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (invoice.trainer_id) {
       const { data: tp, error: trainerError } = await supabase
         .from('trainer_profiles')
-        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, invoice_logo_url')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, logo_url, invoice_logo_url')
         .eq('id', invoice.trainer_id)
         .single();
 
@@ -625,7 +630,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (invoice.academy_profile_id) {
       const { data: ap } = await supabase
         .from('academy_profiles')
-        .select('name, slug, business_name, business_address, kvk_number, btw_number, iban, bic, invoice_logo_url, invoice_banner_color, payment_terms_days')
+        .select('name, slug, business_name, business_address, kvk_number, btw_number, iban, bic, logo_url, invoice_logo_url, invoice_banner_color, payment_terms_days')
         .eq('id', invoice.academy_profile_id)
         .single();
       academyProfile = ap;
@@ -724,6 +729,7 @@ const handler = async (req: Request): Promise<Response> => {
       notes: invoice.notes,
       vat_breakdown: invoice.vat_breakdown || null,
       logo_url: businessSource.invoice_logo_url || null,
+      fallback_logo_url: businessSource.logo_url || null,
       banner_color: (academyProfile?.invoice_banner_color) || null,
       payment_url: paymentUrl,
       trainer: {
