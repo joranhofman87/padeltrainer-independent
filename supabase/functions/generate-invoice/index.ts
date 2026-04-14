@@ -395,7 +395,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
     yRight = drawText(`BTW: ${invoice.player_btw_number}`, colRight, yRight, { size: 9 });
   }
 
-  y = Math.min(yLeft, yRight) - 20;
+  y = Math.min(yLeft, yRight) - 30;
 
   // ── Line items table ──
   const colWidths = [contentWidth * 0.48, contentWidth * 0.10, contentWidth * 0.21, contentWidth * 0.21]; // ~238, ~50, ~104, ~104
@@ -463,7 +463,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
 
   const drawTotalRow = (label: string, value: string, bold = false, accent = false) => {
     const f = bold ? fontBold : font;
-    const size = bold ? 12 : 10;
+    const size = bold ? 10 : 9;
     const color = accent ? accentColor : rgb(0.12, 0.16, 0.22);
     if (bold) {
       page.drawLine({ start: { x: totalsX, y: y + 14 }, end: { x: totalsX + totalsWidth, y: y + 14 }, thickness: 1.5, color: accentColor });
