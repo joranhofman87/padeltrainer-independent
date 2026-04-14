@@ -32,6 +32,7 @@ interface InvoiceData {
   notes: string | null;
   vat_breakdown?: Record<string, { subtotal: number; vat: number }> | null;
   logo_url: string | null;
+  fallback_logo_url: string | null;
   banner_color: string | null;
   payment_url: string | null;
   trainer: {
@@ -728,6 +729,7 @@ const handler = async (req: Request): Promise<Response> => {
       notes: invoice.notes,
       vat_breakdown: invoice.vat_breakdown || null,
       logo_url: businessSource.invoice_logo_url || null,
+      fallback_logo_url: businessSource.logo_url || null,
       banner_color: (academyProfile?.invoice_banner_color) || null,
       payment_url: paymentUrl,
       trainer: {
