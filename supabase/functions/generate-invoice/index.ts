@@ -367,11 +367,29 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   let yLeft = y;
   let yRight = y;
 
+  // Helper to draw address with line breaks (split on newlines, commas, or detect zipcode pattern)
+  const drawAddressLines = (address: string, x: number, yPos: number, maxW: number) => {
+    // Split on actual newlines first
+    let lines = address.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+    // If only one line, try to split before Dutch zipcode pattern (4 digits + 2 letters)
+    if (lines.length === 1) {
+      const match = address.match(/^(.+?)\s+(\d{4}\s*[A-Za-z]{2}\s+.+)$/);
+      if (match) {
+        lines = [match[1].trim(), match[2].trim()];
+      }
+    }
+    let cy = yPos;
+    for (const line of lines) {
+      cy = drawText(line, x, cy, { size: 9, maxWidth: maxW });
+    }
+    return cy;
+  };
+
   // From
   yLeft = drawText('VAN', colLeft, yLeft, { font: fontBold, size: 8, color: rgb(0.42, 0.45, 0.5) });
   yLeft = drawText(invoice.trainer.business_name, colLeft, yLeft, { font: fontBold, size: 11 });
   if (invoice.trainer.business_address) {
-    yLeft = drawText(invoice.trainer.business_address, colLeft, yLeft, { size: 9, maxWidth: 220 });
+    yLeft = drawAddressLines(invoice.trainer.business_address, colLeft, yLeft, 220);
   }
   yLeft -= 4;
   yLeft = drawText(`KvK: ${invoice.trainer.kvk_number}`, colLeft, yLeft, { size: 9 });
@@ -388,7 +406,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
     yRight = drawText(invoice.player_name, colRight, yRight, { font: fontBold, size: 11 });
   }
   if (invoice.player_address) {
-    yRight = drawText(invoice.player_address, colRight, yRight, { size: 9, maxWidth: 220 });
+    yRight = drawAddressLines(invoice.player_address, colRight, yRight, 220);
   }
   if (invoice.player_btw_number) {
     yRight -= 4;
@@ -455,9 +473,10 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
     page.drawText(amountText, { x: cx + colWidths[3] - font.widthOfTextAtSize(amountText, 9) - 6, y: y + 4, font, size: 9 });
   }
 
-  y -= 12;
+  y -= 20; // padding between table and totals
 
   // ── Totals ──
+  // Right-align totals to match the last two columns of the table
   const totalsX = tableX + colWidths[0] + colWidths[1];
   const totalsWidth = colWidths[2] + colWidths[3];
 
@@ -468,10 +487,12 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
     if (bold) {
       page.drawLine({ start: { x: totalsX, y: y + 14 }, end: { x: totalsX + totalsWidth, y: y + 14 }, thickness: 1.5, color: accentColor });
     }
-    page.drawText(label, { x: totalsX + 6, y, font: f, size, color });
+    // Right-align label to end of price column, right-align value to end of amount column
+    const labelW = f.widthOfTextAtSize(label, size);
+    page.drawText(label, { x: totalsX + colWidths[2] - labelW - 6, y, font: f, size, color });
     const valW = f.widthOfTextAtSize(value, size);
     page.drawText(value, { x: totalsX + totalsWidth - valW - 6, y, font: f, size, color });
-    y -= size + 8;
+    y -= size + 6;
   };
 
   drawTotalRow('Subtotaal', formatCurrency(invoice.subtotal));
@@ -491,7 +512,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   y -= 4;
   drawTotalRow('Totaal', formatCurrency(invoice.total), true, true);
 
-  y -= 8;
+  y -= 20; // padding between totals and payment info
 
   // ── Payment info ──
   if (y > 60) {
