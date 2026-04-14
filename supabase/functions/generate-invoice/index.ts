@@ -473,7 +473,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
     page.drawText(amountText, { x: cx + colWidths[3] - font.widthOfTextAtSize(amountText, 9) - 6, y: y + 4, font, size: 9 });
   }
 
-  y -= 20; // padding between table and totals
+  y -= 30; // padding between table and totals
 
   // ── Totals ──
   // Right-align totals to match the last two columns of the table
@@ -512,7 +512,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   y -= 4;
   drawTotalRow('Totaal', formatCurrency(invoice.total), true, true);
 
-  y -= 20; // padding between totals and payment info
+  y -= 30; // padding between totals and payment info
 
   // ── Payment info ──
   if (y > 60) {
