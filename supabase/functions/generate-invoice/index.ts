@@ -307,41 +307,45 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   page.drawRectangle({ x: 0, y: height - headerHeight, width, height: headerHeight, color: accentColor });
 
   let logoEmbedded = false;
-  if (invoice.logo_url) {
-    const logoUrl = invoice.logo_url.toLowerCase();
-    const isSvg = logoUrl.endsWith('.svg') || logoUrl.includes('.svg?');
-    if (isSvg) {
-      console.warn('Logo is SVG — pdf-lib cannot embed SVG, falling back to text header');
-    } else {
-      try {
-        const logoResponse = await fetch(invoice.logo_url);
-        if (logoResponse.ok) {
-          const contentType = logoResponse.headers.get('content-type') || '';
-          if (contentType.includes('svg')) {
-            console.warn('Logo content-type is SVG, falling back to text header');
-          } else {
-            const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
-            let logoImage;
-            if (contentType.includes('png') || invoice.logo_url.toLowerCase().endsWith('.png')) {
-              logoImage = await pdfDoc.embedPng(logoBytes);
-            } else {
-              logoImage = await pdfDoc.embedJpg(logoBytes);
-            }
-            const logoScale = Math.min(34 / logoImage.height, 200 / logoImage.width, 1);
-            const logoW = logoImage.width * logoScale;
-            const logoH = logoImage.height * logoScale;
-            page.drawImage(logoImage, {
-              x: margin,
-              y: height - headerHeight + (headerHeight - logoH) / 2,
-              width: logoW,
-              height: logoH,
-            });
-            logoEmbedded = true;
-          }
+  const logoUrls = [invoice.logo_url, invoice.fallback_logo_url].filter(Boolean) as string[];
+  
+  for (const tryUrl of logoUrls) {
+    if (logoEmbedded) break;
+    const urlLower = tryUrl.toLowerCase();
+    // Skip unsupported formats
+    const isUnsupported = ['.svg', '.avif', '.webp', '.gif'].some(ext => urlLower.includes(ext));
+    if (isUnsupported) {
+      console.warn(`Logo format unsupported for pdf-lib (${tryUrl}), trying next`);
+      continue;
+    }
+    try {
+      const logoResponse = await fetch(tryUrl);
+      if (logoResponse.ok) {
+        const contentType = logoResponse.headers.get('content-type') || '';
+        if (contentType.includes('svg') || contentType.includes('avif') || contentType.includes('webp')) {
+          console.warn(`Logo content-type unsupported (${contentType}), trying next`);
+          continue;
         }
-      } catch (e) {
-        console.error('Failed to embed logo in PDF, falling back to text:', e);
+        const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+        let logoImage;
+        if (contentType.includes('png') || urlLower.endsWith('.png')) {
+          logoImage = await pdfDoc.embedPng(logoBytes);
+        } else {
+          logoImage = await pdfDoc.embedJpg(logoBytes);
+        }
+        const logoScale = Math.min(34 / logoImage.height, 200 / logoImage.width, 1);
+        const logoW = logoImage.width * logoScale;
+        const logoH = logoImage.height * logoScale;
+        page.drawImage(logoImage, {
+          x: margin,
+          y: height - headerHeight + (headerHeight - logoH) / 2,
+          width: logoW,
+          height: logoH,
+        });
+        logoEmbedded = true;
       }
+    } catch (e) {
+      console.error(`Failed to embed logo (${tryUrl}):`, e);
     }
   }
 
