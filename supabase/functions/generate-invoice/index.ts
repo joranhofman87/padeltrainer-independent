@@ -242,6 +242,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   const page = pdfDoc.addPage([595.28, 841.89]); // A4
   const { width, height } = page.getSize();
   const margin = 50;
+  const contentWidth = width - 2 * margin; // ~495pt
   let y = height;
 
   const formatCurrency = (amount: number) =>
@@ -301,11 +302,46 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
     return yPos - size - 4;
   };
 
-  // ── Header bar ──
-  page.drawRectangle({ x: 0, y: height - 50, width, height: 50, color: accentColor });
-  page.drawText(invoice.trainer.business_name, {
-    x: margin, y: height - 34, font: fontBold, size: 16, color: rgb(1, 1, 1),
-  });
+  // ── Header bar with optional logo ──
+  const headerHeight = 50;
+  page.drawRectangle({ x: 0, y: height - headerHeight, width, height: headerHeight, color: accentColor });
+
+  let logoEmbedded = false;
+  if (invoice.logo_url) {
+    try {
+      const logoResponse = await fetch(invoice.logo_url);
+      if (logoResponse.ok) {
+        const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+        const contentType = logoResponse.headers.get('content-type') || '';
+        let logoImage;
+        if (contentType.includes('png') || invoice.logo_url.toLowerCase().endsWith('.png')) {
+          logoImage = await pdfDoc.embedPng(logoBytes);
+        } else {
+          logoImage = await pdfDoc.embedJpg(logoBytes);
+        }
+        // Scale logo to fit header (max height 34, max width 200)
+        const logoScale = Math.min(34 / logoImage.height, 200 / logoImage.width, 1);
+        const logoW = logoImage.width * logoScale;
+        const logoH = logoImage.height * logoScale;
+        // Center vertically in header bar, position at left margin
+        page.drawImage(logoImage, {
+          x: margin,
+          y: height - headerHeight + (headerHeight - logoH) / 2,
+          width: logoW,
+          height: logoH,
+        });
+        logoEmbedded = true;
+      }
+    } catch (e) {
+      console.error('Failed to embed logo in PDF, falling back to text:', e);
+    }
+  }
+
+  if (!logoEmbedded) {
+    page.drawText(sanitize(invoice.trainer.business_name), {
+      x: margin, y: height - 34, font: fontBold, size: 16, color: rgb(1, 1, 1),
+    });
+  }
   y = height - 70;
 
   // ── FACTUUR title + meta ──
@@ -354,7 +390,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   y = Math.min(yLeft, yRight) - 20;
 
   // ── Line items table ──
-  const colWidths = [250, 50, 90, 90]; // description, qty, price, amount
+  const colWidths = [contentWidth - 190, 50, 70, 70]; // description, qty, price, amount — fills contentWidth
   const tableX = margin;
   const tableWidth = colWidths.reduce((a, b) => a + b, 0);
 
@@ -630,8 +666,9 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Build payment URL if Mollie is connected and invoice has a public token
+    // Skip payment link for already-paid invoices
     let paymentUrl: string | null = null;
-    if (hasMollie && invoice.public_token) {
+    if (invoice.status !== 'paid' && hasMollie && invoice.public_token) {
       if (academyProfile?.slug) {
         paymentUrl = `https://padeltrainer.ai/nl/academies/${academyProfile.slug}/pay/${invoice.public_token}`;
       } else {
