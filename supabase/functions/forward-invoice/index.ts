@@ -128,13 +128,12 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Generate a fresh signed URL for the invoice
+    // Generate a fresh signed URL for the PDF invoice
     const folderKey = trainerProfile?.user_id || invoice.academy_profile_id || 'custom';
-    const htmlFileName = `${folderKey}/${invoice.invoice_number}.html`;
     const pdfFileName = `${folderKey}/${invoice.invoice_number}.pdf`;
     const { data: signedUrl } = await supabase.storage
       .from("invoices")
-      .createSignedUrl(htmlFileName, 604800); // 7 days
+      .createSignedUrl(pdfFileName, 604800); // 7 days
 
     const pdfLink = signedUrl?.signedUrl || invoice.pdf_url || "";
 

@@ -401,19 +401,9 @@ export default function AcademyInvoices() {
 
   const handleDownloadPdf = async (invoice: Invoice) => {
     try {
-      const { data, error } = await supabase.functions.invoke('generate-invoice', {
-        body: { invoiceId: invoice.id },
-      });
-      if (error || !data?.html) {
-        toast.error(t("invoices.noPdf", "No PDF available"));
-        return;
-      }
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(data.html);
-        printWindow.document.close();
-        printWindow.onload = () => printWindow.print();
-      }
+      const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
+      const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
+      if (!ok) toast.error(t("invoices.noPdf", "No PDF available"));
     } catch (err) {
       logger.error('Invoice download failed:', err);
       toast.error(t("invoices.noPdf", "No PDF available"));

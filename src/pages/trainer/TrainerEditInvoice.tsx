@@ -180,10 +180,9 @@ export default function TrainerEditInvoice() {
   const handleDownloadPdf = async () => {
     if (!invoice) return;
     try {
-      const { data, error } = await supabase.functions.invoke('generate-invoice', { body: { invoiceId: invoice.id } });
-      if (error || !data?.html) { toast.error(tTrainer('invoices.noPdf', 'No PDF available')); return; }
-      const printWindow = window.open('', '_blank');
-      if (printWindow) { printWindow.document.write(data.html); printWindow.document.close(); printWindow.onload = () => printWindow.print(); }
+      const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
+      const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
+      if (!ok) toast.error(tTrainer('invoices.noPdf', 'No PDF available'));
     } catch { toast.error(tTrainer('invoices.noPdf', 'No PDF available')); }
   };
 
