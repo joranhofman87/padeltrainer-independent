@@ -1,31 +1,38 @@
 
 
-# Fix PDF Invoice: Logo, Layout, and Payment Link
+# Fix PDF Invoice: Logo, Spacing, and Totals Formatting
 
-## Problems
+## Problems (from screenshot)
 
-1. **No logo in PDF** — The HTML version embeds the logo via `<img>`, but `generateInvoicePDF()` only draws a colored rectangle with text. The `logo_url` from the invoice data is completely ignored in the PDF path.
+1. **Logo missing** — Shows "RL Padel Performance" text instead of the actual logo. The logo embedding code exists but likely fails because the uploaded logo is an SVG file, and `pdf-lib` only supports PNG/JPG embedding. The error is caught silently and falls back to text.
 
-2. **Layout misalignment** — The table columns total only 480pt (`250+50+90+90`) but the page content area is ~495pt. The totals section and payment info box don't stretch to match properly.
+2. **No padding between header bar and "FACTUUR"** — Currently `y = height - 70`, giving only 20pt gap below the 50pt header. Needs ~40pt of breathing room.
 
-3. **Payment link on paid invoices** — The code builds `paymentUrl` based on whether Mollie is connected and a `public_token` exists, but never checks the invoice's `status`. Paid invoices should show IBAN details instead of a payment link.
+3. **No padding between "FACTUUR" and from/to section** — `y -= 55` after FACTUUR title is tight.
+
+4. **No padding between from/to and table** — `y = Math.min(yLeft, yRight) - 20` only gives 20pt gap.
+
+5. **Totals formatting inconsistent with table** — Table rows use font size 9, but totals use size 10 (regular) and 12 (bold total). The totals should use size 9 to match, with only the final "Totaal" row slightly larger.
 
 ## Solution
 
 ### File: `supabase/functions/generate-invoice/index.ts`
 
-**A) Embed logo in PDF header**
-- When `invoice.logo_url` is set, fetch the image, embed it into the PDF document using `pdfDoc.embedPng()` or `pdfDoc.embedJpg()`, and draw it in the header bar
-- Fall back to text-only header when logo fetch fails or no logo is configured
+**A) Fix logo embedding for SVG logos**
+- Before trying to embed, check if the content-type is SVG or the URL ends with `.svg`
+- For SVG logos, skip embedding (pdf-lib cannot handle SVG) and fall back to text
+- Log a clear message so we know when SVG is the issue
+- This keeps existing PNG/JPG support working
 
-**B) Fix table column widths**
-- Adjust `colWidths` to use the full content width (`width - 2 * margin = ~495pt`)
-- Right-align the totals block to match the table's right edge
-- Adjust payment info box width to match table width
+**B) Increase vertical spacing between sections**
+- Header → FACTUUR: change `y = height - 70` to `y = height - 100` (50pt gap below header)
+- FACTUUR → from/to: change `y -= 55` to `y -= 65`
+- From/to → table: change gap from 20pt to 30pt: `Math.min(yLeft, yRight) - 30`
 
-**C) Conditionally exclude payment link for paid invoices**
-- In the handler (around line 633), check `invoice.status` — if `'paid'`, set `paymentUrl = null` regardless of Mollie connection
-- This applies to both HTML and PDF outputs since they share the same `invoiceData`
+**C) Match totals formatting to table**
+- Change `drawTotalRow` default size from 10 to 9 (matching table cell font size)
+- Change bold total size from 12 to 10
+- Keep right-alignment logic as-is since it already matches the table's amount column
 
 ### Deploy
 Redeploy `generate-invoice` after changes.
@@ -34,5 +41,5 @@ Redeploy `generate-invoice` after changes.
 
 | File | Change |
 |---|---|
-| `supabase/functions/generate-invoice/index.ts` | Embed logo in PDF, fix column widths, skip payment link when paid |
+| `supabase/functions/generate-invoice/index.ts` | SVG logo detection, increase section spacing, match totals font size to table |
 
