@@ -1,82 +1,38 @@
 
-Goal: restore actual PDF generation end-to-end so invoices can both download from the app and be attached when forwarded to the bookkeeper.
 
-What I found
-- The UI “PDF” buttons do not download a stored PDF at all. They call `generate-invoice`, expect `data.html`, open a new window, and trigger browser print. This exists in:
-  - `src/pages/academy/AcademyEditInvoice.tsx`
-  - `src/pages/trainer/TrainerEditInvoice.tsx`
-  - `src/pages/academy/AcademyInvoices.tsx`
-  - `src/pages/trainer/TrainerInvoices.tsx`
-  - `src/components/trainer/InvoiceList.tsx`
-  - `src/components/player/PlayerInvoicesTab.tsx`
-- The backend function `supabase/functions/generate-invoice/index.ts` does generate a real PDF and uploads both:
-  - `${folderKey}/${invoice.invoice_number}.html`
-  - `${folderKey}/${invoice.invoice_number}.pdf`
-- But the function currently stores `pdf_url` using a signed URL created for the HTML file, not the PDF:
-  - `createSignedUrl(fileName, 3600)` where `fileName` is `.html`
-  - then updates `invoices.pdf_url` with that HTML URL
-- The screenshot also shows `generate-invoice` is currently failing with `500`, so even the PDF upload path is breaking before the UI can use it.
+# Fix PDF Invoice: Logo, Layout, and Payment Link
 
-Implementation plan
+## Problems
 
-1. Fix `generate-invoice` runtime failure first
-- Inspect the latest backend logs for `generate-invoice` and patch the exact crash.
-- Most likely harden the function around optional invoice/business fields and any unsafe assumptions in PDF creation.
-- Keep the function returning success even if HTML/PDF generation differs, but log clearly when PDF upload fails.
+1. **No logo in PDF** — The HTML version embeds the logo via `<img>`, but `generateInvoicePDF()` only draws a colored rectangle with text. The `logo_url` from the invoice data is completely ignored in the PDF path.
 
-2. Correct the generated file URLs
-- In `supabase/functions/generate-invoice/index.ts`:
-  - create a signed URL for the PDF file, not the HTML file
-  - store that PDF signed URL in `invoices.pdf_url`
-  - optionally also return both URLs in the response:
-    - `pdfUrl`
-    - `htmlUrl`
-- This fixes downstream flows that rely on `pdf_url`.
+2. **Layout misalignment** — The table columns total only 480pt (`250+50+90+90`) but the page content area is ~495pt. The totals section and payment info box don't stretch to match properly.
 
-3. Replace print-based “PDF download” behavior in the UI
-- Update all invoice download handlers to use a real file download flow:
-  - call `generate-invoice`
-  - prefer `data.pdfUrl`
-  - if unavailable, fall back to downloading the PDF directly from storage path if possible
-  - open/download the PDF via an anchor or fetched blob instead of `window.print()`
-- Reuse the existing blob-download pattern already used in `src/pages/admin/AdminBackups.tsx`.
+3. **Payment link on paid invoices** — The code builds `paymentUrl` based on whether Mollie is connected and a `public_token` exists, but never checks the invoice's `status`. Paid invoices should show IBAN details instead of a payment link.
 
-4. Make forwarding strictly PDF-first
-- Keep the existing generation-on-demand behavior in `forward-invoice`.
-- Tighten it so the bookkeeper email only uses the PDF path and PDF signed URL.
-- Remove the misleading HTML-based download link source:
-  - today `pdfLink` is derived from the signed URL of the `.html` file
-- Use the PDF signed URL in the email CTA so both the attachment and link point to a real PDF.
+## Solution
 
-5. Verify invoice edit/regeneration flow
-- Keep the existing `pdf_url: null` reset after invoice edits.
-- Confirm the next download/forward action regenerates the PDF correctly after edits in:
-  - academy edit
-  - trainer edit
-  - player billing edits
-  - shared edit dialog
+### File: `supabase/functions/generate-invoice/index.ts`
 
-Technical details
-- Root issue 1: UI is not downloading PDFs; it is printing HTML.
-- Root issue 2: backend stores an HTML signed URL inside `pdf_url`.
-- Root issue 3: current `generate-invoice` runtime error (500) is blocking both download and forwarding regeneration.
+**A) Embed logo in PDF header**
+- When `invoice.logo_url` is set, fetch the image, embed it into the PDF document using `pdfDoc.embedPng()` or `pdfDoc.embedJpg()`, and draw it in the header bar
+- Fall back to text-only header when logo fetch fails or no logo is configured
 
-Files to update
-- `supabase/functions/generate-invoice/index.ts`
-- `supabase/functions/forward-invoice/index.ts`
-- `src/pages/academy/AcademyEditInvoice.tsx`
-- `src/pages/trainer/TrainerEditInvoice.tsx`
-- `src/pages/academy/AcademyInvoices.tsx`
-- `src/pages/trainer/TrainerInvoices.tsx`
-- `src/components/trainer/InvoiceList.tsx`
-- `src/components/player/PlayerInvoicesTab.tsx`
+**B) Fix table column widths**
+- Adjust `colWidths` to use the full content width (`width - 2 * margin = ~495pt`)
+- Right-align the totals block to match the table's right edge
+- Adjust payment info box width to match table width
 
-Validation after implementation
-- Download PDF from academy invoice edit page
-- Download PDF from trainer invoice pages
-- Download PDF from player invoice tab
-- Forward a paid invoice to the bookkeeper and confirm:
-  - attachment is `.pdf`
-  - email link opens a PDF
-- Edit an invoice, regenerate, and confirm the newly downloaded/forwarded file reflects the changes
-- Check the full flow end-to-end with one academy invoice and one trainer invoice
+**C) Conditionally exclude payment link for paid invoices**
+- In the handler (around line 633), check `invoice.status` — if `'paid'`, set `paymentUrl = null` regardless of Mollie connection
+- This applies to both HTML and PDF outputs since they share the same `invoiceData`
+
+### Deploy
+Redeploy `generate-invoice` after changes.
+
+## File Summary
+
+| File | Change |
+|---|---|
+| `supabase/functions/generate-invoice/index.ts` | Embed logo in PDF, fix column widths, skip payment link when paid |
+
