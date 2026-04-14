@@ -308,32 +308,40 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
 
   let logoEmbedded = false;
   if (invoice.logo_url) {
-    try {
-      const logoResponse = await fetch(invoice.logo_url);
-      if (logoResponse.ok) {
-        const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
-        const contentType = logoResponse.headers.get('content-type') || '';
-        let logoImage;
-        if (contentType.includes('png') || invoice.logo_url.toLowerCase().endsWith('.png')) {
-          logoImage = await pdfDoc.embedPng(logoBytes);
-        } else {
-          logoImage = await pdfDoc.embedJpg(logoBytes);
+    const logoUrl = invoice.logo_url.toLowerCase();
+    const isSvg = logoUrl.endsWith('.svg') || logoUrl.includes('.svg?');
+    if (isSvg) {
+      console.warn('Logo is SVG — pdf-lib cannot embed SVG, falling back to text header');
+    } else {
+      try {
+        const logoResponse = await fetch(invoice.logo_url);
+        if (logoResponse.ok) {
+          const contentType = logoResponse.headers.get('content-type') || '';
+          if (contentType.includes('svg')) {
+            console.warn('Logo content-type is SVG, falling back to text header');
+          } else {
+            const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+            let logoImage;
+            if (contentType.includes('png') || invoice.logo_url.toLowerCase().endsWith('.png')) {
+              logoImage = await pdfDoc.embedPng(logoBytes);
+            } else {
+              logoImage = await pdfDoc.embedJpg(logoBytes);
+            }
+            const logoScale = Math.min(34 / logoImage.height, 200 / logoImage.width, 1);
+            const logoW = logoImage.width * logoScale;
+            const logoH = logoImage.height * logoScale;
+            page.drawImage(logoImage, {
+              x: margin,
+              y: height - headerHeight + (headerHeight - logoH) / 2,
+              width: logoW,
+              height: logoH,
+            });
+            logoEmbedded = true;
+          }
         }
-        // Scale logo to fit header (max height 34, max width 200)
-        const logoScale = Math.min(34 / logoImage.height, 200 / logoImage.width, 1);
-        const logoW = logoImage.width * logoScale;
-        const logoH = logoImage.height * logoScale;
-        // Center vertically in header bar, position at left margin
-        page.drawImage(logoImage, {
-          x: margin,
-          y: height - headerHeight + (headerHeight - logoH) / 2,
-          width: logoW,
-          height: logoH,
-        });
-        logoEmbedded = true;
+      } catch (e) {
+        console.error('Failed to embed logo in PDF, falling back to text:', e);
       }
-    } catch (e) {
-      console.error('Failed to embed logo in PDF, falling back to text:', e);
     }
   }
 
@@ -342,7 +350,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
       x: margin, y: height - 34, font: fontBold, size: 16, color: rgb(1, 1, 1),
     });
   }
-  y = height - 70;
+  y = height - 100;
 
   // ── FACTUUR title + meta ──
   page.drawText('FACTUUR', { x: margin, y, font: fontBold, size: 24, color: accentColor });
@@ -351,7 +359,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
   drawText(`Factuurnummer: ${invoice.invoice_number}`, metaX, y, { font: fontBold, size: 9 });
   drawText(`Factuurdatum: ${formatDate(invoice.invoice_date)}`, metaX, y - 14, { size: 9 });
   drawText(`Vervaldatum: ${formatDate(invoice.due_date)}`, metaX, y - 28, { size: 9 });
-  y -= 55;
+  y -= 65;
 
   // ── Parties ──
   const colLeft = margin;
