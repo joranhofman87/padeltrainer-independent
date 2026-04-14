@@ -237,25 +237,14 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
 
   const handleDownload = async (invoice: Invoice) => {
     setActionLoading(invoice.id);
-    const { data, error } = await supabase.functions.invoke('generate-invoice', {
-      body: { invoiceId: invoice.id },
-    });
-
-    if (error || !data?.html) {
+    const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
+    const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
+    if (!ok) {
       toast({
         title: 'Fout',
         description: 'Kon factuur niet genereren',
         variant: 'destructive',
       });
-      setActionLoading(null);
-      return;
-    }
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(data.html);
-      printWindow.document.close();
-      printWindow.onload = () => printWindow.print();
     }
     setActionLoading(null);
   };

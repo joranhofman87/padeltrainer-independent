@@ -96,23 +96,14 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
 
   const handleDownload = async (invoice: PlayerInvoice) => {
     setDownloadLoading(invoice.id);
-
-    const { data, error } = await supabase.functions.invoke('generate-invoice', {
-      body: { invoiceId: invoice.id },
-    });
-
-    if (error || !data?.html) {
-      logger.error('Generate invoice error', error as unknown as Error, { component: 'PlayerInvoicesTab' });
+    try {
+      const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
+      const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
+      if (!ok) {
+        toast({ title: 'Fout', description: 'Kon factuur niet genereren', variant: 'destructive' });
+      }
+    } catch {
       toast({ title: 'Fout', description: 'Kon factuur niet genereren', variant: 'destructive' });
-      setDownloadLoading(null);
-      return;
-    }
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(data.html);
-      printWindow.document.close();
-      printWindow.onload = () => printWindow.print();
     }
     setDownloadLoading(null);
   };
