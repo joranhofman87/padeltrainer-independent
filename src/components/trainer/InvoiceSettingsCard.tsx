@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
-import { renumberDraftInvoices } from '@/lib/renumberDraftInvoices';
+import { renumberInvoices, type RenumberStatus } from '@/lib/renumberDraftInvoices';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
@@ -61,6 +61,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   const [showRenumberDialog, setShowRenumberDialog] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
   const [initialNumbering, setInitialNumbering] = useState({ prefix: '', includeYear: true });
+  const [renumberStatuses, setRenumberStatuses] = useState<RenumberStatus[]>(['draft', 'sent', 'overdue']);
 
   useEffect(() => {
     if (initialData) {
@@ -170,9 +171,12 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   };
 
   const handleRenumberDrafts = async () => {
+    if (renumberStatuses.length === 0) {
+      setShowRenumberDialog(false);
+      return;
+    }
     setRenumbering(true);
     try {
-      // Look up trainer_profile.id from user_id
       const { data: tp } = await supabase
         .from('trainer_profiles')
         .select('id')
@@ -186,12 +190,13 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         return;
       }
 
-      const result = await renumberDraftInvoices({
+      const result = await renumberInvoices({
         ownerType: 'trainer',
         ownerId: tp.id,
         prefix: formData.invoice_prefix,
         includeYear: formData.invoice_include_year,
         startNumber: formData.invoice_next_number || 1,
+        statuses: renumberStatuses,
       });
       if (result.error) {
         toast({ title: 'Fout bij hernummeren', description: result.error, variant: 'destructive' });
@@ -201,9 +206,9 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
           .from('trainer_profiles')
           .update({ invoice_next_number: result.nextNumber })
           .eq('user_id', userId);
-        toast({ title: `${result.updated} concept-facturen hernummerd` });
+        toast({ title: `${result.updated} facturen hernummerd` });
       } else {
-        toast({ title: 'Geen concept-facturen gevonden om te hernummeren' });
+        toast({ title: 'Geen facturen gevonden om te hernummeren' });
       }
     } catch {
       toast({ title: 'Hernummeren mislukt', variant: 'destructive' });
@@ -523,16 +528,37 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
     <AlertDialog open={showRenumberDialog} onOpenChange={setShowRenumberDialog}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Concept-facturen hernummeren?</AlertDialogTitle>
+          <AlertDialogTitle>Facturen hernummeren?</AlertDialogTitle>
           <AlertDialogDescription>
-            De factuurnummering is gewijzigd. Wil je alle concept-facturen (drafts) hernummeren met het nieuwe format? Betaalde en verzonden facturen blijven ongewijzigd.
+            De factuurnummering is gewijzigd. Selecteer welke facturen hernummerd moeten worden. Betaalde facturen blijven altijd ongewijzigd.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <div className="space-y-3 py-2">
+          {([
+            { value: 'draft' as RenumberStatus, label: 'Concepten (draft)' },
+            { value: 'sent' as RenumberStatus, label: 'Verzonden (sent)' },
+            { value: 'overdue' as RenumberStatus, label: 'Achterstallig (overdue)' },
+          ]).map(({ value, label }) => (
+            <label key={value} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={renumberStatuses.includes(value)}
+                onChange={(e) => {
+                  setRenumberStatuses(prev =>
+                    e.target.checked ? [...prev, value] : prev.filter(s => s !== value)
+                  );
+                }}
+                className="rounded border-input"
+              />
+              <span className="text-sm">{label}</span>
+            </label>
+          ))}
+        </div>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={renumbering}>Nee, alleen nieuwe facturen</AlertDialogCancel>
-          <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering}>
+          <AlertDialogCancel disabled={renumbering}>Annuleren</AlertDialogCancel>
+          <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering || renumberStatuses.length === 0}>
             {renumbering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Ja, hernummer concepten
+            Hernummeren
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
