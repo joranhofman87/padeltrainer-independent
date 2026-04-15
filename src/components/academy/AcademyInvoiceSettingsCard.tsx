@@ -37,6 +37,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     custom_vat_rate: '',
     invoice_prefix: 'INV',
     invoice_next_number: 1,
+    invoice_include_year: true,
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bannerColor, setBannerColor] = useState<string>('');
@@ -50,7 +51,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
       setLoading(true);
       const { data } = await supabase
         .from('academy_profiles')
-        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color, invoice_include_year')
         .eq('id', academyId)
         .maybeSingle();
 
@@ -68,8 +69,9 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
           payment_terms_days: (data as any).payment_terms_days || 14,
           default_vat_rate: isCustom ? -1 : vatRate,
           custom_vat_rate: isCustom ? vatRate.toString() : '',
-          invoice_prefix: (data as any).invoice_prefix || 'INV',
+          invoice_prefix: (data as any).invoice_prefix || '',
           invoice_next_number: (data as any).invoice_next_number || 1,
+          invoice_include_year: (data as any).invoice_include_year ?? true,
         });
         setLogoUrl((data as any).invoice_logo_url || null);
         setBannerColor((data as any).invoice_banner_color || '');
@@ -130,8 +132,9 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         default_vat_rate: resolvedVatRate,
         invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
         invoice_logo_url: logoUrl || null,
-        invoice_prefix: formData.invoice_prefix || 'INV',
+        invoice_prefix: formData.invoice_prefix || null,
         invoice_next_number: formData.invoice_next_number || 1,
+        invoice_include_year: formData.invoice_include_year,
         invoice_banner_color: bannerColor || null,
       } as any)
       .eq('id', academyId);
@@ -370,9 +373,19 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
               <Input id="ac_next_number" type="number" min="1" value={formData.invoice_next_number} onChange={(e) => setFormData({ ...formData, invoice_next_number: parseInt(e.target.value) || 1 })} />
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="ac_include_year"
+              checked={formData.invoice_include_year}
+              onChange={(e) => setFormData({ ...formData, invoice_include_year: e.target.checked })}
+              className="rounded border-input"
+            />
+            <Label htmlFor="ac_include_year" className="text-sm font-normal cursor-pointer">{t('invoiceSettings.includeYear', 'Jaar opnemen in factuurnummer')}</Label>
+          </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Eye className="h-3.5 w-3.5" />
-            {t('invoiceSettings.previewNumber')}: <span className="font-mono font-medium text-foreground">{formatInvoiceNumber(formData.invoice_prefix, new Date().getFullYear(), formData.invoice_next_number || 1)}</span>
+            {t('invoiceSettings.previewNumber')}: <span className="font-mono font-medium text-foreground">{formatInvoiceNumber(formData.invoice_prefix, new Date().getFullYear(), formData.invoice_next_number || 1, formData.invoice_include_year)}</span>
           </div>
         </div>
 
