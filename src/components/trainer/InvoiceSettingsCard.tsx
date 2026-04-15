@@ -155,9 +155,61 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         description: t('invoices.savedDescription'),
       });
       onSave?.();
+
+      // Check if numbering format changed → offer to renumber drafts
+      const numberingChanged =
+        formData.invoice_prefix !== initialNumbering.prefix ||
+        formData.invoice_include_year !== initialNumbering.includeYear;
+      if (numberingChanged) {
+        setShowRenumberDialog(true);
+        setInitialNumbering({ prefix: formData.invoice_prefix, includeYear: formData.invoice_include_year });
+      }
     }
     
     setSaving(false);
+  };
+
+  const handleRenumberDrafts = async () => {
+    setRenumbering(true);
+    try {
+      // Look up trainer_profile.id from user_id
+      const { data: tp } = await supabase
+        .from('trainer_profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+
+      if (!tp) {
+        toast({ title: 'Trainer profiel niet gevonden', variant: 'destructive' });
+        setRenumbering(false);
+        setShowRenumberDialog(false);
+        return;
+      }
+
+      const result = await renumberDraftInvoices({
+        ownerType: 'trainer',
+        ownerId: tp.id,
+        prefix: formData.invoice_prefix,
+        includeYear: formData.invoice_include_year,
+        startNumber: formData.invoice_next_number || 1,
+      });
+      if (result.error) {
+        toast({ title: 'Fout bij hernummeren', description: result.error, variant: 'destructive' });
+      } else if (result.updated > 0) {
+        setFormData(prev => ({ ...prev, invoice_next_number: result.nextNumber }));
+        await supabase
+          .from('trainer_profiles')
+          .update({ invoice_next_number: result.nextNumber })
+          .eq('user_id', userId);
+        toast({ title: `${result.updated} concept-facturen hernummerd` });
+      } else {
+        toast({ title: 'Geen concept-facturen gevonden om te hernummeren' });
+      }
+    } catch {
+      toast({ title: 'Hernummeren mislukt', variant: 'destructive' });
+    }
+    setRenumbering(false);
+    setShowRenumberDialog(false);
   };
 
   return (
