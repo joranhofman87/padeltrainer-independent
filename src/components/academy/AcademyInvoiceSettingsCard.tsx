@@ -81,6 +81,10 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         setLogoUrl((data as any).invoice_logo_url || null);
         setBannerColor((data as any).invoice_banner_color || '');
         setForwardEmails((data as any).invoice_forward_emails || []);
+        setInitialNumbering({
+          prefix: (data as any).invoice_prefix || '',
+          includeYear: (data as any).invoice_include_year ?? true,
+        });
       }
       setLoading(false);
     };
