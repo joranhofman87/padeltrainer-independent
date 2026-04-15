@@ -1,31 +1,40 @@
 import { supabase } from '@/lib/supabaseClient';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 
+export type RenumberStatus = 'draft' | 'sent' | 'overdue';
+
 /**
- * Renumber all draft invoices for an academy or trainer using the current numbering settings.
- * Paid/sent invoices are never touched.
- *
- * Returns the count of updated invoices, or -1 on error.
+ * Renumber invoices for an academy or trainer using the current numbering settings.
+ * Only the selected statuses are touched. "overdue" = sent invoices past due_date.
+ * Paid invoices are never touched.
  */
-export async function renumberDraftInvoices(opts: {
-  /** 'academy' or 'trainer' */
+export async function renumberInvoices(opts: {
   ownerType: 'academy' | 'trainer';
-  /** academy_profile_id or trainer_profile.id */
   ownerId: string;
   prefix: string;
   includeYear: boolean;
   startNumber: number;
+  statuses: RenumberStatus[];
 }): Promise<{ updated: number; nextNumber: number; error?: string }> {
-  const { ownerType, ownerId, prefix, includeYear, startNumber } = opts;
+  const { ownerType, ownerId, prefix, includeYear, startNumber, statuses } = opts;
 
-  // Fetch all draft invoices ordered by invoice_date, then created_at
   const filterCol = ownerType === 'academy' ? 'academy_profile_id' : 'trainer_id';
+  const today = new Date().toISOString().slice(0, 10);
 
-  const { data: drafts, error: fetchError } = await supabase
+  // Build query for the selected statuses
+  const dbStatuses: string[] = [];
+  if (statuses.includes('draft')) dbStatuses.push('draft');
+  if (statuses.includes('sent') || statuses.includes('overdue')) dbStatuses.push('sent');
+
+  if (dbStatuses.length === 0) {
+    return { updated: 0, nextNumber: startNumber };
+  }
+
+  const { data: invoices, error: fetchError } = await supabase
     .from('invoices')
-    .select('id, invoice_number')
+    .select('id, invoice_number, status, due_date')
     .eq(filterCol, ownerId)
-    .eq('status', 'draft')
+    .in('status', dbStatuses)
     .order('invoice_date', { ascending: true })
     .order('created_at', { ascending: true });
 
@@ -33,7 +42,26 @@ export async function renumberDraftInvoices(opts: {
     return { updated: 0, nextNumber: startNumber, error: fetchError.message };
   }
 
-  if (!drafts || drafts.length === 0) {
+  if (!invoices || invoices.length === 0) {
+    return { updated: 0, nextNumber: startNumber };
+  }
+
+  // Filter based on selected statuses
+  const wantDraft = statuses.includes('draft');
+  const wantSent = statuses.includes('sent');
+  const wantOverdue = statuses.includes('overdue');
+
+  const filtered = invoices.filter((inv) => {
+    if (inv.status === 'draft') return wantDraft;
+    if (inv.status === 'sent') {
+      const isOverdue = inv.due_date && inv.due_date < today;
+      if (isOverdue) return wantOverdue;
+      return wantSent;
+    }
+    return false;
+  });
+
+  if (filtered.length === 0) {
     return { updated: 0, nextNumber: startNumber };
   }
 
@@ -41,14 +69,14 @@ export async function renumberDraftInvoices(opts: {
   let seq = startNumber;
   let updatedCount = 0;
 
-  for (const draft of drafts) {
+  for (const inv of filtered) {
     const newNumber = formatInvoiceNumber(prefix, year, seq, includeYear);
 
-    if (draft.invoice_number !== newNumber) {
+    if (inv.invoice_number !== newNumber) {
       const { error: updateError } = await supabase
         .from('invoices')
         .update({ invoice_number: newNumber, pdf_url: null } as any)
-        .eq('id', draft.id);
+        .eq('id', inv.id);
 
       if (!updateError) {
         updatedCount++;
