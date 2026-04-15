@@ -507,16 +507,37 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     <AlertDialog open={showRenumberDialog} onOpenChange={setShowRenumberDialog}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Concept-facturen hernummeren?</AlertDialogTitle>
+          <AlertDialogTitle>Facturen hernummeren?</AlertDialogTitle>
           <AlertDialogDescription>
-            De factuurnummering is gewijzigd. Wil je alle concept-facturen (drafts) hernummeren met het nieuwe format? Betaalde en verzonden facturen blijven ongewijzigd.
+            De factuurnummering is gewijzigd. Selecteer welke facturen hernummerd moeten worden. Betaalde facturen blijven altijd ongewijzigd.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <div className="space-y-3 py-2">
+          {([
+            { value: 'draft' as RenumberStatus, label: 'Concepten (draft)' },
+            { value: 'sent' as RenumberStatus, label: 'Verzonden (sent)' },
+            { value: 'overdue' as RenumberStatus, label: 'Achterstallig (overdue)' },
+          ]).map(({ value, label }) => (
+            <label key={value} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={renumberStatuses.includes(value)}
+                onChange={(e) => {
+                  setRenumberStatuses(prev =>
+                    e.target.checked ? [...prev, value] : prev.filter(s => s !== value)
+                  );
+                }}
+                className="rounded border-input"
+              />
+              <span className="text-sm">{label}</span>
+            </label>
+          ))}
+        </div>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={renumbering}>Nee, alleen nieuwe facturen</AlertDialogCancel>
-          <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering}>
+          <AlertDialogCancel disabled={renumbering}>Annuleren</AlertDialogCancel>
+          <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering || renumberStatuses.length === 0}>
             {renumbering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Ja, hernummer concepten
+            Hernummeren
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
