@@ -60,7 +60,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   const [newEmail, setNewEmail] = useState('');
   const [showRenumberDialog, setShowRenumberDialog] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
-  const [initialNumbering, setInitialNumbering] = useState({ prefix: '', includeYear: true });
+  const [initialNumbering, setInitialNumbering] = useState({ prefix: '', includeYear: true, startNumber: 1 });
   const [renumberStatuses, setRenumberStatuses] = useState<RenumberStatus[]>(['draft', 'sent', 'overdue']);
 
   useEffect(() => {
@@ -86,6 +86,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
       setInitialNumbering({
         prefix: initialData.invoice_prefix || '',
         includeYear: (initialData as any).invoice_include_year ?? true,
+        startNumber: initialData.invoice_next_number || 1,
       });
     }
   }, [initialData]);
@@ -157,13 +158,14 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
       });
       onSave?.();
 
-      // Check if numbering format changed → offer to renumber drafts
+      // Check if numbering format changed → offer to renumber
       const numberingChanged =
         formData.invoice_prefix !== initialNumbering.prefix ||
-        formData.invoice_include_year !== initialNumbering.includeYear;
+        formData.invoice_include_year !== initialNumbering.includeYear ||
+        formData.invoice_next_number !== initialNumbering.startNumber;
       if (numberingChanged) {
         setShowRenumberDialog(true);
-        setInitialNumbering({ prefix: formData.invoice_prefix, includeYear: formData.invoice_include_year });
+        setInitialNumbering({ prefix: formData.invoice_prefix, includeYear: formData.invoice_include_year, startNumber: formData.invoice_next_number });
       }
     }
     
