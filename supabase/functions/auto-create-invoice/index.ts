@@ -97,7 +97,7 @@ serve(async (req) => {
     // Fetch trainer profile with business info
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
-      .select("id, user_id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number")
+      .select("id, user_id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year")
       .eq("id", trainerId)
       .single();
 
@@ -129,7 +129,7 @@ serve(async (req) => {
     if (academyProfileId) {
       const { data: academyProfile } = await supabase
         .from("academy_profiles")
-        .select("business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number")
+        .select("business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year")
         .eq("id", academyProfileId)
         .single();
 
