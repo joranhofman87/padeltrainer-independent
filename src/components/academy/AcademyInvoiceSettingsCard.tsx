@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,9 @@ import { supabase } from '@/lib/supabaseClient';
 import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye, Palette, RefreshCw } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { renumberDraftInvoices } from '@/lib/renumberDraftInvoices';
 import { Badge } from '@/components/ui/badge';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 interface AcademyInvoiceSettingsCardProps {
   academyId: string;
@@ -45,6 +47,9 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
+  const [showRenumberDialog, setShowRenumberDialog] = useState(false);
+  const [renumbering, setRenumbering] = useState(false);
+  const [initialNumbering, setInitialNumbering] = useState({ prefix: 'INV', includeYear: true });
 
   useEffect(() => {
     const load = async () => {
@@ -76,6 +81,10 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         setLogoUrl((data as any).invoice_logo_url || null);
         setBannerColor((data as any).invoice_banner_color || '');
         setForwardEmails((data as any).invoice_forward_emails || []);
+        setInitialNumbering({
+          prefix: (data as any).invoice_prefix || '',
+          includeYear: (data as any).invoice_include_year ?? true,
+        });
       }
       setLoading(false);
     };
@@ -161,8 +170,48 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         }
         setInitialVatRate(resolvedVatRate);
       }
+
+      // Check if numbering format changed → offer to renumber drafts
+      const numberingChanged =
+        formData.invoice_prefix !== initialNumbering.prefix ||
+        formData.invoice_include_year !== initialNumbering.includeYear;
+      if (numberingChanged) {
+        setShowRenumberDialog(true);
+        setInitialNumbering({ prefix: formData.invoice_prefix, includeYear: formData.invoice_include_year });
+      }
     }
     setSaving(false);
+  };
+
+  const handleRenumberDrafts = async () => {
+    setRenumbering(true);
+    try {
+      const result = await renumberDraftInvoices({
+        ownerType: 'academy',
+        ownerId: academyId,
+        prefix: formData.invoice_prefix,
+        includeYear: formData.invoice_include_year,
+        startNumber: formData.invoice_next_number || 1,
+      });
+      if (result.error) {
+        toast({ title: 'Fout bij hernummeren', description: result.error, variant: 'destructive' });
+      } else if (result.updated > 0) {
+        // Update next number to continue after renumbered drafts
+        setFormData(prev => ({ ...prev, invoice_next_number: result.nextNumber }));
+        await supabase
+          .from('academy_profiles')
+          .update({ invoice_next_number: result.nextNumber } as any)
+          .eq('id', academyId);
+        toast({ title: `${result.updated} concept-facturen hernummerd` });
+      } else {
+        toast({ title: 'Geen concept-facturen gevonden om te hernummeren' });
+      }
+    } catch (err) {
+      logger.error('Renumber drafts failed', err instanceof Error ? err : new Error(String(err)), { component: 'AcademyInvoiceSettingsCard' });
+      toast({ title: 'Hernummeren mislukt', variant: 'destructive' });
+    }
+    setRenumbering(false);
+    setShowRenumberDialog(false);
   };
 
   const handleBulkUpdateVat = async () => {
@@ -199,6 +248,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -448,5 +498,24 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         </div>
       </CardContent>
     </Card>
+
+    <AlertDialog open={showRenumberDialog} onOpenChange={setShowRenumberDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Concept-facturen hernummeren?</AlertDialogTitle>
+          <AlertDialogDescription>
+            De factuurnummering is gewijzigd. Wil je alle concept-facturen (drafts) hernummeren met het nieuwe format? Betaalde en verzonden facturen blijven ongewijzigd.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={renumbering}>Nee, alleen nieuwe facturen</AlertDialogCancel>
+          <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering}>
+            {renumbering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Ja, hernummer concepten
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

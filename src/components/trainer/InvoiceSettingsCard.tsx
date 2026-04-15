@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { renumberDraftInvoices } from '@/lib/renumberDraftInvoices';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 interface InvoiceSettingsCardProps {
@@ -56,6 +58,9 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
+  const [showRenumberDialog, setShowRenumberDialog] = useState(false);
+  const [renumbering, setRenumbering] = useState(false);
+  const [initialNumbering, setInitialNumbering] = useState({ prefix: '', includeYear: true });
 
   useEffect(() => {
     if (initialData) {
@@ -77,6 +82,10 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
       });
       setLogoUrl(initialData.invoice_logo_url || null);
       setForwardEmails(initialData.invoice_forward_emails || []);
+      setInitialNumbering({
+        prefix: initialData.invoice_prefix || '',
+        includeYear: (initialData as any).invoice_include_year ?? true,
+      });
     }
   }, [initialData]);
 
@@ -146,12 +155,65 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         description: t('invoices.savedDescription'),
       });
       onSave?.();
+
+      // Check if numbering format changed → offer to renumber drafts
+      const numberingChanged =
+        formData.invoice_prefix !== initialNumbering.prefix ||
+        formData.invoice_include_year !== initialNumbering.includeYear;
+      if (numberingChanged) {
+        setShowRenumberDialog(true);
+        setInitialNumbering({ prefix: formData.invoice_prefix, includeYear: formData.invoice_include_year });
+      }
     }
     
     setSaving(false);
   };
 
+  const handleRenumberDrafts = async () => {
+    setRenumbering(true);
+    try {
+      // Look up trainer_profile.id from user_id
+      const { data: tp } = await supabase
+        .from('trainer_profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+
+      if (!tp) {
+        toast({ title: 'Trainer profiel niet gevonden', variant: 'destructive' });
+        setRenumbering(false);
+        setShowRenumberDialog(false);
+        return;
+      }
+
+      const result = await renumberDraftInvoices({
+        ownerType: 'trainer',
+        ownerId: tp.id,
+        prefix: formData.invoice_prefix,
+        includeYear: formData.invoice_include_year,
+        startNumber: formData.invoice_next_number || 1,
+      });
+      if (result.error) {
+        toast({ title: 'Fout bij hernummeren', description: result.error, variant: 'destructive' });
+      } else if (result.updated > 0) {
+        setFormData(prev => ({ ...prev, invoice_next_number: result.nextNumber }));
+        await supabase
+          .from('trainer_profiles')
+          .update({ invoice_next_number: result.nextNumber })
+          .eq('user_id', userId);
+        toast({ title: `${result.updated} concept-facturen hernummerd` });
+      } else {
+        toast({ title: 'Geen concept-facturen gevonden om te hernummeren' });
+      }
+    } catch {
+      toast({ title: 'Hernummeren mislukt', variant: 'destructive' });
+    }
+    setRenumbering(false);
+    setShowRenumberDialog(false);
+  };
+
   return (
+    <>
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -457,5 +519,24 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         </Button>
       </CardContent>
     </Card>
+
+    <AlertDialog open={showRenumberDialog} onOpenChange={setShowRenumberDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Concept-facturen hernummeren?</AlertDialogTitle>
+          <AlertDialogDescription>
+            De factuurnummering is gewijzigd. Wil je alle concept-facturen (drafts) hernummeren met het nieuwe format? Betaalde en verzonden facturen blijven ongewijzigd.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={renumbering}>Nee, alleen nieuwe facturen</AlertDialogCancel>
+          <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering}>
+            {renumbering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Ja, hernummer concepten
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
