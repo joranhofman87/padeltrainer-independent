@@ -49,7 +49,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const [newEmail, setNewEmail] = useState('');
   const [showRenumberDialog, setShowRenumberDialog] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
-  const [initialNumbering, setInitialNumbering] = useState({ prefix: 'INV', includeYear: true });
+  const [initialNumbering, setInitialNumbering] = useState({ prefix: '', includeYear: true, startNumber: 1 });
   const [renumberStatuses, setRenumberStatuses] = useState<RenumberStatus[]>(['draft', 'sent', 'overdue']);
 
   useEffect(() => {
