@@ -140,7 +140,7 @@ export default function AcademyCreateInvoice() {
     try {
       const { data: academy, error: academyError } = await supabase
         .from('academy_profiles')
-        .select('invoice_prefix, invoice_next_number, default_vat_rate, payment_terms_days')
+        .select('invoice_prefix, invoice_next_number, invoice_include_year, default_vat_rate, payment_terms_days')
         .eq('id', academyProfileId)
         .single();
 
@@ -148,7 +148,8 @@ export default function AcademyCreateInvoice() {
 
       const prefix = academy.invoice_prefix ?? '';
       const nextNumber = academy.invoice_next_number || 1;
-      const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber);
+      const includeYear = (academy as any).invoice_include_year ?? true;
+      const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber, includeYear);
 
       let guestPlayerId: string | null = null;
       if (playerEmail.trim()) {
