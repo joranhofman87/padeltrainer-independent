@@ -497,5 +497,24 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         </div>
       </CardContent>
     </Card>
+
+    <AlertDialog open={showRenumberDialog} onOpenChange={setShowRenumberDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Concept-facturen hernummeren?</AlertDialogTitle>
+          <AlertDialogDescription>
+            De factuurnummering is gewijzigd. Wil je alle concept-facturen (drafts) hernummeren met het nieuwe format? Betaalde en verzonden facturen blijven ongewijzigd.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={renumbering}>Nee, alleen nieuwe facturen</AlertDialogCancel>
+          <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering}>
+            {renumbering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Ja, hernummer concepten
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
