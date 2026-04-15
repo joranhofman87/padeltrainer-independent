@@ -120,26 +120,29 @@ export function CreateInvoiceDialog({
   };
 
   const generateInvoiceNumber = async (): Promise<string> => {
-    const prefix = trainerBusinessInfo.invoice_prefix || 'INV';
+    const prefix = (trainerBusinessInfo.invoice_prefix ?? '').trim();
     const year = new Date().getFullYear();
+    
+    const likePattern = prefix ? `${prefix}-${year}-%` : `${year}-%`;
     
     // Get the last invoice number for this trainer this year
     const { data: lastInvoice } = await supabase
       .from('invoices')
       .select('invoice_number')
       .eq('trainer_id', trainerId)
-      .like('invoice_number', `${prefix}-${year}-%`)
+      .like('invoice_number', likePattern)
       .order('invoice_number', { ascending: false })
       .limit(1)
       .single();
     
     let sequence = 1;
     if (lastInvoice?.invoice_number) {
-      const lastSequence = parseInt(lastInvoice.invoice_number.split('-')[2] || '0');
+      const parts = lastInvoice.invoice_number.split('-');
+      const lastSequence = parseInt(parts[parts.length - 1] || '0');
       sequence = lastSequence + 1;
     }
     
-    return `${prefix}-${year}-${sequence.toString().padStart(4, '0')}`;
+    return formatInvoiceNumber(prefix, year, sequence);
   };
 
   const handleSubmit = async (saveAsDraft: boolean = false) => {

@@ -439,25 +439,28 @@ serve(async (req) => {
     }
 
     // Generate invoice number using profile's custom prefix
-    const prefix = invoiceProfile.invoice_prefix || "INV";
+    const prefix = (invoiceProfile.invoice_prefix ?? "").trim();
     const year = new Date().getFullYear();
+    const likePattern = prefix ? `${prefix}-${year}-%` : `${year}-%`;
     const { data: lastInvoice } = await supabase
       .from("invoices")
       .select("invoice_number")
       .eq("trainer_id", trainerId)
-      .like("invoice_number", `${prefix}-${year}-%`)
+      .like("invoice_number", likePattern)
       .order("invoice_number", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     let sequence = invoiceProfile.invoice_next_number || 1;
     if (lastInvoice?.invoice_number) {
-      const lastSeq = parseInt(lastInvoice.invoice_number.split("-")[2] || "0");
+      const parts = lastInvoice.invoice_number.split("-");
+      const lastSeq = parseInt(parts[parts.length - 1] || "0");
       if (lastSeq >= sequence) {
         sequence = lastSeq + 1;
       }
     }
-    const invoiceNumber = `${prefix}-${year}-${sequence.toString().padStart(4, "0")}`;
+    const seq = String(sequence).padStart(4, "0");
+    const invoiceNumber = prefix ? `${prefix}-${year}-${seq}` : `${year}-${seq}`;
 
     // Update next number on the profile table
     await supabase
