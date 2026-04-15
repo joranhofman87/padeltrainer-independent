@@ -50,6 +50,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const [showRenumberDialog, setShowRenumberDialog] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
   const [initialNumbering, setInitialNumbering] = useState({ prefix: 'INV', includeYear: true });
+  const [renumberStatuses, setRenumberStatuses] = useState<RenumberStatus[]>(['draft', 'sent', 'overdue']);
 
   useEffect(() => {
     const load = async () => {
@@ -184,30 +185,34 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   };
 
   const handleRenumberDrafts = async () => {
+    if (renumberStatuses.length === 0) {
+      setShowRenumberDialog(false);
+      return;
+    }
     setRenumbering(true);
     try {
-      const result = await renumberDraftInvoices({
+      const result = await renumberInvoices({
         ownerType: 'academy',
         ownerId: academyId,
         prefix: formData.invoice_prefix,
         includeYear: formData.invoice_include_year,
         startNumber: formData.invoice_next_number || 1,
+        statuses: renumberStatuses,
       });
       if (result.error) {
         toast({ title: 'Fout bij hernummeren', description: result.error, variant: 'destructive' });
       } else if (result.updated > 0) {
-        // Update next number to continue after renumbered drafts
         setFormData(prev => ({ ...prev, invoice_next_number: result.nextNumber }));
         await supabase
           .from('academy_profiles')
           .update({ invoice_next_number: result.nextNumber } as any)
           .eq('id', academyId);
-        toast({ title: `${result.updated} concept-facturen hernummerd` });
+        toast({ title: `${result.updated} facturen hernummerd` });
       } else {
-        toast({ title: 'Geen concept-facturen gevonden om te hernummeren' });
+        toast({ title: 'Geen facturen gevonden om te hernummeren' });
       }
     } catch (err) {
-      logger.error('Renumber drafts failed', err instanceof Error ? err : new Error(String(err)), { component: 'AcademyInvoiceSettingsCard' });
+      logger.error('Renumber failed', err instanceof Error ? err : new Error(String(err)), { component: 'AcademyInvoiceSettingsCard' });
       toast({ title: 'Hernummeren mislukt', variant: 'destructive' });
     }
     setRenumbering(false);
