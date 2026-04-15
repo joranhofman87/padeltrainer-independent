@@ -61,6 +61,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   const [showRenumberDialog, setShowRenumberDialog] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
   const [initialNumbering, setInitialNumbering] = useState({ prefix: '', includeYear: true });
+  const [renumberStatuses, setRenumberStatuses] = useState<RenumberStatus[]>(['draft', 'sent', 'overdue']);
 
   useEffect(() => {
     if (initialData) {
@@ -170,9 +171,12 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   };
 
   const handleRenumberDrafts = async () => {
+    if (renumberStatuses.length === 0) {
+      setShowRenumberDialog(false);
+      return;
+    }
     setRenumbering(true);
     try {
-      // Look up trainer_profile.id from user_id
       const { data: tp } = await supabase
         .from('trainer_profiles')
         .select('id')
@@ -186,12 +190,13 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         return;
       }
 
-      const result = await renumberDraftInvoices({
+      const result = await renumberInvoices({
         ownerType: 'trainer',
         ownerId: tp.id,
         prefix: formData.invoice_prefix,
         includeYear: formData.invoice_include_year,
         startNumber: formData.invoice_next_number || 1,
+        statuses: renumberStatuses,
       });
       if (result.error) {
         toast({ title: 'Fout bij hernummeren', description: result.error, variant: 'destructive' });
@@ -201,9 +206,9 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
           .from('trainer_profiles')
           .update({ invoice_next_number: result.nextNumber })
           .eq('user_id', userId);
-        toast({ title: `${result.updated} concept-facturen hernummerd` });
+        toast({ title: `${result.updated} facturen hernummerd` });
       } else {
-        toast({ title: 'Geen concept-facturen gevonden om te hernummeren' });
+        toast({ title: 'Geen facturen gevonden om te hernummeren' });
       }
     } catch {
       toast({ title: 'Hernummeren mislukt', variant: 'destructive' });
