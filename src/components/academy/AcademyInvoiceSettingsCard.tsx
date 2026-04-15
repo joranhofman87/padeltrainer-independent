@@ -248,6 +248,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
