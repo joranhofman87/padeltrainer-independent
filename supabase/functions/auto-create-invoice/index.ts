@@ -441,7 +441,10 @@ serve(async (req) => {
     // Generate invoice number using profile's custom prefix
     const prefix = (invoiceProfile.invoice_prefix ?? "").trim();
     const year = new Date().getFullYear();
-    const likePattern = prefix ? `${prefix}-${year}-%` : `${year}-%`;
+    const includeYear = invoiceProfile.invoice_include_year ?? true;
+    const likePattern = prefix
+      ? (includeYear ? `${prefix}-${year}-%` : `${prefix}-%`)
+      : (includeYear ? `${year}-%` : '%');
     const { data: lastInvoice } = await supabase
       .from("invoices")
       .select("invoice_number")
@@ -460,7 +463,11 @@ serve(async (req) => {
       }
     }
     const seq = String(sequence).padStart(4, "0");
-    const invoiceNumber = prefix ? `${prefix}-${year}-${seq}` : `${year}-${seq}`;
+    const numParts: string[] = [];
+    if (prefix) numParts.push(prefix);
+    if (includeYear) numParts.push(String(year));
+    numParts.push(seq);
+    const invoiceNumber = numParts.join("-");
 
     // Update next number on the profile table
     await supabase
