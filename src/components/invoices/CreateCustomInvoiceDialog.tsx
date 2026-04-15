@@ -14,6 +14,7 @@ import { nl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 
 interface LineItem {
@@ -153,9 +154,9 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
 
       if (academyError || !academy) throw new Error('Academy niet gevonden');
 
-      const prefix = academy.invoice_prefix || 'INV';
+      const prefix = academy.invoice_prefix ?? '';
       const nextNumber = academy.invoice_next_number || 1;
-      const invoiceNumber = `${prefix}-${new Date().getFullYear()}-${String(nextNumber).padStart(4, '0')}`;
+      const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber);
 
       // Create guest player if email provided
       let guestPlayerId: string | null = null;

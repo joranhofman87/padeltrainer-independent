@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye, Palette, RefreshCw } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { Badge } from '@/components/ui/badge';
 
 interface AcademyInvoiceSettingsCardProps {
@@ -371,7 +372,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Eye className="h-3.5 w-3.5" />
-            {t('invoiceSettings.previewNumber')}: <span className="font-mono font-medium text-foreground">{formData.invoice_prefix}-{new Date().getFullYear()}-{(formData.invoice_next_number || 1).toString().padStart(4, '0')}</span>
+            {t('invoiceSettings.previewNumber')}: <span className="font-mono font-medium text-foreground">{formatInvoiceNumber(formData.invoice_prefix, new Date().getFullYear(), formData.invoice_next_number || 1)}</span>
           </div>
         </div>
 
