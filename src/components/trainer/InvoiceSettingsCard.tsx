@@ -49,6 +49,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
     custom_vat_rate: '',
     invoice_prefix: 'INV',
     invoice_next_number: 1,
+    invoice_include_year: true,
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -70,8 +71,9 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         payment_terms_days: initialData.payment_terms_days || 14,
         default_vat_rate: isCustom ? -1 : vatRate,
         custom_vat_rate: isCustom ? vatRate.toString() : '',
-        invoice_prefix: initialData.invoice_prefix || 'INV',
+        invoice_prefix: initialData.invoice_prefix || '',
         invoice_next_number: initialData.invoice_next_number || 1,
+        invoice_include_year: (initialData as any).invoice_include_year ?? true,
       });
       setLogoUrl(initialData.invoice_logo_url || null);
       setForwardEmails(initialData.invoice_forward_emails || []);
@@ -126,8 +128,9 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         default_vat_rate: resolvedVatRate,
         invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
         invoice_logo_url: logoUrl || null,
-        invoice_prefix: formData.invoice_prefix || 'INV',
+        invoice_prefix: formData.invoice_prefix || null,
         invoice_next_number: formData.invoice_next_number || 1,
+        invoice_include_year: formData.invoice_include_year,
       })
       .eq('user_id', userId);
 
@@ -370,9 +373,19 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
               />
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="invoice_include_year"
+              checked={formData.invoice_include_year}
+              onChange={(e) => setFormData({ ...formData, invoice_include_year: e.target.checked })}
+              className="rounded border-input"
+            />
+            <Label htmlFor="invoice_include_year" className="text-sm font-normal cursor-pointer">{t('invoices.includeYear', 'Jaar opnemen in factuurnummer')}</Label>
+          </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Eye className="h-3.5 w-3.5" />
-            {t('invoices.previewNumber', 'Voorbeeld')}: <span className="font-mono font-medium text-foreground">{formatInvoiceNumber(formData.invoice_prefix, new Date().getFullYear(), formData.invoice_next_number || 1)}</span>
+            {t('invoices.previewNumber', 'Voorbeeld')}: <span className="font-mono font-medium text-foreground">{formatInvoiceNumber(formData.invoice_prefix, new Date().getFullYear(), formData.invoice_next_number || 1, formData.invoice_include_year)}</span>
           </div>
         </div>
 

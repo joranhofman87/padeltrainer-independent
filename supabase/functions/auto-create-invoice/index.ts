@@ -97,7 +97,7 @@ serve(async (req) => {
     // Fetch trainer profile with business info
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
-      .select("id, user_id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number")
+      .select("id, user_id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year")
       .eq("id", trainerId)
       .single();
 
@@ -129,7 +129,7 @@ serve(async (req) => {
     if (academyProfileId) {
       const { data: academyProfile } = await supabase
         .from("academy_profiles")
-        .select("business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number")
+        .select("business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year")
         .eq("id", academyProfileId)
         .single();
 
@@ -441,7 +441,10 @@ serve(async (req) => {
     // Generate invoice number using profile's custom prefix
     const prefix = (invoiceProfile.invoice_prefix ?? "").trim();
     const year = new Date().getFullYear();
-    const likePattern = prefix ? `${prefix}-${year}-%` : `${year}-%`;
+    const includeYear = invoiceProfile.invoice_include_year ?? true;
+    const likePattern = prefix
+      ? (includeYear ? `${prefix}-${year}-%` : `${prefix}-%`)
+      : (includeYear ? `${year}-%` : '%');
     const { data: lastInvoice } = await supabase
       .from("invoices")
       .select("invoice_number")
@@ -460,7 +463,11 @@ serve(async (req) => {
       }
     }
     const seq = String(sequence).padStart(4, "0");
-    const invoiceNumber = prefix ? `${prefix}-${year}-${seq}` : `${year}-${seq}`;
+    const numParts: string[] = [];
+    if (prefix) numParts.push(prefix);
+    if (includeYear) numParts.push(String(year));
+    numParts.push(seq);
+    const invoiceNumber = numParts.join("-");
 
     // Update next number on the profile table
     await supabase

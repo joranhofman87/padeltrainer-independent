@@ -56,7 +56,7 @@ export default function TrainerCreateInvoice() {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from("trainer_profiles")
-        .select("id, invoice_prefix, invoice_next_number, default_vat_rate, payment_terms_days")
+        .select("id, invoice_prefix, invoice_next_number, invoice_include_year, default_vat_rate, payment_terms_days")
         .eq("user_id", user.id)
         .single();
       if (error) throw error;
@@ -131,7 +131,8 @@ export default function TrainerCreateInvoice() {
     try {
       const prefix = trainerProfile?.invoice_prefix ?? '';
       const nextNumber = trainerProfile?.invoice_next_number || 1;
-      const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber);
+      const includeYear = (trainerProfile as any)?.invoice_include_year ?? true;
+      const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber, includeYear);
 
       let guestPlayerId: string | null = null;
       if (playerEmail.trim()) {
