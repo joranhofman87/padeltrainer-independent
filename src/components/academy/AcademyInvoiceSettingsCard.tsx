@@ -85,6 +85,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         setInitialNumbering({
           prefix: (data as any).invoice_prefix || '',
           includeYear: (data as any).invoice_include_year ?? true,
+          startNumber: (data as any).invoice_next_number || 1,
         });
       }
       setLoading(false);
@@ -172,13 +173,14 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         setInitialVatRate(resolvedVatRate);
       }
 
-      // Check if numbering format changed → offer to renumber drafts
+      // Check if numbering format changed → offer to renumber
       const numberingChanged =
         formData.invoice_prefix !== initialNumbering.prefix ||
-        formData.invoice_include_year !== initialNumbering.includeYear;
+        formData.invoice_include_year !== initialNumbering.includeYear ||
+        formData.invoice_next_number !== initialNumbering.startNumber;
       if (numberingChanged) {
         setShowRenumberDialog(true);
-        setInitialNumbering({ prefix: formData.invoice_prefix, includeYear: formData.invoice_include_year });
+        setInitialNumbering({ prefix: formData.invoice_prefix, includeYear: formData.invoice_include_year, startNumber: formData.invoice_next_number });
       }
     }
     setSaving(false);
