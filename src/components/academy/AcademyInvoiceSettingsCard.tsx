@@ -47,6 +47,9 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
+  const [showRenumberDialog, setShowRenumberDialog] = useState(false);
+  const [renumbering, setRenumbering] = useState(false);
+  const [initialNumbering, setInitialNumbering] = useState({ prefix: 'INV', includeYear: true });
 
   useEffect(() => {
     const load = async () => {
