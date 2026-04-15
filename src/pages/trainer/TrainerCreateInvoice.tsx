@@ -19,6 +19,7 @@ import { nl, enUS } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 interface LineItem {
   description: string;
   quantity: number;

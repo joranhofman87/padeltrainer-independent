@@ -14,6 +14,7 @@ import { nl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 
 interface LineItem {
