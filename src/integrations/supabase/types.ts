@@ -323,6 +323,7 @@ export type Database = {
           id: string
           invoice_banner_color: string | null
           invoice_forward_emails: string[] | null
+          invoice_include_year: boolean
           invoice_logo_url: string | null
           invoice_next_number: number | null
           invoice_prefix: string | null
@@ -373,6 +374,7 @@ export type Database = {
           id?: string
           invoice_banner_color?: string | null
           invoice_forward_emails?: string[] | null
+          invoice_include_year?: boolean
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
           invoice_prefix?: string | null
@@ -423,6 +425,7 @@ export type Database = {
           id?: string
           invoice_banner_color?: string | null
           invoice_forward_emails?: string[] | null
+          invoice_include_year?: boolean
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
           invoice_prefix?: string | null
@@ -4265,6 +4268,7 @@ export type Database = {
           iban: string | null
           id: string
           invoice_forward_emails: string[] | null
+          invoice_include_year: boolean
           invoice_logo_url: string | null
           invoice_next_number: number | null
           invoice_prefix: string | null
@@ -4324,6 +4328,7 @@ export type Database = {
           iban?: string | null
           id?: string
           invoice_forward_emails?: string[] | null
+          invoice_include_year?: boolean
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
           invoice_prefix?: string | null
@@ -4383,6 +4388,7 @@ export type Database = {
           iban?: string | null
           id?: string
           invoice_forward_emails?: string[] | null
+          invoice_include_year?: boolean
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
           invoice_prefix?: string | null
