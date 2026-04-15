@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
-import { renumberDraftInvoices } from '@/lib/renumberDraftInvoices';
+import { renumberInvoices, type RenumberStatus } from '@/lib/renumberDraftInvoices';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
