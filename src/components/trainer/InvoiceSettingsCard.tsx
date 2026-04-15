@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { renumberDraftInvoices } from '@/lib/renumberDraftInvoices';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 interface InvoiceSettingsCardProps {
@@ -56,6 +58,9 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
+  const [showRenumberDialog, setShowRenumberDialog] = useState(false);
+  const [renumbering, setRenumbering] = useState(false);
+  const [initialNumbering, setInitialNumbering] = useState({ prefix: '', includeYear: true });
 
   useEffect(() => {
     if (initialData) {
@@ -77,6 +82,10 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
       });
       setLogoUrl(initialData.invoice_logo_url || null);
       setForwardEmails(initialData.invoice_forward_emails || []);
+      setInitialNumbering({
+        prefix: initialData.invoice_prefix || '',
+        includeYear: (initialData as any).invoice_include_year ?? true,
+      });
     }
   }, [initialData]);
 
