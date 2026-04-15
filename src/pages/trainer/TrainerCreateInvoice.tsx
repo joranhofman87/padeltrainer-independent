@@ -128,9 +128,9 @@ export default function TrainerCreateInvoice() {
 
     setSaving(true);
     try {
-      const prefix = trainerProfile?.invoice_prefix || 'INV';
+      const prefix = trainerProfile?.invoice_prefix ?? '';
       const nextNumber = trainerProfile?.invoice_next_number || 1;
-      const invoiceNumber = `${prefix}-${new Date().getFullYear()}-${String(nextNumber).padStart(4, '0')}`;
+      const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber);
 
       let guestPlayerId: string | null = null;
       if (playerEmail.trim()) {

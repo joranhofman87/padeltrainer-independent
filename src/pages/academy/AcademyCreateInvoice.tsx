@@ -17,6 +17,7 @@ import { nl, enUS } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useQueryClient } from '@tanstack/react-query';
@@ -145,9 +146,9 @@ export default function AcademyCreateInvoice() {
 
       if (academyError || !academy) throw new Error('Academy niet gevonden');
 
-      const prefix = academy.invoice_prefix || 'INV';
+      const prefix = academy.invoice_prefix ?? '';
       const nextNumber = academy.invoice_next_number || 1;
-      const invoiceNumber = `${prefix}-${new Date().getFullYear()}-${String(nextNumber).padStart(4, '0')}`;
+      const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber);
 
       let guestPlayerId: string | null = null;
       if (playerEmail.trim()) {
