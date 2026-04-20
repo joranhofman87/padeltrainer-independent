@@ -215,6 +215,10 @@ export default function CycleApplicationForm({
         });
       });
 
+      const waitlistPrefix = isWaitlist ? '[WACHTLIJST] ' : '';
+      const combinedNotes = [values.notes, values.group_notes].filter(Boolean).join('\n\n');
+      const notesWithFlag = combinedNotes ? `${waitlistPrefix}${combinedNotes}` : (waitlistPrefix || undefined);
+
       if (isGuest) {
         // Guest flow: edge function handles account creation + intake
         const { data: result, error: fnError } = await supabase.functions.invoke('submit-guest-intake', {
