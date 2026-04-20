@@ -183,8 +183,9 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
   const handleSuccess = () => setIsSuccess(true);
 
   const isEnrollmentClosed = cycle && cycle.status !== 'open';
-  const isDeadlinePassed = cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
-  const canApply = cycle && !isEnrollmentClosed && !isDeadlinePassed && !hasApplied;
+  const isDeadlinePassed = !!(cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date());
+  const canApply = cycle && !isEnrollmentClosed && !hasApplied;
+  const isWaitlistMode = !!(canApply && isDeadlinePassed);
 
   const ownerTypeLabel = ownerType === 'academy' ? t('common:academy', 'Academy') : t('common:club', 'Club');
   const directoryPath = ownerType === 'academy' ? 'academies' : 'clubs';
@@ -351,10 +352,13 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
               <AlertTitle>{t('application.enrollmentClosed')}</AlertTitle>
             </Alert>
           )}
-          {isDeadlinePassed && !isEnrollmentClosed && (
-            <Alert variant="destructive" className="my-6">
+          {isWaitlistMode && (
+            <Alert className="my-6">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>{t('application.deadlinePassed')}</AlertTitle>
+              <AlertDescription>
+                {t('application.deadlinePassedWaitlist', "The deadline has passed — you'll be added to the waiting list.")}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -374,6 +378,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
                   playerBirthDate={(profile as any).birth_date || ''}
                   trainers={cycle.settings?.show_preferred_trainer ? trainers : undefined}
                   locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+                  isWaitlist={isWaitlistMode}
                   onSuccess={handleSuccess}
                 />
               ) : (
@@ -387,6 +392,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
                   isGuest
                   trainers={cycle.settings?.show_preferred_trainer ? trainers : undefined}
                   locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+                  isWaitlist={isWaitlistMode}
                   onSuccess={handleSuccess}
                 />
               )}

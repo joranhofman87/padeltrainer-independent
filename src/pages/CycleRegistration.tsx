@@ -234,8 +234,9 @@ export default function CycleRegistration() {
   };
 
   const isEnrollmentClosed = cycle && cycle.status !== 'open';
-  const isDeadlinePassed = cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
-  const canApply = cycle && !isEnrollmentClosed && !isDeadlinePassed && !hasApplied;
+  const isDeadlinePassed = !!(cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date());
+  const canApply = cycle && !isEnrollmentClosed && !hasApplied;
+  const isWaitlistMode = canApply && isDeadlinePassed;
   const priceTable = cycle?.price_table as { label: string; price: number }[] | null;
 
   if (isLoading || authLoading) {
@@ -428,10 +429,13 @@ export default function CycleRegistration() {
             </Alert>
           )}
 
-          {isDeadlinePassed && !isEnrollmentClosed && (
-            <Alert variant="destructive" className="mb-6">
+          {isWaitlistMode && (
+            <Alert className="mb-6">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>{t('application.deadlinePassed')}</AlertTitle>
+              <AlertDescription>
+                {t('application.deadlinePassedWaitlist', "The deadline has passed — you'll be added to the waiting list.")}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -449,6 +453,7 @@ export default function CycleRegistration() {
               playerBirthDate={(profile as any).birth_date || ''}
               trainers={cycle.settings?.show_preferred_trainer ? trainers.map(tr => ({ id: tr.id, name: tr.name })) : undefined}
               locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+              isWaitlist={isWaitlistMode}
               onSuccess={handleSuccess}
             />
           )}
@@ -465,6 +470,7 @@ export default function CycleRegistration() {
               isGuest={true}
               trainers={cycle.settings?.show_preferred_trainer ? trainers.map(tr => ({ id: tr.id, name: tr.name })) : undefined}
               locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+              isWaitlist={isWaitlistMode}
               onSuccess={handleSuccess}
             />
           )}

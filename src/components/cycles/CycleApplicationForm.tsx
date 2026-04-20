@@ -61,6 +61,7 @@ interface CycleApplicationFormProps {
   trainers?: TrainerOption[];
   locations?: LocationOption[];
   isGuest?: boolean;
+  isWaitlist?: boolean;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -82,6 +83,7 @@ export default function CycleApplicationForm({
   trainers = [],
   locations = [],
   isGuest = false,
+  isWaitlist = false,
   onSuccess,
   onCancel,
 }: CycleApplicationFormProps) {
@@ -213,6 +215,10 @@ export default function CycleApplicationForm({
         });
       });
 
+      const waitlistPrefix = isWaitlist ? '[WACHTLIJST] ' : '';
+      const combinedNotes = [values.notes, values.group_notes].filter(Boolean).join('\n\n');
+      const notesWithFlag = combinedNotes ? `${waitlistPrefix}${combinedNotes}` : (waitlistPrefix || undefined);
+
       if (isGuest) {
         // Guest flow: edge function handles account creation + intake
         const { data: result, error: fnError } = await supabase.functions.invoke('submit-guest-intake', {
@@ -231,7 +237,7 @@ export default function CycleApplicationForm({
             sessionsPerWeek: values.sessions_per_week,
             preferredTrainerIds: values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
             locationId: values.location_id || null,
-            notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
+            notes: notesWithFlag || undefined,
             consentGiven: values.consent,
             language: i18n.language,
             metadata: {
@@ -261,7 +267,7 @@ export default function CycleApplicationForm({
           sessions_per_week: values.sessions_per_week,
           preferred_trainer_ids: values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
           location_id: values.location_id || undefined,
-          notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
+          notes: notesWithFlag || undefined,
           consent_given: values.consent,
           metadata: {
             ...(selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : {}),
@@ -480,6 +486,17 @@ export default function CycleApplicationForm({
             }
           }, 100);
         })} className="space-y-6">
+        {isWaitlist && (
+          <div className="rounded-lg border border-border bg-muted/50 p-4 flex gap-3">
+            <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium">{t('application.deadlinePassed')}</p>
+              <p className="text-muted-foreground mt-1">
+                {t('application.deadlinePassedWaitlist', "The deadline has passed — you'll be added to the waiting list.")}
+              </p>
+            </div>
+          </div>
+        )}
         {/* Personal Information */}
         <Card>
           <CardHeader>
@@ -1081,7 +1098,7 @@ export default function CycleApplicationForm({
                 {t('application.form.submitting')}
               </>
             ) : (
-              t('application.form.submit')
+              isWaitlist ? t('application.applyWaitlist', 'Join waiting list') : t('application.form.submit')
             )}
           </Button>
         </div>

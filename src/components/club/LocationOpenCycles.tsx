@@ -127,7 +127,7 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
         {cycles.map(cycle => {
           const hasApplied = appliedCycles.has(cycle.id);
           const deadlinePassed = isDeadlinePassed(cycle);
-          const canApply = !hasApplied && !deadlinePassed;
+          const canApply = !hasApplied;
 
           return (
             <div key={cycle.id} className="border rounded-lg p-4 bg-card">
@@ -155,8 +155,8 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
                     </Badge>
                   )}
                   {deadlinePassed && !hasApplied && (
-                    <Badge variant="destructive">
-                      {t('application.deadlinePassed', 'Deadline passed')}
+                    <Badge variant="secondary">
+                      {t('application.waitlistBadge', 'Waiting list')}
                     </Badge>
                   )}
                   <Button
@@ -173,7 +173,10 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
                       size="sm"
                       onClick={() => navigate(getRegisterPath(cycle))}
                     >
-                      {t('application.apply', 'Apply')} <ExternalLink className="h-4 w-4 ml-1" />
+                      {deadlinePassed
+                        ? t('application.applyWaitlist', 'Join waiting list')
+                        : t('application.apply', 'Apply')}
+                      <ExternalLink className="h-4 w-4 ml-1" />
                     </Button>
                   )}
                 </div>
