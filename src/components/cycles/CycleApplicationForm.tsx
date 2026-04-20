@@ -237,7 +237,7 @@ export default function CycleApplicationForm({
             sessionsPerWeek: values.sessions_per_week,
             preferredTrainerIds: values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
             locationId: values.location_id || null,
-            notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
+            notes: notesWithFlag || undefined,
             consentGiven: values.consent,
             language: i18n.language,
             metadata: {
@@ -267,7 +267,7 @@ export default function CycleApplicationForm({
           sessions_per_week: values.sessions_per_week,
           preferred_trainer_ids: values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
           location_id: values.location_id || undefined,
-          notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
+          notes: notesWithFlag || undefined,
           consent_given: values.consent,
           metadata: {
             ...(selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : {}),
