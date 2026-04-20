@@ -61,6 +61,7 @@ interface CycleApplicationFormProps {
   trainers?: TrainerOption[];
   locations?: LocationOption[];
   isGuest?: boolean;
+  isWaitlist?: boolean;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -82,6 +83,7 @@ export default function CycleApplicationForm({
   trainers = [],
   locations = [],
   isGuest = false,
+  isWaitlist = false,
   onSuccess,
   onCancel,
 }: CycleApplicationFormProps) {
