@@ -430,7 +430,7 @@ export default function CycleRegistration() {
           )}
 
           {isWaitlistMode && (
-            <Alert className="mb-6 border-orange-500/50 text-orange-700 dark:text-orange-400 [&>svg]:text-orange-600">
+            <Alert className="mb-6">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>{t('application.deadlinePassed')}</AlertTitle>
               <AlertDescription>
@@ -453,6 +453,7 @@ export default function CycleRegistration() {
               playerBirthDate={(profile as any).birth_date || ''}
               trainers={cycle.settings?.show_preferred_trainer ? trainers.map(tr => ({ id: tr.id, name: tr.name })) : undefined}
               locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+              isWaitlist={isWaitlistMode}
               onSuccess={handleSuccess}
             />
           )}
@@ -469,6 +470,7 @@ export default function CycleRegistration() {
               isGuest={true}
               trainers={cycle.settings?.show_preferred_trainer ? trainers.map(tr => ({ id: tr.id, name: tr.name })) : undefined}
               locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+              isWaitlist={isWaitlistMode}
               onSuccess={handleSuccess}
             />
           )}
