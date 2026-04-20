@@ -234,8 +234,9 @@ export default function CycleRegistration() {
   };
 
   const isEnrollmentClosed = cycle && cycle.status !== 'open';
-  const isDeadlinePassed = cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
-  const canApply = cycle && !isEnrollmentClosed && !isDeadlinePassed && !hasApplied;
+  const isDeadlinePassed = !!(cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date());
+  const canApply = cycle && !isEnrollmentClosed && !hasApplied;
+  const isWaitlistMode = canApply && isDeadlinePassed;
   const priceTable = cycle?.price_table as { label: string; price: number }[] | null;
 
   if (isLoading || authLoading) {
@@ -428,10 +429,13 @@ export default function CycleRegistration() {
             </Alert>
           )}
 
-          {isDeadlinePassed && !isEnrollmentClosed && (
-            <Alert variant="destructive" className="mb-6">
+          {isWaitlistMode && (
+            <Alert className="mb-6 border-orange-500/50 text-orange-700 dark:text-orange-400 [&>svg]:text-orange-600">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>{t('application.deadlinePassed')}</AlertTitle>
+              <AlertDescription>
+                {t('application.deadlinePassedWaitlist', "The deadline has passed — you'll be added to the waiting list.")}
+              </AlertDescription>
             </Alert>
           )}
 
