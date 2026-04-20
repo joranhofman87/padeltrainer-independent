@@ -486,6 +486,17 @@ export default function CycleApplicationForm({
             }
           }, 100);
         })} className="space-y-6">
+        {isWaitlist && (
+          <div className="rounded-lg border border-border bg-muted/50 p-4 flex gap-3">
+            <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium">{t('application.deadlinePassed')}</p>
+              <p className="text-muted-foreground mt-1">
+                {t('application.deadlinePassedWaitlist', "The deadline has passed — you'll be added to the waiting list.")}
+              </p>
+            </div>
+          </div>
+        )}
         {/* Personal Information */}
         <Card>
           <CardHeader>
@@ -1087,7 +1098,7 @@ export default function CycleApplicationForm({
                 {t('application.form.submitting')}
               </>
             ) : (
-              t('application.form.submit')
+              isWaitlist ? t('application.applyWaitlist', 'Join waiting list') : t('application.form.submit')
             )}
           </Button>
         </div>

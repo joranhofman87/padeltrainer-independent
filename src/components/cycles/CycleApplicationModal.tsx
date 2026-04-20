@@ -103,8 +103,8 @@ export default function CycleApplicationModal({
     );
   }
 
-  // Enrollment closed or deadline passed
-  if (isCycleClosed || isDeadlinePassed) {
+  // Cycle fully closed by owner (status !== 'open') — keep blocked
+  if (isCycleClosed) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-md">
@@ -118,9 +118,7 @@ export default function CycleApplicationModal({
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              {isDeadlinePassed 
-                ? t('application.deadlinePassed') 
-                : t('application.enrollmentClosed')}
+              {t('application.enrollmentClosed')}
             </AlertDescription>
           </Alert>
           
@@ -172,6 +170,7 @@ export default function CycleApplicationModal({
               playerRatingSystem={profile.rating_system || 'knltb'}
               trainers={trainers}
               locations={locations}
+              isWaitlist={isDeadlinePassed}
               onSuccess={() => onOpenChange(false)}
               onCancel={() => onOpenChange(false)}
             />
@@ -186,6 +185,7 @@ export default function CycleApplicationModal({
               isGuest
               trainers={trainers}
               locations={locations}
+              isWaitlist={isDeadlinePassed}
               onSuccess={() => onOpenChange(false)}
               onCancel={() => onOpenChange(false)}
             />
