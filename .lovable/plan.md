@@ -1,45 +1,48 @@
 
 
-# Fix PDF Invoice: Logo, Spacing, and Totals Formatting
+## Goal
+When a registration's enrollment deadline has passed (but cycle status is still `open`), keep the form open and let people apply as a **waiting list** entry instead of blocking them. Show a clear notice that the deadline is overdue and they will be added to the waiting list.
 
-## Problems (from screenshot)
+When the cycle is **fully closed** (`status !== 'open'`), keep the current behavior (form closed) since the trainer/academy intentionally closed it.
 
-1. **Logo missing** — Shows "RL Padel Performance" text instead of the actual logo. The logo embedding code exists but likely fails because the uploaded logo is an SVG file, and `pdf-lib` only supports PNG/JPG embedding. The error is caught silently and falls back to text.
+## Changes
 
-2. **No padding between header bar and "FACTUUR"** — Currently `y = height - 70`, giving only 20pt gap below the 50pt header. Needs ~40pt of breathing room.
+### 1. Public registration pages — show banner + keep form open
+**`src/pages/CycleRegistration.tsx`** and **`src/pages/BrandedCycleRegistration.tsx`**
+- Change `canApply` so deadline-passed no longer blocks: `canApply = !isEnrollmentClosed && !hasApplied`
+- Replace the destructive "deadline passed" alert with an informational warning ("Deadline is verstreken — je aanmelding komt op de wachtlijst")
+- Keep the destructive "enrollment closed" alert as-is (truly closed cycles stay blocked)
 
-3. **No padding between "FACTUUR" and from/to section** — `y -= 55` after FACTUUR title is tight.
+### 2. Application modal — same treatment
+**`src/components/cycles/CycleApplicationModal.tsx`**
+- Only short-circuit (block form) when `isCycleClosed`, not when only `isDeadlinePassed`
+- When deadline passed but cycle open: render the form with a warning banner above it
 
-4. **No padding between from/to and table** — `y = Math.min(yLeft, yRight) - 20` only gives 20pt gap.
+### 3. Trainer/Academy/Location open-cycles cards — allow Apply button
+**`src/components/trainer/TrainerOpenCycles.tsx`**, **`src/components/academy/AcademyOpenCycles.tsx`**, **`src/components/club/LocationOpenCycles.tsx`**
+- `canApply = !hasApplied` (drop deadlinePassed gate)
+- Replace destructive "Deadline passed" badge with a neutral "Wachtlijst" / "Waiting list" badge
+- Apply button label switches to "Aanmelden voor wachtlijst" when deadline passed
 
-5. **Totals formatting inconsistent with table** — Table rows use font size 9, but totals use size 10 (regular) and 12 (bold total). The totals should use size 9 to match, with only the final "Totaal" row slightly larger.
+### 4. Mark waitlist applications in the database
+In **`CycleApplicationForm`** submission (or modal/page handler): when `isDeadlinePassed && !isCycleClosed`, set a flag on the inserted application — reuse existing `notes` prefix or add `is_waitlist: true` if such a column exists. We'll inspect `CycleApplicationForm` and `cycle_applications` schema during implementation; if no column exists, prepend `[WACHTLIJST]` to notes so trainers see it immediately in the registration list.
 
-## Solution
+### 5. Translations
+Add new keys to all 6 locale `cycles.json` files under `application`:
+- `deadlinePassedWaitlist`: e.g. NL "De deadline is verstreken — je wordt op de wachtlijst geplaatst." / EN "The deadline has passed — you'll be added to the waiting list."
+- `waitlistBadge`: NL "Wachtlijst" / EN "Waiting list"
+- `applyWaitlist`: NL "Aanmelden voor wachtlijst" / EN "Join waiting list"
 
-### File: `supabase/functions/generate-invoice/index.ts`
+## Out of scope
+- Trainer/academy management UI for waitlist filtering (a separate "show waitlisted applicants" view). Can be follow-up if you want it.
 
-**A) Fix logo embedding for SVG logos**
-- Before trying to embed, check if the content-type is SVG or the URL ends with `.svg`
-- For SVG logos, skip embedding (pdf-lib cannot handle SVG) and fall back to text
-- Log a clear message so we know when SVG is the issue
-- This keeps existing PNG/JPG support working
-
-**B) Increase vertical spacing between sections**
-- Header → FACTUUR: change `y = height - 70` to `y = height - 100` (50pt gap below header)
-- FACTUUR → from/to: change `y -= 55` to `y -= 65`
-- From/to → table: change gap from 20pt to 30pt: `Math.min(yLeft, yRight) - 30`
-
-**C) Match totals formatting to table**
-- Change `drawTotalRow` default size from 10 to 9 (matching table cell font size)
-- Change bold total size from 12 to 10
-- Keep right-alignment logic as-is since it already matches the table's amount column
-
-### Deploy
-Redeploy `generate-invoice` after changes.
-
-## File Summary
-
-| File | Change |
-|---|---|
-| `supabase/functions/generate-invoice/index.ts` | SVG logo detection, increase section spacing, match totals font size to table |
+## Files touched
+- `src/pages/CycleRegistration.tsx`
+- `src/pages/BrandedCycleRegistration.tsx`
+- `src/components/cycles/CycleApplicationModal.tsx`
+- `src/components/cycles/CycleApplicationForm.tsx` (mark waitlist on submit)
+- `src/components/trainer/TrainerOpenCycles.tsx`
+- `src/components/academy/AcademyOpenCycles.tsx`
+- `src/components/club/LocationOpenCycles.tsx`
+- `src/i18n/locales/{en,nl,es,de,fr,it}/cycles.json`
 
