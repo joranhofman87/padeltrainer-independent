@@ -1042,5 +1042,108 @@
     "addAvailability": "Add availability",
     "publishProfile": "Publish profile",
     "upgradeToPublish": "Upgrade to publish"
+  },
+  "emailCampaign": {
+    "tabs": {
+      "compose": "Compose",
+      "templates": "Templates",
+      "history": "History"
+    },
+    "recipients": {
+      "title": "Recipients",
+      "description": "Filter players to select who receives the email.",
+      "trainer": "Trainer",
+      "allTrainers": "All trainers",
+      "location": "Location",
+      "allLocations": "All locations",
+      "level": "Level",
+      "allLevels": "All levels",
+      "beginner": "Beginner (1-3)",
+      "intermediate": "Intermediate (4-6)",
+      "advanced": "Advanced (7-9)",
+      "pro": "Pro (9+)",
+      "unrated": "Unrated",
+      "activeCyclus": "Active cyclus",
+      "all": "All",
+      "yes": "Yes",
+      "no": "No",
+      "selected": "Selected recipients",
+      "moreCount": "+{{count}} more",
+      "addName": "Name",
+      "addEmail": "Email",
+      "noMatch": "No players match the current filters, or they have no email address."
+    },
+    "compose": {
+      "title": "Compose Email",
+      "descriptionHtml": "Use <code>{{var}}</code> to insert the player's name.",
+      "subject": "Subject",
+      "subjectPlaceholder": "e.g. New training season starts soon!",
+      "body": "Body",
+      "insertName": "Insert {{name}}",
+      "bodyPlaceholder": "Write your email content here...",
+      "templateNamePlaceholder": "Template name (optional)",
+      "updateTemplate": "Update template",
+      "saveAsTemplate": "Save as template",
+      "preview": "Preview",
+      "sendTest": "Send test",
+      "testEmailPlaceholder": "test@email.com",
+      "sendToCount_one": "Send to {{count}} recipient",
+      "sendToCount_other": "Send to {{count}} recipients"
+    },
+    "templates": {
+      "title": "Saved Templates",
+      "description": "Reuse email templates for recurring campaigns.",
+      "empty": "No templates saved yet. Compose an email and save it as a template.",
+      "name": "Name",
+      "subject": "Subject",
+      "created": "Created",
+      "actions": "Actions"
+    },
+    "history": {
+      "title": "Campaign History",
+      "description": "Overview of sent email campaigns.",
+      "empty": "No campaigns sent yet.",
+      "subject": "Subject",
+      "status": "Status",
+      "recipients": "Recipients",
+      "sentFailed": "Sent / Failed",
+      "date": "Date",
+      "failed": "{{count}} failed"
+    },
+    "status": {
+      "sent": "Sent",
+      "sending": "Sending...",
+      "draft": "Draft"
+    },
+    "confirm": {
+      "title": "Send campaign?",
+      "description_one": "This will send an email to <1>{{count}} recipient</1> with subject \"<3>{{subject}}</3>\". This action cannot be undone.",
+      "description_other": "This will send an email to <1>{{count}} recipients</1> with subject \"<3>{{subject}}</3>\". This action cannot be undone.",
+      "cancel": "Cancel",
+      "sendNow": "Send now"
+    },
+    "previewDialog": {
+      "title": "Email Preview",
+      "description": "Preview with sample data: name = \"Jan de Vries\"",
+      "subjectLabel": "Subject",
+      "close": "Close"
+    },
+    "toasts": {
+      "missingFields": "Missing fields",
+      "missingTestDesc": "Please fill in subject, body, and test email address.",
+      "missingTemplateDesc": "Please fill in template name, subject, and body.",
+      "testSent": "Test email sent!",
+      "testSentDesc": "A test email was sent to {{email}}.",
+      "testError": "Could not send test email.",
+      "templateSaved": "Template saved",
+      "templateUpdated": "Template updated",
+      "templateError": "Could not save template.",
+      "templateLoaded": "Template loaded",
+      "templateDeleted": "Template deleted",
+      "campaignSent": "Campaign sent!",
+      "campaignSentDesc": "Emails are being sent to {{count}} recipients.",
+      "campaignError": "Could not send campaign.",
+      "error": "Error"
+    }
   }
 }

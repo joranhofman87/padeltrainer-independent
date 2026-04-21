@@ -920,5 +920,108 @@
     "addAvailability": "Verfügbarkeit hinzufügen",
     "publishProfile": "Profil veröffentlichen",
     "upgradeToPublish": "Upgrade zum Veröffentlichen"
+  },
+  "emailCampaign": {
+    "tabs": {
+      "compose": "Verfassen",
+      "templates": "Vorlagen",
+      "history": "Verlauf"
+    },
+    "recipients": {
+      "title": "Empfänger",
+      "description": "Spieler filtern, um die E-Mail-Empfänger auszuwählen.",
+      "trainer": "Trainer",
+      "allTrainers": "Alle Trainer",
+      "location": "Standort",
+      "allLocations": "Alle Standorte",
+      "level": "Niveau",
+      "allLevels": "Alle Niveaus",
+      "beginner": "Anfänger (1-3)",
+      "intermediate": "Mittel (4-6)",
+      "advanced": "Fortgeschritten (7-9)",
+      "pro": "Profi (9+)",
+      "unrated": "Unbewertet",
+      "activeCyclus": "Aktiver Zyklus",
+      "all": "Alle",
+      "yes": "Ja",
+      "no": "Nein",
+      "selected": "Ausgewählte Empfänger",
+      "moreCount": "+{{count}} weitere",
+      "addName": "Name",
+      "addEmail": "E-Mail",
+      "noMatch": "Keine Spieler entsprechen den Filtern oder haben keine E-Mail-Adresse."
+    },
+    "compose": {
+      "title": "E-Mail verfassen",
+      "descriptionHtml": "Verwende <code>{{var}}</code>, um den Namen des Spielers einzufügen.",
+      "subject": "Betreff",
+      "subjectPlaceholder": "z.B. Neue Trainingssaison startet bald!",
+      "body": "Inhalt",
+      "insertName": "{{name}} einfügen",
+      "bodyPlaceholder": "Schreibe hier deinen E-Mail-Inhalt...",
+      "templateNamePlaceholder": "Vorlagenname (optional)",
+      "updateTemplate": "Vorlage aktualisieren",
+      "saveAsTemplate": "Als Vorlage speichern",
+      "preview": "Vorschau",
+      "sendTest": "Test senden",
+      "testEmailPlaceholder": "test@email.com",
+      "sendToCount_one": "An {{count}} Empfänger senden",
+      "sendToCount_other": "An {{count}} Empfänger senden"
+    },
+    "templates": {
+      "title": "Gespeicherte Vorlagen",
+      "description": "E-Mail-Vorlagen für wiederkehrende Kampagnen wiederverwenden.",
+      "empty": "Noch keine Vorlagen gespeichert. Verfasse eine E-Mail und speichere sie als Vorlage.",
+      "name": "Name",
+      "subject": "Betreff",
+      "created": "Erstellt",
+      "actions": "Aktionen"
+    },
+    "history": {
+      "title": "Kampagnenverlauf",
+      "description": "Übersicht der gesendeten E-Mail-Kampagnen.",
+      "empty": "Noch keine Kampagnen gesendet.",
+      "subject": "Betreff",
+      "status": "Status",
+      "recipients": "Empfänger",
+      "sentFailed": "Gesendet / Fehlgeschlagen",
+      "date": "Datum",
+      "failed": "{{count}} fehlgeschlagen"
+    },
+    "status": {
+      "sent": "Gesendet",
+      "sending": "Wird gesendet...",
+      "draft": "Entwurf"
+    },
+    "confirm": {
+      "title": "Kampagne senden?",
+      "description_one": "Es wird eine E-Mail an <1>{{count}} Empfänger</1> mit Betreff \"<3>{{subject}}</3>\" gesendet. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "description_other": "Es wird eine E-Mail an <1>{{count}} Empfänger</1> mit Betreff \"<3>{{subject}}</3>\" gesendet. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "cancel": "Abbrechen",
+      "sendNow": "Jetzt senden"
+    },
+    "previewDialog": {
+      "title": "E-Mail-Vorschau",
+      "description": "Vorschau mit Beispieldaten: Name = \"Jan de Vries\"",
+      "subjectLabel": "Betreff",
+      "close": "Schließen"
+    },
+    "toasts": {
+      "missingFields": "Fehlende Felder",
+      "missingTestDesc": "Bitte Betreff, Inhalt und Test-E-Mail-Adresse ausfüllen.",
+      "missingTemplateDesc": "Bitte Vorlagenname, Betreff und Inhalt ausfüllen.",
+      "testSent": "Test-E-Mail gesendet!",
+      "testSentDesc": "Eine Test-E-Mail wurde an {{email}} gesendet.",
+      "testError": "Test-E-Mail konnte nicht gesendet werden.",
+      "templateSaved": "Vorlage gespeichert",
+      "templateUpdated": "Vorlage aktualisiert",
+      "templateError": "Vorlage konnte nicht gespeichert werden.",
+      "templateLoaded": "Vorlage geladen",
+      "templateDeleted": "Vorlage gelöscht",
+      "campaignSent": "Kampagne gesendet!",
+      "campaignSentDesc": "E-Mails werden an {{count}} Empfänger gesendet.",
+      "campaignError": "Kampagne konnte nicht gesendet werden.",
+      "error": "Fehler"
+    }
   }
 }

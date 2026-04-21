@@ -1048,5 +1048,108 @@
     "addAvailability": "Beschikbaarheid toevoegen",
     "publishProfile": "Profiel publiceren",
     "upgradeToPublish": "Upgraden om te publiceren"
+  },
+  "emailCampaign": {
+    "tabs": {
+      "compose": "Opstellen",
+      "templates": "Sjablonen",
+      "history": "Geschiedenis"
+    },
+    "recipients": {
+      "title": "Ontvangers",
+      "description": "Filter spelers om te selecteren wie de e-mail ontvangt.",
+      "trainer": "Trainer",
+      "allTrainers": "Alle trainers",
+      "location": "Locatie",
+      "allLocations": "Alle locaties",
+      "level": "Niveau",
+      "allLevels": "Alle niveaus",
+      "beginner": "Beginner (1-3)",
+      "intermediate": "Gemiddeld (4-6)",
+      "advanced": "Gevorderd (7-9)",
+      "pro": "Pro (9+)",
+      "unrated": "Niet beoordeeld",
+      "activeCyclus": "Actieve cyclus",
+      "all": "Alle",
+      "yes": "Ja",
+      "no": "Nee",
+      "selected": "Geselecteerde ontvangers",
+      "moreCount": "+{{count}} meer",
+      "addName": "Naam",
+      "addEmail": "E-mail",
+      "noMatch": "Geen spelers voldoen aan de filters, of ze hebben geen e-mailadres."
+    },
+    "compose": {
+      "title": "E-mail opstellen",
+      "descriptionHtml": "Gebruik <code>{{var}}</code> om de naam van de speler in te voegen.",
+      "subject": "Onderwerp",
+      "subjectPlaceholder": "bijv. Nieuw trainingsseizoen begint binnenkort!",
+      "body": "Inhoud",
+      "insertName": "Voeg {{name}} toe",
+      "bodyPlaceholder": "Schrijf hier de inhoud van je e-mail...",
+      "templateNamePlaceholder": "Sjabloonnaam (optioneel)",
+      "updateTemplate": "Sjabloon bijwerken",
+      "saveAsTemplate": "Opslaan als sjabloon",
+      "preview": "Voorbeeld",
+      "sendTest": "Test verzenden",
+      "testEmailPlaceholder": "test@email.com",
+      "sendToCount_one": "Verstuur naar {{count}} ontvanger",
+      "sendToCount_other": "Verstuur naar {{count}} ontvangers"
+    },
+    "templates": {
+      "title": "Opgeslagen sjablonen",
+      "description": "Hergebruik e-mailsjablonen voor terugkerende campagnes.",
+      "empty": "Nog geen sjablonen opgeslagen. Stel een e-mail op en sla deze op als sjabloon.",
+      "name": "Naam",
+      "subject": "Onderwerp",
+      "created": "Aangemaakt",
+      "actions": "Acties"
+    },
+    "history": {
+      "title": "Campagne­geschiedenis",
+      "description": "Overzicht van verzonden e-mailcampagnes.",
+      "empty": "Nog geen campagnes verzonden.",
+      "subject": "Onderwerp",
+      "status": "Status",
+      "recipients": "Ontvangers",
+      "sentFailed": "Verzonden / Mislukt",
+      "date": "Datum",
+      "failed": "{{count}} mislukt"
+    },
+    "status": {
+      "sent": "Verzonden",
+      "sending": "Verzenden...",
+      "draft": "Concept"
+    },
+    "confirm": {
+      "title": "Campagne verzenden?",
+      "description_one": "Hiermee wordt een e-mail verzonden naar <1>{{count}} ontvanger</1> met onderwerp \"<3>{{subject}}</3>\". Deze actie kan niet ongedaan worden gemaakt.",
+      "description_other": "Hiermee wordt een e-mail verzonden naar <1>{{count}} ontvangers</1> met onderwerp \"<3>{{subject}}</3>\". Deze actie kan niet ongedaan worden gemaakt.",
+      "cancel": "Annuleren",
+      "sendNow": "Nu verzenden"
+    },
+    "previewDialog": {
+      "title": "E-mailvoorbeeld",
+      "description": "Voorbeeld met testgegevens: naam = \"Jan de Vries\"",
+      "subjectLabel": "Onderwerp",
+      "close": "Sluiten"
+    },
+    "toasts": {
+      "missingFields": "Ontbrekende velden",
+      "missingTestDesc": "Vul onderwerp, inhoud en test-e-mailadres in.",
+      "missingTemplateDesc": "Vul sjabloonnaam, onderwerp en inhoud in.",
+      "testSent": "Test-e-mail verzonden!",
+      "testSentDesc": "Een test-e-mail is verzonden naar {{email}}.",
+      "testError": "Kon test-e-mail niet verzenden.",
+      "templateSaved": "Sjabloon opgeslagen",
+      "templateUpdated": "Sjabloon bijgewerkt",
+      "templateError": "Kon sjabloon niet opslaan.",
+      "templateLoaded": "Sjabloon geladen",
+      "templateDeleted": "Sjabloon verwijderd",
+      "campaignSent": "Campagne verzonden!",
+      "campaignSentDesc": "E-mails worden verzonden naar {{count}} ontvangers.",
+      "campaignError": "Kon campagne niet verzenden.",
+      "error": "Fout"
+    }
   }
 }

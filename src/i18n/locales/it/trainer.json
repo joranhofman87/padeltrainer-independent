@@ -1042,5 +1042,108 @@
     "addAvailability": "Add availability",
     "publishProfile": "Publish profile",
     "upgradeToPublish": "Upgrade to publish"
+  },
+  "emailCampaign": {
+    "tabs": {
+      "compose": "Componi",
+      "templates": "Modelli",
+      "history": "Cronologia"
+    },
+    "recipients": {
+      "title": "Destinatari",
+      "description": "Filtra i giocatori per selezionare chi riceve l'email.",
+      "trainer": "Allenatore",
+      "allTrainers": "Tutti gli allenatori",
+      "location": "Luogo",
+      "allLocations": "Tutti i luoghi",
+      "level": "Livello",
+      "allLevels": "Tutti i livelli",
+      "beginner": "Principiante (1-3)",
+      "intermediate": "Intermedio (4-6)",
+      "advanced": "Avanzato (7-9)",
+      "pro": "Pro (9+)",
+      "unrated": "Non classificato",
+      "activeCyclus": "Ciclo attivo",
+      "all": "Tutti",
+      "yes": "Sì",
+      "no": "No",
+      "selected": "Destinatari selezionati",
+      "moreCount": "+{{count}} altri",
+      "addName": "Nome",
+      "addEmail": "Email",
+      "noMatch": "Nessun giocatore corrisponde ai filtri attuali, o non hanno email."
+    },
+    "compose": {
+      "title": "Componi Email",
+      "descriptionHtml": "Usa <code>{{var}}</code> per inserire il nome del giocatore.",
+      "subject": "Oggetto",
+      "subjectPlaceholder": "es. La nuova stagione inizia presto!",
+      "body": "Contenuto",
+      "insertName": "Inserisci {{name}}",
+      "bodyPlaceholder": "Scrivi qui il contenuto della tua email...",
+      "templateNamePlaceholder": "Nome del modello (opzionale)",
+      "updateTemplate": "Aggiorna modello",
+      "saveAsTemplate": "Salva come modello",
+      "preview": "Anteprima",
+      "sendTest": "Invia test",
+      "testEmailPlaceholder": "test@email.com",
+      "sendToCount_one": "Invia a {{count}} destinatario",
+      "sendToCount_other": "Invia a {{count}} destinatari"
+    },
+    "templates": {
+      "title": "Modelli Salvati",
+      "description": "Riutilizza modelli email per campagne ricorrenti.",
+      "empty": "Nessun modello salvato. Componi un'email e salvala come modello.",
+      "name": "Nome",
+      "subject": "Oggetto",
+      "created": "Creato",
+      "actions": "Azioni"
+    },
+    "history": {
+      "title": "Cronologia Campagne",
+      "description": "Panoramica delle campagne email inviate.",
+      "empty": "Nessuna campagna inviata.",
+      "subject": "Oggetto",
+      "status": "Stato",
+      "recipients": "Destinatari",
+      "sentFailed": "Inviati / Falliti",
+      "date": "Data",
+      "failed": "{{count}} falliti"
+    },
+    "status": {
+      "sent": "Inviato",
+      "sending": "Invio in corso...",
+      "draft": "Bozza"
+    },
+    "confirm": {
+      "title": "Inviare campagna?",
+      "description_one": "Verrà inviata un'email a <1>{{count}} destinatario</1> con oggetto \"<3>{{subject}}</3>\". Questa azione non può essere annullata.",
+      "description_other": "Verrà inviata un'email a <1>{{count}} destinatari</1> con oggetto \"<3>{{subject}}</3>\". Questa azione non può essere annullata.",
+      "cancel": "Annulla",
+      "sendNow": "Invia ora"
+    },
+    "previewDialog": {
+      "title": "Anteprima Email",
+      "description": "Anteprima con dati di esempio: nome = \"Jan de Vries\"",
+      "subjectLabel": "Oggetto",
+      "close": "Chiudi"
+    },
+    "toasts": {
+      "missingFields": "Campi mancanti",
+      "missingTestDesc": "Compila oggetto, contenuto ed email di test.",
+      "missingTemplateDesc": "Compila nome del modello, oggetto e contenuto.",
+      "testSent": "Email di test inviata!",
+      "testSentDesc": "Un'email di test è stata inviata a {{email}}.",
+      "testError": "Impossibile inviare l'email di test.",
+      "templateSaved": "Modello salvato",
+      "templateUpdated": "Modello aggiornato",
+      "templateError": "Impossibile salvare il modello.",
+      "templateLoaded": "Modello caricato",
+      "templateDeleted": "Modello eliminato",
+      "campaignSent": "Campagna inviata!",
+      "campaignSentDesc": "Le email vengono inviate a {{count}} destinatari.",
+      "campaignError": "Impossibile inviare la campagna.",
+      "error": "Errore"
+    }
   }
 }
