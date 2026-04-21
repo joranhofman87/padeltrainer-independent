@@ -126,7 +126,7 @@ export function RatingHistoryChart({
   const handleNativeShare = async () => {
     const blob = await generatePngBlob();
     if (!blob) {
-      toast.error('Failed to generate image');
+      toast.error(t('ratingShare.failedToGenerateImage'));
       return;
     }
     const file = new File([blob], 'rating-progress.png', { type: 'image/png' });
@@ -158,10 +158,10 @@ export function RatingHistoryChart({
     try {
       await navigator.clipboard.writeText(getShareableUrl());
       setCopied(true);
-      toast.success('Link copied!');
+      toast.success(t('ratingShare.linkCopied'));
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error('Failed to copy link');
+      toast.error(t('ratingShare.failedToCopy'));
     }
   };
 

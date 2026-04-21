@@ -51,6 +51,7 @@ import { Logo } from "@/components/Logo";
 
 export function PlayerSidebar() {
   const { t, i18n } = useTranslation("player");
+  const { t: tCommon } = useTranslation("common");
   const navigate = useNavigate();
   const location = useLocation();
   const { state, toggleSidebar } = useSidebar();
@@ -311,7 +312,7 @@ export function PlayerSidebar() {
               onClick={handleLogout}
             >
               <LogOut className="h-4 w-4" />
-              {!collapsed && <span className="ml-2">Logout</span>}
+              {!collapsed && <span className="ml-2">{tCommon('signOut')}</span>}
             </Button>
           </div>
         </div>
