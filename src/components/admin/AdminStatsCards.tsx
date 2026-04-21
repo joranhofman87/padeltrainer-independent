@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield, UserPlus, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import type { AdminStats } from "@/lib/admin";
 
 interface AdminStatsCardsProps {
@@ -22,6 +23,7 @@ function TrendBadge({ trend, thisMonth, lastMonth }: { trend: number; thisMonth:
 
 export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation("admin");
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("nl-NL", {
@@ -41,21 +43,21 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
 
   const cards = [
     {
-      title: "Gross Volume (GMV)",
+      title: t("stats.gmv"),
       value: formatCurrency(stats.overview.totalGMV),
-      description: `${stats.overview.paidBookings} paid bookings`,
+      description: t("stats.gmvDesc", { count: stats.overview.paidBookings }),
       icon: TrendingUp,
       color: "text-primary",
     },
     {
-      title: "Platform Fees",
+      title: t("stats.platformFees"),
       value: formatCurrency(stats.overview.platformFees),
-      description: `€${stats.overview.avgFeeFlat?.toFixed(2) || '1.00'} avg per booking`,
+      description: t("stats.platformFeesDesc", { amount: stats.overview.avgFeeFlat?.toFixed(2) || '1.00' }),
       icon: DollarSign,
       color: "text-emerald-500",
     },
     {
-      title: "Trainer Signups",
+      title: t("stats.trainerSignups"),
       customValue: (
         <TrendBadge 
           trend={signupTrends.trainerTrend} 
@@ -63,12 +65,12 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
           lastMonth={signupTrends.trainersLastMonth} 
         />
       ),
-      description: `${signupTrends.trainersLastMonth} last month`,
+      description: t("stats.lastMonth", { count: signupTrends.trainersLastMonth }),
       icon: UserPlus,
       color: "text-blue-500",
     },
     {
-      title: "Player Signups",
+      title: t("stats.playerSignups"),
       customValue: (
         <TrendBadge 
           trend={signupTrends.playerTrend} 
@@ -76,50 +78,50 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
           lastMonth={signupTrends.playersLastMonth} 
         />
       ),
-      description: `${signupTrends.playersLastMonth} last month`,
+      description: t("stats.lastMonth", { count: signupTrends.playersLastMonth }),
       icon: UserPlus,
       color: "text-violet-500",
     },
     {
-      title: "Active Trainers",
+      title: t("stats.activeTrainers"),
       value: stats.overview.activeTrainers.toString(),
-      description: `${stats.overview.connectedAccounts} connected to Mollie`,
+      description: t("stats.activeTrainersDesc", { count: stats.overview.connectedAccounts }),
       icon: UserCheck,
       color: "text-blue-500",
       onClick: () => navigate("/app/admin/users?role=trainer"),
     },
     {
-      title: "Active Players",
+      title: t("stats.activePlayers"),
       value: stats.overview.activePlayers.toString(),
-      description: `${stats.overview.totalBookings} total bookings`,
+      description: t("stats.activePlayersDesc", { count: stats.overview.totalBookings }),
       icon: Users,
       color: "text-violet-500",
       onClick: () => navigate("/app/admin/users?role=player"),
     },
     {
-      title: "Total Clubs",
+      title: t("stats.totalClubs"),
       value: stats.overview.totalClubs?.toString() || "0",
-      description: `${stats.overview.verifiedClubs || 0} verified, ${stats.overview.subscribedClubs || 0} subscribed`,
+      description: t("stats.totalClubsDesc", { verified: stats.overview.verifiedClubs || 0, subscribed: stats.overview.subscribedClubs || 0 }),
       icon: Building2,
       color: "text-teal-500",
       onClick: () => navigate("/app/admin/clubs"),
     },
     {
-      title: "Club Trials",
+      title: t("stats.clubTrials"),
       value: stats.overview.trialingClubs?.toString() || "0",
-      description: `${stats.overview.expiredTrialClubs || 0} expired trials`,
+      description: t("stats.clubTrialsDesc", { count: stats.overview.expiredTrialClubs || 0 }),
       icon: Clock,
       color: "text-amber-500",
     },
     {
-      title: "Mollie Connect",
+      title: t("stats.mollieConnect"),
       value: stats.overview.connectedAccounts.toString(),
-      description: `${stats.overview.pendingAccounts} pending onboarding`,
+      description: t("stats.mollieConnectDesc", { count: stats.overview.pendingAccounts }),
       icon: CreditCard,
       color: "text-orange-500",
     },
     {
-      title: "Registrations",
+      title: t("stats.registrationsLabel"),
       customValue: (
         <TrendBadge
           trend={stats.registrations?.lastMonth > 0
@@ -129,7 +131,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
           lastMonth={stats.registrations?.lastMonth || 0}
         />
       ),
-      description: `${stats.registrations?.totalGuests || 0} total, ${stats.registrations?.convertedToAccount || 0} converted`,
+      description: t("stats.registrationsDesc", { total: stats.registrations?.totalGuests || 0, converted: stats.registrations?.convertedToAccount || 0 }),
       icon: ClipboardList,
       color: "text-pink-500",
       onClick: () => navigate("/app/admin/guest-players"),

@@ -5,26 +5,12 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, ResponsiveContainer, Pie, PieChart, Cell } from "recharts";
+import { useTranslation } from "react-i18next";
 import type { AdminStats } from "@/lib/admin";
 
 interface AdminChartsProps {
   stats: AdminStats;
 }
-
-const chartConfig = {
-  gmv: {
-    label: "GMV",
-    color: "hsl(var(--primary))",
-  },
-  fees: {
-    label: "Platform Fees",
-    color: "hsl(var(--chart-2))",
-  },
-  bookings: {
-    label: "Bookings",
-    color: "hsl(var(--chart-3))",
-  },
-};
 
 const tierColors = {
   starter: "hsl(var(--muted-foreground))",
@@ -33,6 +19,23 @@ const tierColors = {
 };
 
 export function AdminCharts({ stats }: AdminChartsProps) {
+  const { t } = useTranslation("admin");
+
+  const chartConfig = {
+    gmv: {
+      label: t("charts.legendGmv"),
+      color: "hsl(var(--primary))",
+    },
+    fees: {
+      label: t("charts.legendFees"),
+      color: "hsl(var(--chart-2))",
+    },
+    bookings: {
+      label: t("charts.legendBookings"),
+      color: "hsl(var(--chart-3))",
+    },
+  };
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("nl-NL", {
       style: "currency",
@@ -43,9 +46,9 @@ export function AdminCharts({ stats }: AdminChartsProps) {
   };
 
   const tierData = [
-    { name: "Starter", value: stats.trainersByTier.starter, color: tierColors.starter },
-    { name: "Professional", value: stats.trainersByTier.professional, color: tierColors.professional },
-    { name: "Academy", value: stats.trainersByTier.academy, color: tierColors.academy },
+    { name: t("charts.tierStarter"), value: stats.trainersByTier.starter, color: tierColors.starter },
+    { name: t("charts.tierProfessional"), value: stats.trainersByTier.professional, color: tierColors.professional },
+    { name: t("charts.tierAcademy"), value: stats.trainersByTier.academy, color: tierColors.academy },
   ].filter(d => d.value > 0);
 
   const hasRevenue = stats.monthlyStats.some(m => m.gmv > 0);
@@ -56,8 +59,8 @@ export function AdminCharts({ stats }: AdminChartsProps) {
       {/* Revenue Chart */}
       <Card className="col-span-2 md:col-span-1">
         <CardHeader>
-          <CardTitle>Revenue Trends</CardTitle>
-          <CardDescription>GMV and platform fees over the last 6 months</CardDescription>
+          <CardTitle>{t("charts.revenueTitle")}</CardTitle>
+          <CardDescription>{t("charts.revenueSubtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
           {hasRevenue ? (
@@ -73,7 +76,7 @@ export function AdminCharts({ stats }: AdminChartsProps) {
                   stroke="var(--color-gmv)"
                   fill="var(--color-gmv)"
                   fillOpacity={0.3}
-                  name="GMV"
+                  name={t("charts.legendGmv")}
                 />
                 <Area
                   type="monotone"
@@ -82,13 +85,13 @@ export function AdminCharts({ stats }: AdminChartsProps) {
                   stroke="var(--color-fees)"
                   fill="var(--color-fees)"
                   fillOpacity={0.6}
-                  name="Platform Fees"
+                  name={t("charts.legendFees")}
                 />
               </AreaChart>
             </ChartContainer>
           ) : (
             <div className="flex h-[300px] items-center justify-center text-muted-foreground">
-              No revenue data yet
+              {t("charts.noRevenue")}
             </div>
           )}
         </CardContent>
@@ -97,8 +100,8 @@ export function AdminCharts({ stats }: AdminChartsProps) {
       {/* Bookings Chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Booking Trends</CardTitle>
-          <CardDescription>Monthly booking volume</CardDescription>
+          <CardTitle>{t("charts.bookingTitle")}</CardTitle>
+          <CardDescription>{t("charts.bookingSubtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
           {hasRevenue ? (
@@ -111,13 +114,13 @@ export function AdminCharts({ stats }: AdminChartsProps) {
                   dataKey="bookings"
                   fill="var(--color-bookings)"
                   radius={[4, 4, 0, 0]}
-                  name="Bookings"
+                  name={t("charts.legendBookings")}
                 />
               </BarChart>
             </ChartContainer>
           ) : (
             <div className="flex h-[300px] items-center justify-center text-muted-foreground">
-              No booking data yet
+              {t("charts.noBookings")}
             </div>
           )}
         </CardContent>
@@ -126,8 +129,8 @@ export function AdminCharts({ stats }: AdminChartsProps) {
       {/* Trainer Tiers Pie Chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Trainers by Tier</CardTitle>
-          <CardDescription>Subscription distribution</CardDescription>
+          <CardTitle>{t("charts.tiersTitle")}</CardTitle>
+          <CardDescription>{t("charts.tiersSubtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
           {hasTiers ? (
@@ -155,7 +158,7 @@ export function AdminCharts({ stats }: AdminChartsProps) {
             </div>
           ) : (
             <div className="flex h-[300px] items-center justify-center text-muted-foreground">
-              No trainers yet
+              {t("charts.noTrainers")}
             </div>
           )}
           {hasTiers && (

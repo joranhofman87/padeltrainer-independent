@@ -1,5 +1,6 @@
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 import { usePendingClaimsCount } from "@/hooks/useAdminData";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -55,36 +56,37 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Logo } from "@/components/Logo";
 
-const mainNavItems = [
-  { title: "Dashboard", url: "/app/admin", icon: LayoutDashboard, end: true },
-  { title: "Users", url: "/app/admin/users", icon: Users },
-  { title: "Player Ratings", url: "/app/admin/player-ratings", icon: Star },
-  { title: "Trainers", url: "/app/admin/trainers", icon: GraduationCap },
-  { title: "Academies", url: "/app/admin/academies", icon: School },
-  { title: "Registrations", url: "/app/admin/guest-players", icon: UserPlus },
-];
-
-const contentNavItems = [
-  { title: "Blog Articles", url: "/app/admin/blog", icon: FileText },
-  { title: "Topics Queue", url: "/app/admin/blog/topics", icon: ListTodo },
-  { title: "Court Reviews", url: "/app/admin/court-reviews", icon: MessageSquareMore },
-];
-
-const settingsNavItems = [
-  { title: "Certifications", url: "/app/admin/certifications", icon: Award },
-  { title: "Rating Systems", url: "/app/admin/rating-systems", icon: Scale },
-  { title: "Review Tags", url: "/app/admin/review-tags", icon: Tags },
-  { title: "Pricing Plans", url: "/app/admin/pricing", icon: CreditCard },
-  { title: "Onboarding Emails", url: "/app/admin/onboarding-emails", icon: Mail },
-  { title: "Backups", url: "/app/admin/backups", icon: Database },
-];
-
 export function AdminSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const { data: pendingClaimsCount = 0 } = usePendingClaimsCount();
+  const { t } = useTranslation("admin");
+
+  const mainNavItems = [
+    { title: t("sidebar.dashboard"), url: "/app/admin", icon: LayoutDashboard, end: true },
+    { title: t("sidebar.users"), url: "/app/admin/users", icon: Users },
+    { title: t("sidebar.playerRatings"), url: "/app/admin/player-ratings", icon: Star },
+    { title: t("sidebar.trainers"), url: "/app/admin/trainers", icon: GraduationCap },
+    { title: t("sidebar.academies"), url: "/app/admin/academies", icon: School },
+    { title: t("sidebar.registrations"), url: "/app/admin/guest-players", icon: UserPlus },
+  ];
+
+  const contentNavItems = [
+    { title: t("sidebar.blogArticles"), url: "/app/admin/blog", icon: FileText },
+    { title: t("sidebar.topicsQueue"), url: "/app/admin/blog/topics", icon: ListTodo },
+    { title: t("sidebar.courtReviews"), url: "/app/admin/court-reviews", icon: MessageSquareMore },
+  ];
+
+  const settingsNavItems = [
+    { title: t("sidebar.certifications"), url: "/app/admin/certifications", icon: Award },
+    { title: t("sidebar.ratingSystems"), url: "/app/admin/rating-systems", icon: Scale },
+    { title: t("sidebar.reviewTags"), url: "/app/admin/review-tags", icon: Tags },
+    { title: t("sidebar.pricingPlans"), url: "/app/admin/pricing", icon: CreditCard },
+    { title: t("sidebar.onboardingEmails"), url: "/app/admin/onboarding-emails", icon: Mail },
+    { title: t("sidebar.backups"), url: "/app/admin/backups", icon: Database },
+  ];
 
   // Track which collapsibles are open
   const [locationsOpen, setLocationsOpen] = useState(
@@ -121,7 +123,7 @@ export function AdminSidebar() {
               <ShieldCheck className="h-4 w-4" />
             </div>
             {!collapsed && (
-              <span className="font-semibold">Admin Panel</span>
+              <span className="font-semibold">{t("panelTitle")}</span>
             )}
           </div>
           {!collapsed ? (
@@ -175,13 +177,13 @@ export function AdminSidebar() {
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton 
-                      tooltip="Locations" 
+                      tooltip={t("sidebar.locations")} 
                       className={isLocationActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}
                     >
                       <MapPin className="h-4 w-4" />
                       {!collapsed && (
                         <>
-                          <span className="flex-1">Locations</span>
+                          <span className="flex-1">{t("sidebar.locations")}</span>
                           {pendingClaimsCount > 0 && (
                             <Badge variant="destructive" className="h-5 px-1.5 text-xs mr-1">
                               {pendingClaimsCount}
@@ -206,7 +208,7 @@ export function AdminSidebar() {
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
-                            All Locations
+                            {t("sidebar.allLocations")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
@@ -217,7 +219,7 @@ export function AdminSidebar() {
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
-                            Verified Clubs
+                            {t("sidebar.verifiedClubs")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
@@ -228,7 +230,7 @@ export function AdminSidebar() {
                             className="flex items-center justify-between"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
-                            <span>Club Claims</span>
+                            <span>{t("sidebar.clubClaims")}</span>
                             {pendingClaimsCount > 0 && (
                               <Badge variant="destructive" className="h-5 px-1.5 text-xs">
                                 {pendingClaimsCount}
@@ -275,10 +277,10 @@ export function AdminSidebar() {
             className="group/collapsible"
           >
             <CollapsibleTrigger asChild>
-              <SidebarMenuButton className="w-full justify-between" tooltip="Settings">
+              <SidebarMenuButton className="w-full justify-between" tooltip={t("sidebar.settings")}>
                 <div className="flex items-center gap-2">
                   <Settings className="h-4 w-4" />
-                  {!collapsed && <span>Settings</span>}
+                  {!collapsed && <span>{t("sidebar.settings")}</span>}
                 </div>
                 {!collapsed && (
                   <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
@@ -321,7 +323,7 @@ export function AdminSidebar() {
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4" />
-            {!collapsed && <span className="ml-2">Logout</span>}
+            {!collapsed && <span className="ml-2">{t("logout")}</span>}
           </Button>
         </div>
       </SidebarFooter>
