@@ -1,40 +1,79 @@
 
 
 ## Goal
-Make the app recover gracefully when chunk loads time out (Cloudflare 524) or fail after a deploy, instead of leaving users stuck on the "Something went wrong" screen.
+Full i18n sweep: close all translation gaps across NL, ES, DE, FR, IT, then localize every hardcoded user-facing string in the app — admin dialogs included.
 
-## Problem
-From the screenshot:
-1. `Failed to fetch dynamically imported module: …/Home-_KC2Kg8o.js` — the lazy-loaded Home chunk failed (likely a `524` timeout fetching it).
-2. `graduation-cap-…js` returned `524` (Cloudflare origin timeout).
-3. `Uncaught TypeError: Cannot read properties of undefined (reading 'q')` from `v2.js` — this is the **Reditus** affiliate script throwing during init.
+## Approach (3 phases, executed sequentially in default mode)
 
-The current `ErrorBoundary` does auto-reload on chunk-load errors, but only **once per minute**. Because the user already auto-reloaded once and the chunk fetch is *still* slow/timing out, the second failure shows the fallback UI.
+### Phase 1 — Locale parity (translation files only)
+Bring NL, ES, DE, FR, IT to 100% parity with EN across all 11 namespaces (`common`, `marketing`, `auth`, `player`, `trainer`, `club`, `cycles`, `admin`, `academy`, `waitingList`, `notifications`).
 
-## Changes
+- Diff each EN namespace against each target locale, collect missing key paths.
+- Translate missing keys via Lovable AI (Gemini 2.5 Pro) in batched calls per namespace per language.
+- Preserve `{{interpolation}}` tokens, HTML tags, and casing rules: sentence case for NL, title case for EN, locale-natural casing for others.
+- Merge translated keys into existing JSON files without overwriting any pre-existing values.
+- Re-run the diff to confirm zero missing keys per language.
 
-### 1. `src/components/ErrorBoundary.tsx` — smarter chunk recovery
-- Increase the auto-reload window to **3 attempts in 5 minutes** instead of "once per 60s". After 3 attempts, show the fallback (so we don't loop forever on a truly broken deploy).
-- Add a small delay (500ms) before reload to give Cloudflare/origin a moment to recover from the 524.
-- Also detect the error in `getDerivedStateFromError` so we trigger reload before rendering the broken fallback (less flash).
-- Keep the existing logger call for non-chunk errors.
+Estimated: ~25 JSON files updated.
 
-### 2. `src/main.tsx` — harden Reditus script + add chunk-error window listener
-- Wrap the Reditus `gr('initCustomer', …)` / `gr('track', …)` calls in a guard that catches the `'q'` undefined TypeError (it happens when the script half-loads). Already in a `try/catch`, but also catch errors thrown on the `gr` queue init by checking `(window as any).gr?.q` exists or falling back silently.
-- Add a global `window.addEventListener('vite:preloadError', …)` listener (Vite emits this when a dynamic import fails) — when fired, trigger the same throttled reload logic. This catches the error *before* React's ErrorBoundary, useful when the failure happens during route preloading rather than render.
+### Phase 2 — User-facing hardcoded strings (high priority)
+Localize the components real users (players, trainers, academy/club managers) interact with. Worked in batches by surface area:
 
-### 3. `index.html` — preconnect hint for chunks (small perf win)
-- Add `<link rel="preconnect" href="https://padeltrainer.ai" crossorigin>` so chunk fetches start their TCP/TLS handshake earlier. (Only if not already there — will verify during implementation.)
+**Batch 2A — Invoicing (highest priority, payment-critical)**
+- `src/pages/trainer/TrainerCreateInvoice.tsx`
+- `src/pages/academy/AcademyCreateInvoice.tsx`
+- `src/components/invoices/CreateCustomInvoiceDialog.tsx`
+- `src/components/invoices/EditInvoiceDialog.tsx`
+- `src/components/player/PlayerInvoicesTab.tsx` (currently NL-only — full i18n pass)
+- `src/components/trainer/InvoiceEmailDialog.tsx`
+
+**Batch 2B — Cycles, registration, scheduling**
+- All `src/components/cycles/*` and `src/pages/{trainer,academy}/cycle*` with hardcoded strings.
+
+**Batch 2C — Players, profiles, booking**
+- Player management tabs, profile dialogs, booking flow components.
+
+**Batch 2D — Email/marketing tools surfaced to org users**
+- `src/components/academy/EmailCampaignTab.tsx` and trainer equivalent.
+
+**Batch 2E — Remaining role surfaces (club, academy, trainer dashboards)**
+- All other flagged files in those directories.
+
+For each file: extract literals → add keys to the appropriate namespace (`trainer`, `academy`, `player`, `club`, `cycles`, `common`) under sensible nested paths → replace with `t("ns.key")` or `<Trans>` for embedded markup → add the same key to all 6 locale files (translated, not just EN).
+
+### Phase 3 — Admin surfaces
+Admin tooling, lower priority but included for completeness:
+- `src/components/admin/LocationEditDialog.tsx`
+- `src/components/admin/AcademyEditDialog.tsx`
+- `src/components/admin/TrainerEditDialog.tsx`
+- `src/pages/admin/AdminUsers.tsx`
+- `src/pages/admin/AdminBlogEditor.tsx`
+- Remaining `src/components/admin/*` and `src/pages/admin/*` flagged files.
+
+Keys go into the `admin` namespace, translated across all 6 locales.
+
+### Verification after each phase
+- Re-run the hardcoded-string scanner and locale-parity diff.
+- Generate updated `i18n-key-coverage.md` and `i18n-hardcoded-scan.md` reports.
+- Smoke-test critical pages (invoice pay, invoice create, cycle registration, player tab) in NL + DE + FR.
+
+## Execution model
+Because this touches ~190 component files plus 60 locale JSONs, work will be delivered in **multiple sequential batches** (one batch per turn) rather than a single mega-edit. After each batch I'll report progress (files done, keys added, remaining count) so you can pause/redirect at any point.
+
+Order of execution:
+1. Phase 1 (locale parity) — single batch, ~25 file updates.
+2. Phase 2A → 2B → 2C → 2D → 2E — one batch each.
+3. Phase 3 — one or two batches depending on size.
+
+Total expected: ~7–8 implementation turns end-to-end.
 
 ## Out of scope
-- Investigating the Cloudflare 524 itself (origin server timeout) — that's an infra issue with the static asset host, not an app bug. The app changes above make the app *resilient* to those timeouts; fixing the root cause requires Cloudflare/hosting investigation which we can do as a follow-up if 524s persist.
-- Removing Reditus entirely (separate decision).
+- Email templates and edge-function strings (separate server-side i18n system; flag as a follow-up if needed).
+- Sanity CMS content (already locale-aware via the translation system).
+- Any string changes that aren't locale-related (no copy edits, no UX changes).
 
 ## Files touched
-- `src/components/ErrorBoundary.tsx`
-- `src/main.tsx`
-- `index.html` (preconnect, if missing)
-
-## Note for the user
-Right now, a hard refresh (**Cmd/Ctrl + Shift + R**) on the affected browser will get you unstuck immediately. The changes above prevent this from happening again to other users.
+- `src/i18n/locales/{en,nl,es,de,fr,it}/*.json` — additions only, no removals.
+- ~190 component/page files under `src/components/` and `src/pages/`.
+- New artifacts after each phase: `i18n-key-coverage.md`, `i18n-hardcoded-scan.md` regenerated under `/mnt/documents/`.
 
