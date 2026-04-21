@@ -943,6 +943,7 @@ function DroppableCell({
   hasSlot: boolean;
   onCreateSlot?: () => void;
 }) {
+  const { t } = useTranslation('cycles');
   const { setNodeRef, isOver } = useDroppable({
     id: cellId,
     data: { type: 'cell', cellId },
