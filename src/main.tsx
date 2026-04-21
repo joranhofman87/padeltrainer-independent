@@ -62,7 +62,9 @@ async function initDeferred() {
   s.onload = () => {
     try {
       const gr = (window as any).gr;
-      if (typeof gr !== 'function') return;
+      // Guard against half-loaded script: gr must be a function and have its
+      // internal queue (`gr.q`) initialized before we can safely call it.
+      if (typeof gr !== 'function' || !('q' in gr)) return;
       gr('initCustomer', '48a566a2-eb01-4562-932d-ef6886e0282e');
       gr('track', 'pageview');
     } catch { /* silently ignore third-party errors */ }
