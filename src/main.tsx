@@ -4,8 +4,15 @@ import { HelmetProvider } from "react-helmet-async";
 import { TranslationsProvider } from "./contexts/TranslationsContext";
 import App from "./App.tsx";
 import "./index.css";
-import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ErrorBoundary, tryChunkReload, isChunkLoadError } from "./components/ErrorBoundary";
 import { logger } from "./lib/logger";
+
+// Recover from Vite dynamic-import failures (stale chunks / Cloudflare 524s)
+// before they propagate to the React ErrorBoundary.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  tryChunkReload();
+});
 
 // Global error handlers — catch unhandled errors and promise rejections
 window.addEventListener('error', (event) => {
