@@ -71,13 +71,14 @@ export function BookingSummary({
   cycleSettingsMap,
 }: BookingSummaryProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation('player');
 
   return (
     <div className="lg:sticky lg:top-24 h-fit">
       <Card>
         <CardHeader>
-          <CardTitle>Booking Summary</CardTitle>
-          <CardDescription>Review your lesson booking</CardDescription>
+          <CardTitle>{t('booking.summary')}</CardTitle>
+          <CardDescription>{t('booking.summaryDescription')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {selectedCyclus ? (
@@ -88,7 +89,7 @@ export function BookingSummary({
                   <p className="font-semibold">{selectedCyclus.cyclus_name}</p>
                 </div>
                 <Badge variant="secondary" className="mb-2">
-                  {selectedCyclus.slots.length} sessions
+                  {t('booking.sessionsCount', { count: selectedCyclus.slots.length })}
                 </Badge>
                 <div className="text-sm text-muted-foreground space-y-1 mt-2 max-h-32 overflow-y-auto">
                   {selectedCyclus.slots.map((slot) => (
@@ -107,10 +108,10 @@ export function BookingSummary({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="notes">Notes for trainer (optional)</Label>
+                <Label htmlFor="notes">{t('booking.notesForTrainer')}</Label>
                 <Textarea
                   id="notes"
-                  placeholder="Any special requests or information..."
+                  placeholder={t('booking.notesPlaceholderShort')}
                   value={notes}
                   onChange={(e) => onNotesChange(e.target.value)}
                 />
@@ -125,7 +126,7 @@ export function BookingSummary({
 
               <div className="border-t pt-4">
                 <div className="flex justify-between items-center text-lg font-semibold">
-                  <span>Total ({selectedCyclus.slots.length} sessions)</span>
+                  <span>{t('booking.totalSessions', { count: selectedCyclus.slots.length })}</span>
                   <span>{formatPrice(selectedCyclus.totalPrice)}</span>
                 </div>
               </div>
@@ -136,7 +137,7 @@ export function BookingSummary({
                   size="lg"
                   onClick={() => navigate(`/app/signup/player?redirect=/app/book/${trainerId}`)}
                 >
-                  Sign Up to Book
+                  {t('booking.signUpToBook')}
                 </Button>
               ) : (
                 <Button
@@ -145,7 +146,7 @@ export function BookingSummary({
                   onClick={onBook}
                   disabled={booking || (!!applicableTerms && !termsAccepted)}
                 >
-                  {booking ? 'Booking...' : `Book Entire Cycle (${selectedCyclus.slots.length} sessions)`}
+                  {booking ? t('booking.bookingInProgress') : t('booking.bookEntireCycle', { count: selectedCyclus.slots.length })}
                 </Button>
               )}
             </>
@@ -153,7 +154,7 @@ export function BookingSummary({
             <>
               <div className="p-4 bg-muted rounded-lg space-y-2">
                 <p className="font-semibold">
-                  {selectedSlot.cyclus_name || 'Training Session'}
+                  {selectedSlot.cyclus_name || t('booking.trainingSession')}
                 </p>
                 <div className="text-sm text-muted-foreground space-y-1">
                   <p className="flex items-center gap-2">
@@ -185,7 +186,7 @@ export function BookingSummary({
                 if (selectedSlot.allow_single_booking && maxP > 1) {
                   return (
                     <div className="space-y-2">
-                      <Label>Number of spots</Label>
+                      <Label>{t('booking.numberOfSpots')}</Label>
                       <div className="flex items-center gap-3">
                         <Button
                           variant="outline"
@@ -207,16 +208,16 @@ export function BookingSummary({
                           <Plus className="h-4 w-4" />
                         </Button>
                         <span className="text-sm text-muted-foreground">
-                          of {spotsAvailable} available
+                          {t('booking.ofAvailable', { count: spotsAvailable })}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {formatPrice(perSpot)} per spot
+                        {t('booking.perSpot', { price: formatPrice(perSpot) })}
                       </p>
                       {minGroup > 1 && (
                         <div className="p-2 bg-amber-50 dark:bg-amber-950 rounded text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
                           <Users className="h-3.5 w-3.5" />
-                          This session requires a minimum of {minGroup} players
+                          {t('booking.minPlayersRequired', { count: minGroup })}
                         </div>
                       )}
                     </div>
@@ -226,10 +227,10 @@ export function BookingSummary({
               })()}
 
               <div className="space-y-2">
-                <Label htmlFor="notes">Notes for trainer (optional)</Label>
+                <Label htmlFor="notes">{t('booking.notesForTrainer')}</Label>
                 <Textarea
                   id="notes"
-                  placeholder="Any special requests or information..."
+                  placeholder={t('booking.notesPlaceholderShort')}
                   value={notes}
                   onChange={(e) => onNotesChange(e.target.value)}
                 />
@@ -244,7 +245,7 @@ export function BookingSummary({
 
               <div className="border-t pt-4">
                 <div className="flex justify-between items-center text-lg font-semibold">
-                  <span>Total</span>
+                  <span>{t('booking.total')}</span>
                   <span>
                     {(() => {
                       const maxP = selectedSlot.max_participants || 1;
@@ -263,7 +264,7 @@ export function BookingSummary({
                   size="lg"
                   onClick={() => navigate(`/app/signup/player?redirect=/app/book/${trainerId}`)}
                 >
-                  Sign Up to Book
+                  {t('booking.signUpToBook')}
                 </Button>
               ) : (
                 <Button
@@ -272,13 +273,13 @@ export function BookingSummary({
                   onClick={onBook}
                   disabled={booking || (!!applicableTerms && !termsAccepted)}
                 >
-                  {booking ? 'Booking...' : 'Confirm Booking'}
+                  {booking ? t('booking.bookingInProgress') : t('booking.confirmBooking')}
                 </Button>
               )}
             </>
           ) : (
             <p className="text-muted-foreground text-center py-8">
-              Select a time slot or training cycle to continue
+              {t('booking.selectSlotOrCycle')}
             </p>
           )}
         </CardContent>
