@@ -535,5 +535,9 @@
     "saveError": "Impossibile salvare l'email",
     "cancel": "Annulla",
     "saveAndSend": "Salva e invia"
+  },
+  "aria": {
+    "listView": "Vista elenco",
+    "scheduleView": "Vista pianificazione"
   }
 }

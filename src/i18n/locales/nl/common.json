@@ -537,5 +537,9 @@
     "saveError": "Kon e-mailadres niet opslaan",
     "cancel": "Annuleren",
     "saveAndSend": "Opslaan & verzenden"
+  },
+  "aria": {
+    "listView": "Lijstweergave",
+    "scheduleView": "Roosterweergave"
   }
 }

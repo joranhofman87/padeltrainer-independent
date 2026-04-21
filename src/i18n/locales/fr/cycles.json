@@ -105,7 +105,8 @@
     "registrationApplicableTrainersHelp": "Quels entraîneurs peuvent être assignés à cette inscription",
     "pricesIncludeVat": "Prix TTC (TVA incluse)",
     "pricesIncludeVatHint": "Les joueurs verront : \"Tous les prix incluent la TVA\"",
-    "pricesExcludeVatHint": "Les joueurs verront : \"Tous les prix sont hors TVA\""
+    "pricesExcludeVatHint": "Les joueurs verront : \"Tous les prix sont hors TVA\"",
+    "totalLabel": "Total"
   },
   "detail": {
     "pricesIncludeVat": "Tous les prix incluent la TVA",
@@ -262,7 +263,8 @@
       "availability": "Disponibilité",
       "preferredTrainer": "Entraîneur pref.",
       "status": "Statut",
-      "applied": "Candidaté"
+      "applied": "Candidaté",
+      "groupMembers": "Membres du groupe :"
     },
     "detail": {
       "title": "Détails de la demande",
@@ -271,7 +273,11 @@
       "availability": "Disponibilité",
       "notes": "Notes",
       "proposal": "Proposition d'affectation",
-      "noProposal": "Aucune proposition générée pour le moment"
+      "noProposal": "Aucune proposition générée pour le moment",
+      "lessonType": "Type de cours",
+      "duration": "Durée",
+      "location": "Lieu",
+      "locationSpecified": "Précisé"
     },
     "actions": {
       "propose": "Générer une proposition",
@@ -370,6 +376,23 @@
       "description": "Pour que le système génère des propositions, vous devez d'abord créer des créneaux ou des cycles d'entraînement dans votre calendrier. Une fois les créneaux créés, nous pourrons associer les joueurs en fonction de leurs disponibilités et préférences.",
       "goToCalendar": "Aller au calendrier",
       "continue": "Continuer"
+    },
+    "statusBadges": {
+      "approved": "Approuvée",
+      "rejected": "Refusée",
+      "pending": "En attente",
+      "manual": "Manuel"
+    },
+    "toasts": {
+      "approved": "Proposition approuvée",
+      "rejected": "Proposition refusée"
+    },
+    "grid": {
+      "full": "COMPLET",
+      "noPlayers": "Aucun joueur",
+      "dragPlayer": "Glisser le joueur",
+      "dragSlot": "Glisser le créneau",
+      "addSlot": "Ajouter un créneau"
     }
   },
   "skipReasons": {
