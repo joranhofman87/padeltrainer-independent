@@ -749,10 +749,10 @@ export default function AcademyCycleDetail() {
             </div>
 
             <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
-              <ToggleGroupItem value="list" aria-label="List view">
+              <ToggleGroupItem value="list" aria-label={tCommon('aria.listView')}>
                 <List className="h-4 w-4" />
               </ToggleGroupItem>
-              <ToggleGroupItem value="schedule" aria-label="Schedule view">
+              <ToggleGroupItem value="schedule" aria-label={tCommon('aria.scheduleView')}>
                 <CalendarDays className="h-4 w-4" />
               </ToggleGroupItem>
             </ToggleGroup>

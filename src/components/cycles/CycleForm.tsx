@@ -1637,7 +1637,7 @@ export default function CycleForm({
                       </div>
                     )}
                     <div className="border-t pt-1 flex justify-between font-semibold">
-                      <span>Total</span>
+                      <span>{t('form.totalLabel')}</span>
                       <span>€{grandTotal.toFixed(2)}</span>
                     </div>
                   </div>
