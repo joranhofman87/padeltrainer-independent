@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,7 @@ interface InvoiceEmailDialogProps {
 }
 
 export function InvoiceEmailDialog({ open, onClose, playerName, onSubmit }: InvoiceEmailDialogProps) {
+  const { t } = useTranslation('common');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -27,7 +29,7 @@ export function InvoiceEmailDialog({ open, onClose, playerName, onSubmit }: Invo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes('@')) {
-      setError('Voer een geldig e-mailadres in');
+      setError(t('invoiceEmailDialog.invalidEmail'));
       return;
     }
     setLoading(true);
@@ -37,7 +39,7 @@ export function InvoiceEmailDialog({ open, onClose, playerName, onSubmit }: Invo
       setEmail('');
       onClose();
     } catch {
-      setError('Kon e-mail niet opslaan');
+      setError(t('invoiceEmailDialog.saveError'));
     } finally {
       setLoading(false);
     }
@@ -49,19 +51,24 @@ export function InvoiceEmailDialog({ open, onClose, playerName, onSubmit }: Invo
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-5 w-5" />
-            E-mailadres nodig
+            {t('invoiceEmailDialog.title')}
           </DialogTitle>
           <DialogDescription>
-            Er is geen e-mailadres bekend voor <strong>{playerName}</strong>. Voer een e-mailadres in om de factuur te versturen.
+            <Trans
+              i18nKey="invoiceEmailDialog.description"
+              ns="common"
+              values={{ name: playerName }}
+              components={{ strong: <strong /> }}
+            />
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="player-email">E-mailadres</Label>
+            <Label htmlFor="player-email">{t('invoiceEmailDialog.label')}</Label>
             <Input
               id="player-email"
               type="email"
-              placeholder="speler@voorbeeld.nl"
+              placeholder={t('invoiceEmailDialog.placeholder')}
               value={email}
               onChange={(e) => { setEmail(e.target.value); setError(''); }}
               autoFocus
@@ -70,11 +77,11 @@ export function InvoiceEmailDialog({ open, onClose, playerName, onSubmit }: Invo
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
-              Annuleren
+              {t('invoiceEmailDialog.cancel')}
             </Button>
             <Button type="submit" disabled={loading || !email}>
               {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mail className="h-4 w-4 mr-2" />}
-              Opslaan & Versturen
+              {t('invoiceEmailDialog.saveAndSend')}
             </Button>
           </DialogFooter>
         </form>

@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, CalendarIcon, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import { format, addDays } from 'date-fns';
-import { nl, enUS } from 'date-fns/locale';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
@@ -31,11 +31,11 @@ interface LineItem {
 }
 
 export default function AcademyCreateInvoice() {
-  const { t, i18n } = useTranslation('academy');
+  const { t, i18n } = useTranslation('common');
   const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
   const queryClient = useQueryClient();
-  const dateFnsLocale = i18n.language === 'nl' ? nl : enUS;
+  const dateFnsLocale = getDateFnsLocale(i18n.language);
 
   const [playerName, setPlayerName] = useState('');
   const [playerBusinessName, setPlayerBusinessName] = useState('');
@@ -113,14 +113,14 @@ export default function AcademyCreateInvoice() {
 
     const sub = Math.round(totalSub * 100) / 100;
     const vat = Math.round(totalVatAmt * 100) / 100;
-    const t = pricesIncludeVat
+    const tot = pricesIncludeVat
       ? Math.round(lineItems.reduce((s, li) => s + li.quantity * li.unit_price, 0) * 100) / 100
       : Math.round((sub + vat) * 100) / 100;
 
     return {
       subtotal: sub,
       vatAmount: vat,
-      total: t,
+      total: tot,
       vatBreakdown: hasMultipleRates ? breakdown : null,
     };
   }, [lineItems, pricesIncludeVat]);
@@ -128,11 +128,11 @@ export default function AcademyCreateInvoice() {
   const handleSave = async () => {
     if (!academyProfileId) return;
     if (!playerName.trim()) {
-      toast.error('Naam ontvanger is verplicht');
+      toast.error(t('invoiceForm.receiver.nameRequiredError'));
       return;
     }
     if (lineItems.length === 0 || lineItems.every(li => !li.description.trim())) {
-      toast.error('Voeg minimaal één regelitem toe');
+      toast.error(t('invoiceForm.lineItems.minimumOneItemError'));
       return;
     }
 
@@ -144,7 +144,7 @@ export default function AcademyCreateInvoice() {
         .eq('id', academyProfileId)
         .single();
 
-      if (academyError || !academy) throw new Error('Academy niet gevonden');
+      if (academyError || !academy) throw new Error('Academy not found');
 
       const prefix = academy.invoice_prefix ?? '';
       const nextNumber = academy.invoice_next_number || 1;
@@ -208,12 +208,12 @@ export default function AcademyCreateInvoice() {
         .update({ invoice_next_number: nextNumber + 1 })
         .eq('id', academyProfileId);
 
-      toast.success(`Factuur ${invoiceNumber} aangemaakt`);
+      toast.success(t('invoiceForm.create.createdToast', { number: invoiceNumber }));
       queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
       navigate('/app/academy/invoices');
     } catch (err) {
       logger.error('Failed to create invoice:', err);
-      toast.error('Kon factuur niet aanmaken');
+      toast.error(t('invoiceForm.create.createError'));
     } finally {
       setSaving(false);
     }
@@ -229,45 +229,45 @@ export default function AcademyCreateInvoice() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">{t('invoices.createInvoice', 'Nieuwe factuur')}</h1>
-          <p className="text-sm text-muted-foreground">{t('invoices.createDescription', 'Maak een handmatige factuur aan met eigen gegevens en regelitems.')}</p>
+          <h1 className="text-2xl font-bold">{t('invoiceForm.create.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('invoiceForm.create.description')}</p>
         </div>
       </div>
 
       {/* Receiver */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Ontvanger</CardTitle>
+          <CardTitle className="text-base">{t('invoiceForm.receiver.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground">Naam *</Label>
-              <Input value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder="Naam ontvanger" />
+              <Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.nameRequired')}</Label>
+              <Input value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder={t('invoiceForm.receiver.namePlaceholder')} />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Bedrijfsnaam</Label>
-              <Input value={playerBusinessName} onChange={(e) => setPlayerBusinessName(e.target.value)} placeholder="Optioneel" />
+              <Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.businessName')}</Label>
+              <Input value={playerBusinessName} onChange={(e) => setPlayerBusinessName(e.target.value)} placeholder={t('invoiceForm.receiver.businessNamePlaceholder')} />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">BTW-nummer</Label>
-              <Input value={playerBtwNumber} onChange={(e) => setPlayerBtwNumber(e.target.value)} placeholder="NL000000000B01" />
+              <Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.btwNumber')}</Label>
+              <Input value={playerBtwNumber} onChange={(e) => setPlayerBtwNumber(e.target.value)} placeholder={t('invoiceForm.receiver.btwNumberPlaceholder')} />
             </div>
             <div className="col-span-2">
-              <Label className="text-xs text-muted-foreground">Straat + huisnummer</Label>
-              <Input value={playerStreet} onChange={(e) => setPlayerStreet(e.target.value)} placeholder="Kapelweg 12" />
+              <Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.street')}</Label>
+              <Input value={playerStreet} onChange={(e) => setPlayerStreet(e.target.value)} placeholder={t('invoiceForm.receiver.streetPlaceholder')} />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Postcode</Label>
-              <Input value={playerZipCode} onChange={(e) => setPlayerZipCode(e.target.value)} placeholder="3951AC" />
+              <Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.zipCode')}</Label>
+              <Input value={playerZipCode} onChange={(e) => setPlayerZipCode(e.target.value)} placeholder={t('invoiceForm.receiver.zipCodePlaceholder')} />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Plaats</Label>
-              <Input value={playerCity} onChange={(e) => setPlayerCity(e.target.value)} placeholder="Maarn" />
+              <Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.city')}</Label>
+              <Input value={playerCity} onChange={(e) => setPlayerCity(e.target.value)} placeholder={t('invoiceForm.receiver.cityPlaceholder')} />
             </div>
             <div className="col-span-2">
-              <Label className="text-xs text-muted-foreground">E-mailadres (voor verzending)</Label>
-              <Input type="email" value={playerEmail} onChange={(e) => setPlayerEmail(e.target.value)} placeholder="ontvanger@voorbeeld.nl" />
+              <Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.email')}</Label>
+              <Input type="email" value={playerEmail} onChange={(e) => setPlayerEmail(e.target.value)} placeholder={t('invoiceForm.receiver.emailPlaceholder')} />
             </div>
           </div>
         </CardContent>
@@ -277,7 +277,7 @@ export default function AcademyCreateInvoice() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Regelitems</CardTitle>
+            <CardTitle className="text-base">{t('invoiceForm.lineItems.title')}</CardTitle>
             <div className="flex items-center gap-1">
               <ExtraCostPresetPicker
                 academyProfileId={academyProfileId}
@@ -307,7 +307,7 @@ export default function AcademyCreateInvoice() {
                 }}
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Regel toevoegen
+                {t('invoiceForm.lineItems.addRow')}
               </Button>
             </div>
           </div>
@@ -317,16 +317,16 @@ export default function AcademyCreateInvoice() {
             {/* Desktop grid */}
             <div className="hidden md:block space-y-2">
               <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
-                <span>Omschrijving</span>
-                <span>Aantal</span>
-                <span>Prijs</span>
-                <span>BTW %</span>
-                <span>Totaal</span>
+                <span>{t('invoiceForm.lineItems.description')}</span>
+                <span>{t('invoiceForm.lineItems.quantity')}</span>
+                <span>{t('invoiceForm.lineItems.price')}</span>
+                <span>{t('invoiceForm.lineItems.vatPercent')}</span>
+                <span>{t('invoiceForm.lineItems.total')}</span>
                 <span></span>
               </div>
               {lineItems.map((li, i) => (
                 <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
-                  <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder="Omschrijving" className="text-sm" />
+                  <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder={t('invoiceForm.lineItems.descriptionPlaceholder')} className="text-sm" />
                   <Input type="number" value={li.quantity === 0 ? '' : li.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value)} onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }} className="text-sm" min={1} />
                   <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
                   <div className="relative">
@@ -345,29 +345,29 @@ export default function AcademyCreateInvoice() {
               {lineItems.map((li, i) => (
                 <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/30">
                   <div className="flex items-center gap-2">
-                    <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder="Omschrijving" className="text-sm flex-1" />
+                    <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder={t('invoiceForm.lineItems.descriptionPlaceholder')} className="text-sm flex-1" />
                     <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                       <Trash2 className="h-3 w-3 text-muted-foreground" />
                     </Button>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <Label className="text-xs text-muted-foreground">Aantal</Label>
+                      <Label className="text-xs text-muted-foreground">{t('invoiceForm.lineItems.quantity')}</Label>
                       <Input type="number" value={li.quantity === 0 ? '' : li.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value)} onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }} className="text-sm" min={1} />
                     </div>
                     <div>
-                      <Label className="text-xs text-muted-foreground">Prijs</Label>
+                      <Label className="text-xs text-muted-foreground">{t('invoiceForm.lineItems.price')}</Label>
                       <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
                     </div>
                     <div>
-                      <Label className="text-xs text-muted-foreground">BTW %</Label>
+                      <Label className="text-xs text-muted-foreground">{t('invoiceForm.lineItems.vatPercent')}</Label>
                       <div className="relative">
                         <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
                         <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                       </div>
                     </div>
                   </div>
-                  <div className="text-right text-sm font-medium">Totaal: €{(li.quantity * li.unit_price).toFixed(2)}</div>
+                  <div className="text-right text-sm font-medium">{t('invoiceForm.lineItems.totalLabel', { amount: `€${(li.quantity * li.unit_price).toFixed(2)}` })}</div>
                 </div>
               ))}
             </div>
@@ -380,7 +380,7 @@ export default function AcademyCreateInvoice() {
         <CardContent className="pt-6 space-y-4">
           {/* VAT toggle */}
           <div className="flex items-center justify-between">
-            <Label className="text-sm">Prijzen zijn inclusief BTW</Label>
+            <Label className="text-sm">{t('invoiceForm.totals.pricesIncludeVat')}</Label>
             <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
           </div>
 
@@ -389,7 +389,7 @@ export default function AcademyCreateInvoice() {
           {/* Totals */}
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotaal</span>
+              <span className="text-muted-foreground">{t('invoiceForm.totals.subtotal')}</span>
               <span>€{subtotal.toFixed(2)}</span>
             </div>
             {vatBreakdown ? (
@@ -397,18 +397,18 @@ export default function AcademyCreateInvoice() {
                 .sort(([a], [b]) => Number(a) - Number(b))
                 .map(([rate, data]) => (
                   <div key={rate} className="flex justify-between">
-                    <span className="text-muted-foreground">BTW {rate}%</span>
+                    <span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate })}</span>
                     <span>€{data.vat.toFixed(2)}</span>
                   </div>
                 ))
             ) : (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">BTW {lineItems[0]?.vat_rate ?? 21}%</span>
+                <span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate: lineItems[0]?.vat_rate ?? 21 })}</span>
                 <span>€{vatAmount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-base border-t pt-2">
-              <span>Totaal</span>
+              <span>{t('invoiceForm.totals.total')}</span>
               <span>€{total.toFixed(2)}</span>
             </div>
           </div>
@@ -417,7 +417,7 @@ export default function AcademyCreateInvoice() {
 
           {/* Due date */}
           <div className="flex items-center gap-4">
-            <Label className="text-sm whitespace-nowrap">Vervaldatum</Label>
+            <Label className="text-sm whitespace-nowrap">{t('invoiceForm.dueDate.label')}</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className={cn('justify-start text-left font-normal')}>
@@ -438,11 +438,11 @@ export default function AcademyCreateInvoice() {
 
           {/* Notes */}
           <div>
-            <Label className="text-sm mb-1 block">Notities</Label>
+            <Label className="text-sm mb-1 block">{t('invoiceForm.notes.label')}</Label>
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optionele notities op de factuur..."
+              placeholder={t('invoiceForm.notes.placeholder')}
               rows={2}
             />
           </div>
@@ -452,11 +452,11 @@ export default function AcademyCreateInvoice() {
       {/* Actions */}
       <div className="flex justify-end gap-3">
         <Button variant="outline" onClick={() => navigate('/app/academy/invoices')} disabled={saving}>
-          Annuleren
+          {t('invoiceForm.actions.cancel')}
         </Button>
         <Button onClick={handleSave} disabled={saving || !playerName.trim()}>
           {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Factuur aanmaken
+          {t('invoiceForm.create.createButton')}
         </Button>
       </div>
     </div>
