@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +21,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
-import { nl } from 'date-fns/locale';
+import { nl, enUS, es, de, fr, it } from 'date-fns/locale';
 
 interface PlayerInvoice {
   id: string;
@@ -46,15 +47,12 @@ interface PlayerInvoicesTabProps {
   profileId: string;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ComponentType<{ className?: string }> }> = {
-  draft: { label: 'Concept', variant: 'secondary', icon: FileText },
-  sent: { label: 'Verzonden', variant: 'default', icon: Clock },
-  paid: { label: 'Betaald', variant: 'outline', icon: CheckCircle2 },
-  overdue: { label: 'Verlopen', variant: 'destructive', icon: AlertCircle },
-};
+const DATE_LOCALES: Record<string, Locale> = { en: enUS, nl, es, de, fr, it };
 
 export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
+  const { t, i18n } = useTranslation('player');
   const { toast } = useToast();
+  const dateLocale = DATE_LOCALES[i18n.language] || enUS;
   const [invoices, setInvoices] = useState<PlayerInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadLoading, setDownloadLoading] = useState<string | null>(null);
@@ -64,6 +62,13 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
   const [billingBtw, setBillingBtw] = useState('');
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ComponentType<{ className?: string }> }> = {
+    draft: { label: t('playerInvoices.status.draft'), variant: 'secondary', icon: FileText },
+    sent: { label: t('playerInvoices.status.sent'), variant: 'default', icon: Clock },
+    paid: { label: t('playerInvoices.status.paid'), variant: 'outline', icon: CheckCircle2 },
+    overdue: { label: t('playerInvoices.status.overdue'), variant: 'destructive', icon: AlertCircle },
+  };
 
   useEffect(() => {
     fetchInvoices();
@@ -80,7 +85,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
 
     if (error) {
       logger.error('Error fetching player invoices', error as unknown as Error, { component: 'PlayerInvoicesTab' });
-      toast({ title: 'Fout', description: 'Kon facturen niet laden', variant: 'destructive' });
+      toast({ title: t('playerInvoices.loadError'), description: t('playerInvoices.loadError'), variant: 'destructive' });
     } else {
       const now = new Date();
       const processed = (data || []).map(inv => {
@@ -100,10 +105,10 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
       const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
       if (!ok) {
-        toast({ title: 'Fout', description: 'Kon factuur niet genereren', variant: 'destructive' });
+        toast({ title: t('playerInvoices.actions.pdfError'), description: t('playerInvoices.actions.pdfError'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Fout', description: 'Kon factuur niet genereren', variant: 'destructive' });
+      toast({ title: t('playerInvoices.actions.pdfError'), description: t('playerInvoices.actions.pdfError'), variant: 'destructive' });
     }
     setDownloadLoading(null);
   };
@@ -120,7 +125,6 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
     if (!editingInvoice) return;
     setSaving(true);
 
-    // Update the invoice and clear pdf_url so next download regenerates with new details
     const { error } = await supabase
       .from('invoices')
       .update({
@@ -132,12 +136,11 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
       .eq('id', editingInvoice.id);
 
     if (error) {
-      toast({ title: 'Fout', description: 'Kon gegevens niet opslaan', variant: 'destructive' });
+      toast({ title: t('playerInvoices.billingDialog.saveError'), description: t('playerInvoices.billingDialog.saveError'), variant: 'destructive' });
       setSaving(false);
       return;
     }
 
-    // Save as default billing details on the profile
     if (saveAsDefault) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -152,7 +155,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
       }
     }
 
-    toast({ title: 'Opgeslagen', description: 'Je facturatiegegevens zijn bijgewerkt. De PDF wordt opnieuw gegenereerd bij de volgende download.' });
+    toast({ title: t('common:saved', 'Saved'), description: t('playerInvoices.billingDialog.savedToast') });
     setEditingInvoice(null);
     fetchInvoices();
     setSaving(false);
@@ -181,9 +184,9 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
     return (
       <Card className="p-12 text-center">
         <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-        <h3 className="text-xl font-semibold mb-2">Geen facturen</h3>
+        <h3 className="text-xl font-semibold mb-2">{t('playerInvoices.empty.title')}</h3>
         <p className="text-muted-foreground">
-          Je hebt nog geen facturen ontvangen van trainers.
+          {t('playerInvoices.empty.description')}
         </p>
       </Card>
     );
@@ -203,16 +206,16 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
                     <span>
-                      Datum: {format(parseISO(invoice.invoice_date), 'd MMM yyyy', { locale: nl })}
+                      {t('playerInvoices.labels.date', { date: format(parseISO(invoice.invoice_date), 'd MMM yyyy', { locale: dateLocale }) })}
                     </span>
                     {invoice.status !== 'paid' && (
                       <span className={invoice.status === 'overdue' ? 'text-destructive' : ''}>
-                        Vervalt: {format(parseISO(invoice.due_date), 'd MMM yyyy', { locale: nl })}
+                        {t('playerInvoices.labels.due', { date: format(parseISO(invoice.due_date), 'd MMM yyyy', { locale: dateLocale }) })}
                       </span>
                     )}
                     {invoice.paid_at && (
                       <span className="text-green-600">
-                        Betaald: {format(parseISO(invoice.paid_at), 'd MMM yyyy', { locale: nl })}
+                        {t('playerInvoices.labels.paid', { date: format(parseISO(invoice.paid_at), 'd MMM yyyy', { locale: dateLocale }) })}
                       </span>
                     )}
                   </div>
@@ -222,7 +225,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                   <div className="text-right">
                     <p className="text-xl font-bold">€{invoice.total.toFixed(2)}</p>
                     <p className="text-xs text-muted-foreground">
-                      incl. {invoice.vat_rate}% BTW
+                      {t('playerInvoices.labels.vatIncluded', { rate: invoice.vat_rate })}
                     </p>
                   </div>
 
@@ -231,7 +234,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => openEditBilling(invoice)}
-                      title="Facturatiegegevens bewerken"
+                      title={t('playerInvoices.actions.editBilling')}
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -240,7 +243,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                       size="icon"
                       onClick={() => handleDownload(invoice)}
                       disabled={downloadLoading === invoice.id}
-                      title="Download PDF"
+                      title={t('playerInvoices.actions.downloadPdf')}
                     >
                       {downloadLoading === invoice.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -260,35 +263,35 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
       <Dialog open={!!editingInvoice} onOpenChange={(open) => !open && setEditingInvoice(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Facturatiegegevens bewerken</DialogTitle>
+            <DialogTitle>{t('playerInvoices.billingDialog.title')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="billing-business-name">Bedrijfsnaam</Label>
+              <Label htmlFor="billing-business-name">{t('playerInvoices.billingDialog.businessName')}</Label>
               <Input
                 id="billing-business-name"
                 value={billingBusinessName}
                 onChange={(e) => setBillingBusinessName(e.target.value)}
-                placeholder="Jouw Bedrijf B.V."
+                placeholder={t('playerInvoices.billingDialog.businessNamePlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="billing-address">Adres</Label>
+              <Label htmlFor="billing-address">{t('playerInvoices.billingDialog.address')}</Label>
               <Textarea
                 id="billing-address"
                 value={billingAddress}
                 onChange={(e) => setBillingAddress(e.target.value)}
-                placeholder="Straatnaam 123&#10;1234 AB Amsterdam"
+                placeholder={t('playerInvoices.billingDialog.addressPlaceholder')}
                 rows={3}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="billing-btw">BTW-nummer</Label>
+              <Label htmlFor="billing-btw">{t('playerInvoices.billingDialog.btw')}</Label>
               <Input
                 id="billing-btw"
                 value={billingBtw}
                 onChange={(e) => setBillingBtw(e.target.value)}
-                placeholder="NL123456789B01"
+                placeholder={t('playerInvoices.billingDialog.btwPlaceholder')}
               />
             </div>
             <div className="flex items-center space-x-2 pt-2">
@@ -298,17 +301,17 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                 onCheckedChange={(checked) => setSaveAsDefault(checked === true)}
               />
               <Label htmlFor="save-as-default" className="text-sm font-normal cursor-pointer">
-                Bewaar als standaard voor toekomstige facturen
+                {t('playerInvoices.billingDialog.saveAsDefault')}
               </Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingInvoice(null)}>
-              Annuleren
+              {t('playerInvoices.billingDialog.cancel')}
             </Button>
             <Button onClick={handleSaveBilling} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Opslaan
+              {t('playerInvoices.billingDialog.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
