@@ -47,7 +47,7 @@ interface PlayerInvoicesTabProps {
   profileId: string;
 }
 
-const DATE_LOCALES: Record<string, Locale> = { en: enUS, nl, es, de, fr, it };
+const DATE_LOCALES: Record<string, typeof enUS> = { en: enUS, nl, es, de, fr, it };
 
 export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
   const { t, i18n } = useTranslation('player');
