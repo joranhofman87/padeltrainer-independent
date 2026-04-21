@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useAdminStats,
@@ -15,6 +16,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation("admin");
 
   const {
     data: stats,
@@ -34,13 +36,13 @@ export default function AdminDashboard() {
     try {
       await invalidateAll();
       toast({
-        title: "Refreshed",
-        description: "Statistics updated successfully",
+        title: t("dashboard.refreshed"),
+        description: t("dashboard.refreshedDesc"),
       });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to refresh statistics",
+        title: t("dashboard.refreshError"),
+        description: t("dashboard.refreshError"),
         variant: "destructive",
       });
     }
@@ -59,9 +61,9 @@ export default function AdminDashboard() {
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Platform Overview</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.title")}</h1>
           <p className="text-muted-foreground">
-            Analytics and key metrics at a glance
+            {t("dashboard.subtitle")}
           </p>
         </div>
         <Button
@@ -73,7 +75,7 @@ export default function AdminDashboard() {
           <RefreshCw
             className={`mr-2 h-4 w-4 ${statsRefreshing ? "animate-spin" : ""}`}
           />
-          Refresh
+          {t("dashboard.refresh")}
         </Button>
       </div>
 
@@ -84,17 +86,17 @@ export default function AdminDashboard() {
 
           {/* Fee Structure Info */}
           <div className="rounded-lg border bg-card p-6">
-            <h2 className="text-lg font-semibold mb-4">Platform Fee Structure</h2>
+            <h2 className="text-lg font-semibold mb-4">{t("dashboard.feeStructureTitle")}</h2>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="rounded-lg bg-muted/50 p-4">
                 <div className="text-2xl font-bold text-muted-foreground">€1.00</div>
-                <div className="text-sm font-medium">Starter Tier</div>
-                <div className="text-xs text-muted-foreground">Per booking</div>
+                <div className="text-sm font-medium">{t("dashboard.feeStarter")}</div>
+                <div className="text-xs text-muted-foreground">{t("dashboard.feePerBooking")}</div>
               </div>
               <div className="rounded-lg bg-primary/10 p-4">
                 <div className="text-2xl font-bold text-primary">€0.75</div>
-                <div className="text-sm font-medium">Professional Tier</div>
-                <div className="text-xs text-muted-foreground">Per booking</div>
+                <div className="text-sm font-medium">{t("dashboard.feeProfessional")}</div>
+                <div className="text-xs text-muted-foreground">{t("dashboard.feePerBooking")}</div>
               </div>
               <div className="rounded-lg bg-chart-4/10 p-4">
                 <div
@@ -103,8 +105,8 @@ export default function AdminDashboard() {
                 >
                   €0.50
                 </div>
-                <div className="text-sm font-medium">Academy Tier</div>
-                <div className="text-xs text-muted-foreground">Per booking</div>
+                <div className="text-sm font-medium">{t("dashboard.feeAcademy")}</div>
+                <div className="text-xs text-muted-foreground">{t("dashboard.feePerBooking")}</div>
               </div>
             </div>
           </div>
@@ -112,13 +114,13 @@ export default function AdminDashboard() {
       ) : (
         <div className="flex flex-col items-center justify-center py-16">
           <p className="text-destructive font-medium">
-            {statsError instanceof Error ? statsError.message : "Failed to load statistics"}
+            {statsError instanceof Error ? statsError.message : t("dashboard.loadError")}
           </p>
           <p className="text-muted-foreground text-sm mt-1">
             {statsError instanceof Error && statsError.message}
           </p>
           <Button variant="outline" onClick={handleRefresh} className="mt-4">
-            Try Again
+            {t("dashboard.tryAgain")}
           </Button>
         </div>
       )}
