@@ -442,5 +442,98 @@
     "rising": "📈 On the rise!",
     "stepByStep": "💪 Step by step better",
     "journey": "📊 Padel journey"
+  },
+  "invoiceForm": {
+    "create": {
+      "title": "New invoice",
+      "description": "Create a manual invoice with custom recipient details and line items.",
+      "createButton": "Create invoice",
+      "createdToast": "Invoice {{number}} created",
+      "createError": "Could not create invoice"
+    },
+    "edit": {
+      "title": "Edit invoice",
+      "description": "Edit recipient, line items, VAT, due date or notes.",
+      "save": "Save",
+      "savedToast": "Invoice updated",
+      "saveError": "Could not update invoice",
+      "syncToBookings": "Also apply price changes to bookings",
+      "syncFailed": "Invoice saved, but synchronisation to bookings failed"
+    },
+    "deleteDialog": {
+      "deleteTitle": "Delete invoice",
+      "cancelTitle": "Cancel invoice",
+      "deleteDescription": "Are you sure you want to delete this invoice? This cannot be undone.",
+      "cancelDescription": "Are you sure you want to cancel this invoice? It will be marked as cancelled.",
+      "back": "Back",
+      "delete": "Delete",
+      "cancelInvoice": "Cancel invoice"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "back": "Back",
+      "downloadPdf": "PDF",
+      "markPaid": "Paid",
+      "deleteInvoice": "Delete",
+      "cancelInvoice": "Cancel"
+    },
+    "receiver": {
+      "title": "Recipient",
+      "name": "Name",
+      "nameRequired": "Name *",
+      "namePlaceholder": "Recipient name",
+      "businessName": "Business name",
+      "businessNamePlaceholder": "Optional",
+      "businessNameOptional": "Business name (optional)",
+      "btwNumber": "VAT number",
+      "btwNumberOptional": "VAT number (optional)",
+      "btwNumberPlaceholder": "NL000000000B01",
+      "street": "Street + house number",
+      "streetPlaceholder": "Main Street 12",
+      "zipCode": "Zip code",
+      "zipCodePlaceholder": "1234 AB",
+      "city": "City",
+      "cityPlaceholder": "Amsterdam",
+      "email": "Email address (for sending)",
+      "emailPlaceholder": "recipient@example.com",
+      "nameRequiredError": "Recipient name is required"
+    },
+    "lineItems": {
+      "title": "Line items",
+      "addRow": "Add row",
+      "description": "Description",
+      "descriptionPlaceholder": "Description",
+      "quantity": "Qty",
+      "price": "Price",
+      "vatPercent": "VAT %",
+      "total": "Total",
+      "totalLabel": "Total: {{amount}}",
+      "minimumOneItemError": "Add at least one line item"
+    },
+    "totals": {
+      "subtotal": "Subtotal",
+      "vatLabel": "VAT {{rate}}%",
+      "vat": "VAT",
+      "total": "Total",
+      "pricesIncludeVat": "Prices include VAT"
+    },
+    "dueDate": {
+      "label": "Due date",
+      "selectDate": "Select date"
+    },
+    "notes": {
+      "label": "Notes",
+      "placeholder": "Optional notes on the invoice..."
+    }
+  },
+  "invoiceEmailDialog": {
+    "title": "Email address required",
+    "description": "There is no email address on file for <strong>{{name}}</strong>. Enter an email address to send the invoice.",
+    "label": "Email address",
+    "placeholder": "player@example.com",
+    "invalidEmail": "Enter a valid email address",
+    "saveError": "Could not save email",
+    "cancel": "Cancel",
+    "saveAndSend": "Save & Send"
   }
 }

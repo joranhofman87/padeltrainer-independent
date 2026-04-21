@@ -444,5 +444,98 @@
     "rising": "📈 Stijgende lijn!",
     "stepByStep": "💪 Stap voor stap beter",
     "journey": "📊 Padel journey"
+  },
+  "invoiceForm": {
+    "create": {
+      "title": "Nieuwe factuur",
+      "description": "Maak een handmatige factuur met aangepaste ontvangergegevens en factuurregels.",
+      "createButton": "Factuur aanmaken",
+      "createdToast": "Factuur {{number}} aangemaakt",
+      "createError": "Kon factuur niet aanmaken"
+    },
+    "edit": {
+      "title": "Factuur bewerken",
+      "description": "Bewerk ontvanger, factuurregels, BTW, vervaldatum of notities.",
+      "save": "Opslaan",
+      "savedToast": "Factuur bijgewerkt",
+      "saveError": "Kon factuur niet bijwerken",
+      "syncToBookings": "Prijswijzigingen ook toepassen op boekingen",
+      "syncFailed": "Factuur opgeslagen, maar synchronisatie met boekingen is mislukt"
+    },
+    "deleteDialog": {
+      "deleteTitle": "Factuur verwijderen",
+      "cancelTitle": "Factuur annuleren",
+      "deleteDescription": "Weet je zeker dat je deze factuur wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
+      "cancelDescription": "Weet je zeker dat je deze factuur wilt annuleren? Deze wordt dan als geannuleerd gemarkeerd.",
+      "back": "Terug",
+      "delete": "Verwijderen",
+      "cancelInvoice": "Factuur annuleren"
+    },
+    "actions": {
+      "cancel": "Annuleren",
+      "back": "Terug",
+      "downloadPdf": "PDF",
+      "markPaid": "Betaald",
+      "deleteInvoice": "Verwijderen",
+      "cancelInvoice": "Annuleren"
+    },
+    "receiver": {
+      "title": "Ontvanger",
+      "name": "Naam",
+      "nameRequired": "Naam *",
+      "namePlaceholder": "Naam ontvanger",
+      "businessName": "Bedrijfsnaam",
+      "businessNamePlaceholder": "Optioneel",
+      "businessNameOptional": "Bedrijfsnaam (optioneel)",
+      "btwNumber": "BTW-nummer",
+      "btwNumberOptional": "BTW-nummer (optioneel)",
+      "btwNumberPlaceholder": "NL000000000B01",
+      "street": "Straat + huisnummer",
+      "streetPlaceholder": "Hoofdstraat 12",
+      "zipCode": "Postcode",
+      "zipCodePlaceholder": "1234 AB",
+      "city": "Plaats",
+      "cityPlaceholder": "Amsterdam",
+      "email": "E-mailadres (voor verzending)",
+      "emailPlaceholder": "ontvanger@voorbeeld.nl",
+      "nameRequiredError": "Naam van de ontvanger is verplicht"
+    },
+    "lineItems": {
+      "title": "Factuurregels",
+      "addRow": "Regel toevoegen",
+      "description": "Omschrijving",
+      "descriptionPlaceholder": "Omschrijving",
+      "quantity": "Aantal",
+      "price": "Prijs",
+      "vatPercent": "BTW %",
+      "total": "Totaal",
+      "totalLabel": "Totaal: {{amount}}",
+      "minimumOneItemError": "Voeg minimaal één factuurregel toe"
+    },
+    "totals": {
+      "subtotal": "Subtotaal",
+      "vatLabel": "BTW {{rate}}%",
+      "vat": "BTW",
+      "total": "Totaal",
+      "pricesIncludeVat": "Prijzen zijn inclusief BTW"
+    },
+    "dueDate": {
+      "label": "Vervaldatum",
+      "selectDate": "Selecteer datum"
+    },
+    "notes": {
+      "label": "Notities",
+      "placeholder": "Optionele notities op de factuur..."
+    }
+  },
+  "invoiceEmailDialog": {
+    "title": "E-mailadres vereist",
+    "description": "Er is geen e-mailadres bekend voor <strong>{{name}}</strong>. Voer een e-mailadres in om de factuur te verzenden.",
+    "label": "E-mailadres",
+    "placeholder": "speler@voorbeeld.nl",
+    "invalidEmail": "Voer een geldig e-mailadres in",
+    "saveError": "Kon e-mailadres niet opslaan",
+    "cancel": "Annuleren",
+    "saveAndSend": "Opslaan & verzenden"
   }
 }

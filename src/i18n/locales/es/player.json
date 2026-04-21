@@ -295,5 +295,45 @@
     "report": "Reportar",
     "trainingSession": "Sesión de entrenamiento",
     "players": "jugadores"
+  },
+  "playerInvoices": {
+    "title": "Facturas",
+    "loading": "Cargando facturas...",
+    "loadError": "No se pudieron cargar las facturas",
+    "empty": {
+      "title": "No hay facturas",
+      "description": "Aún no has recibido ninguna factura de los entrenadores."
+    },
+    "status": {
+      "draft": "Borrador",
+      "sent": "Enviada",
+      "paid": "Pagada",
+      "overdue": "Vencida"
+    },
+    "labels": {
+      "date": "Fecha: {{date}}",
+      "due": "Vencimiento: {{date}}",
+      "paid": "Pagada: {{date}}",
+      "vatIncluded": "incl. {{rate}} % de IVA"
+    },
+    "actions": {
+      "editBilling": "Editar datos de facturación",
+      "downloadPdf": "Descargar PDF",
+      "pdfError": "No se pudo generar la factura"
+    },
+    "billingDialog": {
+      "title": "Editar datos de facturación",
+      "businessName": "Nombre de la empresa",
+      "businessNamePlaceholder": "Tu Empresa S.L.",
+      "address": "Dirección",
+      "addressPlaceholder": "Nombre de la calle 123\n28001 Madrid",
+      "btw": "Número de IVA",
+      "btwPlaceholder": "ESX12345678M",
+      "saveAsDefault": "Guardar como predeterminado para futuras facturas",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "saveError": "No se pudieron guardar los datos",
+      "savedToast": "Tus datos de facturación se han actualizado. El PDF se regenerará en la próxima descarga."
+    }
   }
 }

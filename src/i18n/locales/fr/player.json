@@ -295,5 +295,45 @@
     "report": "Signaler",
     "trainingSession": "Séance d'entraînement",
     "players": "joueurs"
+  },
+  "playerInvoices": {
+    "title": "Factures",
+    "loading": "Chargement des factures...",
+    "loadError": "Impossible de charger les factures",
+    "empty": {
+      "title": "Aucune facture",
+      "description": "Vous n'avez encore reçu aucune facture des entraîneurs."
+    },
+    "status": {
+      "draft": "Brouillon",
+      "sent": "Envoyée",
+      "paid": "Payée",
+      "overdue": "En retard"
+    },
+    "labels": {
+      "date": "Date : {{date}}",
+      "due": "Échéance : {{date}}",
+      "paid": "Payée le : {{date}}",
+      "vatIncluded": "incl. {{rate}}% TVA"
+    },
+    "actions": {
+      "editBilling": "Modifier les informations de facturation",
+      "downloadPdf": "Télécharger le PDF",
+      "pdfError": "Impossible de générer la facture"
+    },
+    "billingDialog": {
+      "title": "Modifier les informations de facturation",
+      "businessName": "Nom de l'entreprise",
+      "businessNamePlaceholder": "Votre Entreprise SARL",
+      "address": "Adresse",
+      "addressPlaceholder": "Nom de la rue 123\n75001 Paris",
+      "btw": "Numéro de TVA",
+      "btwPlaceholder": "FR12345678901",
+      "saveAsDefault": "Enregistrer par défaut pour les futures factures",
+      "cancel": "Annuler",
+      "save": "Enregistrer",
+      "saveError": "Impossible d'enregistrer les informations",
+      "savedToast": "Vos informations de facturation ont été mises à jour. Le PDF sera regénéré lors du prochain téléchargement."
+    }
   }
 }

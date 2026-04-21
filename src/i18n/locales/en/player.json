@@ -327,5 +327,45 @@
     "report": "Report",
     "trainingSession": "Training Session",
     "players": "players"
+  },
+  "playerInvoices": {
+    "title": "Invoices",
+    "loading": "Loading invoices...",
+    "loadError": "Could not load invoices",
+    "empty": {
+      "title": "No invoices",
+      "description": "You haven't received any invoices from trainers yet."
+    },
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "paid": "Paid",
+      "overdue": "Overdue"
+    },
+    "labels": {
+      "date": "Date: {{date}}",
+      "due": "Due: {{date}}",
+      "paid": "Paid: {{date}}",
+      "vatIncluded": "incl. {{rate}}% VAT"
+    },
+    "actions": {
+      "editBilling": "Edit billing details",
+      "downloadPdf": "Download PDF",
+      "pdfError": "Could not generate invoice"
+    },
+    "billingDialog": {
+      "title": "Edit billing details",
+      "businessName": "Business name",
+      "businessNamePlaceholder": "Your Company B.V.",
+      "address": "Address",
+      "addressPlaceholder": "Street name 123\n1234 AB Amsterdam",
+      "btw": "VAT number",
+      "btwPlaceholder": "NL123456789B01",
+      "saveAsDefault": "Save as default for future invoices",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saveError": "Could not save details",
+      "savedToast": "Your billing details have been updated. The PDF will be regenerated on next download."
+    }
   }
 }

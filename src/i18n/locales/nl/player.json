@@ -326,5 +326,45 @@
     "report": "Rapporteren",
     "trainingSession": "Trainingssessie",
     "players": "spelers"
+  },
+  "playerInvoices": {
+    "title": "Facturen",
+    "loading": "Facturen laden...",
+    "loadError": "Kon facturen niet laden",
+    "empty": {
+      "title": "Geen facturen",
+      "description": "Je hebt nog geen facturen van trainers ontvangen."
+    },
+    "status": {
+      "draft": "Concept",
+      "sent": "Verzonden",
+      "paid": "Betaald",
+      "overdue": "Vervallen"
+    },
+    "labels": {
+      "date": "Datum: {{date}}",
+      "due": "Vervalt op: {{date}}",
+      "paid": "Betaald op: {{date}}",
+      "vatIncluded": "incl. {{rate}}% BTW"
+    },
+    "actions": {
+      "editBilling": "Factuurgegevens bewerken",
+      "downloadPdf": "Download PDF",
+      "pdfError": "Kon factuur niet genereren"
+    },
+    "billingDialog": {
+      "title": "Factuurgegevens bewerken",
+      "businessName": "Bedrijfsnaam",
+      "businessNamePlaceholder": "Jouw Bedrijf B.V.",
+      "address": "Adres",
+      "addressPlaceholder": "Straatnaam 123\n1234 AB Amsterdam",
+      "btw": "BTW-nummer",
+      "btwPlaceholder": "NL123456789B01",
+      "saveAsDefault": "Opslaan als standaard voor toekomstige facturen",
+      "cancel": "Annuleren",
+      "save": "Opslaan",
+      "saveError": "Kon gegevens niet opslaan",
+      "savedToast": "Je factuurgegevens zijn bijgewerkt. De PDF wordt opnieuw gegenereerd bij de volgende download."
+    }
   }
 }

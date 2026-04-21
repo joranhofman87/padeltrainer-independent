@@ -391,5 +391,98 @@
     "trackRating": "Sigue tu calificación de pádel",
     "createAccount": "Crea una cuenta gratuita y sigue tu progreso",
     "signUpFree": "Regístrate gratis"
+  },
+  "invoiceForm": {
+    "create": {
+      "title": "Nueva factura",
+      "description": "Crear una factura manual con detalles de destinatario y líneas de producto personalizadas.",
+      "createButton": "Crear factura",
+      "createdToast": "Factura {{number}} creada",
+      "createError": "No se pudo crear la factura"
+    },
+    "edit": {
+      "title": "Editar factura",
+      "description": "Editar destinatario, líneas de producto, IVA, fecha de vencimiento o notas.",
+      "save": "Guardar",
+      "savedToast": "Factura actualizada",
+      "saveError": "No se pudo actualizar la factura",
+      "syncToBookings": "Aplicar también los cambios de precio a las reservas",
+      "syncFailed": "Factura guardada, pero la sincronización con las reservas falló"
+    },
+    "deleteDialog": {
+      "deleteTitle": "Eliminar factura",
+      "cancelTitle": "Anular factura",
+      "deleteDescription": "¿Estás seguro de que quieres eliminar esta factura? Esta acción no se puede deshacer.",
+      "cancelDescription": "¿Estás seguro de que quieres anular esta factura? Se marcará como anulada.",
+      "back": "Volver",
+      "delete": "Eliminar",
+      "cancelInvoice": "Anular factura"
+    },
+    "actions": {
+      "cancel": "Cancelar",
+      "back": "Volver",
+      "downloadPdf": "PDF",
+      "markPaid": "Pagada",
+      "deleteInvoice": "Eliminar",
+      "cancelInvoice": "Anular"
+    },
+    "receiver": {
+      "title": "Destinatario",
+      "name": "Nombre",
+      "nameRequired": "Nombre *",
+      "namePlaceholder": "Nombre del destinatario",
+      "businessName": "Nombre de la empresa",
+      "businessNamePlaceholder": "Opcional",
+      "businessNameOptional": "Nombre de la empresa (opcional)",
+      "btwNumber": "Número de IVA",
+      "btwNumberOptional": "Número de IVA (opcional)",
+      "btwNumberPlaceholder": "NL000000000B01",
+      "street": "Calle + número",
+      "streetPlaceholder": "Calle Principal 12",
+      "zipCode": "Código postal",
+      "zipCodePlaceholder": "28001",
+      "city": "Ciudad",
+      "cityPlaceholder": "Madrid",
+      "email": "Dirección de correo electrónico (para envío)",
+      "emailPlaceholder": "destinatario@ejemplo.es",
+      "nameRequiredError": "El nombre del destinatario es obligatorio"
+    },
+    "lineItems": {
+      "title": "Líneas de producto",
+      "addRow": "Añadir fila",
+      "description": "Descripción",
+      "descriptionPlaceholder": "Descripción",
+      "quantity": "Cant.",
+      "price": "Precio",
+      "vatPercent": "IVA %",
+      "total": "Total",
+      "totalLabel": "Total: {{amount}}",
+      "minimumOneItemError": "Añade al menos una línea de producto"
+    },
+    "totals": {
+      "subtotal": "Subtotal",
+      "vatLabel": "IVA {{rate}}%",
+      "vat": "IVA",
+      "total": "Total",
+      "pricesIncludeVat": "Los precios incluyen IVA"
+    },
+    "dueDate": {
+      "label": "Fecha de vencimiento",
+      "selectDate": "Seleccionar fecha"
+    },
+    "notes": {
+      "label": "Notas",
+      "placeholder": "Notas opcionales en la factura..."
+    }
+  },
+  "invoiceEmailDialog": {
+    "title": "Se requiere dirección de correo electrónico",
+    "description": "No hay ninguna dirección de correo electrónico registrada para <strong>{{name}}</strong>. Introduce una dirección de correo electrónico para enviar la factura.",
+    "label": "Dirección de correo electrónico",
+    "placeholder": "jugador@ejemplo.es",
+    "invalidEmail": "Introduce una dirección de correo electrónico válida",
+    "saveError": "No se pudo guardar el correo electrónico",
+    "cancel": "Cancelar",
+    "saveAndSend": "Guardar y enviar"
   }
 }
