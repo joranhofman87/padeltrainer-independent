@@ -22,29 +22,17 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
+    // Try to auto-recover stale chunk errors before rendering the fallback
+    if (typeof window !== "undefined" && isChunkLoadError(error?.message || "")) {
+      tryChunkReload();
+    }
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Auto-recover from stale lazy chunks after a deploy. When the cached
-    // index.html references a JS chunk hash that no longer exists, the dynamic
-    // import throws "Failed to fetch dynamically imported module" or
-    // "ChunkLoadError" — a hard reload pulls the fresh HTML + chunk map.
-    const message = error?.message || "";
-    const isChunkLoadError =
-      /ChunkLoadError|Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed/i.test(
-        message
-      );
-
-    if (isChunkLoadError && typeof window !== "undefined") {
-      const reloadKey = "__chunkReloadAt";
-      const lastReload = Number(sessionStorage.getItem(reloadKey) || 0);
-      // Only auto-reload once per minute to avoid infinite reload loops
-      if (Date.now() - lastReload > 60_000) {
-        sessionStorage.setItem(reloadKey, String(Date.now()));
-        window.location.reload();
-        return;
-      }
+    // Auto-recover from stale lazy chunks after a deploy / 524 timeouts.
+    if (isChunkLoadError(error?.message || "") && typeof window !== "undefined") {
+      if (tryChunkReload()) return;
     }
 
     // Log error to centralized logger
