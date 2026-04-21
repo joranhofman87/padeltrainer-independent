@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
-import { useTranslation } from "react-i18next";
+import { useTranslation, Trans } from "react-i18next";
 import { SEO } from "@/components/SEO";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -355,11 +355,11 @@ export default function PublicInvoicePay() {
       }
 
       if (errorCode === "no_mollie_account") {
-        toast.error("Online betaling is momenteel niet beschikbaar.");
+        toast.error(t("invoice.errorNoMollie"));
       } else if (errorCode === "missing_mollie_profile") {
-        toast.error("De betaalomgeving van deze aanbieder is nog niet volledig ingesteld.");
+        toast.error(t("invoice.errorMissingProfile"));
       } else {
-        toast.error("Betaling aanmaken mislukt. Probeer het opnieuw.");
+        toast.error(t("invoice.errorPaymentFailed"));
       }
     } finally {
       setPayLoading(false);
@@ -369,7 +369,7 @@ export default function PublicInvoicePay() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30">
-        <SEO title="Invoice" description="Invoice payment" noIndex={true} />
+        <SEO title={t("invoice.seoTitle")} description={t("invoice.seoDescription")} noIndex={true} />
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -427,7 +427,7 @@ export default function PublicInvoicePay() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <SEO title="Invoice Payment" description="Pay your invoice online." noIndex={true} />
+      <SEO title={t("invoice.seoTitlePay")} description={t("invoice.seoDescriptionPay")} noIndex={true} />
       <Card className="max-w-lg w-full overflow-hidden">
         {/* Branded banner */}
         <InvoiceBanner academy={academy} />
@@ -437,15 +437,15 @@ export default function PublicInvoicePay() {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted-foreground font-mono">{invoice.invoiceNumber}</p>
-              <h1 className="text-xl font-bold mt-1">{academy?.name || "Invoice"}</h1>
+              <h1 className="text-xl font-bold mt-1">{academy?.name || t("invoice.seoTitle")}</h1>
             </div>
             {isOverdue ? (
               <Badge variant="destructive">
-                <AlertCircle className="h-3 w-3 mr-1" />Overdue
+                <AlertCircle className="h-3 w-3 mr-1" />{t("invoice.overdue")}
               </Badge>
             ) : (
               <Badge variant="secondary">
-                <FileText className="h-3 w-3 mr-1" />Open
+                <FileText className="h-3 w-3 mr-1" />{t("invoice.open")}
               </Badge>
             )}
           </div>
@@ -455,7 +455,7 @@ export default function PublicInvoicePay() {
           {/* From / To */}
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">From</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">{t("invoice.from")}</p>
               <BusinessDetails academy={academy} />
               {!academy?.businessName && academy?.name && (
                 <p className="text-sm font-medium">{academy.name}</p>
@@ -471,11 +471,11 @@ export default function PublicInvoicePay() {
           {/* Dates */}
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <p className="text-muted-foreground">Invoice date</p>
+              <p className="text-muted-foreground">{t("invoice.invoiceDate")}</p>
               <p className="font-medium">{format(new Date(invoice.invoiceDate), "dd MMM yyyy")}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Due date</p>
+              <p className="text-muted-foreground">{t("invoice.dueDate")}</p>
               <p className={`font-medium ${isOverdue ? "text-destructive" : ""}`}>
                 {format(new Date(invoice.dueDate), "dd MMM yyyy")}
               </p>
@@ -489,10 +489,10 @@ export default function PublicInvoicePay() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="text-left p-3 font-medium">Description</th>
-                  <th className="text-right p-3 font-medium">Qty</th>
-                  <th className="text-right p-3 font-medium">Price</th>
-                  <th className="text-right p-3 font-medium">Amount</th>
+                  <th className="text-left p-3 font-medium">{t("invoice.description")}</th>
+                  <th className="text-right p-3 font-medium">{t("invoice.qty")}</th>
+                  <th className="text-right p-3 font-medium">{t("invoice.price")}</th>
+                  <th className="text-right p-3 font-medium">{t("invoice.amount")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -511,17 +511,17 @@ export default function PublicInvoicePay() {
           {/* Totals */}
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
+              <span className="text-muted-foreground">{t("invoice.subtotal")}</span>
               <span>€{formatEuro(invoice.subtotal)}</span>
             </div>
             {invoice.vatAmount > 0 && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">VAT ({invoice.vatRate ?? 0}%)</span>
+                <span className="text-muted-foreground">{t("invoice.vatLine", { rate: invoice.vatRate ?? 0 })}</span>
                 <span>€{formatEuro(invoice.vatAmount)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-lg pt-2 border-t">
-              <span>Total</span>
+              <span>{t("invoice.total")}</span>
               <span>€{formatEuro(invoice.total)}</span>
             </div>
           </div>
@@ -539,7 +539,7 @@ export default function PublicInvoicePay() {
               ) : (
                 <CreditCard className="h-5 w-5 mr-2" />
               )}
-              {payLoading ? "Redirecting..." : `Pay €${formatEuro(invoice.total)}`}
+              {payLoading ? t("invoice.redirecting") : t("invoice.payAmount", { amount: formatEuro(invoice.total) })}
             </Button>
           ) : null}
 
@@ -548,28 +548,31 @@ export default function PublicInvoicePay() {
             <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
               {!invoice.hasMollieAccount && (
                 <p className="font-medium text-foreground mb-2">
-                  Please transfer the amount to the bank account below
+                  {t("invoice.transferInstruction")}
                 </p>
               )}
               <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                {invoice.hasMollieAccount ? "Or pay via bank transfer" : "Bank details"}
+                {invoice.hasMollieAccount ? t("invoice.bankTransferAlt") : t("invoice.bankDetails")}
               </p>
-              <p><span className="text-muted-foreground">IBAN:</span> {academy.iban}</p>
-              {academy.bic && <p><span className="text-muted-foreground">BIC:</span> {academy.bic}</p>}
+              <p><span className="text-muted-foreground">{t("invoice.iban")}</span> {academy.iban}</p>
+              {academy.bic && <p><span className="text-muted-foreground">{t("invoice.bic")}</span> {academy.bic}</p>}
               {(academy.businessName || academy.name) && (
-                <p><span className="text-muted-foreground">Name:</span> {academy.businessName || academy.name}</p>
+                <p><span className="text-muted-foreground">{t("invoice.name")}</span> {academy.businessName || academy.name}</p>
               )}
-              <p><span className="text-muted-foreground">Reference:</span> {invoice.invoiceNumber}</p>
+              <p><span className="text-muted-foreground">{t("invoice.reference")}</span> {invoice.invoiceNumber}</p>
             </div>
           )}
 
           {/* Contact */}
           {academy?.contactEmail && (
             <p className="text-xs text-center text-muted-foreground">
-              Questions? Contact{" "}
-              <a href={`mailto:${academy.contactEmail}`} className="underline">
-                {academy.contactEmail}
-              </a>
+              <Trans
+                i18nKey="invoice.questionsContact"
+                values={{ email: academy.contactEmail }}
+                components={{
+                  a: <a href={`mailto:${academy.contactEmail}`} className="underline" />,
+                }}
+              />
             </p>
           )}
         </CardContent>
