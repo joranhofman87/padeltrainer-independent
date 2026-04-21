@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +13,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { Loader2, CalendarIcon, Plus, Trash2, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { nl } from 'date-fns/locale';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
@@ -73,6 +74,9 @@ function parseAddress(address?: string | null): { street: string; zipCode: strin
 }
 
 export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId, onDownloadPdf, onMarkPaid, onDelete, invoiceStatus }: EditInvoiceDialogProps) {
+  const { t, i18n } = useTranslation('common');
+  const dateFnsLocale = getDateFnsLocale(i18n.language);
+
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [vatRate, setVatRate] = useState(21);
   const [dueDate, setDueDate] = useState<Date | undefined>();
@@ -169,18 +173,18 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
 
       const sub = Math.round(totalSub * 100) / 100;
       const vat = Math.round(totalVatAmt * 100) / 100;
-      const t = pricesIncludeVat
+      const tot = pricesIncludeVat
         ? Math.round(lineItems.reduce((s, li) => s + li.quantity * li.unit_price, 0) * 100) / 100
         : Math.round((sub + vat) * 100) / 100;
 
-      return { subtotal: sub, vatAmount: vat, total: t, vatBreakdown: breakdown };
+      return { subtotal: sub, vatAmount: vat, total: tot, vatBreakdown: breakdown };
     }
 
     const lineTotal = lineItems.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
     if (pricesIncludeVat) {
-      const t = Math.round(lineTotal * 100) / 100;
-      const sub = Math.round((t / (1 + vatRate / 100)) * 100) / 100;
-      return { subtotal: sub, vatAmount: Math.round((t - sub) * 100) / 100, total: t, vatBreakdown: null };
+      const tot = Math.round(lineTotal * 100) / 100;
+      const sub = Math.round((tot / (1 + vatRate / 100)) * 100) / 100;
+      return { subtotal: sub, vatAmount: Math.round((tot - sub) * 100) / 100, total: tot, vatBreakdown: null };
     } else {
       const sub = Math.round(lineTotal * 100) / 100;
       const vat = Math.round(sub * (vatRate / 100) * 100) / 100;
@@ -239,16 +243,16 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
         });
         if (syncError) {
           logger.error('Sync to bookings failed', syncError instanceof Error ? syncError : new Error(String(syncError)), { component: 'EditInvoiceDialog' });
-          toast.error('Factuur opgeslagen, maar synchronisatie naar boekingen is mislukt');
+          toast.error(t('invoiceForm.edit.syncFailed'));
         }
       }
 
-      toast.success('Factuur bijgewerkt');
+      toast.success(t('invoiceForm.edit.savedToast'));
       onSaved();
       onClose();
     } catch (err) {
       logger.error('Failed to update invoice', err instanceof Error ? err : new Error(String(err)), { component: 'EditInvoiceDialog' });
-      toast.error('Kon factuur niet bijwerken');
+      toast.error(t('invoiceForm.edit.saveError'));
     } finally {
       setSaving(false);
     }
@@ -263,49 +267,49 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Factuur bewerken</DialogTitle>
-            <DialogDescription>Pas ontvanger, regelitems, BTW, vervaldatum of notities aan.</DialogDescription>
+            <DialogTitle>{t('invoiceForm.edit.title')}</DialogTitle>
+            <DialogDescription>{t('invoiceForm.edit.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
             {/* Receiver details */}
             <div>
-              <Label className="text-sm font-medium mb-2 block">Ontvanger</Label>
+              <Label className="text-sm font-medium mb-2 block">{t('invoiceForm.receiver.title')}</Label>
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="Naam"
+                  placeholder={t('invoiceForm.receiver.name')}
                   className="text-sm"
                 />
                 <Input
                   value={playerBusinessName}
                   onChange={(e) => setPlayerBusinessName(e.target.value)}
-                  placeholder="Bedrijfsnaam (optioneel)"
+                  placeholder={t('invoiceForm.receiver.businessNameOptional')}
                   className="text-sm"
                 />
                 <Input
                   value={playerStreet}
                   onChange={(e) => setPlayerStreet(e.target.value)}
-                  placeholder="Straat + huisnummer"
+                  placeholder={t('invoiceForm.receiver.street')}
                   className="text-sm col-span-2"
                 />
                 <Input
                   value={playerZipCode}
                   onChange={(e) => setPlayerZipCode(e.target.value)}
-                  placeholder="Postcode"
+                  placeholder={t('invoiceForm.receiver.zipCode')}
                   className="text-sm"
                 />
                 <Input
                   value={playerCity}
                   onChange={(e) => setPlayerCity(e.target.value)}
-                  placeholder="Plaats"
+                  placeholder={t('invoiceForm.receiver.city')}
                   className="text-sm"
                 />
                 <Input
                   value={playerBtwNumber}
                   onChange={(e) => setPlayerBtwNumber(e.target.value)}
-                  placeholder="BTW-nummer (optioneel)"
+                  placeholder={t('invoiceForm.receiver.btwNumberOptional')}
                   className="text-sm col-span-2"
                 />
               </div>
@@ -314,7 +318,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
             {/* Line items */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <Label className="text-sm font-medium">Regelitems</Label>
+                <Label className="text-sm font-medium">{t('invoiceForm.lineItems.title')}</Label>
                 <div className="flex items-center gap-1">
                   <ExtraCostPresetPicker
                     trainerId={trainerId}
@@ -345,17 +349,17 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                     }}
                   >
                     <Plus className="h-3 w-3 mr-1" />
-                    Regel toevoegen
+                    {t('invoiceForm.lineItems.addRow')}
                   </Button>
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
-                  <span>Omschrijving</span>
-                  <span>Aantal</span>
-                  <span>Prijs</span>
-                  <span>BTW %</span>
-                  <span>Totaal</span>
+                  <span>{t('invoiceForm.lineItems.description')}</span>
+                  <span>{t('invoiceForm.lineItems.quantity')}</span>
+                  <span>{t('invoiceForm.lineItems.price')}</span>
+                  <span>{t('invoiceForm.lineItems.vatPercent')}</span>
+                  <span>{t('invoiceForm.lineItems.total')}</span>
                   <span></span>
                 </div>
                 {lineItems.map((li, i) => (
@@ -363,7 +367,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                     <Input
                       value={li.description}
                       onChange={(e) => updateLineItem(i, 'description', e.target.value)}
-                      placeholder="Omschrijving"
+                      placeholder={t('invoiceForm.lineItems.descriptionPlaceholder')}
                       className="text-sm"
                     />
                     <Input
@@ -375,7 +379,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                           updateLineItem(i, 'quantity', 1);
                         }
                       }}
-                      placeholder="Aantal"
+                      placeholder={t('invoiceForm.lineItems.quantity')}
                       className="text-sm"
                       min={1}
                     />
@@ -383,7 +387,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                       type="number"
                       value={li.unit_price || ''}
                       onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
-                      placeholder="Prijs"
+                      placeholder={t('invoiceForm.lineItems.price')}
                       className="text-sm"
                       step="0.01"
                       min={0}
@@ -420,14 +424,14 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
 
             {/* Prices include VAT toggle */}
             <div className="flex items-center justify-between">
-              <Label className="text-sm">Prijzen zijn inclusief BTW</Label>
+              <Label className="text-sm">{t('invoiceForm.totals.pricesIncludeVat')}</Label>
               <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
             </div>
 
             {/* Totals */}
             <div className="border-t pt-3 space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotaal</span>
+                <span className="text-muted-foreground">{t('invoiceForm.totals.subtotal')}</span>
                 <span>€{subtotal.toFixed(2)}</span>
               </div>
               {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
@@ -435,14 +439,14 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                   .sort(([a], [b]) => Number(a) - Number(b))
                   .map(([rate, data]) => (
                     <div key={rate} className="flex justify-between">
-                      <span className="text-muted-foreground">BTW {rate}%</span>
+                      <span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate })}</span>
                       <span>€{data.vat.toFixed(2)}</span>
                     </div>
                   ))
               ) : (
                 <div className="flex justify-between items-center gap-2">
                   <span className="text-muted-foreground flex items-center gap-2">
-                    BTW
+                    {t('invoiceForm.totals.vat')}
                     <Input
                       type="number"
                       value={vatRate}
@@ -458,19 +462,19 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                 </div>
               )}
               <div className="flex justify-between font-bold text-base border-t pt-2">
-                <span>Totaal</span>
+                <span>{t('invoiceForm.totals.total')}</span>
                 <span>€{total.toFixed(2)}</span>
               </div>
             </div>
 
             {/* Due date */}
             <div className="flex items-center gap-4">
-              <Label className="text-sm whitespace-nowrap">Vervaldatum</Label>
+              <Label className="text-sm whitespace-nowrap">{t('invoiceForm.dueDate.label')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !dueDate && "text-muted-foreground")}>
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dueDate ? format(dueDate, 'd MMM yyyy', { locale: nl }) : 'Selecteer datum'}
+                    {dueDate ? format(dueDate, 'd MMM yyyy', { locale: dateFnsLocale }) : t('invoiceForm.dueDate.selectDate')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -486,11 +490,11 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
 
             {/* Notes */}
             <div>
-              <Label className="text-sm mb-1 block">Notities</Label>
+              <Label className="text-sm mb-1 block">{t('invoiceForm.notes.label')}</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optionele notities op de factuur..."
+                placeholder={t('invoiceForm.notes.placeholder')}
                 rows={2}
               />
             </div>
@@ -504,7 +508,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                   onCheckedChange={(v) => setSyncToBookings(v === true)}
                 />
                 <Label htmlFor="sync-bookings" className="text-sm cursor-pointer">
-                  Ook prijswijzigingen doorvoeren naar boekingen
+                  {t('invoiceForm.edit.syncToBookings')}
                 </Label>
               </div>
             )}
@@ -516,27 +520,27 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
               {onDownloadPdf && (
                 <Button type="button" variant="outline" size="sm" onClick={onDownloadPdf}>
                   <Download className="h-4 w-4 mr-2" />
-                  PDF
+                  {t('invoiceForm.actions.downloadPdf')}
                 </Button>
               )}
               {onMarkPaid && (
                 <Button type="button" variant="outline" size="sm" onClick={onMarkPaid}>
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Betaald
+                  {t('invoiceForm.actions.markPaid')}
                 </Button>
               )}
               {onDelete && (
                 <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteConfirmOpen(true)}>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  {isDraft ? 'Verwijderen' : 'Annuleren'}
+                  {isDraft ? t('invoiceForm.actions.deleteInvoice') : t('invoiceForm.actions.cancelInvoice')}
                 </Button>
               )}
             </div>
             {/* Save / Cancel on the right */}
-            <Button variant="outline" onClick={onClose} disabled={saving}>Annuleren</Button>
+            <Button variant="outline" onClick={onClose} disabled={saving}>{t('invoiceForm.actions.cancel')}</Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Opslaan
+              {t('invoiceForm.edit.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -546,15 +550,15 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{isDraft ? 'Factuur verwijderen' : 'Factuur annuleren'}</AlertDialogTitle>
+            <AlertDialogTitle>{isDraft ? t('invoiceForm.deleteDialog.deleteTitle') : t('invoiceForm.deleteDialog.cancelTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
               {isDraft
-                ? 'Weet je zeker dat je deze factuur wilt verwijderen? Dit kan niet ongedaan worden gemaakt.'
-                : 'Weet je zeker dat je deze factuur wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.'}
+                ? t('invoiceForm.deleteDialog.deleteDescription')
+                : t('invoiceForm.deleteDialog.cancelDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Terug</AlertDialogCancel>
+            <AlertDialogCancel>{t('invoiceForm.deleteDialog.back')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
@@ -562,7 +566,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                 setDeleteConfirmOpen(false);
               }}
             >
-              {isDraft ? 'Verwijderen' : 'Annuleren'}
+              {isDraft ? t('invoiceForm.deleteDialog.delete') : t('invoiceForm.deleteDialog.cancelInvoice')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
