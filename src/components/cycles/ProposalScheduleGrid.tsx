@@ -243,7 +243,7 @@ function DraggablePlayerChip({
         {...listeners}
         {...attributes}
         className="cursor-grab active:cursor-grabbing p-0.5 touch-none"
-        aria-label="Drag player"
+        aria-label={t('proposals.grid.dragPlayer', { defaultValue: 'Drag player' })}
       >
         <GripVertical className="h-3 w-3 text-muted-foreground" />
       </button>
@@ -781,7 +781,7 @@ function DraggableSlotCard({
                 {...listeners}
                 {...attributes}
                 className="cursor-grab active:cursor-grabbing p-0.5 touch-none text-muted-foreground hover:text-foreground"
-                aria-label="Drag slot"
+                aria-label={t('proposals.grid.dragSlot', { defaultValue: 'Drag slot' })}
               >
                 <Move className="h-3.5 w-3.5" />
               </button>
@@ -822,7 +822,7 @@ function DraggableSlotCard({
             <Users className="h-3 w-3" />
             {currentP}/{maxP}
             {isFull && (
-              <Badge variant="default" className="text-[9px] px-1 py-0 h-3.5 ml-1">FULL</Badge>
+              <Badge variant="default" className="text-[9px] px-1 py-0 h-3.5 ml-1">{t('proposals.grid.full', { defaultValue: 'FULL' })}</Badge>
             )}
           </span>
           {avgConf > 0 && (
@@ -888,7 +888,7 @@ function DraggableSlotCard({
         )}
 
         {isEmpty && (
-          <p className="text-[10px] text-muted-foreground italic">No players</p>
+          <p className="text-[10px] text-muted-foreground italic">{t('proposals.grid.noPlayers', { defaultValue: 'No players' })}</p>
         )}
       </CardContent>
     </Card>
@@ -963,7 +963,7 @@ function DroppableCell({
         <button
           onClick={onCreateSlot}
           className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity"
-          aria-label="Add slot"
+          aria-label={t('proposals.grid.addSlot', { defaultValue: 'Add slot' })}
         >
           <Plus className="h-4 w-4 text-muted-foreground" />
         </button>
@@ -1051,7 +1051,7 @@ function DraggableUnplacedPlayer({
         {...listeners}
         {...attributes}
         className="cursor-grab active:cursor-grabbing p-0.5 touch-none mt-0.5 shrink-0"
-        aria-label="Drag player"
+        aria-label={t('proposals.grid.dragPlayer', { defaultValue: 'Drag player' })}
       >
         <GripVertical className="h-3 w-3 text-muted-foreground" />
       </button>
