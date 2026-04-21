@@ -216,7 +216,28 @@
     "success": {
       "title": "Booking Confirmed!",
       "description": "Your session has been booked successfully."
-    }
+    },
+    "summaryDescription": "Review your lesson booking",
+    "signUpToBook": "Sign Up to Book",
+    "numberOfSpots": "Number of spots",
+    "total": "Total",
+    "totalSessions": "Total ({{count}} sessions)",
+    "selectSlotOrCycle": "Select a time slot or training cycle to continue",
+    "notesPlaceholderShort": "Any special requests or information...",
+    "notesForTrainer": "Notes for trainer (optional)",
+    "sessionsCount": "{{count}} sessions",
+    "bookingInProgress": "Booking...",
+    "bookEntireCycle": "Book Entire Cycle ({{count}} sessions)",
+    "confirmBooking": "Confirm Booking",
+    "trainingSession": "Training Session",
+    "ofAvailable": "of {{count}} available",
+    "perSpot": "{{price}} per spot",
+    "minPlayersRequired": "This session requires a minimum of {{count}} players",
+    "individualSessions": "Individual Sessions",
+    "availableTimeSlots": "Available Time Slots",
+    "noSlotsAvailable": "No available slots at the moment",
+    "noIndividualSessions": "No individual sessions available",
+    "trainingCyclesHeading": "Training Cycles"
   },
   "bookings": {
     "title": "My Bookings",
@@ -367,5 +388,19 @@
       "saveError": "Could not save details",
       "savedToast": "Your billing details have been updated. The PDF will be regenerated on next download."
     }
+  },
+  "bookingConfirmation": {
+    "requestSentTitle": "Request Sent!",
+    "requestSentBody": "Your booking request has been sent to {{trainer}}. You'll be notified once they respond.",
+    "bookedTitle": "Booking Confirmed!",
+    "bookedBody": "Your lesson with {{trainer}} has been booked. You'll receive a confirmation soon.",
+    "invoiceNotice": "You'll receive an invoice from the trainer for payment.",
+    "viewMyBookings": "View My Bookings",
+    "browseOtherTrainers": "Browse Other Trainers"
+  },
+  "ratingShare": {
+    "linkCopied": "Link copied!",
+    "failedToCopy": "Failed to copy link",
+    "failedToGenerateImage": "Failed to generate image"
   }
 }

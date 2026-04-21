@@ -215,7 +215,28 @@
     "success": {
       "title": "Boeking bevestigd!",
       "description": "Je sessie is succesvol geboekt."
-    }
+    },
+    "summaryDescription": "Controleer je lesboeking",
+    "signUpToBook": "Meld je aan om te boeken",
+    "numberOfSpots": "Aantal plekken",
+    "total": "Totaal",
+    "totalSessions": "Totaal ({{count}} sessies)",
+    "selectSlotOrCycle": "Kies een tijdslot of trainingscyclus om door te gaan",
+    "notesPlaceholderShort": "Bijzondere verzoeken of informatie...",
+    "notesForTrainer": "Notities voor trainer (optioneel)",
+    "sessionsCount": "{{count}} sessies",
+    "bookingInProgress": "Bezig met boeken...",
+    "bookEntireCycle": "Hele cyclus boeken ({{count}} sessies)",
+    "confirmBooking": "Boeking bevestigen",
+    "trainingSession": "Trainingssessie",
+    "ofAvailable": "van {{count}} beschikbaar",
+    "perSpot": "{{price}} per plek",
+    "minPlayersRequired": "Deze sessie vereist minimaal {{count}} spelers",
+    "individualSessions": "Losse sessies",
+    "availableTimeSlots": "Beschikbare tijdsloten",
+    "noSlotsAvailable": "Momenteel geen beschikbare slots",
+    "noIndividualSessions": "Geen losse sessies beschikbaar",
+    "trainingCyclesHeading": "Trainingscycli"
   },
   "bookings": {
     "title": "Mijn boekingen",
@@ -366,5 +387,19 @@
       "saveError": "Kon gegevens niet opslaan",
       "savedToast": "Je factuurgegevens zijn bijgewerkt. De PDF wordt opnieuw gegenereerd bij de volgende download."
     }
+  },
+  "bookingConfirmation": {
+    "requestSentTitle": "Verzoek verzonden!",
+    "requestSentBody": "Je boekingsverzoek is verzonden naar {{trainer}}. Je krijgt bericht zodra er een reactie is.",
+    "bookedTitle": "Boeking bevestigd!",
+    "bookedBody": "Je les met {{trainer}} is geboekt. Je ontvangt binnenkort een bevestiging.",
+    "invoiceNotice": "Je ontvangt een factuur van de trainer voor betaling.",
+    "viewMyBookings": "Bekijk mijn boekingen",
+    "browseOtherTrainers": "Bekijk andere trainers"
+  },
+  "ratingShare": {
+    "linkCopied": "Link gekopieerd!",
+    "failedToCopy": "Kopiëren van link mislukt",
+    "failedToGenerateImage": "Afbeelding genereren mislukt"
   }
 }

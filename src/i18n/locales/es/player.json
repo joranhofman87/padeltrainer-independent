@@ -184,7 +184,28 @@
     "success": {
       "title": "¡Reserva confirmada!",
       "description": "Tu sesión ha sido reservada correctamente."
-    }
+    },
+    "summaryDescription": "Revisa tu reserva de clase",
+    "signUpToBook": "Regístrate para reservar",
+    "numberOfSpots": "Número de plazas",
+    "total": "Total",
+    "totalSessions": "Total ({{count}} sesiones)",
+    "selectSlotOrCycle": "Selecciona una franja horaria o un ciclo de entrenamiento para continuar",
+    "notesPlaceholderShort": "Solicitudes o información especiales...",
+    "notesForTrainer": "Notas para el entrenador (opcional)",
+    "sessionsCount": "{{count}} sesiones",
+    "bookingInProgress": "Reservando...",
+    "bookEntireCycle": "Reservar ciclo completo ({{count}} sesiones)",
+    "confirmBooking": "Confirmar reserva",
+    "trainingSession": "Sesión de entrenamiento",
+    "ofAvailable": "de {{count}} disponibles",
+    "perSpot": "{{price}} por plaza",
+    "minPlayersRequired": "Esta sesión requiere un mínimo de {{count}} jugadores",
+    "individualSessions": "Sesiones individuales",
+    "availableTimeSlots": "Franjas horarias disponibles",
+    "noSlotsAvailable": "No hay franjas disponibles en este momento",
+    "noIndividualSessions": "Sin sesiones individuales disponibles",
+    "trainingCyclesHeading": "Ciclos de entrenamiento"
   },
   "bookings": {
     "title": "Mis reservas",
@@ -335,5 +356,19 @@
       "saveError": "No se pudieron guardar los datos",
       "savedToast": "Tus datos de facturación se han actualizado. El PDF se regenerará en la próxima descarga."
     }
+  },
+  "bookingConfirmation": {
+    "requestSentTitle": "¡Solicitud enviada!",
+    "requestSentBody": "Tu solicitud de reserva se ha enviado a {{trainer}}. Te avisaremos cuando responda.",
+    "bookedTitle": "¡Reserva confirmada!",
+    "bookedBody": "Tu clase con {{trainer}} está reservada. Recibirás una confirmación pronto.",
+    "invoiceNotice": "Recibirás una factura del entrenador para el pago.",
+    "viewMyBookings": "Ver mis reservas",
+    "browseOtherTrainers": "Ver otros entrenadores"
+  },
+  "ratingShare": {
+    "linkCopied": "¡Enlace copiado!",
+    "failedToCopy": "No se pudo copiar el enlace",
+    "failedToGenerateImage": "No se pudo generar la imagen"
   }
 }
