@@ -20,6 +20,11 @@ window.addEventListener('error', (event) => {
   if (!event.filename || event.message === 'Script error.' || !event.filename.includes(window.location.hostname)) {
     return;
   }
+  // Stale chunk / 524 — try a throttled reload instead of logging as a bug.
+  if (isChunkLoadError(event.message || '')) {
+    tryChunkReload();
+    return;
+  }
   logger.error('Unhandled error', event.error instanceof Error ? event.error : new Error(event.message || 'Unknown error'), {
     component: 'global',
     action: 'uncaught_error',
@@ -31,6 +36,10 @@ window.addEventListener('error', (event) => {
 
 window.addEventListener('unhandledrejection', (event) => {
   const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason || 'Unhandled promise rejection'));
+  if (isChunkLoadError(error.message)) {
+    tryChunkReload();
+    return;
+  }
   logger.error('Unhandled promise rejection', error, {
     component: 'global',
     action: 'unhandled_rejection',
