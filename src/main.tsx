@@ -4,13 +4,25 @@ import { HelmetProvider } from "react-helmet-async";
 import { TranslationsProvider } from "./contexts/TranslationsContext";
 import App from "./App.tsx";
 import "./index.css";
-import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ErrorBoundary, tryChunkReload, isChunkLoadError } from "./components/ErrorBoundary";
 import { logger } from "./lib/logger";
+
+// Recover from Vite dynamic-import failures (stale chunks / Cloudflare 524s)
+// before they propagate to the React ErrorBoundary.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  tryChunkReload();
+});
 
 // Global error handlers — catch unhandled errors and promise rejections
 window.addEventListener('error', (event) => {
   // Ignore cross-origin script errors (no useful info) and third-party scripts
   if (!event.filename || event.message === 'Script error.' || !event.filename.includes(window.location.hostname)) {
+    return;
+  }
+  // Stale chunk / 524 — try a throttled reload instead of logging as a bug.
+  if (isChunkLoadError(event.message || '')) {
+    tryChunkReload();
     return;
   }
   logger.error('Unhandled error', event.error instanceof Error ? event.error : new Error(event.message || 'Unknown error'), {
@@ -24,6 +36,10 @@ window.addEventListener('error', (event) => {
 
 window.addEventListener('unhandledrejection', (event) => {
   const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason || 'Unhandled promise rejection'));
+  if (isChunkLoadError(error.message)) {
+    tryChunkReload();
+    return;
+  }
   logger.error('Unhandled promise rejection', error, {
     component: 'global',
     action: 'unhandled_rejection',
@@ -46,7 +62,9 @@ async function initDeferred() {
   s.onload = () => {
     try {
       const gr = (window as any).gr;
-      if (typeof gr !== 'function') return;
+      // Guard against half-loaded script: gr must be a function and have its
+      // internal queue (`gr.q`) initialized before we can safely call it.
+      if (typeof gr !== 'function' || !('q' in gr)) return;
       gr('initCustomer', '48a566a2-eb01-4562-932d-ef6886e0282e');
       gr('track', 'pageview');
     } catch { /* silently ignore third-party errors */ }
