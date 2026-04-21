@@ -83,6 +83,7 @@ import {
 export default function AcademyCycleDetail() {
   const { cycleId } = useParams<{ cycleId: string }>();
   const { t, i18n } = useTranslation('cycles');
+  const { t: tCommon } = useTranslation('common');
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeAcademy } = useAcademyContext();
