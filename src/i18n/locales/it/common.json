@@ -442,5 +442,98 @@
     "rising": "📈 On the rise!",
     "stepByStep": "💪 Step by step better",
     "journey": "📊 Padel journey"
+  },
+  "invoiceForm": {
+    "create": {
+      "title": "Nuova fattura",
+      "description": "Crea una fattura manuale con i dati del destinatario e le voci personalizzate.",
+      "createButton": "Crea fattura",
+      "createdToast": "Fattura {{number}} creata",
+      "createError": "Impossibile creare la fattura"
+    },
+    "edit": {
+      "title": "Modifica fattura",
+      "description": "Modifica destinatario, voci, IVA, data di scadenza o note.",
+      "save": "Salva",
+      "savedToast": "Fattura aggiornata",
+      "saveError": "Impossibile aggiornare la fattura",
+      "syncToBookings": "Applica le modifiche di prezzo anche alle prenotazioni",
+      "syncFailed": "Fattura salvata, ma la sincronizzazione con le prenotazioni non è riuscita"
+    },
+    "deleteDialog": {
+      "deleteTitle": "Elimina fattura",
+      "cancelTitle": "Annulla fattura",
+      "deleteDescription": "Sei sicuro di voler eliminare questa fattura? L'operazione non può essere annullata.",
+      "cancelDescription": "Sei sicuro di voler annullare questa fattura? Verrà contrassegnata come annullata.",
+      "back": "Indietro",
+      "delete": "Elimina",
+      "cancelInvoice": "Annulla fattura"
+    },
+    "actions": {
+      "cancel": "Annulla",
+      "back": "Indietro",
+      "downloadPdf": "PDF",
+      "markPaid": "Pagata",
+      "deleteInvoice": "Elimina",
+      "cancelInvoice": "Annulla"
+    },
+    "receiver": {
+      "title": "Destinatario",
+      "name": "Nome",
+      "nameRequired": "Nome *",
+      "namePlaceholder": "Nome destinatario",
+      "businessName": "Nome dell'azienda",
+      "businessNamePlaceholder": "Opzionale",
+      "businessNameOptional": "Nome dell'azienda (opzionale)",
+      "btwNumber": "Partita IVA",
+      "btwNumberOptional": "Partita IVA (opzionale)",
+      "btwNumberPlaceholder": "NL000000000B01",
+      "street": "Via + numero civico",
+      "streetPlaceholder": "Via Roma 12",
+      "zipCode": "CAP",
+      "zipCodePlaceholder": "12345",
+      "city": "Città",
+      "cityPlaceholder": "Roma",
+      "email": "Indirizzo email (per l'invio)",
+      "emailPlaceholder": "destinatario@esempio.it",
+      "nameRequiredError": "Il nome del destinatario è obbligatorio"
+    },
+    "lineItems": {
+      "title": "Voci",
+      "addRow": "Aggiungi riga",
+      "description": "Descrizione",
+      "descriptionPlaceholder": "Descrizione",
+      "quantity": "Qtà",
+      "price": "Prezzo",
+      "vatPercent": "IVA %",
+      "total": "Totale",
+      "totalLabel": "Totale: {{amount}}",
+      "minimumOneItemError": "Aggiungi almeno una voce"
+    },
+    "totals": {
+      "subtotal": "Subtotale",
+      "vatLabel": "IVA {{rate}}%",
+      "vat": "IVA",
+      "total": "Totale",
+      "pricesIncludeVat": "I prezzi includono l'IVA"
+    },
+    "dueDate": {
+      "label": "Data di scadenza",
+      "selectDate": "Seleziona data"
+    },
+    "notes": {
+      "label": "Note",
+      "placeholder": "Note opzionali sulla fattura..."
+    }
+  },
+  "invoiceEmailDialog": {
+    "title": "Indirizzo email richiesto",
+    "description": "Nessun indirizzo email registrato per <strong>{{name}}</strong>. Inserisci un indirizzo email per inviare la fattura.",
+    "label": "Indirizzo email",
+    "placeholder": "giocatore@esempio.it",
+    "invalidEmail": "Inserisci un indirizzo email valido",
+    "saveError": "Impossibile salvare l'email",
+    "cancel": "Annulla",
+    "saveAndSend": "Salva e invia"
   }
 }

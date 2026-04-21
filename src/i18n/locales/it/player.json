@@ -327,5 +327,45 @@
     "report": "Report",
     "trainingSession": "Training Session",
     "players": "players"
+  },
+  "playerInvoices": {
+    "title": "Fatture",
+    "loading": "Caricamento fatture in corso...",
+    "loadError": "Impossibile caricare le fatture",
+    "empty": {
+      "title": "Nessuna fattura",
+      "description": "Non hai ancora ricevuto fatture dagli allenatori."
+    },
+    "status": {
+      "draft": "Bozza",
+      "sent": "Inviata",
+      "paid": "Pagata",
+      "overdue": "Scaduta"
+    },
+    "labels": {
+      "date": "Data: {{date}}",
+      "due": "Scadenza: {{date}}",
+      "paid": "Pagata il: {{date}}",
+      "vatIncluded": "IVA {{rate}}% incl."
+    },
+    "actions": {
+      "editBilling": "Modifica dati di fatturazione",
+      "downloadPdf": "Scarica PDF",
+      "pdfError": "Impossibile generare la fattura"
+    },
+    "billingDialog": {
+      "title": "Modifica dati di fatturazione",
+      "businessName": "Nome dell'azienda",
+      "businessNamePlaceholder": "La mia azienda S.r.l.",
+      "address": "Indirizzo",
+      "addressPlaceholder": "Nome via 123\n12345 Roma",
+      "btw": "Partita IVA",
+      "btwPlaceholder": "NL123456789B01",
+      "saveAsDefault": "Salva come predefinito per le fatture future",
+      "cancel": "Annulla",
+      "save": "Salva",
+      "saveError": "Impossibile salvare i dati",
+      "savedToast": "I tuoi dati di fatturazione sono stati aggiornati. Il PDF verrà rigenerato al prossimo download."
+    }
   }
 }

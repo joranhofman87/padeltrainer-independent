@@ -295,5 +295,45 @@
     "report": "Melden",
     "trainingSession": "Trainingseinheit",
     "players": "Spieler"
+  },
+  "playerInvoices": {
+    "title": "Rechnungen",
+    "loading": "Lade Rechnungen...",
+    "loadError": "Rechnungen konnten nicht geladen werden",
+    "empty": {
+      "title": "Keine Rechnungen",
+      "description": "Sie haben noch keine Rechnungen von Trainern erhalten."
+    },
+    "status": {
+      "draft": "Entwurf",
+      "sent": "Gesendet",
+      "paid": "Bezahlt",
+      "overdue": "Überfällig"
+    },
+    "labels": {
+      "date": "Datum: {{date}}",
+      "due": "Fällig: {{date}}",
+      "paid": "Bezahlt: {{date}}",
+      "vatIncluded": "inkl. {{rate}}% USt."
+    },
+    "actions": {
+      "editBilling": "Rechnungsdetails bearbeiten",
+      "downloadPdf": "PDF herunterladen",
+      "pdfError": "Rechnung konnte nicht erstellt werden"
+    },
+    "billingDialog": {
+      "title": "Rechnungsdetails bearbeiten",
+      "businessName": "Firmenname",
+      "businessNamePlaceholder": "Ihre Firma GmbH",
+      "address": "Adresse",
+      "addressPlaceholder": "Straßenname 123\n12345 Berlin",
+      "btw": "USt.-IdNr.",
+      "btwPlaceholder": "DE123456789",
+      "saveAsDefault": "Als Standard für zukünftige Rechnungen speichern",
+      "cancel": "Abbrechen",
+      "save": "Speichern",
+      "saveError": "Details konnten nicht gespeichert werden",
+      "savedToast": "Ihre Rechnungsdetails wurden aktualisiert. Das PDF wird beim nächsten Herunterladen neu generiert."
+    }
   }
 }
