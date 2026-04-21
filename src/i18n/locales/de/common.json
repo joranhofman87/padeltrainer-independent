@@ -495,5 +495,9 @@
     "saveError": "E-Mail konnte nicht gespeichert werden",
     "cancel": "Abbrechen",
     "saveAndSend": "Speichern & Senden"
+  },
+  "aria": {
+    "listView": "Listenansicht",
+    "scheduleView": "Terminansicht"
   }
 }

@@ -484,5 +484,9 @@
     "saveError": "Impossible d'enregistrer l'e-mail",
     "cancel": "Annuler",
     "saveAndSend": "Enregistrer et envoyer"
+  },
+  "aria": {
+    "listView": "Vue liste",
+    "scheduleView": "Vue planning"
   }
 }

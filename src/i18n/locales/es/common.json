@@ -484,5 +484,9 @@
     "saveError": "No se pudo guardar el correo electrónico",
     "cancel": "Cancelar",
     "saveAndSend": "Guardar y enviar"
+  },
+  "aria": {
+    "listView": "Vista de lista",
+    "scheduleView": "Vista de horario"
   }
 }

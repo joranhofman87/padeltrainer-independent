@@ -406,7 +406,7 @@ export default function IntakeRequestDetailSheet({
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="text-sm text-muted-foreground">Lesson type</span>
+                <span className="text-sm text-muted-foreground">{t('intakeRequests.detail.lessonType')}</span>
                 <div className="flex flex-wrap gap-1">
                   {(Array.isArray(request.lesson_type) ? request.lesson_type : [request.lesson_type]).map((type: string) => (
                     <Badge key={type} variant="secondary">
@@ -419,7 +419,7 @@ export default function IntakeRequestDetailSheet({
               </div>
               {request.preferred_duration_minutes && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Duration</span>
+                  <span className="text-sm text-muted-foreground">{t('intakeRequests.detail.duration')}</span>
                   <span className="text-sm font-medium">{request.preferred_duration_minutes} min</span>
                 </div>
               )}
@@ -441,10 +441,10 @@ export default function IntakeRequestDetailSheet({
               )}
               {request.location_id && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Location</span>
+                  <span className="text-sm text-muted-foreground">{t('intakeRequests.detail.location')}</span>
                   <span className="text-sm font-medium flex items-center gap-1">
                     <MapPin className="h-3.5 w-3.5" />
-                    Specified
+                    {t('intakeRequests.detail.locationSpecified')}
                   </span>
                 </div>
               )}

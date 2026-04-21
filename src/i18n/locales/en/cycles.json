@@ -117,7 +117,8 @@
     "pricesIncludeVatHint": "Players will see: \"All prices include VAT\"",
     "pricesExcludeVatHint": "Players will see: \"All prices exclude VAT\"",
     "availableDays": "Available Days & Times",
-    "availableDaysHelp": "Select which days and time frames are available for training. Players will only see these options."
+    "availableDaysHelp": "Select which days and time frames are available for training. Players will only see these options.",
+    "totalLabel": "Total"
   },
   "detail": {
     "pricesIncludeVat": "All prices include VAT",
@@ -288,7 +289,8 @@
       "availability": "Availability",
       "preferredTrainer": "Pref. Trainer",
       "status": "Status",
-      "applied": "Applied"
+      "applied": "Applied",
+      "groupMembers": "Group members:"
     },
     "detail": {
       "title": "Request Details",
@@ -297,7 +299,11 @@
       "availability": "Availability",
       "notes": "Notes",
       "proposal": "Proposed Assignment",
-      "noProposal": "No proposal generated yet"
+      "noProposal": "No proposal generated yet",
+      "lessonType": "Lesson type",
+      "duration": "Duration",
+      "location": "Location",
+      "locationSpecified": "Specified"
     },
     "actions": {
       "propose": "Generate Proposal",
@@ -397,6 +403,23 @@
       "description": "For the system to generate proposals, you need to create slots or training cycles in your calendar first. Once slots are created, we can match players based on their availability and preferences.",
       "goToCalendar": "Go to Calendar",
       "continue": "Continue"
+    },
+    "statusBadges": {
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "pending": "Pending",
+      "manual": "Manual"
+    },
+    "toasts": {
+      "approved": "Proposal approved",
+      "rejected": "Proposal rejected"
+    },
+    "grid": {
+      "full": "FULL",
+      "noPlayers": "No players",
+      "dragPlayer": "Drag player",
+      "dragSlot": "Drag slot",
+      "addSlot": "Add slot"
     }
   },
   "unplacedSidebar": {

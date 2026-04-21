@@ -335,7 +335,7 @@ export default function IntakeRequestsTable({
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p className="text-xs font-medium mb-1">Group members:</p>
+                    <p className="text-xs font-medium mb-1">{t('intakeRequests.table.groupMembers')}</p>
                     <ul className="text-xs">
                       {request.proposal.group_members.map((name, i) => (
                         <li key={i}>{name}</li>

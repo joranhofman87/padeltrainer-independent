@@ -57,7 +57,7 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
     setIsUpdating(true);
     try {
       await updateProposedAssignmentStatus(proposal.id, 'confirmed');
-      toast.success('Proposal approved');
+      toast.success(t('proposals.toasts.approved'));
       onStatusChange?.();
     } catch (error: any) {
       toast.error(error.message);
@@ -70,7 +70,7 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
     setIsUpdating(true);
     try {
       await updateProposedAssignmentStatus(proposal.id, 'rejected');
-      toast.success('Proposal rejected');
+      toast.success(t('proposals.toasts.rejected'));
       onStatusChange?.();
     } catch (error: any) {
       toast.error(error.message);
@@ -88,11 +88,11 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
   const getStatusBadge = () => {
     switch (proposal.status) {
       case 'confirmed':
-        return <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Approved</Badge>;
+        return <Badge className="bg-green-500/10 text-green-600 border-green-500/20">{t('proposals.statusBadges.approved')}</Badge>;
       case 'rejected':
-        return <Badge className="bg-red-500/10 text-red-600 border-red-500/20">Rejected</Badge>;
+        return <Badge className="bg-red-500/10 text-red-600 border-red-500/20">{t('proposals.statusBadges.rejected')}</Badge>;
       default:
-        return <Badge variant="outline">Pending</Badge>;
+        return <Badge variant="outline">{t('proposals.statusBadges.pending')}</Badge>;
     }
   };
 
@@ -133,7 +133,7 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
               {isManualOverride && (
                 <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600">
                   <Edit className="h-3 w-3 mr-1" />
-                  Manual
+                  {t('proposals.statusBadges.manual')}
                 </Badge>
               )}
               {getStatusBadge()}

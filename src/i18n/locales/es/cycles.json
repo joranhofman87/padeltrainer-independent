@@ -105,7 +105,8 @@
     "registrationApplicableTrainersHelp": "Qué entrenadores pueden ser asignados a esta inscripción",
     "pricesIncludeVat": "Precios con IVA incluido",
     "pricesIncludeVatHint": "Los jugadores verán: \"Todos los precios incluyen IVA\"",
-    "pricesExcludeVatHint": "Los jugadores verán: \"Todos los precios excluyen IVA\""
+    "pricesExcludeVatHint": "Los jugadores verán: \"Todos los precios excluyen IVA\"",
+    "totalLabel": "Total"
   },
   "detail": {
     "pricesIncludeVat": "Todos los precios incluyen IVA",
@@ -262,7 +263,8 @@
       "availability": "Disponibilidad",
       "preferredTrainer": "Entrenador pref.",
       "status": "Estado",
-      "applied": "Solicitado"
+      "applied": "Solicitado",
+      "groupMembers": "Miembros del grupo:"
     },
     "detail": {
       "title": "Detalles de la solicitud",
@@ -271,7 +273,11 @@
       "availability": "Disponibilidad",
       "notes": "Notas",
       "proposal": "Asignación propuesta",
-      "noProposal": "Aún no se ha generado propuesta"
+      "noProposal": "Aún no se ha generado propuesta",
+      "lessonType": "Tipo de clase",
+      "duration": "Duración",
+      "location": "Ubicación",
+      "locationSpecified": "Especificada"
     },
     "actions": {
       "propose": "Generar propuesta",
@@ -370,6 +376,23 @@
       "description": "Para que el sistema genere propuestas, necesitas crear plazas o ciclos de entrenamiento en tu calendario primero. Una vez creadas las plazas, podemos emparejar jugadores según su disponibilidad y preferencias.",
       "goToCalendar": "Ir al calendario",
       "continue": "Continuar"
+    },
+    "statusBadges": {
+      "approved": "Aprobada",
+      "rejected": "Rechazada",
+      "pending": "Pendiente",
+      "manual": "Manual"
+    },
+    "toasts": {
+      "approved": "Propuesta aprobada",
+      "rejected": "Propuesta rechazada"
+    },
+    "grid": {
+      "full": "LLENO",
+      "noPlayers": "Sin jugadores",
+      "dragPlayer": "Arrastrar jugador",
+      "dragSlot": "Arrastrar franja",
+      "addSlot": "Añadir franja"
     }
   },
   "skipReasons": {

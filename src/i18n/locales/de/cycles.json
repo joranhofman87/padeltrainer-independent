@@ -109,7 +109,8 @@
     "pricesIncludeVatHint": "Spieler sehen: \"Alle Preise verstehen sich inkl. MwSt.\"",
     "pricesExcludeVatHint": "Spieler sehen: \"Alle Preise verstehen sich zzgl. MwSt.\"",
     "availableDays": "Verfügbare Tage & Zeiten",
-    "availableDaysHelp": "Wähle aus, an welchen Tagen und zu welchen Zeiten trainiert werden kann. Spieler sehen nur diese Optionen."
+    "availableDaysHelp": "Wähle aus, an welchen Tagen und zu welchen Zeiten trainiert werden kann. Spieler sehen nur diese Optionen.",
+    "totalLabel": "Gesamt"
   },
   "detail": {
     "pricesIncludeVat": "Alle Preise verstehen sich inkl. MwSt.",
@@ -267,7 +268,8 @@
       "availability": "Verfügbarkeit",
       "preferredTrainer": "Bev. Trainer",
       "status": "Status",
-      "applied": "Beworben"
+      "applied": "Beworben",
+      "groupMembers": "Gruppenmitglieder:"
     },
     "detail": {
       "title": "Anfragedetails",
@@ -276,7 +278,11 @@
       "availability": "Verfügbarkeit",
       "notes": "Notizen",
       "proposal": "Vorgeschlagene Zuweisung",
-      "noProposal": "Noch kein Vorschlag generiert"
+      "noProposal": "Noch kein Vorschlag generiert",
+      "lessonType": "Lektionstyp",
+      "duration": "Dauer",
+      "location": "Standort",
+      "locationSpecified": "Angegeben"
     },
     "actions": {
       "propose": "Vorschlag generieren",
@@ -376,6 +382,23 @@
       "description": "Damit das System Vorschläge generieren kann, musst du zuerst Plätze oder Trainingszyklen in deinem Kalender erstellen. Sobald Plätze erstellt sind, können wir Spieler basierend auf ihrer Verfügbarkeit und Präferenzen zuordnen.",
       "goToCalendar": "Zum Kalender",
       "continue": "Weiter"
+    },
+    "statusBadges": {
+      "approved": "Genehmigt",
+      "rejected": "Abgelehnt",
+      "pending": "Ausstehend",
+      "manual": "Manuell"
+    },
+    "toasts": {
+      "approved": "Vorschlag genehmigt",
+      "rejected": "Vorschlag abgelehnt"
+    },
+    "grid": {
+      "full": "VOLL",
+      "noPlayers": "Keine Spieler",
+      "dragPlayer": "Spieler ziehen",
+      "dragSlot": "Slot ziehen",
+      "addSlot": "Slot hinzufügen"
     }
   },
   "skipReasons": {

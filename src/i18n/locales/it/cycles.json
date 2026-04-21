@@ -117,7 +117,8 @@
     "pricesIncludeVatHint": "Players will see: \"All prices include VAT\"",
     "pricesExcludeVatHint": "Players will see: \"All prices exclude VAT\"",
     "availableDays": "Available Days & Times",
-    "availableDaysHelp": "Select which days and time frames are available for training. Players will only see these options."
+    "availableDaysHelp": "Select which days and time frames are available for training. Players will only see these options.",
+    "totalLabel": "Totale"
   },
   "detail": {
     "pricesIncludeVat": "All prices include VAT",
@@ -288,7 +289,8 @@
       "availability": "Availability",
       "preferredTrainer": "Pref. Trainer",
       "status": "Stato",
-      "applied": "Applied"
+      "applied": "Applied",
+      "groupMembers": "Membri del gruppo:"
     },
     "detail": {
       "title": "Request Details",
@@ -297,7 +299,11 @@
       "availability": "Availability",
       "notes": "Note",
       "proposal": "Proposed Assignment",
-      "noProposal": "No proposal generated yet"
+      "noProposal": "No proposal generated yet",
+      "lessonType": "Tipo di lezione",
+      "duration": "Durata",
+      "location": "Posizione",
+      "locationSpecified": "Specificata"
     },
     "actions": {
       "propose": "Generate Proposal",
@@ -397,6 +403,23 @@
       "description": "For the system to generate proposals, you need to create slots or training cycles in your calendar first. Once slots are created, we can match players based on their availability and preferences.",
       "goToCalendar": "Go to Calendar",
       "continue": "Continue"
+    },
+    "statusBadges": {
+      "approved": "Approvata",
+      "rejected": "Rifiutata",
+      "pending": "In attesa",
+      "manual": "Manuale"
+    },
+    "toasts": {
+      "approved": "Proposta approvata",
+      "rejected": "Proposta rifiutata"
+    },
+    "grid": {
+      "full": "PIENO",
+      "noPlayers": "Nessun giocatore",
+      "dragPlayer": "Trascina giocatore",
+      "dragSlot": "Trascina slot",
+      "addSlot": "Aggiungi slot"
     }
   },
   "unplacedSidebar": {

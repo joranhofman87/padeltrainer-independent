@@ -535,5 +535,9 @@
     "saveError": "Could not save email",
     "cancel": "Cancel",
     "saveAndSend": "Save & Send"
+  },
+  "aria": {
+    "listView": "List view",
+    "scheduleView": "Schedule view"
   }
 }
