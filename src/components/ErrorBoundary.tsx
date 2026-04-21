@@ -26,12 +26,33 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Auto-recover from stale lazy chunks after a deploy. When the cached
+    // index.html references a JS chunk hash that no longer exists, the dynamic
+    // import throws "Failed to fetch dynamically imported module" or
+    // "ChunkLoadError" — a hard reload pulls the fresh HTML + chunk map.
+    const message = error?.message || "";
+    const isChunkLoadError =
+      /ChunkLoadError|Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed/i.test(
+        message
+      );
+
+    if (isChunkLoadError && typeof window !== "undefined") {
+      const reloadKey = "__chunkReloadAt";
+      const lastReload = Number(sessionStorage.getItem(reloadKey) || 0);
+      // Only auto-reload once per minute to avoid infinite reload loops
+      if (Date.now() - lastReload > 60_000) {
+        sessionStorage.setItem(reloadKey, String(Date.now()));
+        window.location.reload();
+        return;
+      }
+    }
+
     // Log error to centralized logger
     logger.error("Uncaught application error", error, {
       component: "ErrorBoundary",
       componentStack: errorInfo.componentStack || undefined,
     });
-    
+
     this.setState({ errorInfo });
   }
 
