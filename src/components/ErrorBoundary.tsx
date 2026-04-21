@@ -9,6 +9,36 @@ interface Props {
   fallback?: ReactNode;
 }
 
+const CHUNK_ERROR_RE =
+  /ChunkLoadError|Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+
+export function isChunkLoadError(message: string): boolean {
+  return CHUNK_ERROR_RE.test(message || "");
+}
+
+const RELOAD_ATTEMPTS_KEY = "__chunkReloadAttempts";
+
+/**
+ * Throttled reload to recover from stale chunks / 524 timeouts.
+ * Up to 3 attempts within 5 minutes. Returns true if a reload was scheduled.
+ */
+export function tryChunkReload(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const now = Date.now();
+    const raw = sessionStorage.getItem(RELOAD_ATTEMPTS_KEY);
+    const attempts: number[] = raw ? JSON.parse(raw) : [];
+    const recent = attempts.filter((ts) => now - ts < 5 * 60_000);
+    if (recent.length >= 3) return false;
+    recent.push(now);
+    sessionStorage.setItem(RELOAD_ATTEMPTS_KEY, JSON.stringify(recent));
+    setTimeout(() => window.location.reload(), 500);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface State {
   hasError: boolean;
   error: Error | null;
