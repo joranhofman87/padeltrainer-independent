@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { SafeHtml } from '@/components/ui/SafeHtml';
@@ -21,9 +21,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Send, Save, FileText, History, Loader2, Users, Eye,
-  Trash2, Pencil, ChevronRight, X, Plus, FlaskConical,
+  Trash2, Pencil, X, Plus, FlaskConical,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
 
 interface EmailCampaignTabProps {
@@ -72,7 +73,8 @@ function getLevelBand(rating: number | null): string {
 }
 
 export function EmailCampaignTab({ academyId, trainers, locations, players }: EmailCampaignTabProps) {
-  const { t } = useTranslation('trainer');
+  const { t, i18n } = useTranslation('trainer');
+  const dateLocale = getDateFnsLocale(i18n.language);
   const { toast } = useToast();
   const [activeView, setActiveView] = useState('compose');
 
@@ -177,7 +179,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
   const handleSendTestEmail = async () => {
     if (!testEmail.trim() || !subject.trim() || !bodyHtml.trim()) {
-      toast({ title: 'Missing fields', description: 'Please fill in subject, body, and test email address.', variant: 'destructive' });
+      toast({ title: t('emailCampaign.toasts.missingFields'), description: t('emailCampaign.toasts.missingTestDesc'), variant: 'destructive' });
       return;
     }
     setIsSendingTest(true);
@@ -186,10 +188,10 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
         body: { testMode: true, testEmail: testEmail.trim(), subject: subject.trim(), bodyHtml, academyProfileId: academyId },
       });
       if (error) throw error;
-      toast({ title: 'Test email sent!', description: `A test email was sent to ${testEmail.trim()}.` });
+      toast({ title: t('emailCampaign.toasts.testSent'), description: t('emailCampaign.toasts.testSentDesc', { email: testEmail.trim() }) });
     } catch (err: any) {
       logger.error('Error sending test email', err);
-      toast({ title: 'Error', description: err.message || 'Could not send test email.', variant: 'destructive' });
+      toast({ title: t('emailCampaign.toasts.error'), description: err.message || t('emailCampaign.toasts.testError'), variant: 'destructive' });
     } finally {
       setIsSendingTest(false);
     }
@@ -197,7 +199,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim() || !subject.trim() || !bodyHtml.trim()) {
-      toast({ title: 'Missing fields', description: 'Please fill in template name, subject, and body.', variant: 'destructive' });
+      toast({ title: t('emailCampaign.toasts.missingFields'), description: t('emailCampaign.toasts.missingTemplateDesc'), variant: 'destructive' });
       return;
     }
 
@@ -207,7 +209,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
           .from('email_campaign_templates')
           .update({ name: templateName.trim(), subject: subject.trim(), body_html: bodyHtml })
           .eq('id', editingTemplateId);
-        toast({ title: 'Template updated' });
+        toast({ title: t('emailCampaign.toasts.templateUpdated') });
       } else {
         await supabase
           .from('email_campaign_templates')
@@ -217,14 +219,14 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
             subject: subject.trim(),
             body_html: bodyHtml,
           } as any);
-        toast({ title: 'Template saved' });
+        toast({ title: t('emailCampaign.toasts.templateSaved') });
       }
       setEditingTemplateId(null);
       setTemplateName('');
       fetchTemplates();
     } catch (err) {
       logger.error('Error saving template', err as Error);
-      toast({ title: 'Error', description: 'Could not save template.', variant: 'destructive' });
+      toast({ title: t('emailCampaign.toasts.error'), description: t('emailCampaign.toasts.templateError'), variant: 'destructive' });
     }
   };
 
@@ -234,13 +236,13 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
     setTemplateName(template.name);
     setEditingTemplateId(template.id);
     setActiveView('compose');
-    toast({ title: 'Template loaded', description: template.name });
+    toast({ title: t('emailCampaign.toasts.templateLoaded'), description: template.name });
   };
 
   const handleDeleteTemplate = async (id: string) => {
     try {
       await supabase.from('email_campaign_templates').delete().eq('id', id);
-      toast({ title: 'Template deleted' });
+      toast({ title: t('emailCampaign.toasts.templateDeleted') });
       fetchTemplates();
     } catch (err) {
       logger.error('Error deleting template', err as Error);
@@ -291,8 +293,8 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
       if (fnErr) throw fnErr;
 
       toast({
-        title: 'Campaign sent!',
-        description: `Emails are being sent to ${recipients.length} recipients.`,
+        title: t('emailCampaign.toasts.campaignSent'),
+        description: t('emailCampaign.toasts.campaignSentDesc', { count: recipients.length }),
       });
 
       // Reset
@@ -303,7 +305,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
       fetchCampaigns();
     } catch (err: any) {
       logger.error('Error sending campaign', err);
-      toast({ title: 'Error', description: err.message || 'Could not send campaign.', variant: 'destructive' });
+      toast({ title: t('emailCampaign.toasts.error'), description: err.message || t('emailCampaign.toasts.campaignError'), variant: 'destructive' });
     } finally {
       setIsSending(false);
     }
@@ -320,9 +322,9 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'sent': return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Sent</Badge>;
-      case 'sending': return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Sending...</Badge>;
-      case 'draft': return <Badge variant="secondary">Draft</Badge>;
+      case 'sent': return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">{t('emailCampaign.status.sent')}</Badge>;
+      case 'sending': return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{t('emailCampaign.status.sending')}</Badge>;
+      case 'draft': return <Badge variant="secondary">{t('emailCampaign.status.draft')}</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -332,16 +334,16 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
       <Tabs value={activeView} onValueChange={setActiveView}>
         <TabsList>
           <TabsTrigger value="compose" className="gap-1.5">
-            <Send className="h-3.5 w-3.5" /> Compose
+            <Send className="h-3.5 w-3.5" /> {t('emailCampaign.tabs.compose')}
           </TabsTrigger>
           <TabsTrigger value="templates" className="gap-1.5">
-            <FileText className="h-3.5 w-3.5" /> Templates
+            <FileText className="h-3.5 w-3.5" /> {t('emailCampaign.tabs.templates')}
             {templates.length > 0 && (
               <Badge variant="secondary" className="ml-1 text-xs">{templates.length}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-1.5">
-            <History className="h-3.5 w-3.5" /> History
+            <History className="h-3.5 w-3.5" /> {t('emailCampaign.tabs.history')}
             {campaigns.length > 0 && (
               <Badge variant="secondary" className="ml-1 text-xs">{campaigns.length}</Badge>
             )}
@@ -355,36 +357,36 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
             <Card className="lg:col-span-1">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="h-4 w-4" /> Recipients
+                  <Users className="h-4 w-4" /> {t('emailCampaign.recipients.title')}
                 </CardTitle>
                 <CardDescription>
-                  Filter players to select who receives the email.
+                  {t('emailCampaign.recipients.description')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Trainer</Label>
+                  <Label className="text-xs">{t('emailCampaign.recipients.trainer')}</Label>
                   <Select value={filterTrainer} onValueChange={setFilterTrainer}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All trainers</SelectItem>
-                      {trainers.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                      <SelectItem value="all">{t('emailCampaign.recipients.allTrainers')}</SelectItem>
+                      {trainers.map((tr) => (
+                        <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Location</Label>
+                  <Label className="text-xs">{t('emailCampaign.recipients.location')}</Label>
                   <Select value={filterLocation} onValueChange={setFilterLocation}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All locations</SelectItem>
+                      <SelectItem value="all">{t('emailCampaign.recipients.allLocations')}</SelectItem>
                       {locations.map((l) => (
                         <SelectItem key={l.id} value={l.name}>{l.name}</SelectItem>
                       ))}
@@ -393,32 +395,32 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Level</Label>
+                  <Label className="text-xs">{t('emailCampaign.recipients.level')}</Label>
                   <Select value={filterLevel} onValueChange={setFilterLevel}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All levels</SelectItem>
-                      <SelectItem value="beginner">Beginner (1-3)</SelectItem>
-                      <SelectItem value="intermediate">Intermediate (4-6)</SelectItem>
-                      <SelectItem value="advanced">Advanced (7-9)</SelectItem>
-                      <SelectItem value="pro">Pro (9+)</SelectItem>
-                      <SelectItem value="unrated">Unrated</SelectItem>
+                      <SelectItem value="all">{t('emailCampaign.recipients.allLevels')}</SelectItem>
+                      <SelectItem value="beginner">{t('emailCampaign.recipients.beginner')}</SelectItem>
+                      <SelectItem value="intermediate">{t('emailCampaign.recipients.intermediate')}</SelectItem>
+                      <SelectItem value="advanced">{t('emailCampaign.recipients.advanced')}</SelectItem>
+                      <SelectItem value="pro">{t('emailCampaign.recipients.pro')}</SelectItem>
+                      <SelectItem value="unrated">{t('emailCampaign.recipients.unrated')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Active cyclus</Label>
+                  <Label className="text-xs">{t('emailCampaign.recipients.activeCyclus')}</Label>
                   <Select value={filterCyclus} onValueChange={setFilterCyclus}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="yes">Yes</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
+                      <SelectItem value="all">{t('emailCampaign.recipients.all')}</SelectItem>
+                      <SelectItem value="yes">{t('emailCampaign.recipients.yes')}</SelectItem>
+                      <SelectItem value="no">{t('emailCampaign.recipients.no')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -426,7 +428,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                 <Separator />
 
                 <div className="flex items-center justify-between py-2">
-                  <span className="text-sm font-medium">Selected recipients</span>
+                  <span className="text-sm font-medium">{t('emailCampaign.recipients.selected')}</span>
                   <Badge variant="secondary" className="text-sm">
                     {recipients.length}
                   </Badge>
@@ -450,7 +452,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                     ))}
                     {recipients.length > 50 && (
                       <p className="text-xs text-muted-foreground text-center pt-1">
-                        +{recipients.length - 50} more
+                        {t('emailCampaign.recipients.moreCount', { count: recipients.length - 50 })}
                       </p>
                     )}
                   </div>
@@ -461,13 +463,13 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                   <Input
                     value={addName}
                     onChange={(e) => setAddName(e.target.value)}
-                    placeholder="Name"
+                    placeholder={t('emailCampaign.recipients.addName')}
                     className="h-7 text-xs flex-1"
                   />
                   <Input
                     value={addEmail}
                     onChange={(e) => setAddEmail(e.target.value)}
-                    placeholder="Email"
+                    placeholder={t('emailCampaign.recipients.addEmail')}
                     className="h-7 text-xs flex-1"
                     onKeyDown={(e) => e.key === 'Enter' && handleAddManualRecipient()}
                   />
@@ -484,7 +486,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
                 {recipients.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    No players match the current filters, or they have no email address.
+                    {t('emailCampaign.recipients.noMatch')}
                   </p>
                 )}
               </CardContent>
@@ -493,25 +495,30 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
             {/* Email composer panel */}
             <Card className="lg:col-span-2">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Compose Email</CardTitle>
+                <CardTitle className="text-base">{t('emailCampaign.compose.title')}</CardTitle>
                 <CardDescription>
-                  Use <code className="text-xs bg-muted px-1 py-0.5 rounded">{'{{name}}'}</code> to insert the player's name.
+                  <Trans
+                    i18nKey="emailCampaign.compose.descriptionHtml"
+                    t={t}
+                    values={{ var: '{{name}}' }}
+                    components={{ code: <code className="text-xs bg-muted px-1 py-0.5 rounded" /> }}
+                  />
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="campaign-subject">Subject</Label>
+                  <Label htmlFor="campaign-subject">{t('emailCampaign.compose.subject')}</Label>
                   <Input
                     id="campaign-subject"
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    placeholder="e.g. New training season starts soon!"
+                    placeholder={t('emailCampaign.compose.subjectPlaceholder')}
                   />
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label>Body</Label>
+                    <Label>{t('emailCampaign.compose.body')}</Label>
                     <Button
                       type="button"
                       variant="ghost"
@@ -519,13 +526,13 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                       className="h-7 px-2 text-xs"
                       onClick={() => insertVariable('name')}
                     >
-                      {'Insert {{name}}'}
+                      {t('emailCampaign.compose.insertName', { name: '{{name}}' })}
                     </Button>
                   </div>
                   <MiniRichTextEditor
                     value={bodyHtml}
                     onChange={setBodyHtml}
-                    placeholder="Write your email content here..."
+                    placeholder={t('emailCampaign.compose.bodyPlaceholder')}
                   />
                 </div>
 
@@ -534,7 +541,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                   <Input
                     value={templateName}
                     onChange={(e) => setTemplateName(e.target.value)}
-                    placeholder="Template name (optional)"
+                    placeholder={t('emailCampaign.compose.templateNamePlaceholder')}
                     className="max-w-xs"
                   />
                   <Button
@@ -545,7 +552,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                     disabled={!templateName.trim() || !subject.trim()}
                   >
                     <Save className="mr-1.5 h-3.5 w-3.5" />
-                    {editingTemplateId ? 'Update template' : 'Save as template'}
+                    {editingTemplateId ? t('emailCampaign.compose.updateTemplate') : t('emailCampaign.compose.saveAsTemplate')}
                   </Button>
                 </div>
 
@@ -559,7 +566,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                       onClick={() => setShowPreview(true)}
                       disabled={!bodyHtml.trim()}
                     >
-                      <Eye className="mr-1.5 h-4 w-4" /> Preview
+                      <Eye className="mr-1.5 h-4 w-4" /> {t('emailCampaign.compose.preview')}
                     </Button>
 
                     {!showTestInput ? (
@@ -569,14 +576,14 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                         onClick={() => setShowTestInput(true)}
                         disabled={!subject.trim() || !bodyHtml.trim()}
                       >
-                        <FlaskConical className="mr-1.5 h-4 w-4" /> Send test
+                        <FlaskConical className="mr-1.5 h-4 w-4" /> {t('emailCampaign.compose.sendTest')}
                       </Button>
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <Input
                           value={testEmail}
                           onChange={(e) => setTestEmail(e.target.value)}
-                          placeholder="test@email.com"
+                          placeholder={t('emailCampaign.compose.testEmailPlaceholder')}
                           className="h-9 w-48"
                           onKeyDown={(e) => e.key === 'Enter' && handleSendTestEmail()}
                         />
@@ -608,7 +615,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                         ) : (
                           <Send className="mr-2 h-4 w-4" />
                         )}
-                        Send to {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}
+                        {t('emailCampaign.compose.sendToCount', { count: recipients.length })}
                       </Button>
                     </div>
                   </div>
@@ -622,8 +629,8 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
         <TabsContent value="templates" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Saved Templates</CardTitle>
-              <CardDescription>Reuse email templates for recurring campaigns.</CardDescription>
+              <CardTitle className="text-base">{t('emailCampaign.templates.title')}</CardTitle>
+              <CardDescription>{t('emailCampaign.templates.description')}</CardDescription>
             </CardHeader>
             <CardContent>
               {loadingTemplates ? (
@@ -632,16 +639,16 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                 </div>
               ) : templates.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">
-                  No templates saved yet. Compose an email and save it as a template.
+                  {t('emailCampaign.templates.empty')}
                 </p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
+                      <TableHead>{t('emailCampaign.templates.name')}</TableHead>
+                      <TableHead>{t('emailCampaign.templates.subject')}</TableHead>
+                      <TableHead>{t('emailCampaign.templates.created')}</TableHead>
+                      <TableHead className="w-[100px]">{t('emailCampaign.templates.actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -650,7 +657,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                         <TableCell className="font-medium">{tmpl.name}</TableCell>
                         <TableCell className="text-muted-foreground">{tmpl.subject}</TableCell>
                         <TableCell className="text-muted-foreground text-sm">
-                          {format(new Date(tmpl.created_at), 'dd MMM yyyy')}
+                          {format(new Date(tmpl.created_at), 'dd MMM yyyy', { locale: dateLocale })}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
@@ -685,8 +692,8 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
         <TabsContent value="history" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Campaign History</CardTitle>
-              <CardDescription>Overview of sent email campaigns.</CardDescription>
+              <CardTitle className="text-base">{t('emailCampaign.history.title')}</CardTitle>
+              <CardDescription>{t('emailCampaign.history.description')}</CardDescription>
             </CardHeader>
             <CardContent>
               {loadingCampaigns ? (
@@ -695,17 +702,17 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                 </div>
               ) : campaigns.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">
-                  No campaigns sent yet.
+                  {t('emailCampaign.history.empty')}
                 </p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Recipients</TableHead>
-                      <TableHead>Sent / Failed</TableHead>
-                      <TableHead>Date</TableHead>
+                      <TableHead>{t('emailCampaign.history.subject')}</TableHead>
+                      <TableHead>{t('emailCampaign.history.status')}</TableHead>
+                      <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
+                      <TableHead>{t('emailCampaign.history.sentFailed')}</TableHead>
+                      <TableHead>{t('emailCampaign.history.date')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -717,11 +724,11 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                         <TableCell>
                           <span className="text-green-600">{c.sent_count}</span>
                           {c.failed_count > 0 && (
-                            <span className="text-destructive ml-1">/ {c.failed_count} failed</span>
+                            <span className="text-destructive ml-1">/ {t('emailCampaign.history.failed', { count: c.failed_count })}</span>
                           )}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
-                          {c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm') : '—'}
+                          {c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }) : '—'}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -737,15 +744,21 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
       <AlertDialog open={showConfirmSend} onOpenChange={setShowConfirmSend}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Send campaign?</AlertDialogTitle>
+            <AlertDialogTitle>{t('emailCampaign.confirm.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will send an email to <strong>{recipients.length} recipient{recipients.length !== 1 ? 's' : ''}</strong> with subject "<strong>{subject}</strong>". This action cannot be undone.
+              <Trans
+                i18nKey="emailCampaign.confirm.description"
+                t={t}
+                count={recipients.length}
+                values={{ count: recipients.length, subject }}
+                components={[<strong />, <strong />, <strong />, <strong />]}
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('emailCampaign.confirm.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleSendCampaign}>
-              <Send className="mr-2 h-4 w-4" /> Send now
+              <Send className="mr-2 h-4 w-4" /> {t('emailCampaign.confirm.sendNow')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -755,14 +768,14 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
       <AlertDialog open={showPreview} onOpenChange={setShowPreview}>
         <AlertDialogContent className="max-w-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Email Preview</AlertDialogTitle>
+            <AlertDialogTitle>{t('emailCampaign.previewDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Preview with sample data: name = "Jan de Vries"
+              {t('emailCampaign.previewDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="border rounded-md p-4 space-y-3">
             <div>
-              <p className="text-xs text-muted-foreground">Subject</p>
+              <p className="text-xs text-muted-foreground">{t('emailCampaign.previewDialog.subjectLabel')}</p>
               <p className="font-medium">{subject.replace(/\{\{name\}\}/gi, 'Jan de Vries')}</p>
             </div>
             <Separator />
@@ -772,7 +785,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogCancel>{t('emailCampaign.previewDialog.close')}</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

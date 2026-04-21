@@ -920,5 +920,108 @@
     "addAvailability": "Añadir disponibilidad",
     "publishProfile": "Publicar perfil",
     "upgradeToPublish": "Mejorar para publicar"
+  },
+  "emailCampaign": {
+    "tabs": {
+      "compose": "Redactar",
+      "templates": "Plantillas",
+      "history": "Historial"
+    },
+    "recipients": {
+      "title": "Destinatarios",
+      "description": "Filtra jugadores para seleccionar quién recibe el email.",
+      "trainer": "Entrenador",
+      "allTrainers": "Todos los entrenadores",
+      "location": "Ubicación",
+      "allLocations": "Todas las ubicaciones",
+      "level": "Nivel",
+      "allLevels": "Todos los niveles",
+      "beginner": "Principiante (1-3)",
+      "intermediate": "Intermedio (4-6)",
+      "advanced": "Avanzado (7-9)",
+      "pro": "Pro (9+)",
+      "unrated": "Sin clasificar",
+      "activeCyclus": "Ciclo activo",
+      "all": "Todos",
+      "yes": "Sí",
+      "no": "No",
+      "selected": "Destinatarios seleccionados",
+      "moreCount": "+{{count}} más",
+      "addName": "Nombre",
+      "addEmail": "Email",
+      "noMatch": "Ningún jugador coincide con los filtros actuales, o no tienen email."
+    },
+    "compose": {
+      "title": "Redactar Email",
+      "descriptionHtml": "Usa <code>{{var}}</code> para insertar el nombre del jugador.",
+      "subject": "Asunto",
+      "subjectPlaceholder": "ej. ¡Nueva temporada de entrenamiento pronto!",
+      "body": "Contenido",
+      "insertName": "Insertar {{name}}",
+      "bodyPlaceholder": "Escribe el contenido de tu email aquí...",
+      "templateNamePlaceholder": "Nombre de plantilla (opcional)",
+      "updateTemplate": "Actualizar plantilla",
+      "saveAsTemplate": "Guardar como plantilla",
+      "preview": "Vista previa",
+      "sendTest": "Enviar prueba",
+      "testEmailPlaceholder": "test@email.com",
+      "sendToCount_one": "Enviar a {{count}} destinatario",
+      "sendToCount_other": "Enviar a {{count}} destinatarios"
+    },
+    "templates": {
+      "title": "Plantillas Guardadas",
+      "description": "Reutiliza plantillas de email para campañas recurrentes.",
+      "empty": "Aún no hay plantillas guardadas. Redacta un email y guárdalo como plantilla.",
+      "name": "Nombre",
+      "subject": "Asunto",
+      "created": "Creado",
+      "actions": "Acciones"
+    },
+    "history": {
+      "title": "Historial de Campañas",
+      "description": "Resumen de campañas de email enviadas.",
+      "empty": "Aún no se han enviado campañas.",
+      "subject": "Asunto",
+      "status": "Estado",
+      "recipients": "Destinatarios",
+      "sentFailed": "Enviados / Fallidos",
+      "date": "Fecha",
+      "failed": "{{count}} fallidos"
+    },
+    "status": {
+      "sent": "Enviado",
+      "sending": "Enviando...",
+      "draft": "Borrador"
+    },
+    "confirm": {
+      "title": "¿Enviar campaña?",
+      "description_one": "Esto enviará un email a <1>{{count}} destinatario</1> con asunto \"<3>{{subject}}</3>\". Esta acción no se puede deshacer.",
+      "description_other": "Esto enviará un email a <1>{{count}} destinatarios</1> con asunto \"<3>{{subject}}</3>\". Esta acción no se puede deshacer.",
+      "cancel": "Cancelar",
+      "sendNow": "Enviar ahora"
+    },
+    "previewDialog": {
+      "title": "Vista Previa del Email",
+      "description": "Vista previa con datos de muestra: nombre = \"Jan de Vries\"",
+      "subjectLabel": "Asunto",
+      "close": "Cerrar"
+    },
+    "toasts": {
+      "missingFields": "Campos faltantes",
+      "missingTestDesc": "Rellena asunto, contenido y email de prueba.",
+      "missingTemplateDesc": "Rellena nombre de plantilla, asunto y contenido.",
+      "testSent": "¡Email de prueba enviado!",
+      "testSentDesc": "Se envió un email de prueba a {{email}}.",
+      "testError": "No se pudo enviar el email de prueba.",
+      "templateSaved": "Plantilla guardada",
+      "templateUpdated": "Plantilla actualizada",
+      "templateError": "No se pudo guardar la plantilla.",
+      "templateLoaded": "Plantilla cargada",
+      "templateDeleted": "Plantilla eliminada",
+      "campaignSent": "¡Campaña enviada!",
+      "campaignSentDesc": "Los emails se están enviando a {{count}} destinatarios.",
+      "campaignError": "No se pudo enviar la campaña.",
+      "error": "Error"
+    }
   }
 }
