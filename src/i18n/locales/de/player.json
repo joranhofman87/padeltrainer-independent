@@ -184,7 +184,28 @@
     "success": {
       "title": "Buchung bestätigt!",
       "description": "Deine Einheit wurde erfolgreich gebucht."
-    }
+    },
+    "summaryDescription": "Überprüfe deine Buchung",
+    "signUpToBook": "Registrieren zum Buchen",
+    "numberOfSpots": "Anzahl der Plätze",
+    "total": "Gesamt",
+    "totalSessions": "Gesamt ({{count}} Einheiten)",
+    "selectSlotOrCycle": "Wähle einen Termin oder Trainingszyklus, um fortzufahren",
+    "notesPlaceholderShort": "Besondere Wünsche oder Informationen...",
+    "notesForTrainer": "Hinweise für den Trainer (optional)",
+    "sessionsCount": "{{count}} Einheiten",
+    "bookingInProgress": "Buchung läuft...",
+    "bookEntireCycle": "Gesamten Zyklus buchen ({{count}} Einheiten)",
+    "confirmBooking": "Buchung bestätigen",
+    "trainingSession": "Trainingseinheit",
+    "ofAvailable": "von {{count}} verfügbar",
+    "perSpot": "{{price}} pro Platz",
+    "minPlayersRequired": "Diese Einheit erfordert mindestens {{count}} Spieler",
+    "individualSessions": "Einzelsitzungen",
+    "availableTimeSlots": "Verfügbare Termine",
+    "noSlotsAvailable": "Derzeit keine Termine verfügbar",
+    "noIndividualSessions": "Keine Einzelsitzungen verfügbar",
+    "trainingCyclesHeading": "Trainingszyklen"
   },
   "bookings": {
     "title": "Meine Buchungen",
@@ -335,5 +356,19 @@
       "saveError": "Details konnten nicht gespeichert werden",
       "savedToast": "Ihre Rechnungsdetails wurden aktualisiert. Das PDF wird beim nächsten Herunterladen neu generiert."
     }
+  },
+  "bookingConfirmation": {
+    "requestSentTitle": "Anfrage gesendet!",
+    "requestSentBody": "Deine Buchungsanfrage wurde an {{trainer}} gesendet. Du wirst benachrichtigt, sobald geantwortet wird.",
+    "bookedTitle": "Buchung bestätigt!",
+    "bookedBody": "Deine Stunde mit {{trainer}} ist gebucht. Du erhältst bald eine Bestätigung.",
+    "invoiceNotice": "Du erhältst eine Rechnung vom Trainer zur Zahlung.",
+    "viewMyBookings": "Meine Buchungen ansehen",
+    "browseOtherTrainers": "Andere Trainer ansehen"
+  },
+  "ratingShare": {
+    "linkCopied": "Link kopiert!",
+    "failedToCopy": "Link konnte nicht kopiert werden",
+    "failedToGenerateImage": "Bild konnte nicht erstellt werden"
   }
 }

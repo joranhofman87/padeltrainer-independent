@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Check, Euro, MapPin, Repeat } from 'lucide-react';
@@ -22,13 +23,14 @@ interface CycleBundleListProps {
 }
 
 export function CycleBundleList({ bundles, selectedCyclusId, onSelect }: CycleBundleListProps) {
+  const { t } = useTranslation('player');
   if (bundles.length === 0) return null;
 
   return (
     <div className="mb-6">
       <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
         <Repeat className="h-5 w-5 text-primary" />
-        Training Cycles
+        {t('booking.trainingCyclesHeading')}
       </h3>
       <div className="grid gap-3 sm:grid-cols-2">
         {bundles.map((cyclus) => (

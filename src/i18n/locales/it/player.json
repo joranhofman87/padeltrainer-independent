@@ -216,7 +216,28 @@
     "success": {
       "title": "Booking Confirmed!",
       "description": "Your session has been booked successfully."
-    }
+    },
+    "summaryDescription": "Rivedi la tua prenotazione",
+    "signUpToBook": "Registrati per prenotare",
+    "numberOfSpots": "Numero di posti",
+    "total": "Totale",
+    "totalSessions": "Totale ({{count}} sessioni)",
+    "selectSlotOrCycle": "Seleziona una fascia oraria o un ciclo di allenamento per continuare",
+    "notesPlaceholderShort": "Richieste o informazioni speciali...",
+    "notesForTrainer": "Note per l'allenatore (facoltativo)",
+    "sessionsCount": "{{count}} sessioni",
+    "bookingInProgress": "Prenotazione in corso...",
+    "bookEntireCycle": "Prenota l'intero ciclo ({{count}} sessioni)",
+    "confirmBooking": "Conferma prenotazione",
+    "trainingSession": "Sessione di allenamento",
+    "ofAvailable": "su {{count}} disponibili",
+    "perSpot": "{{price}} a posto",
+    "minPlayersRequired": "Questa sessione richiede almeno {{count}} giocatori",
+    "individualSessions": "Sessioni individuali",
+    "availableTimeSlots": "Fasce orarie disponibili",
+    "noSlotsAvailable": "Nessuna fascia disponibile al momento",
+    "noIndividualSessions": "Nessuna sessione individuale disponibile",
+    "trainingCyclesHeading": "Cicli di allenamento"
   },
   "bookings": {
     "title": "My Bookings",
@@ -367,5 +388,19 @@
       "saveError": "Impossibile salvare i dati",
       "savedToast": "I tuoi dati di fatturazione sono stati aggiornati. Il PDF verrà rigenerato al prossimo download."
     }
+  },
+  "bookingConfirmation": {
+    "requestSentTitle": "Richiesta inviata!",
+    "requestSentBody": "La richiesta di prenotazione è stata inviata a {{trainer}}. Riceverai una notifica appena risponderà.",
+    "bookedTitle": "Prenotazione confermata!",
+    "bookedBody": "La tua lezione con {{trainer}} è prenotata. Riceverai presto una conferma.",
+    "invoiceNotice": "Riceverai una fattura dall'allenatore per il pagamento.",
+    "viewMyBookings": "Vedi le mie prenotazioni",
+    "browseOtherTrainers": "Sfoglia altri allenatori"
+  },
+  "ratingShare": {
+    "linkCopied": "Link copiato!",
+    "failedToCopy": "Impossibile copiare il link",
+    "failedToGenerateImage": "Impossibile generare l'immagine"
   }
 }

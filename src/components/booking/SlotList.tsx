@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Check, Clock, Euro, MapPin, Users } from 'lucide-react';
@@ -31,17 +32,18 @@ interface SlotListProps {
 }
 
 export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSelect }: SlotListProps) {
+  const { t } = useTranslation('player');
   return (
     <div>
       <h3 className="text-lg font-semibold mb-4">
-        {hasCycles ? 'Individual Sessions' : 'Available Time Slots'}
+        {hasCycles ? t('booking.individualSessions') : t('booking.availableTimeSlots')}
       </h3>
       {slots.length === 0 && !hasCycles ? (
         <Card className="p-8 text-center">
-          <p className="text-muted-foreground">No available slots at the moment</p>
+          <p className="text-muted-foreground">{t('booking.noSlotsAvailable')}</p>
         </Card>
       ) : slots.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No individual sessions available</p>
+        <p className="text-sm text-muted-foreground">{t('booking.noIndividualSessions')}</p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {slots.map((slot) => {

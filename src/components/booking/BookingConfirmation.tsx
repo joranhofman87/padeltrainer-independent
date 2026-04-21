@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation, Trans } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Check, SendHorizontal, FileText } from 'lucide-react';
@@ -11,6 +12,7 @@ interface BookingConfirmationProps {
 
 export function BookingConfirmation({ type, trainerName, useManualInvoicing }: BookingConfirmationProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation('player');
 
   if (type === 'request_sent') {
     return (
@@ -19,17 +21,16 @@ export function BookingConfirmation({ type, trainerName, useManualInvoicing }: B
           <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center mx-auto mb-4">
             <SendHorizontal className="h-8 w-8 text-blue-600" />
           </div>
-          <h2 className="text-2xl font-bold mb-2">Request Sent!</h2>
+          <h2 className="text-2xl font-bold mb-2">{t('bookingConfirmation.requestSentTitle')}</h2>
           <p className="text-muted-foreground mb-6">
-            Your booking request has been sent to {trainerName}.
-            You'll be notified once they respond.
+            {t('bookingConfirmation.requestSentBody', { trainer: trainerName })}
           </p>
           <div className="space-y-3">
             <Button className="w-full" onClick={() => navigate('/app/player/bookings')}>
-              View My Bookings
+              {t('bookingConfirmation.viewMyBookings')}
             </Button>
             <Button variant="outline" className="w-full" onClick={() => navigate('/trainers')}>
-              Browse Other Trainers
+              {t('bookingConfirmation.browseOtherTrainers')}
             </Button>
           </div>
         </Card>
@@ -43,23 +44,22 @@ export function BookingConfirmation({ type, trainerName, useManualInvoicing }: B
         <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
           <Check className="h-8 w-8 text-green-600" />
         </div>
-        <h2 className="text-2xl font-bold mb-2">Booking Confirmed!</h2>
+        <h2 className="text-2xl font-bold mb-2">{t('bookingConfirmation.bookedTitle')}</h2>
         <p className="text-muted-foreground mb-6">
-          Your lesson with {trainerName} has been booked.
-          You'll receive a confirmation soon.
+          {t('bookingConfirmation.bookedBody', { trainer: trainerName })}
         </p>
         {useManualInvoicing && (
           <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg mb-4 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
             <FileText className="h-4 w-4" />
-            You'll receive an invoice from the trainer for payment.
+            {t('bookingConfirmation.invoiceNotice')}
           </div>
         )}
         <div className="space-y-3">
           <Button className="w-full" onClick={() => navigate('/app/player/bookings')}>
-            View My Bookings
+            {t('bookingConfirmation.viewMyBookings')}
           </Button>
           <Button variant="outline" className="w-full" onClick={() => navigate('/trainers')}>
-            Browse Other Trainers
+            {t('bookingConfirmation.browseOtherTrainers')}
           </Button>
         </div>
       </Card>
