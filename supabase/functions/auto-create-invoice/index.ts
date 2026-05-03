@@ -519,9 +519,34 @@ serve(async (req) => {
       .single();
 
     if (insertError) {
+      // Race condition lost: unique index rejected the duplicate. Return the winning invoice.
+      if ((insertError as any).code === "23505") {
+        const dupeFetch = supabase
+          .from("invoices")
+          .select("id, invoice_number")
+          .eq("trainer_id", trainerId)
+          .not("status", "eq", "cancelled")
+          .contains("booking_ids", bookingIds);
+        if (playerId) dupeFetch.eq("player_id", playerId);
+        else if (guestPlayerId) dupeFetch.eq("guest_player_id", guestPlayerId);
+        const { data: winner } = await dupeFetch.maybeSingle();
+        if (winner) {
+          logStep("Race lost - returning existing invoice", { existingId: winner.id, existingNumber: winner.invoice_number });
+          return new Response(
+            JSON.stringify({ success: true, invoiceId: winner.id, invoiceNumber: winner.invoice_number, deduped: true }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
       logStep("Failed to insert invoice", { error: insertError.message });
       throw new Error(`Failed to create invoice: ${insertError.message}`);
     }
+
+    // Advance the next-number counter only after a successful insert
+    await supabase
+      .from(invoiceProfileTable)
+      .update({ invoice_next_number: sequence + 1 })
+      .eq("id", invoiceProfileId);
 
     logStep("Invoice created", { invoiceId: invoice.id, invoiceNumber, status: invoiceStatus });
 
