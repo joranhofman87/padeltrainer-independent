@@ -83,6 +83,9 @@ export default function AcademyInvoices() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
+  const [bulkDueOpen, setBulkDueOpen] = useState(false);
+  const [bulkDueDate, setBulkDueDate] = useState<Date | undefined>(undefined);
+
   // Clear selection when filters/tab change
   useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, searchQuery]);
 
