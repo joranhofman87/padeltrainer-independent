@@ -484,7 +484,30 @@ export default function AcademyInvoices() {
     }
   };
 
-  const handleDownloadPdf = async (invoice: Invoice) => {
+  const handleBulkUpdateDueDate = async () => {
+    if (!bulkDueDate) return;
+    setBulkRunning(true);
+    const ids = [...selectedIds];
+    // Format as YYYY-MM-DD to avoid timezone shifts
+    const yyyy = bulkDueDate.getFullYear();
+    const mm = String(bulkDueDate.getMonth() + 1).padStart(2, "0");
+    const dd = String(bulkDueDate.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const { error } = await supabase
+      .from("invoices")
+      .update({ due_date: dateStr })
+      .in("id", ids);
+    setBulkRunning(false);
+    if (error) {
+      toast.error(t("invoices.bulk.dueDateError", "Failed to update due date"));
+      return;
+    }
+    setBulkDueOpen(false);
+    setBulkDueDate(undefined);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    toast.success(t("invoices.bulk.dueDateDone", "Due date updated for {{count}} invoices", { count: ids.length }));
+  };
     try {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
       const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
