@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, differenceInWeeks, parseISO, getDay, eachWeekOfInterval, addDays, isSameDay } from 'date-fns';
@@ -117,6 +117,7 @@ export default function ProposalOverviewPage() {
   const [fetchedSlots, setFetchedSlots] = useState<SlotWithOccupancy[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [pageStatus, setPageStatus] = useState<PageStatus>('idle');
+  const finalizingRef = useRef(false);
   const [tz, setTz] = useState<string | undefined>(stateTimezone);
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [excludedDates, setExcludedDates] = useState<string[]>([]);
@@ -325,7 +326,8 @@ export default function ProposalOverviewPage() {
   };
 
   const handleApproveAndBook = async () => {
-    if (!cycleId) return;
+    if (!cycleId || finalizingRef.current) return;
+    finalizingRef.current = true;
     setPageStatus('booking');
     try {
       const result = await finalizeProposals(cycleId);
@@ -352,6 +354,8 @@ export default function ProposalOverviewPage() {
       logger.error('Error finalizing proposals:', err);
       toast.error(err.message || 'Failed to finalize proposals');
       setPageStatus('idle');
+    } finally {
+      finalizingRef.current = false;
     }
   };
 
