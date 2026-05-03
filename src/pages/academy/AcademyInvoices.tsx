@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -9,20 +9,24 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
+import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { format } from "date-fns";
 import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { nl, enUS } from "date-fns/locale";
+
 
 interface Invoice {
   id: string;
@@ -69,7 +73,23 @@ export default function AcademyInvoices() {
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
+
+  // Clear selection when filters/tab change
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, searchQuery]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
 
   const formatEuro = (amount: number) =>
     amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -399,6 +419,64 @@ export default function AcademyInvoices() {
     },
   });
 
+  // ========== Bulk actions ==========
+  const selectedInvoices = invoices.filter((i) => selectedIds.has(i.id));
+
+  const toggleSelectAllVisible = (visible: Invoice[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = visible.length > 0 && visible.every((i) => next.has(i.id));
+      if (allSelected) {
+        visible.forEach((i) => next.delete(i.id));
+      } else {
+        visible.forEach((i) => next.add(i.id));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkReset = async () => {
+    setBulkRunning(true);
+    const ids = [...selectedIds];
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "draft", sent_at: null, paid_at: null })
+      .in("id", ids);
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    if (error) {
+      toast.error(t("invoices.bulk.resetError", "Failed to reset invoices"));
+      return;
+    }
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    toast.success(t("invoices.bulk.resetDone", "{{count}} invoices reset to draft", { count: ids.length }));
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkRunning(true);
+    const drafts = selectedInvoices.filter((i) => i.status === "draft").map((i) => i.id);
+    const others = selectedInvoices.filter((i) => i.status !== "draft").map((i) => i.id);
+    let ok = 0, fail = 0;
+    if (drafts.length) {
+      const { error } = await supabase.from("invoices").delete().in("id", drafts);
+      if (error) fail += drafts.length; else ok += drafts.length;
+    }
+    if (others.length) {
+      const { error } = await supabase.from("invoices").update({ status: "cancelled" }).in("id", others);
+      if (error) fail += others.length; else ok += others.length;
+    }
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    if (fail > 0) {
+      toast.error(t("invoices.bulk.deletePartial", "{{ok}} processed, {{fail}} failed", { ok, fail }));
+    } else {
+      toast.success(t("invoices.bulk.deleteDone", "{{count}} invoices removed", { count: ok }));
+    }
+  };
+
   const handleDownloadPdf = async (invoice: Invoice) => {
     try {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
@@ -531,7 +609,34 @@ export default function AcademyInvoices() {
         </div>
       )}
 
-      {/* Tabs + Filters + Table */}
+      {/* Bulk Selection Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 shadow-sm">
+          <span className="text-sm font-medium">
+            {t("invoices.bulk.selected", "{{count}} selected", { count: selectedIds.size })}
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+            <X className="h-4 w-4 mr-1" />
+            {t("invoices.bulk.clear", "Clear")}
+          </Button>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setBulkEmailOpen(true)}>
+              <Mail className="h-4 w-4 mr-1.5" />
+              {t("invoices.bulk.sendEmail", "Send email")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirmBulk("reset")}>
+              <RotateCcw className="h-4 w-4 mr-1.5" />
+              {t("invoices.bulk.resetToDraft", "Reset to draft")}
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => setConfirmBulk("delete")}>
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              {t("invoices.bulk.delete", "Delete")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <TabsList>
@@ -610,6 +715,13 @@ export default function AcademyInvoices() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={filteredInvoices.length > 0 && filteredInvoices.every((i) => selectedIds.has(i.id))}
+                            onCheckedChange={() => toggleSelectAllVisible(filteredInvoices)}
+                            aria-label="Select all"
+                          />
+                        </TableHead>
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
                         <TableHead>{t("invoices.player", "Player")}</TableHead>
                         <TableHead>{t("invoices.date", "Date")}</TableHead>
@@ -648,6 +760,13 @@ export default function AcademyInvoices() {
                           className="cursor-pointer"
                           onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}
                         >
+                          <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedIds.has(inv.id)}
+                              onCheckedChange={() => toggleSelect(inv.id)}
+                              aria-label={`Select ${inv.invoice_number}`}
+                            />
+                          </TableCell>
                           <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                           <TableCell>{inv.player_name}</TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
@@ -701,10 +820,19 @@ export default function AcademyInvoices() {
                 {filteredInvoices.map((inv) => (
                   <Card key={inv.id} className="cursor-pointer" onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}>
                     <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <p className="font-mono text-sm font-medium">{inv.invoice_number}</p>
-                          <p className="text-sm text-muted-foreground">{inv.player_name}</p>
+                      <div className="flex items-start justify-between mb-2 gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
+                            <Checkbox
+                              checked={selectedIds.has(inv.id)}
+                              onCheckedChange={() => toggleSelect(inv.id)}
+                              aria-label={`Select ${inv.invoice_number}`}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-mono text-sm font-medium truncate">{inv.invoice_number}</p>
+                            <p className="text-sm text-muted-foreground truncate">{inv.player_name}</p>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1.5">
                           {getStatusBadge(inv)}
@@ -755,6 +883,48 @@ export default function AcademyInvoices() {
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
       />
+
+      <BulkInvoiceEmailDialog
+        open={bulkEmailOpen}
+        onClose={() => setBulkEmailOpen(false)}
+        invoiceIds={[...selectedIds]}
+        language={i18n.language || "nl"}
+        onSent={() => {
+          setSelectedIds(new Set());
+          queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+        }}
+      />
+
+      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmBulk === "reset"
+                ? t("invoices.bulk.confirmResetTitle", "Reset {{count}} invoices to draft?", { count: selectedIds.size })
+                : t("invoices.bulk.confirmDeleteTitle", "Delete {{count}} invoices?", { count: selectedIds.size })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmBulk === "reset"
+                ? t("invoices.bulk.confirmResetDesc", "Status, sent date and paid date will be cleared. This cannot be undone.")
+                : t("invoices.bulk.confirmDeleteDesc", "Drafts will be removed permanently. Sent invoices will be cancelled.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkRunning}>{t("common.cancel", "Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmBulk === "reset") handleBulkReset();
+                else if (confirmBulk === "delete") handleBulkDelete();
+              }}
+              disabled={bulkRunning}
+            >
+              {bulkRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              {t("common.confirm", "Confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
