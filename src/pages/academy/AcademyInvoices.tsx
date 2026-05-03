@@ -419,6 +419,64 @@ export default function AcademyInvoices() {
     },
   });
 
+  // ========== Bulk actions ==========
+  const selectedInvoices = invoices.filter((i) => selectedIds.has(i.id));
+
+  const toggleSelectAllVisible = (visible: Invoice[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = visible.length > 0 && visible.every((i) => next.has(i.id));
+      if (allSelected) {
+        visible.forEach((i) => next.delete(i.id));
+      } else {
+        visible.forEach((i) => next.add(i.id));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkReset = async () => {
+    setBulkRunning(true);
+    const ids = [...selectedIds];
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "draft", sent_at: null, paid_at: null })
+      .in("id", ids);
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    if (error) {
+      toast.error(t("invoices.bulk.resetError", "Failed to reset invoices"));
+      return;
+    }
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    toast.success(t("invoices.bulk.resetDone", "{{count}} invoices reset to draft", { count: ids.length }));
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkRunning(true);
+    const drafts = selectedInvoices.filter((i) => i.status === "draft").map((i) => i.id);
+    const others = selectedInvoices.filter((i) => i.status !== "draft").map((i) => i.id);
+    let ok = 0, fail = 0;
+    if (drafts.length) {
+      const { error } = await supabase.from("invoices").delete().in("id", drafts);
+      if (error) fail += drafts.length; else ok += drafts.length;
+    }
+    if (others.length) {
+      const { error } = await supabase.from("invoices").update({ status: "cancelled" }).in("id", others);
+      if (error) fail += others.length; else ok += others.length;
+    }
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    if (fail > 0) {
+      toast.error(t("invoices.bulk.deletePartial", "{{ok}} processed, {{fail}} failed", { ok, fail }));
+    } else {
+      toast.success(t("invoices.bulk.deleteDone", "{{count}} invoices removed", { count: ok }));
+    }
+  };
+
   const handleDownloadPdf = async (invoice: Invoice) => {
     try {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
