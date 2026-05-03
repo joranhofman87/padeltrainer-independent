@@ -326,7 +326,8 @@ export default function ProposalOverviewPage() {
   };
 
   const handleApproveAndBook = async () => {
-    if (!cycleId) return;
+    if (!cycleId || finalizingRef.current) return;
+    finalizingRef.current = true;
     setPageStatus('booking');
     try {
       const result = await finalizeProposals(cycleId);
@@ -353,6 +354,8 @@ export default function ProposalOverviewPage() {
       logger.error('Error finalizing proposals:', err);
       toast.error(err.message || 'Failed to finalize proposals');
       setPageStatus('idle');
+    } finally {
+      finalizingRef.current = false;
     }
   };
 
