@@ -705,7 +705,11 @@ export default function AcademyInvoices() {
             {trainers.length > 0 && (
             <Select value={trainerFilter} onValueChange={setTrainerFilter}>
                 <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")} />
+                  <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")}>
+                    {trainerFilter === "all"
+                      ? t("invoices.allTrainers", "Alle trainers")
+                      : (trainers as any[]).find(tr => tr.id === trainerFilter)?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t("invoices.allTrainers", "Alle trainers")}</SelectItem>
@@ -718,7 +722,11 @@ export default function AcademyInvoices() {
             {academyLocations.length > 0 && (
             <Select value={locationFilter} onValueChange={setLocationFilter}>
                 <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")} />
+                  <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")}>
+                    {locationFilter === "all"
+                      ? t("invoices.allLocations", "Alle locaties")
+                      : (academyLocations as any[]).find(l => l.id === locationFilter)?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t("invoices.allLocations", "Alle locaties")}</SelectItem>
