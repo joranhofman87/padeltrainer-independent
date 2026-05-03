@@ -48,7 +48,11 @@ const handler = async (req: Request): Promise<Response> => {
       authenticatedUserId = user.id;
     }
 
-    const { invoiceId } = await req.json();
+    const body = await req.json();
+    const { invoiceId } = body;
+    const customMessageRaw = typeof body.customMessage === "string" ? body.customMessage : "";
+    const customMessage = customMessageRaw.slice(0, 2000);
+    const language = (typeof body.language === "string" ? body.language : "nl").toLowerCase().slice(0, 2);
     if (!invoiceId) {
       return new Response(
         JSON.stringify({ error: "Missing invoiceId" }),
