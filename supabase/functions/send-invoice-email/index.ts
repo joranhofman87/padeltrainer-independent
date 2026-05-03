@@ -168,13 +168,33 @@ const handler = async (req: Request): Promise<Response> => {
       ? `https://padeltrainer.ai/nl/academies/${slug}/pay/${invoice.public_token}`
       : null;
 
+    const localeMap: Record<string, string> = {
+      nl: "nl-NL", en: "en-GB", es: "es-ES", de: "de-DE", fr: "fr-FR", it: "it-IT",
+    };
+    const numLocale = localeMap[language] || "nl-NL";
     const formatCurrency = (amount: number) =>
-      new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(amount);
+      new Intl.NumberFormat(numLocale, { style: "currency", currency: "EUR" }).format(amount);
 
     const formatDate = (dateStr: string) => {
       const d = new Date(dateStr);
-      return d.toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
+      return d.toLocaleDateString(numLocale, { day: "numeric", month: "long", year: "numeric" });
     };
+
+    const T: Record<string, Record<string, string>> = {
+      nl: { hi: "Hallo", invoice: "Factuur", from: "Van", number: "Factuurnummer", date: "Factuurdatum", due: "Vervaldatum", amount: "Bedrag", vat: "BTW", cta: "Bekijk & Betaal Factuur", orCopy: "Of kopieer deze link", sentVia: "Verzonden via PadelTrainer.ai namens", subject: "Factuur" },
+      en: { hi: "Hi", invoice: "Invoice", from: "From", number: "Invoice number", date: "Invoice date", due: "Due date", amount: "Amount", vat: "VAT", cta: "View & Pay Invoice", orCopy: "Or copy this link", sentVia: "Sent via PadelTrainer.ai on behalf of", subject: "Invoice" },
+      es: { hi: "Hola", invoice: "Factura", from: "De", number: "Número de factura", date: "Fecha de factura", due: "Fecha de vencimiento", amount: "Importe", vat: "IVA", cta: "Ver y Pagar Factura", orCopy: "O copia este enlace", sentVia: "Enviado vía PadelTrainer.ai en nombre de", subject: "Factura" },
+      de: { hi: "Hallo", invoice: "Rechnung", from: "Von", number: "Rechnungsnummer", date: "Rechnungsdatum", due: "Fälligkeitsdatum", amount: "Betrag", vat: "MwSt.", cta: "Rechnung Ansehen & Bezahlen", orCopy: "Oder diesen Link kopieren", sentVia: "Gesendet über PadelTrainer.ai im Auftrag von", subject: "Rechnung" },
+      fr: { hi: "Bonjour", invoice: "Facture", from: "De", number: "Numéro de facture", date: "Date de facture", due: "Date d'échéance", amount: "Montant", vat: "TVA", cta: "Voir et Payer la Facture", orCopy: "Ou copiez ce lien", sentVia: "Envoyé via PadelTrainer.ai pour le compte de", subject: "Facture" },
+      it: { hi: "Ciao", invoice: "Fattura", from: "Da", number: "Numero fattura", date: "Data fattura", due: "Data di scadenza", amount: "Importo", vat: "IVA", cta: "Visualizza e Paga Fattura", orCopy: "Oppure copia questo link", sentVia: "Inviato tramite PadelTrainer.ai per conto di", subject: "Fattura" },
+    };
+    const tr = T[language] || T.nl;
+
+    const firstName = (invoice.player_name || "").split(" ")[0] || invoice.player_name || "";
+    const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+    const customHtml = customMessage.trim()
+      ? `<div style="margin: 16px 0 24px; color:#374151; font-size:14px; line-height:1.6; white-space:pre-wrap;">${escapeHtml(customMessage)}</div>`
+      : "";
 
     const resend = new Resend(resendApiKey);
     const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
@@ -182,32 +202,34 @@ const handler = async (req: Request): Promise<Response> => {
     const { error: sendError } = await resend.emails.send({
       from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
       to: [recipientEmail],
-      subject: `Factuur ${invoice.invoice_number} - ${formatCurrency(invoice.total)}`,
+      subject: `${tr.subject} ${invoice.invoice_number} - ${formatCurrency(invoice.total)}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           ${EMAIL_LOGO}
-          <h2 style="color: #1a1a1a; margin-bottom: 8px;">Factuur ${invoice.invoice_number}</h2>
-          <p style="color: #6b7280; margin-bottom: 24px;">Van ${businessName}</p>
-          
+          <p style="font-size:16px; color:#1a1a1a; margin:0 0 4px;">${tr.hi} ${escapeHtml(firstName)},</p>
+          ${customHtml}
+          <h2 style="color: #1a1a1a; margin-bottom: 8px;">${tr.invoice} ${invoice.invoice_number}</h2>
+          <p style="color: #6b7280; margin-bottom: 24px;">${tr.from} ${escapeHtml(businessName)}</p>
+
           <table style="border-collapse: collapse; width: 100%; margin-bottom: 24px;">
             <tr>
-              <td style="padding: 8px 12px 8px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">Factuurnummer</td>
+              <td style="padding: 8px 12px 8px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">${tr.number}</td>
               <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-weight: 500;">${invoice.invoice_number}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 12px 8px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">Factuurdatum</td>
+              <td style="padding: 8px 12px 8px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">${tr.date}</td>
               <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">${formatDate(invoice.invoice_date)}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 12px 8px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">Vervaldatum</td>
+              <td style="padding: 8px 12px 8px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">${tr.due}</td>
               <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">${formatDate(invoice.due_date)}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 12px 8px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">Bedrag</td>
+              <td style="padding: 8px 12px 8px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">${tr.amount}</td>
               <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-weight: 700; font-size: 18px;">${formatCurrency(invoice.total)}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 12px 8px 0; color: #6b7280;">BTW</td>
+              <td style="padding: 8px 12px 8px 0; color: #6b7280;">${tr.vat}</td>
               <td style="padding: 8px 0;">${formatCurrency(invoice.vat_amount)} (${invoice.vat_rate}%)</td>
             </tr>
           </table>
@@ -215,17 +237,17 @@ const handler = async (req: Request): Promise<Response> => {
           ${publicUrl ? `
             <div style="text-align: center; margin: 32px 0;">
               <a href="${publicUrl}" style="display: inline-block; background: #f45d25; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">
-                Bekijk & Betaal Factuur
+                ${tr.cta}
               </a>
             </div>
             <p style="text-align: center; color: #9ca3af; font-size: 13px; margin-top: 8px;">
-              Of kopieer deze link: <a href="${publicUrl}" style="color: #f45d25;">${publicUrl}</a>
+              ${tr.orCopy}: <a href="${publicUrl}" style="color: #f45d25;">${publicUrl}</a>
             </p>
           ` : ""}
-          
+
           <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0;" />
           <p style="font-size: 12px; color: #9ca3af; text-align: center;">
-            Verzonden via PadelTrainer.ai namens ${businessName}
+            ${tr.sentVia} ${escapeHtml(businessName)}
           </p>
         </div>
       `,
