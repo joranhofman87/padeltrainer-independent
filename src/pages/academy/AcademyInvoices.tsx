@@ -73,7 +73,23 @@ export default function AcademyInvoices() {
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
+
+  // Clear selection when filters/tab change
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, searchQuery]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
 
   const formatEuro = (amount: number) =>
     amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
