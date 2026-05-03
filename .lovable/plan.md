@@ -1,135 +1,59 @@
-## Goal
+## Probleem
 
-Fix the duplicate invoice for Martijn (26000207 / 26000208 created 155ms apart) and prevent it from happening again.
+Bij het aanmaken van een factuur via `auto-create-invoice` wordt `sent_at = now()` direct ingevuld zodra de status "sent" (gefinaliseerd) is, ook al is er geen e-mail verstuurd. De UI leidt het label "Verstuurd" / "Te laat" af van `sent_at`, dus elke gefinaliseerde factuur lijkt verstuurd.
 
----
+Daarnaast stempelt `send-invoice-email` op dit moment `sent_at` niet na een echt verstuurde mail. We willen `sent_at` puur reserveren voor het werkelijke e-mailmoment.
 
-## Root cause
+## Aanpak
 
-The `finalize-proposals` flow was triggered twice in parallel (likely a double-click on "Approve & Book" in `ProposalOverviewPage`). Each call ran `auto-create-invoice` for Martijn's bookings. The dedup check in `auto-create-invoice` (lines 410-439) is a check-then-insert pattern - both parallel runs read "no existing invoice", then both inserted. Result: two identical invoices with sequential numbers.
+**1. Edge function `auto-create-invoice`**
+- Verwijder het automatisch zetten van `sent_at` bij status `sent` (regel 515).
+- Behoud `sent_at = now()` alleen wanneer de factuur direct als `paid` wordt aangemaakt (Mollie-flow), aangezien een betaalde factuur impliciet bezorgd is.
 
----
+**2. Edge function `send-invoice-email`**
+- Na succesvolle Resend-verzending: update de factuur met `sent_at = now()` als die nog `null` is, en zet `status = 'sent'` als hij nog `draft` was. Zo wordt `sent_at` de bron-van-waarheid voor "echt verstuurd".
 
-## Step 1 - Data cleanup (immediate)
+**3. UI label-logica (`AcademyInvoices.tsx` + `TrainerInvoices.tsx`)**
+Huidige `getComputedStatus`:
+```ts
+if (inv.sent_at && due < now) return "overdue";
+if (inv.sent_at) return "sent";
+return "draft";
+```
+Probleem: facturen met `status='sent'` zonder `sent_at` vallen nu onder "draft", wat onjuist is (ze zijn wel gefinaliseerd, alleen niet gemaild).
 
-Cancel the later duplicate so Martijn isn't billed twice:
+Nieuw gedrag:
+```ts
+if (inv.status === "paid") return "paid";
+if (inv.status === "cancelled") return "cancelled";
+if (inv.sent_at && due < now) return "overdue";
+if (inv.sent_at) return "sent";              // echt gemaild
+if (inv.status === "draft") return "draft";  // concept
+return "open";                                // gefinaliseerd, niet gemaild
+```
+Voeg label/badge toe voor `open` (NL: "Open", EN: "Open") met neutrale styling. Werk filters en tellers (`draftInvoices`, statusfilter) bij zodat `open` een eigen filteroptie krijgt en niet ten onrechte als concept telt.
 
+**4. Data-cleanup migratie**
+Wis `sent_at` voor facturen waar het automatisch werd gestempeld bij creatie (geen bewijs van echte verzending). Heuristiek:
 ```sql
 UPDATE invoices
-SET status = 'cancelled'
-WHERE id = 'b3f5498a-7710-4eda-85f4-df6ab84c240b';  -- 26000208
+SET sent_at = NULL
+WHERE status = 'sent'
+  AND paid_at IS NULL
+  AND sent_at IS NOT NULL
+  AND ABS(EXTRACT(EPOCH FROM (sent_at - created_at))) < 5;
 ```
+Dit raakt facturen waar `sent_at` binnen 5 seconden van `created_at` ligt (auto-stempel). Handmatig via "Mark as sent" gezette stempels (later moment) blijven intact. Betaalde facturen blijven onaangeraakt.
 
-Keep `26000207` as the active invoice.
+## Bestanden
 
----
+- `supabase/functions/auto-create-invoice/index.ts` — verwijder `sent_at` bij status `sent`.
+- `supabase/functions/send-invoice-email/index.ts` — stempel `sent_at` + `status` na succesvolle verzending.
+- `src/pages/academy/AcademyInvoices.tsx` — uitgebreide `getComputedStatus`, `open`-badge, filter-update.
+- `src/pages/trainer/TrainerInvoices.tsx` — zelfde wijzigingen voor parity.
+- Nieuwe SQL-migratie voor cleanup.
 
-## Step 2 - Database-level guard (prevents recurrence at the source)
+## Niet in scope
 
-Add a partial unique index on `invoices` so two non-cancelled invoices for the same recipient + trainer + booking set cannot coexist. Because `booking_ids` is a uuid[], we use an MD5 hash of the sorted array as the index key.
-
-Migration:
-
-```sql
--- Helper: stable hash of the booking_ids array (order-independent)
-CREATE OR REPLACE FUNCTION public.invoice_booking_set_key(_ids uuid[])
-RETURNS text LANGUAGE sql IMMUTABLE AS $$
-  SELECT md5(array_to_string(
-    (SELECT array_agg(x ORDER BY x) FROM unnest(_ids) AS x),
-    ','
-  ))
-$$;
-
--- Two partial unique indexes (one per recipient column),
--- only enforced for active (non-cancelled) invoices with bookings.
-CREATE UNIQUE INDEX uniq_invoice_active_player_bookings
-  ON public.invoices (
-    trainer_id,
-    player_id,
-    public.invoice_booking_set_key(booking_ids)
-  )
-  WHERE status <> 'cancelled'
-    AND player_id IS NOT NULL
-    AND array_length(booking_ids, 1) > 0;
-
-CREATE UNIQUE INDEX uniq_invoice_active_guest_bookings
-  ON public.invoices (
-    trainer_id,
-    guest_player_id,
-    public.invoice_booking_set_key(booking_ids)
-  )
-  WHERE status <> 'cancelled'
-    AND guest_player_id IS NOT NULL
-    AND array_length(booking_ids, 1) > 0;
-```
-
-If a duplicate insert is attempted, Postgres rejects it with a unique-violation error - even under perfect race conditions.
-
----
-
-## Step 3 - Edge function: handle the new constraint gracefully
-
-Update `supabase/functions/auto-create-invoice/index.ts`:
-
-- Wrap the existing duplicate-guard + insert so that on Postgres error code `23505` (unique violation) we re-query the existing invoice and return the same `{ success: true, deduped: true }` response the dedup branch already returns. This keeps the caller (`finalize-proposals`) happy and avoids a noisy error.
-
-```ts
-if (insertError) {
-  if ((insertError as any).code === '23505') {
-    // Race lost - fetch the winning invoice and return it
-    const { data: winner } = await supabase
-      .from('invoices')
-      .select('id, invoice_number')
-      .eq('trainer_id', trainerId)
-      .contains('booking_ids', bookingIds)
-      .not('status', 'eq', 'cancelled')
-      .maybeSingle();
-    if (winner) {
-      return new Response(
-        JSON.stringify({ success: true, invoiceId: winner.id, invoiceNumber: winner.invoice_number, deduped: true }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-  }
-  throw new Error(`Failed to create invoice: ${insertError.message}`);
-}
-```
-
-Also, if the insert is rejected we must NOT have advanced `invoice_next_number`. Move the `invoice_next_number` increment to AFTER a successful insert (currently lines 472-476 run before insert).
-
----
-
-## Step 4 - Frontend double-click guard
-
-In `src/pages/ProposalOverviewPage.tsx` `handleApproveAndBook` (line 327): React state is async, so two clicks in the same tick both see `pageStatus === 'idle'`. Add a synchronous `useRef` lock:
-
-```ts
-const finalizingRef = useRef(false);
-
-const handleApproveAndBook = async () => {
-  if (!cycleId || finalizingRef.current) return;
-  finalizingRef.current = true;
-  setPageStatus('booking');
-  try {
-    // ... existing logic
-  } finally {
-    finalizingRef.current = false;
-  }
-};
-```
-
-Also disable the button when `pageStatus === 'booking'` (verify the button already does this; if not, add `disabled={pageStatus === 'booking'}`).
-
----
-
-## Files touched
-
-- New migration: unique index + helper function
-- `supabase/functions/auto-create-invoice/index.ts` - 23505 fallback + reorder seq increment
-- `src/pages/ProposalOverviewPage.tsx` - useRef guard + disabled button
-- One-off SQL update to cancel invoice `26000208`
-
-## Out of scope
-
-- No UI changes for admins to manually merge duplicates - the constraint should make that unnecessary.
-- The same race could in theory hit `BookLesson` / `AddSlotDialog` callers too, but those are single-user flows and the new DB constraint protects them automatically.
+- Geen aparte `email_log` tabel (overkill voor nu); `sent_at` blijft de marker.
+- Geen wijziging aan `BulkInvoiceEmailDialog` of "Mark as sent"-knop, die zetten al correct `sent_at`.

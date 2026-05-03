@@ -512,7 +512,6 @@ serve(async (req) => {
         prices_include_vat: slotPricesIncludeVat,
         status: invoiceStatus,
         booking_ids: bookingIds,
-        ...(invoiceStatus === "sent" ? { sent_at: new Date().toISOString() } : {}),
         ...(allPaid ? { paid_at: new Date().toISOString(), sent_at: new Date().toISOString() } : {}),
       })
       .select()
