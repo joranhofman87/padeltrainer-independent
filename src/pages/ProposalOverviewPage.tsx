@@ -117,6 +117,7 @@ export default function ProposalOverviewPage() {
   const [fetchedSlots, setFetchedSlots] = useState<SlotWithOccupancy[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [pageStatus, setPageStatus] = useState<PageStatus>('idle');
+  const finalizingRef = useRef(false);
   const [tz, setTz] = useState<string | undefined>(stateTimezone);
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [excludedDates, setExcludedDates] = useState<string[]>([]);
