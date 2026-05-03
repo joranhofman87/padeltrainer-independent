@@ -1,49 +1,135 @@
 ## Goal
 
-Allow academy admins on `/app/academy/invoices` to select multiple invoices and run bulk actions: reset status to draft, send personalized email, or delete.
+Fix the duplicate invoice for Martijn (26000207 / 26000208 created 155ms apart) and prevent it from happening again.
 
-## UI changes — `src/pages/academy/AcademyInvoices.tsx`
+---
 
-1. Add a checkbox column (leftmost) in both the desktop table and mobile cards. Header has a "select all visible" checkbox. Clicking checkboxes does not trigger row navigation (stopPropagation).
-2. Track `selectedIds: Set<string>` in state, scoped to the active tab. Clear on tab/filter change.
-3. When `selectedIds.size > 0`, render a sticky bulk action bar above the table:
-   - "X selected" + "Clear" link
-   - Buttons: **Reset to draft**, **Send email**, **Delete**
-4. **Reset to draft** — confirm dialog. Updates selected invoices: `status='draft'`, `sent_at=null`, `paid_at=null`. Skips already-draft. Toast with count.
-5. **Delete** — confirm dialog. For drafts: hard delete; for others: set `status='cancelled'` (matches existing single-row logic).
-6. **Send email** — opens a new `BulkInvoiceEmailDialog` (see below).
+## Root cause
 
-## New component — `src/components/invoices/BulkInvoiceEmailDialog.tsx`
+The `finalize-proposals` flow was triggered twice in parallel (likely a double-click on "Approve & Book" in `ProposalOverviewPage`). Each call ran `auto-create-invoice` for Martijn's bookings. The dedup check in `auto-create-invoice` (lines 410-439) is a check-then-insert pattern - both parallel runs read "no existing invoice", then both inserted. Result: two identical invoices with sequential numbers.
 
-- Props: `open`, `onClose`, `invoiceIds: string[]`, `onSent`.
-- Shows recipient count and a `<Textarea>` for the custom message (optional, with placeholder explaining it will appear after the greeting).
-- Optional checkbox: "Also mark as sent" (default on for drafts).
-- "Send" button calls `send-invoice-email` for each invoice in sequence with `{ invoiceId, customMessage }`, collects results, shows a summary toast (sent / no email / failed), then invalidates the query.
+---
 
-## Edge function changes — `supabase/functions/send-invoice-email/index.ts`
+## Step 1 - Data cleanup (immediate)
 
-1. Accept optional `customMessage: string` in request body. Validate it (string, max ~2000 chars, escape HTML before injecting).
-2. In the email HTML template, insert a paragraph containing the custom message between the greeting (`Hi {first name},`) and the existing invoice details block. If empty, omit the paragraph.
-3. Greeting already uses player first name (verify and standardize: derive `firstName = player_name.split(' ')[0]`).
-4. Localize the static template strings using the academy's `default_invoice_language` (already stored on academy_profiles — look up; fallback to `nl`). Build small inline dictionaries for `nl/en/es/de/fr/it` covering greeting, intro, "Details", "Pay now" button, and footer. Payment link (`/pay/{public_token}`) and PDF attachment logic remain unchanged.
+Cancel the later duplicate so Martijn isn't billed twice:
 
-## Translations
+```sql
+UPDATE invoices
+SET status = 'cancelled'
+WHERE id = 'b3f5498a-7710-4eda-85f4-df6ab84c240b';  -- 26000208
+```
 
-Add `invoices.bulk.*` keys to `src/i18n/locales/{en,nl,es,de,fr,it}/academy.json`:
-- `selected`, `clear`, `resetToDraft`, `sendEmail`, `delete`
-- Confirmation dialog titles/descriptions
-- `bulkEmailDialog.title`, `recipientCount`, `customMessageLabel`, `customMessagePlaceholder`, `markAsSent`, `send`, `sending`
-- Result toast templates: `bulkResetDone`, `bulkDeleteDone`, `bulkEmailDone` (with `{{sent}}/{{noEmail}}/{{failed}}`)
+Keep `26000207` as the active invoice.
+
+---
+
+## Step 2 - Database-level guard (prevents recurrence at the source)
+
+Add a partial unique index on `invoices` so two non-cancelled invoices for the same recipient + trainer + booking set cannot coexist. Because `booking_ids` is a uuid[], we use an MD5 hash of the sorted array as the index key.
+
+Migration:
+
+```sql
+-- Helper: stable hash of the booking_ids array (order-independent)
+CREATE OR REPLACE FUNCTION public.invoice_booking_set_key(_ids uuid[])
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT md5(array_to_string(
+    (SELECT array_agg(x ORDER BY x) FROM unnest(_ids) AS x),
+    ','
+  ))
+$$;
+
+-- Two partial unique indexes (one per recipient column),
+-- only enforced for active (non-cancelled) invoices with bookings.
+CREATE UNIQUE INDEX uniq_invoice_active_player_bookings
+  ON public.invoices (
+    trainer_id,
+    player_id,
+    public.invoice_booking_set_key(booking_ids)
+  )
+  WHERE status <> 'cancelled'
+    AND player_id IS NOT NULL
+    AND array_length(booking_ids, 1) > 0;
+
+CREATE UNIQUE INDEX uniq_invoice_active_guest_bookings
+  ON public.invoices (
+    trainer_id,
+    guest_player_id,
+    public.invoice_booking_set_key(booking_ids)
+  )
+  WHERE status <> 'cancelled'
+    AND guest_player_id IS NOT NULL
+    AND array_length(booking_ids, 1) > 0;
+```
+
+If a duplicate insert is attempted, Postgres rejects it with a unique-violation error - even under perfect race conditions.
+
+---
+
+## Step 3 - Edge function: handle the new constraint gracefully
+
+Update `supabase/functions/auto-create-invoice/index.ts`:
+
+- Wrap the existing duplicate-guard + insert so that on Postgres error code `23505` (unique violation) we re-query the existing invoice and return the same `{ success: true, deduped: true }` response the dedup branch already returns. This keeps the caller (`finalize-proposals`) happy and avoids a noisy error.
+
+```ts
+if (insertError) {
+  if ((insertError as any).code === '23505') {
+    // Race lost - fetch the winning invoice and return it
+    const { data: winner } = await supabase
+      .from('invoices')
+      .select('id, invoice_number')
+      .eq('trainer_id', trainerId)
+      .contains('booking_ids', bookingIds)
+      .not('status', 'eq', 'cancelled')
+      .maybeSingle();
+    if (winner) {
+      return new Response(
+        JSON.stringify({ success: true, invoiceId: winner.id, invoiceNumber: winner.invoice_number, deduped: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+  }
+  throw new Error(`Failed to create invoice: ${insertError.message}`);
+}
+```
+
+Also, if the insert is rejected we must NOT have advanced `invoice_next_number`. Move the `invoice_next_number` increment to AFTER a successful insert (currently lines 472-476 run before insert).
+
+---
+
+## Step 4 - Frontend double-click guard
+
+In `src/pages/ProposalOverviewPage.tsx` `handleApproveAndBook` (line 327): React state is async, so two clicks in the same tick both see `pageStatus === 'idle'`. Add a synchronous `useRef` lock:
+
+```ts
+const finalizingRef = useRef(false);
+
+const handleApproveAndBook = async () => {
+  if (!cycleId || finalizingRef.current) return;
+  finalizingRef.current = true;
+  setPageStatus('booking');
+  try {
+    // ... existing logic
+  } finally {
+    finalizingRef.current = false;
+  }
+};
+```
+
+Also disable the button when `pageStatus === 'booking'` (verify the button already does this; if not, add `disabled={pageStatus === 'booking'}`).
+
+---
+
+## Files touched
+
+- New migration: unique index + helper function
+- `supabase/functions/auto-create-invoice/index.ts` - 23505 fallback + reorder seq increment
+- `src/pages/ProposalOverviewPage.tsx` - useRef guard + disabled button
+- One-off SQL update to cancel invoice `26000208`
 
 ## Out of scope
 
-- Bulk PDF download / forward to bookkeeper (not requested).
-- Trainer invoices page — same pattern can be applied later if requested.
-- Persisting custom message templates.
-
-## Acceptance
-
-- Selecting rows shows the bulk bar; actions affect exactly the selected invoices.
-- Reset returns invoices to draft and they reappear in "Send all drafts" flow.
-- Delete behaves identically to single-row delete (drafts hard-deleted, others cancelled).
-- Email recipients receive a localized email containing greeting + custom message + invoice details + payment link.
+- No UI changes for admins to manually merge duplicates - the constraint should make that unnecessary.
+- The same race could in theory hit `BookLesson` / `AddSlotDialog` callers too, but those are single-user flows and the new DB constraint protects them automatically.
