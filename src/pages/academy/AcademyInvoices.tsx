@@ -224,7 +224,8 @@ export default function AcademyInvoices() {
     if (inv.status === "cancelled") return "cancelled";
     if (inv.sent_at && new Date(inv.due_date) < new Date()) return "overdue";
     if (inv.sent_at) return "sent";
-    return "draft";
+    if (inv.status === "draft") return "draft";
+    return "open";
   };
 
   // Filter by trainer, then by location
@@ -524,13 +525,19 @@ export default function AcademyInvoices() {
     if (invoice.status === "paid") {
       return <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border-0"><CheckCircle className="h-3 w-3 mr-1" />{t("invoices.paid", "Paid")}</Badge>;
     }
+    if (invoice.status === "cancelled") {
+      return <Badge variant="outline">{t("invoices.cancelled", "Cancelled")}</Badge>;
+    }
     if (invoice.sent_at) {
       const isOverdue = new Date(invoice.due_date) < new Date();
       return isOverdue
         ? <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />{t("invoices.overdue", "Overdue")}</Badge>
         : <Badge variant="secondary"><Send className="h-3 w-3 mr-1" />{t("invoices.sent", "Sent")}</Badge>;
     }
-    return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Draft")}</Badge>;
+    if (invoice.status === "draft") {
+      return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Draft")}</Badge>;
+    }
+    return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
   };
 
   const getPaymentUrl = (inv: Invoice) =>
@@ -713,6 +720,7 @@ export default function AcademyInvoices() {
               <SelectContent>
                 <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
                 <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
+                <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
                 <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
                 <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
                 <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>

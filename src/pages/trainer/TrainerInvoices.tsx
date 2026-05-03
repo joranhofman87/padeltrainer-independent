@@ -109,7 +109,8 @@ export default function TrainerInvoices() {
     if (inv.status === "cancelled") return "cancelled";
     if (inv.sent_at && new Date(inv.due_date) < new Date()) return "overdue";
     if (inv.sent_at) return "sent";
-    return "draft";
+    if (inv.status === "draft") return "draft";
+    return "open";
   };
 
   const unpaidInvoices = invoices.filter((i) => i.status !== "paid" && i.status !== "cancelled");
@@ -269,13 +270,19 @@ export default function TrainerInvoices() {
     if (invoice.status === "paid") {
       return <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border-0"><CheckCircle className="h-3 w-3 mr-1" />{t("invoices.paid", "Betaald")}</Badge>;
     }
+    if (invoice.status === "cancelled") {
+      return <Badge variant="outline">{t("invoices.cancelled", "Geannuleerd")}</Badge>;
+    }
     if (invoice.sent_at) {
       const isOverdue = new Date(invoice.due_date) < new Date();
       return isOverdue
         ? <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />{t("invoices.overdue", "Verlopen")}</Badge>
         : <Badge variant="secondary"><Send className="h-3 w-3 mr-1" />{t("invoices.sent", "Verstuurd")}</Badge>;
     }
-    return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Concept")}</Badge>;
+    if (invoice.status === "draft") {
+      return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Concept")}</Badge>;
+    }
+    return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
   };
 
   const getPaymentUrl = (inv: Invoice) =>
@@ -364,6 +371,7 @@ export default function TrainerInvoices() {
                   <SelectContent>
                     <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
                     <SelectItem value="draft">{t("invoices.draft", "Concept")}</SelectItem>
+                    <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
                     <SelectItem value="sent">{t("invoices.sent", "Verstuurd")}</SelectItem>
                     <SelectItem value="overdue">{t("invoices.overdue", "Verlopen")}</SelectItem>
                     <SelectItem value="paid">{t("invoices.paid", "Betaald")}</SelectItem>
