@@ -688,6 +688,13 @@ export default function AcademyInvoices() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={filteredInvoices.length > 0 && filteredInvoices.every((i) => selectedIds.has(i.id))}
+                            onCheckedChange={() => toggleSelectAllVisible(filteredInvoices)}
+                            aria-label="Select all"
+                          />
+                        </TableHead>
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
                         <TableHead>{t("invoices.player", "Player")}</TableHead>
                         <TableHead>{t("invoices.date", "Date")}</TableHead>
