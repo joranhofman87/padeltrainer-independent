@@ -525,13 +525,19 @@ export default function AcademyInvoices() {
     if (invoice.status === "paid") {
       return <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border-0"><CheckCircle className="h-3 w-3 mr-1" />{t("invoices.paid", "Paid")}</Badge>;
     }
+    if (invoice.status === "cancelled") {
+      return <Badge variant="outline">{t("invoices.cancelled", "Cancelled")}</Badge>;
+    }
     if (invoice.sent_at) {
       const isOverdue = new Date(invoice.due_date) < new Date();
       return isOverdue
         ? <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />{t("invoices.overdue", "Overdue")}</Badge>
         : <Badge variant="secondary"><Send className="h-3 w-3 mr-1" />{t("invoices.sent", "Sent")}</Badge>;
     }
-    return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Draft")}</Badge>;
+    if (invoice.status === "draft") {
+      return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Draft")}</Badge>;
+    }
+    return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
   };
 
   const getPaymentUrl = (inv: Invoice) =>
