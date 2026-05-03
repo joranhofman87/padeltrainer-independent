@@ -19,7 +19,11 @@ import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDi
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { format } from "date-fns";
@@ -78,6 +82,9 @@ export default function AcademyInvoices() {
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
   const [bulkRunning, setBulkRunning] = useState(false);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
+
+  const [bulkDueOpen, setBulkDueOpen] = useState(false);
+  const [bulkDueDate, setBulkDueDate] = useState<Date | undefined>(undefined);
 
   // Clear selection when filters/tab change
   useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, searchQuery]);
@@ -477,6 +484,31 @@ export default function AcademyInvoices() {
     }
   };
 
+  const handleBulkUpdateDueDate = async () => {
+    if (!bulkDueDate) return;
+    setBulkRunning(true);
+    const ids = [...selectedIds];
+    // Format as YYYY-MM-DD to avoid timezone shifts
+    const yyyy = bulkDueDate.getFullYear();
+    const mm = String(bulkDueDate.getMonth() + 1).padStart(2, "0");
+    const dd = String(bulkDueDate.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const { error } = await supabase
+      .from("invoices")
+      .update({ due_date: dateStr })
+      .in("id", ids);
+    setBulkRunning(false);
+    if (error) {
+      toast.error(t("invoices.bulk.dueDateError", "Failed to update due date"));
+      return;
+    }
+    setBulkDueOpen(false);
+    setBulkDueDate(undefined);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    toast.success(t("invoices.bulk.dueDateDone", "Due date updated for {{count}} invoices", { count: ids.length }));
+  };
+
   const handleDownloadPdf = async (invoice: Invoice) => {
     try {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
@@ -627,6 +659,10 @@ export default function AcademyInvoices() {
             <Button size="sm" variant="outline" onClick={() => setConfirmBulk("reset")}>
               <RotateCcw className="h-4 w-4 mr-1.5" />
               {t("invoices.bulk.resetToDraft", "Reset to draft")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setBulkDueOpen(true)}>
+              <CalendarIcon className="h-4 w-4 mr-1.5" />
+              {t("invoices.bulk.updateDueDate", "Update due date")}
             </Button>
             <Button size="sm" variant="destructive" onClick={() => setConfirmBulk("delete")}>
               <Trash2 className="h-4 w-4 mr-1.5" />
@@ -894,6 +930,48 @@ export default function AcademyInvoices() {
           queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
         }}
       />
+
+      <Dialog open={bulkDueOpen} onOpenChange={(o) => !bulkRunning && setBulkDueOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("invoices.bulk.updateDueDateTitle", "Update due date")}</DialogTitle>
+            <DialogDescription>
+              {t("invoices.bulk.updateDueDateDesc", "Set a new due date for {{count}} selected invoice(s).", { count: selectedIds.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn("w-full justify-start text-left font-normal", !bulkDueDate && "text-muted-foreground")}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {bulkDueDate ? format(bulkDueDate, "dd MMM yyyy", { locale: dateFnsLocale }) : t("invoices.bulk.pickDate", "Pick a date")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={bulkDueDate}
+                  onSelect={setBulkDueDate}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDueOpen(false)} disabled={bulkRunning}>
+              {t("common.cancel", "Cancel")}
+            </Button>
+            <Button onClick={handleBulkUpdateDueDate} disabled={!bulkDueDate || bulkRunning}>
+              {bulkRunning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t("common.save", "Save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
         <AlertDialogContent>
