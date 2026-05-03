@@ -508,6 +508,8 @@ export default function AcademyInvoices() {
     queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
     toast.success(t("invoices.bulk.dueDateDone", "Due date updated for {{count}} invoices", { count: ids.length }));
   };
+
+  const handleDownloadPdf = async (invoice: Invoice) => {
     try {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
       const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
