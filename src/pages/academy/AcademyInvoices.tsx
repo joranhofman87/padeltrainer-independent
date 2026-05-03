@@ -931,6 +931,48 @@ export default function AcademyInvoices() {
         }}
       />
 
+      <Dialog open={bulkDueOpen} onOpenChange={(o) => !bulkRunning && setBulkDueOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("invoices.bulk.updateDueDateTitle", "Update due date")}</DialogTitle>
+            <DialogDescription>
+              {t("invoices.bulk.updateDueDateDesc", "Set a new due date for {{count}} selected invoice(s).", { count: selectedIds.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn("w-full justify-start text-left font-normal", !bulkDueDate && "text-muted-foreground")}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {bulkDueDate ? format(bulkDueDate, "dd MMM yyyy", { locale: dateFnsLocale }) : t("invoices.bulk.pickDate", "Pick a date")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={bulkDueDate}
+                  onSelect={setBulkDueDate}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDueOpen(false)} disabled={bulkRunning}>
+              {t("common.cancel", "Cancel")}
+            </Button>
+            <Button onClick={handleBulkUpdateDueDate} disabled={!bulkDueDate || bulkRunning}>
+              {bulkRunning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t("common.save", "Save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
