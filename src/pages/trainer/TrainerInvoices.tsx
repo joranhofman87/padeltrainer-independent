@@ -371,6 +371,7 @@ export default function TrainerInvoices() {
                   <SelectContent>
                     <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
                     <SelectItem value="draft">{t("invoices.draft", "Concept")}</SelectItem>
+                    <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
                     <SelectItem value="sent">{t("invoices.sent", "Verstuurd")}</SelectItem>
                     <SelectItem value="overdue">{t("invoices.overdue", "Verlopen")}</SelectItem>
                     <SelectItem value="paid">{t("invoices.paid", "Betaald")}</SelectItem>
