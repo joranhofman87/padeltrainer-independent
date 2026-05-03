@@ -469,12 +469,6 @@ serve(async (req) => {
     numParts.push(seq);
     const invoiceNumber = numParts.join("-");
 
-    // Update next number on the profile table
-    await supabase
-      .from(invoiceProfileTable)
-      .update({ invoice_next_number: sequence + 1 })
-      .eq("id", invoiceProfileId);
-
     // Calculate due date
     const paymentTermsDays = invoiceProfile.payment_terms_days || 14;
     const invoiceDate = new Date();
