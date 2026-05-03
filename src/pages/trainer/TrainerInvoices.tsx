@@ -270,13 +270,19 @@ export default function TrainerInvoices() {
     if (invoice.status === "paid") {
       return <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border-0"><CheckCircle className="h-3 w-3 mr-1" />{t("invoices.paid", "Betaald")}</Badge>;
     }
+    if (invoice.status === "cancelled") {
+      return <Badge variant="outline">{t("invoices.cancelled", "Geannuleerd")}</Badge>;
+    }
     if (invoice.sent_at) {
       const isOverdue = new Date(invoice.due_date) < new Date();
       return isOverdue
         ? <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />{t("invoices.overdue", "Verlopen")}</Badge>
         : <Badge variant="secondary"><Send className="h-3 w-3 mr-1" />{t("invoices.sent", "Verstuurd")}</Badge>;
     }
-    return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Concept")}</Badge>;
+    if (invoice.status === "draft") {
+      return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Concept")}</Badge>;
+    }
+    return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
   };
 
   const getPaymentUrl = (inv: Invoice) =>
