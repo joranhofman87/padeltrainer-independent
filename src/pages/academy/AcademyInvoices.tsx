@@ -660,6 +660,10 @@ export default function AcademyInvoices() {
               <RotateCcw className="h-4 w-4 mr-1.5" />
               {t("invoices.bulk.resetToDraft", "Reset to draft")}
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setBulkDueOpen(true)}>
+              <CalendarIcon className="h-4 w-4 mr-1.5" />
+              {t("invoices.bulk.updateDueDate", "Update due date")}
+            </Button>
             <Button size="sm" variant="destructive" onClick={() => setConfirmBulk("delete")}>
               <Trash2 className="h-4 w-4 mr-1.5" />
               {t("invoices.bulk.delete", "Delete")}
