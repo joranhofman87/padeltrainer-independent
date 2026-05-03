@@ -720,6 +720,7 @@ export default function AcademyInvoices() {
               <SelectContent>
                 <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
                 <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
+                <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
                 <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
                 <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
                 <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
