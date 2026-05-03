@@ -820,10 +820,19 @@ export default function AcademyInvoices() {
                 {filteredInvoices.map((inv) => (
                   <Card key={inv.id} className="cursor-pointer" onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}>
                     <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <p className="font-mono text-sm font-medium">{inv.invoice_number}</p>
-                          <p className="text-sm text-muted-foreground">{inv.player_name}</p>
+                      <div className="flex items-start justify-between mb-2 gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
+                            <Checkbox
+                              checked={selectedIds.has(inv.id)}
+                              onCheckedChange={() => toggleSelect(inv.id)}
+                              aria-label={`Select ${inv.invoice_number}`}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-mono text-sm font-medium truncate">{inv.invoice_number}</p>
+                            <p className="text-sm text-muted-foreground truncate">{inv.player_name}</p>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1.5">
                           {getStatusBadge(inv)}
