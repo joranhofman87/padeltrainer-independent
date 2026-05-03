@@ -176,23 +176,38 @@ export default function AcademyInvoices() {
   const { data: invoiceLocationMap = {} } = useQuery({
     queryKey: ["invoice-location-map", invoices.map(i => i.id).join(",")],
     queryFn: async () => {
-      const allBookingIds = invoices
-        .flatMap(i => i.booking_ids || [])
-        .filter(Boolean);
+      const allBookingIds = Array.from(new Set(
+        invoices.flatMap(i => i.booking_ids || []).filter(Boolean)
+      ));
       if (allBookingIds.length === 0) return {};
-      
-      const { data: bookings } = await supabase
-        .from("bookings")
-        .select("id, slot_id")
-        .in("id", allBookingIds);
-      if (!bookings?.length) return {};
-      
-      const slotIds = [...new Set(bookings.map(b => b.slot_id))];
-      const { data: slots } = await supabase
-        .from("availability_slots")
-        .select("id, location_id")
-        .in("id", slotIds);
-      if (!slots?.length) return {};
+
+      // Batch in chunks to avoid the default 1000-row limit and overly long IN clauses
+      const chunk = <T,>(arr: T[], size: number): T[][] => {
+        const out: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+      };
+
+      const bookings: { id: string; slot_id: string }[] = [];
+      for (const ids of chunk(allBookingIds, 200)) {
+        const { data } = await supabase
+          .from("bookings")
+          .select("id, slot_id")
+          .in("id", ids);
+        if (data) bookings.push(...(data as any));
+      }
+      if (!bookings.length) return {};
+
+      const slotIds = Array.from(new Set(bookings.map(b => b.slot_id).filter(Boolean)));
+      const slots: { id: string; location_id: string | null }[] = [];
+      for (const ids of chunk(slotIds, 200)) {
+        const { data } = await supabase
+          .from("availability_slots")
+          .select("id, location_id")
+          .in("id", ids);
+        if (data) slots.push(...(data as any));
+      }
+      if (!slots.length) return {};
       
       const slotLocationMap = slots.reduce((acc: Record<string, string>, s: any) => {
         if (s.location_id) acc[s.id] = s.location_id;
