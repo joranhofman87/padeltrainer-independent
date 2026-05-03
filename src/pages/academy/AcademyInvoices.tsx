@@ -224,7 +224,8 @@ export default function AcademyInvoices() {
     if (inv.status === "cancelled") return "cancelled";
     if (inv.sent_at && new Date(inv.due_date) < new Date()) return "overdue";
     if (inv.sent_at) return "sent";
-    return "draft";
+    if (inv.status === "draft") return "draft";
+    return "open";
   };
 
   // Filter by trainer, then by location
