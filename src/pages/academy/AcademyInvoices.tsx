@@ -875,6 +875,48 @@ export default function AcademyInvoices() {
         onSubmit={handleEmailSubmitAndSend}
       />
 
+      <BulkInvoiceEmailDialog
+        open={bulkEmailOpen}
+        onClose={() => setBulkEmailOpen(false)}
+        invoiceIds={[...selectedIds]}
+        language={i18n.language || "nl"}
+        onSent={() => {
+          setSelectedIds(new Set());
+          queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+        }}
+      />
+
+      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmBulk === "reset"
+                ? t("invoices.bulk.confirmResetTitle", "Reset {{count}} invoices to draft?", { count: selectedIds.size })
+                : t("invoices.bulk.confirmDeleteTitle", "Delete {{count}} invoices?", { count: selectedIds.size })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmBulk === "reset"
+                ? t("invoices.bulk.confirmResetDesc", "Status, sent date and paid date will be cleared. This cannot be undone.")
+                : t("invoices.bulk.confirmDeleteDesc", "Drafts will be removed permanently. Sent invoices will be cancelled.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkRunning}>{t("common.cancel", "Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmBulk === "reset") handleBulkReset();
+                else if (confirmBulk === "delete") handleBulkDelete();
+              }}
+              disabled={bulkRunning}
+            >
+              {bulkRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              {t("common.confirm", "Confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
