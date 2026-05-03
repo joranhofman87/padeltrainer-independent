@@ -5219,6 +5219,7 @@ export type Database = {
         Args: { _trainer_profile_id: string }
         Returns: boolean
       }
+      invoice_booking_set_key: { Args: { _ids: string[] }; Returns: string }
       is_academy_manager: {
         Args: { _academy_profile_id: string; _user_id: string }
         Returns: boolean
