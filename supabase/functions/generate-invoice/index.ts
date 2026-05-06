@@ -729,7 +729,7 @@ const handler = async (req: Request): Promise<Response> => {
       notes: invoice.notes,
       vat_breakdown: invoice.vat_breakdown || null,
       logo_url: trainerProfile?.invoice_logo_url || businessSource.invoice_logo_url || null,
-      fallback_logo_url: trainerProfile?.logo_url || businessSource.logo_url || null,
+      fallback_logo_url: businessSource.logo_url || null,
       banner_color: (academyProfile?.invoice_banner_color) || null,
       payment_url: paymentUrl,
       trainer: {
