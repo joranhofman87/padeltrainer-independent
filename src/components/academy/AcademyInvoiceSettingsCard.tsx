@@ -46,6 +46,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
+  const [replyToEmail, setReplyToEmail] = useState<string>('');
   const [newEmail, setNewEmail] = useState('');
   const [showRenumberDialog, setShowRenumberDialog] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
