@@ -281,15 +281,17 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Stamp sent_at and promote draft -> sent only after a real successful delivery
-    try {
-      const updates: Record<string, unknown> = {};
-      if (!invoice.sent_at) updates.sent_at = new Date().toISOString();
-      if (invoice.status === "draft") updates.status = "sent";
-      if (Object.keys(updates).length > 0) {
-        await supabase.from("invoices").update(updates).eq("id", invoice.id);
+    if (!testEmail) {
+      try {
+        const updates: Record<string, unknown> = {};
+        if (!invoice.sent_at) updates.sent_at = new Date().toISOString();
+        if (invoice.status === "draft") updates.status = "sent";
+        if (Object.keys(updates).length > 0) {
+          await supabase.from("invoices").update(updates).eq("id", invoice.id);
+        }
+      } catch (e) {
+        console.error("Failed to update invoice sent_at:", e);
       }
-    } catch (e) {
-      console.error("Failed to update invoice sent_at:", e);
     }
 
     console.log(`Invoice email sent: ${invoice.invoice_number} to ${recipientEmail}`);
