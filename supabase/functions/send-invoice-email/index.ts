@@ -192,23 +192,25 @@ const handler = async (req: Request): Promise<Response> => {
     };
     const tr = T[language] || T.nl;
 
-    const firstName = (invoice.player_name || "").split(" ")[0] || invoice.player_name || "";
+    const fullName = (invoice.player_name || "").trim();
+    const nameParts = fullName.split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] || fullName;
+    const lastName = nameParts.slice(1).join(" ");
+
+    const substituteVars = (s: string) => s
+      .replace(/\{\s*first[_\s]?name\s*\}/gi, firstName)
+      .replace(/\{\s*last[_\s]?name\s*\}/gi, lastName)
+      .replace(/\{\s*full[_\s]?name\s*\}/gi, fullName);
+
     const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
-    const customHtml = customMessage.trim()
-      ? `<div style="margin: 16px 0 24px; color:#374151; font-size:14px; line-height:1.6; white-space:pre-wrap;">${escapeHtml(customMessage)}</div>`
+    const personalizedMessage = substituteVars(customMessage);
+    const customHtml = personalizedMessage.trim()
+      ? `<div style="margin: 0 0 24px; color:#374151; font-size:14px; line-height:1.6; white-space:pre-wrap;">${escapeHtml(personalizedMessage)}</div>`
       : "";
 
-    const resend = new Resend(resendApiKey);
-    const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
-
-    const { error: sendError } = await resend.emails.send({
-      from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
-      to: [recipientEmail],
-      subject: `${tr.subject} ${invoice.invoice_number} - ${formatCurrency(invoice.total)}`,
-      html: `
+    const subject = `${tr.subject} ${invoice.invoice_number} - ${formatCurrency(invoice.total)}`;
+    const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          ${EMAIL_LOGO}
-          <p style="font-size:16px; color:#1a1a1a; margin:0 0 4px;">${tr.hi} ${escapeHtml(firstName)},</p>
           ${customHtml}
           <h2 style="color: #1a1a1a; margin-bottom: 8px;">${tr.invoice} ${invoice.invoice_number}</h2>
           <p style="color: #6b7280; margin-bottom: 24px;">${tr.from} ${escapeHtml(businessName)}</p>
@@ -252,7 +254,22 @@ const handler = async (req: Request): Promise<Response> => {
             ${tr.sentVia} ${escapeHtml(businessName)}
           </p>
         </div>
-      `,
+      `;
+
+    if (previewOnly) {
+      return new Response(
+        JSON.stringify({ success: true, html, subject, recipientEmail }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const resend = new Resend(resendApiKey);
+    const sendTo = testEmail || recipientEmail;
+    const { error: sendError } = await resend.emails.send({
+      from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
+      to: [sendTo],
+      subject: testEmail ? `[TEST] ${subject}` : subject,
+      html,
     });
 
     if (sendError) {
