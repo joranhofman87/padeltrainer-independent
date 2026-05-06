@@ -144,6 +144,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         payment_terms_days: formData.payment_terms_days,
         default_vat_rate: resolvedVatRate,
         invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
+        invoice_reply_to_email: replyToEmail.trim() ? replyToEmail.trim().toLowerCase() : null,
         invoice_logo_url: logoUrl || null,
         invoice_prefix: formData.invoice_prefix || null,
         invoice_next_number: formData.invoice_next_number || 1,
