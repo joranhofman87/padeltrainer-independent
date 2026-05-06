@@ -483,6 +483,27 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
           />
         </div>
 
+        {/* Default invoice language */}
+        <div className="space-y-2 pt-4 border-t">
+          <Label htmlFor="tr_invoice_language">{t('invoices.invoiceLanguage', 'Default invoice language')}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t('invoices.invoiceLanguageDescription', 'Used for invoice emails and the public payment page. Players with a language preference on their account get invoices in their own language.')}
+          </p>
+          <Select value={formData.invoice_language} onValueChange={(v) => setFormData({ ...formData, invoice_language: v })}>
+            <SelectTrigger id="tr_invoice_language" className="max-w-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="nl">Nederlands</SelectItem>
+              <SelectItem value="en">English</SelectItem>
+              <SelectItem value="es">Español</SelectItem>
+              <SelectItem value="de">Deutsch</SelectItem>
+              <SelectItem value="fr">Français</SelectItem>
+              <SelectItem value="it">Italiano</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Invoice Forwarding Emails */}
         <div className="space-y-3 pt-4 border-t">
           <div className="flex items-center gap-2">
