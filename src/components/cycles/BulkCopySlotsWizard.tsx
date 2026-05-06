@@ -43,6 +43,9 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
   const [bookingCounts, setBookingCounts] = useState<Map<string, number>>(new Map());
   const [priorityWindowDays, setPriorityWindowDays] = useState(14);
   const [createPriorityClaims, setCreatePriorityClaims] = useState(true);
+  const [memberWindowDays, setMemberWindowDays] = useState(7);
+  const [enableMemberWindow, setEnableMemberWindow] = useState(true);
+  const [requireAdminReview, setRequireAdminReview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
