@@ -53,6 +53,8 @@ const handler = async (req: Request): Promise<Response> => {
     const customMessageRaw = typeof body.customMessage === "string" ? body.customMessage : "";
     const customMessage = customMessageRaw.slice(0, 2000);
     const language = (typeof body.language === "string" ? body.language : "nl").toLowerCase().slice(0, 2);
+    const testEmail = typeof body.testEmail === "string" && body.testEmail.trim() ? body.testEmail.trim() : null;
+    const previewOnly = body.previewOnly === true;
     if (!invoiceId) {
       return new Response(
         JSON.stringify({ error: "Missing invoiceId" }),
