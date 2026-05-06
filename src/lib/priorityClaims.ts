@@ -128,8 +128,7 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
   const slotsToCopy = (sourceSlots || []).filter(s => !alreadyCopiedSourceIds.has(s.id) && !excludeSet.has(s.id));
 
   const now = new Date();
-  const windowEnd = new Date(now.getTime() + priorityWindowDays * 24 * 60 * 60 * 1000);
-  const offsetMs = weeksOffset * 7 * 24 * 60 * 60 * 1000;
+  const windowEnd = computePriorityWindowEnd(now, priorityWindowDays);
 
   let copiedSlots = 0;
   let createdClaims = 0;
