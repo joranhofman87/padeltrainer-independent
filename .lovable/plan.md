@@ -1,42 +1,35 @@
-# Persist Player Billing Details Across Invoices
+## Problem
+Bulk email send loops sequentially over all invoices (57 calls × ~1s each). The dialog shows only a spinner, blocks closing, and gives no progress feedback — feels stuck.
 
-## Current behavior
-When a recipient edits their billing details on the public invoice page (business name, address, BTW number), the edge function `update-public-invoice-details` writes **only** to that one `invoices` row (`player_business_name`, `player_address`, `player_btw_number`). Nothing is saved back to the player's profile, so the next invoice starts blank again and they have to re-enter the same info.
+## Solution
+Add live progress feedback and let the user close the dialog while sending continues in the background.
 
-## Goal
-Remember billing details so:
-1. Future invoices to the same player are pre-filled with their saved business name / address / BTW number.
-2. Registered players see and can edit these in their account settings (already partially supported — `profiles` has `billing_business_name`, `billing_address`, `billing_btw_number`).
-3. Guest players (no account) still get their details remembered for repeat invoicing.
+### Changes to `src/components/invoices/BulkInvoiceEmailDialog.tsx`
 
-## Plan
+1. **Track progress state**
+   - Add `progress` state: `{ current: number, total: number, sent: number, noEmail: number, failed: number }`
+   - Update after each invoice completes inside the existing loop.
 
-### 1. Persist on edit (edge function)
-Update `supabase/functions/update-public-invoice-details/index.ts`:
-- After updating the invoice row, also update the linked recipient:
-  - If `invoice.player_id` is set → update `profiles.billing_business_name / billing_address / billing_btw_number`.
-  - Else if `invoice.guest_player_id` is set → update the equivalent fields on `guest_players`.
-- Only overwrite when the user actually submitted a value (don't blank out existing saved data with empty fields unless they explicitly cleared it — match the dialog's behavior).
+2. **Progress UI (replaces the spinner button content while sending)**
+   - Show a `Progress` bar (shadcn `@/components/ui/progress`) with `value = current/total * 100`.
+   - Show text: "Sending {current} of {total}… ({sent} sent, {noEmail} no email, {failed} failed)".
+   - Show an info line: "You can safely close this window — sending continues in the background."
 
-### 2. Add billing columns to guest_players (migration)
-`guest_players` currently has no billing fields. Add:
-- `billing_business_name text`
-- `billing_address text`
-- `billing_btw_number text`
+3. **Allow closing during send**
+   - Remove the `!sending` guard on `onOpenChange` and the Cancel button so the user can dismiss.
+   - When the dialog closes mid-send, fire a sonner `toast.loading(id, …)` that updates with progress, then resolves to `toast.success` when done. Use a stable toast id so updates replace the same toast.
+   - Detach the send loop from the dialog lifecycle: kick it off in `handleSend`, but don't `await` it before allowing close. Use a ref to ensure only one bulk send runs at a time.
 
-### 3. Pre-fill new invoices (invoice creation)
-Where invoices are generated (e.g. `create-invoice`, `generate-cycle-invoices`, bulk invoicing flows), when populating `player_business_name / player_address / player_btw_number` on the new invoice row, fall back to the player's stored billing fields:
-- For `player_id` → read from `profiles.billing_*`.
-- For `guest_player_id` → read from `guest_players.billing_*`.
+4. **Final toast**
+   - Keep the existing summary toast on completion (sent / no email / failed counts).
+   - Call `onSent()` to refresh the invoice list when done.
 
-I will scan the invoice-creation edge functions and add the lookup in each spot that currently leaves these fields null.
+5. **Concurrency (small win, optional)**
+   - Process invoices with limited concurrency (e.g. 3 at a time) using a simple promise pool, so 57 emails finish in ~1/3 the time without overloading the edge function.
 
-### 4. Pre-fill the edit dialog
-On `PublicInvoicePay.tsx`, when the user opens "Factuurgegevens aanpassen" and the invoice fields are empty, fall back to the saved profile/guest billing fields returned by `get-public-invoice` (extend that function's response if needed) so the form is pre-populated.
+### No backend changes
+The `send-invoice-email` edge function already handles single invoices correctly. This is purely a UX fix on the client.
 
-## Out of scope
-- A new "Billing settings" UI page for players (the data is now there; surfacing it in account settings can be a follow-up).
-- Touching organization-side (academy/trainer) billing settings — those are unrelated.
-
-## Open question
-Should an edit on one invoice **always** overwrite the saved profile defaults, or only when there are no saved defaults yet? Recommended default: **always overwrite** (most recent edit wins) so a player who moves only has to update once. Confirm or tell me otherwise.
+### Out of scope
+- No queue-based architecture or background worker (overkill for ~50–100 invoices).
+- No changes to the email content, language, or auto-population logic.
