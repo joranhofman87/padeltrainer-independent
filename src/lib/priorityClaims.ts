@@ -126,7 +126,8 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
 
     const { data: newSlot, error: insErr } = await supabase
       .from('availability_slots')
-      .insert(insert)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .insert(insert as any)
       .select('id')
       .single();
     if (insErr) throw insErr;
