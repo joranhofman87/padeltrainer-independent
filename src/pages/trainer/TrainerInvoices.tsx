@@ -137,7 +137,7 @@ export default function TrainerInvoices() {
   const sendInvoiceMutation = useMutation({
     mutationFn: async (invoice: Invoice) => {
       const { data } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoice.id },
+        body: { invoiceId: invoice.id, language: i18n.language || "nl" },
       });
       if (data?.error === "no_email") {
         return { noEmail: true, invoice };
