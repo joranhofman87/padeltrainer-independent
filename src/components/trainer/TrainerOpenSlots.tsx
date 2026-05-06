@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabaseClient';
+import { shouldHidePrioritySlot, readClaimParamsFromLocation } from '@/lib/priorityClaims';
 import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { formatPrice } from '@/lib/pricing';
@@ -125,16 +126,23 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
         if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
         if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
       });
-      const nowMs = Date.now();
+      const now = new Date();
+      const { claimToken, claimSlotId } = readClaimParamsFromLocation();
 
       // Filter to slots with availability and map
       const availableSlots: SlotData[] = slotsData
         .filter(s => {
           const maxParticipants = (s as any).max_participants || 4;
           const booked = bookingCounts[s.id] || 0;
-          const windowEnd = (s as any).priority_window_ends_at;
-          const windowActive = windowEnd && new Date(windowEnd).getTime() > nowMs;
-          if (windowActive && slotPendingPriority.get(s.id) && !slotHasReleased.get(s.id)) return false;
+          if (shouldHidePrioritySlot({
+            slotId: s.id,
+            windowEndsAt: (s as any).priority_window_ends_at,
+            hasPendingPriority: !!slotPendingPriority.get(s.id),
+            hasReleasedSeat: !!slotHasReleased.get(s.id),
+            claimToken,
+            claimSlotId,
+            now,
+          })) return false;
           return booked < maxParticipants;
         })
         .map(s => {

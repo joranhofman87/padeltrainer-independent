@@ -2,6 +2,48 @@ import { supabase } from '@/lib/supabaseClient';
 
 export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'released';
 
+/** Compute when the priority window ends, given a start time and number of days. */
+export function computePriorityWindowEnd(now: Date, days: number): Date {
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+/** Apply a week offset to an ISO datetime string. */
+export function applyWeeksOffset(iso: string, weeks: number): string {
+  return new Date(new Date(iso).getTime() + weeks * 7 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export interface PrioritySlotVisibilityArgs {
+  slotId: string;
+  windowEndsAt: string | null | undefined;
+  hasPendingPriority: boolean;
+  hasReleasedSeat: boolean;
+  claimToken?: string | null;
+  claimSlotId?: string | null;
+  now?: Date;
+}
+
+/**
+ * Returns true when a slot must be hidden from public listings because it
+ * still belongs to a priority window with unresolved (pending/claimed) claims
+ * and no released seats. A matching claim token+slot bypasses the hide.
+ */
+export function shouldHidePrioritySlot(args: PrioritySlotVisibilityArgs): boolean {
+  const { slotId, windowEndsAt, hasPendingPriority, hasReleasedSeat, claimToken, claimSlotId, now } = args;
+  if (claimToken && claimSlotId === slotId) return false;
+  if (!windowEndsAt) return false;
+  const ends = new Date(windowEndsAt).getTime();
+  const nowMs = (now ?? new Date()).getTime();
+  if (ends <= nowMs) return false;
+  return hasPendingPriority && !hasReleasedSeat;
+}
+
+/** Read claim token + slot from a URLSearchParams-like (browser only). */
+export function readClaimParamsFromLocation(): { claimToken: string | null; claimSlotId: string | null } {
+  if (typeof window === 'undefined') return { claimToken: null, claimSlotId: null };
+  const p = new URLSearchParams(window.location.search);
+  return { claimToken: p.get('claim'), claimSlotId: p.get('slot') };
+}
+
 export interface PriorityClaim {
   id: string;
   slot_id: string;
@@ -86,15 +128,14 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
   const slotsToCopy = (sourceSlots || []).filter(s => !alreadyCopiedSourceIds.has(s.id) && !excludeSet.has(s.id));
 
   const now = new Date();
-  const windowEnd = new Date(now.getTime() + priorityWindowDays * 24 * 60 * 60 * 1000);
-  const offsetMs = weeksOffset * 7 * 24 * 60 * 60 * 1000;
+  const windowEnd = computePriorityWindowEnd(now, priorityWindowDays);
 
   let copiedSlots = 0;
   let createdClaims = 0;
 
   for (const src of slotsToCopy) {
-    const newStart = new Date(new Date(src.start_time).getTime() + offsetMs).toISOString();
-    const newEnd = new Date(new Date(src.end_time).getTime() + offsetMs).toISOString();
+    const newStart = applyWeeksOffset(src.start_time, weeksOffset);
+    const newEnd = applyWeeksOffset(src.end_time, weeksOffset);
 
     const insert: Record<string, unknown> = {
       trainer_id: src.trainer_id,
