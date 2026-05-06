@@ -1,59 +1,55 @@
-## Probleem
+## Goal
 
-Bij het aanmaken van een factuur via `auto-create-invoice` wordt `sent_at = now()` direct ingevuld zodra de status "sent" (gefinaliseerd) is, ook al is er geen e-mail verstuurd. De UI leidt het label "Verstuurd" / "Te laat" af van `sent_at`, dus elke gefinaliseerde factuur lijkt verstuurd.
+Improve the bulk invoice email flow in `BulkInvoiceEmailDialog` so trainers/academies can:
+1. Send invoice emails without the PadelTrainer.ai logo at the top
+2. Write their own greeting/message with support for `{first_name}` / `{last_name}` / `{full_name}` variables (no auto "Hi {firstname}")
+3. Preview the rendered email and send a test email to themselves before bulk sending
 
-Daarnaast stempelt `send-invoice-email` op dit moment `sent_at` niet na een echt verstuurde mail. We willen `sent_at` puur reserveren voor het werkelijke e-mailmoment.
+## Changes
 
-## Aanpak
+### 1. Edge function `supabase/functions/send-invoice-email/index.ts`
 
-**1. Edge function `auto-create-invoice`**
-- Verwijder het automatisch zetten van `sent_at` bij status `sent` (regel 515).
-- Behoud `sent_at = now()` alleen wanneer de factuur direct als `paid` wordt aangemaakt (Mollie-flow), aangezien een betaalde factuur impliciet bezorgd is.
+- Remove the hardcoded `EMAIL_LOGO` block at the top of the email HTML (per request: no logo at top in invoice emails).
+- Remove the auto-rendered greeting line `${tr.hi} ${firstName},` — the message body now comes entirely from the trainer's `customMessage` (rendered above the invoice details).
+- Add variable substitution in `customMessage` before HTML escaping:
+  - `{first_name}` → first token of `player_name`
+  - `{last_name}` → remaining tokens of `player_name`
+  - `{full_name}` → full `player_name`
+  - Tolerant of variants: `{firstname}`, `{firstName}`, with/without spaces.
+- Accept new optional body fields:
+  - `testEmail?: string` — when present, send to that address instead of the recipient and skip the `sent_at` / status update at the end.
+  - `previewOnly?: boolean` — when true, return `{ success: true, html, subject }` without calling Resend or updating the invoice.
+- Keep all existing auth, ownership checks, and i18n logic.
 
-**2. Edge function `send-invoice-email`**
-- Na succesvolle Resend-verzending: update de factuur met `sent_at = now()` als die nog `null` is, en zet `status = 'sent'` als hij nog `draft` was. Zo wordt `sent_at` de bron-van-waarheid voor "echt verstuurd".
+### 2. `src/components/invoices/BulkInvoiceEmailDialog.tsx`
 
-**3. UI label-logica (`AcademyInvoices.tsx` + `TrainerInvoices.tsx`)**
-Huidige `getComputedStatus`:
-```ts
-if (inv.sent_at && due < now) return "overdue";
-if (inv.sent_at) return "sent";
-return "draft";
-```
-Probleem: facturen met `status='sent'` zonder `sent_at` vallen nu onder "draft", wat onjuist is (ze zijn wel gefinaliseerd, alleen niet gemaild).
+Rework the dialog UI:
 
-Nieuw gedrag:
-```ts
-if (inv.status === "paid") return "paid";
-if (inv.status === "cancelled") return "cancelled";
-if (inv.sent_at && due < now) return "overdue";
-if (inv.sent_at) return "sent";              // echt gemaild
-if (inv.status === "draft") return "draft";  // concept
-return "open";                                // gefinaliseerd, niet gemaild
-```
-Voeg label/badge toe voor `open` (NL: "Open", EN: "Open") met neutrale styling. Werk filters en tellers (`draftInvoices`, statusfilter) bij zodat `open` een eigen filteroptie krijgt en niet ten onrechte als concept telt.
+- Replace the single textarea with:
+  - A message textarea (default placeholder shows example using `{first_name}`).
+  - Helper chips/buttons below the textarea to insert `{first_name}`, `{last_name}`, `{full_name}` at cursor.
+  - Short helper text explaining variables are replaced per recipient.
+- Add two secondary actions next to Send:
+  - **Preview** — opens a sub-dialog showing the rendered HTML for the first selected invoice (uses `previewOnly: true`). Renders inside an iframe / sandboxed div.
+  - **Send test** — input for an email address (default: current user's email) + button; calls function with `testEmail` for the first selected invoice. Toast on success/failure.
+- Keep "Mark invoices as sent" checkbox and bulk send loop untouched (server now handles status update on real send only).
 
-**4. Data-cleanup migratie**
-Wis `sent_at` voor facturen waar het automatisch werd gestempeld bij creatie (geen bewijs van echte verzending). Heuristiek:
-```sql
-UPDATE invoices
-SET sent_at = NULL
-WHERE status = 'sent'
-  AND paid_at IS NULL
-  AND sent_at IS NOT NULL
-  AND ABS(EXTRACT(EPOCH FROM (sent_at - created_at))) < 5;
-```
-Dit raakt facturen waar `sent_at` binnen 5 seconden van `created_at` ligt (auto-stempel). Handmatig via "Mark as sent" gezette stempels (later moment) blijven intact. Betaalde facturen blijven onaangeraakt.
+### 3. Translations
 
-## Bestanden
+Add new keys (NL/EN at minimum, others fall back) under `invoices.bulk.*`:
+- `messageLabel`, `messagePlaceholder`, `variablesHelp`
+- `insertFirstName`, `insertLastName`, `insertFullName`
+- `preview`, `previewTitle`, `sendTest`, `sendTestPlaceholder`, `testSent`, `testFailed`
 
-- `supabase/functions/auto-create-invoice/index.ts` — verwijder `sent_at` bij status `sent`.
-- `supabase/functions/send-invoice-email/index.ts` — stempel `sent_at` + `status` na succesvolle verzending.
-- `src/pages/academy/AcademyInvoices.tsx` — uitgebreide `getComputedStatus`, `open`-badge, filter-update.
-- `src/pages/trainer/TrainerInvoices.tsx` — zelfde wijzigingen voor parity.
-- Nieuwe SQL-migratie voor cleanup.
+## Technical notes
 
-## Niet in scope
+- Variable substitution runs on the server in the edge function so it's consistent across preview, test, and real sends.
+- For preview/test we use the first invoice in `invoiceIds` to get realistic recipient name + branding + URL.
+- No DB schema changes required.
+- No changes to `auto-create-invoice` or status logic from the previous fix.
 
-- Geen aparte `email_log` tabel (overkill voor nu); `sent_at` blijft de marker.
-- Geen wijziging aan `BulkInvoiceEmailDialog` of "Mark as sent"-knop, die zetten al correct `sent_at`.
+## Files touched
+
+- `supabase/functions/send-invoice-email/index.ts`
+- `src/components/invoices/BulkInvoiceEmailDialog.tsx`
+- `src/i18n/locales/nl/academy.json`, `src/i18n/locales/en/academy.json` (new keys)
