@@ -327,6 +327,7 @@ export type Database = {
           invoice_logo_url: string | null
           invoice_next_number: number | null
           invoice_prefix: string | null
+          invoice_reply_to_email: string | null
           is_public: boolean
           is_verified: boolean
           kvk_number: string | null
@@ -378,6 +379,7 @@ export type Database = {
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
           invoice_prefix?: string | null
+          invoice_reply_to_email?: string | null
           is_public?: boolean
           is_verified?: boolean
           kvk_number?: string | null
@@ -429,6 +431,7 @@ export type Database = {
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
           invoice_prefix?: string | null
+          invoice_reply_to_email?: string | null
           is_public?: boolean
           is_verified?: boolean
           kvk_number?: string | null
@@ -4398,6 +4401,7 @@ export type Database = {
           invoice_logo_url: string | null
           invoice_next_number: number | null
           invoice_prefix: string | null
+          invoice_reply_to_email: string | null
           is_public: boolean | null
           is_verified: boolean | null
           knltb_rating: number | null
@@ -4458,6 +4462,7 @@ export type Database = {
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
           invoice_prefix?: string | null
+          invoice_reply_to_email?: string | null
           is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
@@ -4518,6 +4523,7 @@ export type Database = {
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
           invoice_prefix?: string | null
+          invoice_reply_to_email?: string | null
           is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
