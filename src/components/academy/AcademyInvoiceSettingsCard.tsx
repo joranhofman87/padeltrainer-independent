@@ -59,7 +59,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
       setLoading(true);
       const { data } = await supabase
         .from('academy_profiles')
-        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_reply_to_email, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color, invoice_include_year')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_reply_to_email, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color, invoice_include_year, invoice_language')
         .eq('id', academyId)
         .maybeSingle();
 
@@ -80,6 +80,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
           invoice_prefix: (data as any).invoice_prefix || '',
           invoice_next_number: (data as any).invoice_next_number || 1,
           invoice_include_year: (data as any).invoice_include_year ?? true,
+          invoice_language: (data as any).invoice_language || 'nl',
         });
         setLogoUrl((data as any).invoice_logo_url || null);
         setBannerColor((data as any).invoice_banner_color || '');
