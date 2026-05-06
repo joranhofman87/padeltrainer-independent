@@ -6,7 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Loader2, Send, Eye, Mail } from "lucide-react";
+import { Loader2, Send, Eye, Mail, Info } from "lucide-react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -139,6 +140,23 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="flex gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+              <Info className="h-4 w-4 mt-0.5 shrink-0" />
+              <p>
+                {t(
+                  "invoices.bulk.replyToHint",
+                  "Replies from players go to your reply-to email. You can set this in"
+                )}{" "}
+                <Link
+                  to="/app/academy/invoices?tab=settings"
+                  className="underline font-medium text-foreground"
+                  onClick={onClose}
+                >
+                  {t("invoices.bulk.replyToHintLink", "invoice settings")}
+                </Link>
+                .
+              </p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="custom-msg">
                 {t("invoices.bulk.messageLabel", "Email message")}
