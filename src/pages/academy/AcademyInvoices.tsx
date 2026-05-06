@@ -928,7 +928,9 @@ export default function AcademyInvoices() {
                       </div>
                       <div className="flex items-center justify-between text-sm mb-3">
                         <span className="text-muted-foreground">
-                          {format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}
+                          {activeTab === "paid" && inv.paid_at
+                            ? `${t("invoices.paymentDate", "Betaaldatum")}: ${format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale })}`
+                            : format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}
                         </span>
                         <span className="font-bold text-lg">€{formatEuro(inv.total)}</span>
                       </div>
