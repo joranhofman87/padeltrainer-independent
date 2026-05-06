@@ -21,7 +21,7 @@ import {
 import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { useAuth } from "@/hooks/useAuth";
+
 
 const formatEuro = (amount: number | null | undefined) =>
   (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
