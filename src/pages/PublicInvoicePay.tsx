@@ -491,12 +491,12 @@ export default function PublicInvoicePay() {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">{t("invoice.invoiceDate")}</p>
-              <p className="font-medium">{format(new Date(invoice.invoiceDate), "dd MMM yyyy")}</p>
+              <p className="font-medium">{format(new Date(invoice.invoiceDate), "dd MMM yyyy", { locale: getDateLocale(i18n.language) })}</p>
             </div>
             <div>
               <p className="text-muted-foreground">{t("invoice.dueDate")}</p>
               <p className={`font-medium ${isOverdue ? "text-destructive" : ""}`}>
-                {format(new Date(invoice.dueDate), "dd MMM yyyy")}
+                {format(new Date(invoice.dueDate), "dd MMM yyyy", { locale: getDateLocale(i18n.language) })}
               </p>
             </div>
           </div>
