@@ -174,7 +174,7 @@ export default function TrainerInvoices() {
     let sent = 0, noEmail = 0, failed = 0;
     for (const inv of draftInvoices) {
       try {
-        const { data } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id } });
+        const { data } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id, language: i18n.language || "nl" } });
         if (data?.error === "no_email") noEmail++;
         else if (data?.success) sent++;
         else failed++;
