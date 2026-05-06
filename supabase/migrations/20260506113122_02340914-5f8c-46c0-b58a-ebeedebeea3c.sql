@@ -1,0 +1,2 @@
+ALTER TABLE public.academy_profiles ADD COLUMN IF NOT EXISTS invoice_language text NOT NULL DEFAULT 'nl';
+ALTER TABLE public.trainer_profiles ADD COLUMN IF NOT EXISTS invoice_language text NOT NULL DEFAULT 'nl';

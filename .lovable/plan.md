@@ -1,76 +1,74 @@
-## Audit results: Dutch UX across the invoice flow
+## Pin invoice language to the academy, not the sender's UI
 
-I traced the full path (email → public invoice → pay → optional signup → app) and found a few real gaps. The good news: most copy is already translated. The bad news: a handful of hardcoded strings, a broken variable, and a language-mismatched link mean a Dutch recipient can land on a partly-English page.
+### The actual problem
 
-### Issues found
+Right now `send-invoice-email` uses whatever language is passed in from the UI, and the UI passes `i18n.language` of the logged-in user (the trainer or academy manager sending the invoice). That value comes from the browser's i18next detector and can flip to English the moment the manager toggles the UI, opens the app on a different device, or has their browser language change. There is no field on `academy_profiles` or `trainer_profiles` that says "always send invoices in Dutch", and `guest_players` has no language either. The only language field anywhere is `profiles.preferred_language`, which only exists for registered players.
 
-**1. Email subject is broken (high severity)**
-In `supabase/functions/send-invoice-email/index.ts` line 227:
-```ts
-const subject = `${l.subject} ${invoice.invoice_number} - ${businessName}`;
+So for RL Padel Performance — even though their academy is Dutch — recipients can receive English emails purely based on who clicked Send.
+
+### Goal
+
+The recipient's email language should be deterministic and independent of the sender's UI:
+
+1. If the recipient is a registered player with `profiles.preferred_language` set → use that.
+2. Otherwise → use the academy/trainer's configured invoice language.
+3. Fallback → `nl`.
+
+The sender's `i18n.language` should NOT influence the email anymore.
+
+### Changes
+
+**1. Database — add a per-organization invoice language**
+
+Add a column to both organization tables, default `'nl'`:
+- `academy_profiles.invoice_language text not null default 'nl'`
+- `trainer_profiles.invoice_language text not null default 'nl'`
+
+Backfill: leave default `'nl'` for everyone (matches today's behavior and explicitly fixes RL Padel Performance and every other Dutch academy). No manual data migration needed for RL.
+
+**2. `send-invoice-email/index.ts` — resolve language server-side**
+
+Replace the current `language = body.language || 'nl'` with:
+
 ```
-`l` is not defined; the translations dictionary is `tr`. This throws at runtime and the email send fails. Should be `tr.subject`.
+1. If invoice.player_id → look up profiles.preferred_language
+2. Else if invoice.academy_profile_id → use academy_profiles.invoice_language
+3. Else if invoice.trainer_id → use trainer_profiles.invoice_language
+4. Fallback 'nl'
+```
 
-**2. Public invoice URL is hardcoded to `/nl/...`**
-Same file: the link in the email always points at `https://padeltrainer.ai/nl/academies/{slug}/pay/{token}`, regardless of the recipient's language. An English/Spanish/etc. recipient lands on the Dutch URL. Should use the recipient `language` in the path.
+Ignore any `language` field from the request body (or keep it only as an explicit override for the bulk-email preview/test send dialog, where the sender deliberately picks the language). For real sends, the body value is dropped.
 
-**3. Caller sites don't pass `language` to the email function**
-`BulkInvoiceEmailDialog` passes `language` correctly. But the single-send mutations and "send all drafts" loops in:
-- `src/pages/trainer/TrainerInvoices.tsx` (3 invocations)
-- `src/pages/academy/AcademyInvoices.tsx` (3 invocations)
-- `src/components/trainer/InvoiceList.tsx` (2 invocations)
+This means subject prefix ("Factuur"), email body copy, currency/date formatting, and the public invoice URL locale segment all follow the recipient's language — which for RL is Dutch, always.
 
-…do not pass `language`, so the function falls back to `nl`. That's fine when the trainer is Dutch, but inconsistent with how the bulk dialog works and breaks for non-Dutch academies. Pass `i18n.language` from each call site.
+**3. UI — surface the setting in invoice settings**
 
-**4. Hardcoded Dutch toasts (cosmetic but breaks parity)**
-- `TrainerInvoices.tsx`: "Factuur verzonden naar ...", "X verzonden / X zonder e-mail / X mislukt", "X facturen verwerkt".
-- `AcademyInvoices.tsx`: same toast message hardcoded in `handleEmailSubmitAndSend`.
-- These are seen by trainers/academy managers, not guests, but they are mixed Dutch/English depending on the path.
+Add a single dropdown in academy invoice settings and trainer invoice settings:
+"Default invoice language" → NL / EN / ES / DE / FR / IT. Default NL. This is what gets persisted to `invoice_language` and used for any guest/unregistered recipient.
 
-**5. `forward-invoice` (notification to trainer) is fully Dutch**
-This sends a copy of the invoice to the trainer/academy's own forwarding addresses. Currency formatted `nl-NL`, subject prefixed `Factuur`, body in Dutch. Acceptable if all platform users are Dutch-speaking trainers; flag for confirmation rather than change.
+For registered players, an explainer note: "Players with a language preference on their account get invoices in their own language."
 
-**6. Public invoice page (`PublicInvoicePay.tsx`) — language detection**
-The page itself uses `useTranslation("common")` and all strings are translated (NL keys verified: `stepReviewDetails`, `stepPay`, `editBillingDetails`, `paymentReceived`, `optionalAccountDescription`, `goToMyAccount`, etc.). However the displayed language depends on the browser's `i18next-browser-languagedetector`, not on the invoice language. Combined with issue #2 (URL is hardcoded `/nl/`), a Dutch recipient on a non-Dutch browser still sees an English page even though the URL says `/nl/`. Fix by reading the locale segment from the URL (`/nl/...`) and calling `i18n.changeLanguage('nl')` on mount of the public invoice route.
+**4. Stop passing `i18n.language` from senders**
 
-**7. Post-payment signup → app**
-`PostPaymentCTA` builds `/app/signup/player?...&redirect=/app/player`. The signup page and the player app already follow `i18n.language`, so once #6 is fixed the whole flow stays in Dutch end-to-end.
+Remove `language: i18n.language || "nl"` from the 8 invoke sites in:
+- `src/pages/trainer/TrainerInvoices.tsx` (3)
+- `src/pages/academy/AcademyInvoices.tsx` (3)
+- `src/components/trainer/InvoiceList.tsx` (2)
 
-### Changes to make
+Keep it on `BulkInvoiceEmailDialog` only for preview/test sends inside that dialog (so the manager can preview in any language). Real sends from the bulk dialog should also drop the override and rely on per-recipient resolution — confirm with you.
 
-1. **`supabase/functions/send-invoice-email/index.ts`**
-   - Replace `${l.subject}` with `${tr.subject}` on line 227.
-   - Build `publicUrl` with the recipient `language` segment instead of hardcoded `nl`. Fallback to `nl` when language is missing.
+**5. `forward-invoice` (copy to the trainer's own inbox)**
 
-2. **Pass `language` from every caller**
-   - `src/pages/trainer/TrainerInvoices.tsx`: add `language: i18n.language` to all 3 `invoke("send-invoice-email", ...)` bodies.
-   - `src/pages/academy/AcademyInvoices.tsx`: same for the 2 calls that don't already pass it.
-   - `src/components/trainer/InvoiceList.tsx`: same for both calls.
-
-3. **Translate the hardcoded Dutch toasts**
-   - Move "Factuur verzonden naar {email}", the "X verzonden / X zonder e-mail / X mislukt" summary, and the "{n} facturen verwerkt" string into `invoices.*` keys in `nl/trainer.json` and `en/trainer.json` (and the academy equivalents). Use `t(...)` at the call sites.
-
-4. **`PublicInvoicePay.tsx` — pin the page language to the URL locale**
-   - On mount, read the first path segment (`nl|en|es|de|fr|it`); if it differs from `i18n.language`, call `i18n.changeLanguage(seg)`. This guarantees the recipient sees the page in the language the email link encoded.
-
-5. **`forward-invoice` — confirm with you before changing**
-   - Currently fully Dutch. Leave as-is unless you want it localized per academy/trainer language.
-
-### Out of scope
-
-- Changing email signing domain, CTA design, or payment provider behavior.
-- Any business logic in Mollie webhooks or invoice generation.
-- The trainer-facing `forward-invoice` content unless you confirm.
+Already hardcoded Dutch. Leave as-is — it goes to the trainer/academy themselves, not to recipients.
 
 ### Files touched
 
+- New migration: add `invoice_language` columns
 - `supabase/functions/send-invoice-email/index.ts`
-- `src/pages/PublicInvoicePay.tsx`
-- `src/pages/trainer/TrainerInvoices.tsx`
-- `src/pages/academy/AcademyInvoices.tsx`
-- `src/components/trainer/InvoiceList.tsx`
-- `src/i18n/locales/nl/trainer.json`, `src/i18n/locales/en/trainer.json` (and academy equivalents) for the toast strings
+- `src/pages/academy/AcademyInvoiceSettings.tsx` (or equivalent settings file) + trainer equivalent
+- `src/pages/trainer/TrainerInvoices.tsx`, `src/pages/academy/AcademyInvoices.tsx`, `src/components/trainer/InvoiceList.tsx` — remove `language` from invokes
+- `nl/` and `en/` translation files for the new settings field
 
-### Open question for you
+### One question for you
 
-Should `forward-invoice` (the copy that goes to the academy's own inbox) also follow the recipient language, or stay Dutch? Today it is fully Dutch with `Factuur` prefix.
+For the bulk-send dialog, when the manager is actually sending (not previewing/testing), should the picked language **override** the per-recipient resolution, or should each recipient still get their own language? The clean behavior is per-recipient resolution always, with the dropdown labelled "Preview in:" so it's clear it's only for the preview. Confirm or tell me you want the override behavior.
