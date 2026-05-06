@@ -9,6 +9,8 @@ Disallow: /*/register/
 Disallow: /*/auth
 Disallow: /*/settings
 Disallow: /*/dashboard
+Disallow: /claim/
+Disallow: /*/claim/
 
 # Crawl-delay for aggressive bots
 User-agent: AhrefsBot
