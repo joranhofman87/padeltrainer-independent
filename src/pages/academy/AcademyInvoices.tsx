@@ -303,8 +303,9 @@ export default function AcademyInvoices() {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-      const emailMsg = result.email ? ` naar ${result.email}` : "";
-      toast.success(t("invoices.sentSuccess", `Invoice sent${emailMsg}`));
+      toast.success(result.email
+        ? t("invoices.sentSuccessTo", { email: result.email })
+        : t("invoices.sentSuccess"));
     },
     onError: () => {
       toast.error(t("invoices.sendError", "Failed to send invoice"));
