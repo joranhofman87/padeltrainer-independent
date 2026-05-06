@@ -114,11 +114,27 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
         bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
       });
 
+      // Fetch priority claims to hide slots that still have unresolved priority players
+      const { data: claimsData } = await supabase
+        .from('slot_priority_claims')
+        .select('slot_id, status')
+        .in('slot_id', slotIds);
+      const slotPendingPriority = new Map<string, boolean>();
+      const slotHasReleased = new Map<string, boolean>();
+      (claimsData || []).forEach((c: any) => {
+        if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
+        if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
+      });
+      const nowMs = Date.now();
+
       // Filter to slots with availability and map
       const availableSlots: SlotData[] = slotsData
         .filter(s => {
           const maxParticipants = (s as any).max_participants || 4;
           const booked = bookingCounts[s.id] || 0;
+          const windowEnd = (s as any).priority_window_ends_at;
+          const windowActive = windowEnd && new Date(windowEnd).getTime() > nowMs;
+          if (windowActive && slotPendingPriority.get(s.id) && !slotHasReleased.get(s.id)) return false;
           return booked < maxParticipants;
         })
         .map(s => {
