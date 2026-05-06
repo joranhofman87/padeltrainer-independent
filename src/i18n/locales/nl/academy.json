@@ -429,6 +429,13 @@
     "createInvoice": "Nieuwe factuur",
     "sendingAll": "Versturen...",
     "unpaidCount": "Open facturen",
+    "sentSuccess": "Factuur verzonden",
+    "sentSuccessTo": "Factuur verzonden naar {{email}}",
+    "sendError": "Verzenden mislukt",
+    "bulkSent": "{{count}} verzonden",
+    "bulkNoEmail": "{{count}} zonder e-mail",
+    "bulkFailed": "{{count}} mislukt",
+    "bulkProcessed": "{{total}} facturen verwerkt: {{parts}}",
     "bulk": {
       "selected": "{{count}} geselecteerd",
       "clear": "Wissen",
