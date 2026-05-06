@@ -52,7 +52,11 @@ const handler = async (req: Request): Promise<Response> => {
     const { invoiceId } = body;
     const customMessageRaw = typeof body.customMessage === "string" ? body.customMessage : "";
     const customMessage = customMessageRaw.slice(0, 2000);
-    const language = (typeof body.language === "string" ? body.language : "nl").toLowerCase().slice(0, 2);
+    // Language is now resolved server-side from the recipient/organization.
+    // The caller may pass `language` only as an explicit override for previews/test sends.
+    const languageOverride = typeof body.language === "string"
+      ? body.language.toLowerCase().slice(0, 2)
+      : null;
     const testEmail = typeof body.testEmail === "string" && body.testEmail.trim() ? body.testEmail.trim() : null;
     const previewOnly = body.previewOnly === true;
     if (!invoiceId) {
