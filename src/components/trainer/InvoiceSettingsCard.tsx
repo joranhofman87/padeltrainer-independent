@@ -148,7 +148,8 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         invoice_prefix: formData.invoice_prefix || null,
         invoice_next_number: formData.invoice_next_number || 1,
         invoice_include_year: formData.invoice_include_year,
-      })
+        invoice_language: formData.invoice_language || 'nl',
+      } as any)
       .eq('user_id', userId);
 
     if (error) {
