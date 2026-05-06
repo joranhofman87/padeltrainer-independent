@@ -53,6 +53,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
     invoice_prefix: 'INV',
     invoice_next_number: 1,
     invoice_include_year: true,
+    invoice_language: 'nl',
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -82,6 +83,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         invoice_prefix: initialData.invoice_prefix || '',
         invoice_next_number: initialData.invoice_next_number || 1,
         invoice_include_year: (initialData as any).invoice_include_year ?? true,
+        invoice_language: (initialData as any).invoice_language || 'nl',
       });
       setLogoUrl(initialData.invoice_logo_url || null);
       setForwardEmails(initialData.invoice_forward_emails || []);
@@ -146,7 +148,8 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         invoice_prefix: formData.invoice_prefix || null,
         invoice_next_number: formData.invoice_next_number || 1,
         invoice_include_year: formData.invoice_include_year,
-      })
+        invoice_language: formData.invoice_language || 'nl',
+      } as any)
       .eq('user_id', userId);
 
     if (error) {
@@ -478,6 +481,27 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
             onChange={(e) => setReplyToEmail(e.target.value)}
             placeholder="you@example.com"
           />
+        </div>
+
+        {/* Default invoice language */}
+        <div className="space-y-2 pt-4 border-t">
+          <Label htmlFor="tr_invoice_language">{t('invoices.invoiceLanguage', 'Default invoice language')}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t('invoices.invoiceLanguageDescription', 'Used for invoice emails and the public payment page. Players with a language preference on their account get invoices in their own language.')}
+          </p>
+          <Select value={formData.invoice_language} onValueChange={(v) => setFormData({ ...formData, invoice_language: v })}>
+            <SelectTrigger id="tr_invoice_language" className="max-w-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="nl">Nederlands</SelectItem>
+              <SelectItem value="en">English</SelectItem>
+              <SelectItem value="es">Español</SelectItem>
+              <SelectItem value="de">Deutsch</SelectItem>
+              <SelectItem value="fr">Français</SelectItem>
+              <SelectItem value="it">Italiano</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Invoice Forwarding Emails */}

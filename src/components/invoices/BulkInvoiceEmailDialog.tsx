@@ -101,7 +101,7 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
     for (const id of invoiceIds) {
       try {
         const { data } = await supabase.functions.invoke("send-invoice-email", {
-          body: { invoiceId: id, customMessage, language },
+          body: { invoiceId: id, customMessage },
         });
         if (data?.error === "no_email") {
           noEmail++;
