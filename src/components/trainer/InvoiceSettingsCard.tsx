@@ -85,6 +85,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
       });
       setLogoUrl(initialData.invoice_logo_url || null);
       setForwardEmails(initialData.invoice_forward_emails || []);
+      setReplyToEmail((initialData as any).invoice_reply_to_email || '');
       setInitialNumbering({
         prefix: initialData.invoice_prefix || '',
         includeYear: (initialData as any).invoice_include_year ?? true,
