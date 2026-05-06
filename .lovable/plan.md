@@ -1,83 +1,87 @@
 
-# QA Plan: Priority Rebooking System
+# Tiered Rebooking Flow
 
-Acting as QA manager. I'll perform a structured review of the new feature (bulk-copy slots + priority claims + token-based player flow + fill-rate stats), document findings, and add automated tests where they bring real value.
+Extend the existing priority rebooking system from 2 tiers (priority → public) to 3 tiers:
 
-## 1. Static review (read-only, produces a report)
+```text
+Tier 1: Priority      Tier 2: Members            Tier 3: Public
+(own slot rebooking)  (previous-cycle players,   (anyone, optional
+ already built         can switch slots)          admin approval)
+```
 
-I will audit, file-by-file, and produce a written QA report covering:
+## 1. Data model
 
-- **Migration `20260506...sql`**
-  - `slot_priority_claims` schema, indexes, RLS, triggers
-  - `get_priority_claim_by_token` / `respond_to_priority_claim` RPCs (SECURITY DEFINER, search_path, GRANTs to anon)
-  - Window expiry logic and idempotency (unique indexes per slot+player / slot+guest)
-- **`src/lib/priorityClaims.ts`**
-  - Bulk-copy field parity vs `availability_slots` (looking for missing columns vs source slot)
-  - Idempotency via `priority_source_slot_id`
-  - Sequential inserts inside a loop (N+1) — flag for follow-up if needed
-  - Token RPC wrappers
-- **`BulkCopySlotsWizard`, `PriorityClaimsSection`, `CycleFillRateCard`**
-  - Required props, error states, empty states, i18n keys vs locale files
-  - Owner-type parity (trainer vs academy)
-- **`PriorityClaim.tsx`** page
-  - `noindex`, expired window, already-responded, declined states
-  - Redirect URL to `/app/book/:trainerId?slot=...&claim=...`
-- **Visibility parity** in `BookLesson.tsx`, `TrainerOpenSlots.tsx`, `AcademyPublicOpenSlots.tsx`
-  - Confirm filter respects `priority_window_ends_at` AND token bypass
-- **Routing/SEO**
-  - `/claim/:token` route registered, `robots.txt` disallow
-  - Confirm not in `scripts/generate-sitemap.ts` / `public/llms.txt` / Cloudflare worker
-- **`send-priority-claim-invitation` edge function**
-  - AuthN check, service-role bypass, email payload, `invited_at` write-back, test-mode flag
-- **`mollie-webhook` integration**
-  - Marking matching claim as `claimed` on payment
-- **Security review**
-  - Run `supabase--linter`
-  - Verify token RPCs do not leak email/PII to anon beyond what's needed
+Add to `availability_slots` (one migration):
 
-Output: a `QA_REPORT_priority_rebooking.md` summary with severity-ranked findings (blocker / high / medium / low / nit).
+- `member_window_starts_at timestamptz`
+- `member_window_ends_at timestamptz`
+- `public_release_status text` — values: `pending_admin_review`, `auto_release_scheduled`, `released`, `held`. Default `auto_release_scheduled`.
+- `source_cycle_id uuid` — populated at bulk-copy time from the source slot's `cyclus_id`. Used to identify "members" (anyone who booked any slot in that cycle).
 
-## 2. Automated tests (added to repo)
+No new tables needed. The audience is computed dynamically from `bookings` joined to source cycle.
 
-Vitest unit tests (pure logic, no DB) — in line with the project's existing test pattern (`src/lib/*.test.ts`):
+## 2. Visibility rules (extend `shouldHidePrioritySlot` helper)
 
-- **`src/lib/priorityClaims.test.ts`** — type contracts and helpers:
-  - `ClaimStatus` union completeness
-  - `BulkCopyInput` shape — defaults and required fields
-  - Pure helper for window-end calculation (extract small util `computePriorityWindowEnd(now, days)` from inline math so it's testable)
-  - Pure helper for slot offset (extract `applyWeeksOffset(iso, weeks)` and test DST/timezone safety)
-  - Token-bypass predicate (extract `shouldHidePrioritySlot({ windowEndsAt, hasPendingPriority, hasReleased, claimToken, claimSlotId, slotId, now })` from the duplicated inline logic in BookLesson / TrainerOpenSlots / AcademyPublicOpenSlots) and unit-test all branches.
-- **`src/components/cycles/CycleFillRateCard.test.tsx`** — render with mocked supabase, asserts counts.
-- **`src/components/cycles/PriorityClaimsSection.test.tsx`** — empty state + status badges render.
+New pure helper `getSlotVisibility({ now, slot, viewer })` returns one of:
+`'priority' | 'members' | 'public' | 'hidden'`. Applied in `BookLesson`, `TrainerOpenSlots`, `AcademyPublicOpenSlots`:
 
-Edge function test (Deno):
+- If priority window active and unresolved priority claims → only the matching claim token sees it.
+- Else if member window active → only viewers whose `auth.uid` has a non-cancelled booking in `source_cycle_id` see it. Anonymous viewers see it as hidden.
+- Else if `public_release_status = 'released'` (or window passed and status auto) → everyone.
+- Else if `public_release_status = 'pending_admin_review'` → hidden from public, visible to owner only.
 
-- **`supabase/functions/send-priority-claim-invitation/index.test.ts`**
-  - 401 without Authorization
-  - 400 without `claimIds`/`slotId`
-  - 200 with `testEmail` returning `sent` count (mocked Resend)
+## 3. Bulk Copy wizard — add tier defaults
 
-## 3. Light refactor in service of testability (only if needed for the tests above)
+Extend `BulkCopySlotsWizard.tsx`:
 
-Extract three small pure helpers into `src/lib/priorityClaims.ts` (no behavior change), and update the three consumers (`BookLesson`, `TrainerOpenSlots`, `AcademyPublicOpenSlots`) to call `shouldHidePrioritySlot(...)` so the duplicated logic has one source of truth and is unit-tested.
+- Step 2: existing priority window setting.
+- New Step 3: "Member window" — number of days after priority window ends. Default 7. Toggle to disable.
+- New Step 4: "Public release" — radio: `Auto-release after member window` (default) | `Require my approval before public`.
+- Persist these into the copied slots' `member_window_*` and `public_release_status` columns.
 
-## 4. Manual smoke test in preview (browser tool)
+## 4. Per-slot override
 
-- Visit `/app/trainer/cycles` and verify the "Bulk copy slots" entry point renders.
-- Visit `/claim/invalid-token` and verify the "Link not found" empty state.
-- Verify `robots.txt` disallows `/claim/`.
+In `TrainerSlotDetail` and `AcademySlotDetail`, add a "Visibility & rebooking" card showing the current tier (Priority / Members / Public / Held) with three actions:
 
-## 5. Deliverable
+- "Open to members now" — clears priority window, sets `member_window_ends_at`.
+- "Open to public now" — sets `public_release_status='released'`, `is_public=true`.
+- "Hold for review" — sets `public_release_status='held'`, prevents auto-release.
 
-- `QA_REPORT_priority_rebooking.md` at the repo root (or `/mnt/documents/`)
-- New unit + edge tests as listed above
-- Small refactor extracting `shouldHidePrioritySlot` for shared visibility logic
-- A short summary of findings and recommendations in chat
+## 5. Slot-switch flow for members
 
-## What I will NOT do in this pass
+When a member viewer (Tier 2) opens an eligible slot in `BookLesson`:
 
-- Build full E2E tests for the booking-with-claim flow (requires seeded DB + auth).
-- Touch business behavior — only extract pure helpers as already used.
-- Re-do i18n or design work.
+- Booking dialog gets a new "Switch from another slot?" section listing their current bookings in source cycle.
+- Selecting a source slot triggers RPC `swap_member_booking(_old_booking_id, _new_slot_id)` — atomic: cancels old booking, creates new booking on the new slot, copies player metadata, refunds/credits handled by existing invoice flow (initial pass: marks old booking as `cancelled_swap`, no refund logic — flagged for follow-up).
+- Without selecting, regular booking flow applies.
 
-Approve and I'll execute the QA pass.
+## 6. Admin review queue
+
+A new tab `Cycles → Pending public release` lists slots where `public_release_status='pending_admin_review'` AND member window has ended. One-click "Release to public" or "Hold". Same component on Trainer and Academy.
+
+## 7. Notifications (light)
+
+- When a slot enters Tier 2: optional digest to source-cycle members (use existing notification preferences `open_slots_digest`).
+- When `pending_admin_review` reaches the deadline: in-app banner on Cycles page.
+
+## 8. Tests & QA
+
+- Extend `priorityClaims.test.ts` with `getSlotVisibility` cases (12+ branches).
+- Add `swapMemberBooking` unit tests for the membership predicate (pure function).
+- Manual: full lifecycle test on one slot (priority → member → public).
+
+## What I will NOT include in v1
+
+- Refund handling on switch (mark for v1.1).
+- Per-member invitation emails for Tier 2 (rely on existing digest).
+- Waitlist promotion (already exists separately).
+
+## Implementation order
+
+1. Migration + types.
+2. Pure visibility helper + tests.
+3. Bulk Copy wizard tier inputs.
+4. Public booking pages respect tiers.
+5. Per-slot override card.
+6. Member-switch RPC + UI section.
+7. Admin review queue tab.

@@ -738,6 +738,8 @@ export type Database = {
           location_id: string | null
           max_participants: number | null
           max_rating: number | null
+          member_window_ends_at: string | null
+          member_window_starts_at: string | null
           min_participants: number | null
           min_rating: number | null
           price_per_session: number | null
@@ -745,8 +747,10 @@ export type Database = {
           priority_source_slot_id: string | null
           priority_window_ends_at: string | null
           priority_window_starts_at: string | null
+          public_release_status: string
           rating_system: string | null
           recurrence_rule: string | null
+          source_cycle_id: string | null
           split_payment: boolean | null
           start_time: string
           total_price: number | null
@@ -768,6 +772,8 @@ export type Database = {
           location_id?: string | null
           max_participants?: number | null
           max_rating?: number | null
+          member_window_ends_at?: string | null
+          member_window_starts_at?: string | null
           min_participants?: number | null
           min_rating?: number | null
           price_per_session?: number | null
@@ -775,8 +781,10 @@ export type Database = {
           priority_source_slot_id?: string | null
           priority_window_ends_at?: string | null
           priority_window_starts_at?: string | null
+          public_release_status?: string
           rating_system?: string | null
           recurrence_rule?: string | null
+          source_cycle_id?: string | null
           split_payment?: boolean | null
           start_time: string
           total_price?: number | null
@@ -798,6 +806,8 @@ export type Database = {
           location_id?: string | null
           max_participants?: number | null
           max_rating?: number | null
+          member_window_ends_at?: string | null
+          member_window_starts_at?: string | null
           min_participants?: number | null
           min_rating?: number | null
           price_per_session?: number | null
@@ -805,8 +815,10 @@ export type Database = {
           priority_source_slot_id?: string | null
           priority_window_ends_at?: string | null
           priority_window_starts_at?: string | null
+          public_release_status?: string
           rating_system?: string | null
           recurrence_rule?: string | null
+          source_cycle_id?: string | null
           split_payment?: boolean | null
           start_time?: string
           total_price?: number | null
@@ -5362,6 +5374,10 @@ export type Database = {
         Args: { _club_profile_id: string; _user_id: string }
         Returns: boolean
       }
+      is_cycle_member: {
+        Args: { _cycle_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_player: { Args: { _user_id: string }; Returns: boolean }
       is_player_of_trainer: { Args: { p_player_id: string }; Returns: boolean }
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
@@ -5381,6 +5397,10 @@ export type Database = {
       }
       schedule_enrichment_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
+      swap_member_booking: {
+        Args: { _new_slot_id: string; _old_booking_id: string }
+        Returns: Json
+      }
       swap_slots: {
         Args: {
           _slot_a_end: string
