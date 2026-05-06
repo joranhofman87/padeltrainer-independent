@@ -373,5 +373,24 @@
     "unknownPlayer": "Jugador",
     "confirmed": "Confirmado",
     "denied": "Denegado"
+  },
+  "invoices": {
+    "bulk": {
+      "selected": "{{count}} seleccionadas",
+      "clear": "Limpiar",
+      "sendEmail": "Enviar correo",
+      "resetToDraft": "Restablecer a borrador",
+      "updateDueDate": "Actualizar vencimiento",
+      "delete": "Eliminar"
+    },
+    "unpaid": "Pendiente",
+    "allTrainers": "Todos los entrenadores",
+    "allLocations": "Todas las ubicaciones",
+    "allStatuses": "Todos los estados",
+    "createInvoice": "Nueva factura",
+    "sendingAll": "Enviando...",
+    "unpaidCount": "Facturas abiertas",
+    "open": "Abierta",
+    "cancelled": "Cancelada"
   }
 }

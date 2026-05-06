@@ -421,7 +421,24 @@
     "backfillNone": "All bookings are already invoiced",
     "backfillError": "Failed to generate invoices",
     "shareLink": "Share",
-    "shareLinkCopied": "Invoice link copied to clipboard"
+    "shareLinkCopied": "Invoice link copied to clipboard",
+    "bulk": {
+      "selected": "{{count}} selezionate",
+      "clear": "Cancella",
+      "sendEmail": "Invia email",
+      "resetToDraft": "Riporta a bozza",
+      "updateDueDate": "Aggiorna scadenza",
+      "delete": "Elimina"
+    },
+    "unpaid": "Non pagate",
+    "allTrainers": "Tutti gli allenatori",
+    "allLocations": "Tutte le sedi",
+    "allStatuses": "Tutti gli stati",
+    "createInvoice": "Nuova fattura",
+    "sendingAll": "Invio...",
+    "unpaidCount": "Fatture aperte",
+    "open": "Aperta",
+    "cancelled": "Annullata"
   },
   "warnings": {
     "ratingSpread": "Rating spread: {{spread}}",
