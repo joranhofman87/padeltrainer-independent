@@ -156,7 +156,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     try {
       // Call edge function to send email
       const { data, error: fnError } = await supabase.functions.invoke('send-invoice-email', {
-        body: { invoiceId: invoice.id },
+        body: { invoiceId: invoice.id, language: i18n.language || 'nl' },
       });
 
       if (fnError) {
