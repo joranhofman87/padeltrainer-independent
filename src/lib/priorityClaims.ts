@@ -218,7 +218,9 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
       court_type: src.court_type,
       location_id: src.location_id,
       academy_profile_id: src.academy_profile_id,
-      is_public: false,
+      // Visibility is gated by tier (priority/member/public) in the listing layer.
+      // Slots are always queryable; the client filters via getSlotVisibility.
+      is_public: true,
       training_level: src.training_level,
       price_per_session: src.price_per_session,
       total_price: src.total_price,
