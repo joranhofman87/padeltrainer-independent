@@ -147,9 +147,13 @@ export default function BookLesson() {
       }
     } as unknown as TrainerWithProfile);
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const claimToken = urlParams.get('claim');
+    const claimSlotId = urlParams.get('slot');
+
     const { data: slotsData } = await supabase
       .from('availability_slots')
-      .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, locations:location_id(id, name, city, street_address)`)
+      .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, priority_window_ends_at, locations:location_id(id, name, city, street_address)`)
       .eq('trainer_id', trainerData.id)
       
       .eq('is_public', true)
@@ -175,10 +179,29 @@ export default function BookLesson() {
         if (rating != null) slotBookingInfo[b.slot_id].ratings.push({ rating, system });
       });
 
+      // Priority claim filtering (claim token bypasses hidden slots)
+      const { data: claimsData } = await supabase
+        .from('slot_priority_claims')
+        .select('slot_id, status')
+        .in('slot_id', slotIds);
+      const slotPendingPriority = new Map<string, boolean>();
+      const slotHasReleased = new Map<string, boolean>();
+      (claimsData || []).forEach((c: any) => {
+        if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
+        if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
+      });
+      const nowMs = Date.now();
+
       const availableSlots = slotsData
         .filter((s) => {
           const maxP = (s as any).max_participants || 4;
-          return (slotBookingInfo[s.id]?.count || 0) < maxP;
+          if ((slotBookingInfo[s.id]?.count || 0) >= maxP) return false;
+          // Bypass priority hide if user has matching claim token+slot
+          if (claimToken && claimSlotId === s.id) return true;
+          const windowEnd = (s as any).priority_window_ends_at;
+          const windowActive = windowEnd && new Date(windowEnd).getTime() > nowMs;
+          if (windowActive && slotPendingPriority.get(s.id) && !slotHasReleased.get(s.id)) return false;
+          return true;
         })
         .map((s) => {
           const info = slotBookingInfo[s.id];
