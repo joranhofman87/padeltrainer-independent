@@ -96,7 +96,8 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    if (!recipientEmail) {
+    // For test sends and previews we don't require a recipient email on the invoice
+    if (!recipientEmail && !testEmail && !previewOnly) {
       return new Response(
         JSON.stringify({ success: false, error: "no_email", playerName: invoice.player_name }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
