@@ -18,10 +18,10 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn } from "lucide-react";
+import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { useAuth } from "@/hooks/useAuth";
+
 
 const formatEuro = (amount: number | null | undefined) =>
   (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -92,7 +92,10 @@ function PostPaymentCTA({ playerName, playerEmail, playerId }: { playerName?: st
   const signupUrl = `/app/signup/player?${params.toString()}`;
 
   return (
-    <div className="pt-4">
+    <div className="pt-4 space-y-2">
+      <p className="text-sm text-muted-foreground">
+        {t("invoice.optionalAccountDescription")}
+      </p>
       <Link to={signupUrl}>
         <Button variant="outline" className="gap-2">
           <UserPlus className="h-4 w-4" />
@@ -144,11 +147,13 @@ function EditDetailsDialog({
   open,
   onOpenChange,
   invoice,
+  publicToken,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   invoice: PublicInvoiceData["invoice"];
+  publicToken: string;
   onSaved: () => void;
 }) {
   const { t } = useTranslation("common");
@@ -160,16 +165,15 @@ function EditDetailsDialog({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("invoices")
-        .update({
-          player_business_name: businessName || null,
-          player_address: address || null,
-          player_btw_number: btwNumber || null,
-        })
-        .eq("id", invoice.id);
-
-      if (error) throw error;
+      const { data, error } = await supabase.functions.invoke("update-public-invoice-details", {
+        body: {
+          publicToken,
+          playerBusinessName: businessName,
+          playerAddress: address,
+          playerBtwNumber: btwNumber,
+        },
+      });
+      if (error || (data && (data as any).error)) throw error || new Error((data as any).error);
       toast.success(t("changesSaved", "Changes saved"));
       onOpenChange(false);
       onSaved();
@@ -232,16 +236,15 @@ function EditDetailsDialog({
 
 function PlayerDetails({
   invoice,
-  currentUserId,
+  publicToken,
   onRefresh,
 }: {
   invoice: PublicInvoiceData["invoice"];
-  currentUserId: string | null;
+  publicToken: string;
   onRefresh: () => void;
 }) {
   const { t } = useTranslation("common");
   const [editOpen, setEditOpen] = useState(false);
-  const isOwner = currentUserId && invoice.playerId && currentUserId === invoice.playerId;
 
   return (
     <div>
@@ -259,30 +262,20 @@ function PlayerDetails({
         <p className="text-sm text-muted-foreground">BTW: {invoice.playerBtwNumber}</p>
       )}
 
-      {isOwner ? (
-        <>
-          <button
-            onClick={() => setEditOpen(true)}
-            className="text-xs text-primary hover:underline mt-1.5 inline-flex items-center gap-1"
-          >
-            <Pencil className="h-3 w-3" />
-            {t("updateBillingDetails", "Update billing details")}
-          </button>
-          <EditDetailsDialog
-            open={editOpen}
-            onOpenChange={setEditOpen}
-            invoice={invoice}
-            onSaved={onRefresh}
-          />
-        </>
-      ) : !currentUserId ? (
-        <Link
-          to={`/app/auth?redirect=${encodeURIComponent(window.location.pathname)}`}
-          className="text-xs text-muted-foreground hover:text-primary hover:underline mt-1.5 inline-block"
-        >
-          {t("loginToEditDetails", "Log in to update your details")}
-        </Link>
-      ) : null}
+      <button
+        onClick={() => setEditOpen(true)}
+        className="text-xs text-primary hover:underline mt-1.5 inline-flex items-center gap-1"
+      >
+        <Pencil className="h-3 w-3" />
+        {t("invoice.editBillingDetails", "Edit billing details")}
+      </button>
+      <EditDetailsDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        invoice={invoice}
+        publicToken={publicToken}
+        onSaved={onRefresh}
+      />
     </div>
   );
 }
@@ -290,7 +283,7 @@ function PlayerDetails({
 export default function PublicInvoicePay() {
   const { t } = useTranslation("common");
   const { token } = useParams<{ token: string }>();
-  const { user } = useAuth();
+  
   const [data, setData] = useState<PublicInvoiceData | null>(null);
   const [searchParams] = useSearchParams();
   const isSuccessRedirect = searchParams.get("status") === "success";
@@ -450,6 +443,19 @@ export default function PublicInvoicePay() {
             )}
           </div>
 
+          {/* Guided steps */}
+          <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-3 py-1 font-medium">
+              <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px]">1</span>
+              {t("invoice.stepReviewDetails")}
+            </div>
+            <div className="h-px flex-1 bg-border" />
+            <div className="flex items-center gap-1.5 rounded-full bg-muted text-muted-foreground px-3 py-1 font-medium">
+              <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted-foreground/30 text-[10px]">2</span>
+              {t("invoice.stepPay")}
+            </div>
+          </div>
+
           <Separator />
 
           {/* From / To */}
@@ -463,7 +469,7 @@ export default function PublicInvoicePay() {
             </div>
             <PlayerDetails
               invoice={invoice}
-              currentUserId={user?.id ?? null}
+              publicToken={token!}
               onRefresh={fetchInvoice}
             />
           </div>
@@ -528,19 +534,25 @@ export default function PublicInvoicePay() {
 
           {/* Pay button — only when academy has Mollie connected */}
           {invoice.hasMollieAccount ? (
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handlePay}
-              disabled={payLoading}
-            >
-              {payLoading ? (
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-              ) : (
-                <CreditCard className="h-5 w-5 mr-2" />
-              )}
-              {payLoading ? t("invoice.redirecting") : t("invoice.payAmount", { amount: formatEuro(invoice.total) })}
-            </Button>
+            <div className="space-y-2">
+              <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1">
+                <ArrowDown className="h-3 w-3" />
+                {t("invoice.payHelper")}
+              </p>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handlePay}
+                disabled={payLoading}
+              >
+                {payLoading ? (
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                ) : (
+                  <CreditCard className="h-5 w-5 mr-2" />
+                )}
+                {payLoading ? t("invoice.redirecting") : t("invoice.payAmount", { amount: formatEuro(invoice.total) })}
+              </Button>
+            </div>
           ) : null}
 
           {/* Bank details — prominent when no online payment available */}

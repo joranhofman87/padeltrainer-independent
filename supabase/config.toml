@@ -186,3 +186,6 @@ verify_jwt = false
 
 [functions.backup-database]
 verify_jwt = false
+
+[functions.update-public-invoice-details]
+verify_jwt = false
