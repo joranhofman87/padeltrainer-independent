@@ -155,11 +155,19 @@ const handler = async (req: Request): Promise<Response> => {
     // Resolve recipient language: registered player preference > org default > 'nl'
     let recipientLanguage: string | null = null;
     if (invoice.player_id) {
-      const { data: playerProfile } = await supabase
+      let { data: playerProfile } = await supabase
         .from("profiles")
         .select("preferred_language")
         .eq("id", invoice.player_id)
         .maybeSingle();
+      if (!playerProfile) {
+        const { data: byUserId } = await supabase
+          .from("profiles")
+          .select("preferred_language")
+          .eq("user_id", invoice.player_id)
+          .maybeSingle();
+        playerProfile = byUserId;
+      }
       if (playerProfile?.preferred_language) {
         recipientLanguage = String(playerProfile.preferred_language).toLowerCase().slice(0, 2);
       }
