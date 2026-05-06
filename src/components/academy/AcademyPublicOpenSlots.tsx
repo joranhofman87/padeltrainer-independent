@@ -147,6 +147,19 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
       });
 
+      // Fetch priority claim status (used to hide slots that still have unresolved priority players)
+      const { data: claimsData } = await supabase
+        .from('slot_priority_claims')
+        .select('slot_id, status')
+        .in('slot_id', slotIds);
+      const slotPendingPriority = new Map<string, boolean>();
+      const slotHasReleased = new Map<string, boolean>();
+      (claimsData || []).forEach((c: any) => {
+        if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
+        if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
+      });
+      const nowMs = Date.now();
+
       // Dedupe by slot id
       const seen = new Set<string>();
       const availableSlots: SlotData[] = slotsData
