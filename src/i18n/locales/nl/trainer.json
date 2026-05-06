@@ -759,7 +759,14 @@
     "numbering": "Factuurnummering",
     "prefix": "Prefix",
     "nextNumber": "Volgend nummer",
-    "previewNumber": "Voorbeeld"
+    "previewNumber": "Voorbeeld",
+    "sentSuccess": "Factuur verzonden",
+    "sentSuccessTo": "Factuur verzonden naar {{email}}",
+    "sendError": "Verzenden mislukt",
+    "bulkSent": "{{count}} verzonden",
+    "bulkNoEmail": "{{count}} zonder e-mail",
+    "bulkFailed": "{{count}} mislukt",
+    "bulkProcessed": "{{total}} facturen verwerkt: {{parts}}"
   },
   "profileVisibility": {
     "title": "Zichtbaarheid marktplaats",
