@@ -108,20 +108,22 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch academy/trainer profile for branding + reply-to
+    // Fetch academy/trainer profile for branding + reply-to + invoice language
     let businessName = "PadelTrainer.ai";
     let slug = "";
     let replyTo: string | null = null;
+    let orgLanguage: string | null = null;
 
     if (invoice.academy_profile_id) {
       const { data: academy } = await supabase
         .from("academy_profiles")
-        .select("name, slug, business_name, contact_email, invoice_forward_emails, invoice_reply_to_email")
+        .select("name, slug, business_name, contact_email, invoice_forward_emails, invoice_reply_to_email, invoice_language")
         .eq("id", invoice.academy_profile_id)
         .single();
       if (academy) {
         businessName = academy.business_name || academy.name || businessName;
         slug = academy.slug || "";
+        orgLanguage = (academy as any).invoice_language || null;
         replyTo = (academy as any).invoice_reply_to_email
           || academy.contact_email
           || (Array.isArray(academy.invoice_forward_emails) && academy.invoice_forward_emails[0])
@@ -130,11 +132,12 @@ const handler = async (req: Request): Promise<Response> => {
     } else if (invoice.trainer_id) {
       const { data: trainer } = await supabase
         .from("trainer_profiles")
-        .select("user_id, business_name, invoice_forward_emails, invoice_reply_to_email")
+        .select("user_id, business_name, invoice_forward_emails, invoice_reply_to_email, invoice_language")
         .eq("id", invoice.trainer_id)
         .single();
       if (trainer) {
         businessName = trainer.business_name || businessName;
+        orgLanguage = (trainer as any).invoice_language || null;
         replyTo = (trainer as any).invoice_reply_to_email
           || (Array.isArray(trainer.invoice_forward_emails) && trainer.invoice_forward_emails[0])
           || null;
@@ -148,6 +151,25 @@ const handler = async (req: Request): Promise<Response> => {
         }
       }
     }
+
+    // Resolve recipient language: registered player preference > org default > 'nl'
+    let recipientLanguage: string | null = null;
+    if (invoice.player_id) {
+      const { data: playerProfile } = await supabase
+        .from("profiles")
+        .select("preferred_language")
+        .eq("id", invoice.player_id)
+        .maybeSingle();
+      if (playerProfile?.preferred_language) {
+        recipientLanguage = String(playerProfile.preferred_language).toLowerCase().slice(0, 2);
+      }
+    }
+
+    // For preview/test sends, allow caller override so managers can preview any language.
+    const isPreviewOrTest = previewOnly || !!testEmail;
+    const language = (isPreviewOrTest && languageOverride)
+      ? languageOverride
+      : (recipientLanguage || orgLanguage || "nl");
 
     // Also verify ownership if not service role
     if (!isServiceRole && invoice.trainer_id) {
