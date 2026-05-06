@@ -35,13 +35,19 @@ export function RootRedirect() {
   const location = useLocation();
 
   useEffect(() => {
-    // Detect browser language preference
+    // Prefer the user's previously chosen language (persisted by i18next),
+    // only fall back to browser language if nothing was stored.
+    const stored = (() => {
+      try { return localStorage.getItem('i18nextLng'); } catch { return null; }
+    })();
+    const storedLang = stored?.split('-')[0];
     const browserLang = navigator.language?.split('-')[0] || DEFAULT_LANGUAGE;
-    const targetLang = SUPPORTED_LANGUAGES.includes(browserLang) ? browserLang : DEFAULT_LANGUAGE;
-    
-    // Preserve any path after root if someone navigates to old URLs
+    const candidate = (storedLang && SUPPORTED_LANGUAGES.includes(storedLang))
+      ? storedLang
+      : (SUPPORTED_LANGUAGES.includes(browserLang) ? browserLang : DEFAULT_LANGUAGE);
+
     const remainingPath = location.pathname === '/' ? '' : location.pathname;
-    navigate(`/${targetLang}${remainingPath}${location.search}`, { replace: true });
+    navigate(`/${candidate}${remainingPath}${location.search}`, { replace: true });
   }, [navigate, location]);
 
   return null;
