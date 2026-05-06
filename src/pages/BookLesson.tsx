@@ -190,17 +190,21 @@ export default function BookLesson() {
         if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
         if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
       });
-      const nowMs = Date.now();
+      const now = new Date();
 
       const availableSlots = slotsData
         .filter((s) => {
           const maxP = (s as any).max_participants || 4;
           if ((slotBookingInfo[s.id]?.count || 0) >= maxP) return false;
-          // Bypass priority hide if user has matching claim token+slot
-          if (claimToken && claimSlotId === s.id) return true;
-          const windowEnd = (s as any).priority_window_ends_at;
-          const windowActive = windowEnd && new Date(windowEnd).getTime() > nowMs;
-          if (windowActive && slotPendingPriority.get(s.id) && !slotHasReleased.get(s.id)) return false;
+          if (shouldHidePrioritySlot({
+            slotId: s.id,
+            windowEndsAt: (s as any).priority_window_ends_at,
+            hasPendingPriority: !!slotPendingPriority.get(s.id),
+            hasReleasedSeat: !!slotHasReleased.get(s.id),
+            claimToken,
+            claimSlotId,
+            now,
+          })) return false;
           return true;
         })
         .map((s) => {

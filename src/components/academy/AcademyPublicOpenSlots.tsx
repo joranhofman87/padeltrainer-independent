@@ -158,10 +158,8 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
         if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
       });
-      const nowMs = Date.now();
-      const urlParams = new URLSearchParams(window.location.search);
-      const claimToken = urlParams.get('claim');
-      const claimSlotId = urlParams.get('slot');
+      const now = new Date();
+      const { claimToken, claimSlotId } = readClaimParamsFromLocation();
 
       // Dedupe by slot id
       const seen = new Set<string>();
@@ -170,13 +168,15 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           if (seen.has(s.id)) return false;
           seen.add(s.id);
           const maxP = s.max_participants || 4;
-          if (claimToken && claimSlotId === s.id) {
-            return (bookingCounts[s.id] || 0) < maxP;
-          }
-          // Hide if priority window still active and no released seats yet
-          const windowEnd = (s as any).priority_window_ends_at;
-          const windowActive = windowEnd && new Date(windowEnd).getTime() > nowMs;
-          if (windowActive && slotPendingPriority.get(s.id) && !slotHasReleased.get(s.id)) return false;
+          if (shouldHidePrioritySlot({
+            slotId: s.id,
+            windowEndsAt: (s as any).priority_window_ends_at,
+            hasPendingPriority: !!slotPendingPriority.get(s.id),
+            hasReleasedSeat: !!slotHasReleased.get(s.id),
+            claimToken,
+            claimSlotId,
+            now,
+          })) return false;
           return (bookingCounts[s.id] || 0) < maxP;
         })
         .map(s => {
