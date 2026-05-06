@@ -321,7 +321,7 @@ export default function AcademyInvoices() {
     for (const inv of draftInvoices) {
       try {
         const { data } = await supabase.functions.invoke("send-invoice-email", {
-          body: { invoiceId: inv.id },
+          body: { invoiceId: inv.id, language: i18n.language || "nl" },
         });
 
         if (data?.error === "no_email") {
