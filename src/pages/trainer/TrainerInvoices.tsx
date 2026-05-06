@@ -77,7 +77,7 @@ export default function TrainerInvoices() {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from("trainer_profiles")
-        .select("id, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, use_manual_invoicing, invoice_logo_url")
+        .select("id, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year, invoice_language, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, use_manual_invoicing, invoice_logo_url")
         .eq("user_id", user.id)
         .single();
       if (error) throw error;
