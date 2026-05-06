@@ -137,7 +137,7 @@ export default function TrainerInvoices() {
   const sendInvoiceMutation = useMutation({
     mutationFn: async (invoice: Invoice) => {
       const { data } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoice.id, language: i18n.language || "nl" },
+        body: { invoiceId: invoice.id },
       });
       if (data?.error === "no_email") {
         return { noEmail: true, invoice };
@@ -175,7 +175,7 @@ export default function TrainerInvoices() {
     let sent = 0, noEmail = 0, failed = 0;
     for (const inv of draftInvoices) {
       try {
-        const { data } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id, language: i18n.language || "nl" } });
+        const { data } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id } });
         if (data?.error === "no_email") noEmail++;
         else if (data?.success) sent++;
         else failed++;
@@ -199,7 +199,7 @@ export default function TrainerInvoices() {
     if (guestPlayerId) {
       await supabase.from("guest_players").update({ email }).eq("id", guestPlayerId);
     }
-    await supabase.functions.invoke("send-invoice-email", { body: { invoiceId, language: i18n.language || "nl" } });
+    await supabase.functions.invoke("send-invoice-email", { body: { invoiceId } });
     await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", invoiceId);
     queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
     toast.success(t("invoices.sentSuccessTo", { email }));

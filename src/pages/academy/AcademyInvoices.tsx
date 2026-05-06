@@ -277,7 +277,7 @@ export default function AcademyInvoices() {
   const sendInvoiceMutation = useMutation({
     mutationFn: async (invoice: Invoice) => {
       const { data } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoice.id, language: i18n.language || "nl" },
+        body: { invoiceId: invoice.id },
       });
 
       if (data?.error === "no_email") {
@@ -322,7 +322,7 @@ export default function AcademyInvoices() {
     for (const inv of draftInvoices) {
       try {
         const { data } = await supabase.functions.invoke("send-invoice-email", {
-          body: { invoiceId: inv.id, language: i18n.language || "nl" },
+          body: { invoiceId: inv.id },
         });
 
         if (data?.error === "no_email") {
@@ -365,7 +365,7 @@ export default function AcademyInvoices() {
     }
 
     await supabase.functions.invoke("send-invoice-email", {
-      body: { invoiceId, language: i18n.language || "nl" },
+      body: { invoiceId },
     });
 
     await supabase.from("invoices").update({ 
