@@ -20,6 +20,10 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown } from "lucide-react";
 import { format } from "date-fns";
+import { nl, enUS, de, fr, es, it } from "date-fns/locale";
+
+const dateLocales: Record<string, Locale> = { nl, en: enUS, de, fr, es, it };
+const getDateLocale = (lang: string) => dateLocales[lang?.slice(0, 2)] ?? nl;
 import { toast } from "sonner";
 
 
