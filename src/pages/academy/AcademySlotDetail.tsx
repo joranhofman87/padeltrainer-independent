@@ -1145,6 +1145,7 @@ export default function AcademySlotDetail() {
           </Card>
           {/* Priority rebooking claims */}
           {detail && <PriorityClaimsSection slotId={detail.id} />}
+          {detail && <SlotTierControlCard slotId={detail.id} />}
 
           {/* Attendance */}
           {detail && isPast(new Date(detail.end_time)) && (
