@@ -218,7 +218,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
 
     // Retry sending
     const { data } = await supabase.functions.invoke('send-invoice-email', {
-      body: { invoiceId },
+      body: { invoiceId, language: i18n.language || 'nl' },
     });
 
     // Mark as sent
