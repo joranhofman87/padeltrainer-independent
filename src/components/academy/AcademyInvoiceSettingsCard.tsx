@@ -58,7 +58,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
       setLoading(true);
       const { data } = await supabase
         .from('academy_profiles')
-        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color, invoice_include_year')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_reply_to_email, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color, invoice_include_year')
         .eq('id', academyId)
         .maybeSingle();
 
