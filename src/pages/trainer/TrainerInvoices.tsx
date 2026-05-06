@@ -160,8 +160,9 @@ export default function TrainerInvoices() {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
-      const emailMsg = result.email ? ` naar ${result.email}` : "";
-      toast.success(t("invoices.sentSuccess", `Factuur verzonden${emailMsg}`));
+      toast.success(result.email
+        ? t("invoices.sentSuccessTo", { email: result.email })
+        : t("invoices.sentSuccess"));
     },
     onError: () => {
       toast.error(t("invoices.sendError", "Verzenden mislukt"));
