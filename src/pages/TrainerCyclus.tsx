@@ -49,6 +49,7 @@ import {
 } from "lucide-react";
 import { format, parseISO, isPast } from "date-fns";
 import { logger } from "@/lib/logger";
+import CycleFillRateCard from "@/components/cycles/CycleFillRateCard";
 
 interface CyclusInfo {
   cyclus_id: string;
