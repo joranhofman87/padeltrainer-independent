@@ -40,6 +40,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     invoice_prefix: 'INV',
     invoice_next_number: 1,
     invoice_include_year: true,
+    invoice_language: 'nl',
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bannerColor, setBannerColor] = useState<string>('');
