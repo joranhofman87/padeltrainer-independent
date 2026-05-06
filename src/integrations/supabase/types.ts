@@ -742,6 +742,9 @@ export type Database = {
           min_rating: number | null
           price_per_session: number | null
           prices_include_vat: boolean
+          priority_source_slot_id: string | null
+          priority_window_ends_at: string | null
+          priority_window_starts_at: string | null
           rating_system: string | null
           recurrence_rule: string | null
           split_payment: boolean | null
@@ -769,6 +772,9 @@ export type Database = {
           min_rating?: number | null
           price_per_session?: number | null
           prices_include_vat?: boolean
+          priority_source_slot_id?: string | null
+          priority_window_ends_at?: string | null
+          priority_window_starts_at?: string | null
           rating_system?: string | null
           recurrence_rule?: string | null
           split_payment?: boolean | null
@@ -796,6 +802,9 @@ export type Database = {
           min_rating?: number | null
           price_per_session?: number | null
           prices_include_vat?: boolean
+          priority_source_slot_id?: string | null
+          priority_window_ends_at?: string | null
+          priority_window_starts_at?: string | null
           rating_system?: string | null
           recurrence_rule?: string | null
           split_payment?: boolean | null
@@ -831,6 +840,13 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_slots_priority_source_slot_id_fkey"
+            columns: ["priority_source_slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
             referencedColumns: ["id"]
           },
           {
@@ -3818,6 +3834,104 @@ export type Database = {
           },
         ]
       }
+      slot_priority_claims: {
+        Row: {
+          booking_id: string | null
+          claim_token: string
+          created_at: string
+          decline_reason: string | null
+          guest_player_id: string | null
+          id: string
+          invited_at: string | null
+          player_id: string | null
+          responded_at: string | null
+          slot_id: string
+          source_slot_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          booking_id?: string | null
+          claim_token?: string
+          created_at?: string
+          decline_reason?: string | null
+          guest_player_id?: string | null
+          id?: string
+          invited_at?: string | null
+          player_id?: string | null
+          responded_at?: string | null
+          slot_id: string
+          source_slot_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          booking_id?: string | null
+          claim_token?: string
+          created_at?: string
+          decline_reason?: string | null
+          guest_player_id?: string | null
+          id?: string
+          invited_at?: string | null
+          player_id?: string | null
+          responded_at?: string | null
+          slot_id?: string
+          source_slot_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "slot_priority_claims_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_guest_player_id_fkey"
+            columns: ["guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_source_slot_id_fkey"
+            columns: ["source_slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sources: {
         Row: {
           allowed_to_use: boolean
@@ -5201,6 +5315,7 @@ export type Database = {
         Args: { _location_id: string }
         Returns: Json
       }
+      get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
       get_user_academy_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
@@ -5259,6 +5374,10 @@ export type Database = {
           p_user_type: string
         }
         Returns: undefined
+      }
+      respond_to_priority_claim: {
+        Args: { _action: string; _reason?: string; _token: string }
+        Returns: Json
       }
       schedule_enrichment_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
