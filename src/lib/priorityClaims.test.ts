@@ -3,6 +3,7 @@ import {
   computePriorityWindowEnd,
   applyWeeksOffset,
   shouldHidePrioritySlot,
+  getSlotVisibility,
   type ClaimStatus,
 } from './priorityClaims';
 
