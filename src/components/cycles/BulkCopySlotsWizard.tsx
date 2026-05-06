@@ -112,6 +112,8 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
         priorityWindowDays,
         createPriorityClaims,
         excludeSourceSlotIds: Array.from(excludeSlotIds),
+        memberWindowDays: enableMemberWindow ? memberWindowDays : 0,
+        publicReleaseStatus: requireAdminReview ? 'pending_admin_review' : 'auto_release_scheduled',
       });
       toast.success(`${result.copiedSlots} slots copied, ${result.createdClaims} priority claims created.`);
       navigate(backHref);
