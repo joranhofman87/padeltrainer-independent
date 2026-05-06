@@ -202,7 +202,7 @@ export default function TrainerInvoices() {
     await supabase.functions.invoke("send-invoice-email", { body: { invoiceId, language: i18n.language || "nl" } });
     await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", invoiceId);
     queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
-    toast.success(`Factuur verzonden naar ${email}`);
+    toast.success(t("invoices.sentSuccessTo", { email }));
   };
 
   const markAsSentMutation = useMutation({
