@@ -198,7 +198,7 @@ export default function TrainerInvoices() {
     if (guestPlayerId) {
       await supabase.from("guest_players").update({ email }).eq("id", guestPlayerId);
     }
-    await supabase.functions.invoke("send-invoice-email", { body: { invoiceId } });
+    await supabase.functions.invoke("send-invoice-email", { body: { invoiceId, language: i18n.language || "nl" } });
     await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", invoiceId);
     queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
     toast.success(`Factuur verzonden naar ${email}`);
