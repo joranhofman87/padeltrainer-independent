@@ -139,6 +139,20 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
               size="sm"
               variant="outline"
               onClick={async () => {
+                try {
+                  const { error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { slotId } });
+                  if (error) throw error;
+                  toast.success(t('priorityClaims.allInvited', 'Invitations sent'));
+                  await reload();
+                } catch (e) { toast.error((e as Error).message); }
+              }}
+            >
+              <Mail className="h-4 w-4 mr-1" /> {t('priorityClaims.inviteAll', 'Send invites')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
                 try { await extendPriorityWindow(slotId, 7); toast.success('Extended by 7 days'); onChange?.(); }
                 catch (e) { toast.error((e as Error).message); }
               }}
