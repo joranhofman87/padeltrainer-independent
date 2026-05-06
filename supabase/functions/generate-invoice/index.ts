@@ -612,7 +612,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (invoice.trainer_id) {
       const { data: tp, error: trainerError } = await supabase
         .from('trainer_profiles')
-        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, logo_url, invoice_logo_url')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, invoice_logo_url')
         .eq('id', invoice.trainer_id)
         .single();
 
@@ -729,7 +729,7 @@ const handler = async (req: Request): Promise<Response> => {
       notes: invoice.notes,
       vat_breakdown: invoice.vat_breakdown || null,
       logo_url: trainerProfile?.invoice_logo_url || businessSource.invoice_logo_url || null,
-      fallback_logo_url: trainerProfile?.logo_url || businessSource.logo_url || null,
+      fallback_logo_url: businessSource.logo_url || null,
       banner_color: (academyProfile?.invoice_banner_color) || null,
       payment_url: paymentUrl,
       trainer: {
