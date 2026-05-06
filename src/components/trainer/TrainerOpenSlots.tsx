@@ -84,6 +84,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           max_participants,
           allow_single_booking,
           location_id,
+          priority_window_ends_at,
           locations:location_id(name)
         `)
         .eq('trainer_id', trainerId)
