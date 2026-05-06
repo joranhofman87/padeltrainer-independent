@@ -282,6 +282,12 @@ const handler = async (req: Request): Promise<Response> => {
 
     const resend = new Resend(resendApiKey);
     const sendTo = testEmail || recipientEmail;
+    if (!sendTo) {
+      return new Response(
+        JSON.stringify({ success: false, error: "no_email" }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
     const { error: sendError } = await resend.emails.send({
       from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
       to: [sendTo],
