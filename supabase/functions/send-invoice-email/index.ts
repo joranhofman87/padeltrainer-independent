@@ -235,24 +235,31 @@ const handler = async (req: Request): Promise<Response> => {
     };
 
     const T: Record<string, Record<string, string>> = {
-      nl: { hi: "Hallo", invoice: "Factuur", from: "Van", number: "Factuurnummer", date: "Factuurdatum", due: "Vervaldatum", amount: "Bedrag", vat: "BTW", cta: "Bekijk & Betaal Factuur", orCopy: "Of kopieer deze link", sentVia: "Verzonden via PadelTrainer.ai namens", subject: "Factuur" },
-      en: { hi: "Hi", invoice: "Invoice", from: "From", number: "Invoice number", date: "Invoice date", due: "Due date", amount: "Amount", vat: "VAT", cta: "View & Pay Invoice", orCopy: "Or copy this link", sentVia: "Sent via PadelTrainer.ai on behalf of", subject: "Invoice" },
-      es: { hi: "Hola", invoice: "Factura", from: "De", number: "Número de factura", date: "Fecha de factura", due: "Fecha de vencimiento", amount: "Importe", vat: "IVA", cta: "Ver y Pagar Factura", orCopy: "O copia este enlace", sentVia: "Enviado vía PadelTrainer.ai en nombre de", subject: "Factura" },
-      de: { hi: "Hallo", invoice: "Rechnung", from: "Von", number: "Rechnungsnummer", date: "Rechnungsdatum", due: "Fälligkeitsdatum", amount: "Betrag", vat: "MwSt.", cta: "Rechnung Ansehen & Bezahlen", orCopy: "Oder diesen Link kopieren", sentVia: "Gesendet über PadelTrainer.ai im Auftrag von", subject: "Rechnung" },
-      fr: { hi: "Bonjour", invoice: "Facture", from: "De", number: "Numéro de facture", date: "Date de facture", due: "Date d'échéance", amount: "Montant", vat: "TVA", cta: "Voir et Payer la Facture", orCopy: "Ou copiez ce lien", sentVia: "Envoyé via PadelTrainer.ai pour le compte de", subject: "Facture" },
-      it: { hi: "Ciao", invoice: "Fattura", from: "Da", number: "Numero fattura", date: "Data fattura", due: "Data di scadenza", amount: "Importo", vat: "IVA", cta: "Visualizza e Paga Fattura", orCopy: "Oppure copia questo link", sentVia: "Inviato tramite PadelTrainer.ai per conto di", subject: "Fattura" },
+      nl: { hi: "Hallo", invoice: "Factuur", from: "Van", number: "Factuurnummer", date: "Factuurdatum", due: "Vervaldatum", amount: "Bedrag", vat: "BTW", cta: "Bekijk & Betaal Factuur", orCopy: "Of kopieer deze link", sentVia: "Verzonden via PadelTrainer.ai namens", subject: "Factuur", nameFallback: "daar" },
+      en: { hi: "Hi", invoice: "Invoice", from: "From", number: "Invoice number", date: "Invoice date", due: "Due date", amount: "Amount", vat: "VAT", cta: "View & Pay Invoice", orCopy: "Or copy this link", sentVia: "Sent via PadelTrainer.ai on behalf of", subject: "Invoice", nameFallback: "there" },
+      es: { hi: "Hola", invoice: "Factura", from: "De", number: "Número de factura", date: "Fecha de factura", due: "Fecha de vencimiento", amount: "Importe", vat: "IVA", cta: "Ver y Pagar Factura", orCopy: "O copia este enlace", sentVia: "Enviado vía PadelTrainer.ai en nombre de", subject: "Factura", nameFallback: "hola" },
+      de: { hi: "Hallo", invoice: "Rechnung", from: "Von", number: "Rechnungsnummer", date: "Rechnungsdatum", due: "Fälligkeitsdatum", amount: "Betrag", vat: "MwSt.", cta: "Rechnung Ansehen & Bezahlen", orCopy: "Oder diesen Link kopieren", sentVia: "Gesendet über PadelTrainer.ai im Auftrag von", subject: "Rechnung", nameFallback: "zusammen" },
+      fr: { hi: "Bonjour", invoice: "Facture", from: "De", number: "Numéro de facture", date: "Date de facture", due: "Date d'échéance", amount: "Montant", vat: "TVA", cta: "Voir et Payer la Facture", orCopy: "Ou copiez ce lien", sentVia: "Envoyé via PadelTrainer.ai pour le compte de", subject: "Facture", nameFallback: "à toi" },
+      it: { hi: "Ciao", invoice: "Fattura", from: "Da", number: "Numero fattura", date: "Data fattura", due: "Data di scadenza", amount: "Importo", vat: "IVA", cta: "Visualizza e Paga Fattura", orCopy: "Oppure copia questo link", sentVia: "Inviato tramite PadelTrainer.ai per conto di", subject: "Fattura", nameFallback: "ciao" },
     };
     const tr = T[language] || T.nl;
 
     const fullName = (invoice.player_name || "").trim();
     const nameParts = fullName.split(/\s+/).filter(Boolean);
-    const firstName = nameParts[0] || fullName;
+    const firstName = nameParts[0] || "";
     const lastName = nameParts.slice(1).join(" ");
 
+    // Token substitution. Supports `{first_name}` and explicit fallback `{first_name|there}`.
+    // When a token has no value AND no inline fallback, use the language-aware default (tr.nameFallback).
+    const resolveToken = (value: string, inlineFallback: string | undefined) => {
+      if (value && value.trim()) return value;
+      if (inlineFallback && inlineFallback.trim()) return inlineFallback.trim();
+      return tr.nameFallback;
+    };
     const substituteVars = (s: string) => s
-      .replace(/\{\s*first[_\s]?name\s*\}/gi, firstName)
-      .replace(/\{\s*last[_\s]?name\s*\}/gi, lastName)
-      .replace(/\{\s*full[_\s]?name\s*\}/gi, fullName);
+      .replace(/\{\s*first[_\s]?name(?:\s*\|\s*([^}]*))?\s*\}/gi, (_m, fb) => resolveToken(firstName, fb))
+      .replace(/\{\s*last[_\s]?name(?:\s*\|\s*([^}]*))?\s*\}/gi, (_m, fb) => resolveToken(lastName, fb))
+      .replace(/\{\s*full[_\s]?name(?:\s*\|\s*([^}]*))?\s*\}/gi, (_m, fb) => resolveToken(fullName, fb));
 
     const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
     const personalizedMessage = substituteVars(customMessage);
