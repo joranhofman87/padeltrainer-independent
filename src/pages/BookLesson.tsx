@@ -154,7 +154,7 @@ export default function BookLesson() {
 
     const { data: slotsData } = await supabase
       .from('availability_slots')
-      .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, priority_window_ends_at, locations:location_id(id, name, city, street_address)`)
+      .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, priority_window_ends_at, member_window_ends_at, public_release_status, source_cycle_id, locations:location_id(id, name, city, street_address)`)
       .eq('trainer_id', trainerData.id)
       
       .eq('is_public', true)
