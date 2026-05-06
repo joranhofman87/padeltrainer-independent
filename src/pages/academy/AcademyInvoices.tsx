@@ -801,14 +801,25 @@ export default function AcademyInvoices() {
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
                         <TableHead>{t("invoices.player", "Player")}</TableHead>
                         <TableHead>{t("invoices.date", "Date")}</TableHead>
-                        <SortableTableHead
-                          sortKey="due_date"
-                          currentSortKey={sortConfig.key as string | null}
-                          currentDirection={sortConfig.direction}
-                          onSort={(key) => handleSort(key as any)}
-                        >
-                          {t("invoices.dueDate", "Due")}
-                        </SortableTableHead>
+                        {activeTab === "paid" ? (
+                          <SortableTableHead
+                            sortKey="paid_at"
+                            currentSortKey={sortConfig.key as string | null}
+                            currentDirection={sortConfig.direction}
+                            onSort={(key) => handleSort(key as any)}
+                          >
+                            {t("invoices.paymentDate", "Betaaldatum")}
+                          </SortableTableHead>
+                        ) : (
+                          <SortableTableHead
+                            sortKey="due_date"
+                            currentSortKey={sortConfig.key as string | null}
+                            currentDirection={sortConfig.direction}
+                            onSort={(key) => handleSort(key as any)}
+                          >
+                            {t("invoices.dueDate", "Due")}
+                          </SortableTableHead>
+                        )}
                         <SortableTableHead
                           sortKey="total"
                           currentSortKey={sortConfig.key as string | null}
