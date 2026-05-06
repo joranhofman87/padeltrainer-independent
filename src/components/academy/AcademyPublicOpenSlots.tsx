@@ -90,6 +90,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           split_payment,
           location_id,
           trainer_id,
+          priority_window_ends_at,
           locations:location_id(name)
         `)
         .or(orFilter)
