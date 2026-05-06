@@ -152,6 +152,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         invoice_next_number: formData.invoice_next_number || 1,
         invoice_include_year: formData.invoice_include_year,
         invoice_banner_color: bannerColor || null,
+        invoice_language: formData.invoice_language || 'nl',
       } as any)
       .eq('id', academyId);
 
