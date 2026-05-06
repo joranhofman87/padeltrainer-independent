@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
+import { shouldHidePrioritySlot } from '@/lib/priorityClaims';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { getApplicableTerms } from '@/lib/terms';
