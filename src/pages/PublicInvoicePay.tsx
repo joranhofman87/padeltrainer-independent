@@ -20,6 +20,10 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown } from "lucide-react";
 import { format } from "date-fns";
+import { nl, enUS, de, fr, es, it } from "date-fns/locale";
+
+const dateLocales: Record<string, any> = { nl, en: enUS, de, fr, es, it };
+const getDateLocale = (lang: string) => dateLocales[lang?.slice(0, 2)] ?? nl;
 import { toast } from "sonner";
 
 
@@ -487,12 +491,12 @@ export default function PublicInvoicePay() {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">{t("invoice.invoiceDate")}</p>
-              <p className="font-medium">{format(new Date(invoice.invoiceDate), "dd MMM yyyy")}</p>
+              <p className="font-medium">{format(new Date(invoice.invoiceDate), "dd MMM yyyy", { locale: getDateLocale(i18n.language) })}</p>
             </div>
             <div>
               <p className="text-muted-foreground">{t("invoice.dueDate")}</p>
               <p className={`font-medium ${isOverdue ? "text-destructive" : ""}`}>
-                {format(new Date(invoice.dueDate), "dd MMM yyyy")}
+                {format(new Date(invoice.dueDate), "dd MMM yyyy", { locale: getDateLocale(i18n.language) })}
               </p>
             </div>
           </div>
