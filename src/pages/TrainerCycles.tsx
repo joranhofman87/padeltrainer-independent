@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Plus, CalendarDays, PartyPopper } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import CycleCard from '@/components/cycles/CycleCard';
 import { logger } from '@/lib/logger';
@@ -79,7 +79,7 @@ export default function TrainerCycles() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button onClick={() => navigate('/app/trainer/cycles/new?type=registration')}>
             <Plus className="mr-2 h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
@@ -87,6 +87,10 @@ export default function TrainerCycles() {
           <Button variant="outline" onClick={() => navigate('/app/trainer/cycles/new?type=event')}>
             <PartyPopper className="mr-2 h-4 w-4" />
             {t('createEvent', 'Create Event')}
+          </Button>
+          <Button variant="outline" onClick={() => navigate('/app/trainer/cycles/bulk-copy')}>
+            <Copy className="mr-2 h-4 w-4" />
+            {t('bulkCopy.cta', 'Copy slots to next cycle')}
           </Button>
         </div>
       </div>
