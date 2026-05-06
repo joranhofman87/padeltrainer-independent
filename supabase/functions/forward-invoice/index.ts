@@ -83,6 +83,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: trainerProfile } = await supabase
       .from("trainer_profiles")
       .select("user_id, invoice_forward_emails, business_name")
+      
       .eq("id", invoice.trainer_id)
       .single();
 
