@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Clock, X, Globe } from 'lucide-react';
+import { Clock, X, Globe, Mail, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import {
   getPriorityClaimsForSlot,
