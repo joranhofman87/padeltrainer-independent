@@ -443,6 +443,19 @@ export default function PublicInvoicePay() {
             )}
           </div>
 
+          {/* Guided steps */}
+          <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-3 py-1 font-medium">
+              <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px]">1</span>
+              {t("invoice.stepReviewDetails")}
+            </div>
+            <div className="h-px flex-1 bg-border" />
+            <div className="flex items-center gap-1.5 rounded-full bg-muted text-muted-foreground px-3 py-1 font-medium">
+              <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted-foreground/30 text-[10px]">2</span>
+              {t("invoice.stepPay")}
+            </div>
+          </div>
+
           <Separator />
 
           {/* From / To */}
