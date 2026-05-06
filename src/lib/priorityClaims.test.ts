@@ -102,3 +102,85 @@ describe('ClaimStatus union', () => {
     expect(all).toHaveLength(5);
   });
 });
+
+describe('getSlotVisibility', () => {
+  const now = new Date('2026-05-01T00:00:00.000Z');
+  const future = '2026-05-08T00:00:00.000Z';
+  const past = '2026-04-01T00:00:00.000Z';
+  const base = {
+    slotId: 's1',
+    priorityWindowEndsAt: null,
+    hasPendingPriority: false,
+    hasReleasedSeat: false,
+    memberWindowEndsAt: null,
+    publicReleaseStatus: 'auto_release_scheduled' as const,
+    isCycleMember: false,
+    now,
+  };
+
+  it('returns priority during active priority window with pending and no release', () => {
+    expect(getSlotVisibility({
+      ...base, priorityWindowEndsAt: future, hasPendingPriority: true,
+    })).toBe('priority');
+  });
+
+  it('claim token bypasses priority and shows as public', () => {
+    expect(getSlotVisibility({
+      ...base, priorityWindowEndsAt: future, hasPendingPriority: true,
+      claimToken: 'tok', claimSlotId: 's1',
+    })).toBe('public');
+  });
+
+  it('returns members during active member window for non-members', () => {
+    expect(getSlotVisibility({
+      ...base, memberWindowEndsAt: future, isCycleMember: false,
+    })).toBe('members');
+  });
+
+  it('returns public during member window for cycle members', () => {
+    expect(getSlotVisibility({
+      ...base, memberWindowEndsAt: future, isCycleMember: true,
+    })).toBe('public');
+  });
+
+  it('returns hidden when public_release_status is held', () => {
+    expect(getSlotVisibility({
+      ...base, publicReleaseStatus: 'held',
+    })).toBe('hidden');
+  });
+
+  it('returns hidden when pending_admin_review', () => {
+    expect(getSlotVisibility({
+      ...base, publicReleaseStatus: 'pending_admin_review',
+    })).toBe('hidden');
+  });
+
+  it('returns public when all windows have passed and status auto', () => {
+    expect(getSlotVisibility({
+      ...base, priorityWindowEndsAt: past, memberWindowEndsAt: past,
+      publicReleaseStatus: 'auto_release_scheduled',
+    })).toBe('public');
+  });
+
+  it('returns public when status is released', () => {
+    expect(getSlotVisibility({
+      ...base, publicReleaseStatus: 'released',
+    })).toBe('public');
+  });
+
+  it('priority takes precedence over member window', () => {
+    expect(getSlotVisibility({
+      ...base,
+      priorityWindowEndsAt: future, hasPendingPriority: true,
+      memberWindowEndsAt: future, isCycleMember: true,
+    })).toBe('priority');
+  });
+
+  it('skips priority when seat already released', () => {
+    expect(getSlotVisibility({
+      ...base,
+      priorityWindowEndsAt: future, hasPendingPriority: true, hasReleasedSeat: true,
+      memberWindowEndsAt: future, isCycleMember: false,
+    })).toBe('members');
+  });
+});
