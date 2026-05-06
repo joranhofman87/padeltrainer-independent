@@ -83,6 +83,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         invoice_prefix: initialData.invoice_prefix || '',
         invoice_next_number: initialData.invoice_next_number || 1,
         invoice_include_year: (initialData as any).invoice_include_year ?? true,
+        invoice_language: (initialData as any).invoice_language || 'nl',
       });
       setLogoUrl(initialData.invoice_logo_url || null);
       setForwardEmails(initialData.invoice_forward_emails || []);
