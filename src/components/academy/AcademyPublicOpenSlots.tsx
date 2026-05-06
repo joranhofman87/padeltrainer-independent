@@ -167,6 +167,10 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           if (seen.has(s.id)) return false;
           seen.add(s.id);
           const maxP = s.max_participants || 4;
+          // Hide if priority window still active and no released seats yet
+          const windowEnd = (s as any).priority_window_ends_at;
+          const windowActive = windowEnd && new Date(windowEnd).getTime() > nowMs;
+          if (windowActive && slotPendingPriority.get(s.id) && !slotHasReleased.get(s.id)) return false;
           return (bookingCounts[s.id] || 0) < maxP;
         })
         .map(s => {
