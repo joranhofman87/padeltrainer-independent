@@ -37,6 +37,65 @@ export function shouldHidePrioritySlot(args: PrioritySlotVisibilityArgs): boolea
   return hasPendingPriority && !hasReleasedSeat;
 }
 
+export type PublicReleaseStatus = 'pending_admin_review' | 'auto_release_scheduled' | 'released' | 'held';
+export type SlotTier = 'priority' | 'members' | 'public' | 'hidden';
+
+export interface SlotVisibilityArgs {
+  slotId: string;
+  priorityWindowEndsAt: string | null | undefined;
+  hasPendingPriority: boolean;
+  hasReleasedSeat: boolean;
+  memberWindowEndsAt: string | null | undefined;
+  publicReleaseStatus: PublicReleaseStatus | null | undefined;
+  isCycleMember: boolean;
+  claimToken?: string | null;
+  claimSlotId?: string | null;
+  now?: Date;
+}
+
+/**
+ * Resolve the current visibility tier for a slot.
+ * - 'priority': only the matching claim token sees it
+ * - 'members': only viewers who were members of the source cycle
+ * - 'public': anyone
+ * - 'hidden': owner-only (admin review pending or held)
+ */
+export function getSlotVisibility(args: SlotVisibilityArgs): SlotTier {
+  const { slotId, priorityWindowEndsAt, hasPendingPriority, hasReleasedSeat,
+    memberWindowEndsAt, publicReleaseStatus, isCycleMember,
+    claimToken, claimSlotId, now } = args;
+  const nowMs = (now ?? new Date()).getTime();
+
+  // Priority window?
+  const priorityActive = !!priorityWindowEndsAt
+    && new Date(priorityWindowEndsAt).getTime() > nowMs
+    && hasPendingPriority
+    && !hasReleasedSeat;
+  if (priorityActive) {
+    if (claimToken && claimSlotId === slotId) return 'public';
+    return 'priority';
+  }
+
+  // Member window?
+  const memberActive = !!memberWindowEndsAt
+    && new Date(memberWindowEndsAt).getTime() > nowMs;
+  if (memberActive) {
+    return isCycleMember ? 'public' : 'members';
+  }
+
+  // Public release status decides
+  if (publicReleaseStatus === 'held' || publicReleaseStatus === 'pending_admin_review') {
+    return 'hidden';
+  }
+  return 'public';
+}
+
+/** Convenience: should the public listing hide this slot from a viewer? */
+export function shouldHideSlotForViewer(args: SlotVisibilityArgs): boolean {
+  const tier = getSlotVisibility(args);
+  return tier !== 'public';
+}
+
 /** Read claim token + slot from a URLSearchParams-like (browser only). */
 export function readClaimParamsFromLocation(): { claimToken: string | null; claimSlotId: string | null } {
   if (typeof window === 'undefined') return { claimToken: null, claimSlotId: null };
@@ -89,6 +148,11 @@ export interface BulkCopyInput {
   createPriorityClaims: boolean;
   // Allow trainer to opt slots out
   excludeSourceSlotIds?: string[];
+  // Tier 2 (members) window length in days, after the priority window ends. 0 to disable.
+  memberWindowDays?: number;
+  // 'auto_release_scheduled' (default) opens to public after member window;
+  // 'pending_admin_review' keeps slots hidden until trainer approves.
+  publicReleaseStatus?: PublicReleaseStatus;
 }
 
 export interface BulkCopyResult {
@@ -102,7 +166,11 @@ export interface BulkCopyResult {
  * Idempotent on (target_cycle_id, source_slot_id).
  */
 export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCopyResult> {
-  const { sourceCycleId, targetCycleId, weeksOffset, priorityWindowDays, createPriorityClaims, excludeSourceSlotIds = [] } = input;
+  const {
+    sourceCycleId, targetCycleId, weeksOffset, priorityWindowDays,
+    createPriorityClaims, excludeSourceSlotIds = [],
+    memberWindowDays = 0, publicReleaseStatus = 'auto_release_scheduled',
+  } = input;
 
   const { data: sourceSlots, error: srcErr } = await supabase
     .from('availability_slots')
@@ -129,6 +197,9 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
 
   const now = new Date();
   const windowEnd = computePriorityWindowEnd(now, priorityWindowDays);
+  const memberWindowEnd = memberWindowDays > 0
+    ? computePriorityWindowEnd(windowEnd, memberWindowDays)
+    : null;
 
   let copiedSlots = 0;
   let createdClaims = 0;
@@ -147,7 +218,9 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
       court_type: src.court_type,
       location_id: src.location_id,
       academy_profile_id: src.academy_profile_id,
-      is_public: false,
+      // Visibility is gated by tier (priority/member/public) in the listing layer.
+      // Slots are always queryable; the client filters via getSlotVisibility.
+      is_public: true,
       training_level: src.training_level,
       price_per_session: src.price_per_session,
       total_price: src.total_price,
@@ -163,6 +236,10 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
       priority_source_slot_id: src.id,
       priority_window_starts_at: createPriorityClaims ? now.toISOString() : null,
       priority_window_ends_at: createPriorityClaims ? windowEnd.toISOString() : null,
+      source_cycle_id: sourceCycleId,
+      member_window_starts_at: memberWindowEnd ? windowEnd.toISOString() : null,
+      member_window_ends_at: memberWindowEnd ? memberWindowEnd.toISOString() : null,
+      public_release_status: publicReleaseStatus,
     };
 
     const { data: newSlot, error: insErr } = await supabase
@@ -250,3 +327,69 @@ export async function declineClaimWithToken(token: string, reason?: string) {
   if (error) throw error;
   return data;
 }
+
+// === Tier overrides ===
+
+export async function openSlotToMembersNow(slotId: string, memberWindowDays = 7) {
+  const memberEnd = new Date(Date.now() + memberWindowDays * 24 * 60 * 60 * 1000);
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({
+      priority_window_ends_at: new Date().toISOString(),
+      member_window_starts_at: new Date().toISOString(),
+      member_window_ends_at: memberEnd.toISOString(),
+    } as never)
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
+export async function releaseSlotToPublic(slotId: string) {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({
+      priority_window_ends_at: new Date().toISOString(),
+      member_window_ends_at: new Date().toISOString(),
+      public_release_status: 'released',
+      is_public: true,
+    } as never)
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
+export async function holdSlotForReview(slotId: string) {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({ public_release_status: 'held' } as never)
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
+export async function setSlotToPendingReview(slotId: string) {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({ public_release_status: 'pending_admin_review' } as never)
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
+// === Member swap ===
+
+export async function swapMemberBooking(oldBookingId: string, newSlotId: string) {
+  const { data, error } = await supabase.rpc('swap_member_booking' as never, {
+    _old_booking_id: oldBookingId,
+    _new_slot_id: newSlotId,
+  } as never);
+  if (error) throw error;
+  return data as { ok: boolean; new_booking_id: string };
+}
+
+export async function isCycleMember(cycleId: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase.rpc('is_cycle_member' as never, {
+    _user_id: user.id, _cycle_id: cycleId,
+  } as never);
+  if (error) return false;
+  return Boolean(data);
+}
+

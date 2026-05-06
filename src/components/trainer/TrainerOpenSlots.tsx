@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabaseClient';
-import { shouldHidePrioritySlot, readClaimParamsFromLocation } from '@/lib/priorityClaims';
+import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { formatPrice } from '@/lib/pricing';
@@ -86,6 +86,9 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           allow_single_booking,
           location_id,
           priority_window_ends_at,
+          member_window_ends_at,
+          public_release_status,
+          source_cycle_id,
           locations:location_id(name)
         `)
         .eq('trainer_id', trainerId)
@@ -115,34 +118,21 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
         bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
       });
 
-      // Fetch priority claims to hide slots that still have unresolved priority players
-      const { data: claimsData } = await supabase
-        .from('slot_priority_claims')
-        .select('slot_id, status')
-        .in('slot_id', slotIds);
-      const slotPendingPriority = new Map<string, boolean>();
-      const slotHasReleased = new Map<string, boolean>();
-      (claimsData || []).forEach((c: any) => {
-        if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
-        if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
-      });
-      const now = new Date();
-      const { claimToken, claimSlotId } = readClaimParamsFromLocation();
+      // Tier-aware visibility (priority -> members -> public)
+      const visibleIds = await filterVisibleSlotIds(slotsData.map((s: any) => ({
+        id: s.id,
+        priority_window_ends_at: s.priority_window_ends_at,
+        member_window_ends_at: s.member_window_ends_at,
+        public_release_status: s.public_release_status,
+        source_cycle_id: s.source_cycle_id,
+      })));
 
       // Filter to slots with availability and map
       const availableSlots: SlotData[] = slotsData
         .filter(s => {
+          if (!visibleIds.has(s.id)) return false;
           const maxParticipants = (s as any).max_participants || 4;
           const booked = bookingCounts[s.id] || 0;
-          if (shouldHidePrioritySlot({
-            slotId: s.id,
-            windowEndsAt: (s as any).priority_window_ends_at,
-            hasPendingPriority: !!slotPendingPriority.get(s.id),
-            hasReleasedSeat: !!slotHasReleased.get(s.id),
-            claimToken,
-            claimSlotId,
-            now,
-          })) return false;
           return booked < maxParticipants;
         })
         .map(s => {

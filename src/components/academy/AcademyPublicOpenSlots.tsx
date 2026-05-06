@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabaseClient';
-import { shouldHidePrioritySlot, readClaimParamsFromLocation } from '@/lib/priorityClaims';
+import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { formatPrice } from '@/lib/pricing';
@@ -92,6 +92,9 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           location_id,
           trainer_id,
           priority_window_ends_at,
+          member_window_ends_at,
+          public_release_status,
+          source_cycle_id,
           locations:location_id(name)
         `)
         .or(orFilter)
@@ -148,19 +151,14 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
       });
 
-      // Fetch priority claim status (used to hide slots that still have unresolved priority players)
-      const { data: claimsData } = await supabase
-        .from('slot_priority_claims')
-        .select('slot_id, status')
-        .in('slot_id', slotIds);
-      const slotPendingPriority = new Map<string, boolean>();
-      const slotHasReleased = new Map<string, boolean>();
-      (claimsData || []).forEach((c: any) => {
-        if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
-        if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
-      });
-      const now = new Date();
-      const { claimToken, claimSlotId } = readClaimParamsFromLocation();
+      // Tier-aware visibility
+      const visibleIds = await filterVisibleSlotIds(slotsData.map((s: any) => ({
+        id: s.id,
+        priority_window_ends_at: s.priority_window_ends_at,
+        member_window_ends_at: s.member_window_ends_at,
+        public_release_status: s.public_release_status,
+        source_cycle_id: s.source_cycle_id,
+      })));
 
       // Dedupe by slot id
       const seen = new Set<string>();
@@ -168,16 +166,8 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         .filter(s => {
           if (seen.has(s.id)) return false;
           seen.add(s.id);
+          if (!visibleIds.has(s.id)) return false;
           const maxP = s.max_participants || 4;
-          if (shouldHidePrioritySlot({
-            slotId: s.id,
-            windowEndsAt: (s as any).priority_window_ends_at,
-            hasPendingPriority: !!slotPendingPriority.get(s.id),
-            hasReleasedSeat: !!slotHasReleased.get(s.id),
-            claimToken,
-            claimSlotId,
-            now,
-          })) return false;
           return (bookingCounts[s.id] || 0) < maxP;
         })
         .map(s => {

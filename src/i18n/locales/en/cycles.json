@@ -487,7 +487,27 @@
     "windowDays": "Priority window (days)",
     "copy": "Copy slots",
     "success": "Slots copied",
-    "weekHelp": "How many weeks later sessions should start"
+    "weekHelp": "How many weeks later sessions should start",
+    "memberWindow": "Member window",
+    "enableMemberWindow": "Give previous-cycle players early access before opening publicly",
+    "memberDays": "Member window length (days)",
+    "memberHint": "After the priority window, only players from the source cycle can book or switch into these slots.",
+    "publicRelease": "Public release",
+    "autoRelease": "Auto-release after member window",
+    "autoReleaseHint": "Slots open to the public automatically when the member window ends.",
+    "requireReview": "Require my approval before public",
+    "requireReviewHint": "Slots stay hidden until you review and release them from the cycles page."
+  },
+  "tierControl": {
+    "title": "Visibility & rebooking",
+    "tier": { "priority": "Priority only", "members": "Members only", "public": "Public", "hidden": "Hidden" },
+    "priorityEnds": "Priority window ends",
+    "memberEnds": "Member window ends",
+    "releaseStatus": "Release status",
+    "openMembers": "Open to members now",
+    "openPublic": "Open to public now",
+    "hold": "Hold for review",
+    "unhold": "Move to review"
   },
   "priorityClaims": {
     "title": "Priority rebooking",

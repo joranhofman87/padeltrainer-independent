@@ -43,6 +43,9 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
   const [bookingCounts, setBookingCounts] = useState<Map<string, number>>(new Map());
   const [priorityWindowDays, setPriorityWindowDays] = useState(14);
   const [createPriorityClaims, setCreatePriorityClaims] = useState(true);
+  const [memberWindowDays, setMemberWindowDays] = useState(7);
+  const [enableMemberWindow, setEnableMemberWindow] = useState(true);
+  const [requireAdminReview, setRequireAdminReview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -109,6 +112,8 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
         priorityWindowDays,
         createPriorityClaims,
         excludeSourceSlotIds: Array.from(excludeSlotIds),
+        memberWindowDays: enableMemberWindow ? memberWindowDays : 0,
+        publicReleaseStatus: requireAdminReview ? 'pending_admin_review' : 'auto_release_scheduled',
       });
       toast.success(`${result.copiedSlots} slots copied, ${result.createdClaims} priority claims created.`);
       navigate(backHref);
@@ -204,6 +209,45 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
               </p>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{t('bulkCopy.memberWindow', 'Member window')}</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <Checkbox checked={enableMemberWindow} onCheckedChange={(v) => setEnableMemberWindow(Boolean(v))} />
+            <span className="text-sm">{t('bulkCopy.enableMemberWindow', 'Give previous-cycle players early access before opening publicly')}</span>
+          </label>
+          {enableMemberWindow && (
+            <div className="max-w-xs">
+              <Label>{t('bulkCopy.memberDays', 'Member window length (days)')}</Label>
+              <Input type="number" min={1} max={60} value={memberWindowDays} onChange={(e) => setMemberWindowDays(Number(e.target.value))} />
+              <p className="text-xs text-muted-foreground mt-1">
+                {t('bulkCopy.memberHint', 'After the priority window, only players from the source cycle can book or switch into these slots.')}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{t('bulkCopy.publicRelease', 'Public release')}</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <Checkbox checked={!requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(!Boolean(v))} />
+            <div>
+              <div className="text-sm font-medium">{t('bulkCopy.autoRelease', 'Auto-release after member window')}</div>
+              <div className="text-xs text-muted-foreground">{t('bulkCopy.autoReleaseHint', 'Slots open to the public automatically when the member window ends.')}</div>
+            </div>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <Checkbox checked={requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(Boolean(v))} />
+            <div>
+              <div className="text-sm font-medium">{t('bulkCopy.requireReview', 'Require my approval before public')}</div>
+              <div className="text-xs text-muted-foreground">{t('bulkCopy.requireReviewHint', 'Slots stay hidden until you review and release them from the cycles page.')}</div>
+            </div>
+          </label>
         </CardContent>
       </Card>
 
