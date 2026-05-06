@@ -364,7 +364,7 @@ export default function AcademyInvoices() {
     }
 
     await supabase.functions.invoke("send-invoice-email", {
-      body: { invoiceId },
+      body: { invoiceId, language: i18n.language || "nl" },
     });
 
     await supabase.from("invoices").update({ 
