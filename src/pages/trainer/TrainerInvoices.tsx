@@ -418,9 +418,15 @@ export default function TrainerInvoices() {
                             <TableHead>{t("invoices.number", "Nummer")}</TableHead>
                             <TableHead>{t("invoices.player", "Klant")}</TableHead>
                             <TableHead>{t("invoices.date", "Datum")}</TableHead>
-                            <SortableTableHead sortKey="due_date" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)}>
-                              {t("invoices.dueDate", "Vervaldatum")}
-                            </SortableTableHead>
+                            {activeTab === "paid" ? (
+                              <SortableTableHead sortKey="paid_at" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)}>
+                                {t("invoices.paymentDate", "Betaaldatum")}
+                              </SortableTableHead>
+                            ) : (
+                              <SortableTableHead sortKey="due_date" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)}>
+                                {t("invoices.dueDate", "Vervaldatum")}
+                              </SortableTableHead>
+                            )}
                             <SortableTableHead sortKey="total" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)} className="text-right">
                               {t("invoices.amount", "Bedrag")}
                             </SortableTableHead>
