@@ -281,7 +281,7 @@ function PlayerDetails({
 }
 
 export default function PublicInvoicePay() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const { token } = useParams<{ token: string }>();
   
   const [data, setData] = useState<PublicInvoiceData | null>(null);
@@ -291,6 +291,15 @@ export default function PublicInvoicePay() {
   const [error, setError] = useState<string | null>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
+
+  // Pin language to the URL locale segment so the page matches the email link's language
+  useEffect(() => {
+    const seg = window.location.pathname.split("/").filter(Boolean)[0];
+    const supported = ["nl", "en", "es", "de", "fr", "it"];
+    if (seg && supported.includes(seg) && i18n.language !== seg) {
+      i18n.changeLanguage(seg);
+    }
+  }, [i18n]);
 
   useEffect(() => {
     if (!token) return;

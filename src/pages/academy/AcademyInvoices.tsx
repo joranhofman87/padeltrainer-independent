@@ -277,7 +277,7 @@ export default function AcademyInvoices() {
   const sendInvoiceMutation = useMutation({
     mutationFn: async (invoice: Invoice) => {
       const { data } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoice.id },
+        body: { invoiceId: invoice.id, language: i18n.language || "nl" },
       });
 
       if (data?.error === "no_email") {
@@ -303,8 +303,9 @@ export default function AcademyInvoices() {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-      const emailMsg = result.email ? ` naar ${result.email}` : "";
-      toast.success(t("invoices.sentSuccess", `Invoice sent${emailMsg}`));
+      toast.success(result.email
+        ? t("invoices.sentSuccessTo", { email: result.email })
+        : t("invoices.sentSuccess"));
     },
     onError: () => {
       toast.error(t("invoices.sendError", "Failed to send invoice"));
@@ -321,7 +322,7 @@ export default function AcademyInvoices() {
     for (const inv of draftInvoices) {
       try {
         const { data } = await supabase.functions.invoke("send-invoice-email", {
-          body: { invoiceId: inv.id },
+          body: { invoiceId: inv.id, language: i18n.language || "nl" },
         });
 
         if (data?.error === "no_email") {
@@ -348,10 +349,10 @@ export default function AcademyInvoices() {
     queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
     
     const parts = [];
-    if (sent > 0) parts.push(`${sent} verzonden`);
-    if (noEmail > 0) parts.push(`${noEmail} zonder e-mail`);
-    if (failed > 0) parts.push(`${failed} mislukt`);
-    toast.success(`${draftInvoices.length} facturen verwerkt: ${parts.join(", ")}`);
+    if (sent > 0) parts.push(t("invoices.bulkSent", { count: sent }));
+    if (noEmail > 0) parts.push(t("invoices.bulkNoEmail", { count: noEmail }));
+    if (failed > 0) parts.push(t("invoices.bulkFailed", { count: failed }));
+    toast.success(t("invoices.bulkProcessed", { total: draftInvoices.length, parts: parts.join(", ") }));
     
     setSendingAll(false);
   };
@@ -364,7 +365,7 @@ export default function AcademyInvoices() {
     }
 
     await supabase.functions.invoke("send-invoice-email", {
-      body: { invoiceId },
+      body: { invoiceId, language: i18n.language || "nl" },
     });
 
     await supabase.from("invoices").update({ 
@@ -373,7 +374,7 @@ export default function AcademyInvoices() {
     }).eq("id", invoiceId);
 
     queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-    toast.success(`Factuur verzonden naar ${email}`);
+    toast.success(t("invoices.sentSuccessTo", { email }));
   };
 
   // Mark as sent (without email)

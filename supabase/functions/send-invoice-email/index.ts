@@ -181,9 +181,11 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    // Build public invoice URL
+    // Build public invoice URL using recipient language
+    const supportedLangs = ["nl", "en", "es", "de", "fr", "it"];
+    const urlLang = supportedLangs.includes(language) ? language : "nl";
     const publicUrl = invoice.public_token && slug
-      ? `https://padeltrainer.ai/nl/academies/${slug}/pay/${invoice.public_token}`
+      ? `https://padeltrainer.ai/${urlLang}/academies/${slug}/pay/${invoice.public_token}`
       : null;
 
     const localeMap: Record<string, string> = {
@@ -224,7 +226,7 @@ const handler = async (req: Request): Promise<Response> => {
       ? `<div style="margin: 0 0 24px; color:#374151; font-size:14px; line-height:1.6; white-space:pre-wrap;">${escapeHtml(personalizedMessage)}</div>`
       : "";
 
-    const subject = `${l.subject} ${invoice.invoice_number} - ${businessName}`;
+    const subject = `${tr.subject} ${invoice.invoice_number} - ${businessName}`;
     const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           ${customHtml}

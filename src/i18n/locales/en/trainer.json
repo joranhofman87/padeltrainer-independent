@@ -753,7 +753,14 @@
     "numbering": "Invoice numbering",
     "prefix": "Prefix",
     "nextNumber": "Next number",
-    "previewNumber": "Preview"
+    "previewNumber": "Preview",
+    "sentSuccess": "Invoice sent",
+    "sentSuccessTo": "Invoice sent to {{email}}",
+    "sendError": "Failed to send",
+    "bulkSent": "{{count}} sent",
+    "bulkNoEmail": "{{count}} without email",
+    "bulkFailed": "{{count}} failed",
+    "bulkProcessed": "{{total}} invoices processed: {{parts}}"
   },
   "profileVisibility": {
     "title": "Marketplace visibility",

@@ -137,7 +137,7 @@ export default function TrainerInvoices() {
   const sendInvoiceMutation = useMutation({
     mutationFn: async (invoice: Invoice) => {
       const { data } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoice.id },
+        body: { invoiceId: invoice.id, language: i18n.language || "nl" },
       });
       if (data?.error === "no_email") {
         return { noEmail: true, invoice };
@@ -160,8 +160,9 @@ export default function TrainerInvoices() {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
-      const emailMsg = result.email ? ` naar ${result.email}` : "";
-      toast.success(t("invoices.sentSuccess", `Factuur verzonden${emailMsg}`));
+      toast.success(result.email
+        ? t("invoices.sentSuccessTo", { email: result.email })
+        : t("invoices.sentSuccess"));
     },
     onError: () => {
       toast.error(t("invoices.sendError", "Verzenden mislukt"));
@@ -174,7 +175,7 @@ export default function TrainerInvoices() {
     let sent = 0, noEmail = 0, failed = 0;
     for (const inv of draftInvoices) {
       try {
-        const { data } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id } });
+        const { data } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id, language: i18n.language || "nl" } });
         if (data?.error === "no_email") noEmail++;
         else if (data?.success) sent++;
         else failed++;
@@ -186,10 +187,10 @@ export default function TrainerInvoices() {
     }
     queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
     const parts = [];
-    if (sent > 0) parts.push(`${sent} verzonden`);
-    if (noEmail > 0) parts.push(`${noEmail} zonder e-mail`);
-    if (failed > 0) parts.push(`${failed} mislukt`);
-    toast.success(`${draftInvoices.length} facturen verwerkt: ${parts.join(", ")}`);
+    if (sent > 0) parts.push(t("invoices.bulkSent", { count: sent }));
+    if (noEmail > 0) parts.push(t("invoices.bulkNoEmail", { count: noEmail }));
+    if (failed > 0) parts.push(t("invoices.bulkFailed", { count: failed }));
+    toast.success(t("invoices.bulkProcessed", { total: draftInvoices.length, parts: parts.join(", ") }));
     setSendingAll(false);
   };
 
@@ -198,10 +199,10 @@ export default function TrainerInvoices() {
     if (guestPlayerId) {
       await supabase.from("guest_players").update({ email }).eq("id", guestPlayerId);
     }
-    await supabase.functions.invoke("send-invoice-email", { body: { invoiceId } });
+    await supabase.functions.invoke("send-invoice-email", { body: { invoiceId, language: i18n.language || "nl" } });
     await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", invoiceId);
     queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
-    toast.success(`Factuur verzonden naar ${email}`);
+    toast.success(t("invoices.sentSuccessTo", { email }));
   };
 
   const markAsSentMutation = useMutation({
