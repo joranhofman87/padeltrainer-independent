@@ -147,11 +147,13 @@ function EditDetailsDialog({
   open,
   onOpenChange,
   invoice,
+  publicToken,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   invoice: PublicInvoiceData["invoice"];
+  publicToken: string;
   onSaved: () => void;
 }) {
   const { t } = useTranslation("common");
@@ -163,16 +165,15 @@ function EditDetailsDialog({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("invoices")
-        .update({
-          player_business_name: businessName || null,
-          player_address: address || null,
-          player_btw_number: btwNumber || null,
-        })
-        .eq("id", invoice.id);
-
-      if (error) throw error;
+      const { data, error } = await supabase.functions.invoke("update-public-invoice-details", {
+        body: {
+          publicToken,
+          playerBusinessName: businessName,
+          playerAddress: address,
+          playerBtwNumber: btwNumber,
+        },
+      });
+      if (error || (data && (data as any).error)) throw error || new Error((data as any).error);
       toast.success(t("changesSaved", "Changes saved"));
       onOpenChange(false);
       onSaved();
@@ -235,16 +236,15 @@ function EditDetailsDialog({
 
 function PlayerDetails({
   invoice,
-  currentUserId,
+  publicToken,
   onRefresh,
 }: {
   invoice: PublicInvoiceData["invoice"];
-  currentUserId: string | null;
+  publicToken: string;
   onRefresh: () => void;
 }) {
   const { t } = useTranslation("common");
   const [editOpen, setEditOpen] = useState(false);
-  const isOwner = currentUserId && invoice.playerId && currentUserId === invoice.playerId;
 
   return (
     <div>
@@ -262,30 +262,20 @@ function PlayerDetails({
         <p className="text-sm text-muted-foreground">BTW: {invoice.playerBtwNumber}</p>
       )}
 
-      {isOwner ? (
-        <>
-          <button
-            onClick={() => setEditOpen(true)}
-            className="text-xs text-primary hover:underline mt-1.5 inline-flex items-center gap-1"
-          >
-            <Pencil className="h-3 w-3" />
-            {t("updateBillingDetails", "Update billing details")}
-          </button>
-          <EditDetailsDialog
-            open={editOpen}
-            onOpenChange={setEditOpen}
-            invoice={invoice}
-            onSaved={onRefresh}
-          />
-        </>
-      ) : !currentUserId ? (
-        <Link
-          to={`/app/auth?redirect=${encodeURIComponent(window.location.pathname)}`}
-          className="text-xs text-muted-foreground hover:text-primary hover:underline mt-1.5 inline-block"
-        >
-          {t("loginToEditDetails", "Log in to update your details")}
-        </Link>
-      ) : null}
+      <button
+        onClick={() => setEditOpen(true)}
+        className="text-xs text-primary hover:underline mt-1.5 inline-flex items-center gap-1"
+      >
+        <Pencil className="h-3 w-3" />
+        {t("invoice.editBillingDetails", "Edit billing details")}
+      </button>
+      <EditDetailsDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        invoice={invoice}
+        publicToken={publicToken}
+        onSaved={onRefresh}
+      />
     </div>
   );
 }
