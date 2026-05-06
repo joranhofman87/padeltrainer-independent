@@ -442,7 +442,7 @@ export default function TrainerInvoices() {
                               <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                               <TableCell>{inv.player_name}</TableCell>
                               <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                              <TableCell>{format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
+                              <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                               <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1.5">
