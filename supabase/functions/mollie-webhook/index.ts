@@ -369,6 +369,30 @@ serve(async (req) => {
 
     logStep("Bookings updated successfully", { count: bookingIds.length });
 
+    // If payment is paid, mark any matching priority claim as 'claimed'
+    if (payment.status === "paid") {
+      try {
+        const { data: paidBookings } = await supabase
+          .from("bookings")
+          .select("id, slot_id, player_id, guest_player_id")
+          .in("id", bookingIds);
+        for (const b of paidBookings || []) {
+          const orParts: string[] = [];
+          if (b.player_id) orParts.push(`player_id.eq.${b.player_id}`);
+          if (b.guest_player_id) orParts.push(`guest_player_id.eq.${b.guest_player_id}`);
+          if (orParts.length === 0) continue;
+          await supabase
+            .from("slot_priority_claims")
+            .update({ status: "claimed", responded_at: new Date().toISOString(), booking_id: b.id })
+            .eq("slot_id", b.slot_id)
+            .eq("status", "pending")
+            .or(orParts.join(","));
+        }
+      } catch (e) {
+        logStep("Failed to mark priority claim claimed (non-fatal)", { error: String(e) });
+      }
+    }
+
     // If payment is successful, auto-create invoice and send confirmation email
     if (payment.status === "paid") {
       // Auto-create invoice
