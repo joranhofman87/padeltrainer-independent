@@ -534,19 +534,25 @@ export default function PublicInvoicePay() {
 
           {/* Pay button — only when academy has Mollie connected */}
           {invoice.hasMollieAccount ? (
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handlePay}
-              disabled={payLoading}
-            >
-              {payLoading ? (
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-              ) : (
-                <CreditCard className="h-5 w-5 mr-2" />
-              )}
-              {payLoading ? t("invoice.redirecting") : t("invoice.payAmount", { amount: formatEuro(invoice.total) })}
-            </Button>
+            <div className="space-y-2">
+              <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1">
+                <ArrowDown className="h-3 w-3" />
+                {t("invoice.payHelper")}
+              </p>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handlePay}
+                disabled={payLoading}
+              >
+                {payLoading ? (
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                ) : (
+                  <CreditCard className="h-5 w-5 mr-2" />
+                )}
+                {payLoading ? t("invoice.redirecting") : t("invoice.payAmount", { amount: formatEuro(invoice.total) })}
+              </Button>
+            </div>
           ) : null}
 
           {/* Bank details — prominent when no online payment available */}
