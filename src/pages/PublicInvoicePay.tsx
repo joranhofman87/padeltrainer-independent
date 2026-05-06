@@ -283,7 +283,7 @@ function PlayerDetails({
 export default function PublicInvoicePay() {
   const { t } = useTranslation("common");
   const { token } = useParams<{ token: string }>();
-  const { user } = useAuth();
+  
   const [data, setData] = useState<PublicInvoiceData | null>(null);
   const [searchParams] = useSearchParams();
   const isSuccessRedirect = searchParams.get("status") === "success";
