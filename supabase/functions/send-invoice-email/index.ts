@@ -103,29 +103,41 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch academy profile for branding
+    // Fetch academy/trainer profile for branding + reply-to
     let businessName = "PadelTrainer.ai";
     let slug = "";
+    let replyTo: string | null = null;
 
     if (invoice.academy_profile_id) {
       const { data: academy } = await supabase
         .from("academy_profiles")
-        .select("name, slug, business_name")
+        .select("name, slug, business_name, contact_email, invoice_forward_emails")
         .eq("id", invoice.academy_profile_id)
         .single();
       if (academy) {
         businessName = academy.business_name || academy.name || businessName;
         slug = academy.slug || "";
+        replyTo = academy.contact_email
+          || (Array.isArray(academy.invoice_forward_emails) && academy.invoice_forward_emails[0])
+          || null;
       }
     } else if (invoice.trainer_id) {
-      // Fetch trainer profile for slug/branding
       const { data: trainer } = await supabase
         .from("trainer_profiles")
-        .select("user_id, business_name")
+        .select("user_id, business_name, invoice_forward_emails")
         .eq("id", invoice.trainer_id)
         .single();
       if (trainer) {
         businessName = trainer.business_name || businessName;
+        replyTo = (Array.isArray(trainer.invoice_forward_emails) && trainer.invoice_forward_emails[0]) || null;
+        if (!replyTo && trainer.user_id) {
+          const { data: trainerProfileEmail } = await supabase
+            .from("profiles")
+            .select("email")
+            .eq("user_id", trainer.user_id)
+            .single();
+          if (trainerProfileEmail?.email) replyTo = trainerProfileEmail.email;
+        }
       }
     }
 
