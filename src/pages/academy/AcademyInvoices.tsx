@@ -268,7 +268,15 @@ export default function AcademyInvoices() {
 
   // Add computed status for sorting
   const dataWithStatus = searchFiltered.map(i => ({ ...i, _computedStatus: getComputedStatus(i) }));
-  const { sortedData, sortConfig, handleSort } = useTableSort(dataWithStatus);
+  const { sortedData, sortConfig, handleSort, setSortConfig } = useTableSort(dataWithStatus);
+
+  useEffect(() => {
+    if (activeTab === "paid") {
+      setSortConfig({ key: "paid_at" as any, direction: "desc" });
+    } else {
+      setSortConfig({ key: null, direction: null });
+    }
+  }, [activeTab, setSortConfig]);
   const filteredInvoices = sortedData.map(({ _computedStatus, ...rest }) => rest as Invoice);
 
   const totalUnpaid = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
@@ -793,14 +801,25 @@ export default function AcademyInvoices() {
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
                         <TableHead>{t("invoices.player", "Player")}</TableHead>
                         <TableHead>{t("invoices.date", "Date")}</TableHead>
-                        <SortableTableHead
-                          sortKey="due_date"
-                          currentSortKey={sortConfig.key as string | null}
-                          currentDirection={sortConfig.direction}
-                          onSort={(key) => handleSort(key as any)}
-                        >
-                          {t("invoices.dueDate", "Due")}
-                        </SortableTableHead>
+                        {activeTab === "paid" ? (
+                          <SortableTableHead
+                            sortKey="paid_at"
+                            currentSortKey={sortConfig.key as string | null}
+                            currentDirection={sortConfig.direction}
+                            onSort={(key) => handleSort(key as any)}
+                          >
+                            {t("invoices.paymentDate", "Betaaldatum")}
+                          </SortableTableHead>
+                        ) : (
+                          <SortableTableHead
+                            sortKey="due_date"
+                            currentSortKey={sortConfig.key as string | null}
+                            currentDirection={sortConfig.direction}
+                            onSort={(key) => handleSort(key as any)}
+                          >
+                            {t("invoices.dueDate", "Due")}
+                          </SortableTableHead>
+                        )}
                         <SortableTableHead
                           sortKey="total"
                           currentSortKey={sortConfig.key as string | null}
@@ -838,7 +857,7 @@ export default function AcademyInvoices() {
                           <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                           <TableCell>{inv.player_name}</TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                          <TableCell>{format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
+                          <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1.5">
@@ -909,7 +928,9 @@ export default function AcademyInvoices() {
                       </div>
                       <div className="flex items-center justify-between text-sm mb-3">
                         <span className="text-muted-foreground">
-                          {format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}
+                          {activeTab === "paid" && inv.paid_at
+                            ? `${t("invoices.paymentDate", "Betaaldatum")}: ${format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale })}`
+                            : format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}
                         </span>
                         <span className="font-bold text-lg">€{formatEuro(inv.total)}</span>
                       </div>

@@ -399,6 +399,7 @@
     "player": "Giocatore",
     "date": "Data",
     "dueDate": "Due",
+    "paymentDate": "Data di pagamento",
     "amount": "Amount",
     "status": "Stato",
     "actions": "Actions",
