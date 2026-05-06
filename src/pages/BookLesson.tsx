@@ -180,32 +180,20 @@ export default function BookLesson() {
         if (rating != null) slotBookingInfo[b.slot_id].ratings.push({ rating, system });
       });
 
-      // Priority claim filtering (claim token bypasses hidden slots)
-      const { data: claimsData } = await supabase
-        .from('slot_priority_claims')
-        .select('slot_id, status')
-        .in('slot_id', slotIds);
-      const slotPendingPriority = new Map<string, boolean>();
-      const slotHasReleased = new Map<string, boolean>();
-      (claimsData || []).forEach((c: any) => {
-        if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
-        if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
-      });
-      const now = new Date();
+      // Tier-aware visibility filtering
+      const visibleIds = await filterVisibleSlotIds(slotsData.map((s: any) => ({
+        id: s.id,
+        priority_window_ends_at: s.priority_window_ends_at,
+        member_window_ends_at: s.member_window_ends_at,
+        public_release_status: s.public_release_status,
+        source_cycle_id: s.source_cycle_id,
+      })));
 
       const availableSlots = slotsData
         .filter((s) => {
           const maxP = (s as any).max_participants || 4;
           if ((slotBookingInfo[s.id]?.count || 0) >= maxP) return false;
-          if (shouldHidePrioritySlot({
-            slotId: s.id,
-            windowEndsAt: (s as any).priority_window_ends_at,
-            hasPendingPriority: !!slotPendingPriority.get(s.id),
-            hasReleasedSeat: !!slotHasReleased.get(s.id),
-            claimToken,
-            claimSlotId,
-            now,
-          })) return false;
+          if (!visibleIds.has(s.id)) return false;
           return true;
         })
         .map((s) => {
