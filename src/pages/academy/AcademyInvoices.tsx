@@ -374,7 +374,7 @@ export default function AcademyInvoices() {
     }).eq("id", invoiceId);
 
     queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-    toast.success(`Factuur verzonden naar ${email}`);
+    toast.success(t("invoices.sentSuccessTo", { email }));
   };
 
   // Mark as sent (without email)
