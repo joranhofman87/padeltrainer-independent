@@ -441,7 +441,8 @@ export default function TrainerCyclus() {
                   </CardHeader>
 
                   <CollapsibleContent>
-                    <CardContent className="pt-0">
+                    <CardContent className="pt-0 space-y-4">
+                      <CycleFillRateCard cyclusId={cyclus.cyclus_id} />
                       <div className="border-t pt-4 mt-2">
                         <div className="flex items-center gap-2 mb-3">
                           <Users className="h-4 w-4 text-muted-foreground" />
