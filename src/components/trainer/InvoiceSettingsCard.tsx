@@ -27,6 +27,7 @@ interface InvoiceSettingsCardProps {
     payment_terms_days: number;
     default_vat_rate: number | null;
     invoice_forward_emails: string[] | null;
+    invoice_reply_to_email?: string | null;
     invoice_logo_url: string | null;
     invoice_prefix: string | null;
     invoice_next_number: number | null;
