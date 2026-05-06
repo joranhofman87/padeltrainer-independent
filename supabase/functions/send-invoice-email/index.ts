@@ -220,10 +220,11 @@ const handler = async (req: Request): Promise<Response> => {
       ? `<div style="margin: 0 0 24px; color:#374151; font-size:14px; line-height:1.6; white-space:pre-wrap;">${escapeHtml(personalizedMessage)}</div>`
       : "";
 
-    const subject = `${tr.subject} ${invoice.invoice_number} - ${formatCurrency(invoice.total)}`;
+    const subject = `${invoice.invoice_number} - ${businessName}`;
     const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           ${customHtml}
+          ${customHtml ? `<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 0 0 32px;" />` : ""}
           <h2 style="color: #1a1a1a; margin-bottom: 8px;">${tr.invoice} ${invoice.invoice_number}</h2>
           <p style="color: #6b7280; margin-bottom: 24px;">${tr.from} ${escapeHtml(businessName)}</p>
 
