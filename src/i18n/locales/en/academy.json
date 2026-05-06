@@ -429,6 +429,13 @@
     "createInvoice": "New invoice",
     "sendingAll": "Sending...",
     "unpaidCount": "Open invoices",
+    "sentSuccess": "Invoice sent",
+    "sentSuccessTo": "Invoice sent to {{email}}",
+    "sendError": "Failed to send",
+    "bulkSent": "{{count}} sent",
+    "bulkNoEmail": "{{count}} without email",
+    "bulkFailed": "{{count}} failed",
+    "bulkProcessed": "{{total}} invoices processed: {{parts}}",
     "bulk": {
       "selected": "{{count}} selected",
       "clear": "Clear",
