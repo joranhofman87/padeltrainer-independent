@@ -387,7 +387,24 @@
     "backfillNone": "Alle Buchungen sind bereits fakturiert",
     "backfillError": "Rechnungen konnten nicht erstellt werden",
     "shareLink": "Teilen",
-    "shareLinkCopied": "Rechnungslink in Zwischenablage kopiert"
+    "shareLinkCopied": "Rechnungslink in Zwischenablage kopiert",
+    "unpaid": "Offen",
+    "allTrainers": "Alle Trainer",
+    "allLocations": "Alle Standorte",
+    "allStatuses": "Alle Status",
+    "createInvoice": "Neue Rechnung",
+    "sendingAll": "Senden...",
+    "unpaidCount": "Offene Rechnungen",
+    "bulk": {
+      "selected": "{{count}} ausgewählt",
+      "clear": "Löschen",
+      "sendEmail": "E-Mail senden",
+      "resetToDraft": "Auf Entwurf zurücksetzen",
+      "updateDueDate": "Fälligkeitsdatum aktualisieren",
+      "delete": "Löschen"
+    },
+    "open": "Offen",
+    "cancelled": "Storniert"
   },
   "warnings": {
     "ratingSpread": "Niveauunterschied: {{spread}}",

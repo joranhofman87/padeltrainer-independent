@@ -421,7 +421,24 @@
     "backfillNone": "Alle boekingen zijn al gefactureerd",
     "backfillError": "Facturen genereren mislukt",
     "shareLink": "Delen",
-    "shareLinkCopied": "Factuurlink gekopieerd naar klembord"
+    "shareLinkCopied": "Factuurlink gekopieerd naar klembord",
+    "unpaid": "Openstaand",
+    "allTrainers": "Alle trainers",
+    "allLocations": "Alle locaties",
+    "allStatuses": "Alle statussen",
+    "createInvoice": "Nieuwe factuur",
+    "sendingAll": "Versturen...",
+    "unpaidCount": "Open facturen",
+    "bulk": {
+      "selected": "{{count}} geselecteerd",
+      "clear": "Wissen",
+      "sendEmail": "E-mail versturen",
+      "resetToDraft": "Terugzetten naar concept",
+      "updateDueDate": "Vervaldatum bijwerken",
+      "delete": "Verwijderen"
+    },
+    "open": "Open",
+    "cancelled": "Geannuleerd"
   },
   "warnings": {
     "ratingSpread": "Niveauverschil: {{spread}}",

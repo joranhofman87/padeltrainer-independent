@@ -421,7 +421,24 @@
     "backfillNone": "All bookings are already invoiced",
     "backfillError": "Failed to generate invoices",
     "shareLink": "Share",
-    "shareLinkCopied": "Invoice link copied to clipboard"
+    "shareLinkCopied": "Invoice link copied to clipboard",
+    "unpaid": "Unpaid",
+    "allTrainers": "All trainers",
+    "allLocations": "All locations",
+    "allStatuses": "All statuses",
+    "createInvoice": "New invoice",
+    "sendingAll": "Sending...",
+    "unpaidCount": "Open invoices",
+    "bulk": {
+      "selected": "{{count}} selected",
+      "clear": "Clear",
+      "sendEmail": "Send email",
+      "resetToDraft": "Reset to draft",
+      "updateDueDate": "Update due date",
+      "delete": "Delete"
+    },
+    "open": "Open",
+    "cancelled": "Cancelled"
   },
   "warnings": {
     "ratingSpread": "Rating spread: {{spread}}",
