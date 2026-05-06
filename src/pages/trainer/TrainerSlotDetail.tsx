@@ -34,6 +34,7 @@ import { SlotRatingPicker } from '@/components/trainer/SlotRatingPicker';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
+import PriorityClaimsSection from '@/components/cycles/PriorityClaimsSection';
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
@@ -543,6 +544,9 @@ export default function TrainerSlotDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Priority rebooking claims */}
+          {detail && <PriorityClaimsSection slotId={detail.id} />}
 
           {/* Attendance */}
           {detail && isPast(new Date(detail.end_time)) && (
