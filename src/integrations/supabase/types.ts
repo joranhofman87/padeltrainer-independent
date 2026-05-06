@@ -2222,6 +2222,9 @@ export type Database = {
       guest_players: {
         Row: {
           academy_profile_id: string | null
+          billing_address: string | null
+          billing_btw_number: string | null
+          billing_business_name: string | null
           birth_date: string | null
           created_at: string
           email: string | null
@@ -2239,6 +2242,9 @@ export type Database = {
         }
         Insert: {
           academy_profile_id?: string | null
+          billing_address?: string | null
+          billing_btw_number?: string | null
+          billing_business_name?: string | null
           birth_date?: string | null
           created_at?: string
           email?: string | null
@@ -2256,6 +2262,9 @@ export type Database = {
         }
         Update: {
           academy_profile_id?: string | null
+          billing_address?: string | null
+          billing_btw_number?: string | null
+          billing_business_name?: string | null
           birth_date?: string | null
           created_at?: string
           email?: string | null
