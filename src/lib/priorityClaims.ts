@@ -37,6 +37,65 @@ export function shouldHidePrioritySlot(args: PrioritySlotVisibilityArgs): boolea
   return hasPendingPriority && !hasReleasedSeat;
 }
 
+export type PublicReleaseStatus = 'pending_admin_review' | 'auto_release_scheduled' | 'released' | 'held';
+export type SlotTier = 'priority' | 'members' | 'public' | 'hidden';
+
+export interface SlotVisibilityArgs {
+  slotId: string;
+  priorityWindowEndsAt: string | null | undefined;
+  hasPendingPriority: boolean;
+  hasReleasedSeat: boolean;
+  memberWindowEndsAt: string | null | undefined;
+  publicReleaseStatus: PublicReleaseStatus | null | undefined;
+  isCycleMember: boolean;
+  claimToken?: string | null;
+  claimSlotId?: string | null;
+  now?: Date;
+}
+
+/**
+ * Resolve the current visibility tier for a slot.
+ * - 'priority': only the matching claim token sees it
+ * - 'members': only viewers who were members of the source cycle
+ * - 'public': anyone
+ * - 'hidden': owner-only (admin review pending or held)
+ */
+export function getSlotVisibility(args: SlotVisibilityArgs): SlotTier {
+  const { slotId, priorityWindowEndsAt, hasPendingPriority, hasReleasedSeat,
+    memberWindowEndsAt, publicReleaseStatus, isCycleMember,
+    claimToken, claimSlotId, now } = args;
+  const nowMs = (now ?? new Date()).getTime();
+
+  // Priority window?
+  const priorityActive = !!priorityWindowEndsAt
+    && new Date(priorityWindowEndsAt).getTime() > nowMs
+    && hasPendingPriority
+    && !hasReleasedSeat;
+  if (priorityActive) {
+    if (claimToken && claimSlotId === slotId) return 'public';
+    return 'priority';
+  }
+
+  // Member window?
+  const memberActive = !!memberWindowEndsAt
+    && new Date(memberWindowEndsAt).getTime() > nowMs;
+  if (memberActive) {
+    return isCycleMember ? 'public' : 'members';
+  }
+
+  // Public release status decides
+  if (publicReleaseStatus === 'held' || publicReleaseStatus === 'pending_admin_review') {
+    return 'hidden';
+  }
+  return 'public';
+}
+
+/** Convenience: should the public listing hide this slot from a viewer? */
+export function shouldHideSlotForViewer(args: SlotVisibilityArgs): boolean {
+  const tier = getSlotVisibility(args);
+  return tier !== 'public';
+}
+
 /** Read claim token + slot from a URLSearchParams-like (browser only). */
 export function readClaimParamsFromLocation(): { claimToken: string | null; claimSlotId: string | null } {
   if (typeof window === 'undefined') return { claimToken: null, claimSlotId: null };
