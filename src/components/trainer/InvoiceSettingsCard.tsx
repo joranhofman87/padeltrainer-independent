@@ -462,6 +462,24 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
           </div>
         </div>
 
+        {/* Reply-to email */}
+        <div className="space-y-2 pt-4 border-t">
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="tr_reply_to">{t('invoices.replyToEmail', 'Reply-to email for invoices')}</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('invoices.replyToEmailDescription', 'When a player replies to an invoice email, the reply will be sent to this address. If left empty, your account email is used.')}
+          </p>
+          <Input
+            id="tr_reply_to"
+            type="email"
+            value={replyToEmail}
+            onChange={(e) => setReplyToEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+        </div>
+
         {/* Invoice Forwarding Emails */}
         <div className="space-y-3 pt-4 border-t">
           <div className="flex items-center gap-2">
