@@ -399,6 +399,7 @@
     "player": "Speler",
     "date": "Datum",
     "dueDate": "Vervaldatum",
+    "paymentDate": "Betaaldatum",
     "amount": "Bedrag",
     "status": "Status",
     "actions": "Acties",

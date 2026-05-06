@@ -399,6 +399,7 @@
     "player": "Player",
     "date": "Date",
     "dueDate": "Due",
+    "paymentDate": "Payment date",
     "amount": "Amount",
     "status": "Status",
     "actions": "Actions",
