@@ -433,5 +433,36 @@
     "reviewDesc": "{{count}} propositions",
     "approve": "Approuver & Planifier",
     "approveDesc": "{{count}} confirmées"
+  },
+  "bulkCopy": {
+    "title": "Copier les créneaux vers le prochain cycle",
+    "description": "Clonez les créneaux d'un cycle précédent et réservez les places pour les participants actuels.",
+    "sourceCycle": "Cycle source",
+    "targetCycle": "Cycle cible",
+    "weeksOffset": "Décalage en semaines",
+    "windowDays": "Fenêtre prioritaire (jours)",
+    "copy": "Copier les créneaux",
+    "success": "Créneaux copiés",
+    "weekHelp": "Combien de semaines plus tard les sessions doivent commencer"
+  },
+  "priorityClaims": {
+    "title": "Réservation prioritaire",
+    "ended": "Fenêtre terminée",
+    "endsAt": "Se termine {{date}}",
+    "empty": "Aucun joueur prioritaire pour ce créneau.",
+    "invite": "Inviter",
+    "invitationSent": "Invitation envoyée",
+    "release": "Libérer",
+    "inviteAll": "Envoyer les invitations",
+    "allInvited": "Invitations envoyées",
+    "days": "jours",
+    "openNow": "Ouvrir au public"
+  },
+  "fillRate": {
+    "title": "Taux de remplissage",
+    "claimed": "Confirmés",
+    "pending": "En attente",
+    "declined": "Refusés",
+    "booked": "Réservés"
   }
 }

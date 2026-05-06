@@ -447,5 +447,36 @@
     "addDate": "Datum hinzufügen",
     "noHolidays": "Keine Ferientage festgelegt. Alle Wochen haben Trainingseinheiten.",
     "sessions": "Einheiten"
+  },
+  "bulkCopy": {
+    "title": "Slots in nächsten Zyklus kopieren",
+    "description": "Klone Slots aus einem früheren Zyklus und reserviere Plätze für aktuelle Teilnehmer.",
+    "sourceCycle": "Quellzyklus",
+    "targetCycle": "Zielzyklus",
+    "weeksOffset": "Wochenversatz",
+    "windowDays": "Vorrangsfenster (Tage)",
+    "copy": "Slots kopieren",
+    "success": "Slots kopiert",
+    "weekHelp": "Wie viele Wochen später Einheiten starten sollen"
+  },
+  "priorityClaims": {
+    "title": "Vorrang-Buchung",
+    "ended": "Fenster beendet",
+    "endsAt": "Endet {{date}}",
+    "empty": "Keine Vorrangsspieler für diesen Slot.",
+    "invite": "Einladen",
+    "invitationSent": "Einladung gesendet",
+    "release": "Freigeben",
+    "inviteAll": "Einladungen senden",
+    "allInvited": "Einladungen gesendet",
+    "days": "Tage",
+    "openNow": "Jetzt öffentlich öffnen"
+  },
+  "fillRate": {
+    "title": "Auslastung",
+    "claimed": "Bestätigt",
+    "pending": "Offen",
+    "declined": "Abgelehnt",
+    "booked": "Gebucht"
   }
 }

@@ -622,5 +622,36 @@
     "addDate": "Datum toevoegen",
     "noHolidays": "Geen vakantiedagen ingesteld. Alle weken hebben lessen.",
     "sessions": "Lessen"
+  },
+  "bulkCopy": {
+    "title": "Slots kopiëren naar volgende cyclus",
+    "description": "Kopieer slots van een eerdere cyclus en reserveer plekken voor huidige deelnemers.",
+    "sourceCycle": "Broncyclus",
+    "targetCycle": "Doelcyclus",
+    "weeksOffset": "Weken verschuiven",
+    "windowDays": "Voorrangsperiode (dagen)",
+    "copy": "Slots kopiëren",
+    "success": "Slots gekopieerd",
+    "weekHelp": "Hoeveel weken later sessies moeten starten"
+  },
+  "priorityClaims": {
+    "title": "Voorrangs-herboeking",
+    "ended": "Periode geëindigd",
+    "endsAt": "Eindigt {{date}}",
+    "empty": "Geen voorrangsspelers voor deze slot.",
+    "invite": "Uitnodigen",
+    "invitationSent": "Uitnodiging verstuurd",
+    "release": "Vrijgeven",
+    "inviteAll": "Stuur uitnodigingen",
+    "allInvited": "Uitnodigingen verstuurd",
+    "days": "dagen",
+    "openNow": "Nu openstellen"
+  },
+  "fillRate": {
+    "title": "Bezettingsgraad",
+    "claimed": "Geclaimd",
+    "pending": "Open",
+    "declined": "Afgewezen",
+    "booked": "Geboekt"
   }
 }

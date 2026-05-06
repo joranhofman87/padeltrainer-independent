@@ -477,5 +477,36 @@
     "addDate": "Add date",
     "noHolidays": "No holiday dates set. All weeks will have sessions.",
     "sessions": "Sessioni"
+  },
+  "bulkCopy": {
+    "title": "Copia slot al prossimo ciclo",
+    "description": "Clona gli slot da un ciclo precedente e riserva i posti per i partecipanti attuali.",
+    "sourceCycle": "Ciclo origine",
+    "targetCycle": "Ciclo destinazione",
+    "weeksOffset": "Settimane di scarto",
+    "windowDays": "Finestra prioritaria (giorni)",
+    "copy": "Copia slot",
+    "success": "Slot copiati",
+    "weekHelp": "Quante settimane dopo devono iniziare le sessioni"
+  },
+  "priorityClaims": {
+    "title": "Riprenotazione prioritaria",
+    "ended": "Finestra terminata",
+    "endsAt": "Termina {{date}}",
+    "empty": "Nessun giocatore prioritario assegnato.",
+    "invite": "Invita",
+    "invitationSent": "Invito inviato",
+    "release": "Rilascia",
+    "inviteAll": "Invia inviti",
+    "allInvited": "Inviti inviati",
+    "days": "giorni",
+    "openNow": "Apri al pubblico"
+  },
+  "fillRate": {
+    "title": "Tasso di riempimento",
+    "claimed": "Confermati",
+    "pending": "In attesa",
+    "declined": "Rifiutati",
+    "booked": "Prenotati"
   }
 }

@@ -477,5 +477,36 @@
     "addDate": "Add date",
     "noHolidays": "No holiday dates set. All weeks will have sessions.",
     "sessions": "Sessions"
+  },
+  "bulkCopy": {
+    "title": "Copy slots to next cycle",
+    "description": "Clone slots from a previous cycle and reserve spots for current participants.",
+    "sourceCycle": "Source cycle",
+    "targetCycle": "Target cycle",
+    "weeksOffset": "Weeks offset",
+    "windowDays": "Priority window (days)",
+    "copy": "Copy slots",
+    "success": "Slots copied",
+    "weekHelp": "How many weeks later sessions should start"
+  },
+  "priorityClaims": {
+    "title": "Priority rebooking",
+    "ended": "Window ended",
+    "endsAt": "Ends {{date}}",
+    "empty": "No priority players assigned to this slot.",
+    "invite": "Invite",
+    "invitationSent": "Invitation sent",
+    "release": "Release",
+    "inviteAll": "Send invites",
+    "allInvited": "Invitations sent",
+    "days": "days",
+    "openNow": "Open to public now"
+  },
+  "fillRate": {
+    "title": "Fill rate",
+    "claimed": "Claimed",
+    "pending": "Pending",
+    "declined": "Declined",
+    "booked": "Booked"
   }
 }
