@@ -92,7 +92,10 @@ function PostPaymentCTA({ playerName, playerEmail, playerId }: { playerName?: st
   const signupUrl = `/app/signup/player?${params.toString()}`;
 
   return (
-    <div className="pt-4">
+    <div className="pt-4 space-y-2">
+      <p className="text-sm text-muted-foreground">
+        {t("invoice.optionalAccountDescription")}
+      </p>
       <Link to={signupUrl}>
         <Button variant="outline" className="gap-2">
           <UserPlus className="h-4 w-4" />
