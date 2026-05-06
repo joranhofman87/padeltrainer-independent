@@ -40,6 +40,7 @@ import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
 import PriorityClaimsSection from '@/components/cycles/PriorityClaimsSection';
+import SlotTierControlCard from '@/components/cycles/SlotTierControlCard';
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
