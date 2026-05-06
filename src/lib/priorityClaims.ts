@@ -134,8 +134,8 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
   let createdClaims = 0;
 
   for (const src of slotsToCopy) {
-    const newStart = new Date(new Date(src.start_time).getTime() + offsetMs).toISOString();
-    const newEnd = new Date(new Date(src.end_time).getTime() + offsetMs).toISOString();
+    const newStart = applyWeeksOffset(src.start_time, weeksOffset);
+    const newEnd = applyWeeksOffset(src.end_time, weeksOffset);
 
     const insert: Record<string, unknown> = {
       trainer_id: src.trainer_id,
