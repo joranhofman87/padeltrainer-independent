@@ -128,7 +128,15 @@ export default function TrainerInvoices() {
   );
 
   const dataWithStatus = searchFiltered.map(i => ({ ...i, _computedStatus: getComputedStatus(i) }));
-  const { sortedData, sortConfig, handleSort } = useTableSort(dataWithStatus);
+  const { sortedData, sortConfig, handleSort, setSortConfig } = useTableSort(dataWithStatus);
+
+  useEffect(() => {
+    if (activeTab === "paid") {
+      setSortConfig({ key: "paid_at" as any, direction: "desc" });
+    } else {
+      setSortConfig({ key: null, direction: null });
+    }
+  }, [activeTab, setSortConfig]);
   const filteredInvoices = sortedData.map(({ _computedStatus, ...rest }) => rest as Invoice);
 
   const totalUnpaid = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
