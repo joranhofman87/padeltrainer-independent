@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Clock, X, Globe } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 import {
   getPriorityClaimsForSlot,
   declineClaimAsManager,
@@ -15,7 +16,6 @@ import {
 
 interface Props {
   slotId: string;
-  priorityWindowEndsAt: string | null;
   onChange?: () => void;
 }
 
@@ -36,16 +36,21 @@ const statusVariant: Record<ClaimStatus, 'default' | 'secondary' | 'outline' | '
   released: 'outline',
 };
 
-export default function PriorityClaimsSection({ slotId, priorityWindowEndsAt, onChange }: Props) {
+export default function PriorityClaimsSection({ slotId, onChange }: Props) {
   const { t } = useTranslation('cycles');
   const [claims, setClaims] = useState<ClaimRow[]>([]);
+  const [priorityWindowEndsAt, setPriorityWindowEndsAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const reload = async () => {
     setLoading(true);
     try {
-      const data = await getPriorityClaimsForSlot(slotId);
-      setClaims(data as unknown as ClaimRow[]);
+      const [claimsData, slot] = await Promise.all([
+        getPriorityClaimsForSlot(slotId),
+        supabase.from('availability_slots').select('priority_window_ends_at').eq('id', slotId).maybeSingle(),
+      ]);
+      setClaims(claimsData as unknown as ClaimRow[]);
+      setPriorityWindowEndsAt(slot.data?.priority_window_ends_at ?? null);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
