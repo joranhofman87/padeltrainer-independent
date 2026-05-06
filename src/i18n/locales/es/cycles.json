@@ -433,5 +433,36 @@
     "reviewDesc": "{{count}} propuestas",
     "approve": "Aprobar & Agendar",
     "approveDesc": "{{count}} confirmadas"
+  },
+  "bulkCopy": {
+    "title": "Copiar plazas al siguiente ciclo",
+    "description": "Clona plazas de un ciclo anterior y reserva sitios para los participantes actuales.",
+    "sourceCycle": "Ciclo origen",
+    "targetCycle": "Ciclo destino",
+    "weeksOffset": "Semanas de desfase",
+    "windowDays": "Ventana de prioridad (días)",
+    "copy": "Copiar plazas",
+    "success": "Plazas copiadas",
+    "weekHelp": "Cuántas semanas después deben comenzar las sesiones"
+  },
+  "priorityClaims": {
+    "title": "Reserva prioritaria",
+    "ended": "Ventana terminada",
+    "endsAt": "Termina {{date}}",
+    "empty": "No hay jugadores prioritarios asignados.",
+    "invite": "Invitar",
+    "invitationSent": "Invitación enviada",
+    "release": "Liberar",
+    "inviteAll": "Enviar invitaciones",
+    "allInvited": "Invitaciones enviadas",
+    "days": "días",
+    "openNow": "Abrir al público ahora"
+  },
+  "fillRate": {
+    "title": "Ocupación",
+    "claimed": "Confirmados",
+    "pending": "Pendientes",
+    "declined": "Rechazados",
+    "booked": "Reservados"
   }
 }
