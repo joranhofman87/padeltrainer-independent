@@ -95,38 +95,78 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
     }
   };
 
-  const handleSend = async () => {
-    setSending(true);
-    let sent = 0, noEmail = 0, failed = 0;
+  const [progress, setProgress] = useState({ current: 0, total: 0, sent: 0, noEmail: 0, failed: 0 });
 
-    for (const id of invoiceIds) {
-      try {
-        const { data } = await supabase.functions.invoke("send-invoice-email", {
-          body: { invoiceId: id, customMessage },
-        });
-        if (data?.error === "no_email") {
-          noEmail++;
-        } else if (data?.success) {
-          sent++;
-          if (markAsSent) {
-            await supabase.from("invoices")
-              .update({ status: "sent", sent_at: new Date().toISOString() })
-              .eq("id", id);
+  const runBulkSend = async (ids: string[], message: string, mark: boolean, toastId: string | number) => {
+    let sent = 0, noEmail = 0, failed = 0;
+    const total = ids.length;
+    const CONCURRENCY = 3;
+    let cursor = 0;
+
+    const updateToast = (current: number) => {
+      toast.loading(
+        t("invoices.bulk.progressToast", "Sending invoices… {{current}} of {{total}}", { current, total }),
+        { id: toastId, description: t("invoices.bulk.progressToastDesc", "You can safely close this window. Sending continues in the background.") }
+      );
+    };
+
+    const worker = async () => {
+      while (true) {
+        const i = cursor++;
+        if (i >= total) return;
+        const id = ids[i];
+        try {
+          const { data } = await supabase.functions.invoke("send-invoice-email", {
+            body: { invoiceId: id, customMessage: message },
+          });
+          if (data?.error === "no_email") {
+            noEmail++;
+          } else if (data?.success) {
+            sent++;
+            if (mark) {
+              await supabase.from("invoices")
+                .update({ status: "sent", sent_at: new Date().toISOString() })
+                .eq("id", id);
+            }
+          } else {
+            failed++;
           }
-        } else {
+        } catch {
           failed++;
         }
-      } catch {
-        failed++;
+        const done = sent + noEmail + failed;
+        setProgress({ current: done, total, sent, noEmail, failed });
+        updateToast(done);
       }
-    }
+    };
+
+    updateToast(0);
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, worker));
 
     toast.success(
-      t("invoices.bulk.emailDone", "Sent: {{sent}}, no email: {{noEmail}}, failed: {{failed}}", { sent, noEmail, failed })
+      t("invoices.bulk.emailDone", "Sent: {{sent}}, no email: {{noEmail}}, failed: {{failed}}", { sent, noEmail, failed }),
+      { id: toastId, description: undefined }
     );
-    setSending(false);
-    setCustomMessage("");
     onSent();
+  };
+
+  const handleSend = () => {
+    const ids = [...invoiceIds];
+    const message = customMessage;
+    const mark = markAsSent;
+    const toastId = `bulk-invoice-email-${Date.now()}`;
+
+    setSending(true);
+    setProgress({ current: 0, total: ids.length, sent: 0, noEmail: 0, failed: 0 });
+
+    // Fire-and-forget: keeps running even if dialog closes
+    runBulkSend(ids, message, mark, toastId).finally(() => {
+      setSending(false);
+      setProgress({ current: 0, total: 0, sent: 0, noEmail: 0, failed: 0 });
+    });
+
+    // Close dialog immediately so user isn't blocked by perceived hang
+    setCustomMessage("");
     onClose();
   };
 
