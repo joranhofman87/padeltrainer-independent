@@ -92,6 +92,9 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           location_id,
           trainer_id,
           priority_window_ends_at,
+          member_window_ends_at,
+          public_release_status,
+          source_cycle_id,
           locations:location_id(name)
         `)
         .or(orFilter)
