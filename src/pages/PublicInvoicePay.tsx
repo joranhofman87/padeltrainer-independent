@@ -456,7 +456,7 @@ export default function PublicInvoicePay() {
             </div>
             <PlayerDetails
               invoice={invoice}
-              currentUserId={user?.id ?? null}
+              publicToken={token!}
               onRefresh={fetchInvoice}
             />
           </div>
