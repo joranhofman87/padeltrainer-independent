@@ -187,10 +187,10 @@ export default function TrainerInvoices() {
     }
     queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
     const parts = [];
-    if (sent > 0) parts.push(`${sent} verzonden`);
-    if (noEmail > 0) parts.push(`${noEmail} zonder e-mail`);
-    if (failed > 0) parts.push(`${failed} mislukt`);
-    toast.success(`${draftInvoices.length} facturen verwerkt: ${parts.join(", ")}`);
+    if (sent > 0) parts.push(t("invoices.bulkSent", { count: sent }));
+    if (noEmail > 0) parts.push(t("invoices.bulkNoEmail", { count: noEmail }));
+    if (failed > 0) parts.push(t("invoices.bulkFailed", { count: failed }));
+    toast.success(t("invoices.bulkProcessed", { total: draftInvoices.length, parts: parts.join(", ") }));
     setSendingAll(false);
   };
 
