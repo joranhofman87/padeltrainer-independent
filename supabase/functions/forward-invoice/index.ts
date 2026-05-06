@@ -187,11 +187,31 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("Could not obtain PDF even after generation attempt, sending without attachment");
     }
 
+    // Resolve player email for reply-to so trainer can reply directly to the player
+    let playerReplyTo: string | null = null;
+    if (invoice.guest_player_id) {
+      const { data: guest } = await supabase
+        .from("guest_players")
+        .select("email")
+        .eq("id", invoice.guest_player_id)
+        .single();
+      if (guest?.email) playerReplyTo = guest.email;
+    }
+    if (!playerReplyTo && invoice.player_id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("user_id", invoice.player_id)
+        .single();
+      if (profile?.email) playerReplyTo = profile.email;
+    }
+
     const emailPromises = emails.map((email: string) =>
       resend.emails.send({
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [email],
-        subject: `Factuur ${invoice.invoice_number} - ${invoice.player_name} - ${formatCurrency(invoice.total)}`,
+        subject: `${invoice.invoice_number} - ${businessName || invoice.player_name}`,
+        reply_to: playerReplyTo || undefined,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           ${EMAIL_LOGO}
