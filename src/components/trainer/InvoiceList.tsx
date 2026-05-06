@@ -189,19 +189,23 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
 
       if (error) {
         toast({
-          title: 'Fout',
-          description: 'Kon factuur niet verzenden',
+          title: t('invoices.sendError'),
+          description: t('invoices.sendError'),
           variant: 'destructive',
         });
       } else {
-        const emailMsg = data?.email ? ` naar ${data.email}` : '';
-        toast({ title: 'Factuur verzonden', description: `De factuur is verzonden${emailMsg}` });
+        toast({
+          title: t('invoices.sentSuccess'),
+          description: data?.email
+            ? t('invoices.sentSuccessTo', { email: data.email })
+            : t('invoices.sentSuccess'),
+        });
         fetchInvoices();
       }
     } catch (err) {
       toast({
-        title: 'Fout',
-        description: 'Kon factuur niet verzenden',
+        title: t('invoices.sendError'),
+        description: t('invoices.sendError'),
         variant: 'destructive',
       });
     }
