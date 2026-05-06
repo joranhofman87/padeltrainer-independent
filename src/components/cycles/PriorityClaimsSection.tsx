@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Clock, X, Globe } from 'lucide-react';
+import { Clock, X, Globe, Mail, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import {
   getPriorityClaimsForSlot,
@@ -96,19 +96,35 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
                   <div className="flex items-center gap-2">
                     <Badge variant={statusVariant[c.status]}>{c.status}</Badge>
                     {c.status === 'pending' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            await declineClaimAsManager(c.id);
-                            await reload();
-                            onChange?.();
-                          } catch (e) { toast.error((e as Error).message); }
-                        }}
-                      >
-                        <X className="h-4 w-4 mr-1" /> {t('priorityClaims.release', 'Release')}
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const { error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { claimIds: [c.id] } });
+                              if (error) throw error;
+                              toast.success(t('priorityClaims.invitationSent', 'Invitation sent'));
+                              await reload();
+                            } catch (e) { toast.error((e as Error).message); }
+                          }}
+                        >
+                          <Send className="h-4 w-4 mr-1" /> {t('priorityClaims.invite', 'Invite')}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await declineClaimAsManager(c.id);
+                              await reload();
+                              onChange?.();
+                            } catch (e) { toast.error((e as Error).message); }
+                          }}
+                        >
+                          <X className="h-4 w-4 mr-1" /> {t('priorityClaims.release', 'Release')}
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -119,6 +135,20 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
 
         {priorityWindowEndsAt && !windowEnded && (
           <div className="flex flex-wrap gap-2 pt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const { error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { slotId } });
+                  if (error) throw error;
+                  toast.success(t('priorityClaims.allInvited', 'Invitations sent'));
+                  await reload();
+                } catch (e) { toast.error((e as Error).message); }
+              }}
+            >
+              <Mail className="h-4 w-4 mr-1" /> {t('priorityClaims.inviteAll', 'Send invites')}
+            </Button>
             <Button
               size="sm"
               variant="outline"

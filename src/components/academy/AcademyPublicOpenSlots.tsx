@@ -90,6 +90,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           split_payment,
           location_id,
           trainer_id,
+          priority_window_ends_at,
           locations:location_id(name)
         `)
         .or(orFilter)
@@ -146,6 +147,19 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
         bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
       });
 
+      // Fetch priority claim status (used to hide slots that still have unresolved priority players)
+      const { data: claimsData } = await supabase
+        .from('slot_priority_claims')
+        .select('slot_id, status')
+        .in('slot_id', slotIds);
+      const slotPendingPriority = new Map<string, boolean>();
+      const slotHasReleased = new Map<string, boolean>();
+      (claimsData || []).forEach((c: any) => {
+        if (c.status === 'pending' || c.status === 'claimed') slotPendingPriority.set(c.slot_id, true);
+        if (c.status === 'declined' || c.status === 'released' || c.status === 'expired') slotHasReleased.set(c.slot_id, true);
+      });
+      const nowMs = Date.now();
+
       // Dedupe by slot id
       const seen = new Set<string>();
       const availableSlots: SlotData[] = slotsData
@@ -153,6 +167,10 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
           if (seen.has(s.id)) return false;
           seen.add(s.id);
           const maxP = s.max_participants || 4;
+          // Hide if priority window still active and no released seats yet
+          const windowEnd = (s as any).priority_window_ends_at;
+          const windowActive = windowEnd && new Date(windowEnd).getTime() > nowMs;
+          if (windowActive && slotPendingPriority.get(s.id) && !slotHasReleased.get(s.id)) return false;
           return (bookingCounts[s.id] || 0) < maxP;
         })
         .map(s => {
