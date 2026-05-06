@@ -53,6 +53,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
     invoice_prefix: 'INV',
     invoice_next_number: 1,
     invoice_include_year: true,
+    invoice_language: 'nl',
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
