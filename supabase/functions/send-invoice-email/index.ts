@@ -283,6 +283,7 @@ const handler = async (req: Request): Promise<Response> => {
       to: [sendTo],
       subject: testEmail ? `[TEST] ${subject}` : subject,
       html,
+      reply_to: replyTo || undefined,
     });
 
     if (sendError) {
