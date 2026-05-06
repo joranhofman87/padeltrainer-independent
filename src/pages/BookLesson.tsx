@@ -147,9 +147,13 @@ export default function BookLesson() {
       }
     } as unknown as TrainerWithProfile);
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const claimToken = urlParams.get('claim');
+    const claimSlotId = urlParams.get('slot');
+
     const { data: slotsData } = await supabase
       .from('availability_slots')
-      .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, locations:location_id(id, name, city, street_address)`)
+      .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, priority_window_ends_at, locations:location_id(id, name, city, street_address)`)
       .eq('trainer_id', trainerData.id)
       
       .eq('is_public', true)
