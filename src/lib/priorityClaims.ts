@@ -148,6 +148,11 @@ export interface BulkCopyInput {
   createPriorityClaims: boolean;
   // Allow trainer to opt slots out
   excludeSourceSlotIds?: string[];
+  // Tier 2 (members) window length in days, after the priority window ends. 0 to disable.
+  memberWindowDays?: number;
+  // 'auto_release_scheduled' (default) opens to public after member window;
+  // 'pending_admin_review' keeps slots hidden until trainer approves.
+  publicReleaseStatus?: PublicReleaseStatus;
 }
 
 export interface BulkCopyResult {
