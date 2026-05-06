@@ -38,7 +38,7 @@ serve(async (req) => {
 
     const { data: invoice, error: fetchErr } = await supabase
       .from("invoices")
-      .select("id, status")
+      .select("id, status, player_id, guest_player_id")
       .eq("public_token", publicToken)
       .maybeSingle();
 
@@ -56,10 +56,14 @@ serve(async (req) => {
       });
     }
 
+    const playerBusinessName = sanitize(body?.playerBusinessName);
+    const playerAddress = sanitize(body?.playerAddress);
+    const playerBtwNumber = sanitize(body?.playerBtwNumber);
+
     const updates = {
-      player_business_name: sanitize(body?.playerBusinessName),
-      player_address: sanitize(body?.playerAddress),
-      player_btw_number: sanitize(body?.playerBtwNumber),
+      player_business_name: playerBusinessName,
+      player_address: playerAddress,
+      player_btw_number: playerBtwNumber,
     };
 
     const { error: updErr } = await supabase
@@ -72,6 +76,26 @@ serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Persist billing details back to the player's profile / guest record
+    // so future invoices for this recipient are pre-filled. Most-recent edit wins.
+    const billingUpdates = {
+      billing_business_name: playerBusinessName,
+      billing_address: playerAddress,
+      billing_btw_number: playerBtwNumber,
+    };
+
+    if (invoice.player_id) {
+      await supabase
+        .from("profiles")
+        .update(billingUpdates)
+        .eq("id", invoice.player_id);
+    } else if (invoice.guest_player_id) {
+      await supabase
+        .from("guest_players")
+        .update(billingUpdates)
+        .eq("id", invoice.guest_player_id);
     }
 
     return new Response(JSON.stringify({ ok: true }), {
