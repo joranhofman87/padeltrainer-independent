@@ -224,7 +224,7 @@ const handler = async (req: Request): Promise<Response> => {
       ? `<div style="margin: 0 0 24px; color:#374151; font-size:14px; line-height:1.6; white-space:pre-wrap;">${escapeHtml(personalizedMessage)}</div>`
       : "";
 
-    const subject = `${invoice.invoice_number} - ${businessName}`;
+    const subject = `${l.subject} ${invoice.invoice_number} - ${businessName}`;
     const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           ${customHtml}

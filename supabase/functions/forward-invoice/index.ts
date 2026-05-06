@@ -210,7 +210,7 @@ const handler = async (req: Request): Promise<Response> => {
       resend.emails.send({
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [email],
-        subject: `${invoice.invoice_number} - ${businessName || invoice.player_name}`,
+        subject: `Factuur ${invoice.invoice_number} - ${businessName || invoice.player_name}`,
         reply_to: playerReplyTo || undefined,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
