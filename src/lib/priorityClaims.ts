@@ -166,7 +166,11 @@ export interface BulkCopyResult {
  * Idempotent on (target_cycle_id, source_slot_id).
  */
 export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCopyResult> {
-  const { sourceCycleId, targetCycleId, weeksOffset, priorityWindowDays, createPriorityClaims, excludeSourceSlotIds = [] } = input;
+  const {
+    sourceCycleId, targetCycleId, weeksOffset, priorityWindowDays,
+    createPriorityClaims, excludeSourceSlotIds = [],
+    memberWindowDays = 0, publicReleaseStatus = 'auto_release_scheduled',
+  } = input;
 
   const { data: sourceSlots, error: srcErr } = await supabase
     .from('availability_slots')
@@ -193,6 +197,9 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
 
   const now = new Date();
   const windowEnd = computePriorityWindowEnd(now, priorityWindowDays);
+  const memberWindowEnd = memberWindowDays > 0
+    ? computePriorityWindowEnd(windowEnd, memberWindowDays)
+    : null;
 
   let copiedSlots = 0;
   let createdClaims = 0;
@@ -227,6 +234,10 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
       priority_source_slot_id: src.id,
       priority_window_starts_at: createPriorityClaims ? now.toISOString() : null,
       priority_window_ends_at: createPriorityClaims ? windowEnd.toISOString() : null,
+      source_cycle_id: sourceCycleId,
+      member_window_starts_at: memberWindowEnd ? windowEnd.toISOString() : null,
+      member_window_ends_at: memberWindowEnd ? memberWindowEnd.toISOString() : null,
+      public_release_status: publicReleaseStatus,
     };
 
     const { data: newSlot, error: insErr } = await supabase
