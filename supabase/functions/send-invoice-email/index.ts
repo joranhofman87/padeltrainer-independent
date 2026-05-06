@@ -96,7 +96,8 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    if (!recipientEmail) {
+    // For test sends and previews we don't require a recipient email on the invoice
+    if (!recipientEmail && !testEmail && !previewOnly) {
       return new Response(
         JSON.stringify({ success: false, error: "no_email", playerName: invoice.player_name }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -111,25 +112,28 @@ const handler = async (req: Request): Promise<Response> => {
     if (invoice.academy_profile_id) {
       const { data: academy } = await supabase
         .from("academy_profiles")
-        .select("name, slug, business_name, contact_email, invoice_forward_emails")
+        .select("name, slug, business_name, contact_email, invoice_forward_emails, invoice_reply_to_email")
         .eq("id", invoice.academy_profile_id)
         .single();
       if (academy) {
         businessName = academy.business_name || academy.name || businessName;
         slug = academy.slug || "";
-        replyTo = academy.contact_email
+        replyTo = (academy as any).invoice_reply_to_email
+          || academy.contact_email
           || (Array.isArray(academy.invoice_forward_emails) && academy.invoice_forward_emails[0])
           || null;
       }
     } else if (invoice.trainer_id) {
       const { data: trainer } = await supabase
         .from("trainer_profiles")
-        .select("user_id, business_name, invoice_forward_emails")
+        .select("user_id, business_name, invoice_forward_emails, invoice_reply_to_email")
         .eq("id", invoice.trainer_id)
         .single();
       if (trainer) {
         businessName = trainer.business_name || businessName;
-        replyTo = (Array.isArray(trainer.invoice_forward_emails) && trainer.invoice_forward_emails[0]) || null;
+        replyTo = (trainer as any).invoice_reply_to_email
+          || (Array.isArray(trainer.invoice_forward_emails) && trainer.invoice_forward_emails[0])
+          || null;
         if (!replyTo && trainer.user_id) {
           const { data: trainerProfileEmail } = await supabase
             .from("profiles")
@@ -278,6 +282,12 @@ const handler = async (req: Request): Promise<Response> => {
 
     const resend = new Resend(resendApiKey);
     const sendTo = testEmail || recipientEmail;
+    if (!sendTo) {
+      return new Response(
+        JSON.stringify({ success: false, error: "no_email" }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
     const { error: sendError } = await resend.emails.send({
       from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
       to: [sendTo],

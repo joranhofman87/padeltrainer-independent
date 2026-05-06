@@ -46,6 +46,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
+  const [replyToEmail, setReplyToEmail] = useState<string>('');
   const [newEmail, setNewEmail] = useState('');
   const [showRenumberDialog, setShowRenumberDialog] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
@@ -57,7 +58,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
       setLoading(true);
       const { data } = await supabase
         .from('academy_profiles')
-        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color, invoice_include_year')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_reply_to_email, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color, invoice_include_year')
         .eq('id', academyId)
         .maybeSingle();
 
@@ -82,6 +83,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         setLogoUrl((data as any).invoice_logo_url || null);
         setBannerColor((data as any).invoice_banner_color || '');
         setForwardEmails((data as any).invoice_forward_emails || []);
+        setReplyToEmail((data as any).invoice_reply_to_email || '');
         setInitialNumbering({
           prefix: (data as any).invoice_prefix || '',
           includeYear: (data as any).invoice_include_year ?? true,
@@ -142,6 +144,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         payment_terms_days: formData.payment_terms_days,
         default_vat_rate: resolvedVatRate,
         invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
+        invoice_reply_to_email: replyToEmail.trim() ? replyToEmail.trim().toLowerCase() : null,
         invoice_logo_url: logoUrl || null,
         invoice_prefix: formData.invoice_prefix || null,
         invoice_next_number: formData.invoice_next_number || 1,
@@ -444,6 +447,24 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
             <Eye className="h-3.5 w-3.5" />
             {t('invoiceSettings.previewNumber')}: <span className="font-mono font-medium text-foreground">{formatInvoiceNumber(formData.invoice_prefix, new Date().getFullYear(), formData.invoice_next_number || 1, formData.invoice_include_year)}</span>
           </div>
+        </div>
+
+        {/* Reply-to email */}
+        <div className="space-y-2 pt-4 border-t">
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="ac_reply_to">{t('invoiceSettings.replyToEmail', 'Reply-to email for invoices')}</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('invoiceSettings.replyToEmailDescription', 'When a player replies to an invoice email, the reply will be sent to this address. If left empty, the academy contact email is used.')}
+          </p>
+          <Input
+            id="ac_reply_to"
+            type="email"
+            value={replyToEmail}
+            onChange={(e) => setReplyToEmail(e.target.value)}
+            placeholder="info@academy.com"
+          />
         </div>
 
         {/* Forward Emails */}

@@ -27,6 +27,7 @@ interface InvoiceSettingsCardProps {
     payment_terms_days: number;
     default_vat_rate: number | null;
     invoice_forward_emails: string[] | null;
+    invoice_reply_to_email?: string | null;
     invoice_logo_url: string | null;
     invoice_prefix: string | null;
     invoice_next_number: number | null;
@@ -57,6 +58,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
+  const [replyToEmail, setReplyToEmail] = useState<string>('');
   const [newEmail, setNewEmail] = useState('');
   const [showRenumberDialog, setShowRenumberDialog] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
@@ -83,6 +85,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
       });
       setLogoUrl(initialData.invoice_logo_url || null);
       setForwardEmails(initialData.invoice_forward_emails || []);
+      setReplyToEmail((initialData as any).invoice_reply_to_email || '');
       setInitialNumbering({
         prefix: initialData.invoice_prefix || '',
         includeYear: (initialData as any).invoice_include_year ?? true,
@@ -138,6 +141,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         payment_terms_days: formData.payment_terms_days,
         default_vat_rate: resolvedVatRate,
         invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
+        invoice_reply_to_email: replyToEmail.trim() ? replyToEmail.trim().toLowerCase() : null,
         invoice_logo_url: logoUrl || null,
         invoice_prefix: formData.invoice_prefix || null,
         invoice_next_number: formData.invoice_next_number || 1,
@@ -456,6 +460,24 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
             <Eye className="h-3.5 w-3.5" />
             {t('invoices.previewNumber', 'Voorbeeld')}: <span className="font-mono font-medium text-foreground">{formatInvoiceNumber(formData.invoice_prefix, new Date().getFullYear(), formData.invoice_next_number || 1, formData.invoice_include_year)}</span>
           </div>
+        </div>
+
+        {/* Reply-to email */}
+        <div className="space-y-2 pt-4 border-t">
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="tr_reply_to">{t('invoices.replyToEmail', 'Reply-to email for invoices')}</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('invoices.replyToEmailDescription', 'When a player replies to an invoice email, the reply will be sent to this address. If left empty, your account email is used.')}
+          </p>
+          <Input
+            id="tr_reply_to"
+            type="email"
+            value={replyToEmail}
+            onChange={(e) => setReplyToEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
         </div>
 
         {/* Invoice Forwarding Emails */}
