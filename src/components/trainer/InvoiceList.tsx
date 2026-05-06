@@ -80,7 +80,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
 };
 
 export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isAdmin = false }: InvoiceListProps) {
-  const { t } = useTranslation('trainer');
+  const { t, i18n } = useTranslation('trainer');
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
