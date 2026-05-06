@@ -327,3 +327,69 @@ export async function declineClaimWithToken(token: string, reason?: string) {
   if (error) throw error;
   return data;
 }
+
+// === Tier overrides ===
+
+export async function openSlotToMembersNow(slotId: string, memberWindowDays = 7) {
+  const memberEnd = new Date(Date.now() + memberWindowDays * 24 * 60 * 60 * 1000);
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({
+      priority_window_ends_at: new Date().toISOString(),
+      member_window_starts_at: new Date().toISOString(),
+      member_window_ends_at: memberEnd.toISOString(),
+    } as never)
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
+export async function releaseSlotToPublic(slotId: string) {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({
+      priority_window_ends_at: new Date().toISOString(),
+      member_window_ends_at: new Date().toISOString(),
+      public_release_status: 'released',
+      is_public: true,
+    } as never)
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
+export async function holdSlotForReview(slotId: string) {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({ public_release_status: 'held' } as never)
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
+export async function setSlotToPendingReview(slotId: string) {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({ public_release_status: 'pending_admin_review' } as never)
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
+// === Member swap ===
+
+export async function swapMemberBooking(oldBookingId: string, newSlotId: string) {
+  const { data, error } = await supabase.rpc('swap_member_booking' as never, {
+    _old_booking_id: oldBookingId,
+    _new_slot_id: newSlotId,
+  } as never);
+  if (error) throw error;
+  return data as { ok: boolean; new_booking_id: string };
+}
+
+export async function isCycleMember(cycleId: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase.rpc('is_cycle_member' as never, {
+    _user_id: user.id, _cycle_id: cycleId,
+  } as never);
+  if (error) return false;
+  return Boolean(data);
+}
+
