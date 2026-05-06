@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
+import { Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
 import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
 import CyclesTable from '@/components/cycles/CyclesTable';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
@@ -85,7 +85,7 @@ export default function AcademyCycles() {
             {t('noRegistrationsDescription', 'Create registrations to collect player interest')}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button onClick={() => navigate('/app/academy/cycles/new?type=registration')}>
             <Plus className="mr-2 h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
@@ -93,6 +93,10 @@ export default function AcademyCycles() {
           <Button variant="outline" onClick={() => navigate('/app/academy/cycles/new?type=event')}>
             <PartyPopper className="mr-2 h-4 w-4" />
             {t('createEvent', 'Create Event')}
+          </Button>
+          <Button variant="outline" onClick={() => navigate('/app/academy/cycles/bulk-copy')}>
+            <Copy className="mr-2 h-4 w-4" />
+            {t('bulkCopy.cta', 'Copy slots to next cycle')}
           </Button>
         </div>
       </div>
