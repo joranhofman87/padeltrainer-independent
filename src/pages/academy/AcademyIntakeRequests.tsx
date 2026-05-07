@@ -321,17 +321,45 @@ export default function AcademyIntakeRequests() {
         <Alert variant="default" className="bg-yellow-500/5 border-yellow-500/30">
           <AlertCircle className="h-4 w-4 text-yellow-600" />
           <AlertDescription>
-            <p className="font-medium mb-2">
-              {t('intakeRequests.skippedSummary', { count: filteredRequests.length })}
-            </p>
-            <ul className="space-y-1">
-              {Object.entries(skippedReasonCounts).map(([reason, count]) => (
-                <li key={reason} className="flex items-center justify-between text-sm max-w-sm">
-                  <span>{t(`skipReasons.${reason}.title`)}</span>
-                  <span className="text-muted-foreground font-medium">{count}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="font-medium mb-2">
+                  {t('intakeRequests.skippedSummary', { count: filteredRequests.length })}
+                </p>
+                <ul className="space-y-1">
+                  {Object.entries(skippedReasonCounts).map(([reason, count]) => (
+                    <li key={reason} className="flex items-center justify-between text-sm max-w-sm">
+                      <span>{t(`skipReasons.${reason}.title`)}</span>
+                      <span className="text-muted-foreground font-medium">{count}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isResetting || selectedCycleId === 'all'}
+                onClick={async () => {
+                  if (selectedCycleId === 'all') {
+                    toast.error(t('proposals.selectCycleFirst', { defaultValue: 'Please select a specific cycle first' }));
+                    return;
+                  }
+                  setIsResetting(true);
+                  try {
+                    const result = await resetSkippedRequests(selectedCycleId);
+                    toast.success(t('proposals.resetSkippedSuccess', { count: result.reset, defaultValue: `Reset ${result.reset} skipped registrations` }));
+                    if (academyId) invalidateAll('academy', academyId, selectedCycleId);
+                    setStatusFilter('new');
+                  } catch (error: any) {
+                    toast.error(error.message);
+                  } finally {
+                    setIsResetting(false);
+                  }
+                }}
+              >
+                {isResetting ? t('proposals.resetting', { defaultValue: 'Resetting...' }) : t('proposals.resetSkipped', { defaultValue: 'Reset skipped' })}
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       )}
