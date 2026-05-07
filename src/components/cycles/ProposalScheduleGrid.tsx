@@ -109,8 +109,11 @@ function computeManualScore(
   let score = 0;
   // Day match: 50 pts
   if (playerInfo) {
-    const slotDay = format(parseISO(slot.start_time), 'EEEE', { locale: enUS }).toLowerCase();
-    const dayOk = !playerInfo.preferred_days?.length || playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDay);
+    let slotDay = '';
+    try {
+      if (slot.start_time) slotDay = format(parseISO(slot.start_time), 'EEEE', { locale: enUS }).toLowerCase();
+    } catch { /* invalid date — skip day check */ }
+    const dayOk = !slotDay || !playerInfo.preferred_days?.length || playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDay);
     if (dayOk) score += 50;
   } else {
     score += 25; // Unknown → neutral
