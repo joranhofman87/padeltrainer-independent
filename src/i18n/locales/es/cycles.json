@@ -303,6 +303,10 @@
     "approveAll": "Aprobar todas",
     "generating": "Generando propuestas...",
     "generated": "{{count}} propuestas generadas",
+    "resetSkipped": "Restablecer omitidas",
+    "resetSkippedSuccess": "Se restablecieron {{count}} inscripciones omitidas",
+    "selectCycleFirst": "Selecciona primero un ciclo específico",
+    "resetting": "Restableciendo...",
     "card": {
       "player": "Jugador",
       "slot": "Plaza propuesta",

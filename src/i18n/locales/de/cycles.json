@@ -309,6 +309,10 @@
     "approveAll": "Alle genehmigen",
     "generating": "Vorschläge werden generiert...",
     "generated": "{{count}} Vorschläge generiert",
+    "resetSkipped": "Übersprungene zurücksetzen",
+    "resetSkippedSuccess": "{{count}} übersprungene Anmeldungen zurückgesetzt",
+    "selectCycleFirst": "Bitte wähle zuerst einen bestimmten Zyklus",
+    "resetting": "Zurücksetzen...",
     "card": {
       "player": "Spieler",
       "slot": "Vorgeschlagener Platz",
