@@ -29,6 +29,7 @@ export interface UnplacedPlayer {
   rating: number | null;
   rating_system: string | null;
   preferred_days: string[];
+  preferred_time_windows?: TimeWindow[];
   lesson_type: string | string[];
   skip_reason?: string | null;
   sessions_per_week?: number;
