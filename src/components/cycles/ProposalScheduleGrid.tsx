@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { type SlotWithOccupancy, type TrainerAvailabilityWindow, type IntakeRequestWithProposal } from '@/lib/cycles';
+import { type SlotWithOccupancy, type TrainerAvailabilityWindow, type IntakeRequestWithProposal, type TimeWindow } from '@/lib/cycles';
 
 export interface UnplacedPlayer {
   id: string;
@@ -29,6 +29,7 @@ export interface UnplacedPlayer {
   rating: number | null;
   rating_system: string | null;
   preferred_days: string[];
+  preferred_time_windows?: TimeWindow[];
   lesson_type: string | string[];
   skip_reason?: string | null;
   sessions_per_week?: number;
@@ -192,9 +193,40 @@ function isRatingOutOfRange(
   return false;
 }
 
+/** Get windows for a given day (case-insensitive) */
+function windowsForDay(windows: TimeWindow[] | undefined, dayLower: string): TimeWindow[] {
+  if (!windows) return [];
+  return windows.filter(w => w.day?.toLowerCase() === dayLower);
+}
+
+/** Returns true when [startMin,endMin] is NOT fully contained in any window for that day.
+ *  Returns false when player has no windows for that day (caller handles via day-mismatch warning). */
+function isOutsideTimeWindow(
+  slotStartIso: string,
+  slotEndIso: string,
+  dayLower: string,
+  windows: TimeWindow[] | undefined,
+): boolean {
+  const dayWindows = windowsForDay(windows, dayLower);
+  if (dayWindows.length === 0) return false;
+  const startMin = isoToMinutes(slotStartIso);
+  const endMin = isoToMinutes(slotEndIso);
+  return !dayWindows.some(w => {
+    const [sh, sm] = w.start.split(':').map(Number);
+    const [eh, em] = w.end.split(':').map(Number);
+    const wStart = sh * 60 + (sm || 0);
+    const wEnd = eh * 60 + (em || 0);
+    return startMin >= wStart && endMin <= wEnd;
+  });
+}
+
+function formatWindowsForDay(windows: TimeWindow[] | undefined, dayLower: string): string {
+  return windowsForDay(windows, dayLower).map(w => `${w.start}–${w.end}`).join(', ');
+}
+
 function DraggablePlayerChip({
   assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating, searchQuery,
-  allPlayers, slotDay,
+  allPlayers, slotDay, slotStart, slotEnd,
 }: {
   assignment: Assignment;
   slotId: string;
@@ -204,6 +236,8 @@ function DraggablePlayerChip({
   searchQuery?: string;
   allPlayers?: UnplacedPlayer[];
   slotDay?: string;
+  slotStart?: string;
+  slotEnd?: string;
 }) {
   const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -225,8 +259,14 @@ function DraggablePlayerChip({
   const isSearchMatch = searchQuery && searchQuery.trim().length > 0 && assignment.player_name.toLowerCase().includes(searchQuery.toLowerCase());
 
   // Day availability warning
-  const dayMismatch = slotDay && playerInfo?.preferred_days?.length
-    ? !playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDay.toLowerCase())
+  const slotDayLower = slotDay?.toLowerCase();
+  const dayMismatch = slotDayLower && playerInfo?.preferred_days?.length
+    ? !playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDayLower)
+    : false;
+
+  // Time-window mismatch (only if the day itself matched, otherwise day warning covers it)
+  const timeMismatch = !dayMismatch && slotDayLower && slotStart && slotEnd
+    ? isOutsideTimeWindow(slotStart, slotEnd, slotDayLower, playerInfo?.preferred_time_windows)
     : false;
 
   return (
@@ -280,6 +320,19 @@ function DraggablePlayerChip({
             <TooltipContent side="top" className="text-xs max-w-[200px]">
               {t('proposals.dayMismatch', {
                 defaultValue: 'Player didn\'t indicate availability on this day',
+              })}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {timeMismatch && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Clock className="h-3 w-3 text-amber-500 shrink-0" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs max-w-[220px]">
+              {t('proposals.timeMismatch', {
+                defaultValue: 'Slot time is outside player\'s selected window ({{windows}}). Contact the player to confirm.',
+                windows: formatWindowsForDay(playerInfo?.preferred_time_windows, slotDayLower!),
               })}
             </TooltipContent>
           </Tooltip>
@@ -882,6 +935,8 @@ function DraggableSlotCard({
                 searchQuery={searchQuery}
                 allPlayers={allPlayers}
                 slotDay={slotDayName}
+                slotStart={slot.start_time}
+                slotEnd={slot.end_time}
               />
             ))}
           </div>
