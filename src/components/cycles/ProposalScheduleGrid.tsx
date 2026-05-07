@@ -32,6 +32,7 @@ export interface UnplacedPlayer {
   preferred_time_windows?: TimeWindow[];
   lesson_type: string | string[];
   skip_reason?: string | null;
+  status?: string;
   sessions_per_week?: number;
 }
 
