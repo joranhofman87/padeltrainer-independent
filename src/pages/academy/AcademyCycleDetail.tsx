@@ -899,11 +899,9 @@ export default function AcademyCycleDetail() {
                     <RotateCcw className="h-4 w-4 mr-1" />
                     {t('proposals.reset', { defaultValue: 'Reset' })}
                   </Button>
-                  <Button size="sm" onClick={handleSavePricingAndContinue} disabled={isSavingPricing}>
+                  <Button size="sm" onClick={handleContinueToApprove}>
                     <Eye className="h-4 w-4 mr-1" />
-                    {isSavingPricing
-                      ? t('common:saving', 'Saving...')
-                      : t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
+                    {t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
                   </Button>
                 </div>
               </div>
