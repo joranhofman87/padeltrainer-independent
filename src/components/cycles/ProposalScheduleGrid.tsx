@@ -32,6 +32,7 @@ export interface UnplacedPlayer {
   preferred_time_windows?: TimeWindow[];
   lesson_type: string | string[];
   skip_reason?: string | null;
+  status?: string;
   sessions_per_week?: number;
 }
 
@@ -1130,6 +1131,11 @@ function DraggableUnplacedPlayer({
               {t(`lessonTypes.${lt}`, { defaultValue: lt })}
             </Badge>
           ))}
+          {player.status === 'rejected' && (
+            <Badge variant="destructive" className="text-[9px] px-1 py-0 h-3.5">
+              {t('intakeRequests.statusBadges.rejected', { defaultValue: 'Rejected' })}
+            </Badge>
+          )}
           {player.skip_reason && (
             <Badge variant="destructive" className="text-[9px] px-1 py-0 h-3.5">
               {t(`skipReasons.${player.skip_reason}.short`, { defaultValue: 'Skipped' })}

@@ -160,11 +160,11 @@ export default function TrainerIntakeRequests() {
   const confirmedCount = cycleFilteredRequests.filter(r => r.status === 'confirmed').length;
 
   const unplacedPlayers = cycleFilteredRequests
-    .filter(r => r.status === 'new')
+    .filter(r => r.status === 'new' || r.status === 'rejected')
     .map(r => ({
       id: r.id, full_name: r.full_name, rating: r.rating, rating_system: r.rating_system,
       preferred_days: r.preferred_days, preferred_time_windows: r.preferred_time_windows,
-      lesson_type: r.lesson_type, skip_reason: r.skip_reason,
+      lesson_type: r.lesson_type, skip_reason: r.skip_reason, status: r.status,
       sessions_per_week: r.sessions_per_week,
     }));
 
@@ -172,7 +172,7 @@ export default function TrainerIntakeRequests() {
     .map(r => ({
       id: r.id, full_name: r.full_name, rating: r.rating, rating_system: r.rating_system,
       preferred_days: r.preferred_days, preferred_time_windows: r.preferred_time_windows,
-      lesson_type: r.lesson_type, skip_reason: r.skip_reason,
+      lesson_type: r.lesson_type, skip_reason: r.skip_reason, status: r.status,
       sessions_per_week: r.sessions_per_week,
     }));
 
