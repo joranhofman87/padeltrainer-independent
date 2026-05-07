@@ -303,6 +303,10 @@
     "approveAll": "Approuver tout",
     "generating": "Génération des propositions...",
     "generated": "{{count}} propositions générées",
+    "resetSkipped": "Réinitialiser les ignorées",
+    "resetSkippedSuccess": "{{count}} inscriptions ignorées réinitialisées",
+    "selectCycleFirst": "Veuillez d'abord sélectionner un cycle spécifique",
+    "resetting": "Réinitialisation...",
     "card": {
       "player": "Joueur",
       "slot": "Créneau proposé",
