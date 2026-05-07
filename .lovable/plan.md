@@ -1,21 +1,16 @@
-## Goal
-On the Invoices page (Trainer + Academy), under the "Paid" tab, replace the "Vervaldatum" (Due date) column with "Payment date" showing `paid_at`, and default-sort by most recent payment first.
+## Problem
+The "Reset skipped" button I previously added landed on `AcademyIntakeRequests.tsx` and `TrainerIntakeRequests.tsx`, but the screen in the screenshot (`/app/academy/cycles/:id?step=registrations&status=skipped`) is rendered by `AcademyCycleDetail.tsx` — a different file with its own copy of the skipped-summary alert. So the button isn't visible there.
 
-## Changes
+## Fix
+Add the same "Reset skipped" button to the skipped-summary alert in `src/pages/academy/AcademyCycleDetail.tsx` (around lines 763-780).
 
-**`src/pages/trainer/TrainerInvoices.tsx` and `src/pages/academy/AcademyInvoices.tsx`**
+Behavior:
+- Calls `resetSkippedRequests(cycleId)` from `src/lib/cycles.ts` (already exists).
+- Clears `skip_reason` on all skipped registrations of the current cycle so they go back to plain "new".
+- Shows a success toast, refreshes data, and switches the tab from "Skipped" to "New" so the user can immediately re-run "Generate proposals".
+- Disabled while resetting.
 
-When the active tab is "paid":
-- Render a "Payment date" column (header `invoices.paymentDate`) instead of "Due date", showing `inv.paid_at` formatted (fallback dash when null).
-- Sort key becomes `paid_at`, default `desc` so latest paid invoices appear at the top.
-- Mobile card view: same swap (show paid date instead of due date for paid invoices).
-
-For the "Unpaid" tab everything stays as today (Due date column, current default sort).
-
-Implementation detail: pick `defaultSortKey`/`defaultDirection` for `useTableSort` based on `activeTab`, and conditionally render the column header + cell.
-
-## Translations
-Add `invoices.paymentDate` to all locales (`nl: "Betaaldatum"`, `en: "Payment date"`, plus es/de/fr/it equivalents).
+Also check the trainer-side equivalent page (`TrainerCyclus.tsx` / `src/pages/TrainerCyclus.tsx`) for the same skipped summary block and add the button there too, to keep Trainer/Academy parity.
 
 ## Out of scope
-No DB or business-logic changes. Player-facing `PlayerInvoicesTab` already shows paid date and is unchanged.
+No DB or planner changes. The reset just unblocks re-running the existing "Generate proposals" flow.
