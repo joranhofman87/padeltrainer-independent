@@ -248,6 +248,10 @@ export default function AcademyCycleDetail() {
     }
   };
 
+  const handleContinueToApprove = () => {
+    setActiveStep('approve');
+  };
+
   useEffect(() => {
     setSelectedRequest(prev => {
       if (!prev) return null;
