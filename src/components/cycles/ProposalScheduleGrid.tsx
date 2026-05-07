@@ -935,6 +935,8 @@ function DraggableSlotCard({
                 searchQuery={searchQuery}
                 allPlayers={allPlayers}
                 slotDay={slotDayName}
+                slotStart={slot.start_time}
+                slotEnd={slot.end_time}
               />
             ))}
           </div>
