@@ -299,14 +299,16 @@ export default function AcademyCycleDetail() {
     .filter(r => r.status === 'new')
     .map(r => ({
       id: r.id, full_name: r.full_name, rating: r.rating, rating_system: r.rating_system,
-      preferred_days: r.preferred_days, lesson_type: r.lesson_type, skip_reason: r.skip_reason,
+      preferred_days: r.preferred_days, preferred_time_windows: r.preferred_time_windows,
+      lesson_type: r.lesson_type, skip_reason: r.skip_reason,
       sessions_per_week: r.sessions_per_week,
     }));
 
   const allPlayersForGrid = requests
     .map(r => ({
       id: r.id, full_name: r.full_name, rating: r.rating, rating_system: r.rating_system,
-      preferred_days: r.preferred_days, lesson_type: r.lesson_type, skip_reason: r.skip_reason,
+      preferred_days: r.preferred_days, preferred_time_windows: r.preferred_time_windows,
+      lesson_type: r.lesson_type, skip_reason: r.skip_reason,
       sessions_per_week: r.sessions_per_week,
     }));
 
