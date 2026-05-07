@@ -42,6 +42,7 @@ import { getMarketingUrl } from '@/lib/domains';
 import {
   generateProposals,
   resetProposals,
+  resetSkippedRequests,
   movePlayerAssignment,
   moveSlot,
   swapSlots,
