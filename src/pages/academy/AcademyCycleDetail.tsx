@@ -296,7 +296,7 @@ export default function AcademyCycleDetail() {
   }, [requests, playerLinksData]);
 
   const unplacedPlayers = requests
-    .filter(r => r.status === 'new')
+    .filter(r => r.status === 'new' || r.status === 'rejected')
     .map(r => ({
       id: r.id, full_name: r.full_name, rating: r.rating, rating_system: r.rating_system,
       preferred_days: r.preferred_days, preferred_time_windows: r.preferred_time_windows,
