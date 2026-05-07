@@ -142,7 +142,7 @@ export default function AcademyIntakeRequests() {
   const confirmedCount = cycleFilteredRequests.filter(r => r.status === 'confirmed' || (r.status as string) === 'booked').length;
 
   const unplacedPlayers = cycleFilteredRequests
-    .filter(r => r.status === 'new')
+    .filter(r => r.status === 'new' || r.status === 'rejected')
     .map(r => ({
       id: r.id, full_name: r.full_name, rating: r.rating, rating_system: r.rating_system,
       preferred_days: r.preferred_days, preferred_time_windows: r.preferred_time_windows,
