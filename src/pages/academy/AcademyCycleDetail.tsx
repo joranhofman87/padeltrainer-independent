@@ -248,6 +248,10 @@ export default function AcademyCycleDetail() {
     }
   };
 
+  const handleContinueToApprove = () => {
+    setActiveStep('approve');
+  };
+
   useEffect(() => {
     setSelectedRequest(prev => {
       if (!prev) return null;
@@ -349,6 +353,9 @@ export default function AcademyCycleDetail() {
       }
       setActiveStep('review-edit');
       if (academyId && cycleId) invalidateAll('academy', academyId, cycleId);
+      if (cycleId) {
+        await queryClient.refetchQueries({ queryKey: ['proposal-slots', cycleId] });
+      }
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -895,28 +902,14 @@ export default function AcademyCycleDetail() {
                     <RotateCcw className="h-4 w-4 mr-1" />
                     {t('proposals.reset', { defaultValue: 'Reset' })}
                   </Button>
-                  <Button size="sm" onClick={handleSavePricingAndContinue} disabled={isSavingPricing}>
+                  <Button size="sm" onClick={handleContinueToApprove}>
                     <Eye className="h-4 w-4 mr-1" />
-                    {isSavingPricing
-                      ? t('common:saving', 'Saving...')
-                      : t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
+                    {t('workflow.continueToOverview', { defaultValue: 'Continue to Approve' })}
                   </Button>
                 </div>
               </div>
 
-              {/* Pricing & Payment card */}
-              <CyclePricingCard
-                pricePerSession={pricingPricePerSession}
-                extraCosts={pricingExtraCosts}
-                splitPayment={pricingSplitPayment}
-                pricesIncludeVat={pricingIncludeVat}
-                onPricePerSessionChange={setPricingPricePerSession}
-                onExtraCostsChange={setPricingExtraCosts}
-                onSplitPaymentChange={setPricingSplitPayment}
-                onPricesIncludeVatChange={setPricingIncludeVat}
-                academyProfileId={academyId}
-              />
-
+              {/* Pricing card moved to Approve step */}
               <ProposalScheduleGrid
                 slots={scheduleSlots}
                 trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
@@ -942,18 +935,33 @@ export default function AcademyCycleDetail() {
       {activeStep === 'approve' && (
         <div className="space-y-4">
           {proposedCount > 0 || confirmedCount > 0 ? (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <p className="text-muted-foreground text-center max-w-md">
-                {confirmedCount > 0
-                  ? t('workflow.approvedSummary', { defaultValue: '{{count}} bookings confirmed.', count: confirmedCount })
-                  : t('workflow.approveIntro', { defaultValue: 'Review the overview and approve proposals to create bookings.' })
-                }
-              </p>
-              <Button size="lg" onClick={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve` } })}>
-                <Eye className="h-4 w-4 mr-2" />
-                {t('workflow.viewOverview', { defaultValue: 'View overview' })}
-              </Button>
-            </div>
+            <>
+              <CyclePricingCard
+                pricePerSession={pricingPricePerSession}
+                extraCosts={pricingExtraCosts}
+                splitPayment={pricingSplitPayment}
+                pricesIncludeVat={pricingIncludeVat}
+                onPricePerSessionChange={setPricingPricePerSession}
+                onExtraCostsChange={setPricingExtraCosts}
+                onSplitPaymentChange={setPricingSplitPayment}
+                onPricesIncludeVatChange={setPricingIncludeVat}
+                academyProfileId={academyId}
+              />
+              <div className="flex flex-col items-center gap-4 py-8">
+                <p className="text-muted-foreground text-center max-w-md">
+                  {confirmedCount > 0
+                    ? t('workflow.approvedSummary', { defaultValue: '{{count}} bookings confirmed.', count: confirmedCount })
+                    : t('workflow.approveIntro', { defaultValue: 'Review the overview and approve proposals to create bookings.' })
+                  }
+                </p>
+                <Button size="lg" onClick={handleSavePricingAndContinue} disabled={isSavingPricing}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  {isSavingPricing
+                    ? t('common:saving', 'Saving...')
+                    : t('workflow.viewOverview', { defaultValue: 'View overview' })}
+                </Button>
+              </div>
+            </>
           ) : (
             <div className="text-center py-8">
               <p className="text-muted-foreground">
