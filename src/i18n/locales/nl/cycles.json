@@ -433,6 +433,9 @@
     "resetDescription": "Dit verwijdert alle gegenereerde voorstellen en zet de aanmeldingen terug naar 'nieuw'.",
     "resetConfirm": "Voorstellen resetten",
     "resetting": "Resetten...",
+    "resetSkipped": "Overgeslagen resetten",
+    "resetSkippedSuccess": "{{count}} overgeslagen aanmeldingen gereset",
+    "selectCycleFirst": "Selecteer eerst een specifieke cyclus",
     "card": {
       "player": "Speler",
       "slot": "Voorgesteld moment",
