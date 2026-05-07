@@ -353,6 +353,9 @@ export default function AcademyCycleDetail() {
       }
       setActiveStep('review-edit');
       if (academyId && cycleId) invalidateAll('academy', academyId, cycleId);
+      if (cycleId) {
+        await queryClient.refetchQueries({ queryKey: ['proposal-slots', cycleId] });
+      }
     } catch (error: any) {
       toast.error(error.message);
     } finally {
