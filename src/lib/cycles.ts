@@ -1343,6 +1343,20 @@ export async function resetProposals(cycleId: string): Promise<{ reset: number }
   return { reset: allRequests.length };
 }
 
+// Reset only skipped intake requests (status='new' with skip_reason) back to a clean 'new' state
+export async function resetSkippedRequests(cycleId: string): Promise<{ reset: number }> {
+  const { data, error } = await supabase
+    .from('intake_requests')
+    .update({ skip_reason: null })
+    .eq('cycle_id', cycleId)
+    .eq('status', 'new')
+    .not('skip_reason', 'is', null)
+    .select('id');
+
+  if (error) throw error;
+  return { reset: data?.length ?? 0 };
+}
+
 
 export async function deleteIntakeRequest(requestId: string): Promise<void> {
   // First delete any associated proposed assignments
