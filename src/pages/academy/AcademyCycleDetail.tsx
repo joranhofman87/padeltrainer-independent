@@ -904,19 +904,7 @@ export default function AcademyCycleDetail() {
                 </div>
               </div>
 
-              {/* Pricing & Payment card */}
-              <CyclePricingCard
-                pricePerSession={pricingPricePerSession}
-                extraCosts={pricingExtraCosts}
-                splitPayment={pricingSplitPayment}
-                pricesIncludeVat={pricingIncludeVat}
-                onPricePerSessionChange={setPricingPricePerSession}
-                onExtraCostsChange={setPricingExtraCosts}
-                onSplitPaymentChange={setPricingSplitPayment}
-                onPricesIncludeVatChange={setPricingIncludeVat}
-                academyProfileId={academyId}
-              />
-
+              {/* Pricing card moved to Approve step */}
               <ProposalScheduleGrid
                 slots={scheduleSlots}
                 trainerAvailabilityWindows={cycle?.settings?.trainer_availability_windows}
