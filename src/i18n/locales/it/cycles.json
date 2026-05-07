@@ -330,6 +330,10 @@
     "approveAll": "Approve All",
     "generating": "Generating proposals...",
     "generated": "{{count}} proposals generated",
+    "resetSkipped": "Ripristina saltate",
+    "resetSkippedSuccess": "{{count}} iscrizioni saltate ripristinate",
+    "selectCycleFirst": "Seleziona prima un ciclo specifico",
+    "resetting": "Ripristino...",
     "card": {
       "player": "Giocatore",
       "slot": "Proposed Slot",
