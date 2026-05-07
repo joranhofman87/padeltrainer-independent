@@ -93,7 +93,11 @@ export function useScheduleSlotsQuery(cycleId: string | undefined, enabled: bool
     queryKey: ['proposal-slots', cycleId],
     queryFn: () => (cycleId ? getAvailableSlotsForCycle(cycleId) : Promise.resolve([])),
     enabled: !!cycleId && enabled,
-    staleTime: Infinity,
+    // Short staleTime so invalidateQueries actually refetches after mutations
+    // (generate proposals, reset, reset skipped, reassign).
+    // Optimistic edits are protected by setQueryData + pendingMutationsRef
+    // in the consuming page, plus keepPreviousData to avoid grid flicker.
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
   });
