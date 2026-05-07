@@ -473,10 +473,19 @@ function SlotEditPopover({
     setOpen(false);
   };
 
-  const handleDelete = () => {
-    if (!onDeleteSlot) return;
-    onDeleteSlot(slot.id);
-    setOpen(false);
+  const handleDelete = async () => {
+    if (!onDeleteSlot) {
+      console.warn('[SlotEditPopover] onDeleteSlot handler is not provided');
+      return;
+    }
+    try {
+      await onDeleteSlot(slot.id);
+    } catch (err) {
+      console.error('[SlotEditPopover] delete failed', err);
+    } finally {
+      setOpen(false);
+      setConfirmDelete(false);
+    }
   };
 
   const confScoreColor = (score: number) => {
