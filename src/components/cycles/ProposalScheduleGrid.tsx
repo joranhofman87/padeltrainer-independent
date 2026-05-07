@@ -193,6 +193,37 @@ function isRatingOutOfRange(
   return false;
 }
 
+/** Get windows for a given day (case-insensitive) */
+function windowsForDay(windows: TimeWindow[] | undefined, dayLower: string): TimeWindow[] {
+  if (!windows) return [];
+  return windows.filter(w => w.day?.toLowerCase() === dayLower);
+}
+
+/** Returns true when [startMin,endMin] is NOT fully contained in any window for that day.
+ *  Returns false when player has no windows for that day (caller handles via day-mismatch warning). */
+function isOutsideTimeWindow(
+  slotStartIso: string,
+  slotEndIso: string,
+  dayLower: string,
+  windows: TimeWindow[] | undefined,
+): boolean {
+  const dayWindows = windowsForDay(windows, dayLower);
+  if (dayWindows.length === 0) return false;
+  const startMin = isoToMinutes(slotStartIso);
+  const endMin = isoToMinutes(slotEndIso);
+  return !dayWindows.some(w => {
+    const [sh, sm] = w.start.split(':').map(Number);
+    const [eh, em] = w.end.split(':').map(Number);
+    const wStart = sh * 60 + (sm || 0);
+    const wEnd = eh * 60 + (em || 0);
+    return startMin >= wStart && endMin <= wEnd;
+  });
+}
+
+function formatWindowsForDay(windows: TimeWindow[] | undefined, dayLower: string): string {
+  return windowsForDay(windows, dayLower).map(w => `${w.start}–${w.end}`).join(', ');
+}
+
 function DraggablePlayerChip({
   assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating, searchQuery,
   allPlayers, slotDay,
