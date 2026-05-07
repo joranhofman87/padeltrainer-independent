@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { type SlotWithOccupancy, type TrainerAvailabilityWindow, type IntakeRequestWithProposal } from '@/lib/cycles';
+import { type SlotWithOccupancy, type TrainerAvailabilityWindow, type IntakeRequestWithProposal, type TimeWindow } from '@/lib/cycles';
 
 export interface UnplacedPlayer {
   id: string;
