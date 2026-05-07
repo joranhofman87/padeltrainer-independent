@@ -330,6 +330,10 @@
     "approveAll": "Approve All",
     "generating": "Generating proposals...",
     "generated": "{{count}} proposals generated",
+    "resetSkipped": "Reset skipped",
+    "resetSkippedSuccess": "Reset {{count}} skipped registrations",
+    "selectCycleFirst": "Please select a specific cycle first",
+    "resetting": "Resetting...",
     "card": {
       "player": "Player",
       "slot": "Proposed Slot",
