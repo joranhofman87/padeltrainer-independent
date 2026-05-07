@@ -226,7 +226,7 @@ function formatWindowsForDay(windows: TimeWindow[] | undefined, dayLower: string
 
 function DraggablePlayerChip({
   assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating, searchQuery,
-  allPlayers, slotDay,
+  allPlayers, slotDay, slotStart, slotEnd,
 }: {
   assignment: Assignment;
   slotId: string;
@@ -236,6 +236,8 @@ function DraggablePlayerChip({
   searchQuery?: string;
   allPlayers?: UnplacedPlayer[];
   slotDay?: string;
+  slotStart?: string;
+  slotEnd?: string;
 }) {
   const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
