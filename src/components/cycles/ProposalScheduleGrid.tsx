@@ -324,6 +324,19 @@ function DraggablePlayerChip({
             </TooltipContent>
           </Tooltip>
         )}
+        {timeMismatch && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Clock className="h-3 w-3 text-amber-500 shrink-0" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs max-w-[220px]">
+              {t('proposals.timeMismatch', {
+                defaultValue: 'Slot time is outside player\'s selected window ({{windows}}). Contact the player to confirm.',
+                windows: formatWindowsForDay(playerInfo?.preferred_time_windows, slotDayLower!),
+              })}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {assignment.sessions_per_week > 1 && (
           <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0 border-primary/40 text-primary">
             {assignment.sessions_per_week}×
