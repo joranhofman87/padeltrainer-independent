@@ -1332,7 +1332,24 @@ export default function ProposalScheduleGrid({
     daySlots.forEach(slot => {
       const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
       const key = `${slot.trainer_id}__${startMin}`;
-      lookup.set(key, slot);
+      const existing = lookup.get(key);
+
+      if (!existing) {
+        lookup.set(key, slot);
+        return;
+      }
+
+      const slotPlayerCount = slot.current_assignments.length;
+      const existingPlayerCount = existing.current_assignments.length;
+      const shouldReplace =
+        slotPlayerCount > existingPlayerCount ||
+        (slotPlayerCount === existingPlayerCount && existing.is_blocked && !slot.is_blocked) ||
+        (slotPlayerCount === existingPlayerCount && existing.is_blocked === slot.is_blocked &&
+          new Date(slot.start_time).getTime() < new Date(existing.start_time).getTime());
+
+      if (shouldReplace) {
+        lookup.set(key, slot);
+      }
     });
     return lookup;
   }, [daySlots]);
