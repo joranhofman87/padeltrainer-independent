@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   generateProposals,
   resetProposals,
+  resetSkippedRequests,
   movePlayerAssignment,
   moveSlot,
   swapSlots,
