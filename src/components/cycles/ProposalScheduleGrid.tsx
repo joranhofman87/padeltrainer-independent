@@ -259,8 +259,14 @@ function DraggablePlayerChip({
   const isSearchMatch = searchQuery && searchQuery.trim().length > 0 && assignment.player_name.toLowerCase().includes(searchQuery.toLowerCase());
 
   // Day availability warning
-  const dayMismatch = slotDay && playerInfo?.preferred_days?.length
-    ? !playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDay.toLowerCase())
+  const slotDayLower = slotDay?.toLowerCase();
+  const dayMismatch = slotDayLower && playerInfo?.preferred_days?.length
+    ? !playerInfo.preferred_days.map(d => d.toLowerCase()).includes(slotDayLower)
+    : false;
+
+  // Time-window mismatch (only if the day itself matched, otherwise day warning covers it)
+  const timeMismatch = !dayMismatch && slotDayLower && slotStart && slotEnd
+    ? isOutsideTimeWindow(slotStart, slotEnd, slotDayLower, playerInfo?.preferred_time_windows)
     : false;
 
   return (
