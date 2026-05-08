@@ -287,6 +287,23 @@ export default function BookingSuccess() {
               <Calendar className="h-4 w-4 mr-2" />
               {t('bookingSuccess.viewBookings')}
             </Button>
+            {verified && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleDownloadInvoice}
+                disabled={downloadingInvoice}
+              >
+                {downloadingInvoice ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {downloadingInvoice
+                  ? t('bookingSuccess.downloadingInvoice')
+                  : t('bookingSuccess.downloadInvoice')}
+              </Button>
+            )}
             <Button variant="outline" className="w-full" onClick={() => navigate(bookAgainPath)}>
               {t('bookingSuccess.bookAnother')}
               <ArrowRight className="h-4 w-4 ml-2" />
