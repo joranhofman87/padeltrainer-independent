@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, Loader2, XCircle, Calendar, ArrowRight } from 'lucide-react';
+import { Check, Loader2, XCircle, Calendar, ArrowRight, Download } from 'lucide-react';
 import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
