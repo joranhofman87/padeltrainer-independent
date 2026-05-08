@@ -79,6 +79,9 @@ verify_jwt = false
 [functions.verify-mollie-payment]
 verify_jwt = false
 
+[functions.get-booking-invoice]
+verify_jwt = false
+
 [functions.create-mollie-subscription]
 verify_jwt = false
 
