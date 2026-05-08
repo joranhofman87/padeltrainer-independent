@@ -50,6 +50,7 @@ export default function BookingSuccess() {
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const pollRef = useRef(0);
 
   const bookingId = searchParams.get('booking_id');
