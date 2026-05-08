@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, Loader2, XCircle, Calendar, ArrowRight } from 'lucide-react';
+import { Check, Loader2, XCircle, Calendar, ArrowRight, Download } from 'lucide-react';
 import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
@@ -50,6 +50,7 @@ export default function BookingSuccess() {
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const pollRef = useRef(0);
 
   const bookingId = searchParams.get('booking_id');
@@ -180,6 +181,41 @@ export default function BookingSuccess() {
     ? `/${currentLang}/book/${bookingDetails.trainerSlug}`
     : '/app/trainers';
 
+  const handleDownloadInvoice = async () => {
+    if (!bookingId) return;
+    setDownloadingInvoice(true);
+    try {
+      const { data, error: invErr } = await supabase.functions.invoke('get-booking-invoice', {
+        body: { bookingId },
+      });
+      if (invErr) throw invErr;
+      if (!data?.ready) {
+        toast({ title: t('bookingSuccess.invoicePending'), variant: 'default' });
+        return;
+      }
+      if (!data.pdfUrl) {
+        toast({ title: t('bookingSuccess.invoiceFailed'), variant: 'destructive' });
+        return;
+      }
+      const response = await fetch(data.pdfUrl);
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${data.invoiceNumber || 'invoice'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      logger.error('Guest invoice download failed', err as Error, { component: 'BookingSuccess', bookingId });
+      toast({ title: t('bookingSuccess.invoiceFailed'), variant: 'destructive' });
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="max-w-md w-full">
@@ -251,6 +287,23 @@ export default function BookingSuccess() {
               <Calendar className="h-4 w-4 mr-2" />
               {t('bookingSuccess.viewBookings')}
             </Button>
+            {verified && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleDownloadInvoice}
+                disabled={downloadingInvoice}
+              >
+                {downloadingInvoice ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {downloadingInvoice
+                  ? t('bookingSuccess.downloadingInvoice')
+                  : t('bookingSuccess.downloadInvoice')}
+              </Button>
+            )}
             <Button variant="outline" className="w-full" onClick={() => navigate(bookAgainPath)}>
               {t('bookingSuccess.bookAnother')}
               <ArrowRight className="h-4 w-4 ml-2" />

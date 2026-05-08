@@ -293,7 +293,11 @@
     "noBookingId": "No booking ID provided.",
     "paymentNotCompleted": "Payment was not completed. Please try again or contact support.",
     "paymentSuccessToast": "Payment Successful",
-    "bookingConfirmedToast": "Your booking has been confirmed!"
+    "bookingConfirmedToast": "Your booking has been confirmed!",
+    "downloadInvoice": "Download invoice",
+    "downloadingInvoice": "Preparing invoice...",
+    "invoicePending": "Your invoice is still being prepared. Please try again in a moment.",
+    "invoiceFailed": "Could not download invoice. Please contact your trainer."
   },
   "bookingCancelled": {
     "title": "Payment not completed",
