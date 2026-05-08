@@ -292,7 +292,11 @@
     "noBookingId": "Geen boekings-ID opgegeven.",
     "paymentNotCompleted": "Betaling is niet voltooid. probeer het opnieuw of neem contact op met support.",
     "paymentSuccessToast": "Betaling geslaagd",
-    "bookingConfirmedToast": "Je boeking is bevestigd!"
+    "bookingConfirmedToast": "Je boeking is bevestigd!",
+    "downloadInvoice": "Factuur downloaden",
+    "downloadingInvoice": "Factuur wordt voorbereid...",
+    "invoicePending": "Je factuur wordt nog voorbereid. probeer het zo opnieuw.",
+    "invoiceFailed": "Factuur kon niet worden gedownload. neem contact op met je trainer."
   },
   "bookingCancelled": {
     "title": "Betaling niet voltooid",
