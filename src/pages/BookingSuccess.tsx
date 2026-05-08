@@ -181,6 +181,41 @@ export default function BookingSuccess() {
     ? `/${currentLang}/book/${bookingDetails.trainerSlug}`
     : '/app/trainers';
 
+  const handleDownloadInvoice = async () => {
+    if (!bookingId) return;
+    setDownloadingInvoice(true);
+    try {
+      const { data, error: invErr } = await supabase.functions.invoke('get-booking-invoice', {
+        body: { bookingId },
+      });
+      if (invErr) throw invErr;
+      if (!data?.ready) {
+        toast({ title: t('bookingSuccess.invoicePending'), variant: 'default' });
+        return;
+      }
+      if (!data.pdfUrl) {
+        toast({ title: t('bookingSuccess.invoiceFailed'), variant: 'destructive' });
+        return;
+      }
+      const response = await fetch(data.pdfUrl);
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${data.invoiceNumber || 'invoice'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      logger.error('Guest invoice download failed', err as Error, { component: 'BookingSuccess', bookingId });
+      toast({ title: t('bookingSuccess.invoiceFailed'), variant: 'destructive' });
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="max-w-md w-full">
