@@ -357,6 +357,30 @@ export default function AcademyPlayers() {
             });
           }
         }
+
+        // Also enrich from intake_requests (registration form, no booking yet)
+        const { data: guestIntakes } = await supabase
+          .from('intake_requests')
+          .select('guest_player_id, player_id, location_id')
+          .in('guest_player_id', guestPlayerIds);
+
+        const intakeLocIds = new Set<string>();
+        guestIntakes?.forEach((r) => { if (r.location_id) intakeLocIds.add(r.location_id); });
+        const missingLocIds = Array.from(intakeLocIds).filter((id) => !locationNameMap.has(id));
+        if (missingLocIds.length > 0) {
+          const { data: locs } = await supabase
+            .from('locations')
+            .select('id, name')
+            .in('id', missingLocIds);
+          locs?.forEach((l) => locationNameMap.set(l.id, l.name));
+        }
+        guestIntakes?.forEach((r) => {
+          if (!r.guest_player_id || !r.location_id) return;
+          const name = locationNameMap.get(r.location_id);
+          if (!name) return;
+          if (!guestLocationMap.has(r.guest_player_id)) guestLocationMap.set(r.guest_player_id, new Set());
+          guestLocationMap.get(r.guest_player_id)!.add(name);
+        });
       }
 
       const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => {
