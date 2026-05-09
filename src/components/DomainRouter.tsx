@@ -24,6 +24,7 @@ function PageLoader() {
 // Marketing pages
 const Home = lazy(() => import('@/pages/marketing/Home'));
 const Pricing = lazy(() => import('@/pages/marketing/Pricing'));
+const Brand = lazy(() => import('@/pages/marketing/Brand'));
 const About = lazy(() => import('@/pages/marketing/About'));
 const Blog = lazy(() => import('@/pages/marketing/Blog'));
 const BlogPost = lazy(() => import('@/pages/marketing/BlogPost'));
