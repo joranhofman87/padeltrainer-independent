@@ -20,7 +20,7 @@ export function JobsToBeDoneSection() {
     <section className="py-24 md:py-32 section-alt">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
         <div className="mb-12 max-w-2xl">
-          <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] mb-4 text-foreground">
+          <h2 className="font-display text-3xl md:text-[44px] font-extrabold tracking-[-0.02em] mb-4 text-foreground">
             {t('homev2.jtbd.headline')}
           </h2>
           <p className="text-lg text-muted-foreground">

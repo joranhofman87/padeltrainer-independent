@@ -36,7 +36,7 @@ export function FAQSection() {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
         />
 
-        <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] text-center mb-12 text-foreground">
+        <h2 className="font-display text-3xl md:text-[44px] font-extrabold tracking-[-0.02em] text-center mb-12 text-foreground">
           {t('homev2.faq.headline')}
         </h2>
 

@@ -12,7 +12,7 @@ export function PricingPreview() {
   return (
     <section id="pricing" className="py-24 md:py-32">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
-        <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] text-center mb-14 text-foreground">
+        <h2 className="font-display text-3xl md:text-[44px] font-extrabold tracking-[-0.02em] text-center mb-14 text-foreground">
           {t('homev2.pricing.headline')}
         </h2>
 
