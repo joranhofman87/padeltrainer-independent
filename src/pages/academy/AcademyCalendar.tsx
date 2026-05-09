@@ -674,6 +674,11 @@ export default function AcademyCalendar() {
       }));
   }, [monthSlots, selectedTrainerId, selectedLocationId]);
 
+  const trainerOptions = useMemo(
+    () => trainers.map((tr) => ({ id: tr.id, name: tr.name, avatar: tr.avatar })),
+    [trainers],
+  );
+
   if (loading && slots.length === 0) {
     return (
       <div className="min-h-screen bg-background p-4">
@@ -683,10 +688,6 @@ export default function AcademyCalendar() {
     );
   }
 
-  const trainerOptions = useMemo(
-    () => trainers.map((tr) => ({ id: tr.id, name: tr.name, avatar: tr.avatar })),
-    [trainers],
-  );
 
   const filtersActive = selectedTrainerId !== "all" || selectedLocationId !== "all";
   const activeFilterCount = (selectedTrainerId !== "all" ? 1 : 0) + (selectedLocationId !== "all" ? 1 : 0);
