@@ -82,26 +82,26 @@ export function HeroSection() {
         <div className="lg:col-span-5 relative">
           <div className="mock-window relative">
             {/* Browser bar */}
-            <div className="mock-bar flex items-center px-4 h-9 gap-1.5">
+            <div className="mock-bar flex items-center px-3 sm:px-4 h-9 gap-1.5">
               <span className="mock-dot bg-red-300" />
               <span className="mock-dot bg-yellow-300" />
               <span className="mock-dot bg-green-300" />
-              <span className="ml-3 text-xs text-navy-500 font-medium">padeltrainer.ai/rene</span>
+              <span className="ml-3 text-[11px] sm:text-xs text-navy-500 font-medium truncate max-w-[60%]">padeltrainer.ai/rene</span>
             </div>
 
             {/* Tabs */}
-            <div className="px-4 pt-4">
-              <div className="flex gap-1 text-xs font-medium">
-                <span className="px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700">{t('homev2.hero.tab_booking')}</span>
-                <span className="px-3 py-1.5 rounded-lg text-navy-500">{t('homev2.hero.tab_players')}</span>
-                <span className="px-3 py-1.5 rounded-lg text-navy-500">{t('homev2.hero.tab_payments')}</span>
-                <span className="px-3 py-1.5 rounded-lg text-navy-500">{t('homev2.hero.tab_profile')}</span>
+            <div className="px-3 sm:px-4 pt-3 sm:pt-4">
+              <div className="flex gap-1 text-[11px] sm:text-xs font-medium overflow-x-auto no-scrollbar">
+                <span className="px-2.5 py-1.5 rounded-lg bg-brand-50 text-brand-700 whitespace-nowrap">{t('homev2.hero.tab_booking')}</span>
+                <span className="px-2.5 py-1.5 rounded-lg text-navy-500 whitespace-nowrap">{t('homev2.hero.tab_players')}</span>
+                <span className="px-2.5 py-1.5 rounded-lg text-navy-500 whitespace-nowrap">{t('homev2.hero.tab_payments')}</span>
+                <span className="hidden sm:inline px-2.5 py-1.5 rounded-lg text-navy-500 whitespace-nowrap">{t('homev2.hero.tab_profile')}</span>
               </div>
             </div>
 
             {/* Slot rows */}
-            <div className="px-4 py-4 space-y-2">
-              <div className="text-xs font-semibold text-navy-500 uppercase tracking-wide">
+            <div className="px-3 sm:px-4 py-3 sm:py-4 space-y-2">
+              <div className="text-[11px] sm:text-xs font-semibold text-navy-500 uppercase tracking-wide">
                 {t('homev2.hero.mock_today', 'Today · Tuesday')}
               </div>
 
@@ -110,9 +110,9 @@ export function HeroSection() {
               <SlotRow time="10:30" title={t('homev2.hero.mock_row3', 'Available')} sub="Court 3 · 60 min" status="open" />
               <SlotRow time="12:00" title={t('homev2.hero.mock_row4', 'Group · 4/4 · Sold out')} sub="Court 2 · 60 min" status="paid" />
 
-              <div className="flex items-center gap-2 px-3 py-2 mt-2 rounded-lg bg-navy-50 text-xs text-navy-600">
-                <GoogleCalendarLogo className="w-4 h-4" />
-                {t('homev2.hero.mock_booking_sync')}
+              <div className="flex items-center gap-2 px-3 py-2 mt-2 rounded-lg bg-navy-50 text-[11px] sm:text-xs text-navy-600">
+                <GoogleCalendarLogo className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{t('homev2.hero.mock_booking_sync')}</span>
               </div>
             </div>
           </div>
