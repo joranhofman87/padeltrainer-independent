@@ -127,6 +127,53 @@ export default function AcademyPlayers() {
   const [deletingPlayer, setDeletingPlayer] = useState<GuestPlayer | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Column customization
+  type ColumnKey =
+    | 'email' | 'phone' | 'location' | 'addedOn'
+    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate';
+  const DEFAULT_COLUMNS: ColumnKey[] = ['email', 'phone', 'location', 'addedOn'];
+  const ALL_COLUMNS: { key: ColumnKey; label: string; isDefault: boolean }[] = [
+    { key: 'email', label: tTrainer('players.columns.email', 'Email'), isDefault: true },
+    { key: 'phone', label: tTrainer('players.columns.phone', 'Phone'), isDefault: true },
+    { key: 'location', label: tTrainer('players.columns.location', 'Location'), isDefault: true },
+    { key: 'addedOn', label: tTrainer('players.columns.addedOn', 'Date added'), isDefault: true },
+    { key: 'trainer', label: tTrainer('players.columns.trainer', 'Trainer'), isDefault: false },
+    { key: 'skill', label: tTrainer('players.columns.skill', 'Skill rating'), isDefault: false },
+    { key: 'status', label: tTrainer('players.columns.status', 'Status'), isDefault: false },
+    { key: 'cyclus', label: tTrainer('players.columns.cyclus', 'In active cyclus'), isDefault: false },
+    { key: 'type', label: tTrainer('players.columns.type', 'Type'), isDefault: false },
+    { key: 'notes', label: tTrainer('players.columns.notes', 'Notes'), isDefault: false },
+    { key: 'source', label: tTrainer('players.columns.source', 'Source'), isDefault: false },
+    { key: 'birthDate', label: tTrainer('players.columns.birthDate', 'Birth date'), isDefault: false },
+  ];
+  const storageKey = activeAcademy ? `academyPlayers:visibleColumns:${activeAcademy.id}` : null;
+  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS);
+
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as ColumnKey[];
+        const valid = parsed.filter((k) => ALL_COLUMNS.some((c) => c.key === k));
+        if (valid.length) setVisibleColumns(valid);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  const toggleColumn = (key: ColumnKey) => {
+    setVisibleColumns((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      if (storageKey) {
+        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
+      }
+      return next;
+    });
+  };
+
+  const isColVisible = (key: ColumnKey) => visibleColumns.includes(key);
+
   // Fetch trainers
   useEffect(() => {
     if (!activeAcademy) return;
