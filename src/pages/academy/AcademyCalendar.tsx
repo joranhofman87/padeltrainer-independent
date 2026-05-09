@@ -46,8 +46,7 @@ import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
-import AcademyWeekOverview from "@/components/academy/AcademyWeekOverview";
-import AcademyCalendarOverview from "@/components/academy/AcademyCalendarOverview";
+// Legacy week/overview components retired in favor of AgendaWeekByTrainer + AgendaMonth
 import AcademyTrainerHours from "@/components/academy/AcademyTrainerHours";
 import AcademyReportsTab from "@/components/academy/AcademyReportsTab";
 // CycleForm removed — Create tab now uses BulkCreateContent inline
