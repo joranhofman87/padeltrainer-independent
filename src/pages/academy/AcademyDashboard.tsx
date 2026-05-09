@@ -89,7 +89,7 @@ export default function AcademyDashboard() {
         .from('intake_requests')
         .select(`
           id, full_name, status, created_at,
-          cycles!inner (owner_id, owner_type, name)
+          cycles!inner (owner_id, owner_type, name, locations:location_id (name))
         `)
         .eq('cycles.owner_id', academyId!)
         .eq('cycles.owner_type', 'academy')
