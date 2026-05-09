@@ -248,48 +248,6 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Trainers */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.trainers")}>
-                  <NavLink
-                    to="/app/academy/trainers"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <GraduationCap className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.trainers")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Profile */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.profile")}>
-                  <NavLink
-                    to="/app/academy/profile"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <User className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.profile")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Locations */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.locations")}>
-                  <NavLink
-                    to="/app/academy/locations"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <MapPin className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.locations")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
               {/* Invoices */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.invoices", "Invoices")}>
@@ -304,19 +262,81 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Settings */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.settings")}>
-                  <NavLink
-                    to="/app/academy/settings"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <Settings className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.settings")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {/* Settings group */}
+              <Collapsible
+                open={settingsOpen && !collapsed}
+                onOpenChange={setSettingsOpen}
+                className="group/settings"
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      tooltip={t("nav.settings")}
+                      className={settingsActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}
+                    >
+                      <Settings className="h-4 w-4" />
+                      {!collapsed && (
+                        <>
+                          <span className="flex-1">{t("nav.settings")}</span>
+                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/settings:rotate-90" />
+                        </>
+                      )}
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/profile"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            <User className="h-4 w-4" />
+                            <span>{t("nav.profile")}</span>
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/locations"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            <MapPin className="h-4 w-4" />
+                            <span>{t("nav.locations")}</span>
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/trainers"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            <GraduationCap className="h-4 w-4" />
+                            <span>{t("nav.trainers")}</span>
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/settings"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            <Settings className="h-4 w-4" />
+                            <span>{t("nav.settings", "General")}</span>
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
 
             </SidebarMenu>
           </SidebarGroupContent>
