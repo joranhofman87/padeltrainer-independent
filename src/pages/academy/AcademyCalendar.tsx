@@ -922,6 +922,70 @@ export default function AcademyCalendar() {
             </div>
           </TabsContent>
 
+          {/* ── Tab: Trainer Hours ── */}
+          <TabsContent value="hours" className="mt-4">
+            <AcademyTrainerHours
+              slots={trainerHoursSlots}
+              trainers={trainers.map(t => ({
+                id: t.id,
+                name: t.name,
+                avatar: t.avatar,
+                hourly_rate: t.hourly_rate,
+              }))}
+              currentDate={currentDate}
+            />
+          </TabsContent>
+
+          {/* ── Tab: Reports ── */}
+          <TabsContent value="reports" className="mt-4">
+            {activeAcademy && (
+              <AcademyReportsTab
+                academyId={activeAcademy.id}
+                trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+                locations={locations.map(l => ({ id: l.id, name: l.name }))}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* Secondary navigation: less-used sections */}
+        {isPrimaryView && (
+          <nav className="mt-6 flex flex-wrap items-center gap-2 border-t pt-4">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground mr-1">
+              {t("calendar.moreSections", "More")}
+            </span>
+            {(["cycles", "hours", "reports"] as TabValue[]).map((v) => {
+              const Icon = viewLabel[v].icon;
+              return (
+                <Button
+                  key={v}
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 text-muted-foreground hover:text-foreground"
+                  onClick={() => setActiveTab(v)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {viewLabel[v].label}
+                </Button>
+              );
+            })}
+          </nav>
+        )}
+
+        {/* Back-to-agenda link when on a secondary tab */}
+        {!isPrimaryView && (
+          <div>
+            <Button variant="ghost" size="sm" onClick={() => setActiveTab("week")} className="gap-1.5">
+              <ArrowLeft className="h-4 w-4" />
+              {t("calendar.backToAgenda", "Back to agenda")}
+            </Button>
+          </div>
+        )}
+      </main>
+
+      {/* Dialogs */}
+      {activeAcademy && (
+        <>
 
           {selectedSlot && (
             <BookForPlayerDialog
