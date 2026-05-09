@@ -213,10 +213,13 @@ export function HeroSection() {
 
   return (
     <section className="relative overflow-hidden">
+      <div className="absolute inset-0 dot-grid -z-10" aria-hidden />
       <div className="relative max-w-[1200px] mx-auto px-4 md:px-6 py-20 md:py-32">
         {/* Centered copy */}
         <div className="text-center max-w-3xl mx-auto">
-          <h1 className="text-4xl md:text-[44px] lg:text-[52px] font-bold tracking-[-0.02em] leading-[1.1] mb-6 text-foreground">
+          <span className="eyebrow mb-6">{t('homev2.hero.eyebrow', 'For padel coaches')}</span>
+
+          <h1 className="font-display text-4xl md:text-[44px] lg:text-[56px] font-extrabold tracking-[-0.02em] leading-[1.05] mb-6 mt-6 text-navy-900">
             {t('homev2.hero.h1')}
           </h1>
 
@@ -225,18 +228,18 @@ export function HeroSection() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-4">
-            <Button size="lg" className="text-lg px-8 py-4 h-14 rounded-lg bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all" asChild>
-              <Link to={getAppUrl('/signup/trainer')} onClick={() => trackEvent('cta_clicked', { location: 'hero' })}>
-                {t('homev2.cta.startTrial')}
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8 h-14 rounded-lg border-2 hover:bg-muted/50 transition-all" asChild>
-              <a href="#how-it-works">
-                <Play className="mr-2 h-4 w-4" />
-                {t('homev2.cta.watchDemo')}
-              </a>
-            </Button>
+            <Link
+              to={getAppUrl('/signup/trainer')}
+              onClick={() => trackEvent('cta_clicked', { location: 'hero' })}
+              className="pill-primary text-base"
+            >
+              {t('homev2.cta.startTrial')}
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Link>
+            <a href="#how-it-works" className="pill-ghost text-base">
+              <Play className="mr-2 h-4 w-4" />
+              {t('homev2.cta.watchDemo')}
+            </a>
           </div>
 
           <p className="text-sm text-muted-foreground mb-14">

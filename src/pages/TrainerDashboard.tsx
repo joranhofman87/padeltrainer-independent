@@ -357,7 +357,7 @@ export default function TrainerDashboard() {
                       <TableCell className="text-sm py-2">{player.full_name}</TableCell>
                       <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(player.created_at), 'dd MMM')}</TableCell>
                       <TableCell className="py-2">
-                        <Badge variant={player.has_trained ? 'default' : 'outline'} className="text-xs">
+                        <Badge variant={player.has_trained ? 'success' : 'muted'} className="text-xs">
                           {player.has_trained ? t('players.statuses.active') : t('players.statuses.prospect')}
                         </Badge>
                       </TableCell>
@@ -406,7 +406,7 @@ export default function TrainerDashboard() {
                         </TableCell>
                         <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
                         <TableCell className="py-2">
-                          <Badge variant={booking.payment_status === 'paid' ? 'default' : 'secondary'} className="text-xs">
+                          <Badge variant={booking.payment_status === 'paid' ? 'success' : 'warning'} className="text-xs">
                             {booking.payment_status}
                           </Badge>
                         </TableCell>
