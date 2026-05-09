@@ -1,67 +1,41 @@
-## What's done so far
+## Problem
 
-- Hero section restyled with new visual language (Plus Jakarta Sans display, brand pills, mock window, floating chips).
-- Social proof marquee, navy announcement bar, How It Works with 3 mock visuals, Solution Overview, Pain Stories, Jobs To Be Done, Pricing, FAQ, Final CTA, Player Banner — all aligned to the new tokens (`card-chip`, `pill-primary`, `eyebrow`, `font-display`, navy/brand palette).
-- Mobile pass on hero + sections (tighter padding, responsive headline scale, calendar mock horizontal scroll).
-- Tokens live in `src/index.css` + `tailwind.config.ts` (brand 50-700, navy 50-950, surface tokens, shadows, mock-window, dot-grid).
+On mobile the page allows horizontal scrolling, which shifts the layout left and breaks the "above the fold" experience (visible in the uploaded screenshot — wordmark and CTA spill off the right edge).
 
-## What's missing
+## Root cause
 
-1. No public **Branding page** exists yet (`/brand`).
-2. No **single source-of-truth design doc** in the repo (only tokens scattered in `index.css`).
-3. A handful of secondary public surfaces still use the old visual style and were not in the previous passes.
+There is no global `overflow-x: hidden` on `html` / `body`. A handful of intentionally-wide children (the calendar mock uses `min-w-[480px]` inside an `overflow-x-auto` wrapper, the marquee uses `width: max-content`, and the dot-grid `absolute inset-0` paired with `mask-image`) can leak when something pushes them past the viewport — e.g. iOS Safari momentum-scroll, a very long Dutch word, or the dot-grid mask. With no body-level guard, the whole document gets scrollable.
 
-## Plan
+## Fix
 
-### 1. Create a public Branding page (`/brand`, `/nl/brand`)
+### 1. Lock horizontal scroll at the root
 
-`src/pages/marketing/Brand.tsx` rendered inside `MarketingLayout`, sections:
+In `src/index.css`, add to the global layer:
 
-- **Hero**: logo lockup, tagline, one-line positioning ("Modern booking + payments for padel coaches").
-- **Logo**: PadelTrainer.ai wordmark on light + dark backgrounds, clear space + min-size rules, do/don't examples.
-- **Color system**: swatches for Brand (50/100/200/300/500/600/700), Navy (50/100/500/900/950), semantic tokens (background, foreground, primary, muted, success). Each shows token name + HSL value.
-- **Typography**: Plus Jakarta Sans (display 600/700/800) and Inter (body 400/500/600). Live samples at H1–H4 + body sizes.
-- **Components**: live previews of `pill-primary`, `pill-ghost`, `card-chip`, eyebrow, mock-window, slot row, announcement bar.
-- **Iconography & imagery**: lucide-react usage, stroke-width 1.75, brand-50 tinted tile pattern.
-- **Voice & tone**: short copy guidelines, NL/EN sentence-case rule, "no em-dashes" rule, global positioning (no country names).
-- **Downloads**: links to logo SVG/PNG (place in `/public/brand/`).
+```css
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+```
 
-Wire-up:
-- Add route to `src/App.tsx` + `DomainRouter`.
-- Add to `src/lib/sitemap.ts` (or equivalent) and `public/llms.txt`.
-- SEO meta: `<title>Brand | PadelTrainer.ai</title>`, canonical, OG image.
+This is the standard guard for mobile marketing pages and has no side-effect on vertical scroll, sticky headers, or modals (we already use full-page routes per the design rules, no `position: fixed` overlays depend on document-level horizontal scroll).
 
-### 2. Add a maintained design doc: `docs/DESIGN_SYSTEM.md`
+### 2. Belt-and-braces on the hero section
 
-Mirrors what's on `/brand` but for engineers / AI agents. Sections:
+`src/components/home/HeroSection.tsx` — the section already has `overflow-hidden`, but the inner grid container does not. Add `overflow-hidden` (or `min-w-0` on the copy column) so the long Dutch h1 (`Wij regelen de rest.`) cannot push the grid wider than the viewport.
 
-- Token table (CSS var name → HSL → tailwind class → usage).
-- Typography stack and weight map.
-- Component primitives (`pill-primary`, `card-chip`, `mock-window`, `eyebrow`, `dot-grid`, `shimmer-bar`, `marquee-track`, `no-scrollbar`).
-- Spacing scale + responsive section pattern (`py-16 md:py-24 lg:py-32`).
-- Heading scale pattern (`text-3xl sm:text-4xl md:text-5xl font-display font-extrabold tracking-[-0.02em]`).
-- Rules: no hardcoded colors, no em-dashes, no location names, mobile-first.
-- Last-updated date + ownership note ("Update this file whenever tokens or primitives change").
+### 3. Verify the calendar mock wrapper
 
-Also update `mem://style/theme-aware-marketing-design` memory to point at `docs/DESIGN_SYSTEM.md` so future AI sessions read it.
+`src/components/home/HowItWorksSection.tsx` — the `min-w-[480px]` inner grid lives inside `overflow-x-auto no-scrollbar`. Confirm the parent `<div className="card-chip">` of that wrapper has `overflow-hidden` so the rounded corners clip the scroller (not strictly required for the bug, but tidies the visual at the edges).
 
-### 3. Final homepage polish pass
+## Verification
 
-- Verify `SocialProofStrip` headline `text-4xl md:text-5xl` follows the new mobile rule (`text-3xl sm:text-4xl md:text-5xl`).
-- Audit `MarketingLayout` (footer + nav) for any leftover old-style buttons or colors.
-- Check `/pricing` page (referenced from hero) — currently uses old tokens; bring it in line with the new card-chip + pill style.
-- Check `/about`, `/founding-trainers` heroes — apply eyebrow + display heading pattern only if they still use old typography.
-
-### 4. Footer link
-
-Add "Brand" link in `MarketingLayout` footer under "Company" so the new page is discoverable.
+- Resize preview to 360×800 and 390×844.
+- Confirm: no horizontal scrollbar appears, swiping right does nothing, hero h1 + CTA stay flush to the left edge.
+- Confirm: calendar mock still scrolls horizontally inside its own container only.
 
 ## Out of scope
 
-- App-internal screens (post-login dashboard) — branding lives on marketing surfaces for now.
-- New logo asset creation; will reuse existing wordmark unless a new SVG is provided.
-- Dark mode of the marketing site (still light-first).
-
-## Open question
-
-Do you want the `/brand` page to be **public-facing marketing** (press / partners can link to it) or **internal-only** (link unlisted, no nav entry)? Default in this plan: public, linked from footer.
+- No copy or token changes.
+- No restructuring of mocks.
