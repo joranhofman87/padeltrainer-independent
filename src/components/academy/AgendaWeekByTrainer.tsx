@@ -66,6 +66,9 @@ export default function AgendaWeekByTrainer({
       else next.add(id);
       return next;
     });
+
+  const weekStart = useMemo(() => startOfWeek(currentDate, { weekStartsOn: 1 }), [currentDate]);
+  const weekEnd = useMemo(() => endOfWeek(currentDate, { weekStartsOn: 1 }), [currentDate]);
   const weekDays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart],
