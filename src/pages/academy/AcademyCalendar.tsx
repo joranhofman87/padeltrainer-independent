@@ -616,15 +616,6 @@ export default function AcademyCalendar() {
     (s) => !isBefore(new Date(s.start_time), new Date()) && s.pending_bookings > 0 && s.active_bookings === 0
   ).length;
 
-  if (loading && slots.length === 0) {
-    return (
-      <div className="min-h-screen bg-background p-4">
-        <Skeleton className="h-8 w-48 mb-4" />
-        <Skeleton className="h-[600px] w-full" />
-      </div>
-    );
-  }
-
   const getTrainerIdForSlot = () => {
     if (selectedSlot?.trainer_id) return selectedSlot.trainer_id;
     if (selectedTrainerId !== "all") return selectedTrainerId;
@@ -682,6 +673,15 @@ export default function AcademyCalendar() {
         is_public: s.is_public,
       }));
   }, [monthSlots, selectedTrainerId, selectedLocationId]);
+
+  if (loading && slots.length === 0) {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        <Skeleton className="h-8 w-48 mb-4" />
+        <Skeleton className="h-[600px] w-full" />
+      </div>
+    );
+  }
 
   const trainerOptions = useMemo(
     () => trainers.map((tr) => ({ id: tr.id, name: tr.name, avatar: tr.avatar })),
