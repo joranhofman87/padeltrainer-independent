@@ -40,18 +40,24 @@ export default function AcademyDashboard() {
   const academyId = activeAcademy?.id;
 
   // Stats query
-  const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0 } } = useQuery({
+  const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0, outstandingInvoices: 0 } } = useQuery({
     queryKey: ['academy-stats', academyId],
     queryFn: async () => {
-      const [trainersData, locationsData, viewStats] = await Promise.all([
+      const [trainersData, locationsData, viewStats, invoicesRes] = await Promise.all([
         getAcademyTrainers(academyId!),
         getAcademyLocations(academyId!),
         getAcademyViewStats(academyId!),
+        supabase
+          .from('invoices')
+          .select('id', { count: 'exact', head: true })
+          .eq('academy_profile_id', academyId!)
+          .in('status', ['sent', 'overdue']),
       ]);
       return {
         trainers: trainersData.length,
         locations: locationsData.length,
         viewsLast30Days: viewStats.last30Days,
+        outstandingInvoices: invoicesRes.count ?? 0,
       };
     },
     enabled: !!academyId,
