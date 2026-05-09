@@ -32,7 +32,33 @@ export function SocialProofStrip() {
     { key: 'noshows' },
   ];
 
+  const academyNames = [
+    'RL Padel Performance',
+    'Bramos Padel Academy',
+    'PadelClub Amsterdam',
+    'Court·Padel',
+    'Smash Padel Academy',
+    'Padel·Pro NL',
+  ];
+
   return (
+    <>
+      {/* Logo marquee */}
+      <section className="border-y border-navy-900/5 bg-offwhite py-10 overflow-hidden">
+        <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-navy-500 mb-6">
+          {t('homev2.socialProof.marquee', 'Trusted by padel coaches and academies across Europe')}
+        </p>
+        <div className="relative marquee-mask">
+          <div className="marquee-track items-center text-navy-700/80">
+            {[...academyNames, ...academyNames].map((name, i) => (
+              <span key={i} className="font-display font-bold text-2xl tracking-tight whitespace-nowrap">
+                {name}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
     <section className="py-12 md:py-16">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
         <h2 className="text-center text-lg font-medium text-muted-foreground mb-10">
@@ -112,5 +138,6 @@ export function SocialProofStrip() {
         </div>
       </div>
     </section>
+    </>
   );
 }

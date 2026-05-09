@@ -185,6 +185,46 @@
   .card-elevated:hover {
     box-shadow: var(--shadow-lift);
   }
+
+  /* Floating chip card used near hero mock window */
+  .card-chip {
+    @apply bg-card border border-navy-900/5 rounded-2xl;
+    box-shadow: var(--shadow-soft);
+  }
+
+  /* Browser-style mock window for hero/showcase */
+  .mock-window {
+    @apply bg-card border border-navy-900/10 rounded-[20px] overflow-hidden;
+    box-shadow: var(--shadow-mock);
+  }
+  .mock-bar {
+    @apply bg-navy-50/60 border-b border-navy-900/5;
+  }
+  .mock-dot {
+    @apply inline-block w-2.5 h-2.5 rounded-full;
+  }
+
+  /* Solid navy announcement bar */
+  .shimmer-bar {
+    background-color: hsl(var(--navy-900));
+    color: white;
+  }
+}
+
+/* Marquee logo strip */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.marquee-track {
+  display: flex;
+  gap: 64px;
+  width: max-content;
+  animation: marquee 36s linear infinite;
+}
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
+          mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
 }
 
 @layer utilities {
