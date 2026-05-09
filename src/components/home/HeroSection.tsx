@@ -22,7 +22,7 @@ export function HeroSection() {
       {/* Backdrop dot grid */}
       <div className="absolute inset-0 dot-grid opacity-60 -z-10" aria-hidden />
 
-      <div className="relative max-w-7xl mx-auto px-4 md:px-6 pt-16 pb-20 lg:pt-24 lg:pb-28 grid lg:grid-cols-12 gap-12 items-center">
+      <div className="relative max-w-7xl mx-auto px-4 md:px-6 pt-10 pb-12 md:pt-16 md:pb-20 lg:pt-24 lg:pb-28 grid lg:grid-cols-12 gap-8 lg:gap-12 items-center">
         {/* LEFT: copy */}
         <div className="lg:col-span-7">
           <span className="inline-flex items-center gap-2 rounded-full bg-card border border-navy-900/10 shadow-soft px-3 py-1.5 text-xs font-medium text-navy-700">
@@ -30,50 +30,50 @@ export function HeroSection() {
             {t('homev2.hero.eyebrow', 'For padel coaches, academies & clubs')}
           </span>
 
-          <h1 className="mt-6 font-display font-extrabold text-5xl sm:text-6xl lg:text-7xl leading-[1.02] tracking-[-0.02em] text-navy-900">
+          <h1 className="mt-4 md:mt-6 font-display font-extrabold text-[34px] sm:text-5xl lg:text-7xl leading-[1.05] sm:leading-[1.02] tracking-[-0.02em] text-navy-900">
             {t('homev2.hero.h1')}
           </h1>
 
-          <p className="mt-6 text-lg sm:text-xl text-navy-700 max-w-xl leading-relaxed">
+          <p className="mt-4 md:mt-6 text-base sm:text-lg md:text-xl text-navy-700 max-w-xl leading-relaxed">
             {t('homev2.hero.subheadline')}
           </p>
 
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="mt-6 md:mt-8 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
             <Link
               to={getAppUrl('/signup/trainer')}
               onClick={() => trackEvent('cta_clicked', { location: 'hero' })}
-              className="pill-primary text-base"
+              className="pill-primary text-base w-full sm:w-auto justify-center"
             >
               {t('homev2.cta.startTrial')}
               <ArrowRight className="ml-2 h-5 w-5" />
             </Link>
-            <a href="#how-it-works" className="pill-ghost text-base">
+            <a href="#how-it-works" className="pill-ghost text-base w-full sm:w-auto justify-center">
               {t('homev2.cta.watchDemo')}
             </a>
           </div>
 
-          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-navy-600">
+          <div className="mt-5 md:mt-6 flex flex-wrap items-center gap-x-3 gap-y-1.5 sm:gap-x-5 sm:gap-y-2 text-xs sm:text-sm text-navy-600">
             {[
               t('homev2.cta.trust_nocard', 'No credit card'),
               t('homev2.cta.trust_setup', 'Set up in 10 minutes'),
               t('homev2.cta.trust_gdpr', 'GDPR-ready'),
             ].map((label) => (
               <span key={label} className="inline-flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-brand-500" />
+                <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-500" />
                 {label}
               </span>
             ))}
           </div>
 
-          <div className="mt-6 flex items-center gap-3">
+          <div className="mt-5 md:mt-6 flex items-center gap-2.5">
             <div className="flex items-center gap-0.5 text-brand-500">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Star key={i} className="w-5 h-5 fill-current" />
+                <Star key={i} className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
               ))}
             </div>
-            <span className="text-sm text-navy-700">
+            <span className="text-xs sm:text-sm text-navy-700">
               <span className="font-semibold text-navy-900">{t('homev2.hero.loved_lead', 'Loved by padel coaches')}</span>{' '}
-              {t('homev2.hero.loved_tail', 'across Europe')}
+              <span className="hidden sm:inline">{t('homev2.hero.loved_tail', 'across Europe')}</span>
             </span>
           </div>
         </div>

@@ -1,126 +1,58 @@
+## Goal
 
-# Design system rollout — PadelTrainer.ai
+Fix the above-the-fold experience on mobile (≤414px) so the hero feels tight, scannable, and the mock visual is reachable without heavy scrolling. Apply consistent mobile spacing across the rest of the homepage as a follow-up pass.
 
-Goal: replace the current "AI-generated" feel with the design system from the uploaded brief. Smoother, calmer, more intentional. Light-only, Inter-only, no decorative gradients.
+## Problems on mobile today
 
-We split the work into three phases so each one is reviewable on its own. After Phase 1 the whole app already feels different (colors, type, radii, shadows). Phase 2 polishes the homepage. Phase 3 sweeps app screens for the small details (pill buttons, eyebrows, card spacing).
+- `h1` jumps to `text-5xl` (48px) on phones — Dutch headline wraps awkwardly and pushes the mock far below the fold.
+- Section padding `pt-16 pb-20` is too large on small screens.
+- Trust badges + 5-star "Loved by coaches" row stack into 4 separate lines, eating vertical space before the mock is visible.
+- Mock window sits below a tall copy block; on a 390×844 device the user sees almost no product visual without scrolling.
+- Mock browser bar URL (`padeltrainer.ai/rene`) and slot row sub-labels can clip on narrow widths.
+- Tabs row inside the mock (`Booking / Players / Payments / Profile`) overflows horizontally.
+- Floating chips are hidden on mobile (correct), but the mock keeps the same paddings as desktop.
+- Other sections (`HowItWorks`, `JobsToBeDone`, `Pricing`, `FAQ`, `FinalCTA`) use `py-24 md:py-32` — 96px top/bottom on mobile is too much.
 
----
+## Changes
 
-## Phase 1 — Foundation (tokens, fonts, dark mode removal)
+### 1. HeroSection (`src/components/home/HeroSection.tsx`)
 
-This phase touches only global config files. Every page in the app inherits the new look automatically.
+- Reduce hero vertical padding: `pt-10 pb-12 md:pt-16 md:pb-20 lg:pt-24 lg:pb-28`.
+- Scale the headline: `text-[34px] leading-[1.05] sm:text-5xl lg:text-7xl`.
+- Subheadline: `text-base sm:text-lg md:text-xl`, tighter top margin (`mt-4 md:mt-6`).
+- CTA row: full-width primary on mobile (`w-full sm:w-auto`), keep ghost link inline below.
+- Collapse trust + star row into a single horizontal strip on mobile (smaller text, `gap-x-3 gap-y-1`, hide "across Europe" tail on `<sm`).
+- Reorder grid on mobile so the mock window appears directly under the headline + CTA (use `order-2 lg:order-none` on the copy block? — actually keep copy first but trim it, then mock).
+- Tighten grid gap: `gap-8 lg:gap-12`.
 
-**`src/index.css`**
-- Replace `:root` HSL values with the spec palette mapped onto the existing semantic names (`--primary` = brand-500, `--accent` = navy-900, `--background` = white, `--secondary` = navy-50, `--muted` = surface-cream, `--border` = navy-900/10, `--ring` = brand-500). Keep variable names so shadcn components stay wired.
-- Add new tokens: `--brand-50…900`, `--navy-50…950`, `--surface-cream`, `--surface-off`, `--accent-gold`.
-- Add shadow tokens as CSS vars: `--shadow-soft`, `--shadow-lift`, `--shadow-cta`, `--shadow-mock`.
-- Set `--radius: 0.75rem` (12px) globally — matches the "app surface" rule. Marketing-only components opt into 20px via `rounded-[20px]`.
-- Delete the entire `.dark { … }` block.
-- Body font stack → `'Inter', system-ui, sans-serif` with `font-feature-settings: 'cv11', 'ss01'` for tighter display kerning.
-- Add `.font-display` utility (still Inter, weight 800, letter-spacing -0.02em, line-height 1.05) so existing components that reach for a display font get the spec treatment without loading a second family.
-- Add reusable utilities: `.eyebrow`, `.pill-primary`, `.pill-ghost`, `.dot-grid` (the radial-gradient backdrop), `.section-cream`, `.section-off`.
-- Respect `prefers-reduced-motion` for fade-in utilities.
+### 2. Hero mock window
 
-**`tailwind.config.ts`**
-- Extend `colors` with `brand` (50–900) and `navy` (50–950) scales reading from CSS vars.
-- Extend `boxShadow` with `soft`, `lift`, `cta`, `mock`.
-- Extend `borderRadius` with `pill: 9999px`.
-- Extend `fontFamily.display` → same Inter stack (so `font-display` Tailwind class works).
-- Keep `darkMode` config but it becomes a no-op once `.dark` block is gone.
+- Outer padding inside `.mock-window` stays, but slot row padding becomes `p-2.5 md:p-3` and font `text-[13px]`.
+- Tabs row: add `overflow-x-auto no-scrollbar` and shrink to `text-[11px]`, drop the "Profile" tab on `<sm`.
+- URL in browser bar: truncate with `truncate max-w-[55%]` so it never pushes the dots.
+- Slot sub-line: hide court suffix on `<sm` (`hidden sm:inline`) to prevent wrapping.
 
-**`index.html`**
-- Add `<link rel="preconnect">` + a single Google Fonts call for Inter only: weights 400/500/600/700/800, `display=swap`. ~25KB vs ~70KB for Inter+Jakarta.
-- Remove any `class="dark"` toggling from the html tag if present.
+### 3. Global mobile spacing pass
 
-**`src/components/ThemeToggle.tsx`**
-- Remove the toggle from headers (or stub component to render nothing) since dark mode is gone. Update places that import it.
+- Across `HowItWorksSection`, `JobsToBeDoneSection`, `PainStoriesSection`, `SolutionOverview`, `PricingPreview`, `FAQSection`, `FinalCTASection`: change `py-24 md:py-32` → `py-16 md:py-24 lg:py-32`.
+- Section eyebrow + heading: `text-3xl sm:text-4xl md:text-5xl` where currently `text-4xl md:text-5xl` to avoid clipping on 320–375px.
+- Card grids already responsive; just verify `gap-6` reduces to `gap-4` on mobile where stacked.
 
-**Acceptance check:** the app loads, primary buttons are coral pills, headings feel tighter, no dark-mode flicker, no layout regressions.
+### 4. HowItWorks mock visuals (already added)
 
----
+- Calendar mock: 5 columns × text becomes cramped at 390px → switch to horizontal scroll on `<md` (`overflow-x-auto`, `min-w-[520px]` inner) so the visual stays legible instead of squishing.
+- Availability heatmap: reduce inner padding to `p-4` on mobile and tile gap to `gap-1.5`.
+- Booking page mock: keep, but shrink avatar + slot pills to `text-[11px]` so they stay on one line.
 
-## Phase 2 — Marketing homepage restyle
+## Out of scope
 
-Keep the current section components (`HeroSection`, `SocialProofStrip`, `PainStoriesSection`, `SolutionOverview`, `HowItWorksSection`, `JobsToBeDoneSection`, `PlayerBanner`, `PricingPreview`, `FAQSection`, `FinalCTASection`) — restyle each in place. Don't rewrite the section graph.
+- No copy / i18n changes.
+- No new sections, no business-logic changes.
+- No changes to navbar / footer / banner — those already work on mobile.
 
-For each section:
-- Wrap in `<section class="py-24 lg:py-32">`, alternate backgrounds white → cream → white → off-white per the spec.
-- Add an eyebrow badge above every h2 (`bg-brand-50 text-brand-700`, uppercase, tracking-wide).
-- Use `font-display` on h1/h2 with the spec sizes (h1 56–72, h2 40–48).
-- Replace any current gradient backgrounds, glow blobs, or mesh circles with solid surfaces.
-- Replace bespoke buttons with the pill primary / ghost classes from Phase 1.
-- Cards: white surface, `rounded-[20px]`, `shadow-soft`, `p-7`, hover `shadow-lift` + `-translate-y-0.5`.
+## Verification
 
-Hero specifics:
-- Single h1, scramble effect on one keyword (lightweight — ~40 lines, no library).
-- Dot-grid backdrop (`.dot-grid` utility) masked to soft ellipse. Replace any existing mesh/orbs.
-- Mock UI window component (new `src/components/marketing/MockWindow.tsx`) reused by hero and journey sections — chrome dots + URL bar.
-- Two CTAs: "Start your free trial →" + "See how it works".
-
-Final CTA section:
-- Solid `bg-navy-950` block, white text, single coral pill, no gradients.
-
-Footer (`MarketingLayout`):
-- 6-column grid, navy-950 surface, Logo tile + legal row (Privacy · Terms · GDPR · Status).
-
-Copy:
-- Don't blindly copy strings from `landing-page.html`. Keep current i18n keys, only adjust English/NL where the existing copy clearly clashes with the voice rules ("AI-powered", "leverage", etc.). User confirmed not all .html copy is accurate.
-- Preserve all existing translation keys and add new ones where structure changes (e.g. eyebrows).
-
-Screenshots:
-- Audit existing image assets used in HowItWorks / Solution / JobsToBeDone. Where current screenshots show old UI chrome or feel off-brand, swap to the new MockWindow component rendering inline (faster + no asset bloat) or queue a screenshot refresh task. List the specific images needing replacement at the end of Phase 2.
-
-Logo:
-- New `src/components/Logo.tsx` variants: `tile` (square SVG from spec, textLength=44) and `pill` (horizontal chip). Replace usage across header / footer / favicon meta.
-
----
-
-## Phase 3 — App surface sweep
-
-Apply the "App-adjacent screens" rules (12px radius, `shadow-soft`, no mock chrome) across the in-product UI. The shadcn primitives already pick up the new tokens, so most of this is local cleanup, not rewrites.
-
-Targets, in priority order:
-1. **Sidebar / app shell** — restyle `AppSidebar`, header bar. Navy-900 sidebar background already matches spec; tighten spacing, swap accent to brand-500, drop any leftover gradient hover states.
-2. **Trainer dashboard surfaces** — `TrainerCalendar`, `TrainerCycles`, `TrainerCyclus`, `TrainerAnalytics`. Card cleanups + pill buttons for primary actions only.
-3. **Academy + Club mirrors** — same passes (parity rule).
-4. **Player surfaces** — `PlayerBookings`, `PlayerSettings`, `BookingSuccess`.
-5. **Cycle workflow pages** — `CycleFormPage`, `CycleRegistration`, `BrandedCycleRegistration`, `ProposalScheduleGrid` (light touch — keep the calendar grid behavior intact, just restyle slot cards).
-6. **Auth + onboarding** — `Auth`, `Onboarding`, `TrainerOnboarding`, `AcademyOnboarding`, `ClubOnboarding`. Big visual win since these are entry surfaces.
-7. **Admin** — last; admins tolerate ugly best.
-
-Per-screen pattern:
-- Section heading uses `font-display` weight 700, tracked-tight.
-- Primary action becomes a coral pill (`Button variant="default"` already maps via tokens, but check sizing — height 12 / px 6).
-- Cards use the existing `Card` component which now picks up new tokens; verify padding feels right (often `p-6` is fine).
-- Replace any hardcoded color (`text-white`, `bg-slate-50`, `from-…/to-…`) with semantic tokens.
-- Drop dark-mode-only classes (`dark:bg-…` etc.).
-
-Audit step: ripgrep for `bg-gradient-`, `from-`, `to-`, `dark:`, hardcoded hex colors. Convert each hit to a semantic token or remove.
-
----
-
-## Technical notes
-
-- **Fonts: Inter only.** Plus Jakarta would add ~35KB and a second font-loading hop. Inter at weight 800 with `letter-spacing: -0.02em` is ~95% of the visual feel of Jakarta at hero sizes, with zero perf cost (we're already loading Inter implicitly via Tailwind defaults — making it explicit just adds the heavier weights).
-- **Dark mode removal**: safe — nothing in the app depends on `useTheme` for logic. We strip `.dark` block from `index.css`, remove `darkMode` toggle UI, leave the Tailwind `darkMode: ["class"]` config in place to avoid touching `tailwind.config.ts` more than needed.
-- **Existing memory rule "no hardcoded colors"** stays — Phase 3 audit enforces it.
-- **Existing memory rule "theme-aware marketing design"** still applies: marketing components reference tokens, not hex.
-- **Backwards compatibility**: shadcn components (`Button`, `Card`, `Input`, etc.) read from semantic tokens (`--primary`, `--background`, etc.) — they inherit the new look without per-component edits.
-- **Performance budget**: target no regression on Lighthouse mobile. Inter-only keeps font payload lean. Dot-grid is pure CSS. Scramble effect is ~1KB inline JS, runs once on the hero only.
-- **Mock-window component** lives in `src/components/marketing/`, never imported by `src/pages/club/*`, `src/pages/trainer/*`, etc. — enforces the marketing/app split.
-
-## Out of scope (call out for follow-ups)
-
-- Email template restyle (spec section 5E) — separate task.
-- OG image regeneration (spec section 8) — separate task.
-- Favicon swap to "P." fallback — separate task, needs designer export.
-- New marketing copy translations beyond English/NL — translator pass.
-
-## Deliverables per phase
-
-- **Phase 1**: 1 PR, ~4 files, foundation only. Reviewer can immediately see the app re-skinned.
-- **Phase 2**: ~12 files (homepage sections + MockWindow + Logo). Marketing homepage matches the brief.
-- **Phase 3**: iterative, screen-by-screen. Will need its own task list once Phase 1+2 ship.
-
-I'll start with Phase 1 once you approve.
+- Resize preview to 390×844 and 360×800.
+- Confirm: headline + subheadline + primary CTA + first glimpse of mock visible without scrolling on 390×844.
+- Confirm no horizontal scrollbar on `<html>`.
+- Confirm calendar mock scrolls horizontally cleanly (no overlap).
