@@ -647,6 +647,39 @@ export default function AcademyPlayers() {
             </div>
 
             <div className="flex gap-2 ml-auto">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="hidden md:inline-flex">
+                    <Columns3 className="mr-2 h-4 w-4" />
+                    {tTrainer('players.columns.button', 'Columns')}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>{tTrainer('players.columns.default', 'Default')}</DropdownMenuLabel>
+                  {ALL_COLUMNS.filter((c) => c.isDefault).map((c) => (
+                    <DropdownMenuCheckboxItem
+                      key={c.key}
+                      checked={isColVisible(c.key)}
+                      onCheckedChange={() => toggleColumn(c.key)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {c.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>{tTrainer('players.columns.optional', 'Optional')}</DropdownMenuLabel>
+                  {ALL_COLUMNS.filter((c) => !c.isDefault).map((c) => (
+                    <DropdownMenuCheckboxItem
+                      key={c.key}
+                      checked={isColVisible(c.key)}
+                      onCheckedChange={() => toggleColumn(c.key)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {c.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)}>
                 <Upload className="mr-2 h-4 w-4" />
                 <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
