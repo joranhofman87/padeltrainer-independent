@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Search, Upload, MoreVertical, Pencil, Trash2, Mail, Phone, MapPin, BarChart3, RefreshCw } from 'lucide-react';
+import { Users, UserPlus, Search, Upload, MoreVertical, Pencil, Trash2, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
