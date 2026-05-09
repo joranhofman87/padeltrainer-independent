@@ -875,7 +875,7 @@ export default function AcademyPlayers() {
                 </div>
 
                 {/* Mobile Cards */}
-                <div className="md:hidden space-y-3">
+                <div className="md:hidden space-y-3 p-4">
                   {filteredPlayers.map((player) => (
                     <div key={player.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
