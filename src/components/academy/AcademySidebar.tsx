@@ -17,8 +17,16 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   LayoutDashboard,
   Users,
@@ -36,6 +44,7 @@ import {
   CheckCircle,
   FileText,
   Gift,
+  ChevronRight,
 } from "lucide-react";
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { signOut } from "@/lib/auth";
