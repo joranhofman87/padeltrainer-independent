@@ -633,104 +633,268 @@ export default function AcademyCalendar() {
 
   const handleOverviewDayClick = (date: Date) => {
     setCurrentDate(date);
-    setActiveTab("manage");
-    setManageView("day");
+    setActiveTab("day");
   };
 
   const handleSlotClick = (slotId: string) => {
     navigate(`/app/academy/slot/${slotId}`);
   };
 
+  // Build slot list for the new agenda views (week/month).
+  const agendaSlots: AgendaSlot[] = useMemo(() => {
+    return slots
+      .filter((s) => {
+        if (selectedTrainerId !== "all" && s.trainer_id !== selectedTrainerId) return false;
+        if (selectedLocationId !== "all" && s.location_id !== selectedLocationId) return false;
+        return true;
+      })
+      .map((s) => ({
+        id: s.id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        trainer_id: s.trainer_id,
+        trainer_name: s.trainer_name,
+        trainer_avatar: s.trainer_avatar,
+        max_participants: s.max_participants || 4,
+        booked_count: s.active_bookings + s.pending_bookings,
+        location_name: s.location_name,
+        is_public: s.is_public,
+      }));
+  }, [slots, selectedTrainerId, selectedLocationId]);
+
+  const agendaMonthSlots: AgendaSlot[] = useMemo(() => {
+    return monthSlots
+      .filter((s) => {
+        if (selectedTrainerId !== "all" && s.trainer_id !== selectedTrainerId) return false;
+        if (selectedLocationId !== "all" && s.location_id !== selectedLocationId) return false;
+        return true;
+      })
+      .map((s) => ({
+        id: s.id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        trainer_id: s.trainer_id,
+        trainer_name: s.trainer_name,
+        trainer_avatar: s.trainer_avatar,
+        max_participants: s.max_participants || 4,
+        booked_count: s.active_bookings + s.pending_bookings,
+        location_name: s.location_name,
+        is_public: s.is_public,
+      }));
+  }, [monthSlots, selectedTrainerId, selectedLocationId]);
+
+  const trainerOptions = useMemo(
+    () => trainers.map((tr) => ({ id: tr.id, name: tr.name, avatar: tr.avatar })),
+    [trainers],
+  );
+
+  const filtersActive = selectedTrainerId !== "all" || selectedLocationId !== "all";
+  const activeFilterCount = (selectedTrainerId !== "all" ? 1 : 0) + (selectedLocationId !== "all" ? 1 : 0);
+
+  // Map to label primary view in segmented control
+  const viewLabel: Record<TabValue, { label: string; icon: typeof CalendarIcon }> = {
+    week:    { label: t("calendar.viewWeek", "Week"),     icon: CalendarDays },
+    day:     { label: t("calendar.viewDay", "Day"),       icon: CalendarIcon },
+    month:   { label: t("calendar.viewMonth", "Month"),   icon: CalendarRange },
+    cycles:  { label: t("calendar.tabs.cycles", "Cycles"), icon: Repeat },
+    create:  { label: t("calendar.tabs.create", "Create"), icon: Plus },
+    hours:   { label: t("calendar.tabs.hours", "Hours"),   icon: Clock },
+    reports: { label: t("calendar.tabs.reports", "Reports"), icon: BarChart3 },
+  };
+
   return (
     <>
       {/* Sub-page Header */}
-      <div className="border-b bg-background/60">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/app/academy")}>
-              <ArrowLeft className="h-5 w-5" />
+      <div className="border-b bg-background">
+        <div className="container mx-auto px-4 py-3 flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/app/academy")}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-xl font-display font-semibold">{t("calendar.title", "Agenda")}</h1>
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" className="h-9 gap-1.5" onClick={() => navigate("/app/academy/slot/new")}>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.new", "New session")}</span>
+              <span className="sm:hidden">{t("calendar.new", "New")}</span>
             </Button>
-            <h1 className="text-xl font-bold">{t("calendar.title", "Agenda")}</h1>
           </div>
         </div>
       </div>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Tabs */}
+      <main className="container mx-auto px-4 py-5 sm:py-6 space-y-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <TabsList className="h-9 w-full sm:w-auto overflow-x-auto flex-nowrap justify-start">
-              <TabsTrigger value="overview" className="text-xs sm:text-sm gap-1.5 shrink-0">
-                <LayoutGrid className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t("calendar.tabs.overview", "Overview")}</span>
-                <span className="sm:hidden">{t("calendar.tabs.overview", "Overview")}</span>
-              </TabsTrigger>
-              <TabsTrigger value="cycles" className="text-xs sm:text-sm gap-1.5 shrink-0">
-                <Repeat className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t("calendar.tabs.cycles", "Cycles")}</span>
-                <span className="sm:hidden">{t("calendar.tabs.cycles", "Cycles")}</span>
-              </TabsTrigger>
-              <TabsTrigger value="manage" className="text-xs sm:text-sm gap-1.5 shrink-0">
-                <Calendar className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t("calendar.tabs.manage", "Manage")}</span>
-                <span className="sm:hidden">{t("calendar.tabs.manage", "Manage")}</span>
-              </TabsTrigger>
-              <TabsTrigger value="create" className="text-xs sm:text-sm gap-1.5 shrink-0">
-                <Plus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t("calendar.tabs.create", "Create")}</span>
-                <span className="sm:hidden">{t("calendar.tabs.create", "Create")}</span>
-              </TabsTrigger>
-              <TabsTrigger value="hours" className="text-xs sm:text-sm gap-1.5 shrink-0">
-                <Clock className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t("calendar.tabs.hours", "Trainer Hours")}</span>
-                <span className="sm:hidden">{t("calendar.tabs.hours", "Hours")}</span>
-              </TabsTrigger>
-              <TabsTrigger value="reports" className="text-xs sm:text-sm gap-1.5 shrink-0">
-                <BarChart3 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t("calendar.tabs.reports", "Reports")}</span>
-                <span className="sm:hidden">{t("calendar.tabs.reports", "Reports")}</span>
-              </TabsTrigger>
-            </TabsList>
+          {/* ── Primary view switcher + date nav (only for week/day/month) ── */}
+          {isPrimaryView && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {/* Segmented control: Week / Day / Month */}
+              <div className="inline-flex rounded-lg border bg-muted/40 p-0.5 self-start">
+                {PRIMARY_VIEWS.map((v) => {
+                  const Icon = viewLabel[v].icon;
+                  const active = activeTab === v;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setActiveTab(v)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all",
+                        active
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {viewLabel[v].label}
+                    </button>
+                  );
+                })}
+              </div>
 
-            <Button size="sm" className="h-9 gap-1.5" onClick={() => navigate("/app/academy/slot/new")}>
-              <Plus className="h-4 w-4" />
-              {t("calendar.new", "New")}
-            </Button>
-
-            {/* Date Navigation (only for hours tab — overview and manage have their own) */}
-            {activeTab === "hours" && (
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
+              {/* Date nav + filters */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={navigatePrevious} aria-label={t("calendar.previous", "Previous")}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <div className="min-w-[120px] sm:min-w-[200px] text-center font-medium text-sm">
+                <div className="min-w-[160px] sm:min-w-[200px] text-center font-medium text-sm tabular-nums">
                   {getDateRangeLabel()}
                 </div>
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={navigateNext} aria-label={t("calendar.next", "Next")}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
+                <Button variant="outline" size="sm" className="h-9" onClick={goToToday}>
                   {t("calendar.today", "Today")}
                 </Button>
-              </div>
-            )}
-          </div>
 
-          {/* ── Tab 1: Overview ── */}
-          <TabsContent value="overview" className="mt-4">
-            <AcademyCalendarOverview
-              slots={overviewSlots}
+                {/* Filters popover */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                      <SlidersHorizontal className="h-4 w-4" />
+                      <span className="hidden sm:inline">{t("calendar.filters", "Filters")}</span>
+                      {activeFilterCount > 0 && (
+                        <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                          {activeFilterCount}
+                        </Badge>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-72 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">{t("calendar.trainer", "Trainer")}</Label>
+                      <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t("calendar.allTrainers", "All trainers")}</SelectItem>
+                          {trainers.map((tr) => (
+                            <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">{t("calendar.location", "Location")}</Label>
+                      <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t("calendar.allLocations", "All locations")}</SelectItem>
+                          {locations.map((loc) => (
+                            <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {filtersActive && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => { setSelectedTrainerId("all"); setSelectedLocationId("all"); }}
+                      >
+                        {t("calendar.clearFilters", "Clear filters")}
+                      </Button>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+          )}
+
+          {/* Active filter chips */}
+          {isPrimaryView && filtersActive && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-3">
+              {selectedTrainerId !== "all" && (
+                <button
+                  onClick={() => setSelectedTrainerId("all")}
+                  className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-xs hover:bg-muted/40"
+                >
+                  {trainers.find((tr) => tr.id === selectedTrainerId)?.name}
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+              {selectedLocationId !== "all" && (
+                <button
+                  onClick={() => setSelectedLocationId("all")}
+                  className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-xs hover:bg-muted/40"
+                >
+                  {locations.find((l) => l.id === selectedLocationId)?.name}
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── View: Week (per trainer swimlanes) ── */}
+          <TabsContent value="week" className="mt-4">
+            <AgendaWeekByTrainer
+              slots={agendaSlots}
+              trainers={trainerOptions}
               currentDate={currentDate}
-              onDayClick={handleOverviewDayClick}
+              onCellClick={(trainerId, day) => {
+                setSelectedTrainerId(trainerId);
+                setCurrentDate(day);
+                setActiveTab("day");
+              }}
+              onTrainerClick={(trainerId) => {
+                setSelectedTrainerId(trainerId);
+              }}
+              onDayHeaderClick={(day) => {
+                setCurrentDate(day);
+                setActiveTab("day");
+              }}
               onSlotClick={handleSlotClick}
-              trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
-              locations={locations.map(l => ({ id: l.id, name: l.name }))}
-              onNavigatePrevious={navigatePrevious}
-              onNavigateNext={navigateNext}
-              onGoToday={goToToday}
-              dateRangeLabel={getDateRangeLabel()}
-              warningMaxRatingSpread={warningMaxRatingSpread}
-              warningMaxAgeDiffYears={warningMaxAgeDiffYears}
+            />
+          </TabsContent>
+
+          {/* ── View: Day ── */}
+          <TabsContent value="day" className="mt-4">
+            <AcademyDayGrid
+              slots={mappedSlots}
+              currentDate={currentDate}
+              allKnownPlayers={allKnownPlayers}
+              trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
+              onMovePlayer={handleMovePlayer}
+              onRemovePlayer={handleRemovePlayer}
+              onBookForPlayer={handleBookForPlayer}
+              onEditBooking={handleEditBooking}
+              onEditSlot={handleEditSlot}
+              onDeleteSlot={handleDeleteSlot}
+              onCellClick={handleCellClick}
+            />
+          </TabsContent>
+
+          {/* ── View: Month ── */}
+          <TabsContent value="month" className="mt-4">
+            <AgendaMonth
+              slots={agendaMonthSlots}
+              currentDate={currentDate}
+              onDayClick={(day) => {
+                setCurrentDate(day);
+                setActiveTab("day");
+              }}
             />
           </TabsContent>
 
@@ -741,117 +905,7 @@ export default function AcademyCalendar() {
             </Suspense>
           </TabsContent>
 
-          {/* ── Tab 3: Manage Agenda ── */}
-          <TabsContent value="manage" className="mt-4 space-y-4">
-            {/* Controls Card */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-                  {/* Left: View Toggle + Navigation */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-1">
-                      <Button variant={manageView === "day" ? "default" : "outline"} size="sm" className="h-8" onClick={() => setManageView("day")}>
-                        <Calendar className="h-4 w-4 sm:mr-1" />
-                        <span className="hidden sm:inline">{t("calendar.dayView", "Day")}</span>
-                      </Button>
-                      <Button variant={manageView === "week" ? "default" : "outline"} size="sm" className="h-8" onClick={() => setManageView("week")}>
-                        <CalendarDays className="h-4 w-4 sm:mr-1" />
-                        <span className="hidden sm:inline">{t("calendar.weekView", "Week")}</span>
-                      </Button>
-                    </div>
-                    <div className="w-px h-6 bg-border hidden sm:block" />
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <div className="min-w-[140px] text-center font-medium text-sm">
-                      {getDateRangeLabel()}
-                    </div>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
-                      {t("calendar.today", "Today")}
-                    </Button>
-                  </div>
-
-                  {/* Right: Filters */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-                      <SelectTrigger className="w-[160px] h-8">
-                        <SelectValue placeholder={t("calendar.allLocations", "All Locations")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t("calendar.allLocations", "All Locations")}</SelectItem>
-                        {locations.map(loc => (
-                          <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
-                      <SelectTrigger className="w-[160px] h-8">
-                        <SelectValue placeholder={t("calendar.allTrainers", "All Trainers")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t("calendar.allTrainers", "All Trainers")}</SelectItem>
-                        {trainers.map(trainer => (
-                          <SelectItem key={trainer.id} value={trainer.id}>{trainer.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Quick Stats */}
-                <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded bg-muted border border-border" />
-                    <span>{t("calendar.available", "Available")}: {freeSlots}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700" />
-                    <span>{t("calendar.pending", "Pending")}: {pendingSlots}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700" />
-                    <span>{t("calendar.booked", "Booked")}: {bookedSlots}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Calendar Grid */}
-            {manageView === "day" ? (
-              <AcademyDayGrid
-                slots={mappedSlots}
-                currentDate={currentDate}
-                allKnownPlayers={allKnownPlayers}
-                trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
-                onMovePlayer={handleMovePlayer}
-                onRemovePlayer={handleRemovePlayer}
-                onBookForPlayer={handleBookForPlayer}
-                onEditBooking={handleEditBooking}
-                onEditSlot={handleEditSlot}
-                onDeleteSlot={handleDeleteSlot}
-                onCellClick={handleCellClick}
-              />
-            ) : (
-              <Card>
-                <CardContent className="p-4">
-                  <AcademyWeekOverview
-                    slots={mappedSlots}
-                    currentDate={currentDate}
-                    trainers={trainers.map(t => ({ id: t.id, name: t.name, avatar: t.avatar }))}
-                    onDayClick={(date) => {
-                      setCurrentDate(date);
-                      setManageView("day");
-                    }}
-                  />
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* ── Tab 4: Create Cyclus ── */}
+          {/* ── Tab: Create Cyclus ── */}
           <TabsContent value="create" className="mt-4">
             <div className="max-w-lg">
               {activeAcademy && (
@@ -867,38 +921,6 @@ export default function AcademyCalendar() {
               )}
             </div>
           </TabsContent>
-
-          {/* ── Tab 5: Trainer Hours ── */}
-          <TabsContent value="hours" className="mt-4">
-            <AcademyTrainerHours
-              slots={trainerHoursSlots}
-              trainers={trainers.map(t => ({
-                id: t.id,
-                name: t.name,
-                avatar: t.avatar,
-                hourly_rate: t.hourly_rate,
-              }))}
-              currentDate={currentDate}
-            />
-          </TabsContent>
-
-          {/* ── Tab 6: Reports ── */}
-          <TabsContent value="reports" className="mt-4">
-            {activeAcademy && (
-              <AcademyReportsTab
-                academyId={activeAcademy.id}
-                trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
-                locations={locations.map(l => ({ id: l.id, name: l.name }))}
-              />
-            )}
-          </TabsContent>
-        </Tabs>
-      </main>
-      
-      {/* Dialogs */}
-      {activeAcademy && (
-        <>
-          {/* BulkCreateSheet removed — using /app/academy/slot/new page */}
 
 
           {selectedSlot && (
