@@ -233,6 +233,9 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+
   .shadow-soft { box-shadow: var(--shadow-soft); }
   .shadow-lift { box-shadow: var(--shadow-lift); }
   .shadow-cta  { box-shadow: var(--shadow-cta); }
