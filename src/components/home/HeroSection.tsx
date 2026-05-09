@@ -159,7 +159,7 @@ function SlotRow({
   const isOpen = status === 'open';
   return (
     <div
-      className={`flex items-center justify-between p-3 rounded-xl border ${
+      className={`flex items-center justify-between p-2.5 sm:p-3 rounded-xl border ${
         isOpen
           ? 'bg-card border-dashed border-brand-300'
           : status === 'paid'
@@ -167,21 +167,21 @@ function SlotRow({
             : 'bg-card border-navy-100'
       }`}
     >
-      <div className="flex items-center gap-3">
-        <div className="text-xs font-semibold text-navy-700 w-12 tabular-nums">{time}</div>
-        <div>
-          <div className={`text-sm font-semibold ${isOpen ? 'text-brand-700' : 'text-navy-900'}`}>{title}</div>
-          <div className="text-xs text-navy-500">{sub}</div>
+      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="text-[11px] sm:text-xs font-semibold text-navy-700 w-10 sm:w-12 tabular-nums flex-shrink-0">{time}</div>
+        <div className="min-w-0">
+          <div className={`text-[13px] sm:text-sm font-semibold truncate ${isOpen ? 'text-brand-700' : 'text-navy-900'}`}>{title}</div>
+          <div className="text-[11px] sm:text-xs text-navy-500 truncate"><span className="hidden sm:inline">{sub}</span><span className="sm:hidden">{sub.split(' · ')[1] || sub}</span></div>
         </div>
       </div>
       {status === 'paid' && (
-        <span className="text-xs font-medium text-success bg-success-soft px-2 py-1 rounded-full">Paid</span>
+        <span className="text-[10px] sm:text-xs font-medium text-success bg-success-soft px-2 py-1 rounded-full flex-shrink-0">Paid</span>
       )}
       {status === 'confirmed' && (
-        <span className="text-xs font-medium text-brand-700 bg-brand-50 px-2 py-1 rounded-full">Confirmed</span>
+        <span className="text-[10px] sm:text-xs font-medium text-brand-700 bg-brand-50 px-2 py-1 rounded-full flex-shrink-0">Confirmed</span>
       )}
       {status === 'open' && (
-        <span className="text-xs font-medium text-navy-500">Auto-fill on</span>
+        <span className="text-[10px] sm:text-xs font-medium text-navy-500 flex-shrink-0">Auto-fill on</span>
       )}
     </div>
   );
