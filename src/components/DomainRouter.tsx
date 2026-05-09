@@ -416,6 +416,7 @@ export function DomainRouter() {
           <Route path="padel/:city" element={<CityLanding />} />
           <Route path="rating/:profileId" element={<PublicRatingCard />} />
           <Route path="founding-trainers" element={<FoundingTrainers />} />
+          <Route path="brand" element={<Brand />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />
