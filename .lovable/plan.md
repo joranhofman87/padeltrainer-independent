@@ -1,50 +1,55 @@
-## Problem
-
-Rene owns RL Padel Performance (an academy) but also has a trainer role on his account. After signing in, the post-login redirect in `src/pages/Auth.tsx` only looks at the primary `role` (priority: admin > trainer > club > player). Since he has the `trainer` role, he is sent to `/app/trainer` even though his day-to-day work happens in `/app/academy`.
-
 ## Goal
 
-When a user manages an academy, land them on the academy dashboard by default — without breaking trainers who are not academy managers.
+Make the academy Players table customizable: show a sensible default set of columns and let the user opt-in to additional columns from a dropdown.
 
-## Approach
+## Default columns (visible out of the box)
 
-Two small, focused changes — no business-logic changes, only the routing decision after sign-in.
+1. **Name** (with notes preview kept under the name when Notes column is hidden)
+2. **Email**
+3. **Phone**
+4. **Location** — comma-separated training locations from `location_names`
+5. **Date added** — `created_at`
 
-### 1. Prefer academy as the landing target for academy managers
+Plus a fixed **Actions** column (always visible, edit / delete dropdown).
 
-In `src/pages/Auth.tsx` (the post-login redirect block around lines 104–126), use `isAcademyManager` from `useAuth()` to override the role-based default:
+## Optional columns (toggleable)
 
-```text
-if (redirectUrl) → use it (unchanged)
-else if (onboardingRedirect) → use it (unchanged)
-else if (isAcademyManager) → /app/academy        ← NEW
-else if (role === 'admin')   → /app/admin
-else if (role === 'trainer') → /app/trainer
-else if (role === 'club' or isClubManager) → /app/club
-else → /app/player
-```
+- **Trainer** — `trainer_name`
+- **Skill rating** — `skill_rating` + `rating_system` badge
+- **Status** — Registered / Active / Prospect badge
+- **In active cyclus** — Yes / No (from `has_active_cyclus`)
+- **Type** — Guest / Registered
+- **Notes** — full notes
+- **Source** — `guest_players.source`
+- **Birth date** — `guest_players.birth_date`
 
-`useAuth` already exposes `isAcademyManager` (set by `isUserAcademyManager` in `fetchUserData`), so no new data fetching is needed.
+Birth date / source render a placeholder for registered (non-guest) players.
 
-### 2. Remember a per-user "preferred home" (lightweight)
+## UX
 
-To keep flexibility for hybrid users (trainer + academy owner who occasionally wants the trainer view as default), persist a small preference in `localStorage` under a key like `preferredHome:{userId}` with values `'academy' | 'trainer' | 'club' | 'player'`.
+- Add a **"Columns"** button (with `Columns3` icon) in the toolbar next to "Add player" / "Import".
+- Clicking opens a `DropdownMenu` of `DropdownMenuCheckboxItem`s for each non-fixed column.
+- Selection persisted in `localStorage` under `academyPlayers:visibleColumns:{academyId}` per academy.
+- Desktop table only. Mobile cards stay unchanged.
 
-- Auth.tsx checks this key first (after the explicit `redirectUrl` / onboarding redirect), before falling back to the academy/role logic above.
-- The preference is set automatically the first time we apply the academy override (so Rene gets `academy` saved), and can be overridden later by a small "Make this my default view" action — out of scope for this change unless you want it now.
+## Technical sketch
 
-If you'd rather skip the preference layer entirely, step 1 alone fully solves Rene's case.
+In `src/pages/academy/AcademyPlayers.tsx`:
+
+1. Define a `COLUMNS` array of `{ key, label, default, fixed?, render(player) }` definitions. Fixed: `name`, `actions`. Default: `email`, `phone`, `location`, `addedOn`.
+2. Add `visibleColumnKeys: Set<string>` state, initialized from `localStorage` (fallback to defaults). Persist on change.
+3. Replace the hard-coded `<TableHeader>` / `<TableBody>` cells with `.map` over visible column defs (name first, actions last).
+4. Add the "Columns" `DropdownMenu` in the toolbar above the table.
+5. Keep the under-name notes preview only when the Notes column is hidden.
+6. No data-fetching changes needed; `birth_date` and `source` are already returned by `select('*')` on `guest_players`.
 
 ## Out of scope
 
-- No changes to sidebars, ProfileSwitcher, or the existing trainer→academy redirect inside `TrainerLayout` (that already sends academy trainers to `/app/trainer/calendar` once they hit `/app/trainer`, but Rene as an owner should not land there at all after this fix).
-- No DB schema changes.
+- Billing name / address / BTW columns.
+- Mobile card layout changes.
+- Column reordering, resizing, server-side persistence.
+- Filters, tabs, email campaign tab.
 
 ## Files to touch
 
-- `src/pages/Auth.tsx` — adjust redirect logic, pull `isAcademyManager` from `useAuth()`.
-- (Optional) `src/hooks/useAuth.tsx` — no change required; `isAcademyManager` is already exposed.
-
-## Question for you
-
-Do you want just step 1 (academy owners always land on `/app/academy`), or also step 2 (remember a per-user preferred home so power users can switch the default)?
+- `src/pages/academy/AcademyPlayers.tsx`
