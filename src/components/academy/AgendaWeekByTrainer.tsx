@@ -6,10 +6,11 @@
  * count + occupancy dots. Mobile collapses to a vertical "today + next 6"
  * stack with sessions grouped per trainer per day.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, startOfWeek, endOfWeek, addDays, isToday, isBefore, isSameDay } from 'date-fns';
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
+import { ChevronDown } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { getTrainerHue, getFillState, fillStateClasses } from './agendaTokens';
