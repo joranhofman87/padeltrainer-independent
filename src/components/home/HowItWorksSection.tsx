@@ -130,27 +130,29 @@ function CalendarMock() {
         <span className="mock-dot bg-[#28c840]" />
         <span className="ml-3">Calendar · synced</span>
       </div>
-      <div className="grid grid-cols-5 gap-2">
-        {weekShort.map((d, idx) => (
-          <div key={d} className="flex flex-col gap-2">
-            <div className="text-[11px] font-semibold tracking-wider text-navy-900 text-center">
-              {d}
-            </div>
-            {calendarSlots[idx].map((slot, i) => (
-              <div
-                key={i}
-                className={`rounded-lg px-2 py-2 text-[11px] leading-tight ${
-                  slot.tone === 'orange'
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'bg-navy-50 text-navy-900'
-                }`}
-              >
-                <div className="font-semibold">{slot.time}</div>
-                <div className="opacity-90">{slot.label}</div>
+      <div className="overflow-x-auto no-scrollbar -mx-1 px-1">
+        <div className="grid grid-cols-5 gap-2 min-w-[480px] md:min-w-0">
+          {weekShort.map((d, idx) => (
+            <div key={d} className="flex flex-col gap-2">
+              <div className="text-[11px] font-semibold tracking-wider text-navy-900 text-center">
+                {d}
               </div>
-            ))}
-          </div>
-        ))}
+              {calendarSlots[idx].map((slot, i) => (
+                <div
+                  key={i}
+                  className={`rounded-lg px-2 py-2 text-[11px] leading-tight ${
+                    slot.tone === 'orange'
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'bg-navy-50 text-navy-900'
+                  }`}
+                >
+                  <div className="font-semibold">{slot.time}</div>
+                  <div className="opacity-90">{slot.label}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
       <div className="mt-5 flex items-center gap-2 rounded-xl bg-navy-50/60 px-3 py-2.5 text-xs text-navy-900">
         <RefreshCw className="h-3.5 w-3.5 text-brand-600" />
