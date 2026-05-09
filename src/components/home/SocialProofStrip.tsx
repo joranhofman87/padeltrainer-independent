@@ -138,5 +138,6 @@ export function SocialProofStrip() {
         </div>
       </div>
     </section>
+    </>
   );
 }
