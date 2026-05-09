@@ -68,16 +68,6 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
   const collapsed = state === "collapsed";
   const { toast } = useToast();
 
-  const settingsActive =
-    isActive("/app/academy/profile") ||
-    isActive("/app/academy/locations") ||
-    isActive("/app/academy/trainers") ||
-    isActive("/app/academy/settings");
-  const [settingsOpen, setSettingsOpen] = useState(settingsActive);
-  useEffect(() => {
-    if (settingsActive) setSettingsOpen(true);
-  }, [settingsActive]);
-
   const handleLogout = async () => {
     const { error } = await signOut();
     if (error) {
@@ -102,6 +92,16 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
     if (exact) return location.pathname === path;
     return location.pathname.startsWith(path);
   };
+
+  const settingsActive =
+    isActive("/app/academy/profile") ||
+    isActive("/app/academy/locations") ||
+    isActive("/app/academy/trainers") ||
+    isActive("/app/academy/settings");
+  const [settingsOpen, setSettingsOpen] = useState(settingsActive);
+  useEffect(() => {
+    if (settingsActive) setSettingsOpen(true);
+  }, [settingsActive]);
 
   const initials = academy?.name
     ?.split(" ")
