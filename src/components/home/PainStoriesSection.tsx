@@ -41,12 +41,10 @@ export function PainStoriesSection() {
           ))}
         </div>
 
-        <Button size="lg" className="bg-primary hover:bg-primary/90 rounded-lg px-8 py-4 h-14 shadow-md" asChild>
-          <Link to={getAppUrl('/signup/trainer')}>
-            {t('homev2.cta.startTrial')}
-            <ArrowRight className="ml-2 h-5 w-5" />
-          </Link>
-        </Button>
+        <Link to={getAppUrl('/signup/trainer')} className="pill-primary">
+          {t('homev2.cta.startTrial')}
+          <ArrowRight className="ml-2 h-5 w-5" />
+        </Link>
       </div>
     </section>
   );

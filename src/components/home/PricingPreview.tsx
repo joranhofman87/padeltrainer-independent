@@ -45,12 +45,10 @@ export function PricingPreview() {
             </CardHeader>
             <CardContent className="text-center space-y-4 p-8 pt-4">
               <p className="text-muted-foreground">{t('homev2.pricing.trainers_desc')}</p>
-              <Button size="lg" className="bg-primary hover:bg-primary/90 w-full rounded-lg shadow-md" asChild>
-                <Link to={getAppUrl('/signup/trainer')}>
-                  {t('homev2.cta.startTrial')}
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
+              <Link to={getAppUrl('/signup/trainer')} className="pill-primary w-full">
+                {t('homev2.cta.startTrial')}
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
               <p className="text-sm text-muted-foreground">{t('homev2.pricing.no_cc')}</p>
               <p className="text-sm text-muted-foreground">{t('homev2.pricing.trainers_microcopy')}</p>
               <LocalizedLink to="/pricing" className="text-sm text-primary hover:underline">
