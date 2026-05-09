@@ -70,11 +70,11 @@ export function SolutionOverview() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="features" className="py-24 md:py-32 bg-white">
+    <section id="features" className="py-16 md:py-24 lg:py-32 bg-white">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className="max-w-3xl mb-14">
           <span className="eyebrow">{t('homev2.solution.eyebrow', 'The padel-shaped advantage')}</span>
-          <h2 className="mt-4 font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
+          <h2 className="mt-4 font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
             {t('homev2.solution.headline')}
           </h2>
           <p className="mt-5 text-lg text-navy-700">

@@ -130,27 +130,29 @@ function CalendarMock() {
         <span className="mock-dot bg-[#28c840]" />
         <span className="ml-3">Calendar · synced</span>
       </div>
-      <div className="grid grid-cols-5 gap-2">
-        {weekShort.map((d, idx) => (
-          <div key={d} className="flex flex-col gap-2">
-            <div className="text-[11px] font-semibold tracking-wider text-navy-900 text-center">
-              {d}
-            </div>
-            {calendarSlots[idx].map((slot, i) => (
-              <div
-                key={i}
-                className={`rounded-lg px-2 py-2 text-[11px] leading-tight ${
-                  slot.tone === 'orange'
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'bg-navy-50 text-navy-900'
-                }`}
-              >
-                <div className="font-semibold">{slot.time}</div>
-                <div className="opacity-90">{slot.label}</div>
+      <div className="overflow-x-auto no-scrollbar -mx-1 px-1">
+        <div className="grid grid-cols-5 gap-2 min-w-[480px] md:min-w-0">
+          {weekShort.map((d, idx) => (
+            <div key={d} className="flex flex-col gap-2">
+              <div className="text-[11px] font-semibold tracking-wider text-navy-900 text-center">
+                {d}
               </div>
-            ))}
-          </div>
-        ))}
+              {calendarSlots[idx].map((slot, i) => (
+                <div
+                  key={i}
+                  className={`rounded-lg px-2 py-2 text-[11px] leading-tight ${
+                    slot.tone === 'orange'
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'bg-navy-50 text-navy-900'
+                  }`}
+                >
+                  <div className="font-semibold">{slot.time}</div>
+                  <div className="opacity-90">{slot.label}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
       <div className="mt-5 flex items-center gap-2 rounded-xl bg-navy-50/60 px-3 py-2.5 text-xs text-navy-900">
         <RefreshCw className="h-3.5 w-3.5 text-brand-600" />
@@ -200,20 +202,20 @@ export function HowItWorksSection() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="how-it-works" className="py-24 md:py-32 section-cream">
+    <section id="how-it-works" className="py-16 md:py-24 lg:py-32 section-cream">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className="max-w-3xl mb-16">
           <span className="eyebrow">{t('homev2.howItWorks.eyebrow', 'How it works')}</span>
-          <h2 className="mt-4 font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
+          <h2 className="mt-4 font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
             {t('homev2.howItWorks.headline')}
           </h2>
         </div>
 
-        <div className="space-y-20 md:space-y-28">
+        <div className="space-y-14 md:space-y-24">
           {steps.map(({ num, eyebrowKey, eyebrowFallback, titleKey, descKey, bullets, bulletFallbacks, Visual, reverse }) => (
             <div
               key={num}
-              className="grid md:grid-cols-2 gap-10 md:gap-16 items-center"
+              className="grid md:grid-cols-2 gap-8 md:gap-16 items-center"
             >
               <div className={reverse ? 'md:order-2' : ''}>
                 <div className="flex items-center gap-3 mb-4">
@@ -224,7 +226,7 @@ export function HowItWorksSection() {
                     {t(`homev2.howItWorks.${eyebrowKey}`, eyebrowFallback)}
                   </span>
                 </div>
-                <h3 className="font-display text-3xl md:text-4xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
+                <h3 className="font-display text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
                   {t(`homev2.howItWorks.${titleKey}`)}
                 </h3>
                 <p className="mt-4 text-navy-700 text-lg leading-relaxed">
