@@ -490,14 +490,14 @@ export default function AcademyCalendar() {
   }, [monthSlots]);
 
   const navigatePrevious = () => {
-    if (activeTab === "hours") {
+    if (activeTab === "hours" || activeTab === "month") {
       setCurrentDate(subMonths(currentDate, 1));
     } else {
       setCurrentDate(subWeeks(currentDate, 1));
     }
   };
   const navigateNext = () => {
-    if (activeTab === "hours") {
+    if (activeTab === "hours" || activeTab === "month") {
       setCurrentDate(addMonths(currentDate, 1));
     } else {
       setCurrentDate(addWeeks(currentDate, 1));
@@ -506,8 +506,11 @@ export default function AcademyCalendar() {
   const goToToday = () => setCurrentDate(new Date());
 
   const getDateRangeLabel = () => {
-    if (activeTab === "hours") {
+    if (activeTab === "hours" || activeTab === "month") {
       return format(currentDate, "MMMM yyyy", { locale: dateLocale });
+    }
+    if (activeTab === "day") {
+      return format(currentDate, "EEEE d MMMM", { locale: dateLocale });
     }
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
     const end = endOfWeek(currentDate, { weekStartsOn: 1 });
