@@ -1,233 +1,44 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
-
-import { ArrowRight, Play, Calendar, CreditCard, UserPlus, User, Check, Clock, Users, Sparkles } from 'lucide-react';
+import { ArrowRight, Calendar, CreditCard, Star, Check, Bell, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
 
-const TABS = ['booking', 'players', 'payments', 'profile'] as const;
-type Tab = typeof TABS[number];
-
-const TAB_ICONS: Record<Tab, React.ElementType> = {
-  booking: Calendar,
-  players: UserPlus,
-  payments: CreditCard,
-  profile: User,
-};
-
 function GoogleCalendarLogo({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M18.316 5.684H5.684v12.632h12.632V5.684z" fill="#fff"/>
-      <path d="M18.316 24l5.684-5.684h-5.684V24z" fill="#EA4335"/>
-      <path d="M24 5.684V0h-5.684l5.684 5.684z" fill="#188038"/>
-      <path d="M5.684 18.316V24H0l5.684-5.684z" fill="#1967D2"/>
-      <path d="M24 5.684h-5.684v12.632H24V5.684z" fill="#FBBC04"/>
-      <path d="M5.684 5.684H0v12.632h5.684V5.684z" fill="#4285F4"/>
-      <path d="M5.684 0v5.684h12.632V0H5.684z" fill="#34A853"/>
-      <path d="M5.684 24h12.632v-5.684H5.684V24z" fill="#EA4335"/>
-      <path d="M0 5.684V0h5.684L0 5.684z" fill="#1967D2"/>
-      <path d="M8.5 16.2V15l2.1-1.8c.5-.4.8-.8.8-1.2 0-.5-.3-.8-.9-.8-.5 0-.9.2-1.3.6l-.9-.8c.6-.6 1.3-1 2.3-1 1.3 0 2.1.7 2.1 1.8 0 .7-.4 1.3-1.1 1.9l-1.3 1.1h2.5v1.2H8.5zm6.3 0v-1l1.1-.9c1.1-.9 1.6-1.5 1.6-2.1 0-.5-.3-.8-.9-.8-.5 0-.9.3-1.2.7l-.9-.7c.5-.7 1.2-1.1 2.2-1.1 1.3 0 2.1.8 2.1 1.8 0 .9-.6 1.6-1.5 2.3l-.7.5h2.3v1.2h-4.1z" fill="#4285F4"/>
+    <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <rect x="3" y="3" width="18" height="18" rx="3" fill="#fff" stroke="#dadce0" />
+      <path d="M3 8h18" stroke="#dadce0" strokeWidth="1" />
+      <text x="12" y="17" textAnchor="middle" fontFamily="Inter, system-ui" fontSize="9" fontWeight="700" fill="#1a73e8">31</text>
     </svg>
-  );
-}
-
-function MollieLogo({ className }: { className?: string }) {
-  return (
-    <div className={`inline-flex items-center justify-center rounded bg-[hsl(0,0%,15%)] px-2 py-0.5 ${className}`}>
-      <span className="text-[11px] text-white font-bold tracking-tight">mollie</span>
-    </div>
-  );
-}
-
-function MockBooking({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-4">
-        <Calendar className="h-5 w-5 text-primary" />
-        <span className="font-semibold text-sm">{t('homev2.hero.mock_booking_title')}</span>
-      </div>
-      {[
-        { time: '09:00', label: 'Private — Ana M.', booked: true },
-        { time: '10:30', label: 'Group (4p) — Beginners', booked: true },
-        { time: '14:00', label: 'Private — Open', booked: false },
-        { time: '16:00', label: 'Group (4p) — Intermediate', booked: false },
-      ].map((slot, i) => (
-        <div key={i} className={`flex items-center gap-3 p-3 rounded-lg border text-sm ${slot.booked ? 'bg-muted/30 border-border' : 'border-dashed border-primary/50 bg-primary/5'}`}>
-          <span className="font-mono text-muted-foreground w-12">{slot.time}</span>
-          <span className="flex-1">{slot.label}</span>
-          {slot.booked ? (
-            <span className="text-xs bg-primary/60 text-primary-foreground px-2 py-0.5 rounded">✓</span>
-          ) : (
-            <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">{t('homev2.hero.mock_booking_slot')}</span>
-          )}
-        </div>
-      ))}
-      <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
-        <GoogleCalendarLogo className="h-4 w-4" />
-        <span>{t('homev2.hero.mock_booking_sync')}</span>
-      </div>
-    </div>
-  );
-}
-
-function MockRegistration({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <UserPlus className="h-5 w-5 text-primary" />
-        <span className="font-semibold text-sm">{t('homev2.hero.mock_reg_title')}</span>
-      </div>
-      <div className="flex items-center gap-4">
-        <div className="flex-1 rounded-xl border bg-primary/5 border-primary/20 p-4 text-center">
-          <div className="text-3xl font-bold text-primary">52</div>
-          <div className="text-xs text-muted-foreground mt-1">{t('homev2.hero.mock_reg_subtitle')}</div>
-        </div>
-        <div className="flex-1 rounded-xl border bg-muted/30 p-4 text-center">
-          <div className="text-3xl font-bold text-foreground">6</div>
-          <div className="text-xs text-muted-foreground mt-1">{t('homev2.hero.mock_reg_groups')}</div>
-        </div>
-      </div>
-      <div className="space-y-2">
-        {[
-          { name: 'Sarah van Dijk', time: '2 min ago', level: 'Intermediate' },
-          { name: 'Marco Visser', time: '8 min ago', level: 'Beginner' },
-          { name: 'Lisa de Boer', time: '15 min ago', level: 'Advanced' },
-        ].map((reg, i) => (
-          <div key={i} className="flex items-center gap-3 text-sm">
-            <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Users className="h-3.5 w-3.5 text-primary" />
-            </div>
-            <span className="flex-1 truncate">{reg.name}</span>
-            <span className="text-xs text-muted-foreground">{reg.level}</span>
-            <span className="text-xs text-muted-foreground">{reg.time}</span>
-          </div>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
-        <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
-        <span className="text-xs text-primary font-medium">{t('homev2.hero.mock_reg_ai')}</span>
-      </div>
-    </div>
-  );
-}
-
-function MockPayments({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5 text-primary" />
-          <span className="font-semibold text-sm">{t('homev2.hero.mock_payments_title')}</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{t('homev2.hero.mock_payments_auto')}</span>
-          <div className="h-5 w-9 rounded-full bg-primary flex items-center px-0.5">
-            <div className="h-4 w-4 rounded-full bg-primary-foreground ml-auto" />
-          </div>
-        </div>
-      </div>
-      <div className="rounded-lg border overflow-hidden">
-        <div className="grid grid-cols-3 gap-0 text-xs font-medium text-muted-foreground bg-muted/50 p-2.5">
-          <span>Player</span>
-          <span className="text-right">Amount</span>
-          <span className="text-right">Status</span>
-        </div>
-        {[
-          { name: 'Ana M.', amount: '€35', status: 'Paid' },
-          { name: 'Marco V.', amount: '€25', status: 'Paid' },
-          { name: 'Lisa K.', amount: '€35', status: 'Pending' },
-          { name: 'Tom B.', amount: '€25', status: 'Paid' },
-        ].map((row, i) => (
-          <div key={i} className="grid grid-cols-3 gap-0 text-sm p-2.5 border-t">
-            <span>{row.name}</span>
-            <span className="text-right font-mono">{row.amount}</span>
-            <span className="text-right">
-              <span className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full ${row.status === 'Paid' ? 'bg-green-500/10 text-green-600' : 'bg-primary/10 text-primary'}`}>
-                {row.status === 'Paid' && <Check className="h-3 w-3 mr-0.5" />}
-                {row.status}
-              </span>
-            </span>
-          </div>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
-        <MollieLogo />
-        <span>{t('homev2.hero.mock_payments_powered')}</span>
-      </div>
-    </div>
-  );
-}
-
-function MockProfile({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-4">
-        <div className="h-12 w-12 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <User className="h-6 w-6 text-primary" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h4 className="font-semibold text-sm">Coach Maria Santos</h4>
-          <p className="text-xs text-muted-foreground mt-0.5">padeltrainer.ai/maria-santos</p>
-        </div>
-        <div className="rounded-lg bg-primary/10 px-3 py-1.5 text-center flex-shrink-0">
-          <div className="text-lg font-bold text-primary">8</div>
-          <div className="text-[10px] text-primary/80">{t('homev2.hero.mock_profile_slots', { count: '8' })}</div>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {[
-          { day: 'Mon', time: '09:00' },
-          { day: 'Mon', time: '14:00' },
-          { day: 'Tue', time: '10:30' },
-          { day: 'Wed', time: '09:00' },
-          { day: 'Wed', time: '16:00' },
-          { day: 'Thu', time: '14:00' },
-          { day: 'Fri', time: '09:00' },
-          { day: 'Fri', time: '11:00' },
-        ].map((slot, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-xs p-2.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer">
-            <Clock className="h-3 w-3 text-primary flex-shrink-0" />
-            <span className="font-medium">{slot.day} {slot.time}</span>
-          </div>
-        ))}
-      </div>
-      <div className="h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-        {t('homev2.hero.mock_profile_cta')}
-      </div>
-    </div>
   );
 }
 
 export function HeroSection() {
   const { t } = useTranslation('marketing');
-  const [activeTab, setActiveTab] = useState<Tab>('booking');
-
-  const mockScreens: Record<Tab, React.ReactNode> = {
-    booking: <MockBooking t={t} />,
-    players: <MockRegistration t={t} />,
-    payments: <MockPayments t={t} />,
-    profile: <MockProfile t={t} />,
-  };
 
   return (
     <section className="relative overflow-hidden">
-      <div className="absolute inset-0 dot-grid -z-10" aria-hidden />
-      <div className="relative max-w-[1200px] mx-auto px-4 md:px-6 py-20 md:py-32">
-        {/* Centered copy */}
-        <div className="text-center max-w-3xl mx-auto">
-          <span className="eyebrow mb-6">{t('homev2.hero.eyebrow', 'For padel coaches')}</span>
+      {/* Backdrop dot grid */}
+      <div className="absolute inset-0 dot-grid opacity-60 -z-10" aria-hidden />
 
-          <h1 className="font-display text-4xl md:text-[44px] lg:text-[56px] font-extrabold tracking-[-0.02em] leading-[1.05] mb-6 mt-6 text-navy-900">
+      <div className="relative max-w-7xl mx-auto px-4 md:px-6 pt-16 pb-20 lg:pt-24 lg:pb-28 grid lg:grid-cols-12 gap-12 items-center">
+        {/* LEFT: copy */}
+        <div className="lg:col-span-7">
+          <span className="inline-flex items-center gap-2 rounded-full bg-card border border-navy-900/10 shadow-soft px-3 py-1.5 text-xs font-medium text-navy-700">
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
+            {t('homev2.hero.eyebrow', 'For padel coaches, academies & clubs')}
+          </span>
+
+          <h1 className="mt-6 font-display font-extrabold text-5xl sm:text-6xl lg:text-7xl leading-[1.02] tracking-[-0.02em] text-navy-900">
             {t('homev2.hero.h1')}
           </h1>
 
-          <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
+          <p className="mt-6 text-lg sm:text-xl text-navy-700 max-w-xl leading-relaxed">
             {t('homev2.hero.subheadline')}
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-4">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link
               to={getAppUrl('/signup/trainer')}
               onClick={() => trackEvent('cta_clicked', { location: 'hero' })}
@@ -237,67 +48,171 @@ export function HeroSection() {
               <ArrowRight className="ml-2 h-5 w-5" />
             </Link>
             <a href="#how-it-works" className="pill-ghost text-base">
-              <Play className="mr-2 h-4 w-4" />
               {t('homev2.cta.watchDemo')}
             </a>
           </div>
 
-          <p className="text-sm text-muted-foreground mb-14">
-            {t('homev2.cta.trustMicrocopy')}
-          </p>
-        </div>
-
-        {/* Interactive product showcase with floating effect */}
-        <div
-          className="max-w-3xl mx-auto"
-        >
-          {/* Tabs with underline indicator */}
-          <div className="flex gap-1 overflow-x-auto pb-0 mb-0 scrollbar-hide justify-center border-b border-border">
-            {TABS.map(tab => {
-              const Icon = TAB_ICONS[tab];
-              const isActive = tab === activeTab;
-              return (
-                <button
-                  key={tab}
-                  onClick={() => {
-                    setActiveTab(tab);
-                    trackEvent('hero_tab_clicked', { tab });
-                  }}
-                  className={`relative flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
-                    isActive
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t(`homev2.hero.tab_${tab}`)}</span>
-                  {isActive && (
-                    <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
-                  )}
-                </button>
-              );
-            })}
+          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-navy-600">
+            {[
+              t('homev2.cta.trust_nocard', 'No credit card'),
+              t('homev2.cta.trust_setup', 'Set up in 10 minutes'),
+              t('homev2.cta.trust_gdpr', 'GDPR-ready'),
+            ].map((label) => (
+              <span key={label} className="inline-flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-brand-500" />
+                {label}
+              </span>
+            ))}
           </div>
 
-          {/* Mock screen container with floating shadow */}
-          <div className="relative rounded-b-xl rounded-t-none border-2 border-t-0 border-border bg-card shadow-[0_4px_24px_rgba(0,0,0,0.08)] overflow-hidden">
-            {/* Subtle blur backdrop */}
-            <div className="absolute -inset-4 bg-primary/5 blur-3xl -z-10 rounded-3xl" />
-            <div className="relative min-h-[320px] md:min-h-[340px]">
-              {TABS.map(tab => (
-                <div
-                  key={tab}
-                  className={`absolute inset-0 p-5 md:p-6 transition-opacity duration-300 ${
-                    tab === activeTab ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
-                  }`}
-                >
-                  {mockScreens[tab]}
-                </div>
+          <div className="mt-6 flex items-center gap-3">
+            <div className="flex items-center gap-0.5 text-brand-500">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star key={i} className="w-5 h-5 fill-current" />
               ))}
             </div>
+            <span className="text-sm text-navy-700">
+              <span className="font-semibold text-navy-900">{t('homev2.hero.loved_lead', 'Loved by padel coaches')}</span>{' '}
+              {t('homev2.hero.loved_tail', 'across Europe')}
+            </span>
           </div>
+        </div>
+
+        {/* RIGHT: mock window + floating chips */}
+        <div className="lg:col-span-5 relative">
+          <div className="mock-window relative">
+            {/* Browser bar */}
+            <div className="mock-bar flex items-center px-4 h-9 gap-1.5">
+              <span className="mock-dot bg-red-300" />
+              <span className="mock-dot bg-yellow-300" />
+              <span className="mock-dot bg-green-300" />
+              <span className="ml-3 text-xs text-navy-500 font-medium">padeltrainer.ai/rene</span>
+            </div>
+
+            {/* Tabs */}
+            <div className="px-4 pt-4">
+              <div className="flex gap-1 text-xs font-medium">
+                <span className="px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700">{t('homev2.hero.tab_booking')}</span>
+                <span className="px-3 py-1.5 rounded-lg text-navy-500">{t('homev2.hero.tab_players')}</span>
+                <span className="px-3 py-1.5 rounded-lg text-navy-500">{t('homev2.hero.tab_payments')}</span>
+                <span className="px-3 py-1.5 rounded-lg text-navy-500">{t('homev2.hero.tab_profile')}</span>
+              </div>
+            </div>
+
+            {/* Slot rows */}
+            <div className="px-4 py-4 space-y-2">
+              <div className="text-xs font-semibold text-navy-500 uppercase tracking-wide">
+                {t('homev2.hero.mock_today', 'Today · Tuesday')}
+              </div>
+
+              <SlotRow time="07:30" title={t('homev2.hero.mock_row1', 'Group · 2/4')} sub="Court 2 · 60 min" status="paid" />
+              <SlotRow time="09:00" title={t('homev2.hero.mock_row2', 'Private · Daan v.')} sub="Court 1 · 45 min" status="confirmed" />
+              <SlotRow time="10:30" title={t('homev2.hero.mock_row3', 'Available')} sub="Court 3 · 60 min" status="open" />
+              <SlotRow time="12:00" title={t('homev2.hero.mock_row4', 'Group · 4/4 · Sold out')} sub="Court 2 · 60 min" status="paid" />
+
+              <div className="flex items-center gap-2 px-3 py-2 mt-2 rounded-lg bg-navy-50 text-xs text-navy-600">
+                <GoogleCalendarLogo className="w-4 h-4" />
+                {t('homev2.hero.mock_booking_sync')}
+              </div>
+            </div>
+          </div>
+
+          {/* Floating chips */}
+          <FloatChip
+            className="hidden md:flex absolute -left-10 top-10 animate-floaty"
+            icon={<Zap className="w-5 h-5" />}
+            tone="brand"
+            label={t('homev2.hero.chip_cancel_label', 'Cancellation')}
+            value={t('homev2.hero.chip_cancel_value', 'Slot refilled fast')}
+          />
+          <FloatChip
+            className="hidden md:flex absolute -right-6 top-1/2 animate-floaty [animation-delay:1.2s]"
+            icon={<CreditCard className="w-5 h-5" />}
+            tone="navy"
+            label={t('homev2.hero.chip_pay_label', 'iDEAL paid')}
+            value={t('homev2.hero.chip_pay_value', 'Before the lesson')}
+          />
+          <FloatChip
+            className="hidden md:flex absolute -bottom-6 left-1/4 animate-floaty [animation-delay:2.4s]"
+            icon={<Bell className="w-5 h-5" />}
+            tone="navy"
+            label={t('homev2.hero.chip_notify_label', 'Followers notified')}
+            value={t('homev2.hero.chip_notify_value', 'Auto-DM')}
+          />
         </div>
       </div>
     </section>
+  );
+}
+
+function SlotRow({
+  time,
+  title,
+  sub,
+  status,
+}: {
+  time: string;
+  title: string;
+  sub: string;
+  status: 'paid' | 'confirmed' | 'open';
+}) {
+  const isOpen = status === 'open';
+  return (
+    <div
+      className={`flex items-center justify-between p-3 rounded-xl border ${
+        isOpen
+          ? 'bg-card border-dashed border-brand-300'
+          : status === 'paid'
+            ? 'bg-navy-50/60 border-navy-100'
+            : 'bg-card border-navy-100'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="text-xs font-semibold text-navy-700 w-12 tabular-nums">{time}</div>
+        <div>
+          <div className={`text-sm font-semibold ${isOpen ? 'text-brand-700' : 'text-navy-900'}`}>{title}</div>
+          <div className="text-xs text-navy-500">{sub}</div>
+        </div>
+      </div>
+      {status === 'paid' && (
+        <span className="text-xs font-medium text-success bg-success-soft px-2 py-1 rounded-full">Paid</span>
+      )}
+      {status === 'confirmed' && (
+        <span className="text-xs font-medium text-brand-700 bg-brand-50 px-2 py-1 rounded-full">Confirmed</span>
+      )}
+      {status === 'open' && (
+        <span className="text-xs font-medium text-navy-500">Auto-fill on</span>
+      )}
+    </div>
+  );
+}
+
+function FloatChip({
+  icon,
+  tone,
+  label,
+  value,
+  className = '',
+}: {
+  icon: React.ReactNode;
+  tone: 'brand' | 'navy';
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className={`card-chip p-3 items-center gap-3 ${className}`}>
+      <div
+        className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+          tone === 'brand' ? 'bg-brand-50 text-brand-600' : 'bg-navy-50 text-navy-700'
+        }`}
+      >
+        {icon}
+      </div>
+      <div>
+        <div className="text-xs text-navy-500">{label}</div>
+        <div className="text-sm font-semibold text-navy-900">{value}</div>
+      </div>
+    </div>
   );
 }
