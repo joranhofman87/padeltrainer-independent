@@ -114,11 +114,13 @@ export default function Auth() {
           localStorage.removeItem('redirectAfterOnboarding');
           navigate(onboardingRedirect);
         } else {
-        if (role === 'admin') {
+        if (isAcademyManager) {
+            navigate('/app/academy');
+          } else if (role === 'admin') {
             navigate('/app/admin');
           } else if (role === 'trainer') {
             navigate('/app/trainer');
-          } else if (role === 'club') {
+          } else if (role === 'club' || isClubManager) {
             navigate('/app/club');
           } else {
             navigate('/app/player');
