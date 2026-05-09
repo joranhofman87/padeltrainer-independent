@@ -716,65 +716,47 @@ export default function AcademyPlayers() {
             </Card>
           ) : (
             <Card>
-              <CardHeader>
-                <CardTitle>{tTrainer('players.guestPlayers')}</CardTitle>
-                <CardDescription>
-                  {tTrainer('players.guestPlayersDescription', { count: filteredPlayers.length })}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+              <CardContent className="p-0">
                 {/* Desktop Table */}
                 <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
+                <Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
+                  <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
                       <TableHead>{tTrainer('players.name')}</TableHead>
                       {visibleColumns.map((key) => {
                         const col = ALL_COLUMNS.find((c) => c.key === key);
                         if (!col) return null;
-                        return <TableHead key={key}>{col.label}</TableHead>;
+                        return <TableHead key={key} className="whitespace-nowrap">{col.label}</TableHead>;
                       })}
-                      <TableHead className="w-[50px]"></TableHead>
+                      <TableHead className="w-[40px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredPlayers.map((player) => (
-                      <TableRow key={player.id}>
-                        <TableCell>
-                          <div className="font-medium">{player.full_name}</div>
+                      <TableRow key={player.id} className="h-8">
+                        <TableCell className="font-medium whitespace-nowrap max-w-[200px] truncate" title={player.full_name}>
+                          {player.full_name}
                           {player.notes && !isColVisible('notes') && (
-                            <div className="text-xs text-muted-foreground truncate max-w-[200px]">
-                              {player.notes}
-                            </div>
+                            <span className="ml-2 text-xs text-muted-foreground">·</span>
                           )}
                         </TableCell>
                         {visibleColumns.map((key) => {
                           switch (key) {
                             case 'email':
                               return (
-                                <TableCell key={key} className="text-sm">
-                                  {player.email ? (
-                                    <span className="flex items-center gap-1">
-                                      <Mail className="h-3 w-3 text-muted-foreground" />
-                                      {player.email}
-                                    </span>
-                                  ) : <span className="text-muted-foreground">—</span>}
+                                <TableCell key={key} className="whitespace-nowrap max-w-[220px] truncate" title={player.email}>
+                                  {player.email || <span className="text-muted-foreground">—</span>}
                                 </TableCell>
                               );
                             case 'phone':
                               return (
-                                <TableCell key={key} className="text-sm">
-                                  {player.phone ? (
-                                    <span className="flex items-center gap-1">
-                                      <Phone className="h-3 w-3 text-muted-foreground" />
-                                      {player.phone}
-                                    </span>
-                                  ) : <span className="text-muted-foreground">—</span>}
+                                <TableCell key={key} className="whitespace-nowrap">
+                                  {player.phone || <span className="text-muted-foreground">—</span>}
                                 </TableCell>
                               );
                             case 'location':
                               return (
-                                <TableCell key={key} className="text-sm text-muted-foreground">
+                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[180px] truncate" title={player.location_names?.join(', ') || ''}>
                                   {player.location_names && player.location_names.length > 0
                                     ? player.location_names.join(', ')
                                     : '—'}
@@ -782,47 +764,47 @@ export default function AcademyPlayers() {
                               );
                             case 'addedOn':
                               return (
-                                <TableCell key={key} className="text-sm text-muted-foreground">
-                                  {format(new Date(player.created_at), 'MMM d, yyyy')}
+                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap">
+                                  {format(new Date(player.created_at), 'dd-MM-yyyy')}
                                 </TableCell>
                               );
                             case 'trainer':
                               return (
-                                <TableCell key={key} className="text-sm text-muted-foreground">
+                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[160px] truncate" title={player.trainer_name || ''}>
                                   {player.trainer_name || '—'}
                                 </TableCell>
                               );
                             case 'skill':
                               return (
-                                <TableCell key={key}>
+                                <TableCell key={key} className="whitespace-nowrap">
                                   {player.skill_rating ? (
-                                    <div className="flex items-center gap-1">
-                                      <Badge variant="secondary">{player.skill_rating.toFixed(1)}</Badge>
-                                      <span className="text-xs text-muted-foreground uppercase">
+                                    <span className="inline-flex items-center gap-1">
+                                      <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{player.skill_rating.toFixed(1)}</Badge>
+                                      <span className="text-[11px] text-muted-foreground uppercase">
                                         {player.rating_system || 'knltb'}
                                       </span>
-                                    </div>
+                                    </span>
                                   ) : <span className="text-muted-foreground">—</span>}
                                 </TableCell>
                               );
                             case 'status':
                               return (
-                                <TableCell key={key}>
+                                <TableCell key={key} className="whitespace-nowrap">
                                   {player.type === 'registered' ? (
-                                    <Badge variant="default">{tTrainer('players.statuses.registered')}</Badge>
+                                    <Badge variant="default" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.registered')}</Badge>
                                   ) : player.has_trained ? (
-                                    <Badge variant="secondary">{tTrainer('players.statuses.active')}</Badge>
+                                    <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.active')}</Badge>
                                   ) : (
-                                    <Badge variant="outline">{tTrainer('players.statuses.prospect')}</Badge>
+                                    <Badge variant="outline" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.prospect')}</Badge>
                                   )}
                                 </TableCell>
                               );
                             case 'cyclus':
                               return (
-                                <TableCell key={key}>
+                                <TableCell key={key} className="whitespace-nowrap">
                                   {player.has_active_cyclus ? (
-                                    <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-                                      <RefreshCw className="h-3 w-3 mr-1" />
+                                    <Badge variant="outline" className="h-5 px-1.5 text-[11px] border-primary/30 text-primary">
+                                      <RefreshCw className="h-2.5 w-2.5 mr-1" />
                                       {tTrainer('players.columns.cyclusYes', 'Yes')}
                                     </Badge>
                                   ) : <span className="text-muted-foreground">—</span>}
@@ -830,8 +812,8 @@ export default function AcademyPlayers() {
                               );
                             case 'type':
                               return (
-                                <TableCell key={key} className="text-sm">
-                                  <Badge variant="outline" className="text-xs">
+                                <TableCell key={key} className="whitespace-nowrap">
+                                  <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
                                     {player.type === 'guest'
                                       ? tTrainer('players.columns.typeGuest', 'Guest')
                                       : tTrainer('players.columns.typeRegistered', 'Registered')}
@@ -840,7 +822,7 @@ export default function AcademyPlayers() {
                               );
                             case 'notes':
                               return (
-                                <TableCell key={key} className="text-sm text-muted-foreground max-w-[260px]">
+                                <TableCell key={key} className="text-muted-foreground max-w-[220px]">
                                   <div className="truncate" title={player.notes || ''}>
                                     {player.notes || '—'}
                                   </div>
@@ -848,25 +830,25 @@ export default function AcademyPlayers() {
                               );
                             case 'source':
                               return (
-                                <TableCell key={key} className="text-sm text-muted-foreground">
+                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[140px] truncate" title={player.source || ''}>
                                   {player.source || '—'}
                                 </TableCell>
                               );
                             case 'birthDate':
                               return (
-                                <TableCell key={key} className="text-sm text-muted-foreground">
-                                  {player.birth_date ? format(new Date(player.birth_date), 'MMM d, yyyy') : '—'}
+                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap">
+                                  {player.birth_date ? format(new Date(player.birth_date), 'dd-MM-yyyy') : '—'}
                                 </TableCell>
                               );
                             default:
                               return null;
                           }
                         })}
-                        <TableCell>
+                        <TableCell className="w-[40px]">
                           {player.type === 'guest' && player.originalGuest ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
+                                <Button variant="ghost" size="icon" className="h-7 w-7">
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -893,7 +875,7 @@ export default function AcademyPlayers() {
                 </div>
 
                 {/* Mobile Cards */}
-                <div className="md:hidden space-y-3">
+                <div className="md:hidden space-y-3 p-4">
                   {filteredPlayers.map((player) => (
                     <div key={player.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
