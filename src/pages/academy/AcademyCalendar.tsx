@@ -973,30 +973,6 @@ export default function AcademyCalendar() {
           </TabsContent>
         </Tabs>
 
-        {/* Secondary navigation: less-used sections */}
-        {isPrimaryView && (
-          <nav className="mt-6 flex flex-wrap items-center gap-2 border-t pt-4">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground mr-1">
-              {t("calendar.moreSections", "More")}
-            </span>
-            {(["cycles", "hours", "reports"] as TabValue[]).map((v) => {
-              const Icon = viewLabel[v].icon;
-              return (
-                <Button
-                  key={v}
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1.5 text-muted-foreground hover:text-foreground"
-                  onClick={() => setActiveTab(v)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {viewLabel[v].label}
-                </Button>
-              );
-            })}
-          </nav>
-        )}
-
         {/* Back-to-agenda link when on a secondary tab */}
         {!isPrimaryView && (
           <div>
