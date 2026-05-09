@@ -1,7 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ArrowRight, Check, Users, Briefcase } from 'lucide-react';
+import { ArrowRight, Users, Briefcase } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
 import { LocalizedLink } from '@/components/LocalizedLink';
@@ -10,52 +8,57 @@ export function PricingPreview() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="pricing" className="py-24 md:py-32">
-      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
-        <h2 className="font-display text-3xl md:text-[44px] font-extrabold tracking-[-0.02em] text-center mb-14 text-foreground">
-          {t('homev2.pricing.headline')}
-        </h2>
+    <section id="pricing" className="py-24 md:py-32 bg-white">
+      <div className="max-w-7xl mx-auto px-4 md:px-6">
+        <div className="text-center max-w-3xl mx-auto mb-14">
+          <span className="eyebrow">{t('homev2.pricing.eyebrow', 'Simple pricing')}</span>
+          <h2 className="mt-4 font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
+            {t('homev2.pricing.headline')}
+          </h2>
+        </div>
 
         <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-          {/* Players card */}
-          <Card className="h-full shadow-md border-0 rounded-xl">
-            <CardHeader className="text-center p-8 pb-4">
-              <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <CardTitle className="text-xl">{t('homev2.pricing.players_title')}</CardTitle>
-              <p className="text-3xl font-bold mt-2">{t('homev2.pricing.players_price')}</p>
-            </CardHeader>
-            <CardContent className="text-center space-y-4 p-8 pt-4">
-              <p className="text-muted-foreground">{t('homev2.pricing.players_desc')}</p>
-              <p className="text-muted-foreground">{t('homev2.pricing.players_desc2')}</p>
-              <Button size="lg" variant="outline" className="w-full rounded-lg" asChild>
-                <Link to={getAppUrl('/signup/player')}>
-                  {t('homev2.pricing.players_cta')}
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+          {/* Players */}
+          <div className="card-chip p-8 flex flex-col text-center">
+            <div className="w-12 h-12 rounded-xl bg-navy-50 text-navy-700 mx-auto flex items-center justify-center">
+              <Users className="h-5 w-5" />
+            </div>
+            <h3 className="mt-5 font-display font-bold text-xl text-navy-900">
+              {t('homev2.pricing.players_title')}
+            </h3>
+            <p className="mt-3 font-display text-4xl font-extrabold text-navy-900">
+              {t('homev2.pricing.players_price')}
+            </p>
+            <p className="mt-4 text-navy-700">{t('homev2.pricing.players_desc')}</p>
+            <p className="mt-2 text-navy-600 text-sm flex-1">{t('homev2.pricing.players_desc2')}</p>
+            <Link to={getAppUrl('/signup/player')} className="pill-ghost w-full justify-center mt-6">
+              {t('homev2.pricing.players_cta')}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </div>
 
-          {/* Trainers card */}
-          <Card className="h-full border-2 border-primary shadow-lg rounded-xl">
-            <CardHeader className="text-center p-8 pb-4">
-              <Briefcase className="h-8 w-8 text-primary mx-auto mb-2" />
-              <CardTitle className="text-xl">{t('homev2.pricing.trainers_title')}</CardTitle>
-              <p className="text-3xl font-bold mt-2">{t('homev2.pricing.trainers_price')}</p>
-            </CardHeader>
-            <CardContent className="text-center space-y-4 p-8 pt-4">
-              <p className="text-muted-foreground">{t('homev2.pricing.trainers_desc')}</p>
-              <Link to={getAppUrl('/signup/trainer')} className="pill-primary w-full">
-                {t('homev2.cta.startTrial')}
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-              <p className="text-sm text-muted-foreground">{t('homev2.pricing.no_cc')}</p>
-              <p className="text-sm text-muted-foreground">{t('homev2.pricing.trainers_microcopy')}</p>
-              <LocalizedLink to="/pricing" className="text-sm text-primary hover:underline">
-                {t('homev2.pricing.seeAllPlans')}
-              </LocalizedLink>
-            </CardContent>
-          </Card>
+          {/* Trainers */}
+          <div className="card-chip p-8 flex flex-col text-center ring-2 ring-brand-500/40">
+            <div className="w-12 h-12 rounded-xl bg-brand-500 text-white mx-auto flex items-center justify-center">
+              <Briefcase className="h-5 w-5" />
+            </div>
+            <h3 className="mt-5 font-display font-bold text-xl text-navy-900">
+              {t('homev2.pricing.trainers_title')}
+            </h3>
+            <p className="mt-3 font-display text-4xl font-extrabold text-navy-900">
+              {t('homev2.pricing.trainers_price')}
+            </p>
+            <p className="mt-4 text-navy-700 flex-1">{t('homev2.pricing.trainers_desc')}</p>
+            <Link to={getAppUrl('/signup/trainer')} className="pill-primary w-full justify-center mt-6">
+              {t('homev2.cta.startTrial')}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+            <p className="mt-3 text-sm text-navy-600">{t('homev2.pricing.no_cc')}</p>
+            <p className="text-sm text-navy-600">{t('homev2.pricing.trainers_microcopy')}</p>
+            <LocalizedLink to="/pricing" className="mt-2 text-sm text-brand-700 hover:underline font-medium">
+              {t('homev2.pricing.seeAllPlans')}
+            </LocalizedLink>
+          </div>
         </div>
       </div>
     </section>

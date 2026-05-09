@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-
 import { ArrowRight, MessageSquare, CalendarX, Receipt } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
@@ -14,29 +13,27 @@ export function PainStoriesSection() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section className="py-16 md:py-20">
-      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
-        <h2 className="font-display text-3xl md:text-[44px] font-extrabold tracking-[-0.02em] mb-12 text-foreground">
-          {t('homev2.pain.headline')}
-        </h2>
+    <section className="py-24 md:py-32 section-cream">
+      <div className="max-w-7xl mx-auto px-4 md:px-6">
+        <div className="max-w-3xl mb-14">
+          <span className="eyebrow">{t('homev2.pain.eyebrow', 'The daily grind')}</span>
+          <h2 className="mt-4 font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
+            {t('homev2.pain.headline')}
+          </h2>
+        </div>
 
-        <div className="space-y-6 mb-12">
+        <div className="grid md:grid-cols-3 gap-6 mb-12">
           {painItems.map((item) => (
-            <div
-              key={item.key}
-              className="bg-card rounded-lg border-l-4 border-l-primary shadow-sm p-8"
-            >
-              <div className="flex items-start gap-4">
-                <item.icon className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                <div className="space-y-0">
-                  <p className="text-[17px] text-foreground leading-relaxed">
-                    {t(`homev2.pain.${item.key}_story`)}
-                  </p>
-                  <p className="text-primary font-medium mt-4">
-                    {t(`homev2.pain.${item.key}_solution`)}
-                  </p>
-                </div>
+            <div key={item.key} className="card-chip p-7 flex flex-col">
+              <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
+                <item.icon className="h-5 w-5" />
               </div>
+              <p className="mt-5 text-navy-700 leading-relaxed flex-1">
+                {t(`homev2.pain.${item.key}_story`)}
+              </p>
+              <p className="mt-5 pt-5 border-t border-navy-900/5 text-navy-900 font-semibold">
+                {t(`homev2.pain.${item.key}_solution`)}
+              </p>
             </div>
           ))}
         </div>
