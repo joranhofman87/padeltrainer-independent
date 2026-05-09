@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
+
 import { ArrowRight, MessageSquare, CalendarX, Receipt } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
@@ -16,7 +16,7 @@ export function PainStoriesSection() {
   return (
     <section className="py-16 md:py-20">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
-        <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] mb-12 text-foreground">
+        <h2 className="font-display text-3xl md:text-[44px] font-extrabold tracking-[-0.02em] mb-12 text-foreground">
           {t('homev2.pain.headline')}
         </h2>
 
@@ -41,12 +41,10 @@ export function PainStoriesSection() {
           ))}
         </div>
 
-        <Button size="lg" className="bg-primary hover:bg-primary/90 rounded-lg px-8 py-4 h-14 shadow-md" asChild>
-          <Link to={getAppUrl('/signup/trainer')}>
-            {t('homev2.cta.startTrial')}
-            <ArrowRight className="ml-2 h-5 w-5" />
-          </Link>
-        </Button>
+        <Link to={getAppUrl('/signup/trainer')} className="pill-primary">
+          {t('homev2.cta.startTrial')}
+          <ArrowRight className="ml-2 h-5 w-5" />
+        </Link>
       </div>
     </section>
   );

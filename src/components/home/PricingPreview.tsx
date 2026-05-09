@@ -12,7 +12,7 @@ export function PricingPreview() {
   return (
     <section id="pricing" className="py-24 md:py-32">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
-        <h2 className="text-3xl md:text-[42px] font-bold tracking-[-0.02em] text-center mb-14 text-foreground">
+        <h2 className="font-display text-3xl md:text-[44px] font-extrabold tracking-[-0.02em] text-center mb-14 text-foreground">
           {t('homev2.pricing.headline')}
         </h2>
 
@@ -45,12 +45,10 @@ export function PricingPreview() {
             </CardHeader>
             <CardContent className="text-center space-y-4 p-8 pt-4">
               <p className="text-muted-foreground">{t('homev2.pricing.trainers_desc')}</p>
-              <Button size="lg" className="bg-primary hover:bg-primary/90 w-full rounded-lg shadow-md" asChild>
-                <Link to={getAppUrl('/signup/trainer')}>
-                  {t('homev2.cta.startTrial')}
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
+              <Link to={getAppUrl('/signup/trainer')} className="pill-primary w-full">
+                {t('homev2.cta.startTrial')}
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
               <p className="text-sm text-muted-foreground">{t('homev2.pricing.no_cc')}</p>
               <p className="text-sm text-muted-foreground">{t('homev2.pricing.trainers_microcopy')}</p>
               <LocalizedLink to="/pricing" className="text-sm text-primary hover:underline">
