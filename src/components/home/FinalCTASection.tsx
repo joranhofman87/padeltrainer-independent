@@ -7,7 +7,7 @@ export function FinalCTASection() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section className="py-24 md:py-32 bg-navy-950 text-white relative overflow-hidden">
+    <section className="py-16 md:py-24 lg:py-32 bg-navy-950 text-white relative overflow-hidden">
       <div className="absolute inset-0 dot-grid opacity-20" aria-hidden />
       <div className="relative max-w-7xl mx-auto px-4 md:px-6 text-center">
         <div className="max-w-3xl mx-auto">

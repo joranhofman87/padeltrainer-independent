@@ -8,11 +8,11 @@ export function PricingPreview() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="pricing" className="py-24 md:py-32 bg-white">
+    <section id="pricing" className="py-16 md:py-24 lg:py-32 bg-white">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <span className="eyebrow">{t('homev2.pricing.eyebrow', 'Simple pricing')}</span>
-          <h2 className="mt-4 font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
+          <h2 className="mt-4 font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
             {t('homev2.pricing.headline')}
           </h2>
         </div>

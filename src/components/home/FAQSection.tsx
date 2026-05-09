@@ -25,13 +25,13 @@ export function FAQSection() {
   };
 
   return (
-    <section id="faq" className="py-24 md:py-32 section-cream">
+    <section id="faq" className="py-16 md:py-24 lg:py-32 section-cream">
       <div className="max-w-3xl mx-auto px-4 md:px-6">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
 
         <div className="text-center mb-14">
           <span className="eyebrow">{t('homev2.faq.eyebrow', 'Questions')}</span>
-          <h2 className="mt-4 font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
+          <h2 className="mt-4 font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
             {t('homev2.faq.headline')}
           </h2>
         </div>

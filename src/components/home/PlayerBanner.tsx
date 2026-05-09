@@ -14,7 +14,7 @@ export function PlayerBanner() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="players" className="py-24 md:py-32 bg-offwhite">
+    <section id="players" className="py-16 md:py-24 lg:py-32 bg-offwhite">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className="card-chip p-8 md:p-12 flex flex-col md:flex-row md:items-center md:justify-between gap-8">
           <div className="md:max-w-md">
