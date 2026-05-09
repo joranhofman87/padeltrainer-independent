@@ -1,58 +1,67 @@
-## Goal
+## What's done so far
 
-Fix the above-the-fold experience on mobile (≤414px) so the hero feels tight, scannable, and the mock visual is reachable without heavy scrolling. Apply consistent mobile spacing across the rest of the homepage as a follow-up pass.
+- Hero section restyled with new visual language (Plus Jakarta Sans display, brand pills, mock window, floating chips).
+- Social proof marquee, navy announcement bar, How It Works with 3 mock visuals, Solution Overview, Pain Stories, Jobs To Be Done, Pricing, FAQ, Final CTA, Player Banner — all aligned to the new tokens (`card-chip`, `pill-primary`, `eyebrow`, `font-display`, navy/brand palette).
+- Mobile pass on hero + sections (tighter padding, responsive headline scale, calendar mock horizontal scroll).
+- Tokens live in `src/index.css` + `tailwind.config.ts` (brand 50-700, navy 50-950, surface tokens, shadows, mock-window, dot-grid).
 
-## Problems on mobile today
+## What's missing
 
-- `h1` jumps to `text-5xl` (48px) on phones — Dutch headline wraps awkwardly and pushes the mock far below the fold.
-- Section padding `pt-16 pb-20` is too large on small screens.
-- Trust badges + 5-star "Loved by coaches" row stack into 4 separate lines, eating vertical space before the mock is visible.
-- Mock window sits below a tall copy block; on a 390×844 device the user sees almost no product visual without scrolling.
-- Mock browser bar URL (`padeltrainer.ai/rene`) and slot row sub-labels can clip on narrow widths.
-- Tabs row inside the mock (`Booking / Players / Payments / Profile`) overflows horizontally.
-- Floating chips are hidden on mobile (correct), but the mock keeps the same paddings as desktop.
-- Other sections (`HowItWorks`, `JobsToBeDone`, `Pricing`, `FAQ`, `FinalCTA`) use `py-24 md:py-32` — 96px top/bottom on mobile is too much.
+1. No public **Branding page** exists yet (`/brand`).
+2. No **single source-of-truth design doc** in the repo (only tokens scattered in `index.css`).
+3. A handful of secondary public surfaces still use the old visual style and were not in the previous passes.
 
-## Changes
+## Plan
 
-### 1. HeroSection (`src/components/home/HeroSection.tsx`)
+### 1. Create a public Branding page (`/brand`, `/nl/brand`)
 
-- Reduce hero vertical padding: `pt-10 pb-12 md:pt-16 md:pb-20 lg:pt-24 lg:pb-28`.
-- Scale the headline: `text-[34px] leading-[1.05] sm:text-5xl lg:text-7xl`.
-- Subheadline: `text-base sm:text-lg md:text-xl`, tighter top margin (`mt-4 md:mt-6`).
-- CTA row: full-width primary on mobile (`w-full sm:w-auto`), keep ghost link inline below.
-- Collapse trust + star row into a single horizontal strip on mobile (smaller text, `gap-x-3 gap-y-1`, hide "across Europe" tail on `<sm`).
-- Reorder grid on mobile so the mock window appears directly under the headline + CTA (use `order-2 lg:order-none` on the copy block? — actually keep copy first but trim it, then mock).
-- Tighten grid gap: `gap-8 lg:gap-12`.
+`src/pages/marketing/Brand.tsx` rendered inside `MarketingLayout`, sections:
 
-### 2. Hero mock window
+- **Hero**: logo lockup, tagline, one-line positioning ("Modern booking + payments for padel coaches").
+- **Logo**: PadelTrainer.ai wordmark on light + dark backgrounds, clear space + min-size rules, do/don't examples.
+- **Color system**: swatches for Brand (50/100/200/300/500/600/700), Navy (50/100/500/900/950), semantic tokens (background, foreground, primary, muted, success). Each shows token name + HSL value.
+- **Typography**: Plus Jakarta Sans (display 600/700/800) and Inter (body 400/500/600). Live samples at H1–H4 + body sizes.
+- **Components**: live previews of `pill-primary`, `pill-ghost`, `card-chip`, eyebrow, mock-window, slot row, announcement bar.
+- **Iconography & imagery**: lucide-react usage, stroke-width 1.75, brand-50 tinted tile pattern.
+- **Voice & tone**: short copy guidelines, NL/EN sentence-case rule, "no em-dashes" rule, global positioning (no country names).
+- **Downloads**: links to logo SVG/PNG (place in `/public/brand/`).
 
-- Outer padding inside `.mock-window` stays, but slot row padding becomes `p-2.5 md:p-3` and font `text-[13px]`.
-- Tabs row: add `overflow-x-auto no-scrollbar` and shrink to `text-[11px]`, drop the "Profile" tab on `<sm`.
-- URL in browser bar: truncate with `truncate max-w-[55%]` so it never pushes the dots.
-- Slot sub-line: hide court suffix on `<sm` (`hidden sm:inline`) to prevent wrapping.
+Wire-up:
+- Add route to `src/App.tsx` + `DomainRouter`.
+- Add to `src/lib/sitemap.ts` (or equivalent) and `public/llms.txt`.
+- SEO meta: `<title>Brand | PadelTrainer.ai</title>`, canonical, OG image.
 
-### 3. Global mobile spacing pass
+### 2. Add a maintained design doc: `docs/DESIGN_SYSTEM.md`
 
-- Across `HowItWorksSection`, `JobsToBeDoneSection`, `PainStoriesSection`, `SolutionOverview`, `PricingPreview`, `FAQSection`, `FinalCTASection`: change `py-24 md:py-32` → `py-16 md:py-24 lg:py-32`.
-- Section eyebrow + heading: `text-3xl sm:text-4xl md:text-5xl` where currently `text-4xl md:text-5xl` to avoid clipping on 320–375px.
-- Card grids already responsive; just verify `gap-6` reduces to `gap-4` on mobile where stacked.
+Mirrors what's on `/brand` but for engineers / AI agents. Sections:
 
-### 4. HowItWorks mock visuals (already added)
+- Token table (CSS var name → HSL → tailwind class → usage).
+- Typography stack and weight map.
+- Component primitives (`pill-primary`, `card-chip`, `mock-window`, `eyebrow`, `dot-grid`, `shimmer-bar`, `marquee-track`, `no-scrollbar`).
+- Spacing scale + responsive section pattern (`py-16 md:py-24 lg:py-32`).
+- Heading scale pattern (`text-3xl sm:text-4xl md:text-5xl font-display font-extrabold tracking-[-0.02em]`).
+- Rules: no hardcoded colors, no em-dashes, no location names, mobile-first.
+- Last-updated date + ownership note ("Update this file whenever tokens or primitives change").
 
-- Calendar mock: 5 columns × text becomes cramped at 390px → switch to horizontal scroll on `<md` (`overflow-x-auto`, `min-w-[520px]` inner) so the visual stays legible instead of squishing.
-- Availability heatmap: reduce inner padding to `p-4` on mobile and tile gap to `gap-1.5`.
-- Booking page mock: keep, but shrink avatar + slot pills to `text-[11px]` so they stay on one line.
+Also update `mem://style/theme-aware-marketing-design` memory to point at `docs/DESIGN_SYSTEM.md` so future AI sessions read it.
+
+### 3. Final homepage polish pass
+
+- Verify `SocialProofStrip` headline `text-4xl md:text-5xl` follows the new mobile rule (`text-3xl sm:text-4xl md:text-5xl`).
+- Audit `MarketingLayout` (footer + nav) for any leftover old-style buttons or colors.
+- Check `/pricing` page (referenced from hero) — currently uses old tokens; bring it in line with the new card-chip + pill style.
+- Check `/about`, `/founding-trainers` heroes — apply eyebrow + display heading pattern only if they still use old typography.
+
+### 4. Footer link
+
+Add "Brand" link in `MarketingLayout` footer under "Company" so the new page is discoverable.
 
 ## Out of scope
 
-- No copy / i18n changes.
-- No new sections, no business-logic changes.
-- No changes to navbar / footer / banner — those already work on mobile.
+- App-internal screens (post-login dashboard) — branding lives on marketing surfaces for now.
+- New logo asset creation; will reuse existing wordmark unless a new SVG is provided.
+- Dark mode of the marketing site (still light-first).
 
-## Verification
+## Open question
 
-- Resize preview to 390×844 and 360×800.
-- Confirm: headline + subheadline + primary CTA + first glimpse of mock visible without scrolling on 390×844.
-- Confirm no horizontal scrollbar on `<html>`.
-- Confirm calendar mock scrolls horizontally cleanly (no overlap).
+Do you want the `/brand` page to be **public-facing marketing** (press / partners can link to it) or **internal-only** (link unlisted, no nav entry)? Default in this plan: public, linked from footer.
