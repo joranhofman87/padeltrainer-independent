@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Calendar, CreditCard, Star, Check, Bell, Zap } from 'lucide-react';
+import { ArrowRight, CreditCard, Star, Check, Bell, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
