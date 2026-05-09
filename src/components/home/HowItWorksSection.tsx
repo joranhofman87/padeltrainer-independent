@@ -211,11 +211,11 @@ export function HowItWorksSection() {
           </h2>
         </div>
 
-        <div className="space-y-20 md:space-y-28">
+        <div className="space-y-14 md:space-y-24">
           {steps.map(({ num, eyebrowKey, eyebrowFallback, titleKey, descKey, bullets, bulletFallbacks, Visual, reverse }) => (
             <div
               key={num}
-              className="grid md:grid-cols-2 gap-10 md:gap-16 items-center"
+              className="grid md:grid-cols-2 gap-8 md:gap-16 items-center"
             >
               <div className={reverse ? 'md:order-2' : ''}>
                 <div className="flex items-center gap-3 mb-4">
@@ -226,7 +226,7 @@ export function HowItWorksSection() {
                     {t(`homev2.howItWorks.${eyebrowKey}`, eyebrowFallback)}
                   </span>
                 </div>
-                <h3 className="font-display text-3xl md:text-4xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
+                <h3 className="font-display text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
                   {t(`homev2.howItWorks.${titleKey}`)}
                 </h3>
                 <p className="mt-4 text-navy-700 text-lg leading-relaxed">
