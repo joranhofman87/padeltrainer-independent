@@ -334,6 +334,8 @@ export default function AcademyPlayers() {
           originalGuest: g as GuestPlayer,
           location_names: guestLocationMap.has(g.id) ? Array.from(guestLocationMap.get(g.id)!) : [],
           has_active_cyclus: guestCyclusMap.get(g.id) || false,
+          source: g.source ?? null,
+          birth_date: g.birth_date ?? null,
         };
       });
 
