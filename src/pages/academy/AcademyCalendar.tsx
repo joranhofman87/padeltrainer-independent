@@ -848,6 +848,30 @@ export default function AcademyCalendar() {
             </div>
           )}
 
+          {/* Secondary navigation: less-used sections (above agenda so it stays visible) */}
+          {isPrimaryView && (
+            <nav className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground mr-1">
+                {t("calendar.moreSections", "More")}
+              </span>
+              {(["cycles", "hours", "reports"] as TabValue[]).map((v) => {
+                const Icon = viewLabel[v].icon;
+                return (
+                  <Button
+                    key={v}
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
+                    onClick={() => setActiveTab(v)}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {viewLabel[v].label}
+                  </Button>
+                );
+              })}
+            </nav>
+          )}
+
           {/* ── View: Week (per trainer swimlanes) ── */}
           <TabsContent value="week" className="mt-4">
             <AgendaWeekByTrainer
@@ -948,30 +972,6 @@ export default function AcademyCalendar() {
             )}
           </TabsContent>
         </Tabs>
-
-        {/* Secondary navigation: less-used sections */}
-        {isPrimaryView && (
-          <nav className="mt-6 flex flex-wrap items-center gap-2 border-t pt-4">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground mr-1">
-              {t("calendar.moreSections", "More")}
-            </span>
-            {(["cycles", "hours", "reports"] as TabValue[]).map((v) => {
-              const Icon = viewLabel[v].icon;
-              return (
-                <Button
-                  key={v}
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1.5 text-muted-foreground hover:text-foreground"
-                  onClick={() => setActiveTab(v)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {viewLabel[v].label}
-                </Button>
-              );
-            })}
-          </nav>
-        )}
 
         {/* Back-to-agenda link when on a secondary tab */}
         {!isPrimaryView && (
