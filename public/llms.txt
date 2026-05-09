@@ -123,6 +123,7 @@ This platform is available in:
 - `/{lang}/pricing` - Subscription plans for trainers
 - `/{lang}/about` - About the platform
 - `/{lang}/partner` - Partnership inquiry form
+- `/{lang}/brand` - Brand & design system reference
 
 ## Technology
 
