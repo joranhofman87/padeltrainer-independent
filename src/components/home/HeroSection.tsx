@@ -25,11 +25,6 @@ export function HeroSection() {
       <div className="relative max-w-7xl mx-auto px-4 md:px-6 pt-10 pb-12 md:pt-16 md:pb-20 lg:pt-24 lg:pb-28 grid lg:grid-cols-12 gap-8 lg:gap-12 items-center overflow-hidden">
         {/* LEFT: copy */}
         <div className="lg:col-span-7 min-w-0">
-          <h1 className="sr-only">{t('homev2.hero.h1')}</h1>
-          <span aria-hidden className="inline-flex items-center gap-2 rounded-full bg-card border border-navy-900/10 shadow-soft px-3 py-1.5 text-xs font-medium text-navy-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-            {t('homev2.hero.eyebrow', 'For padel coaches, academies & clubs')}
-          </span>
           <span className="inline-flex items-center gap-2 rounded-full bg-card border border-navy-900/10 shadow-soft px-3 py-1.5 text-xs font-medium text-navy-700">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
             {t('homev2.hero.eyebrow', 'For padel coaches, academies & clubs')}
