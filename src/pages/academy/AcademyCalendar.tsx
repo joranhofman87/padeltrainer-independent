@@ -674,6 +674,15 @@ export default function AcademyCalendar() {
       }));
   }, [monthSlots, selectedTrainerId, selectedLocationId]);
 
+  if (loading && slots.length === 0) {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        <Skeleton className="h-8 w-48 mb-4" />
+        <Skeleton className="h-[600px] w-full" />
+      </div>
+    );
+  }
+
   const trainerOptions = useMemo(
     () => trainers.map((tr) => ({ id: tr.id, name: tr.name, avatar: tr.avatar })),
     [trainers],
