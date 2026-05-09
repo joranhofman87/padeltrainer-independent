@@ -357,6 +357,30 @@ export default function AcademyPlayers() {
             });
           }
         }
+
+        // Also enrich from intake_requests (registration form, no booking yet)
+        const { data: guestIntakes } = await supabase
+          .from('intake_requests')
+          .select('guest_player_id, player_id, location_id')
+          .in('guest_player_id', guestPlayerIds);
+
+        const intakeLocIds = new Set<string>();
+        guestIntakes?.forEach((r) => { if (r.location_id) intakeLocIds.add(r.location_id); });
+        const missingLocIds = Array.from(intakeLocIds).filter((id) => !locationNameMap.has(id));
+        if (missingLocIds.length > 0) {
+          const { data: locs } = await supabase
+            .from('locations')
+            .select('id, name')
+            .in('id', missingLocIds);
+          locs?.forEach((l) => locationNameMap.set(l.id, l.name));
+        }
+        guestIntakes?.forEach((r) => {
+          if (!r.guest_player_id || !r.location_id) return;
+          const name = locationNameMap.get(r.location_id);
+          if (!name) return;
+          if (!guestLocationMap.has(r.guest_player_id)) guestLocationMap.set(r.guest_player_id, new Set());
+          guestLocationMap.get(r.guest_player_id)!.add(name);
+        });
       }
 
       const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => {
@@ -472,6 +496,41 @@ export default function AcademyPlayers() {
                   has_active_cyclus: info?.has_active_cyclus || false,
                 };
               });
+
+            // Enrich registered players' locations from intake_requests fallback
+            const playerIdList = profiles.map((p) => p.id);
+            if (playerIdList.length > 0) {
+              const { data: regIntakes } = await supabase
+                .from('intake_requests')
+                .select('player_id, location_id')
+                .in('player_id', playerIdList);
+
+              const regIntakeLocIds = new Set<string>();
+              regIntakes?.forEach((r) => { if (r.location_id) regIntakeLocIds.add(r.location_id); });
+              const missing = Array.from(regIntakeLocIds).filter((id) => !locationNameMap.has(id));
+              if (missing.length > 0) {
+                const { data: locs } = await supabase
+                  .from('locations')
+                  .select('id, name')
+                  .in('id', missing);
+                locs?.forEach((l) => locationNameMap.set(l.id, l.name));
+              }
+              const intakeLocByPlayer = new Map<string, Set<string>>();
+              regIntakes?.forEach((r) => {
+                if (!r.player_id || !r.location_id) return;
+                const name = locationNameMap.get(r.location_id);
+                if (!name) return;
+                if (!intakeLocByPlayer.has(r.player_id)) intakeLocByPlayer.set(r.player_id, new Set());
+                intakeLocByPlayer.get(r.player_id)!.add(name);
+              });
+              regPlayers = regPlayers.map((rp) => {
+                const profileId = rp.id.replace(/^reg-/, '');
+                const extra = intakeLocByPlayer.get(profileId);
+                if (!extra || extra.size === 0) return rp;
+                const merged = new Set([...(rp.location_names || []), ...extra]);
+                return { ...rp, location_names: Array.from(merged) };
+              });
+            }
           }
         }
       }
