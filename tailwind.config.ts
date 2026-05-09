@@ -110,7 +110,7 @@ export default {
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
-        display: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+        display: ['"Plus Jakarta Sans"', "Inter", "system-ui", "-apple-system", "sans-serif"],
       },
       boxShadow: {
         soft: "0 1px 2px rgba(20,30,60,.04), 0 8px 24px rgba(20,30,60,.06)",
