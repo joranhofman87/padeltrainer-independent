@@ -99,7 +99,9 @@ const dateFnsLocales: Record<string, typeof enUS> = {
   fr,
 };
 
-type TabValue = "overview" | "cycles" | "manage" | "create" | "hours" | "reports";
+type TabValue = "week" | "day" | "month" | "cycles" | "create" | "hours" | "reports";
+
+const PRIMARY_VIEWS: TabValue[] = ["week", "day", "month"];
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
@@ -110,13 +112,21 @@ export default function AcademyCalendar() {
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
 
-  // Tab state from URL
-  const activeTab = (searchParams.get("tab") as TabValue) || "overview";
+  // Tab state from URL — supports legacy values for back-compat
+  const rawTab = (searchParams.get("tab") || "week") as string;
+  const activeTab: TabValue = ((): TabValue => {
+    if (rawTab === "overview") return "week";
+    if (rawTab === "manage") return "day";
+    if (["week", "day", "month", "cycles", "create", "hours", "reports"].includes(rawTab)) return rawTab as TabValue;
+    return "week";
+  })();
   const setActiveTab = (tab: TabValue) => {
     setSearchParams({ tab }, { replace: true });
   };
-  
-  const [manageView, setManageView] = useState<"day" | "week">("day");
+
+  const isPrimaryView = PRIMARY_VIEWS.includes(activeTab);
+  const isMonth = activeTab === "month";
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [slots, setSlots] = useState<AcademySlot[]>([]);
   const [loading, setLoading] = useState(true);
