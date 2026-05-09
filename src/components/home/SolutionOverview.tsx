@@ -70,30 +70,33 @@ export function SolutionOverview() {
   const { t } = useTranslation('marketing');
 
   return (
-    <section id="features" className="py-16 md:py-20 section-alt">
-      <div className="max-w-[1200px] mx-auto px-4 md:px-6">
-        <div className="mb-14 max-w-2xl">
-          <h2 className="font-display text-3xl md:text-[44px] font-extrabold tracking-[-0.02em] mb-4 text-foreground">
+    <section id="features" className="py-24 md:py-32 bg-white">
+      <div className="max-w-7xl mx-auto px-4 md:px-6">
+        <div className="max-w-3xl mb-14">
+          <span className="eyebrow">{t('homev2.solution.eyebrow', 'The padel-shaped advantage')}</span>
+          <h2 className="mt-4 font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight text-navy-900">
             {t('homev2.solution.headline')}
           </h2>
-          <p className="text-lg text-muted-foreground">
+          <p className="mt-5 text-lg text-navy-700">
             {t('homev2.solution.category')}
           </p>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {values.map((v) => (
             <div
               key={v.key}
-              className="card-elevated p-8 flex items-start gap-5 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200"
+              className="card-chip p-7 hover:-translate-y-0.5 transition-transform duration-200"
             >
-              <div className="shrink-0 h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
                 <v.Visual />
               </div>
-              <div>
-                <h3 className="font-semibold text-base mb-1">{t(`homev2.solution.value_${v.key}_title`)}</h3>
-                <p className="text-muted-foreground leading-relaxed">{t(`homev2.solution.value_${v.key}_desc`)}</p>
-              </div>
+              <h3 className="mt-5 font-display font-bold text-xl text-navy-900">
+                {t(`homev2.solution.value_${v.key}_title`)}
+              </h3>
+              <p className="mt-3 text-navy-700 leading-relaxed">
+                {t(`homev2.solution.value_${v.key}_desc`)}
+              </p>
             </div>
           ))}
         </div>
