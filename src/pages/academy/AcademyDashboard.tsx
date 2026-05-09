@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   ExternalLink,
   EyeOff,
+  Receipt,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,18 +40,24 @@ export default function AcademyDashboard() {
   const academyId = activeAcademy?.id;
 
   // Stats query
-  const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0 } } = useQuery({
+  const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0, outstandingInvoices: 0 } } = useQuery({
     queryKey: ['academy-stats', academyId],
     queryFn: async () => {
-      const [trainersData, locationsData, viewStats] = await Promise.all([
+      const [trainersData, locationsData, viewStats, invoicesRes] = await Promise.all([
         getAcademyTrainers(academyId!),
         getAcademyLocations(academyId!),
         getAcademyViewStats(academyId!),
+        supabase
+          .from('invoices')
+          .select('id', { count: 'exact', head: true })
+          .eq('academy_profile_id', academyId!)
+          .in('status', ['sent', 'overdue']),
       ]);
       return {
         trainers: trainersData.length,
         locations: locationsData.length,
         viewsLast30Days: viewStats.last30Days,
+        outstandingInvoices: invoicesRes.count ?? 0,
       };
     },
     enabled: !!academyId,
@@ -289,14 +296,17 @@ export default function AcademyDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/academy/calendar')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/academy/invoices?status=outstanding')}>
           <CardHeader className="pb-2">
-            <CardDescription>{t('stats.upcomingSessions')}</CardDescription>
-            <CardTitle className="text-3xl">-</CardTitle>
+            <CardDescription className="flex items-center gap-1">
+              <Receipt className="h-3 w-3" />
+              {t('stats.outstandingInvoices', 'Outstanding invoices')}
+            </CardDescription>
+            <CardTitle className="text-3xl">{stats.outstandingInvoices}</CardTitle>
           </CardHeader>
           <CardContent>
             <Button variant="ghost" size="sm" className="p-0 h-auto">
-              {t('dashboard.calendar')} <ArrowRight className="ml-2 h-4 w-4" />
+              {t('stats.viewInvoices', 'View invoices')} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>
         </Card>
