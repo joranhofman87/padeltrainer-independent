@@ -68,7 +68,7 @@ export default function Brand() {
       <SEO
         title="Brand | PadelTrainer.ai"
         description="The PadelTrainer.ai design system: colors, typography, components and voice."
-        canonicalUrl="https://padeltrainer.ai/brand"
+        url="/brand"
       />
 
       {/* HERO */}
