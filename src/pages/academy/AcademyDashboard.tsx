@@ -493,7 +493,7 @@ export default function AcademyDashboard() {
                         {slot.sessionCount} {slot.sessionCount === 1 ? tTrainer('dashboard.session', 'session') : tTrainer('dashboard.sessions', 'sessions')}
                       </TableCell>
                       <TableCell className="text-sm py-2 text-muted-foreground">
-                        <div>{format(new Date(slot.start_time), 'EEE dd MMM', { locale: i18n.language === 'nl' ? nl : enUS })}</div>
+                        <div>{format(new Date(slot.start_time), 'EEEEEE dd MMM', { locale: i18n.language === 'nl' ? nl : enUS })}</div>
                         <div className="text-xs">{format(new Date(slot.start_time), 'HH:mm')}</div>
                       </TableCell>
                     </TableRow>
