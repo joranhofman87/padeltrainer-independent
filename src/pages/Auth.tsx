@@ -22,7 +22,7 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { user, role, loading, profileReady, profileFetchFailed, refreshAuth } = useAuth();
+  const { user, role, loading, profileReady, profileFetchFailed, refreshAuth, isAcademyManager, isClubManager } = useAuth();
   const { t } = useTranslation('auth');
 
   // Detect and handle magic link tokens in URL hash (for impersonation)
