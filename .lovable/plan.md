@@ -1,54 +1,37 @@
 ## Goal
 
-Make the academy Players table customizable: show a sensible default set of columns and let the user opt-in to additional columns from a dropdown.
+Make the academy Players table dense (Google Sheets feel) so more rows fit on screen, without losing readability.
 
-## Default columns (visible out of the box)
-
-1. **Name** (with notes preview kept under the name when Notes column is hidden)
-2. **Email**
-3. **Phone**
-4. **Location** — comma-separated training locations from `location_names`
-5. **Date added** — `created_at`
-
-Plus a fixed **Actions** column (always visible, edit / delete dropdown).
-
-## Optional columns (toggleable)
-
-- **Trainer** — `trainer_name`
-- **Skill rating** — `skill_rating` + `rating_system` badge
-- **Status** — Registered / Active / Prospect badge
-- **In active cyclus** — Yes / No (from `has_active_cyclus`)
-- **Type** — Guest / Registered
-- **Notes** — full notes
-- **Source** — `guest_players.source`
-- **Birth date** — `guest_players.birth_date`
-
-Birth date / source render a placeholder for registered (non-guest) players.
-
-## UX
-
-- Add a **"Columns"** button (with `Columns3` icon) in the toolbar next to "Add player" / "Import".
-- Clicking opens a `DropdownMenu` of `DropdownMenuCheckboxItem`s for each non-fixed column.
-- Selection persisted in `localStorage` under `academyPlayers:visibleColumns:{academyId}` per academy.
-- Desktop table only. Mobile cards stay unchanged.
-
-## Technical sketch
+## Changes (desktop table only)
 
 In `src/pages/academy/AcademyPlayers.tsx`:
 
-1. Define a `COLUMNS` array of `{ key, label, default, fixed?, render(player) }` definitions. Fixed: `name`, `actions`. Default: `email`, `phone`, `location`, `addedOn`.
-2. Add `visibleColumnKeys: Set<string>` state, initialized from `localStorage` (fallback to defaults). Persist on change.
-3. Replace the hard-coded `<TableHeader>` / `<TableBody>` cells with `.map` over visible column defs (name first, actions last).
-4. Add the "Columns" `DropdownMenu` in the toolbar above the table.
-5. Keep the under-name notes preview only when the Notes column is hidden.
-6. No data-fetching changes needed; `birth_date` and `source` are already returned by `select('*')` on `guest_players`.
+1. **Tighter row height**
+   - Override default shadcn `TableCell` padding (`p-4`) with `py-1.5 px-3` on every cell.
+   - Same on `TableHead` (`h-9 py-1 px-3` instead of default `h-12`).
+   - Result: ~32-36px row height instead of ~64px.
+
+2. **Single-line cells**
+   - Wrap text cells in `truncate` + `max-w` so long emails / notes / locations don't wrap onto a second line. Add `title={value}` for full text on hover.
+   - Date column: switch from `MMM d, yyyy` (which is wrapping to 3 lines like "Apr / 16, / 2026" in narrow columns) to `dd-MM-yyyy` — short, single line, locale-neutral.
+   - Email/Phone cells: drop the inline icon (or keep icon but force `whitespace-nowrap`) so the row stays one line.
+
+3. **Compact badges**
+   - Status / Cyclus / Type / Skill rating badges: add `h-5 px-1.5 text-[11px]` so they don't inflate row height.
+
+4. **Card chrome trimmed**
+   - Remove the `Gastspelers` `CardHeader` (title + "330 spelers beheerd door jou") — that count is already shown in the page header. Keeps more vertical space for rows.
+   - Reduce `CardContent` padding to `p-0` and let the table sit flush; add a thin border-top only.
+
+5. **Sticky header**
+   - Add `sticky top-0 bg-background z-10` to `TableHeader` so column titles stay visible while scrolling the long list.
 
 ## Out of scope
 
-- Billing name / address / BTW columns.
-- Mobile card layout changes.
-- Column reordering, resizing, server-side persistence.
-- Filters, tabs, email campaign tab.
+- Column reordering / resizing / inline editing.
+- Mobile card layout (already compact).
+- Virtualized scrolling (330 rows render fine without it).
+- Changing which columns are visible by default.
 
 ## Files to touch
 
