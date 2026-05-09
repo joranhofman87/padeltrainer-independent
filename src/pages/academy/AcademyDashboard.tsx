@@ -360,7 +360,7 @@ export default function AcademyDashboard() {
                       <TableCell className="text-sm py-2">{player.full_name}</TableCell>
                       <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(player.created_at), 'dd MMM')}</TableCell>
                       <TableCell className="py-2">
-                        <Badge variant={player.has_trained ? 'default' : 'outline'} className="text-xs">
+                        <Badge variant={player.has_trained ? 'success' : 'muted'} className="text-xs">
                           {player.has_trained ? tTrainer('players.statuses.active') : tTrainer('players.statuses.prospect')}
                         </Badge>
                       </TableCell>
@@ -409,7 +409,7 @@ export default function AcademyDashboard() {
                         </TableCell>
                         <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM', { locale: i18n.language === 'nl' ? nl : enUS })}</TableCell>
                         <TableCell className="py-2">
-                          <Badge variant={booking.payment_status === 'paid' ? 'default' : 'secondary'} className="text-xs">
+                          <Badge variant={booking.payment_status === 'paid' ? 'success' : 'warning'} className="text-xs">
                             {booking.payment_status === 'paid' && (booking as any).paid_externally
                               ? tTrainer('bookings.paidExternally', 'Paid (external)')
                               : booking.payment_status}
