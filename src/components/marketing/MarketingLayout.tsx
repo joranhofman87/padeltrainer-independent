@@ -115,13 +115,16 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
     <div className="min-h-screen bg-background">
       {/* Announcement Banner */}
       {!bannerDismissed && (
-        <div className="bg-primary text-primary-foreground text-center text-sm py-2 px-4 relative">
-          <Link to={`/${currentLang}/founding-trainers`} className="hover:underline font-medium">
-            🎾 {t('foundingTrainers.bannerText', 'Founding 100 Trainers — Get a FREE premium racket worth €275+')}
-          </Link>
+        <div className="shimmer-bar text-sm relative">
+          <div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center justify-center gap-3 text-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium ring-1 ring-white/20">New</span>
+            <Link to={`/${currentLang}/founding-trainers`} className="font-semibold underline decoration-white/30 underline-offset-4 hover:decoration-white">
+              {t('foundingTrainers.bannerText', 'Founding 100 Trainers — Get a FREE premium racket worth €275+')} →
+            </Link>
+          </div>
           <button
             onClick={dismissBanner}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-primary-foreground/80 hover:text-primary-foreground"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white"
             aria-label="Dismiss"
           >
             <X className="h-4 w-4" />
