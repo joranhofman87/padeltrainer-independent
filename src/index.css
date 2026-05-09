@@ -2,105 +2,96 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here.
-All colors MUST be HSL.
+/*
+  PadelTrainer.ai design system — light only.
+  All colors HSL. Semantic shadcn names map to brand/navy scales.
 */
 
 @layer base {
   :root {
-    /* PadelTrainer.ai - Clean white with navy & coral accents */
-    --background: 0 0% 100%;
-    --foreground: 220 40% 13%;
+    /* Brand orange scale (mapped from #fff7ed → #7c2d12) */
+    --brand-50:  24 100% 96%;
+    --brand-100: 27 100% 92%;
+    --brand-200: 28 100% 83%;
+    --brand-300: 27 100% 72%;
+    --brand-400: 22 96% 61%;
+    --brand-500: 21 95% 53%;   /* #f97316 — PRIMARY */
+    --brand-600: 21 90% 48%;
+    --brand-700: 22 88% 40%;
+    --brand-800: 22 78% 33%;
+    --brand-900: 22 73% 27%;
+
+    /* Navy scale (mapped from #f1f4fa → #0c1c3d) */
+    --navy-50:  220 41% 96%;
+    --navy-100: 220 39% 91%;
+    --navy-200: 218 41% 81%;
+    --navy-300: 218 39% 68%;
+    --navy-400: 219 38% 54%;
+    --navy-500: 219 46% 43%;
+    --navy-600: 219 49% 34%;
+    --navy-700: 219 47% 28%;
+    --navy-800: 219 48% 22%;
+    --navy-900: 218 67% 24%;   /* #143266 — text + headings */
+    --navy-950: 222 67% 15%;   /* #0c1c3d — dark CTA, footer */
+
+    --surface: 0 0% 100%;
+    --surface-cream: 36 38% 97%;   /* #faf7f2 */
+    --surface-off:   40 30% 98%;   /* #fbfaf7 */
+    --accent-gold: 42 95% 55%;
+
+    /* Shadcn semantic tokens */
+    --background: var(--surface);
+    --foreground: var(--navy-900);
 
     --card: 0 0% 100%;
-    --card-foreground: 220 40% 13%;
+    --card-foreground: var(--navy-900);
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 40% 13%;
+    --popover-foreground: var(--navy-900);
 
-    /* Vibrant coral/orange - energetic and sporty */
-    --primary: 16 90% 45%;
+    --primary: var(--brand-500);
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 30% 94%;
-    --secondary-foreground: 220 40% 13%;
+    --secondary: var(--navy-50);
+    --secondary-foreground: var(--navy-900);
 
-    --muted: 30 15% 94%;
-    --muted-foreground: 220 15% 45%;
+    --muted: var(--surface-cream);
+    --muted-foreground: 219 16% 42%;
 
-    /* Deep navy accent */
-    --accent: 220 60% 20%;
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 220 20% 88%;
-    --input: 220 20% 88%;
-    --ring: 16 90% 55%;
-
-    --radius: 0.75rem;
-
-    /* Brand-specific tokens */
-    --brand-gradient-start: 16 90% 55%;
-    --brand-gradient-end: 30 95% 50%;
-    --brand-navy: 220 60% 20%;
-    --brand-coral: 16 90% 55%;
-    --brand-gold: 42 95% 55%;
-
-    --sidebar-background: 220 60% 15%;
-    --sidebar-foreground: 220 20% 95%;
-    --sidebar-primary: 16 90% 55%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 50% 25%;
-    --sidebar-accent-foreground: 220 20% 95%;
-    --sidebar-border: 220 50% 25%;
-    --sidebar-ring: 16 90% 55%;
-  }
-
-  .dark {
-    --background: 220 40% 8%;
-    --foreground: 30 20% 95%;
-
-    --card: 220 35% 12%;
-    --card-foreground: 30 20% 95%;
-
-    --popover: 220 35% 12%;
-    --popover-foreground: 30 20% 95%;
-
-    --primary: 16 90% 55%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 220 30% 18%;
-    --secondary-foreground: 30 20% 95%;
-
-    --muted: 220 30% 18%;
-    --muted-foreground: 220 15% 60%;
-
-    --accent: 16 85% 60%;
+    --accent: var(--navy-900);
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 70% 45%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 30% 20%;
-    --input: 220 30% 20%;
-    --ring: 16 90% 55%;
+    --border: 218 30% 90%;
+    --input: 218 30% 90%;
+    --ring: var(--brand-500);
 
-    --brand-gradient-start: 16 90% 55%;
-    --brand-gradient-end: 30 95% 50%;
-    --brand-navy: 220 60% 20%;
-    --brand-coral: 16 90% 55%;
-    --brand-gold: 42 95% 55%;
+    --radius: 0.75rem;          /* 12px — app default */
 
-    --sidebar-background: 220 40% 6%;
-    --sidebar-foreground: 30 20% 95%;
-    --sidebar-primary: 16 90% 55%;
+    /* Brand-specific tokens (kept for backwards compat) */
+    --brand-gradient-start: var(--brand-500);
+    --brand-gradient-end: var(--brand-400);
+    --brand-navy: var(--navy-900);
+    --brand-coral: var(--brand-500);
+    --brand-gold: var(--accent-gold);
+
+    /* Sidebar (navy-950 surface, brand accent) */
+    --sidebar-background: var(--navy-950);
+    --sidebar-foreground: 220 20% 95%;
+    --sidebar-primary: var(--brand-500);
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 35% 15%;
-    --sidebar-accent-foreground: 30 20% 95%;
-    --sidebar-border: 220 35% 15%;
-    --sidebar-ring: 16 90% 55%;
+    --sidebar-accent: var(--navy-800);
+    --sidebar-accent-foreground: 220 20% 95%;
+    --sidebar-border: var(--navy-800);
+    --sidebar-ring: var(--brand-500);
+
+    /* Two-layer shadows */
+    --shadow-soft: 0 1px 2px rgba(20,30,60,.04), 0 8px 24px rgba(20,30,60,.06);
+    --shadow-lift: 0 1px 2px rgba(20,30,60,.06), 0 18px 40px rgba(20,30,60,.10);
+    --shadow-cta:  0 8px 20px rgba(249,115,22,.28);
+    --shadow-mock: 0 1px 2px rgba(20,30,60,.06), 0 30px 60px rgba(20,30,60,.18);
   }
 }
 
@@ -109,10 +100,22 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
     font-size: 16px;
     line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, .font-display {
+    letter-spacing: -0.02em;
   }
 
   /* Hide number input spinners globally */
@@ -126,21 +129,75 @@ All colors MUST be HSL.
   }
 }
 
+@layer components {
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full bg-brand-50 text-brand-700 px-3 py-1 text-xs font-semibold uppercase;
+    letter-spacing: 0.18em;
+  }
+
+  .pill-primary {
+    @apply inline-flex items-center justify-center h-12 px-6 rounded-full font-semibold bg-brand-500 text-white transition;
+    box-shadow: var(--shadow-cta);
+  }
+  .pill-primary:hover {
+    @apply bg-brand-600 -translate-y-px;
+  }
+
+  .pill-ghost {
+    @apply inline-flex items-center justify-center h-12 px-6 rounded-full font-semibold bg-white text-navy-900 border border-navy-900/10 transition;
+    box-shadow: var(--shadow-soft);
+  }
+  .pill-ghost:hover {
+    @apply -translate-y-px;
+    border-color: hsl(var(--navy-900) / 0.22);
+  }
+
+  .section-cream {
+    background-color: hsl(var(--surface-cream));
+  }
+  .section-off {
+    background-color: hsl(var(--surface-off));
+  }
+
+  /* Marketing-only: dot grid backdrop, masked to soft ellipse */
+  .dot-grid {
+    background-image: radial-gradient(hsl(var(--navy-900) / 0.10) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
+  }
+
+  .card-elevated {
+    @apply bg-card rounded-xl transition-shadow duration-200;
+    box-shadow: var(--shadow-soft);
+  }
+  .card-elevated:hover {
+    box-shadow: var(--shadow-lift);
+  }
+}
+
 @layer utilities {
   .overscroll-contain-x {
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
   }
+
+  .shadow-soft { box-shadow: var(--shadow-soft); }
+  .shadow-lift { box-shadow: var(--shadow-lift); }
+  .shadow-cta  { box-shadow: var(--shadow-cta); }
+  .shadow-mock { box-shadow: var(--shadow-mock); }
 }
 
-/* Homepage section utilities */
+/* Legacy alias kept for existing usages */
 .section-alt {
-  background-color: hsl(var(--secondary));
+  background-color: hsl(var(--surface-cream));
 }
 
-.card-elevated {
-  @apply bg-card rounded-xl shadow-sm transition-shadow duration-200;
-}
-.card-elevated:hover {
-  @apply shadow-lg;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
