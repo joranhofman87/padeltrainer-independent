@@ -119,7 +119,7 @@ export default function TrainerOnboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <div className="min-h-screen bg-background">
       <div className="container max-w-lg mx-auto px-4 py-8">
         <div className="flex justify-center mb-6">
           <Logo className="h-8" />
