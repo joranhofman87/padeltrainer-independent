@@ -70,6 +70,8 @@ type UnifiedPlayer = {
   originalGuest?: GuestPlayer;
   location_names?: string[];
   has_active_cyclus?: boolean;
+  source?: string | null;
+  birth_date?: string | null;
 };
 
 function getLevelBand(rating: number | null): string {
