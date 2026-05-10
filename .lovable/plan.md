@@ -1,46 +1,29 @@
-## Problem
+## Goal
 
-When a trainer (or location) filter is active, the chip below the Week/Day/Month switcher is rendered with neutral background + plain border. It looks like a passive label rather than an active filter, so trainers easily miss that the agenda is scoped to one person and get confused by "missing" data.
+Clean up the agenda Day view's top toolbar by:
 
-Source: `src/pages/academy/AcademyCalendar.tsx` lines 928-950, plus a small helper banner above the agenda content.
+1. **Removing** the top "Search player…" input and the standalone "Players" toggle button (lines 585-613 in `src/components/academy/AcademyDayGrid.tsx`).
+2. **Moving the collapse toggle into the All Players panel** on the right (its header), so it visually belongs to that panel.
+3. Keeping a small **"open" affordance** when the panel is collapsed, so users can reopen it.
 
-## Plan (UI only)
+## Plan
 
-In `AcademyCalendar.tsx`, upgrade the active-filter strip so it reads as a clear, dismissable scope indicator:
+In `src/components/academy/AcademyDayGrid.tsx`:
 
-1. **Stronger chips** (lines 931-948):
-   - Use `bg-primary/10 border-primary/40 text-primary font-medium` (theme tokens, no hardcoded colors).
-   - Slightly larger: `px-3 py-1.5 text-sm`.
-   - Prefix with a small icon (`User` for trainer chip, `MapPin` for location chip).
-   - Keep the `X` to clear, with `aria-label` (e.g. "Clear trainer filter").
+1. Delete the entire top toolbar block (`{/* Search bar */}` div, lines 585-613). Remove the now-unused `searchQuery`, `setSearchQuery` state and the `searchQuery` prop drilling into `SlotCard` (`SlotCard` already treats it as optional, no functional impact since it only powered highlight matching from the now-removed input).
 
-2. **Leading label** in front of the chips:
-   - Small uppercase muted label `Filtered by` (i18n key `calendar.filteredBy`, with NL fallback "Gefilterd op") so the row clearly signals "the view is narrowed".
-   - Trailing "Clear all" link button when more than one filter is active, calling both setters.
+2. In the All Players sidebar header (lines 717-735), add a `PanelRightClose` icon button on the right of the header row that calls `setSidebarOpen(false)`. The header row becomes: title + count Badge on the left, collapse icon button on the right. The existing search input inside the panel stays (that's the per-panel search).
 
-3. **Banner above the agenda body** (new, only when `filtersActive`):
-   - A compact one-line bar with `bg-primary/5 border border-primary/20 text-primary` that says e.g. "Showing Patrick van der Welle only" / "Showing TPVU only" / combined ("Showing Patrick van der Welle at TPVU"). i18n: `calendar.showingScope` with `{trainer}` / `{location}` interpolation.
-   - Right-aligned "Show all" button that resets both filters.
-   - Rendered inside the same primary-view container, just before the Day/Week/Month grids, so it's visible regardless of which sub-view is active.
+3. When `sidebarOpen` is `false`, render a thin vertical "open" tab anchored to the right edge of the agenda area (a small button with `PanelRightOpen` icon and the "Players" label vertically or as tooltip). Use `md:flex hidden` to match the panel's responsive behavior. Click → `setSidebarOpen(true)`.
 
-4. **No logic changes**: filter state, query effects, and chip clearing behavior stay as-is. Pure presentation upgrade.
-
-## i18n keys to add (academy.json, all locales)
-
-- `calendar.filteredBy` ("Filtered by" / "Gefilterd op")
-- `calendar.clearAll` ("Clear all" / "Alles wissen")
-- `calendar.showingScope` ("Showing {{scope}}" / "Toont {{scope}}")
-- `calendar.scopeTrainer` ("{{name}}")
-- `calendar.scopeTrainerAtLocation` ("{{trainer}} at {{location}}" / "{{trainer}} bij {{location}}")
-- `calendar.showAll` ("Show all" / "Toon alles")
+4. Remove now-unused imports if any (`Search` icon stays — still used inside the sidebar; `PanelRightClose`/`PanelRightOpen` stay).
 
 ## Out of scope
 
-- Changing how the filter is opened (Filters popover stays the same).
-- Persisting filter state across sessions.
-- Adding new filter dimensions.
+- Mobile view of the sidebar (it remains hidden on `<md`, same as today).
+- Restyling the All Players panel beyond the header row.
+- Any logic change to drag/drop or filtering.
 
-## File to edit
+## Files to edit
 
-- `src/pages/academy/AcademyCalendar.tsx`
-- `src/i18n/locales/{en,nl,fr,es,it}/academy.json`
+- `src/components/academy/AcademyDayGrid.tsx`
