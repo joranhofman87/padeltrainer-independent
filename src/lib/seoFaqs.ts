@@ -188,3 +188,38 @@ export function academyFaqs(name: string, lang?: string): FaqItem[] {
     ],
   });
 }
+
+export function regionFaqs(region: string, lang?: string): FaqItem[] {
+  return pick<FaqItem[]>(lang, {
+    en: [
+      { question: `Where can I find padel trainers in ${region}?`, answer: `Browse the cities in ${region} above. Each city links to certified trainers, padel clubs and academies in that area.` },
+      { question: `How many padel clubs are in ${region}?`, answer: `Padel is one of the fastest-growing sports in ${region}. The city listings above show the current count of trainers and venues per city.` },
+      { question: `What's the average price for padel lessons in ${region}?`, answer: `Lessons typically range €40-€90/hour across ${region}, with metropolitan areas trending higher and smaller cities lower.` },
+    ],
+    nl: [
+      { question: `Waar vind ik padeltrainers in ${region}?`, answer: `Bekijk de steden in ${region} hierboven. Elke stad linkt naar gecertificeerde trainers, padelclubs en academies.` },
+      { question: `Hoeveel padelclubs zijn er in ${region}?`, answer: `Padel is een van de snelst groeiende sporten in ${region}. De stadslijst toont het huidige aantal trainers en clubs per stad.` },
+      { question: `Wat is de gemiddelde prijs van padellessen in ${region}?`, answer: `Lessen kosten doorgaans €40-€90/uur in ${region}; grootstedelijke gebieden zitten hoger.` },
+    ],
+    es: [
+      { question: `¿Dónde encuentro entrenadores en ${region}?`, answer: `Explora las ciudades de ${region} arriba.` },
+      { question: `¿Cuántos clubes hay en ${region}?`, answer: `El pádel crece rápido en ${region}. La lista de ciudades muestra el número de coaches y clubes.` },
+      { question: `¿Precio medio de las clases en ${region}?`, answer: `Entre €40-€90/hora; metrópolis más caras.` },
+    ],
+    de: [
+      { question: `Wo finde ich Padel-Trainer in ${region}?`, answer: `Sieh dir die Städte in ${region} oben an.` },
+      { question: `Wie viele Padel-Clubs gibt es in ${region}?`, answer: `Die Städteliste zeigt die aktuelle Anzahl an Trainern und Clubs.` },
+      { question: `Was kostet eine Stunde in ${region}?`, answer: `Meist 40-90 €/Stunde, in Metropolen tendenziell höher.` },
+    ],
+    fr: [
+      { question: `Où trouver des coachs à ${region} ?`, answer: `Parcourez les villes de ${region} ci-dessus.` },
+      { question: `Combien de clubs à ${region} ?`, answer: `La liste des villes affiche le nombre de coachs et de clubs.` },
+      { question: `Prix moyen d'un cours à ${region} ?`, answer: `40-90 €/heure, plus cher dans les métropoles.` },
+    ],
+    it: [
+      { question: `Dove trovo maestri a ${region}?`, answer: `Sfoglia le città di ${region} qui sopra.` },
+      { question: `Quanti club ci sono in ${region}?`, answer: `La lista delle città mostra il numero corrente di maestri e club.` },
+      { question: `Prezzo medio di una lezione a ${region}?`, answer: `40-90 €/ora, più alte nelle aree metropolitane.` },
+    ],
+  });
+}
