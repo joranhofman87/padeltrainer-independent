@@ -1143,15 +1143,39 @@ export default function AcademyPlayers() {
 
         {/* Email Campaign Tab */}
         <TabsContent value="email-campaign" className="mt-4">
-          {activeAcademy && (
-            <EmailCampaignTab
-              academyId={activeAcademy.id}
-              trainers={trainers}
-              locations={allLocations}
-              tags={tags}
-              players={filteredPlayers.length === players.length ? enrichForCampaign(players, metadata) : enrichForCampaign(players, metadata)}
-            />
-          )}
+          {activeAcademy && (() => {
+            const metaByGuest = new Map<string, PlayerMetadata>();
+            const metaByProfile = new Map<string, PlayerMetadata>();
+            metadata.forEach((m) => {
+              if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
+              if (m.profile_id) metaByProfile.set(m.profile_id, m);
+            });
+            return (
+              <EmailCampaignTab
+                academyId={activeAcademy.id}
+                trainers={trainers}
+                locations={allLocations}
+                tags={tags}
+                players={players.map((p) => {
+                  const meta = p.type === 'guest'
+                    ? metaByGuest.get(p.id)
+                    : metaByProfile.get(p.id.replace(/^reg-/, ''));
+                  return {
+                    id: p.id,
+                    full_name: p.full_name,
+                    email: p.email,
+                    skill_rating: p.skill_rating,
+                    trainer_id: p.trainer_id,
+                    trainer_ids: p.trainer_ids,
+                    location_names: p.location_names,
+                    has_active_cyclus: p.has_active_cyclus,
+                    type: p.type,
+                    tag_ids: meta?.tag_ids || [],
+                  };
+                })}
+              />
+            );
+          })()}
         </TabsContent>
       </Tabs>
 
