@@ -47,7 +47,7 @@ import { useQuery } from '@tanstack/react-query';
 export default function TrainerIntakeRequests() {
   const { t } = useTranslation('cycles');
   const { user, role, loading } = useAuth();
-  const navigate = useNavigate();
+  
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Trainer profile query
