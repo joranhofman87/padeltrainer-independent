@@ -72,6 +72,7 @@ interface InvoiceItem {
   id: string;
   invoice_number: string | null;
   invoice_date: string | null;
+  due_date: string | null;
   total: number | null;
   status: string | null;
   pdf_url: string | null;
