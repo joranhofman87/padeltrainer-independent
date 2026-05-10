@@ -493,6 +493,15 @@ export default function AcademyPlayerDetail() {
         </CardContent>
       </Card>
 
+      {/* Always visible rating progress trend */}
+      <RatingTrendCard
+        history={ratingHistory}
+        ratingSystem={player.rating_system}
+        currentRating={player.skill_rating}
+        isGuest={player.type === 'guest'}
+        t={t}
+      />
+
       <Tabs defaultValue="overview">
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="overview">{t('players.detail.tabs.overview', 'Overview')}</TabsTrigger>
