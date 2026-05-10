@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -46,7 +46,7 @@ export default function AcademyIntakeRequests() {
   const { t } = useTranslation('cycles');
   const { activeAcademy } = useAcademyContext();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+  
 
   // Persist UI state in URL
   const selectedCycleId = searchParams.get('cycle') || 'all';
