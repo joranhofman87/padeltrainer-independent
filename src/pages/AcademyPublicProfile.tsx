@@ -37,6 +37,7 @@ import {
   type AcademyProfile 
 } from '@/lib/academy';
 import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
+import { getActiveCycles } from '@/lib/cycles';
 import { AcademyPublicOpenSlots } from '@/components/academy/AcademyPublicOpenSlots';
 import { WaitingListCard } from '@/components/waitingList';
 import { AcademyReviews } from '@/components/reviews/AcademyReviews';
