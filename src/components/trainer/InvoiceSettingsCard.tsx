@@ -286,6 +286,56 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
           </div>
         </div>
 
+        {/* Banner Color */}
+        <div className="space-y-3 pb-4 border-b">
+          <div className="flex items-center gap-2">
+            <Palette className="h-4 w-4 text-muted-foreground" />
+            <Label>{t('invoices.bannerColor', 'Banner color')}</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('invoices.bannerColorDescription', 'Optional accent color shown behind the logo at the top of your invoices.')}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            {[
+              { color: '', label: t('invoices.noColor', 'None') },
+              { color: '#1a2332', label: 'Navy' },
+              { color: '#000000', label: 'Black' },
+              { color: '#1e3a5f', label: 'Blue' },
+              { color: '#2d4a3e', label: 'Green' },
+            ].map((preset) => (
+              <button
+                key={preset.color}
+                type="button"
+                onClick={() => setBannerColor(preset.color)}
+                className={`h-8 rounded border-2 px-3 text-xs font-medium transition-all ${
+                  bannerColor === preset.color ? 'border-primary ring-2 ring-primary/30' : 'border-border'
+                } ${preset.color ? 'text-white' : 'bg-background text-foreground'}`}
+                style={preset.color ? { backgroundColor: preset.color } : undefined}
+              >
+                {preset.label}
+              </button>
+            ))}
+            <div className="flex items-center gap-1.5">
+              <input
+                type="color"
+                value={bannerColor || '#1a2332'}
+                onChange={(e) => setBannerColor(e.target.value)}
+                className="h-8 w-8 rounded border cursor-pointer"
+              />
+              <span className="text-xs text-muted-foreground">{t('invoices.customColor', 'Custom')}</span>
+            </div>
+          </div>
+          {bannerColor && (
+            <div className="flex items-center gap-3 p-3 rounded-md" style={{ backgroundColor: bannerColor }}>
+              {logoUrl ? (
+                <img src={logoUrl} alt="Preview" className="h-8 max-w-[120px] object-contain" />
+              ) : (
+                <span className="text-white text-sm font-medium">{formData.business_name || 'Your Logo Here'}</span>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="business_name">
