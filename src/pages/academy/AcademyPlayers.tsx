@@ -262,13 +262,18 @@ export default function AcademyPlayers() {
       const meta = p.type === 'guest'
         ? metaByGuest.get(p.id)
         : metaByProfile.get(p.id.replace(/^reg-/, ''));
+      const guestId = p.type === 'guest' ? p.id : null;
+      const profileId = p.type === 'registered' ? p.id.replace(/^reg-/, '') : null;
       return {
         ...p,
         tag_ids: meta?.tag_ids || [],
         academy_notes: meta?.notes || '',
         metadata_id: meta?.id,
-        guest_player_id: p.type === 'guest' ? p.id : null,
-        profile_id: p.type === 'registered' ? p.id.replace(/^reg-/, '') : null,
+        guest_player_id: guestId,
+        profile_id: profileId,
+        has_overdue_payment:
+          (guestId && overdueGuestIds.has(guestId)) ||
+          (profileId && overdueProfileIds.has(profileId)) || false,
       };
     });
 
