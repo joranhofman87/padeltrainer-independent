@@ -104,7 +104,7 @@ export function SEO({
           href={altUrl} 
         />
       ))}
-      {/* x-default points to Dutch as the primary/default language */}
+      {/* x-default points to the language-picker root for locale auto-selection */}
       <link 
         rel="alternate" 
         hrefLang="x-default" 
@@ -117,6 +117,10 @@ export function SEO({
       <meta property="og:type" content={type} />
       <meta property="og:url" content={fullUrl} />
       <meta property="og:image" content={image || defaultImage} />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:type" content="image/png" />
+      <meta property="og:image:alt" content={title} />
       <meta property="og:site_name" content="PadelTrainer.ai" />
       <meta property="og:locale" content={OG_LOCALE_MAP[currentLang] || 'en_US'} />
       {SUPPORTED_LANGUAGES.filter(l => l !== currentLang).map(l => (
