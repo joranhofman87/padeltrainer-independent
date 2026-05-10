@@ -506,14 +506,69 @@ export default function AgendaWeekByTrainer({
       </div>
 
       {/* Footer totals */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+        {summary && (
+          <>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="uppercase tracking-wide text-[10px] text-muted-foreground/70">
+                {t('calendar.summary.activeTrainers', 'Trainers training')}
+              </span>
+              <strong className="text-foreground tabular-nums">{summary.activeTrainers.length}</strong>
+              <span className="flex -space-x-1.5">
+                {summary.activeTrainers.slice(0, 4).map((tr) => {
+                  const initials = tr.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || '?';
+                  return (
+                    <Avatar key={tr.id} className="h-5 w-5 ring-1 ring-card">
+                      <AvatarImage src={tr.avatar || undefined} alt={tr.name} />
+                      <AvatarFallback className="text-[8px]">{initials}</AvatarFallback>
+                    </Avatar>
+                  );
+                })}
+              </span>
+            </span>
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="uppercase tracking-wide text-[10px] text-muted-foreground/70">
+                {t('calendar.summary.locationsInUse', 'Locations in use')}
+              </span>
+              <strong className="text-foreground tabular-nums">{summary.activeLocations.length}</strong>
+              <span className="flex -space-x-1.5">
+                {summary.activeLocations.slice(0, 4).map((loc, i) =>
+                  loc.logo ? (
+                    <img
+                      key={loc.id + i}
+                      src={loc.logo}
+                      alt={loc.name}
+                      className="h-5 w-5 rounded-full bg-muted object-contain ring-1 ring-card"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span
+                      key={loc.id + i}
+                      className="h-5 w-5 rounded-full bg-muted ring-1 ring-card flex items-center justify-center text-[8px] font-medium text-muted-foreground"
+                    >
+                      {loc.name.slice(0, 1).toUpperCase() || '?'}
+                    </span>
+                  ),
+                )}
+              </span>
+            </span>
+            <span aria-hidden>·</span>
+            <span>
+              <strong className="text-foreground tabular-nums">{fmtH(summary.bookedHours)}</strong>{' '}
+              {t('calendar.cell.booked', 'booked')}
+            </span>
+            <span aria-hidden>·</span>
+            <span>
+              <strong className="text-foreground tabular-nums">{fmtH(summary.freeHours)}</strong>{' '}
+              {t('calendar.cell.free', 'free')}
+            </span>
+            <span aria-hidden>·</span>
+          </>
+        )}
         <span>
           <strong className="text-foreground tabular-nums">{totals.sessions}</strong>{' '}
           {totals.sessions === 1 ? t('calendar.unitSession', 'session') : t('calendar.unitSessions', 'sessions')}
-        </span>
-        <span aria-hidden>·</span>
-        <span>
-          <strong className="text-foreground tabular-nums">{totals.hours.toFixed(totals.hours % 1 === 0 ? 0 : 1)}</strong> h
         </span>
         <span aria-hidden>·</span>
         <span>
