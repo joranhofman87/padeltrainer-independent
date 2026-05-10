@@ -776,108 +776,7 @@ export default function AcademyCalendar() {
 
       <main className="container mx-auto px-4 py-5 sm:py-6 space-y-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
-          {/* ── Overview tiles (only for week/day/month) ── */}
-          {isPrimaryView && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-              {/* Active trainers */}
-              <div className="rounded-lg border bg-card px-3 py-2.5">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                  {t("calendar.summary.activeTrainers", "Trainers training")}
-                </div>
-                <div className="flex items-center justify-between gap-2 mt-1">
-                  <span className="text-2xl font-display font-semibold tabular-nums">
-                    {summaryStats.activeTrainers.length}
-                  </span>
-                  <div className="flex -space-x-2">
-                    {summaryStats.activeTrainers.slice(0, 4).map((tr) => {
-                      const initials = tr.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
-                      return (
-                        <Avatar key={tr.id} className="h-6 w-6 ring-2 ring-card">
-                          <AvatarImage src={tr.avatar || undefined} alt={tr.name} />
-                          <AvatarFallback className="text-[9px]">{initials}</AvatarFallback>
-                        </Avatar>
-                      );
-                    })}
-                    {summaryStats.activeTrainers.length > 4 && (
-                      <span className="h-6 w-6 rounded-full bg-muted ring-2 ring-card flex items-center justify-center text-[9px] tabular-nums text-muted-foreground">
-                        +{summaryStats.activeTrainers.length - 4}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Active locations */}
-              <div className="rounded-lg border bg-card px-3 py-2.5">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                  {t("calendar.summary.locationsInUse", "Locations in use")}
-                </div>
-                <div className="flex items-center justify-between gap-2 mt-1">
-                  <span className="text-2xl font-display font-semibold tabular-nums">
-                    {summaryStats.activeLocations.length}
-                  </span>
-                  <div className="flex -space-x-2">
-                    {summaryStats.activeLocations.slice(0, 4).map((loc, i) => (
-                      loc.logo ? (
-                        <img
-                          key={loc.id + i}
-                          src={loc.logo}
-                          alt={loc.name}
-                          className="h-6 w-6 rounded-full bg-muted object-contain ring-2 ring-card"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <span
-                          key={loc.id + i}
-                          className="h-6 w-6 rounded-full bg-muted ring-2 ring-card flex items-center justify-center text-[9px] font-medium text-muted-foreground"
-                        >
-                          {loc.name.slice(0, 1).toUpperCase() || '?'}
-                        </span>
-                      )
-                    ))}
-                    {summaryStats.activeLocations.length > 4 && (
-                      <span className="h-6 w-6 rounded-full bg-muted ring-2 ring-card flex items-center justify-center text-[9px] tabular-nums text-muted-foreground">
-                        +{summaryStats.activeLocations.length - 4}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Booked hours */}
-              <div className="rounded-lg border bg-card px-3 py-2.5">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                  {t("calendar.summary.bookedHours", "Booked hours")}
-                </div>
-                <div className="mt-1">
-                  <span className="text-2xl font-display font-semibold tabular-nums text-foreground">
-                    {fmtHours(summaryStats.bookedHours)}
-                  </span>
-                  <span className="ml-1.5 text-[11px] text-muted-foreground">
-                    {t("calendar.summary.training", "training")}
-                  </span>
-                </div>
-              </div>
-
-              {/* Free hours */}
-              <div className="rounded-lg border bg-card px-3 py-2.5">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                  {t("calendar.summary.freeHours", "Free hours")}
-                </div>
-                <div className="mt-1 flex items-baseline gap-1.5">
-                  <span className={cn(
-                    "text-2xl font-display font-semibold tabular-nums",
-                    summaryStats.freeHours > 0 ? "text-foreground" : "text-muted-foreground",
-                  )}>
-                    {fmtHours(summaryStats.freeHours)}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {t("calendar.summary.openCapacity", "open")}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Summary tiles removed — info surfaced inline in the week table footer/cells */}
 
           {/* ── Primary view switcher + date nav (only for week/day/month) ── */}
           {isPrimaryView && (
@@ -1033,6 +932,7 @@ export default function AcademyCalendar() {
               slots={agendaSlots}
               trainers={trainerOptions}
               currentDate={currentDate}
+              summary={summaryStats}
               onCellClick={(trainerId, day) => {
                 setSelectedTrainerId(trainerId);
                 setCurrentDate(day);

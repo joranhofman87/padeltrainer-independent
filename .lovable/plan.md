@@ -1,46 +1,39 @@
-## Remaining Trainer Parity Steps
+## Goal
 
-Steps 1, 4, 5 (component relocation, invoice settings banner color, preset quick-add on Create/Edit Invoice) are done. Three steps remain.
+Make the agenda denser by removing the 4 summary cards at the top and surfacing the same information directly inside the week-by-trainer table.
 
-### Step A — Trainer Players (biggest gap, ~689 → ~900 lines)
+Scope: `AcademyCalendar` (week view only) + `AgendaWeekByTrainer`. Day/Month/Cycles/Hours/Reports views are untouched. Trainer-side `TrainerCalendar` uses the same component so it inherits the cell changes automatically — but the trainer page only ever has 1 row, so we'll keep the same logic; no special branching.
 
-Rewrite `src/pages/TrainerPlayers.tsx` to mirror `AcademyPlayers.tsx`:
+## Changes
 
-- Replace existing header with `PageHeader` (title + count + actions: Manage tags, Import, Add player).
-- Three tabs: **All players / Create / Email campaign** (reuse `EmailCampaignTab`, `ImportPlayersTab`, `AddPlayerForm` from academy).
-- `TableToolbar`: search + filters (Levels, Cyclus, Tags, Payments) + Columns dropdown. Skip Trainers/Locations filters (academy-only).
-- Tags column using `PlayerTagsCell`, notes via `PlayerNotesCell`, Manage Tags via `ManagePlayerTagsDialog`.
-- Tag/metadata queries: scope by `trainer_id` instead of `academy_profile_id`. The shared components currently take `academyId` — extend to accept either an `academyId` or `trainerId` and adjust the table/column reference accordingly. Underlying tables (`academy_player_tags`, `academy_player_metadata`) already exist; check whether trainer-scoped variants exist or if a small DB migration is needed to add a `trainer_profile_id` column on those tables.
+### 1. `src/pages/academy/AcademyCalendar.tsx`
+- Remove the 4-tile `grid grid-cols-2 md:grid-cols-4` summary block (the "Trainers training / Locations in use / Booked hours / Free hours" cards, ~lines 780–880).
+- Pass the already-computed `summaryStats` (active trainers, active locations, bookedHours, freeHours) down into `<AgendaWeekByTrainer />` as a new optional `summary` prop so it can render them in the footer.
 
-### Step B — Trainer Calendar parity
+### 2. `src/components/agenda/AgendaWeekByTrainer.tsx`
 
-In `src/pages/TrainerCalendar.tsx`:
+**Day cells (`renderCell`)** — for cells with sessions:
+- Remove the dots row (the `slotsForCell.slice(0, 6).map(...)` rendering colored dots and the `+N` overflow).
+- Remove the "session / sessions" label text (keep just the number).
+- Add a small row of location logo avatars (dedup by `location_id`, max 3 shown, `+N` overflow), reusing the same circular `<img>` styling used in the existing "Locations in use" tile.
+- Add two compact stats: booked hours and free hours for that day-cell, computed from each slot's duration × fillRatio (matching the formula in `AcademyCalendar.summaryStats`).
+- Bump cell height slightly (h-20 → h-24 on sm) to fit the new content; keep mobile stack untouched.
 
-- Drop the old "Sub-page Header" `border-b` shell, wrap in `container mx-auto px-4 py-6 space-y-4`, use `PageHeader` (title + Add slot).
-- Add 3-tile overview for the visible range: **Locations in use / Booked hours / Free hours** (skip "Active trainers" — single trainer).
-- Add Day / Week / Month tabs.
-- Week view: render `AgendaWeekByTrainer` with a one-element trainers list (the current trainer).
-- Month view: render `AgendaMonth` filtered to the current trainer.
-- Day view: keep existing `TrainerCalendarGrid` for now.
+**Header / Total column**:
+- Rename the `Total` header so its sub-line shows two numbers per trainer row: booked hours and free hours for the visible week (instead of the current single hours value). Render as two stacked tabular-nums values, e.g. `6.0h booked` / `2.5h free`, muted styling.
+- Compute per-trainer free hours the same way as the global summary (`dur * (1 - fillRatio)` summed over their week's slots).
 
-### Step C — Trainer Invoices bulk actions + extras
+**Footer row** (new, desktop only):
+- Add a footer strip below the trainer rows showing the academy-wide totals previously in the cards: trainers-training count + avatar stack, locations-in-use count + logo stack, booked hours, free hours, plus the existing `sessions / hours / fillRate`.
+- Drives off the new `summary` prop from `AcademyCalendar`; falls back to internally-computed `totals` when the prop isn't passed (so `TrainerCalendar` still works).
 
-In `src/pages/trainer/TrainerInvoices.tsx`:
+**Mobile stack**: out of scope — leaves the existing per-day stack as-is. Only the desktop grid changes.
 
-- Add row checkboxes + select-all in the table header.
-- Sticky bulk-action bar with: Send email (reuse `BulkInvoiceEmailDialog`), Reset to draft, Update due date, Delete.
-- Extend `ExtraCostPresetsCard` to accept `trainerProfileId` (already targeted in the migration this round) and add to the Settings tab.
+### 3. Translations
+- Reuse existing keys: `calendar.summary.bookedHours`, `calendar.summary.freeHours`, `calendar.summary.activeTrainers`, `calendar.summary.locationsInUse`, `calendar.total`.
+- Add short keys for the per-cell labels if needed: `calendar.cell.booked` ("booked"), `calendar.cell.free` ("free"). Sentence case for NL per project convention.
 
-### Out of scope
-
-- Multi-trainer-only filters (Trainers, Locations) on Trainer pages.
-- Visual shell pass on remaining pages (TrainerEarnings, TrainerBookings, etc.) — separate follow-up.
-- Collapsing `AcademyInvoiceSettingsCard` and `InvoiceSettingsCard` behind a shared hook.
-
-### Suggested order
-
-1. Step A (Players) — likely needs a small DB migration to add `trainer_profile_id` to `academy_player_tags` / `academy_player_metadata`, or a new pair of tables. Will confirm before migrating.
-2. Step B (Calendar) — pure frontend.
-3. Step C (Invoices bulk + presets card) — frontend + extending `ExtraCostPresetsCard`.
-
-Each step is independently shippable.
+## Out of scope
+- Day view, Month view, Cycles, Hours, Reports tabs.
+- Mobile layout of the week view.
+- Any data-fetching or business-logic changes — purely presentational; `summaryStats` already exists.
