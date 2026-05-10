@@ -1,9 +1,12 @@
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Target, AlertTriangle, BarChart3, Star, Dices } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { buildBreadcrumbList } from '@/lib/structuredData';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 
 const tools = [
   {
