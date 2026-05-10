@@ -38,14 +38,27 @@ interface TrainerOption {
   avatar: string | null;
 }
 
+interface SummaryStats {
+  activeTrainers: { id: string; name: string; avatar: string | null }[];
+  activeLocations: { id: string; name: string; logo: string | null }[];
+  bookedHours: number;
+  freeHours: number;
+}
+
 interface Props {
   slots: AgendaSlot[];
   trainers: TrainerOption[];
   currentDate: Date;
+  summary?: SummaryStats;
   onCellClick?: (trainerId: string, day: Date) => void;
   onTrainerClick?: (trainerId: string) => void;
   onDayHeaderClick?: (day: Date) => void;
   onSlotClick?: (slotId: string) => void;
+}
+
+function fmtH(h: number): string {
+  if (h <= 0) return '0h';
+  return h % 1 === 0 ? `${h}h` : `${h.toFixed(1)}h`;
 }
 
 function durationHours(start: string, end: string): number {
