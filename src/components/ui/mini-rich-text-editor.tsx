@@ -172,15 +172,19 @@ export function MiniRichTextEditor({
           <ListOrdered className="h-3.5 w-3.5" />
         </Toggle>
         <Separator orientation="vertical" className="mx-0.5 h-5" />
-        <Toggle
+        <Button
+          type="button"
+          variant={editor?.isActive("link") ? "secondary" : "ghost"}
           size="sm"
-          pressed={editor?.isActive("link") ?? false}
-          onPressedChange={addLink}
+          className="h-7 w-7 p-0"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={addLink}
           disabled={htmlMode}
           aria-label="Add Link"
+          aria-pressed={editor?.isActive("link") ?? false}
         >
           <LinkIcon className="h-3.5 w-3.5" />
-        </Toggle>
+        </Button>
         {allowHtmlView && (
           <>
             <Separator orientation="vertical" className="mx-0.5 h-5" />
