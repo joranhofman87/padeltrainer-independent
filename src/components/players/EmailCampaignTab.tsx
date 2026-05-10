@@ -116,7 +116,6 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
 
   // Test email
   const [testEmail, setTestEmail] = useState('');
-  const [showTestInput, setShowTestInput] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
 
   useEffect(() => {
