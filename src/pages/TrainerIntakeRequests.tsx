@@ -265,21 +265,37 @@ export default function TrainerIntakeRequests() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer/cycles')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold">{t('intakeRequests.title')}</h1>
-            <p className="text-muted-foreground hidden sm:block">
-              {t('intakeRequests.noRequestsDescription')}
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title={t('intakeRequests.title')}
+        countText={t('intakeRequests.noRequestsDescription')}
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              {t('intakeRequests.addManual', { defaultValue: 'Add registration' })}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const cycleName = selectedCycle?.name ?? 'all';
+                const date = format(new Date(), 'yyyy-MM-dd');
+                const locMap: Record<string, string> = {};
+                for (const c of cycles) {
+                  if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
+                }
+                exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData, locMap);
+              }}
+              disabled={filteredRequests.length === 0}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              CSV
+            </Button>
+          </>
+        }
+      />
 
       {/* Workflow Steps */}
       <ProposalWorkflowSteps
@@ -319,35 +335,24 @@ export default function TrainerIntakeRequests() {
           </TabsList>
         </Tabs>
 
-        <div className="flex items-center gap-2">
-          <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
-            <ToggleGroupItem value="list" aria-label="List view">
-              <List className="h-4 w-4" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="schedule" aria-label="Schedule view">
-              <CalendarDays className="h-4 w-4" />
-            </ToggleGroupItem>
-          </ToggleGroup>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              const cycleName = selectedCycle?.name ?? 'all';
-              const date = format(new Date(), 'yyyy-MM-dd');
-              const locMap: Record<string, string> = {};
-              for (const c of cycles) {
-                if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
-              }
-              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData, locMap);
-            }}
-            disabled={filteredRequests.length === 0}
-            className="h-8 text-xs"
-          >
-            <Download className="h-3 w-3 mr-1" />
-            CSV
-          </Button>
-        </div>
+        <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
+          <ToggleGroupItem value="list" aria-label="List view">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="schedule" aria-label="Schedule view">
+            <CalendarDays className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
+
+      {/* Toolbar: search */}
+      {viewMode === 'list' && (
+        <TableToolbar
+          searchPlaceholder={t('intakeRequests.searchPlaceholder', { defaultValue: 'Search by player name...' })}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
+      )}
 
       {/* Skipped reasons summary */}
       {statusFilter === 'skipped' && Object.keys(skippedReasonCounts).length > 0 && (
