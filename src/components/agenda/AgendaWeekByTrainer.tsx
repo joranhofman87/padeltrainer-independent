@@ -58,7 +58,8 @@ interface Props {
 
 function fmtH(h: number): string {
   if (h <= 0) return '0h';
-  return h % 1 === 0 ? `${h}h` : `${h.toFixed(1)}h`;
+  const rounded = Math.round(h * 2) / 2;
+  return `${rounded}h`;
 }
 
 function durationHours(start: string, end: string): number {
@@ -146,10 +147,8 @@ export default function AgendaWeekByTrainer({
     let booked = 0, free = 0;
     if (inner) for (const arr of inner.values()) for (const s of arr) {
       const dur = durationHours(s.start_time, s.end_time);
-      const max = s.max_participants || 1;
-      const fill = Math.min(s.booked_count, max) / max;
-      booked += dur * fill;
-      free += dur * (1 - fill);
+      if (s.booked_count > 0) booked += dur;
+      else free += dur;
     }
     return { booked, free };
   };
@@ -159,10 +158,8 @@ export default function AgendaWeekByTrainer({
     const locMap = new Map<string, { name: string; logo: string | null }>();
     slotsForCell.forEach((s) => {
       const dur = durationHours(s.start_time, s.end_time);
-      const max = s.max_participants || 1;
-      const fill = Math.min(s.booked_count, max) / max;
-      booked += dur * fill;
-      free += dur * (1 - fill);
+      if (s.booked_count > 0) booked += dur;
+      else free += dur;
       const lkey = s.location_id || s.location_name || '';
       if (lkey && !locMap.has(lkey)) {
         locMap.set(lkey, { name: s.location_name || '', logo: s.location_logo || null });
