@@ -29,9 +29,26 @@ export default function RateMyCourtPage() {
   const { t } = useTranslation('marketing');
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { lang = 'en' } = useParams<{ lang: string }>();
   const authPath = useLocalizedPath('/auth');
   const [step, setStep] = useState<Step>('search');
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+
+  const breadcrumb = buildBreadcrumbList([
+    { name: t('nav.home', 'Home'), url: `${MARKETING_DOMAIN}/${lang}` },
+    { name: t('playground.title', 'Padel Playground'), url: `${MARKETING_DOMAIN}/${lang}/playground` },
+    { name: t('rateMyCourtPage.title', 'Rate My Padel Court') },
+  ]);
+  const webAppSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: t('rateMyCourtPage.title', 'Rate My Padel Court'),
+    description: t('rateMyCourtPage.seo.description', 'Rate your padel club across 10 categories.'),
+    applicationCategory: 'LifestyleApplication',
+    operatingSystem: 'Web',
+    url: `${MARKETING_DOMAIN}/${lang}/playground/rate-my-court`,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+  };
   const [pendingReview, setPendingReview] = useState<CourtReviewInsert | null>(null);
 
   const { data: existingReview } = useUserReviewForLocation(selectedLocation?.id);
