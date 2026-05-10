@@ -4127,6 +4127,27 @@ export type Database = {
           },
         ]
       }
+      slug_redirects: {
+        Row: {
+          created_at: string
+          old_slug: string
+          owner_id: string
+          owner_type: string
+        }
+        Insert: {
+          created_at?: string
+          old_slug: string
+          owner_id: string
+          owner_type: string
+        }
+        Update: {
+          created_at?: string
+          old_slug?: string
+          owner_id?: string
+          owner_type?: string
+        }
+        Relationships: []
+      }
       sources: {
         Row: {
           allowed_to_use: boolean
@@ -5511,6 +5532,10 @@ export type Database = {
         Returns: string
       }
       generate_trainer_slug: { Args: { full_name: string }; Returns: string }
+      generate_unique_public_handle: {
+        Args: { _name: string; _owner_id: string; _owner_type: string }
+        Returns: string
+      }
       generate_unique_trainer_slug: {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
@@ -5572,6 +5597,7 @@ export type Database = {
       }
       is_player: { Args: { _user_id: string }; Returns: boolean }
       is_player_of_trainer: { Args: { p_player_id: string }; Returns: boolean }
+      is_reserved_handle: { Args: { _handle: string }; Returns: boolean }
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
       queue_onboarding_emails: {
         Args: {
@@ -5583,6 +5609,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      resolve_public_handle: { Args: { _handle: string }; Returns: Json }
       respond_to_priority_claim: {
         Args: { _action: string; _reason?: string; _token: string }
         Returns: Json

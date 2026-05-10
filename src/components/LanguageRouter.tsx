@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+
+const ShortLinkResolver = lazy(() => import('@/pages/ShortLinkResolver'));
 
 const SUPPORTED_LANGUAGES = ['en', 'nl', 'es', 'de', 'fr', 'it'];
 const DEFAULT_LANGUAGE = 'en';
@@ -11,21 +13,40 @@ export function LanguageRouter() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  useEffect(() => {
-    if (lang && SUPPORTED_LANGUAGES.includes(lang)) {
-      if (i18n.language !== lang) {
-        i18n.changeLanguage(lang);
-      }
-    }
-  }, [lang, i18n]);
+  const isSupportedLang = !!lang && SUPPORTED_LANGUAGES.includes(lang);
 
-  // If invalid language, redirect to default
   useEffect(() => {
-    if (lang && !SUPPORTED_LANGUAGES.includes(lang)) {
+    if (isSupportedLang && i18n.language !== lang) {
+      i18n.changeLanguage(lang!);
+    }
+  }, [isSupportedLang, lang, i18n]);
+
+  // A single top-level segment (e.g. /jan-de-vries) might be a short share-link.
+  const isSingleSegment =
+    location.pathname.replace(/\/+$/, '').split('/').filter(Boolean).length === 1;
+
+  useEffect(() => {
+    // If it's neither a supported language nor a possible handle, redirect
+    // to the default language prefix (preserves prior behavior for /xx/foo/bar).
+    if (lang && !isSupportedLang && !isSingleSegment) {
       const newPath = `/${DEFAULT_LANGUAGE}${location.pathname.replace(/^\/(en|nl|es|de|fr|it)/, '')}${location.search}`;
       navigate(newPath, { replace: true });
     }
-  }, [lang, location, navigate]);
+  }, [lang, isSupportedLang, isSingleSegment, location, navigate]);
+
+  if (!isSupportedLang && isSingleSegment && lang) {
+    const stored = (() => {
+      try { return localStorage.getItem('i18nextLng'); } catch { return null; }
+    })();
+    const storedLang = stored?.split('-')[0];
+    const targetLang =
+      storedLang && SUPPORTED_LANGUAGES.includes(storedLang) ? storedLang : DEFAULT_LANGUAGE;
+    return (
+      <Suspense fallback={null}>
+        <ShortLinkResolver handle={lang} lang={targetLang} />
+      </Suspense>
+    );
+  }
 
   return <Outlet />;
 }
@@ -35,8 +56,6 @@ export function RootRedirect() {
   const location = useLocation();
 
   useEffect(() => {
-    // Prefer the user's previously chosen language (persisted by i18next),
-    // only fall back to browser language if nothing was stored.
     const stored = (() => {
       try { return localStorage.getItem('i18nextLng'); } catch { return null; }
     })();
