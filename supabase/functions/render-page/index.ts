@@ -11,8 +11,17 @@
 import {
   cityFaqs, trainerFaqs, clubFaqs, academyFaqs, regionFaqs,
   renderFaqHtml, renderPopularCitiesHtml, renderPopularRegionsHtml,
-  faqPageSchema,
+  faqPageSchema, labels,
+  renderLastUpdatedHtml, renderTldrHtml, speakableSchema,
+  aggregateRatingSchema, reviewSchemas, localBusinessSchema, courseSchema,
+  renderNearbyCitiesHtml, renderTopTrainersHtml, renderTopClubsHtml,
+  renderTrainersAtClubHtml, renderRecentReviewsHtml, renderUpcomingCyclesHtml,
+  renderProvinceCitiesHtml,
 } from './seo-content.ts';
+import {
+  fetchCityFacts, fetchTrainerFacts, fetchClubFacts, fetchAcademyFacts,
+  fetchProvinceFacts, getProvinceForCity, getNearbyCities, getProvinceBySlug,
+} from './db-facts.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
