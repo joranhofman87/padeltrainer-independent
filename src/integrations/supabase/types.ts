@@ -2323,6 +2323,7 @@ export type Database = {
           linked_profile_id: string | null
           notes: string | null
           phone: string | null
+          preferred_location_id: string | null
           rating_system: string
           skill_rating: number | null
           source: string | null
@@ -2343,6 +2344,7 @@ export type Database = {
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string | null
+          preferred_location_id?: string | null
           rating_system?: string
           skill_rating?: number | null
           source?: string | null
@@ -2363,6 +2365,7 @@ export type Database = {
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string | null
+          preferred_location_id?: string | null
           rating_system?: string
           skill_rating?: number | null
           source?: string | null
@@ -2410,6 +2413,13 @@ export type Database = {
             columns: ["linked_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_preferred_location_id_fkey"
+            columns: ["preferred_location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {
