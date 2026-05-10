@@ -31,6 +31,7 @@ interface EmailCampaignTabProps {
   academyId: string;
   trainers: { id: string; name: string }[];
   locations: { id: string; name: string }[];
+  tags?: { id: string; name: string; color: string }[];
   players: {
     id: string;
     full_name: string;
@@ -41,6 +42,7 @@ interface EmailCampaignTabProps {
     location_names?: string[];
     has_active_cyclus?: boolean;
     type: 'guest' | 'registered';
+    tag_ids?: string[];
   }[];
 }
 
