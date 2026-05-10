@@ -76,6 +76,13 @@ type UnifiedPlayer = {
   has_active_cyclus?: boolean;
   source?: string | null;
   birth_date?: string | null;
+  // Tags & metadata (academy-level)
+  metadata_id?: string;
+  tag_ids?: string[];
+  academy_notes?: string;
+  // Stable keys for metadata lookup
+  guest_player_id?: string | null;
+  profile_id?: string | null;
 };
 
 function getLevelBand(rating: number | null): string {
