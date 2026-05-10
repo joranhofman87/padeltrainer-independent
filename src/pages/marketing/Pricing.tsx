@@ -13,12 +13,16 @@ import { useTrainerPlans, useClubPlan } from '@/hooks/usePricingPlans';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
+import { buildBreadcrumbList, buildFaqPage } from '@/lib/structuredData';
+import { useParams } from 'react-router-dom';
 
 export default function Pricing() {
   const { t } = useTranslation('marketing');
   const { data: trainerPlans, isLoading: loadingTrainer } = useTrainerPlans();
   const { data: clubPlan, isLoading: loadingClub } = useClubPlan();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
 
   useEffect(() => {
     trackEvent('pricing_page_viewed');
@@ -82,13 +86,25 @@ export default function Pricing() {
     }
   };
 
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${currentLang}` },
+    { name: t('pricing.hero.title'), url: `/${currentLang}/pricing` },
+  ]);
+
+  const faqSchema = buildFaqPage(
+    faqKeys.map(key => ({
+      question: t(`pricing.faq.questions.${key}.q`),
+      answer: t(`pricing.faq.questions.${key}.a`),
+    }))
+  );
+
   return (
     <MarketingLayout>
       <SEO 
         title={t('pricing.hero.title')}
         description={t('pricing.hero.subtitle')}
         url="/pricing"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema, faqSchema]}
       />
       {/* Hero */}
       <section className="py-20 bg-background">

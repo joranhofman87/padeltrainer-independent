@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,9 +8,12 @@ import { motion } from 'framer-motion';
 import { Target, Heart, Users, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+import { buildBreadcrumbList } from '@/lib/structuredData';
 
 export default function About() {
   const { t } = useTranslation('marketing');
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
 
   const values = [
     {
@@ -57,13 +60,18 @@ export default function About() {
     }
   };
 
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${currentLang}` },
+    { name: t('about.hero.title'), url: `/${currentLang}/about` },
+  ]);
+
   return (
     <MarketingLayout>
       <SEO 
         title={`${t('about.hero.title')} ${t('about.hero.titleHighlight')}`}
         description={t('about.hero.subtitle')}
         url="/about"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema]}
       />
       {/* Hero */}
       <section className="py-20 bg-background">

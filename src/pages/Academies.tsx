@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { buildBreadcrumbList } from '@/lib/structuredData';
 import { useTranslation } from 'react-i18next';
 import { Building2, MapPin, Users, Search, CheckCircle, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,8 @@ export default function Academies() {
   const { t } = useTranslation(['academy', 'common']);
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
 
   const [academies, setAcademies] = useState<Partial<AcademyProfile>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +67,7 @@ export default function Academies() {
     "@context": "https://schema.org",
     "@type": "ItemList",
     "name": "Padel Training Academies",
-    "description": "Find professional padel training academies in the Netherlands",
+    "description": "Find professional padel training academies worldwide",
     "numberOfItems": academies.length,
     "itemListElement": academies.slice(0, 10).map((academy, index) => ({
       "@type": "ListItem",
@@ -73,11 +76,16 @@ export default function Academies() {
         "@type": "EducationalOrganization",
         "name": academy.name || "",
         "description": academy.description,
-        "url": `https://padeltrainer.ai/academies/${academy.slug}`,
+        "url": `https://padeltrainer.ai/${currentLang}/academies/${academy.slug}`,
         ...(academy.logo_url && { "logo": academy.logo_url })
       }
     }))
   };
+
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${currentLang}` },
+    { name: t('common:academies', 'Academies'), url: `/${currentLang}/academies` },
+  ]);
 
   return (
     <>
@@ -85,7 +93,7 @@ export default function Academies() {
         title={t('common:academies', 'Padel Training Academies')}
         description="Find professional padel training academies with certified trainers. Compare academies, view their trainers, and book lessons."
         url="/academies"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema]}
       />
 
       <MarketingLayout>

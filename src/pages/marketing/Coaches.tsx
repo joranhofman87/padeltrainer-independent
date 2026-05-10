@@ -10,6 +10,7 @@ import { ArrowRight, User, MapPin, Info } from 'lucide-react';
 import { sanityClient, COACHES_LIST_QUERY } from '@/lib/sanity';
 import { useTranslation } from 'react-i18next';
 import type { SeoFields } from '@/lib/sanity';
+import { buildBreadcrumbList } from '@/lib/structuredData';
 
 interface CoachListItem {
   _id: string;
@@ -41,9 +42,16 @@ export default function Coaches() {
       "@type": "ListItem",
       "position": i + 1,
       "name": c.name,
-      "url": `https://padeltrainer.ai/padel-coaches/${c.slug}`,
+      "url": `https://padeltrainer.ai/${lang}/padel-coaches/${c.slug}`,
     })),
   } : undefined;
+
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${lang}` },
+    { name: 'Padel Coaches', url: `/${lang}/padel-coaches` },
+  ]);
+
+  const schemas = itemListStructuredData ? [itemListStructuredData, breadcrumbSchema] : [breadcrumbSchema];
 
   return (
     <MarketingLayout>
@@ -51,7 +59,7 @@ export default function Coaches() {
         title="Padel Content Creators"
         description="Discover independent padel coaches and content creators we feature for the quality of their tutorials, drills, and tips."
         url="/padel-coaches"
-        structuredData={itemListStructuredData}
+        structuredData={schemas}
       />
 
       {/* Hero */}

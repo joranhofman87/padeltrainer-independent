@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { buildBreadcrumbList } from '@/lib/structuredData';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -63,6 +64,8 @@ type SortOption = 'rating' | 'experience';
 
 export default function Trainers() {
   const { t } = useTranslation(['trainer', 'common']);
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
   const [searchParams, setSearchParams] = useSearchParams();
   const [featuredOpen, setFeaturedOpen] = useState(true);
   const navigate = useNavigate();
@@ -438,13 +441,18 @@ export default function Trainers() {
     }))
   };
 
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${currentLang}` },
+    { name: 'Trainers', url: `/${currentLang}/trainers` },
+  ]);
+
   return (
     <div className="min-h-screen bg-background">
       <SEO
         title="Find Padel Trainers"
         description="Discover certified padel trainers worldwide. Compare rates, read reviews, and book lessons that match your skill level."
         url="/trainers"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema]}
       />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
