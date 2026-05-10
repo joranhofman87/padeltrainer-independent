@@ -1224,6 +1224,17 @@ export default function AcademyPlayers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Manage Tags Dialog */}
+      {activeAcademy && (
+        <ManagePlayerTagsDialog
+          open={showManageTags}
+          onOpenChange={setShowManageTags}
+          academyId={activeAcademy.id}
+          tags={tags}
+          onChanged={fetchTagsAndMetadata}
+        />
+      )}
     </div>
   );
 }
