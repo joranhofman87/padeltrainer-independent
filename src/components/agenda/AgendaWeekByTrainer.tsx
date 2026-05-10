@@ -188,7 +188,7 @@ export default function AgendaWeekByTrainer({
         type="button"
         onClick={() => onCellClick?.(trainer.id, day)}
         className={cn(
-          'group relative h-20 sm:h-24 w-full rounded-md border text-left px-2 py-1.5 transition-all',
+          'group relative h-14 sm:h-16 w-full rounded-md border text-left px-2 py-1 transition-all',
           cls.bg,
           cls.border,
           'hover:border-primary/40 hover:shadow-sm',
