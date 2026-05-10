@@ -59,7 +59,7 @@ interface Props {
 function fmtH(h: number): string {
   if (h <= 0) return '0h';
   const rounded = Math.round(h * 2) / 2;
-  return rounded % 1 === 0 ? `${rounded}h` : `${rounded}h`;
+  return `${rounded}h`;
 }
 
 function durationHours(start: string, end: string): number {
