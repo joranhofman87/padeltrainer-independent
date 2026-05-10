@@ -147,9 +147,10 @@ export default function AcademyPlayers() {
   // Column customization
   type ColumnKey =
     | 'email' | 'phone' | 'location' | 'addedOn'
-    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate';
-  const DEFAULT_COLUMNS: ColumnKey[] = ['email', 'phone', 'location', 'addedOn'];
+    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags';
+  const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'email', 'phone', 'location', 'addedOn'];
   const ALL_COLUMNS: { key: ColumnKey; label: string; isDefault: boolean }[] = [
+    { key: 'tags', label: tTrainer('players.columns.tags', 'Tags'), isDefault: true },
     { key: 'email', label: tTrainer('players.columns.email', 'Email'), isDefault: true },
     { key: 'phone', label: tTrainer('players.columns.phone', 'Phone'), isDefault: true },
     { key: 'location', label: tTrainer('players.columns.location', 'Location'), isDefault: true },
