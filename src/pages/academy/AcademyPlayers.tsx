@@ -481,6 +481,27 @@ export default function AcademyPlayers() {
           if (!guestLocationMap.has(r.guest_player_id)) guestLocationMap.set(r.guest_player_id, new Set());
           guestLocationMap.get(r.guest_player_id)!.add(name);
         });
+
+        // Fallback: preferred_location_id stored directly on the guest record
+        const preferredLocIds = new Set<string>();
+        allGuestPlayers.forEach((g: any) => {
+          if (g.preferred_location_id) preferredLocIds.add(g.preferred_location_id);
+        });
+        const missingPreferred = Array.from(preferredLocIds).filter((id) => !locationNameMap.has(id));
+        if (missingPreferred.length > 0) {
+          const { data: locs } = await supabase
+            .from('locations')
+            .select('id, name')
+            .in('id', missingPreferred);
+          locs?.forEach((l) => locationNameMap.set(l.id, l.name));
+        }
+        allGuestPlayers.forEach((g: any) => {
+          if (!g.preferred_location_id) return;
+          const name = locationNameMap.get(g.preferred_location_id);
+          if (!name) return;
+          if (!guestLocationMap.has(g.id)) guestLocationMap.set(g.id, new Set());
+          guestLocationMap.get(g.id)!.add(name);
+        });
       }
 
       const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => {
