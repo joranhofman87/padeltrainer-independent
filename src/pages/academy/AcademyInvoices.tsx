@@ -601,12 +601,26 @@ export default function AcademyInvoices() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">{t("invoices.title", "Facturen")}</h1>
-        <p className="text-muted-foreground text-sm">
-          {t("invoices.description", "Beheer facturen voor je academy")}
-        </p>
-      </div>
+      <PageHeader
+        title={t("invoices.title", "Facturen")}
+        description={t("invoices.description", "Beheer facturen voor je academy")}
+        actions={
+          <>
+            {draftInvoices.length > 0 && (
+              <Button size="sm" variant="outline" onClick={handleSendAllDrafts} disabled={sendingAll}>
+                {sendingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                {sendingAll
+                  ? t("invoices.sendingAll", "Sending...")
+                  : t("invoices.sendAllDrafts", "Send all drafts")} ({draftInvoices.length})
+              </Button>
+            )}
+            <Button size="sm" onClick={() => navigate('/app/academy/invoices/new')}>
+              <PlusCircle className="h-4 w-4 mr-2" />
+              {t("invoices.createInvoice", "Nieuwe factuur")}
+            </Button>
+          </>
+        }
+      />
 
       {/* Page-level tabs: Overview / Settings */}
       <Tabs value={pageTab} onValueChange={(v) => setSearchParams(v === "settings" ? { tab: "settings" } : {})}>
@@ -618,7 +632,7 @@ export default function AcademyInvoices() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-6 mt-4">
+        <TabsContent value="overview" className="space-y-4 mt-4">
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -641,38 +655,6 @@ export default function AcademyInvoices() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          onClick={() => navigate('/app/academy/invoices/new')}
-        >
-          <PlusCircle className="h-4 w-4 mr-2" />
-          {t("invoices.createInvoice", "Nieuwe factuur")}
-        </Button>
-      </div>
-
-      {/* Bulk Actions */}
-      {draftInvoices.length > 0 && (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleSendAllDrafts}
-            disabled={sendingAll}
-          >
-            {sendingAll ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4 mr-2" />
-            )}
-            {sendingAll 
-              ? t("invoices.sendingAll", "Sending...")
-              : t("invoices.sendAllDrafts", "Send all drafts")} ({draftInvoices.length})
-          </Button>
-        </div>
-      )}
 
       {/* Bulk Selection Action Bar */}
       {selectedIds.size > 0 && (
