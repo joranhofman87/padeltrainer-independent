@@ -836,7 +836,20 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                       <Eye className="mr-1.5 h-4 w-4" /> {t('emailCampaign.compose.preview')}
                     </Button>
 
-                    <div className="ml-auto">
+                    <div className="ml-auto flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleSaveDraft}
+                        disabled={isSavingDraft || (!subject.trim() && !bodyHtml.trim())}
+                      >
+                        {isSavingDraft ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileText className="mr-1.5 h-4 w-4" />
+                        )}
+                        {t('emailCampaign.compose.saveDraft')}
+                      </Button>
                       <Button
                         onClick={() => setShowConfirmSend(true)}
                         disabled={isSending || !subject.trim() || !bodyHtml.trim() || recipients.length === 0}
