@@ -25,6 +25,7 @@ function PageLoader() {
 const Home = lazy(() => import('@/pages/marketing/Home'));
 const Pricing = lazy(() => import('@/pages/marketing/Pricing'));
 const Brand = lazy(() => import('@/pages/marketing/Brand'));
+const PressKit = lazy(() => import('@/pages/marketing/PressKit'));
 const About = lazy(() => import('@/pages/marketing/About'));
 const Blog = lazy(() => import('@/pages/marketing/Blog'));
 const BlogPost = lazy(() => import('@/pages/marketing/BlogPost'));
@@ -419,6 +420,7 @@ export function DomainRouter() {
           <Route path="rating/:profileId" element={<PublicRatingCard />} />
           <Route path="founding-trainers" element={<FoundingTrainers />} />
           <Route path="brand" element={<Brand />} />
+          <Route path="press" element={<PressKit />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />

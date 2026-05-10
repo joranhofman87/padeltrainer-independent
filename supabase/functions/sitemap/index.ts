@@ -257,6 +257,7 @@ Deno.serve(async (req) => {
         { path: '/playground/level-test', priority: '0.7', changefreq: 'monthly' },
         { path: '/founding-trainers', priority: '0.6', changefreq: 'monthly' },
         { path: '/brand', priority: '0.5', changefreq: 'monthly' },
+        { path: '/press', priority: '0.5', changefreq: 'monthly' },
         { path: '/gear/rackets', priority: '0.7', changefreq: 'weekly' },
         { path: '/terms', priority: '0.3', changefreq: 'yearly' },
         { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
