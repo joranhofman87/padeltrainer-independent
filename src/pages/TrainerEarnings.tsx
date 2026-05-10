@@ -35,6 +35,7 @@ import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { logger } from '@/lib/logger';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
 
 interface EarningsBooking {
   id: string;
