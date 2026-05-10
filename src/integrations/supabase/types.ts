@@ -4507,6 +4507,7 @@ export type Database = {
           hourly_rate: number | null
           iban: string | null
           id: string
+          invoice_banner_color: string | null
           invoice_forward_emails: string[] | null
           invoice_include_year: boolean
           invoice_language: string
@@ -4569,6 +4570,7 @@ export type Database = {
           hourly_rate?: number | null
           iban?: string | null
           id?: string
+          invoice_banner_color?: string | null
           invoice_forward_emails?: string[] | null
           invoice_include_year?: boolean
           invoice_language?: string
@@ -4631,6 +4633,7 @@ export type Database = {
           hourly_rate?: number | null
           iban?: string | null
           id?: string
+          invoice_banner_color?: string | null
           invoice_forward_emails?: string[] | null
           invoice_include_year?: boolean
           invoice_language?: string
