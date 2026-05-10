@@ -45,9 +45,10 @@ import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { EmailCampaignTab } from '@/components/academy/EmailCampaignTab';
 import { PlayerTagsCell } from '@/components/academy/PlayerTagsCell';
+import { PlayerNotesCell } from '@/components/academy/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/academy/ManagePlayerTagsDialog';
 import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/academy/playerTagColors';
 import { cn } from '@/lib/utils';
@@ -147,10 +148,11 @@ export default function AcademyPlayers() {
   // Column customization
   type ColumnKey =
     | 'email' | 'phone' | 'location' | 'addedOn'
-    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags';
-  const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'email', 'phone', 'location', 'addedOn'];
+    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags' | 'internalNotes';
+  const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'internalNotes', 'email', 'phone', 'location', 'addedOn'];
   const ALL_COLUMNS: { key: ColumnKey; label: string; isDefault: boolean }[] = [
     { key: 'tags', label: tTrainer('players.columns.tags', 'Tags'), isDefault: true },
+    { key: 'internalNotes', label: tTrainer('players.columns.internalNotes', 'Internal notes'), isDefault: true },
     { key: 'email', label: tTrainer('players.columns.email', 'Email'), isDefault: true },
     { key: 'phone', label: tTrainer('players.columns.phone', 'Phone'), isDefault: true },
     { key: 'location', label: tTrainer('players.columns.location', 'Location'), isDefault: true },
@@ -160,7 +162,7 @@ export default function AcademyPlayers() {
     { key: 'status', label: tTrainer('players.columns.status', 'Status'), isDefault: false },
     { key: 'cyclus', label: tTrainer('players.columns.cyclus', 'In active cyclus'), isDefault: false },
     { key: 'type', label: tTrainer('players.columns.type', 'Type'), isDefault: false },
-    { key: 'notes', label: tTrainer('players.columns.notes', 'Notes'), isDefault: false },
+    { key: 'notes', label: tTrainer('players.columns.notes', 'Notes (intake)'), isDefault: false },
     { key: 'source', label: tTrainer('players.columns.source', 'Source'), isDefault: false },
     { key: 'birthDate', label: tTrainer('players.columns.birthDate', 'Birth date'), isDefault: false },
   ];
@@ -872,10 +874,12 @@ export default function AcademyPlayers() {
                     {filteredPlayers.map((player) => (
                       <TableRow key={player.id} className="h-8">
                         <TableCell className="font-medium whitespace-nowrap max-w-[200px] truncate" title={player.full_name}>
-                          {player.full_name}
-                          {player.notes && !isColVisible('notes') && (
-                            <span className="ml-2 text-xs text-muted-foreground">·</span>
-                          )}
+                          <Link
+                            to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
+                            className="hover:underline text-foreground"
+                          >
+                            {player.full_name}
+                          </Link>
                         </TableCell>
                         {visibleColumns.map((key) => {
                           switch (key) {
@@ -986,6 +990,18 @@ export default function AcademyPlayers() {
                                       playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
                                       tags={tags}
                                       selectedTagIds={player.tag_ids || []}
+                                      onChanged={fetchTagsAndMetadata}
+                                    />
+                                  )}
+                                </TableCell>
+                              );
+                            case 'internalNotes':
+                              return (
+                                <TableCell key={key} className="max-w-[260px]">
+                                  {activeAcademy && (
+                                    <PlayerNotesCell
+                                      academyId={activeAcademy.id}
+                                      playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
                                       notes={player.academy_notes || ''}
                                       onChanged={fetchTagsAndMetadata}
                                     />
