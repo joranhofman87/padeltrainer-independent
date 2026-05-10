@@ -299,7 +299,69 @@ export default function TrainerInvoices() {
     },
   });
 
-  const handleDownloadPdf = async (invoice: Invoice) => {
+  // ========== Bulk actions ==========
+  const selectedInvoices = invoices.filter((i) => selectedIds.has(i.id));
+
+  const handleBulkReset = async () => {
+    setBulkRunning(true);
+    const ids = [...selectedIds];
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "draft", sent_at: null, paid_at: null })
+      .in("id", ids);
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    if (error) {
+      toast.error(t("invoices.bulk.resetError", "Kon facturen niet resetten"));
+      return;
+    }
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    toast.success(t("invoices.bulk.resetDone", "{{count}} facturen gereset", { count: ids.length }));
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkRunning(true);
+    const drafts = selectedInvoices.filter((i) => i.status === "draft").map((i) => i.id);
+    const others = selectedInvoices.filter((i) => i.status !== "draft").map((i) => i.id);
+    let ok = 0, fail = 0;
+    if (drafts.length) {
+      const { error } = await supabase.from("invoices").delete().in("id", drafts);
+      if (error) fail += drafts.length; else ok += drafts.length;
+    }
+    if (others.length) {
+      const { error } = await supabase.from("invoices").update({ status: "cancelled" }).in("id", others);
+      if (error) fail += others.length; else ok += others.length;
+    }
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    if (fail > 0) toast.error(t("invoices.bulk.deletePartial", "{{ok}} verwerkt, {{fail}} mislukt", { ok, fail }));
+    else toast.success(t("invoices.bulk.deleteDone", "{{count}} facturen verwijderd", { count: ok }));
+  };
+
+  const handleBulkUpdateDueDate = async () => {
+    if (!bulkDueDate) return;
+    setBulkRunning(true);
+    const ids = [...selectedIds];
+    const yyyy = bulkDueDate.getFullYear();
+    const mm = String(bulkDueDate.getMonth() + 1).padStart(2, "0");
+    const dd = String(bulkDueDate.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const { error } = await supabase.from("invoices").update({ due_date: dateStr }).in("id", ids);
+    setBulkRunning(false);
+    if (error) {
+      toast.error(t("invoices.bulk.dueDateError", "Vervaldatum bijwerken mislukt"));
+      return;
+    }
+    setBulkDueOpen(false);
+    setBulkDueDate(undefined);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    toast.success(t("invoices.bulk.dueDateDone", "Vervaldatum bijgewerkt voor {{count}} facturen", { count: ids.length }));
+  };
+
     try {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
       const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
