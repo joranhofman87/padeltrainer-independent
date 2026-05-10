@@ -46,11 +46,11 @@ import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
 import { useSearchParams, Link } from 'react-router-dom';
-import { EmailCampaignTab } from '@/components/academy/EmailCampaignTab';
-import { PlayerTagsCell } from '@/components/academy/PlayerTagsCell';
-import { PlayerNotesCell } from '@/components/academy/PlayerNotesCell';
-import { ManagePlayerTagsDialog } from '@/components/academy/ManagePlayerTagsDialog';
-import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/academy/playerTagColors';
+import { EmailCampaignTab } from '@/components/players/EmailCampaignTab';
+import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
+import { PlayerNotesCell } from '@/components/players/PlayerNotesCell';
+import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDialog';
+import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
 
 interface TrainerOption {

@@ -32,8 +32,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/academy/AgendaWeekByTrainer";
-import AgendaMonth from "@/components/academy/AgendaMonth";
+import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/agenda/AgendaWeekByTrainer";
+import AgendaMonth from "@/components/agenda/AgendaMonth";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
 import { supabase } from "@/lib/supabaseClient";
