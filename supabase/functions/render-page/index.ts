@@ -263,16 +263,19 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       "url": `${SITE_URL}/${lang}/academies/${acSlug}`,
       "sport": "Padel",
     };
+    const faqs = academyFaqs(displayName, lang);
     return page(
       `${displayName} — Padel Academy | PadelTrainer.ai`,
       `Discover ${displayName}. View trainers, programs, and book padel lessons.`,
       `/academies/${acSlug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel academy on PadelTrainer.ai</p>`,
+      `<h1>${esc(displayName)}</h1><p>Padel academy on PadelTrainer.ai</p>
+       ${renderFaqHtml(faqs, lang)}
+       ${renderPopularCitiesHtml(lang)}`,
       [orgSchema, breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
         { name: 'Academies', path: '/academies' },
         { name: displayName },
-      ])]
+      ]), faqPageSchema(faqs)]
     );
   }
 
