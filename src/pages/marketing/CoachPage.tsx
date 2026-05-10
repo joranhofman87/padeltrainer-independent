@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
+import { buildBreadcrumbList } from '@/lib/structuredData';
 import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
 import { CTASection } from '@/components/sanity/CTASection';
 import { VideoTipCard } from '@/components/sanity/VideoTipCard';
