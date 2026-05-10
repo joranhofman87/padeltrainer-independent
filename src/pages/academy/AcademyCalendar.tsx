@@ -685,6 +685,51 @@ export default function AcademyCalendar() {
     [trainers],
   );
 
+  // Summary tiles: scoped to visible range (week or month)
+  const summaryStats = useMemo(() => {
+    const sourceSlots = isMonth ? agendaMonthSlots : agendaSlots;
+
+    const trainerMap = new Map<string, { id: string; name: string; avatar: string | null }>();
+    const locMap = new Map<string, { id: string; name: string; logo: string | null }>();
+    let bookedHours = 0;
+    let freeHours = 0;
+
+    sourceSlots.forEach((s) => {
+      const dur = (parseISO(s.end_time).getTime() - parseISO(s.start_time).getTime()) / 3_600_000;
+      const max = s.max_participants || 1;
+      const booked = Math.min(s.booked_count, max);
+      const fillRatio = booked / max;
+      bookedHours += dur * fillRatio;
+      freeHours += dur * (1 - fillRatio);
+
+      if (s.trainer_id && !trainerMap.has(s.trainer_id)) {
+        trainerMap.set(s.trainer_id, {
+          id: s.trainer_id,
+          name: s.trainer_name,
+          avatar: s.trainer_avatar,
+        });
+      }
+      const lkey = s.location_id || s.location_name || '__none__';
+      if (!locMap.has(lkey) && (s.location_id || s.location_name)) {
+        locMap.set(lkey, {
+          id: s.location_id || lkey,
+          name: s.location_name || '',
+          logo: s.location_logo || null,
+        });
+      }
+    });
+
+    return {
+      activeTrainers: Array.from(trainerMap.values()),
+      activeLocations: Array.from(locMap.values()),
+      bookedHours,
+      freeHours,
+    };
+  }, [isMonth, agendaSlots, agendaMonthSlots]);
+
+  const fmtHours = (h: number) =>
+    h <= 0 ? '0h' : h % 1 === 0 ? `${h}h` : `${h.toFixed(1)}h`;
+
   if (loading && slots.length === 0) {
     return (
       <div className="min-h-screen bg-background p-4">
