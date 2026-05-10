@@ -328,10 +328,24 @@ export default function TrainerInvoices() {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t("invoices.title", "Facturen")}</h1>
-        <p className="text-muted-foreground text-sm">{t("invoices.description", "Beheer je facturen")}</p>
-      </div>
+      <PageHeader
+        title={t("invoices.title", "Facturen")}
+        description={t("invoices.description", "Beheer je facturen")}
+        actions={
+          <>
+            {draftInvoices.length > 0 && (
+              <Button size="sm" variant="outline" onClick={handleSendAllDrafts} disabled={sendingAll}>
+                {sendingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                {sendingAll ? t("invoices.sendingAll", "Verzenden...") : t("invoices.sendAllDrafts", "Alle concepten verzenden")} ({draftInvoices.length})
+              </Button>
+            )}
+            <Button size="sm" onClick={() => navigate('/app/trainer/invoices/new')}>
+              <PlusCircle className="h-4 w-4 mr-2" />
+              {t("invoices.createInvoice", "Nieuwe factuur")}
+            </Button>
+          </>
+        }
+      />
 
       <Tabs value={pageTab} onValueChange={(v) => setSearchParams(v === "settings" ? { tab: "settings" } : {})}>
         <TabsList>
@@ -342,7 +356,7 @@ export default function TrainerInvoices() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-6 mt-4">
+        <TabsContent value="overview" className="space-y-4 mt-4">
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="text-2xl font-bold">€{formatEuro(totalUnpaid)}</p></CardContent></Card>
@@ -350,56 +364,32 @@ export default function TrainerInvoices() {
             <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.paid", "Betaald")}</p><p className="text-2xl font-bold">{paidInvoices.length}</p></CardContent></Card>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => navigate('/app/trainer/invoices/new')}>
-              <PlusCircle className="h-4 w-4 mr-2" />
-              {t("invoices.createInvoice", "Nieuwe factuur")}
-            </Button>
-          </div>
-
-          {draftInvoices.length > 0 && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={handleSendAllDrafts} disabled={sendingAll}>
-                {sendingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-                {sendingAll ? t("invoices.sendingAll", "Verzenden...") : t("invoices.sendAllDrafts", "Alle concepten verzenden")} ({draftInvoices.length})
-              </Button>
-            </div>
-          )}
-
           {/* Tabs + Filters */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              <TabsList>
-                <TabsTrigger value="unpaid">{t("invoices.unpaid", "Openstaand")} ({unpaidInvoices.length})</TabsTrigger>
-                <TabsTrigger value="paid">{t("invoices.paid", "Betaald")} ({paidInvoices.length})</TabsTrigger>
-              </TabsList>
-              <div className="flex items-center gap-2 flex-1 flex-wrap">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-full sm:w-40">
-                    <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
-                    <SelectItem value="draft">{t("invoices.draft", "Concept")}</SelectItem>
-                    <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
-                    <SelectItem value="sent">{t("invoices.sent", "Verstuurd")}</SelectItem>
-                    <SelectItem value="overdue">{t("invoices.overdue", "Verlopen")}</SelectItem>
-                    <SelectItem value="paid">{t("invoices.paid", "Betaald")}</SelectItem>
-                    <SelectItem value="cancelled">{t("invoices.cancelled", "Geannuleerd")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 w-full sm:w-64"
-                  />
-                </div>
-              </div>
-            </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
+            <TabsList>
+              <TabsTrigger value="unpaid">{t("invoices.unpaid", "Openstaand")} ({unpaidInvoices.length})</TabsTrigger>
+              <TabsTrigger value="paid">{t("invoices.paid", "Betaald")} ({paidInvoices.length})</TabsTrigger>
+            </TabsList>
+            <TableToolbar
+              searchPlaceholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
+              searchValue={searchQuery}
+              onSearchChange={setSearchQuery}
+            >
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
+                  <SelectItem value="draft">{t("invoices.draft", "Concept")}</SelectItem>
+                  <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
+                  <SelectItem value="sent">{t("invoices.sent", "Verstuurd")}</SelectItem>
+                  <SelectItem value="overdue">{t("invoices.overdue", "Verlopen")}</SelectItem>
+                  <SelectItem value="paid">{t("invoices.paid", "Betaald")}</SelectItem>
+                  <SelectItem value="cancelled">{t("invoices.cancelled", "Geannuleerd")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </TableToolbar>
 
             <TabsContent value={activeTab} className="mt-4">
               {isLoading ? (
