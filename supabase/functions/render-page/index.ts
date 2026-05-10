@@ -491,7 +491,15 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       fr: { title: `Coachs de Padel à ${province} | PadelTrainer.ai`, desc: `Trouvez et réservez des coachs de padel certifiés à ${province}. Comparez les prix, lisez les avis et réservez votre premier cours.` },
     };
     const pm = provinceMeta[lang] || provinceMeta['en']!;
-    return page(pm.title, pm.desc, cleanPath, lang, `<h1>${esc(pm.title.split('|')[0].trim())}</h1>`);
+    const faqs = regionFaqs(province, lang);
+    return page(
+      pm.title, pm.desc, cleanPath, lang,
+      `<h1>${esc(pm.title.split('|')[0].trim())}</h1>
+       ${renderFaqHtml(faqs, lang)}
+       ${renderPopularCitiesHtml(lang)}
+       ${renderPopularRegionsHtml(lang)}`,
+      [faqPageSchema(faqs)]
+    );
   }
 
   // Rating page: /rating/:id
