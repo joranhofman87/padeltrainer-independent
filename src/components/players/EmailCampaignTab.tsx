@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
@@ -326,13 +326,36 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   };
 
 
+  const subjectInputRef = useRef<HTMLInputElement | null>(null);
+
   const insertVariable = (variable: string) => {
     document.execCommand('insertText', false, `{{${variable}}}`);
   };
 
-  const getPreviewHtml = () => {
-    return bodyHtml.replace(/\{\{name\}\}/gi, 'Jan de Vries');
+  const insertSubjectVariable = (variable: string) => {
+    const token = `{{${variable}}}`;
+    const el = subjectInputRef.current;
+    if (!el) {
+      setSubject((s) => s + token);
+      return;
+    }
+    const start = el.selectionStart ?? subject.length;
+    const end = el.selectionEnd ?? subject.length;
+    const next = subject.slice(0, start) + token + subject.slice(end);
+    setSubject(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    });
   };
+
+  const applyPreviewVars = (s: string) =>
+    s
+      .replace(/\{\{first_name\}\}/gi, 'Jan')
+      .replace(/\{\{name\}\}/gi, 'Jan de Vries');
+
+  const getPreviewHtml = () => applyPreviewVars(bodyHtml);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -530,16 +553,28 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                   <Trans
                     i18nKey="emailCampaign.compose.descriptionHtml"
                     t={t}
-                    values={{ var: '{{name}}' }}
+                    values={{ var: '{{first_name}}' }}
                     components={{ code: <code className="text-xs bg-muted px-1 py-0.5 rounded" /> }}
                   />
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="campaign-subject">{t('emailCampaign.compose.subject')}</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="campaign-subject">{t('emailCampaign.compose.subject')}</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => insertSubjectVariable('first_name')}
+                    >
+                      {t('emailCampaign.compose.insertName', { name: '{{first_name}}' })}
+                    </Button>
+                  </div>
                   <Input
                     id="campaign-subject"
+                    ref={subjectInputRef}
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     placeholder={t('emailCampaign.compose.subjectPlaceholder')}
@@ -554,9 +589,9 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                       variant="ghost"
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={() => insertVariable('name')}
+                      onClick={() => insertVariable('first_name')}
                     >
-                      {t('emailCampaign.compose.insertName', { name: '{{name}}' })}
+                      {t('emailCampaign.compose.insertName', { name: '{{first_name}}' })}
                     </Button>
                   </div>
                   <MiniRichTextEditor
@@ -801,7 +836,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
           <div className="border rounded-md p-4 space-y-3">
             <div>
               <p className="text-xs text-muted-foreground">{t('emailCampaign.previewDialog.subjectLabel')}</p>
-              <p className="font-medium">{subject.replace(/\{\{name\}\}/gi, 'Jan de Vries')}</p>
+              <p className="font-medium">{applyPreviewVars(subject)}</p>
             </div>
             <Separator />
             <SafeHtml

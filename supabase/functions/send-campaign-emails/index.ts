@@ -69,8 +69,14 @@ Deno.serve(async (req) => {
         });
       }
 
-      const personalizedHtml = testBodyHtml.replace(/\{\{name\}\}/gi, "Test User");
-      const personalizedSubject = testSubject.replace(/\{\{name\}\}/gi, "Test User");
+      const personalizeVars = (s: string, full: string) => {
+        const first = (full || "there").trim().split(/\s+/)[0] || "there";
+        return s
+          .replace(/\{\{first_name\}\}/gi, first)
+          .replace(/\{\{name\}\}/gi, full || "there");
+      };
+      const personalizedHtml = personalizeVars(testBodyHtml, "Test User");
+      const personalizedSubject = personalizeVars(testSubject, "Test User");
 
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -157,16 +163,16 @@ Deno.serve(async (req) => {
     // Send emails one by one
     for (const recipient of recipients) {
       try {
-        // Replace {{name}} with recipient name
-        const personalizedHtml = campaign.body_html.replace(
-          /\{\{name\}\}/gi,
-          recipient.recipient_name || "there"
-        );
+        // Replace personalization variables
+        const fullName = recipient.recipient_name || "there";
+        const firstName = fullName.trim().split(/\s+/)[0] || "there";
+        const personalizedHtml = campaign.body_html
+          .replace(/\{\{first_name\}\}/gi, firstName)
+          .replace(/\{\{name\}\}/gi, fullName);
 
-        const personalizedSubject = campaign.subject.replace(
-          /\{\{name\}\}/gi,
-          recipient.recipient_name || "there"
-        );
+        const personalizedSubject = campaign.subject
+          .replace(/\{\{first_name\}\}/gi, firstName)
+          .replace(/\{\{name\}\}/gi, fullName);
 
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
