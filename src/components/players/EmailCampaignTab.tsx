@@ -109,6 +109,11 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   const [showConfirmSend, setShowConfirmSend] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Draft management
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
+
   // Manual recipient management
   const [recipients, setRecipients] = useState<{ id: string; full_name: string; email: string; isManual?: boolean }[]>([]);
   const [addEmail, setAddEmail] = useState('');
@@ -174,8 +179,13 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
     return true;
   });
 
-  // Sync recipients when filters change
+  // Sync recipients when filters change (skipped while loading a draft)
+  const skipNextRecipientSync = useRef(false);
   useEffect(() => {
+    if (skipNextRecipientSync.current) {
+      skipNextRecipientSync.current = false;
+      return;
+    }
     setRecipients(filteredRecipients.map((p) => ({ id: p.id, full_name: p.full_name, email: p.email })));
   }, [filterTrainer, filterLocation, filterLevel, filterCyclus, filterTag, players]);
 
@@ -268,26 +278,44 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
     setIsSending(true);
 
     try {
-      // 1. Create campaign
       const filters = { trainer: filterTrainer, location: filterLocation, level: filterLevel, cyclus: filterCyclus, tag: filterTag };
-      const { data: campaign, error: campErr } = await supabase
-        .from('email_campaigns')
-        .insert({
-          [ownerCol]: ownerId,
-          subject: subject.trim(),
-          body_html: bodyHtml,
-          filters,
-          status: 'draft',
-          total_recipients: recipients.length,
-        } as any)
-        .select()
-        .single();
+      let campaignId = currentDraftId;
 
-      if (campErr || !campaign) throw campErr || new Error('Could not create campaign');
+      if (campaignId) {
+        // Update existing draft
+        const { error: updErr } = await supabase
+          .from('email_campaigns')
+          .update({
+            subject: subject.trim(),
+            body_html: bodyHtml,
+            filters,
+            total_recipients: recipients.length,
+          } as any)
+          .eq('id', campaignId);
+        if (updErr) throw updErr;
+        // Replace recipient rows
+        await supabase.from('email_campaign_recipients').delete().eq('campaign_id', campaignId);
+      } else {
+        const { data: campaign, error: campErr } = await supabase
+          .from('email_campaigns')
+          .insert({
+            [ownerCol]: ownerId,
+            subject: subject.trim(),
+            body_html: bodyHtml,
+            filters,
+            status: 'draft',
+            total_recipients: recipients.length,
+          } as any)
+          .select()
+          .single();
 
-      // 2. Insert recipients
+        if (campErr || !campaign) throw campErr || new Error('Could not create campaign');
+        campaignId = campaign.id;
+      }
+
+      // Insert recipients
       const recipientRows = recipients.map((p) => ({
-        campaign_id: campaign.id,
+        campaign_id: campaignId,
         recipient_email: p.email,
         recipient_name: p.full_name,
         status: 'pending',
@@ -299,9 +327,9 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
 
       if (recErr) throw recErr;
 
-      // 3. Invoke edge function
+      // Invoke edge function
       const { error: fnErr } = await supabase.functions.invoke('send-campaign-emails', {
-        body: { campaignId: campaign.id },
+        body: { campaignId },
       });
 
       if (fnErr) throw fnErr;
@@ -316,6 +344,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       setBodyHtml('');
       setTemplateName('');
       setEditingTemplateId(null);
+      setCurrentDraftId(null);
       fetchCampaigns();
     } catch (err: any) {
       logger.error('Error sending campaign', err);
@@ -323,6 +352,130 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!subject.trim() && !bodyHtml.trim()) return;
+    setIsSavingDraft(true);
+    try {
+      const filters = { trainer: filterTrainer, location: filterLocation, level: filterLevel, cyclus: filterCyclus, tag: filterTag };
+      let draftId = currentDraftId;
+
+      if (draftId) {
+        const { error } = await supabase
+          .from('email_campaigns')
+          .update({
+            subject: subject.trim(),
+            body_html: bodyHtml,
+            filters,
+            total_recipients: recipients.length,
+          } as any)
+          .eq('id', draftId);
+        if (error) throw error;
+        await supabase.from('email_campaign_recipients').delete().eq('campaign_id', draftId);
+      } else {
+        const { data, error } = await supabase
+          .from('email_campaigns')
+          .insert({
+            [ownerCol]: ownerId,
+            subject: subject.trim(),
+            body_html: bodyHtml,
+            filters,
+            status: 'draft',
+            total_recipients: recipients.length,
+          } as any)
+          .select()
+          .single();
+        if (error || !data) throw error || new Error('Could not save draft');
+        draftId = data.id;
+        setCurrentDraftId(draftId);
+      }
+
+      if (recipients.length > 0) {
+        const rows = recipients.map((p) => ({
+          campaign_id: draftId,
+          recipient_email: p.email,
+          recipient_name: p.full_name,
+          status: 'pending',
+        }));
+        const { error: recErr } = await supabase
+          .from('email_campaign_recipients')
+          .insert(rows as any);
+        if (recErr) throw recErr;
+      }
+
+      toast({
+        title: t('emailCampaign.toasts.draftSaved'),
+        description: t('emailCampaign.toasts.draftSavedDesc'),
+      });
+      fetchCampaigns();
+    } catch (err: any) {
+      logger.error('Error saving draft', err);
+      toast({ title: t('emailCampaign.toasts.error'), description: err.message || t('emailCampaign.toasts.draftError'), variant: 'destructive' });
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleLoadDraft = async (campaign: Campaign) => {
+    try {
+      const { data: rec } = await supabase
+        .from('email_campaign_recipients')
+        .select('recipient_email, recipient_name')
+        .eq('campaign_id', campaign.id);
+
+      // Fetch full campaign including body_html
+      const { data: full } = await supabase
+        .from('email_campaigns')
+        .select('*')
+        .eq('id', campaign.id)
+        .single();
+
+      if (!full) return;
+
+      const f = (full as any).filters || {};
+      skipNextRecipientSync.current = true;
+      setFilterTrainer(f.trainer ?? 'all');
+      setFilterLocation(f.location ?? 'all');
+      setFilterLevel(f.level ?? 'all');
+      setFilterCyclus(f.cyclus ?? 'all');
+      setFilterTag(f.tag ?? 'all');
+      setSubject((full as any).subject || '');
+      setBodyHtml((full as any).body_html || '');
+      setRecipients(
+        (rec || []).map((r, i) => ({
+          id: `draft-${i}`,
+          full_name: (r as any).recipient_name || (r as any).recipient_email,
+          email: (r as any).recipient_email,
+        }))
+      );
+      setCurrentDraftId(campaign.id);
+      setActiveView('compose');
+      toast({ title: t('emailCampaign.toasts.draftLoaded') });
+    } catch (err) {
+      logger.error('Error loading draft', err as Error);
+    }
+  };
+
+  const handleDeleteDraft = async (id: string) => {
+    setConfirmDeleteDraftId(null);
+    try {
+      await supabase.from('email_campaign_recipients').delete().eq('campaign_id', id);
+      await supabase.from('email_campaigns').delete().eq('id', id);
+      if (currentDraftId === id) setCurrentDraftId(null);
+      toast({ title: t('emailCampaign.toasts.draftDeleted') });
+      fetchCampaigns();
+    } catch (err) {
+      logger.error('Error deleting draft', err as Error);
+    }
+  };
+
+  const handleDiscardDraftEdit = () => {
+    setCurrentDraftId(null);
+    setSubject('');
+    setBodyHtml('');
+    setTemplateName('');
+    setEditingTemplateId(null);
   };
 
 
@@ -548,15 +701,33 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
             {/* Email composer panel */}
             <Card className="lg:col-span-2">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">{t('emailCampaign.compose.title')}</CardTitle>
-                <CardDescription>
-                  <Trans
-                    i18nKey="emailCampaign.compose.descriptionHtml"
-                    t={t}
-                    values={{ var: '{{first_name}}' }}
-                    components={{ code: <code className="text-xs bg-muted px-1 py-0.5 rounded" /> }}
-                  />
-                </CardDescription>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base">{t('emailCampaign.compose.title')}</CardTitle>
+                    <CardDescription>
+                      <Trans
+                        i18nKey="emailCampaign.compose.descriptionHtml"
+                        t={t}
+                        values={{ var: '{{first_name}}' }}
+                        components={{ code: <code className="text-xs bg-muted px-1 py-0.5 rounded" /> }}
+                      />
+                    </CardDescription>
+                  </div>
+                  {currentDraftId && (
+                    <Badge variant="secondary" className="gap-1.5 shrink-0">
+                      <FileText className="h-3 w-3" />
+                      {t('emailCampaign.compose.editingDraft')}
+                      <button
+                        type="button"
+                        onClick={handleDiscardDraftEdit}
+                        className="ml-1 hover:text-foreground"
+                        aria-label={t('emailCampaign.compose.discardDraftChanges')}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
@@ -665,7 +836,20 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                       <Eye className="mr-1.5 h-4 w-4" /> {t('emailCampaign.compose.preview')}
                     </Button>
 
-                    <div className="ml-auto">
+                    <div className="ml-auto flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleSaveDraft}
+                        disabled={isSavingDraft || (!subject.trim() && !bodyHtml.trim())}
+                      >
+                        {isSavingDraft ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileText className="mr-1.5 h-4 w-4" />
+                        )}
+                        {t('emailCampaign.compose.saveDraft')}
+                      </Button>
                       <Button
                         onClick={() => setShowConfirmSend(true)}
                         disabled={isSending || !subject.trim() || !bodyHtml.trim() || recipients.length === 0}
@@ -755,7 +939,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
               <CardTitle className="text-base">{t('emailCampaign.history.title')}</CardTitle>
               <CardDescription>{t('emailCampaign.history.description')}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
               {loadingCampaigns ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -765,35 +949,115 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                   {t('emailCampaign.history.empty')}
                 </p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('emailCampaign.history.subject')}</TableHead>
-                      <TableHead>{t('emailCampaign.history.status')}</TableHead>
-                      <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
-                      <TableHead>{t('emailCampaign.history.sentFailed')}</TableHead>
-                      <TableHead>{t('emailCampaign.history.date')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {campaigns.map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell className="font-medium max-w-[200px] truncate">{c.subject}</TableCell>
-                        <TableCell>{getStatusBadge(c.status)}</TableCell>
-                        <TableCell>{c.total_recipients}</TableCell>
-                        <TableCell>
-                          <span className="text-green-600">{c.sent_count}</span>
-                          {c.failed_count > 0 && (
-                            <span className="text-destructive ml-1">/ {t('emailCampaign.history.failed', { count: c.failed_count })}</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }) : '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <>
+                  {/* Drafts */}
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                      {t('emailCampaign.history.draftsTitle')}
+                    </h3>
+                    {campaigns.filter((c) => c.status === 'draft').length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-3">
+                        {t('emailCampaign.history.noDrafts')}
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t('emailCampaign.history.subject')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.date')}</TableHead>
+                            <TableHead className="w-[100px]">{t('emailCampaign.history.actions')}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {campaigns
+                            .filter((c) => c.status === 'draft')
+                            .map((c) => (
+                              <TableRow
+                                key={c.id}
+                                className="cursor-pointer"
+                                onClick={() => handleLoadDraft(c)}
+                              >
+                                <TableCell className="font-medium max-w-[280px] truncate">
+                                  {c.subject || <span className="text-muted-foreground italic">{t('emailCampaign.compose.subjectPlaceholder')}</span>}
+                                </TableCell>
+                                <TableCell>{c.total_recipients}</TableCell>
+                                <TableCell className="text-muted-foreground text-sm">
+                                  {format(new Date(c.created_at), 'dd MMM yyyy HH:mm', { locale: dateLocale })}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      aria-label={t('emailCampaign.history.openDraft')}
+                                      onClick={(e) => { e.stopPropagation(); handleLoadDraft(c); }}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive"
+                                      aria-label={t('emailCampaign.history.deleteDraft')}
+                                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteDraftId(c.id); }}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+
+                  {/* Sent */}
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                      {t('emailCampaign.history.sentTitle')}
+                    </h3>
+                    {campaigns.filter((c) => c.status !== 'draft').length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-3">
+                        {t('emailCampaign.history.empty')}
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t('emailCampaign.history.subject')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.status')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.sentFailed')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.date')}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {campaigns
+                            .filter((c) => c.status !== 'draft')
+                            .map((c) => (
+                              <TableRow key={c.id}>
+                                <TableCell className="font-medium max-w-[200px] truncate">{c.subject}</TableCell>
+                                <TableCell>{getStatusBadge(c.status)}</TableCell>
+                                <TableCell>{c.total_recipients}</TableCell>
+                                <TableCell>
+                                  <span className="text-green-600">{c.sent_count}</span>
+                                  {c.failed_count > 0 && (
+                                    <span className="text-destructive ml-1">/ {t('emailCampaign.history.failed', { count: c.failed_count })}</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-sm">
+                                  {c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }) : '—'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -846,6 +1110,27 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('emailCampaign.previewDialog.close')}</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm delete draft */}
+      <AlertDialog open={!!confirmDeleteDraftId} onOpenChange={(o) => !o && setConfirmDeleteDraftId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('emailCampaign.history.deleteDraft')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('emailCampaign.history.confirmDeleteDraft')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('emailCampaign.confirm.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmDeleteDraftId && handleDeleteDraft(confirmDeleteDraftId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> {t('emailCampaign.history.deleteDraft')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

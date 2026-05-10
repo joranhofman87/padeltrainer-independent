@@ -1095,7 +1095,11 @@
       "sendTest": "Send test",
       "testEmailPlaceholder": "test@email.com",
       "sendToCount_one": "Send to {{count}} recipient",
-      "sendToCount_other": "Send to {{count}} recipients"
+      "sendToCount_other": "Send to {{count}} recipients",
+      "saveDraft": "Save as draft",
+      "savingDraft": "Saving...",
+      "editingDraft": "Editing draft",
+      "discardDraftChanges": "Discard"
     },
     "templates": {
       "title": "Saved Templates",
@@ -1108,14 +1112,22 @@
     },
     "history": {
       "title": "Campaign History",
-      "description": "Overview of sent email campaigns.",
+      "description": "Overview of sent email campaigns and saved drafts.",
       "empty": "No campaigns sent yet.",
       "subject": "Subject",
       "status": "Status",
       "recipients": "Recipients",
       "sentFailed": "Sent / Failed",
       "date": "Date",
-      "failed": "{{count}} failed"
+      "failed": "{{count}} failed",
+      "draftsTitle": "Drafts",
+      "sentTitle": "Sent campaigns",
+      "openDraft": "Open draft",
+      "deleteDraft": "Delete draft",
+      "confirmDeleteDraft": "Delete this draft? This can't be undone.",
+      "noDrafts": "No drafts saved.",
+      "actions": "Actions",
+      "draftSaved": "Last saved {{date}}"
     },
     "status": {
       "sent": "Sent",
@@ -1150,6 +1162,11 @@
       "campaignSent": "Campaign sent!",
       "campaignSentDesc": "Emails are being sent to {{count}} recipients.",
       "campaignError": "Could not send campaign.",
+      "draftSaved": "Draft saved",
+      "draftSavedDesc": "You can come back to finish it later.",
+      "draftError": "Could not save draft.",
+      "draftDeleted": "Draft deleted",
+      "draftLoaded": "Draft loaded",
       "error": "Error"
     }
   }

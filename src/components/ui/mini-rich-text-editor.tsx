@@ -80,9 +80,31 @@ export function MiniRichTextEditor({
 
   const addLink = () => {
     if (!editor) return;
-    const url = window.prompt("Enter URL:");
-    if (url) {
-      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    const previousUrl = editor.getAttributes("link").href as string | undefined;
+    const url = window.prompt("Enter URL (leave empty to remove):", previousUrl ?? "");
+    if (url === null) return; // cancelled
+    if (url === "") {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
+    }
+    let href = url.trim();
+    if (!/^(https?:|mailto:|tel:|\/|#)/i.test(href)) {
+      href = `https://${href}`;
+    }
+    const { from, to, empty } = editor.state.selection;
+    if (empty) {
+      // No selection — insert the URL as link text
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "text",
+          text: href,
+          marks: [{ type: "link", attrs: { href } }],
+        })
+        .run();
+    } else {
+      editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
     }
   };
 
@@ -150,15 +172,19 @@ export function MiniRichTextEditor({
           <ListOrdered className="h-3.5 w-3.5" />
         </Toggle>
         <Separator orientation="vertical" className="mx-0.5 h-5" />
-        <Toggle
+        <Button
+          type="button"
+          variant={editor?.isActive("link") ? "secondary" : "ghost"}
           size="sm"
-          pressed={editor?.isActive("link") ?? false}
-          onPressedChange={addLink}
+          className="h-7 w-7 p-0"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={addLink}
           disabled={htmlMode}
           aria-label="Add Link"
+          aria-pressed={editor?.isActive("link") ?? false}
         >
           <LinkIcon className="h-3.5 w-3.5" />
-        </Toggle>
+        </Button>
         {allowHtmlView && (
           <>
             <Separator orientation="vertical" className="mx-0.5 h-5" />

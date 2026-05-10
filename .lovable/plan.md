@@ -1,68 +1,71 @@
-# Short share links for trainers and academies
+## 1. Fix the "Add link" button in the email composer
 
-Goal: every trainer and academy gets a short, clean URL like `padeltrainer.ai/<handle>` that resolves to their existing public profile. Auto-generated, unique, non-customizable for now, surfaced in-product so they can copy and share.
+**Problem:** Clicking the link icon in the rich text editor toolbar does nothing.
 
-## How it works
+**Cause:** The link button is implemented as a shadcn `Toggle` (a Radix Toggle), which steals focus from the editor on mousedown. By the time `addLink()` runs, the text selection in the editor is lost, so `setLink()` has nothing to attach the link to and silently no-ops. The other toggles (bold/italic/underline) only need an active selection to format, so they hide the issue. Some browsers also dislike `window.prompt` triggered from a Toggle's `onPressedChange`.
 
-- `trainer_profiles.slug` and `academy_profiles.slug` already exist and are unique within each table. We reuse those values as the handle and add a tiny layer that:
-  1. Guarantees handles are unique **across both tables and not colliding with reserved top-level paths**.
-  2. Resolves `/<handle>` to the right profile.
-- The short URL is a public-facing alias. The canonical pages (`/trainer/:slug` and `/academies/:slug`) keep working unchanged, so existing SEO, share cards, and inbound links are not disturbed.
+**Fix in `src/components/ui/mini-rich-text-editor.tsx`:**
+- Replace the link `Toggle` with a plain `Button` styled identically.
+- Add `onMouseDown={(e) => e.preventDefault()}` so the editor keeps focus and the selection is preserved when the prompt opens.
+- Capture the current URL on the link mark (if any) so the prompt prefills the existing href when editing an existing link, and supports an empty input to remove the link.
+- After `setLink`, if no text is selected, insert the URL itself as the link text (so clicking the button on an empty selection still produces a usable link instead of nothing).
 
-## 1. Reserved-word + cross-table uniqueness
+No behavior changes for other toolbar buttons.
 
-- Add a database helper `generate_unique_public_handle(_owner_type text, _owner_id uuid, _name text)` that:
-  - Slugifies the name (same rules as today).
-  - Rejects empty/numeric-only inputs and a hard-coded reserved list: `app, api, pay, auth, signup, login, onboarding, admin, trainer, trainers, academy, academies, club, clubs, locations, location, book, register, claim, playground, learn, learning, topics, blog, padel, padel-strokes, padel-coaches, video-tips, gear, brand, partner, privacy, terms, founding-trainers, rating, sitemap, robots, llms`.
-  - Checks both `trainer_profiles.slug` and `academy_profiles.slug` (excluding the current row) and appends `-2`, `-3`, … on collision.
-- Replace today's `generate_unique_trainer_slug` calls and the equivalent academy slug logic so new trainer/academy slugs go through the new helper. Existing slugs stay as-is unless they collide with a reserved word; for those (rare) cases run a one-off backfill that renames them with a numeric suffix and writes the old slug into a `slug_redirects` table so old links keep working.
-- Optional small `slug_redirects(old_slug text primary key, owner_type text, owner_id uuid)` table to support any future renames cleanly.
+## 2. Save and resume email campaigns as drafts
 
-## 2. Public route `/<handle>`
+**Goal:** A user composing a campaign can save it as a draft, leave the page, and come back later to finish and send it.
 
-- Add a new lazy page `ShortLinkResolver` mounted at the very end of the marketing route block in `src/components/DomainRouter.tsx`, after every existing static path:
-  ```
-  <Route path=":handle" element={<ShortLinkResolver />} />
-  ```
-- `ShortLinkResolver` does a single combined lookup: query `trainer_profiles_safe` by slug, then `academy_profiles` by slug, then the `slug_redirects` fallback. On hit, it `<Navigate replace>` to the canonical `/trainer/<slug>` or `/academies/<slug>` (preserving the language prefix via `localizePath`). On miss, it renders the existing `<NotFound />`.
-- Because this route lives inside the `LanguageRouter` block, it naturally supports `/<lang>/<handle>` too.
-- A small client-side reserved-word guard in the resolver short-circuits to `<NotFound />` so accidental typos like `/admin` never hit the database.
+**Backend (no schema migration needed):**
+- Reuse the existing `email_campaigns` table — it already has `status = 'draft'` and `filters` jsonb.
+- Recipients of a draft are stored in the same `email_campaign_recipients` table, with the existing `status = 'pending'` (they are only actually sent when the user hits "Send"). The send flow already inserts these rows; we just insert them at draft time too.
+- The existing `send-campaign-emails` edge function already accepts `campaignId` and processes pending recipients, so for a draft-then-send flow we:
+  - Update the draft row's `subject`, `body_html`, `filters`, `total_recipients`.
+  - Replace its recipient rows (delete-then-insert) so the recipient set always matches the latest filters at send time.
+  - Then invoke `send-campaign-emails` with the same `campaignId`.
 
-## 3. Crawler/SSR + sitemap
+**UI changes in `src/components/players/EmailCampaignTab.tsx`:**
 
-- `supabase/functions/render-page` currently renders meta for known patterns. Extend its router to recognise `/<handle>` and a few reserved-prefix exclusions; on match it resolves the handle exactly like the client and emits the same OG/meta tags as the canonical profile, plus a `<link rel="canonical">` pointing at `/trainer/<slug>` or `/academies/<slug>`. This keeps social previews working when someone pastes a short link into LinkedIn/WhatsApp.
-- `supabase/functions/sitemap` keeps emitting only the canonical URLs. Short URLs are intentionally left out of the sitemap (they are 301-style aliases, and Google only needs the canonical).
-- `public/llms.txt` is unaffected (also canonical only).
-- No change to the Cloudflare worker beyond what render-page already handles, since the worker proxies bot traffic into render-page based on path.
+Composer panel:
+- Add a "Save as draft" button next to "Send to N", with a `FileText` icon. Disabled when subject + body are empty.
+- Track `currentDraftId: string | null` in component state. Loading a draft sets it; saving updates it; sending a draft updates and then dispatches the same `id`; resetting after a successful send clears it.
+- Show a small "Editing draft" indicator in the composer header when `currentDraftId` is set, with an "X" to discard (clears state, does NOT delete the row).
+- Auto-fill `currentDraftId` when the user opens a draft from history.
 
-## 4. In-product surfacing
+History tab:
+- Split the campaigns list into two sections: **Drafts** (status = 'draft') at the top, and **Sent / In progress** below (everything else).
+- For each draft row, add icon buttons:
+  - **Open** (Pencil) → loads subject, body, filters, and recipients into the composer; sets `currentDraftId`; switches to the Compose tab.
+  - **Delete** (Trash) → deletes the draft row (cascade deletes recipient rows via existing FK if present; otherwise delete recipients first), with a confirm.
+- Sent campaigns remain read-only (current behavior).
 
-Trainers and academies need to see and copy their short link. Add a reusable `ShareableProfileLink` component (input + copy button + small "Share" dropdown with `navigator.share`, X/LinkedIn/WhatsApp/email intents) and place it:
+Send flow:
+- On "Send", if `currentDraftId` is set, reuse that row (update subject/body/filters, replace recipients, then invoke `send-campaign-emails`). Otherwise insert a new row as today.
+- After a successful send, the row's status becomes `sending`/`sent` via the existing edge function. Local state clears `currentDraftId`.
 
-- **Trainer side**
-  - Top of `EditProfile` (trainer view) under the avatar.
-  - In the trainer dashboard "Share your profile" widget (replaces today's long URL display).
-  - In the public-profile preview card on `TrainerGetStarted`.
-- **Academy side**
-  - Top of `AcademyProfile` (settings page).
-  - On `AcademyDashboard` next to the existing "View public profile" button.
+Save-as-draft flow:
+- Insert a new row with `status: 'draft'` (or update the existing one) using current subject, body_html, filters, total_recipients.
+- Replace its recipient rows with the current `recipients[]`.
+- Toast "Draft saved", set `currentDraftId`, refresh the history list. Stay on the compose tab (no reset).
 
-Copy text shows the host without scheme: `padeltrainer.ai/jan-de-vries`. Underlying value copied to clipboard is the full `https://padeltrainer.ai/jan-de-vries` (or the active custom/preview host) so it pastes correctly anywhere.
+Loading a draft:
+- Fetch the campaign row + its `email_campaign_recipients`.
+- Populate `subject`, `bodyHtml`, the six `filterX` states from `filters`, and `recipients`.
+- Set `currentDraftId`, switch to the compose tab.
 
-A small helper `getShortProfileUrl(slug)` centralises host detection so the short URL works on `padeltrainer.ai`, custom domains, and the preview environment.
+### Translation keys (English; user can translate)
+Add to the `trainer` namespace under `emailCampaign`:
+- `compose.saveDraft` = "Save as draft"
+- `compose.draftSaved` = "Draft saved"
+- `compose.editingDraft` = "Editing draft — your changes won't be sent until you press Send"
+- `compose.discardDraftChanges` = "Discard changes"
+- `history.draftsTitle` = "Drafts"
+- `history.sentTitle` = "Sent campaigns"
+- `history.openDraft` = "Open draft"
+- `history.deleteDraft` = "Delete draft"
+- `history.confirmDeleteDraft` = "Delete this draft? This can't be undone."
 
-## 5. Out of scope (explicitly)
-
-- No user-editable handles. The slug stays read-only in the UI; if a rename is ever needed it is admin-only and handled through `slug_redirects`.
-- No vanity-handle marketplace, no reservations, no profanity filter beyond the reserved-word list above.
-- No analytics/click tracking on the short link in this iteration. PostHog already fires `trainer_profile_viewed` / `academy_profile_viewed` on the canonical page that the redirect lands on, which is enough to measure reach.
-
-## Files touched
-
-- DB migration: new `generate_unique_public_handle` function, `slug_redirects` table, backfill query, swap-in for trainer/academy slug triggers.
-- `src/components/DomainRouter.tsx`: add `:handle` catch-all + lazy `ShortLinkResolver`.
-- New `src/pages/ShortLinkResolver.tsx`.
-- New `src/components/profile/ShareableProfileLink.tsx` + small `lib/shortUrl.ts` helper.
-- `src/pages/EditProfile.tsx`, `src/pages/trainer/TrainerGetStarted.tsx` (or wherever the trainer dashboard share block lives), `src/pages/academy/AcademyProfile.tsx`, `src/pages/academy/AcademyDashboard.tsx`: mount the share component.
-- `supabase/functions/render-page/index.ts`: handle `/<handle>` for crawlers with a canonical link tag.
-- Translations: add keys for "Your share link", "Copy link", "Share on …".
+## Out of scope
+- No new database tables or RLS changes (existing `email_campaigns` policies already cover drafts).
+- No autosave — drafts are explicit-only to keep behavior predictable.
+- No draft for templates (templates already serve that purpose for reusable content).
