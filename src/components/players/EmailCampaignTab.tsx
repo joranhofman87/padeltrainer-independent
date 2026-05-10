@@ -564,6 +564,8 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                     value={bodyHtml}
                     onChange={setBodyHtml}
                     placeholder={t('emailCampaign.compose.bodyPlaceholder')}
+                    minHeight="320px"
+                    allowHtmlView
                   />
                 </div>
 
