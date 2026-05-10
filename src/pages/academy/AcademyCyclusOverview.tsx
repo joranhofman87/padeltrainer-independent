@@ -142,7 +142,14 @@ export default function AcademyCyclusOverview() {
         trainerCycles = data || [];
       }
 
-      const allCycles: any[] = [...(academyCycles || []), ...trainerCycles];
+      // Exclude registration-type cycles — they're intake forms, not real scheduled cycles
+      const registrationCycleIds = new Set(
+        [...(academyCycles || []), ...trainerCycles]
+          .filter(c => c.type === 'registration')
+          .map(c => c.id)
+      );
+      const allCycles: any[] = [...(academyCycles || []), ...trainerCycles]
+        .filter(c => c.type !== 'registration');
 
       // Deduplicate by id
       const cycleMap = new Map<string, any>();
@@ -174,6 +181,9 @@ export default function AcademyCyclusOverview() {
           page++;
         }
       }
+
+      // Drop slots that belong to a registration-type cycle (filtered out above)
+      allSlots = allSlots.filter(s => !registrationCycleIds.has(s.cyclus_id));
 
       // Group slots by cyclus_id
       const slotsByCyclus = new Map<string, any[]>();
