@@ -1,5 +1,7 @@
 # PadelTrainer.ai - Full Entity Catalog
 
+Last updated: 2026-05-10
+
 > Complete listing of all trainers, locations, academies, and cities on PadelTrainer.ai.
 > Generated: 2026-04-07T10:45:52.754Z
 
