@@ -17,6 +17,7 @@ import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InvoiceSettingsCard } from "@/components/trainer/InvoiceSettingsCard";
+import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -511,6 +512,9 @@ export default function TrainerInvoices() {
               initialData={trainerProfile}
               onSave={() => queryClient.invalidateQueries({ queryKey: ["trainer-profile-id"] })}
             />
+          )}
+          {trainerId && (
+            <ExtraCostPresetsCard trainerId={trainerId} />
           )}
         </TabsContent>
       </Tabs>
