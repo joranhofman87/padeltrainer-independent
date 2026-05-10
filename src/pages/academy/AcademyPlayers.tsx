@@ -753,6 +753,22 @@ export default function AcademyPlayers() {
               </SelectContent>
             </Select>
 
+            <Select value={selectedTagId} onValueChange={setSelectedTagId}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder={tTrainer('players.tags.filterAll', 'All Tags')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{tTrainer('players.tags.filterAll', 'All Tags')}</SelectItem>
+                <SelectItem value="untagged">{tTrainer('players.tags.untagged', 'Untagged')}</SelectItem>
+                {tags.map((tag) => (
+                  <SelectItem key={tag.id} value={tag.id}>
+                    <span className={cn('inline-block h-2 w-2 rounded-full mr-2', getTagColorClass(tag.color).split(' ').filter(c => c.startsWith('bg-')).join(' '))} />
+                    {tag.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
