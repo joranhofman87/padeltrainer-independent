@@ -148,10 +148,11 @@ export default function AcademyPlayers() {
   // Column customization
   type ColumnKey =
     | 'email' | 'phone' | 'location' | 'addedOn'
-    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags';
-  const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'email', 'phone', 'location', 'addedOn'];
+    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags' | 'internalNotes';
+  const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'internalNotes', 'email', 'phone', 'location', 'addedOn'];
   const ALL_COLUMNS: { key: ColumnKey; label: string; isDefault: boolean }[] = [
     { key: 'tags', label: tTrainer('players.columns.tags', 'Tags'), isDefault: true },
+    { key: 'internalNotes', label: tTrainer('players.columns.internalNotes', 'Internal notes'), isDefault: true },
     { key: 'email', label: tTrainer('players.columns.email', 'Email'), isDefault: true },
     { key: 'phone', label: tTrainer('players.columns.phone', 'Phone'), isDefault: true },
     { key: 'location', label: tTrainer('players.columns.location', 'Location'), isDefault: true },
@@ -161,7 +162,7 @@ export default function AcademyPlayers() {
     { key: 'status', label: tTrainer('players.columns.status', 'Status'), isDefault: false },
     { key: 'cyclus', label: tTrainer('players.columns.cyclus', 'In active cyclus'), isDefault: false },
     { key: 'type', label: tTrainer('players.columns.type', 'Type'), isDefault: false },
-    { key: 'notes', label: tTrainer('players.columns.notes', 'Notes'), isDefault: false },
+    { key: 'notes', label: tTrainer('players.columns.notes', 'Notes (intake)'), isDefault: false },
     { key: 'source', label: tTrainer('players.columns.source', 'Source'), isDefault: false },
     { key: 'birthDate', label: tTrainer('players.columns.birthDate', 'Birth date'), isDefault: false },
   ];
