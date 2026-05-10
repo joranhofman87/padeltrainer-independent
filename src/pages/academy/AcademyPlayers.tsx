@@ -811,6 +811,17 @@ export default function AcademyPlayers() {
               </SelectContent>
             </Select>
 
+            <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder={tTrainer('players.payment.filterAll', 'Payment status')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{tTrainer('players.payment.filterAll', 'All payments')}</SelectItem>
+                <SelectItem value="overdue">{tTrainer('players.payment.overdue', 'Overdue')}</SelectItem>
+                <SelectItem value="ok">{tTrainer('players.payment.ok', 'No overdue')}</SelectItem>
+              </SelectContent>
+            </Select>
+
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
