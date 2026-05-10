@@ -264,33 +264,36 @@ export type Database = {
       }
       academy_player_metadata: {
         Row: {
-          academy_profile_id: string
+          academy_profile_id: string | null
           created_at: string
           guest_player_id: string | null
           id: string
           notes: string | null
           profile_id: string | null
           tag_ids: string[]
+          trainer_profile_id: string | null
           updated_at: string
         }
         Insert: {
-          academy_profile_id: string
+          academy_profile_id?: string | null
           created_at?: string
           guest_player_id?: string | null
           id?: string
           notes?: string | null
           profile_id?: string | null
           tag_ids?: string[]
+          trainer_profile_id?: string | null
           updated_at?: string
         }
         Update: {
-          academy_profile_id?: string
+          academy_profile_id?: string | null
           created_at?: string
           guest_player_id?: string | null
           id?: string
           notes?: string | null
           profile_id?: string | null
           tag_ids?: string[]
+          trainer_profile_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -322,34 +325,66 @@ export type Database = {
             referencedRelation: "profiles_safe"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "academy_player_metadata_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_metadata_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
         ]
       }
       academy_player_tags: {
         Row: {
-          academy_profile_id: string
+          academy_profile_id: string | null
           color: string
           created_at: string
           id: string
           name: string
+          trainer_profile_id: string | null
           updated_at: string
         }
         Insert: {
-          academy_profile_id: string
+          academy_profile_id?: string | null
           color?: string
           created_at?: string
           id?: string
           name: string
+          trainer_profile_id?: string | null
           updated_at?: string
         }
         Update: {
-          academy_profile_id?: string
+          academy_profile_id?: string | null
           color?: string
           created_at?: string
           id?: string
           name?: string
+          trainer_profile_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "academy_player_tags_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_tags_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       academy_profile_views: {
         Row: {
@@ -2112,30 +2147,33 @@ export type Database = {
       }
       email_campaign_templates: {
         Row: {
-          academy_profile_id: string
+          academy_profile_id: string | null
           body_html: string
           created_at: string
           id: string
           name: string
           subject: string
+          trainer_profile_id: string | null
           updated_at: string
         }
         Insert: {
-          academy_profile_id: string
+          academy_profile_id?: string | null
           body_html: string
           created_at?: string
           id?: string
           name: string
           subject: string
+          trainer_profile_id?: string | null
           updated_at?: string
         }
         Update: {
-          academy_profile_id?: string
+          academy_profile_id?: string | null
           body_html?: string
           created_at?: string
           id?: string
           name?: string
           subject?: string
+          trainer_profile_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2160,11 +2198,25 @@ export type Database = {
             referencedRelation: "academy_profiles_safe"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "email_campaign_templates_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaign_templates_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
         ]
       }
       email_campaigns: {
         Row: {
-          academy_profile_id: string
+          academy_profile_id: string | null
           body_html: string
           created_at: string
           failed_count: number
@@ -2176,10 +2228,11 @@ export type Database = {
           subject: string
           template_id: string | null
           total_recipients: number
+          trainer_profile_id: string | null
           updated_at: string
         }
         Insert: {
-          academy_profile_id: string
+          academy_profile_id?: string | null
           body_html: string
           created_at?: string
           failed_count?: number
@@ -2191,10 +2244,11 @@ export type Database = {
           subject: string
           template_id?: string | null
           total_recipients?: number
+          trainer_profile_id?: string | null
           updated_at?: string
         }
         Update: {
-          academy_profile_id?: string
+          academy_profile_id?: string | null
           body_html?: string
           created_at?: string
           failed_count?: number
@@ -2206,6 +2260,7 @@ export type Database = {
           subject?: string
           template_id?: string | null
           total_recipients?: number
+          trainer_profile_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2235,6 +2290,20 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "email_campaign_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaigns_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaigns_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
             referencedColumns: ["id"]
           },
         ]
