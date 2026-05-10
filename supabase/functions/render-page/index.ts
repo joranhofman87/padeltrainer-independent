@@ -565,12 +565,23 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     }
   }
 
-  // Fallback
+  // Fallback — unknown path, surface a real 404 to crawlers
+  const titles404: Record<string, string> = {
+    nl: 'Pagina niet gevonden', es: 'Página no encontrada', de: 'Seite nicht gefunden',
+    fr: 'Page introuvable', it: 'Pagina non trovata',
+  };
+  const descs404: Record<string, string> = {
+    nl: 'Deze pagina bestaat niet (meer). Bekijk onze trainers en clubs.',
+    es: 'Esta página no existe. Explora nuestros entrenadores y clubes.',
+    de: 'Diese Seite existiert nicht. Entdecke unsere Trainer und Clubs.',
+    fr: "Cette page n'existe pas. Découvrez nos entraîneurs et clubs.",
+    it: 'Questa pagina non esiste. Scopri i nostri istruttori e club.',
+  };
   return page(
-    'PadelTrainer.ai — Find & Book Padel Trainers',
-    'Find and book certified padel trainers near you.',
+    titles404[lang] || 'Page not found',
+    descs404[lang] || 'This page does not exist. Explore our trainers and clubs.',
     cleanPath, lang,
-    `<h1>PadelTrainer.ai</h1><p>Find and book certified padel trainers near you.</p>`
+    `<!-- render-page:notfound --><meta name="robots" content="noindex,follow"><h1>${esc(titles404[lang] || 'Page not found')}</h1><p>${esc(descs404[lang] || 'This page does not exist.')}</p><p><a href="${SITE_URL}/${lang}/trainers">Browse trainers</a> · <a href="${SITE_URL}/${lang}/locations">Browse clubs</a></p>`
   );
 }
 
