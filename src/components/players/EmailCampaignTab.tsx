@@ -836,7 +836,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
           <div className="border rounded-md p-4 space-y-3">
             <div>
               <p className="text-xs text-muted-foreground">{t('emailCampaign.previewDialog.subjectLabel')}</p>
-              <p className="font-medium">{subject.replace(/\{\{name\}\}/gi, 'Jan de Vries')}</p>
+              <p className="font-medium">{applyPreviewVars(subject)}</p>
             </div>
             <Separator />
             <SafeHtml
