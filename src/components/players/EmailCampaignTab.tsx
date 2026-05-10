@@ -109,6 +109,11 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   const [showConfirmSend, setShowConfirmSend] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Draft management
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
+
   // Manual recipient management
   const [recipients, setRecipients] = useState<{ id: string; full_name: string; email: string; isManual?: boolean }[]>([]);
   const [addEmail, setAddEmail] = useState('');
