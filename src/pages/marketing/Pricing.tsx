@@ -21,6 +21,8 @@ export default function Pricing() {
   const { data: trainerPlans, isLoading: loadingTrainer } = useTrainerPlans();
   const { data: clubPlan, isLoading: loadingClub } = useClubPlan();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
 
   useEffect(() => {
     trackEvent('pricing_page_viewed');
