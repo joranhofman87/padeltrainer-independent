@@ -3,9 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Check, Plus, Loader2 } from 'lucide-react';
 import { getTagColorClass, PlayerTag } from './playerTagColors';
@@ -18,24 +16,21 @@ interface PlayerTagsCellProps {
   playerKey: { guest_player_id: string | null; profile_id: string | null };
   tags: PlayerTag[];
   selectedTagIds: string[];
-  notes: string;
   onChanged: () => void;
 }
 
-export function PlayerTagsCell({ academyId, playerKey, tags, selectedTagIds, notes, onChanged }: PlayerTagsCellProps) {
+export function PlayerTagsCell({ academyId, playerKey, tags, selectedTagIds, onChanged }: PlayerTagsCellProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [localTagIds, setLocalTagIds] = useState<string[]>(selectedTagIds);
-  const [localNotes, setLocalNotes] = useState(notes);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { setLocalTagIds(selectedTagIds); }, [selectedTagIds]);
-  useEffect(() => { setLocalNotes(notes); }, [notes]);
 
   const selectedTags = tags.filter(t => selectedTagIds.includes(t.id));
 
-  const persist = async (tagIds: string[], noteText: string) => {
+  const persist = async (tagIds: string[]) => {
     if (!playerKey.guest_player_id && !playerKey.profile_id) return;
     setBusy(true);
     try {
