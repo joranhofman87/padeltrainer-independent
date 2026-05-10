@@ -113,8 +113,8 @@ function generateBlogEntries(blogArticles: { slug: string; locale: string; canon
       for (const alt of group) {
         xml += `    <xhtml:link rel="alternate" hreflang="${alt.locale}" href="${SITE_URL}/${alt.locale}/blog/${escapeXml(alt.slug)}"/>\n`;
       }
-      const nlVersion = group.find(a => a.locale === 'nl') || group[0];
-      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/blog/${escapeXml(nlVersion.slug)}"/>\n`;
+      const enVersion = group.find(a => a.locale === 'en') || group.find(a => a.locale === 'nl') || group[0];
+      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/blog/${escapeXml(enVersion.slug)}"/>\n`;
       xml += '  </url>\n';
     }
   }
