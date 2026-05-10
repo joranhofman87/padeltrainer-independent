@@ -182,6 +182,9 @@ export default function AcademyCyclusOverview() {
         }
       }
 
+      // Drop slots that belong to a registration-type cycle (filtered out above)
+      allSlots = allSlots.filter(s => !registrationCycleIds.has(s.cyclus_id));
+
       // Group slots by cyclus_id
       const slotsByCyclus = new Map<string, any[]>();
       allSlots.forEach(slot => {
