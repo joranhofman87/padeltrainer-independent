@@ -21,10 +21,23 @@
     <!-- Reditus affiliate tracking is loaded deferred in main.tsx -->
     <style>
       /* Inline critical styles for instant FCP before React hydrates */
-      #root-loader{display:flex;align-items:center;justify-content:center;height:100vh;background:#fff}
+      :root { color-scheme: light dark; }
+      #root-loader{display:flex;align-items:center;justify-content:center;height:100vh;background:#ffffff}
+      @media (prefers-color-scheme: dark){#root-loader{background:#0a0a0a}}
       #root-loader svg{width:48px;height:48px;animation:spin .8s linear infinite}
       @keyframes spin{to{transform:rotate(360deg)}}
     </style>
+    <script>
+      // Set <html lang> from URL prefix early so bots and screen readers see correct locale
+      (function(){
+        try {
+          var seg = (location.pathname.split('/')[1] || '').toLowerCase();
+          if (['en','nl','es','de','fr','it'].indexOf(seg) !== -1) {
+            document.documentElement.lang = seg;
+          }
+        } catch(e){}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"><div id="root-loader"><svg viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg></div></div>
