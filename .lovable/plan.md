@@ -1,41 +1,36 @@
 ## Problem
-The four "Padeltraining…" rows still bundle every slot of a registration cycle into one giant per-trainer row (Patrick 84, Yannick 70, Rene 42, Tygho 126 sessions). Each of those numbers is actually 5–9 separate weekly classes that the user wants to see as individual cycli (one row per recurring weekly slot, with its 1–4 booked players).
 
-Example (Tygho): 126 slots = 9 weekly series × 14 weeks. Each series has its own day-of-week, start time, end time, and roster of up to 4 players. Those should be 9 rows, not 1.
+The agenda's "All Players" sidebar (in `AcademyDayGrid`) only shows players that already have a non-cancelled booking with one of the academy's trainers. That's why the count (e.g. 105) is much lower than the full roster shown on the Players page, and trainers can't drag a brand-new or never-booked player onto a slot.
 
-## Solution
-When building per-trainer groups inside a cycle, sub-group by the recurring schedule key, not just trainer.
+The source is `fetchAllKnownPlayers` in `src/pages/academy/AcademyCalendar.tsx`, which only joins through `bookings`.
 
-### Change (single file: `src/pages/academy/AcademyCyclusOverview.tsx`)
+## Goal
 
-In `fetchCyclusData`, replace the current `slotsByTrainer` Map with a `slotsBySeries` Map keyed by:
+The sidebar should list every player known to the academy (same set as the Players page tab "All Players"), so trainers can search any player and drag them onto a slot.
 
-```
-`${trainer_id}::${weekday(start_time)}::${HH:mm(start_time)}-${HH:mm(end_time)}`
-```
+## Plan
 
-Apply this sub-grouping in **both** processing paths:
-1. The cycles-table loop (lines ~292–399, the `else` branch where `slotsByTrainer.size > 0`).
-2. The orphan-slots loop (lines ~404–456) — already groups by trainer; expand the same way for consistency.
+1. **Replace `fetchAllKnownPlayers` in `src/pages/academy/AcademyCalendar.tsx`** to mirror the logic used by `AcademyPlayers.fetchPlayers`:
+   - **Guest players**: union of
+     - `guest_players` where `trainer_id IN (academyTrainerIds)`
+     - `guest_players` where `academy_profile_id = activeAcademy.id AND trainer_id IS NULL`
+     - dedupe by id; mark `is_guest: true`
+   - **Registered players**: distinct `profiles` referenced via the academy's trainers (through `bookings.player_id` and `intake_requests.player_id` joined on `availability_slots.trainer_id IN trainerIds`), excluding any whose id is already covered by a linked guest record (matches AcademyPlayers' linked-id dedupe). Mark `is_guest: false`.
+   - Map each into the existing `KnownPlayer` shape (`id`, `full_name`, `skill_rating`, `rating_system`, `is_guest`).
+   - Sort alphabetically and `setAllKnownPlayers(...)`.
 
-For each series:
-- `group_key`: `${cycleId}::${seriesKey}` (or `${cyclusId}::${seriesKey}` for orphans) — keeps selection/sort stable.
-- `cyclus_name`: derive a per-series label so the rows are distinguishable. Use `${weekdayName} ${HH:mm} - ${first booked player name}` when there are bookings, otherwise `${weekdayName} ${HH:mm}`. This mirrors the legacy "Maandag 14:00 - Floris" format the user already likes. Only do this for slots inside a registration-type cycle; for non-registration cycles keep `cycle.name` so they still group as one named cyclus.
-- `day_time`: as today (`${weekdayName} HH:mm - HH:mm`), now naturally consistent within the series.
-- `period_start` / `period_end`: first/last `start_time` within the series.
-- `sessions`: `seriesSlots.length` (will become 14, not 126).
-- `player_names` / `player_count`: union of names across all slots in the series — equals the recurring 1–4 players for the class.
-- `max_participants`, `price_per_session`, `location_name`, `first_slot_id`, `status`, `type`: take from the first slot in the series; price falls back to `cycle.price_per_session`.
+2. **No UI changes** required: the sidebar already renders `allKnownPlayers.length` as the badge and filters `filteredSidebarPlayers` by `sidebarSearch`, so increasing the underlying list automatically fixes the count and the search.
 
-### Detail-view click target
-`handleRowClick` opens by `cyclus_id`. For series rows we still pass the same `cyclus_id` — but also pass `first_slot_id` so the detail page can scope to that series. Verify `AcademyCycleDetail` already supports a `slot` query/state param; if not, follow up in a separate task. (No changes to detail page in this plan.)
+3. **Keep the drag/drop contract intact**: `KnownPlayer.id` for guests stays the raw `guest_players.id` (with `is_guest: true`), for registered players stays the raw `profiles.id`. This matches what the existing booking flow expects on drop, so no consumer changes are needed.
 
-### What stays
-- The empty-intake-form skip (`if (cycle.type === 'registration' && slotsByTrainer.size === 0) return;`) remains.
-- Sorting, filters, time filter, single-line row styling, header — unchanged.
-- Non-registration cycles still render as one row per trainer (most have a single weekly schedule anyway, and the cycle name is meaningful).
+4. **Refresh trigger**: `fetchAllKnownPlayers` keeps being called on the existing effect (mount + academy change). No extra invalidation needed for this fix.
 
 ## Out of scope
-- Schema changes. No new `series_id` column is added; we derive the series key on the fly.
-- Detail page rework.
-- Mobile card view (still untouched).
+
+- Refactoring the AcademyPlayers query into a shared hook (can be a follow-up; for now we duplicate the minimal query needed for the sidebar to keep the change small and isolated).
+- Showing extra metadata (location, has_active_cyclus, status badges) in the sidebar — the sidebar stays a lean name + rating list as today.
+- Changing the Players page itself.
+
+## Files to edit
+
+- `src/pages/academy/AcademyCalendar.tsx` — rewrite `fetchAllKnownPlayers` only.

@@ -391,37 +391,84 @@ export default function AcademyCalendar() {
       const trainerIds = academyTrainers
         .filter((at: any) => at.status === 'active' && at.trainer_profile)
         .map((at: any) => at.trainer_profile.id);
-      if (trainerIds.length === 0) return;
-
-      const { data: bookingPlayers } = await supabase
-        .from('bookings')
-        .select('player_id, guest_player_id, profiles:player_id(id, full_name, skill_rating, rating_system), guest_players:guest_player_id(id, full_name, skill_rating, rating_system), availability_slots!inner(trainer_id)')
-        .in('availability_slots.trainer_id', trainerIds)
-        .not('status', 'eq', 'cancelled');
 
       const playerMap = new Map<string, KnownPlayer>();
-      (bookingPlayers || []).forEach((b: any) => {
-        if (b.profiles?.id && !playerMap.has(b.profiles.id)) {
-          playerMap.set(b.profiles.id, {
-            id: b.profiles.id,
-            full_name: b.profiles.full_name || 'Unknown',
-            skill_rating: b.profiles.skill_rating,
-            rating_system: b.profiles.rating_system || 'knltb',
-            is_guest: false,
-          });
-        }
-        if (b.guest_players?.id && !playerMap.has(`guest-${b.guest_players.id}`)) {
-          playerMap.set(`guest-${b.guest_players.id}`, {
-            id: b.guest_players.id,
-            full_name: b.guest_players.full_name || 'Guest',
-            skill_rating: b.guest_players.skill_rating,
-            rating_system: b.guest_players.rating_system || 'knltb',
-            is_guest: true,
-          });
-        }
+
+      // 1) Guest players: trainer-owned (for academy trainers) + academy-level
+      const guestRows: any[] = [];
+      if (trainerIds.length > 0) {
+        const { data: trainerGuests } = await supabase
+          .from('guest_players')
+          .select('id, full_name, skill_rating, rating_system, linked_player_id')
+          .in('trainer_id', trainerIds);
+        if (trainerGuests) guestRows.push(...trainerGuests);
+      }
+      const { data: academyGuests } = await supabase
+        .from('guest_players')
+        .select('id, full_name, skill_rating, rating_system, linked_player_id')
+        .eq('academy_profile_id', activeAcademy.id)
+        .is('trainer_id', null);
+      if (academyGuests) guestRows.push(...academyGuests);
+
+      const linkedProfileIds = new Set<string>();
+      const seenGuestIds = new Set<string>();
+      guestRows.forEach((g) => {
+        if (seenGuestIds.has(g.id)) return;
+        seenGuestIds.add(g.id);
+        if (g.linked_player_id) linkedProfileIds.add(g.linked_player_id);
+        playerMap.set(`guest-${g.id}`, {
+          id: g.id,
+          full_name: g.full_name || 'Guest',
+          skill_rating: g.skill_rating,
+          rating_system: g.rating_system || 'knltb',
+          is_guest: true,
+        });
       });
 
-      setAllKnownPlayers(Array.from(playerMap.values()).sort((a, b) => a.full_name.localeCompare(b.full_name)));
+      // 2) Registered players: distinct profiles tied to academy trainers via
+      //    bookings or intake_requests
+      if (trainerIds.length > 0) {
+        const profileIds = new Set<string>();
+
+        const { data: bookingPlayers } = await (supabase
+          .from('bookings')
+          .select('player_id, availability_slots!inner(trainer_id)')
+          .in('availability_slots.trainer_id', trainerIds)
+          .not('player_id', 'is', null)
+          .not('status', 'eq', 'cancelled') as any);
+        bookingPlayers?.forEach((b: any) => { if (b.player_id) profileIds.add(b.player_id); });
+
+        const { data: intakePlayers } = await (supabase as any)
+          .from('intake_requests')
+          .select('player_id, trainer_id')
+          .in('trainer_id', trainerIds)
+          .not('player_id', 'is', null);
+        intakePlayers?.forEach((r: any) => { if (r.player_id) profileIds.add(r.player_id); });
+
+        // Drop ids already covered by a linked guest record
+        linkedProfileIds.forEach((id) => profileIds.delete(id));
+
+        if (profileIds.size > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, skill_rating, rating_system')
+            .in('id', Array.from(profileIds));
+          profiles?.forEach((p: any) => {
+            if (playerMap.has(p.id)) return;
+            playerMap.set(p.id, {
+              id: p.id,
+              full_name: p.full_name || 'Unknown',
+              skill_rating: p.skill_rating,
+              rating_system: p.rating_system || 'knltb',
+              is_guest: false,
+            });
+          });
+        }
+      }
+
+      setAllKnownPlayers(
+        Array.from(playerMap.values()).sort((a, b) => a.full_name.localeCompare(b.full_name)),
+      );
     } catch (error) {
       logger.error('Error fetching known players', error as Error, { component: 'AcademyCalendar' });
     }
