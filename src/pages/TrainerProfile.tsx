@@ -640,6 +640,37 @@ export default function TrainerProfile() {
               </Card>
             )}
 
+            {/* More trainers in {province} — internal SEO link block */}
+            {province && siblingCitySlugs.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <MapPin className="h-4 w-4 text-primary" />
+                    {t('common:moreTrainersInProvince', { province: province.name, defaultValue: `More trainers in ${province.name}` })}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    <LocalizedLink
+                      to={`/trainers/province/${province.slug}`}
+                      className="text-sm text-primary hover:underline font-medium"
+                    >
+                      {province.name} →
+                    </LocalizedLink>
+                    {siblingCitySlugs.map(citySlug => (
+                      <LocalizedLink
+                        key={citySlug}
+                        to={`/trainers/${citySlug}`}
+                        className="text-sm text-muted-foreground hover:text-primary hover:underline capitalize"
+                      >
+                        {citySlug.replace(/-/g, ' ')}
+                      </LocalizedLink>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Reviews Section */}
             {trainer && <TrainerReviews trainerId={trainer.id} />}
           </ProfileMainColumn>
