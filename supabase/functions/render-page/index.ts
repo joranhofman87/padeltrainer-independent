@@ -130,7 +130,12 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       `Padel Trainers in ${city} | Find & Book Lessons`,
       `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`,
       `/trainers/${citySlug}`, lang,
-      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>`
+      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Trainers', path: '/trainers' },
+        { name: city },
+      ])]
     );
   }
 
@@ -140,7 +145,11 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       'Find Padel Trainers | PadelTrainer.ai',
       'Browse all certified padel trainers. Filter by location, level, and specialization.',
       '/trainers', lang,
-      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers. Filter by location, level, and specialization.</p>`
+      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers. Filter by location, level, and specialization.</p>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Trainers' },
+      ])]
     );
   }
 
@@ -176,7 +185,11 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       seoTitle,
       seoDesc,
       `/padel/${citySlug}`, lang,
-      `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>`
+      `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: city },
+      ])]
     );
   }
 
@@ -185,11 +198,23 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
   if (locationMatch) {
     const locSlug = locationMatch[1];
     const displayName = slugToDisplay(locSlug);
+    const placeSchema = {
+      "@context": "https://schema.org",
+      "@type": "SportsActivityLocation",
+      "name": displayName,
+      "url": `${SITE_URL}/${lang}/locations/${locSlug}`,
+      "sport": "Padel",
+    };
     return page(
       `${displayName} — Padel Club | PadelTrainer.ai`,
       `Discover ${displayName}. View courts, trainers, and book padel lessons at this club.`,
       `/locations/${locSlug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel club on PadelTrainer.ai</p>`
+      `<h1>${esc(displayName)}</h1><p>Padel club on PadelTrainer.ai</p>`,
+      [placeSchema, breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Locations', path: '/locations' },
+        { name: displayName },
+      ])]
     );
   }
 
@@ -199,7 +224,11 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       'Padel Locations | PadelTrainer.ai',
       'Browse all padel clubs and locations. Find courts near you.',
       '/locations', lang,
-      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations. Find courts near you.</p>`
+      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations. Find courts near you.</p>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Locations' },
+      ])]
     );
   }
 
@@ -208,11 +237,23 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
   if (academyMatch) {
     const acSlug = academyMatch[1];
     const displayName = slugToDisplay(acSlug);
+    const orgSchema = {
+      "@context": "https://schema.org",
+      "@type": "EducationalOrganization",
+      "name": displayName,
+      "url": `${SITE_URL}/${lang}/academies/${acSlug}`,
+      "sport": "Padel",
+    };
     return page(
       `${displayName} — Padel Academy | PadelTrainer.ai`,
       `Discover ${displayName}. View trainers, programs, and book padel lessons.`,
       `/academies/${acSlug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel academy on PadelTrainer.ai</p>`
+      `<h1>${esc(displayName)}</h1><p>Padel academy on PadelTrainer.ai</p>`,
+      [orgSchema, breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Academies', path: '/academies' },
+        { name: displayName },
+      ])]
     );
   }
 
