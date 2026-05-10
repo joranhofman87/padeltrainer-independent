@@ -939,7 +939,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
               <CardTitle className="text-base">{t('emailCampaign.history.title')}</CardTitle>
               <CardDescription>{t('emailCampaign.history.description')}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
               {loadingCampaigns ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -949,35 +949,115 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                   {t('emailCampaign.history.empty')}
                 </p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('emailCampaign.history.subject')}</TableHead>
-                      <TableHead>{t('emailCampaign.history.status')}</TableHead>
-                      <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
-                      <TableHead>{t('emailCampaign.history.sentFailed')}</TableHead>
-                      <TableHead>{t('emailCampaign.history.date')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {campaigns.map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell className="font-medium max-w-[200px] truncate">{c.subject}</TableCell>
-                        <TableCell>{getStatusBadge(c.status)}</TableCell>
-                        <TableCell>{c.total_recipients}</TableCell>
-                        <TableCell>
-                          <span className="text-green-600">{c.sent_count}</span>
-                          {c.failed_count > 0 && (
-                            <span className="text-destructive ml-1">/ {t('emailCampaign.history.failed', { count: c.failed_count })}</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }) : '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <>
+                  {/* Drafts */}
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                      {t('emailCampaign.history.draftsTitle')}
+                    </h3>
+                    {campaigns.filter((c) => c.status === 'draft').length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-3">
+                        {t('emailCampaign.history.noDrafts')}
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t('emailCampaign.history.subject')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.date')}</TableHead>
+                            <TableHead className="w-[100px]">{t('emailCampaign.history.actions')}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {campaigns
+                            .filter((c) => c.status === 'draft')
+                            .map((c) => (
+                              <TableRow
+                                key={c.id}
+                                className="cursor-pointer"
+                                onClick={() => handleLoadDraft(c)}
+                              >
+                                <TableCell className="font-medium max-w-[280px] truncate">
+                                  {c.subject || <span className="text-muted-foreground italic">{t('emailCampaign.compose.subjectPlaceholder')}</span>}
+                                </TableCell>
+                                <TableCell>{c.total_recipients}</TableCell>
+                                <TableCell className="text-muted-foreground text-sm">
+                                  {format(new Date(c.created_at), 'dd MMM yyyy HH:mm', { locale: dateLocale })}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      aria-label={t('emailCampaign.history.openDraft')}
+                                      onClick={(e) => { e.stopPropagation(); handleLoadDraft(c); }}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive"
+                                      aria-label={t('emailCampaign.history.deleteDraft')}
+                                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteDraftId(c.id); }}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+
+                  {/* Sent */}
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                      {t('emailCampaign.history.sentTitle')}
+                    </h3>
+                    {campaigns.filter((c) => c.status !== 'draft').length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-3">
+                        {t('emailCampaign.history.empty')}
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t('emailCampaign.history.subject')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.status')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.sentFailed')}</TableHead>
+                            <TableHead>{t('emailCampaign.history.date')}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {campaigns
+                            .filter((c) => c.status !== 'draft')
+                            .map((c) => (
+                              <TableRow key={c.id}>
+                                <TableCell className="font-medium max-w-[200px] truncate">{c.subject}</TableCell>
+                                <TableCell>{getStatusBadge(c.status)}</TableCell>
+                                <TableCell>{c.total_recipients}</TableCell>
+                                <TableCell>
+                                  <span className="text-green-600">{c.sent_count}</span>
+                                  {c.failed_count > 0 && (
+                                    <span className="text-destructive ml-1">/ {t('emailCampaign.history.failed', { count: c.failed_count })}</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-sm">
+                                  {c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }) : '—'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
