@@ -64,6 +64,8 @@ type SortOption = 'rating' | 'experience';
 
 export default function Trainers() {
   const { t } = useTranslation(['trainer', 'common']);
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
   const [searchParams, setSearchParams] = useSearchParams();
   const [featuredOpen, setFeaturedOpen] = useState(true);
   const navigate = useNavigate();
