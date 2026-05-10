@@ -582,35 +582,6 @@ export default function AcademyDayGrid({
         onDragEnd={handleDragEnd}
       >
         <div className="space-y-4">
-          {/* Search bar */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder={t('calendar.searchPlayer', { defaultValue: 'Search player…' })}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 pl-8 text-xs"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1 text-xs"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-            >
-              {sidebarOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">{t('calendar.players', { defaultValue: 'Players' })}</span>
-            </Button>
-          </div>
 
           {/* Day tabs */}
           <Tabs value={activeDayKey} onValueChange={setSelectedDayKey}>
