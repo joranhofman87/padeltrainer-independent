@@ -932,6 +932,7 @@ export default function AcademyCalendar() {
               slots={agendaSlots}
               trainers={trainerOptions}
               currentDate={currentDate}
+              summary={summaryStats}
               onCellClick={(trainerId, day) => {
                 setSelectedTrainerId(trainerId);
                 setCurrentDate(day);
