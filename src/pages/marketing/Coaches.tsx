@@ -10,6 +10,7 @@ import { ArrowRight, User, MapPin, Info } from 'lucide-react';
 import { sanityClient, COACHES_LIST_QUERY } from '@/lib/sanity';
 import { useTranslation } from 'react-i18next';
 import type { SeoFields } from '@/lib/sanity';
+import { buildBreadcrumbList } from '@/lib/structuredData';
 
 interface CoachListItem {
   _id: string;
