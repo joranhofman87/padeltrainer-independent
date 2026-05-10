@@ -127,6 +127,14 @@ export default function AcademyPublicProfile() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Open cycles → emit Course JSON-LD for rich results
+  const { data: openCycles = [] } = useQuery({
+    queryKey: ['academy-public-cycles', academy?.id],
+    queryFn: () => getActiveCycles('academy', academy!.id),
+    enabled: !!academy?.id,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Record view (fire-and-forget)
   useEffect(() => {
     if (academy?.id) {
