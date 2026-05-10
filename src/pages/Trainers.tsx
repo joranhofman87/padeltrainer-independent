@@ -441,13 +441,18 @@ export default function Trainers() {
     }))
   };
 
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${currentLang}` },
+    { name: 'Trainers', url: `/${currentLang}/trainers` },
+  ]);
+
   return (
     <div className="min-h-screen bg-background">
       <SEO
         title="Find Padel Trainers"
         description="Discover certified padel trainers worldwide. Compare rates, read reviews, and book lessons that match your skill level."
         url="/trainers"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema]}
       />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
