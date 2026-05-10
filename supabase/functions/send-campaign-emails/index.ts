@@ -37,17 +37,32 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { campaignId, testMode, testEmail, subject: testSubject, bodyHtml: testBodyHtml, academyProfileId } = body;
+    const { campaignId, testMode, testEmail, subject: testSubject, bodyHtml: testBodyHtml, academyProfileId, trainerProfileId } = body;
+
+    // Helper: verify caller owns the campaign owner (academy or trainer)
+    async function verifyOwner(academyId: string | null, trainerId: string | null): Promise<boolean> {
+      if (academyId) {
+        const { data: isManager } = await supabase.rpc("is_academy_manager", {
+          _user_id: user.id,
+          _academy_profile_id: academyId,
+        });
+        return !!isManager;
+      }
+      if (trainerId) {
+        const { data: tp } = await supabase
+          .from("trainer_profiles")
+          .select("user_id")
+          .eq("id", trainerId)
+          .maybeSingle();
+        return tp?.user_id === user.id;
+      }
+      return false;
+    }
 
     // === TEST MODE ===
     if (testMode && testEmail && testSubject && testBodyHtml) {
-      // Verify user is academy manager
-      const { data: isManager } = await supabase.rpc("is_academy_manager", {
-        _user_id: user.id,
-        _academy_profile_id: academyProfileId,
-      });
-
-      if (!isManager) {
+      const ok = await verifyOwner(academyProfileId || null, trainerProfileId || null);
+      if (!ok) {
         return new Response(JSON.stringify({ error: "Not authorized" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -107,13 +122,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Verify user is academy manager
-    const { data: isManager } = await supabase.rpc("is_academy_manager", {
-      _user_id: user.id,
-      _academy_profile_id: campaign.academy_profile_id,
-    });
-
-    if (!isManager) {
+    // Verify user owns the campaign (academy manager or trainer owner)
+    const ok = await verifyOwner(campaign.academy_profile_id || null, campaign.trainer_profile_id || null);
+    if (!ok) {
       return new Response(JSON.stringify({ error: "Not authorized" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
