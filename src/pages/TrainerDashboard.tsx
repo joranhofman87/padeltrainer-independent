@@ -249,6 +249,15 @@ export default function TrainerDashboard() {
       {/* Pending Attendance Actions */}
       <PendingAttendanceCard mode="trainer" trainerId={trainerId ?? undefined} />
 
+      {/* Shareable profile link */}
+      {trainerSlug && (
+        <Card className="mb-6">
+          <CardContent className="p-4 sm:p-6">
+            <ShareableProfileLink handle={trainerSlug} />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/app/trainer/analytics')}>
