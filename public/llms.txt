@@ -126,6 +126,7 @@ This platform is available in:
 - `/{lang}/about` - About the platform
 - `/{lang}/partner` - Partnership inquiry form
 - `/{lang}/brand` - Brand & design system reference
+- `/{lang}/press` - Press kit, logos, and media contact
 
 ## Technology
 

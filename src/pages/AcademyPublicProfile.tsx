@@ -1,3 +1,4 @@
+import { buildDynamicOgUrl } from '@/lib/dynamicOgImage';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -284,7 +285,12 @@ export default function AcademyPublicProfile() {
           locationPlural: locations.length !== 1 ? 's' : ''
         })}
         url={`/academies/${slug}`}
-        image={academy.logo_url || academy.banner_url || undefined}
+        image={academy.logo_url || academy.banner_url || buildDynamicOgUrl({
+          type: 'academy',
+          eyebrow: 'Padel academy',
+          title: academy.name,
+          subtitle: `${trainers.length} trainer${trainers.length !== 1 ? 's' : ''} · ${locations.length} location${locations.length !== 1 ? 's' : ''}`,
+        })}
         structuredData={structuredData}
       />
 
