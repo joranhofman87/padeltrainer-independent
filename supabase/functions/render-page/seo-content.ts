@@ -329,3 +329,209 @@ export function faqPageSchema(items: Array<{ question: string; answer: string }>
     })),
   };
 }
+
+// ─── Localized labels (A5) ──────────────────────────────────────
+
+export function labels(lang: string) {
+  return pick(lang, {
+    en: { home: 'Home', trainers: 'Trainers', locations: 'Clubs', academies: 'Academies', blog: 'Blog', region: 'Region', lastUpdated: 'Last updated', moreInProvince: 'More cities in', topClubs: 'Top padel clubs in', topTrainers: 'Top padel trainers in', trainersAtClub: 'Trainers at', otherClubs: 'Other clubs in', tldr: 'At a glance', upcomingCycles: 'Upcoming programs', recentReviews: 'Recent reviews', citiesIn: 'Cities in' },
+    nl: { home: 'Home', trainers: 'Trainers', locations: 'Clubs', academies: 'Academies', blog: 'Blog', region: 'Regio', lastUpdated: 'Laatst bijgewerkt', moreInProvince: 'Meer steden in', topClubs: 'Top padelclubs in', topTrainers: 'Top padeltrainers in', trainersAtClub: 'Trainers bij', otherClubs: 'Andere clubs in', tldr: 'In het kort', upcomingCycles: 'Komende programma\'s', recentReviews: 'Recente reviews', citiesIn: 'Steden in' },
+    es: { home: 'Inicio', trainers: 'Entrenadores', locations: 'Clubes', academies: 'Academias', blog: 'Blog', region: 'Región', lastUpdated: 'Última actualización', moreInProvince: 'Más ciudades en', topClubs: 'Mejores clubes de pádel en', topTrainers: 'Mejores entrenadores en', trainersAtClub: 'Entrenadores en', otherClubs: 'Otros clubes en', tldr: 'Resumen', upcomingCycles: 'Próximos programas', recentReviews: 'Reseñas recientes', citiesIn: 'Ciudades en' },
+    de: { home: 'Start', trainers: 'Trainer', locations: 'Clubs', academies: 'Akademien', blog: 'Blog', region: 'Region', lastUpdated: 'Zuletzt aktualisiert', moreInProvince: 'Weitere Städte in', topClubs: 'Top Padel-Clubs in', topTrainers: 'Top Padel-Trainer in', trainersAtClub: 'Trainer bei', otherClubs: 'Weitere Clubs in', tldr: 'Auf einen Blick', upcomingCycles: 'Kommende Programme', recentReviews: 'Aktuelle Bewertungen', citiesIn: 'Städte in' },
+    fr: { home: 'Accueil', trainers: 'Coachs', locations: 'Clubs', academies: 'Académies', blog: 'Blog', region: 'Région', lastUpdated: 'Dernière mise à jour', moreInProvince: 'Autres villes en', topClubs: 'Meilleurs clubs de padel à', topTrainers: 'Meilleurs coachs à', trainersAtClub: 'Coachs à', otherClubs: 'Autres clubs à', tldr: 'En bref', upcomingCycles: 'Prochains programmes', recentReviews: 'Avis récents', citiesIn: 'Villes en' },
+    it: { home: 'Home', trainers: 'Maestri', locations: 'Club', academies: 'Accademie', blog: 'Blog', region: 'Regione', lastUpdated: 'Ultimo aggiornamento', moreInProvince: 'Altre città in', topClubs: 'Migliori club di padel a', topTrainers: 'Migliori maestri a', trainersAtClub: 'Maestri a', otherClubs: 'Altri club a', tldr: 'In breve', upcomingCycles: 'Prossimi programmi', recentReviews: 'Recensioni recenti', citiesIn: 'Città in' },
+  });
+}
+
+// ─── Last-updated + speakable + TL;DR (A3 GEO) ──────────────────
+
+export function renderLastUpdatedHtml(iso: string | null, lang: string): string {
+  if (!iso) return '';
+  const d = iso.split('T')[0];
+  const L = labels(lang);
+  return `<p class="last-updated"><small><em>${esc(L.lastUpdated)}: ${esc(d)}</em></small></p>`;
+}
+
+export function renderTldrHtml(text: string, lang: string): string {
+  const L = labels(lang);
+  return `<aside class="tldr" data-speakable="true"><strong>${esc(L.tldr)}.</strong> ${esc(text)}</aside>`;
+}
+
+export function speakableSchema(canonicalUrl: string) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    url: canonicalUrl,
+    speakable: {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.tldr', 'section h2', 'details summary'],
+    },
+  };
+}
+
+// ─── Rich-result schemas (A2) ───────────────────────────────────
+
+export function aggregateRatingSchema(avg: number | null, count: number) {
+  if (!avg || count <= 0) return null;
+  return {
+    '@type': 'AggregateRating',
+    ratingValue: avg,
+    reviewCount: count,
+    bestRating: 5,
+    worstRating: 1,
+  };
+}
+
+export function reviewSchemas(reviews: Array<{ rating: number; comment: string | null; reviewer: string | null }>, itemName: string) {
+  return reviews
+    .filter(r => r.comment && r.comment.trim().length > 0)
+    .slice(0, 5)
+    .map(r => ({
+      '@type': 'Review',
+      reviewRating: { '@type': 'Rating', ratingValue: r.rating, bestRating: 5, worstRating: 1 },
+      author: { '@type': 'Person', name: r.reviewer || 'Anonymous player' },
+      reviewBody: r.comment!.slice(0, 500),
+      itemReviewed: { '@type': 'Person', name: itemName },
+    }));
+}
+
+export function localBusinessSchema(opts: {
+  url: string;
+  name: string;
+  city: string;
+  street: string | null;
+  postalCode: string | null;
+  country: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  reviewAvg: number | null;
+  reviewCount: number;
+}) {
+  const sd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': ['LocalBusiness', 'SportsActivityLocation'],
+    '@id': opts.url,
+    name: opts.name,
+    url: opts.url,
+    sport: 'Padel',
+  };
+  const address: Record<string, string> = { '@type': 'PostalAddress', addressLocality: opts.city };
+  if (opts.street) address.streetAddress = opts.street;
+  if (opts.postalCode) address.postalCode = opts.postalCode;
+  if (opts.country) address.addressCountry = opts.country;
+  sd.address = address;
+  if (opts.latitude != null && opts.longitude != null) {
+    sd.geo = { '@type': 'GeoCoordinates', latitude: opts.latitude, longitude: opts.longitude };
+  }
+  const ar = aggregateRatingSchema(opts.reviewAvg, opts.reviewCount);
+  if (ar) sd.aggregateRating = ar;
+  return sd;
+}
+
+export function courseSchema(opts: {
+  url: string;
+  name: string;
+  providerName: string;
+  providerUrl: string;
+  startDate: string | null;
+  endDate: string | null;
+  price: number | null;
+  currency: string | null;
+}) {
+  const sd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Course',
+    name: opts.name,
+    provider: { '@type': 'EducationalOrganization', name: opts.providerName, url: opts.providerUrl },
+    url: opts.url,
+  };
+  if (opts.startDate) {
+    sd.hasCourseInstance = {
+      '@type': 'CourseInstance',
+      courseMode: 'onsite',
+      startDate: opts.startDate,
+      endDate: opts.endDate || opts.startDate,
+    };
+  }
+  if (opts.price && opts.currency) {
+    sd.offers = {
+      '@type': 'Offer',
+      price: opts.price,
+      priceCurrency: opts.currency,
+      availability: 'https://schema.org/InStock',
+    };
+  }
+  return sd;
+}
+
+// ─── Contextual internal links (A4) ─────────────────────────────
+
+export function renderNearbyCitiesHtml(provinceName: string, cities: Array<{ slug: string; name: string }>, lang: string): string {
+  if (cities.length === 0) return '';
+  const L = labels(lang);
+  const items = cities
+    .map(c => `<li><a href="${SITE_URL}/${lang}/trainers/${c.slug}">${esc(c.name)}</a></li>`)
+    .join('');
+  return `<section><h2>${esc(L.moreInProvince)} ${esc(provinceName)}</h2><ul>${items}</ul></section>`;
+}
+
+export function renderTopTrainersHtml(city: string, trainers: Array<{ slug: string; name: string; rate: number | null }>, lang: string): string {
+  if (trainers.length === 0) return '';
+  const L = labels(lang);
+  const items = trainers.map(t => {
+    const rate = t.rate ? ` — €${t.rate}/hr` : '';
+    return `<li><a href="${SITE_URL}/${lang}/trainer/${t.slug}">${esc(t.name)}</a>${rate}</li>`;
+  }).join('');
+  return `<section><h2>${esc(L.topTrainers)} ${esc(city)}</h2><ul>${items}</ul></section>`;
+}
+
+export function renderTopClubsHtml(city: string, clubs: Array<{ slug: string; name: string; courts: number | null; googleRating: number | null }>, lang: string): string {
+  if (clubs.length === 0) return '';
+  const L = labels(lang);
+  const items = clubs.map(c => {
+    const courts = c.courts ? ` — ${c.courts} courts` : '';
+    const rating = c.googleRating ? ` (★ ${c.googleRating})` : '';
+    return `<li><a href="${SITE_URL}/${lang}/locations/${c.slug}">${esc(c.name)}</a>${courts}${rating}</li>`;
+  }).join('');
+  return `<section><h2>${esc(L.topClubs)} ${esc(city)}</h2><ul>${items}</ul></section>`;
+}
+
+export function renderTrainersAtClubHtml(clubName: string, trainers: Array<{ slug: string; name: string }>, lang: string): string {
+  if (trainers.length === 0) return '';
+  const L = labels(lang);
+  const items = trainers.map(t => `<li><a href="${SITE_URL}/${lang}/trainer/${t.slug}">${esc(t.name)}</a></li>`).join('');
+  return `<section><h2>${esc(L.trainersAtClub)} ${esc(clubName)}</h2><ul>${items}</ul></section>`;
+}
+
+export function renderRecentReviewsHtml(reviews: Array<{ rating: number; comment: string | null; reviewer: string | null }>, lang: string): string {
+  if (reviews.length === 0) return '';
+  const L = labels(lang);
+  const items = reviews
+    .filter(r => r.comment && r.comment.trim().length > 0)
+    .slice(0, 3)
+    .map(r => `<li><strong>★ ${r.rating}/5</strong> — “${esc((r.comment || '').slice(0, 280))}” <em>— ${esc(r.reviewer || 'Anonymous')}</em></li>`)
+    .join('');
+  if (!items) return '';
+  return `<section><h2>${esc(L.recentReviews)}</h2><ul>${items}</ul></section>`;
+}
+
+export function renderUpcomingCyclesHtml(cycles: Array<{ name: string; startDate: string | null; endDate: string | null; price: number | null; currency: string | null }>, lang: string): string {
+  if (cycles.length === 0) return '';
+  const L = labels(lang);
+  const items = cycles.map(c => {
+    const date = c.startDate ? ` — ${c.startDate}${c.endDate && c.endDate !== c.startDate ? ` to ${c.endDate}` : ''}` : '';
+    const price = c.price ? ` — ${c.currency || 'EUR'} ${c.price}` : '';
+    return `<li><strong>${esc(c.name)}</strong>${date}${price}</li>`;
+  }).join('');
+  return `<section><h2>${esc(L.upcomingCycles)}</h2><ul>${items}</ul></section>`;
+}
+
+export function renderProvinceCitiesHtml(provinceName: string, cities: Array<{ slug: string; name: string; count: number }>, lang: string): string {
+  if (cities.length === 0) return '';
+  const L = labels(lang);
+  const items = cities.map(c => {
+    const meta = c.count > 0 ? ` (${c.count})` : '';
+    return `<li><a href="${SITE_URL}/${lang}/trainers/${c.slug}">${esc(c.name)}</a>${meta}</li>`;
+  }).join('');
+  return `<section><h2>${esc(L.citiesIn)} ${esc(provinceName)}</h2><ul>${items}</ul></section>`;
+}
