@@ -1113,6 +1113,27 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirm delete draft */}
+      <AlertDialog open={!!confirmDeleteDraftId} onOpenChange={(o) => !o && setConfirmDeleteDraftId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('emailCampaign.history.deleteDraft')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('emailCampaign.history.confirmDeleteDraft')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('emailCampaign.confirm.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmDeleteDraftId && handleDeleteDraft(confirmDeleteDraftId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> {t('emailCampaign.history.deleteDraft')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
