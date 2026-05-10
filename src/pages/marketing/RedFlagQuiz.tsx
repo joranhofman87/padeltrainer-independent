@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useParams } from 'react-router-dom';
+import { buildBreadcrumbList } from '@/lib/structuredData';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence } from 'framer-motion';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
