@@ -430,12 +430,12 @@ export default function AcademyCalendar() {
       if (trainerIds.length > 0) {
         const profileIds = new Set<string>();
 
-        const { data: bookingPlayers } = await supabase
+        const { data: bookingPlayers } = await (supabase
           .from('bookings')
           .select('player_id, availability_slots!inner(trainer_id)')
           .in('availability_slots.trainer_id', trainerIds)
           .not('player_id', 'is', null)
-          .not('status', 'eq', 'cancelled');
+          .not('status', 'eq', 'cancelled') as any);
         bookingPlayers?.forEach((b: any) => { if (b.player_id) profileIds.add(b.player_id); });
 
         const { data: intakePlayers } = await (supabase
