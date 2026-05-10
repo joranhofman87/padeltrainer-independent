@@ -278,26 +278,44 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
     setIsSending(true);
 
     try {
-      // 1. Create campaign
       const filters = { trainer: filterTrainer, location: filterLocation, level: filterLevel, cyclus: filterCyclus, tag: filterTag };
-      const { data: campaign, error: campErr } = await supabase
-        .from('email_campaigns')
-        .insert({
-          [ownerCol]: ownerId,
-          subject: subject.trim(),
-          body_html: bodyHtml,
-          filters,
-          status: 'draft',
-          total_recipients: recipients.length,
-        } as any)
-        .select()
-        .single();
+      let campaignId = currentDraftId;
 
-      if (campErr || !campaign) throw campErr || new Error('Could not create campaign');
+      if (campaignId) {
+        // Update existing draft
+        const { error: updErr } = await supabase
+          .from('email_campaigns')
+          .update({
+            subject: subject.trim(),
+            body_html: bodyHtml,
+            filters,
+            total_recipients: recipients.length,
+          } as any)
+          .eq('id', campaignId);
+        if (updErr) throw updErr;
+        // Replace recipient rows
+        await supabase.from('email_campaign_recipients').delete().eq('campaign_id', campaignId);
+      } else {
+        const { data: campaign, error: campErr } = await supabase
+          .from('email_campaigns')
+          .insert({
+            [ownerCol]: ownerId,
+            subject: subject.trim(),
+            body_html: bodyHtml,
+            filters,
+            status: 'draft',
+            total_recipients: recipients.length,
+          } as any)
+          .select()
+          .single();
 
-      // 2. Insert recipients
+        if (campErr || !campaign) throw campErr || new Error('Could not create campaign');
+        campaignId = campaign.id;
+      }
+
+      // Insert recipients
       const recipientRows = recipients.map((p) => ({
-        campaign_id: campaign.id,
+        campaign_id: campaignId,
         recipient_email: p.email,
         recipient_name: p.full_name,
         status: 'pending',
@@ -309,9 +327,9 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
 
       if (recErr) throw recErr;
 
-      // 3. Invoke edge function
+      // Invoke edge function
       const { error: fnErr } = await supabase.functions.invoke('send-campaign-emails', {
-        body: { campaignId: campaign.id },
+        body: { campaignId },
       });
 
       if (fnErr) throw fnErr;
@@ -326,6 +344,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       setBodyHtml('');
       setTemplateName('');
       setEditingTemplateId(null);
+      setCurrentDraftId(null);
       fetchCampaigns();
     } catch (err: any) {
       logger.error('Error sending campaign', err);
@@ -333,6 +352,130 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!subject.trim() && !bodyHtml.trim()) return;
+    setIsSavingDraft(true);
+    try {
+      const filters = { trainer: filterTrainer, location: filterLocation, level: filterLevel, cyclus: filterCyclus, tag: filterTag };
+      let draftId = currentDraftId;
+
+      if (draftId) {
+        const { error } = await supabase
+          .from('email_campaigns')
+          .update({
+            subject: subject.trim(),
+            body_html: bodyHtml,
+            filters,
+            total_recipients: recipients.length,
+          } as any)
+          .eq('id', draftId);
+        if (error) throw error;
+        await supabase.from('email_campaign_recipients').delete().eq('campaign_id', draftId);
+      } else {
+        const { data, error } = await supabase
+          .from('email_campaigns')
+          .insert({
+            [ownerCol]: ownerId,
+            subject: subject.trim(),
+            body_html: bodyHtml,
+            filters,
+            status: 'draft',
+            total_recipients: recipients.length,
+          } as any)
+          .select()
+          .single();
+        if (error || !data) throw error || new Error('Could not save draft');
+        draftId = data.id;
+        setCurrentDraftId(draftId);
+      }
+
+      if (recipients.length > 0) {
+        const rows = recipients.map((p) => ({
+          campaign_id: draftId,
+          recipient_email: p.email,
+          recipient_name: p.full_name,
+          status: 'pending',
+        }));
+        const { error: recErr } = await supabase
+          .from('email_campaign_recipients')
+          .insert(rows as any);
+        if (recErr) throw recErr;
+      }
+
+      toast({
+        title: t('emailCampaign.toasts.draftSaved'),
+        description: t('emailCampaign.toasts.draftSavedDesc'),
+      });
+      fetchCampaigns();
+    } catch (err: any) {
+      logger.error('Error saving draft', err);
+      toast({ title: t('emailCampaign.toasts.error'), description: err.message || t('emailCampaign.toasts.draftError'), variant: 'destructive' });
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleLoadDraft = async (campaign: Campaign) => {
+    try {
+      const { data: rec } = await supabase
+        .from('email_campaign_recipients')
+        .select('recipient_email, recipient_name')
+        .eq('campaign_id', campaign.id);
+
+      // Fetch full campaign including body_html
+      const { data: full } = await supabase
+        .from('email_campaigns')
+        .select('*')
+        .eq('id', campaign.id)
+        .single();
+
+      if (!full) return;
+
+      const f = (full as any).filters || {};
+      skipNextRecipientSync.current = true;
+      setFilterTrainer(f.trainer ?? 'all');
+      setFilterLocation(f.location ?? 'all');
+      setFilterLevel(f.level ?? 'all');
+      setFilterCyclus(f.cyclus ?? 'all');
+      setFilterTag(f.tag ?? 'all');
+      setSubject((full as any).subject || '');
+      setBodyHtml((full as any).body_html || '');
+      setRecipients(
+        (rec || []).map((r, i) => ({
+          id: `draft-${i}`,
+          full_name: (r as any).recipient_name || (r as any).recipient_email,
+          email: (r as any).recipient_email,
+        }))
+      );
+      setCurrentDraftId(campaign.id);
+      setActiveView('compose');
+      toast({ title: t('emailCampaign.toasts.draftLoaded') });
+    } catch (err) {
+      logger.error('Error loading draft', err as Error);
+    }
+  };
+
+  const handleDeleteDraft = async (id: string) => {
+    setConfirmDeleteDraftId(null);
+    try {
+      await supabase.from('email_campaign_recipients').delete().eq('campaign_id', id);
+      await supabase.from('email_campaigns').delete().eq('id', id);
+      if (currentDraftId === id) setCurrentDraftId(null);
+      toast({ title: t('emailCampaign.toasts.draftDeleted') });
+      fetchCampaigns();
+    } catch (err) {
+      logger.error('Error deleting draft', err as Error);
+    }
+  };
+
+  const handleDiscardDraftEdit = () => {
+    setCurrentDraftId(null);
+    setSubject('');
+    setBodyHtml('');
+    setTemplateName('');
+    setEditingTemplateId(null);
   };
 
 
