@@ -289,7 +289,7 @@ export default function AgendaWeekByTrainer({
             const isExpanded = expanded.has(tr.id);
             return (
               <div key={tr.id} className="border-b last:border-b-0">
-                <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))_110px] items-center gap-1 px-1 py-2">
+                <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))_110px] items-center gap-1 px-1 py-1">
                   <div className="flex items-center gap-1 min-w-0">
                     <button
                       type="button"
