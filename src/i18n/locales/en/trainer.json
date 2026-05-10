@@ -1112,14 +1112,22 @@
     },
     "history": {
       "title": "Campaign History",
-      "description": "Overview of sent email campaigns.",
+      "description": "Overview of sent email campaigns and saved drafts.",
       "empty": "No campaigns sent yet.",
       "subject": "Subject",
       "status": "Status",
       "recipients": "Recipients",
       "sentFailed": "Sent / Failed",
       "date": "Date",
-      "failed": "{{count}} failed"
+      "failed": "{{count}} failed",
+      "draftsTitle": "Drafts",
+      "sentTitle": "Sent campaigns",
+      "openDraft": "Open draft",
+      "deleteDraft": "Delete draft",
+      "confirmDeleteDraft": "Delete this draft? This can't be undone.",
+      "noDrafts": "No drafts saved.",
+      "actions": "Actions",
+      "draftSaved": "Last saved {{date}}"
     },
     "status": {
       "sent": "Sent",
