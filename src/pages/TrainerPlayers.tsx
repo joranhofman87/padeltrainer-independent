@@ -845,7 +845,7 @@ export default function TrainerPlayers() {
 
                 {/* Mobile Cards */}
                 <div className="md:hidden space-y-3 p-4">
-                  {filteredPlayers.map((player) => (
+                  {sortedPlayers.map((player) => (
                     <div key={player.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="min-w-0 flex-1">
