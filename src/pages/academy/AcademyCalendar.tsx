@@ -438,11 +438,11 @@ export default function AcademyCalendar() {
           .not('status', 'eq', 'cancelled');
         bookingPlayers?.forEach((b: any) => { if (b.player_id) profileIds.add(b.player_id); });
 
-        const { data: intakePlayers } = await supabase
+        const { data: intakePlayers } = await (supabase
           .from('intake_requests')
           .select('player_id, trainer_id')
           .in('trainer_id', trainerIds)
-          .not('player_id', 'is', null);
+          .not('player_id', 'is', null) as any);
         intakePlayers?.forEach((r: any) => { if (r.player_id) profileIds.add(r.player_id); });
 
         // Drop ids already covered by a linked guest record
