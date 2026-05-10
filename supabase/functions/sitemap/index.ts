@@ -156,8 +156,8 @@ function generateSanityEntries(
       for (const alt of group) {
         result += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${pathPrefix}/${escapeXml(alt.slug)}"/>\n`;
       }
-      const nlVersion = group.find((a: { language: string }) => a.language === 'nl') || group[0];
-      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/${pathPrefix}/${escapeXml(nlVersion.slug)}"/>\n`;
+      const enVersion = group.find((a: { language: string }) => a.language === 'en') || group.find((a: { language: string }) => a.language === 'nl') || group[0];
+      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/${pathPrefix}/${escapeXml(enVersion.slug)}"/>\n`;
       result += '  </url>\n';
     }
   }
