@@ -406,7 +406,12 @@ export default function LocationDetail() {
         description={seoDescription}
         url={`/locations/${location.slug}`}
         type="place"
-        image={displayLogo || clubProfile?.banner_url || 'https://padeltrainer.ai/og-locations.png'}
+        image={displayLogo || clubProfile?.banner_url || buildDynamicOgUrl({
+          type: 'club',
+          eyebrow: location.city ? `Padel club · ${location.city}` : 'Padel club',
+          title: location.name,
+          subtitle: 'Find courts, coaches & lessons on PadelTrainer.ai',
+        })}
         structuredData={allStructuredData.length > 0 ? allStructuredData : undefined}
       />
 

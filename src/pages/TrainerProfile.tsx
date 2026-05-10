@@ -379,7 +379,12 @@ export default function TrainerProfile() {
           rate: trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''
         })}
         url={`/trainer/${trainerSlug}`}
-        image={profile.avatar_url || undefined}
+        image={profile.avatar_url || buildDynamicOgUrl({
+          type: 'trainer',
+          eyebrow: profile.location ? `Padel coach · ${profile.location}` : 'Padel coach',
+          title: profile.full_name || 'Padel Trainer',
+          subtitle: trainer.hourly_rate ? `From €${trainer.hourly_rate}/hour · Book on PadelTrainer.ai` : 'Book on PadelTrainer.ai',
+        })}
         structuredData={[structuredData, breadcrumbData]}
       />
       <ProfileLayout
