@@ -581,7 +581,7 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     titles404[lang] || 'Page not found',
     descs404[lang] || 'This page does not exist. Explore our trainers and clubs.',
     cleanPath, lang,
-    `<!-- render-page:notfound --><meta name="robots" content="noindex,follow"><h1>${esc(titles404[lang] || 'Page not found')}</h1><p>${esc(descs404[lang] || 'This page does not exist.')}</p><p><a href="${SITE_URL}/${lang}/trainers">Browse trainers</a> · <a href="${SITE_URL}/${lang}/locations">Browse clubs</a></p>`
+    `<!-- render-page:notfound --><h1>${esc(titles404[lang] || 'Page not found')}</h1><p>${esc(descs404[lang] || 'This page does not exist.')}</p><p><a href="${SITE_URL}/${lang}/trainers">Browse trainers</a> · <a href="${SITE_URL}/${lang}/locations">Browse clubs</a></p>`
   );
 }
 
