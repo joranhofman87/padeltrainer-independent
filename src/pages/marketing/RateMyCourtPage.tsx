@@ -9,9 +9,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Check, ArrowLeft, Star } from 'lucide-react';
 import { LocalizedLink } from '@/components/LocalizedLink';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useLocalizedPath } from '@/hooks/useLocalizedPath';
 import { toast } from '@/hooks/use-toast';
+import { buildBreadcrumbList } from '@/lib/structuredData';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 
 interface SelectedLocation {
   id: string;
@@ -27,9 +29,26 @@ export default function RateMyCourtPage() {
   const { t } = useTranslation('marketing');
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { lang = 'en' } = useParams<{ lang: string }>();
   const authPath = useLocalizedPath('/auth');
   const [step, setStep] = useState<Step>('search');
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+
+  const breadcrumb = buildBreadcrumbList([
+    { name: t('nav.home', 'Home'), url: `${MARKETING_DOMAIN}/${lang}` },
+    { name: t('playground.title', 'Padel Playground'), url: `${MARKETING_DOMAIN}/${lang}/playground` },
+    { name: t('rateMyCourtPage.title', 'Rate My Padel Court') },
+  ]);
+  const webAppSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: t('rateMyCourtPage.title', 'Rate My Padel Court'),
+    description: t('rateMyCourtPage.seo.description', 'Rate your padel club across 10 categories.'),
+    applicationCategory: 'LifestyleApplication',
+    operatingSystem: 'Web',
+    url: `${MARKETING_DOMAIN}/${lang}/playground/rate-my-court`,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+  };
   const [pendingReview, setPendingReview] = useState<CourtReviewInsert | null>(null);
 
   const { data: existingReview } = useUserReviewForLocation(selectedLocation?.id);
@@ -82,6 +101,8 @@ export default function RateMyCourtPage() {
       <SEO
         title={t('rateMyCourtPage.seo.title', 'Rate My Padel Court | PadelTrainer.ai')}
         description={t('rateMyCourtPage.seo.description', 'Rate your padel club across 10 categories. Help other players find the best courts.')}
+        url={`/${lang}/playground/rate-my-court`}
+        structuredData={[breadcrumb, webAppSchema]}
       />
       <div className="container mx-auto px-4 py-16 md:py-24 max-w-xl">
         {/* Header */}

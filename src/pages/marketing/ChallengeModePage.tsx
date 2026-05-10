@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { buildBreadcrumbList } from '@/lib/structuredData';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
@@ -19,7 +21,24 @@ const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard', 'chaos'];
 
 export default function ChallengeModePage() {
   const { t } = useTranslation('marketing');
+  const { lang = 'en' } = useParams<{ lang: string }>();
   const [searchParams] = useSearchParams();
+
+  const webAppSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: t('challengeMode.title', 'Challenge Mode'),
+    description: t('challengeMode.seo.description', 'Random padel challenges and match modifiers.'),
+    applicationCategory: 'GameApplication',
+    operatingSystem: 'Web',
+    url: `${MARKETING_DOMAIN}/${lang}/playground/challenge-mode`,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+  };
+  const breadcrumb = buildBreadcrumbList([
+    { name: t('nav.home', 'Home'), url: `${MARKETING_DOMAIN}/${lang}` },
+    { name: t('playground.title', 'Padel Playground'), url: `${MARKETING_DOMAIN}/${lang}/playground` },
+    { name: t('challengeMode.title', 'Challenge Mode') },
+  ]);
 
   const deepLinkedId = searchParams.get('c');
   const deepLinkedChallenge = deepLinkedId ? challenges.find(c => c.id === Number(deepLinkedId)) : null;
@@ -95,6 +114,8 @@ export default function ChallengeModePage() {
         <SEO
           title={t('challengeMode.seo.title', 'Padel Challenge Mode — Training Drills & Match Modifiers')}
           description={t('challengeMode.seo.description', 'Level up your padel game with random challenges. Practice drills to build skills or match modifiers to make games more fun.')}
+          url={`/${lang}/playground/challenge-mode`}
+          structuredData={[breadcrumb, webAppSchema]}
         />
         <div className="container mx-auto px-4 py-16 md:py-24">
           <div className="text-center mb-12">
@@ -154,6 +175,8 @@ export default function ChallengeModePage() {
       <SEO
         title={t('challengeMode.seo.title', 'Padel Challenge Mode — Training Drills & Match Modifiers')}
         description={t('challengeMode.seo.description', 'Level up your padel game with random challenges. Practice drills to build skills or match modifiers to make games more fun.')}
+        url={`/${lang}/playground/challenge-mode`}
+        structuredData={[breadcrumb, webAppSchema]}
       />
       <div className="container mx-auto px-4 py-8 md:py-16 max-w-xl">
         {/* Mode toggle */}
