@@ -258,8 +258,8 @@ export default function AcademyPlayerDetail() {
 
       // Invoices
       const invQuery = parsed.kind === 'guest'
-        ? supabase.from('invoices').select('id, invoice_number, invoice_date, total, status, pdf_url').eq('guest_player_id', parsed.id).order('invoice_date', { ascending: false })
-        : supabase.from('invoices').select('id, invoice_number, invoice_date, total, status, pdf_url').eq('player_id', parsed.id).order('invoice_date', { ascending: false });
+        ? supabase.from('invoices').select('id, invoice_number, invoice_date, due_date, total, status, pdf_url').eq('guest_player_id', parsed.id).order('invoice_date', { ascending: false })
+        : supabase.from('invoices').select('id, invoice_number, invoice_date, due_date, total, status, pdf_url').eq('player_id', parsed.id).order('invoice_date', { ascending: false });
       const { data: invs } = await invQuery;
       setInvoices((invs || []) as InvoiceItem[]);
 
