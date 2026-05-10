@@ -86,13 +86,25 @@ export default function Pricing() {
     }
   };
 
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${currentLang}` },
+    { name: t('pricing.hero.title'), url: `/${currentLang}/pricing` },
+  ]);
+
+  const faqSchema = buildFaqPage(
+    faqKeys.map(key => ({
+      question: t(`pricing.faq.questions.${key}.q`),
+      answer: t(`pricing.faq.questions.${key}.a`),
+    }))
+  );
+
   return (
     <MarketingLayout>
       <SEO 
         title={t('pricing.hero.title')}
         description={t('pricing.hero.subtitle')}
         url="/pricing"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema, faqSchema]}
       />
       {/* Hero */}
       <section className="py-20 bg-background">
