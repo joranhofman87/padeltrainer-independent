@@ -319,8 +319,21 @@ export default function AgendaWeekByTrainer({
                     </button>
                   </div>
                   {weekDays.map((day) => renderCell(tr, day))}
-                  <div className="px-2 text-right text-xs tabular-nums text-muted-foreground">
-                    {hours > 0 ? `${hours.toFixed(hours % 1 === 0 ? 0 : 1)}h` : '·'}
+                  <div className="px-2 text-right text-[11px] tabular-nums">
+                    {trBooked > 0 || trFree > 0 ? (
+                      <div className="flex flex-col items-end gap-0.5 leading-tight">
+                        <span className="text-foreground/80">
+                          <span className="font-medium">{fmtH(trBooked)}</span>
+                          <span className="text-muted-foreground/70 ml-1">{t('calendar.cell.booked', 'booked')}</span>
+                        </span>
+                        <span className={cn(trFree > 0 ? 'text-foreground/80' : 'text-muted-foreground/60')}>
+                          <span className="font-medium">{fmtH(trFree)}</span>
+                          <span className="text-muted-foreground/70 ml-1">{t('calendar.cell.free', 'free')}</span>
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">·</span>
+                    )}
                   </div>
                 </div>
 
