@@ -28,7 +28,9 @@ import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
 
 interface EmailCampaignTabProps {
-  academyId: string;
+  /** Owner: pass either academyId OR trainerId (one required). */
+  academyId?: string;
+  trainerId?: string;
   trainers: { id: string; name: string }[];
   locations: { id: string; name: string }[];
   tags?: { id: string; name: string; color: string }[];
@@ -74,7 +76,9 @@ function getLevelBand(rating: number | null): string {
   return 'pro';
 }
 
-export function EmailCampaignTab({ academyId, trainers, locations, tags = [], players }: EmailCampaignTabProps) {
+export function EmailCampaignTab({ academyId, trainerId, trainers, locations, tags = [], players }: EmailCampaignTabProps) {
+  const ownerCol = academyId ? 'academy_profile_id' : 'trainer_profile_id';
+  const ownerId = academyId ?? trainerId;
   const { t, i18n } = useTranslation('trainer');
   const dateLocale = getDateFnsLocale(i18n.language);
   const { toast } = useToast();
@@ -116,9 +120,10 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
   const [isSendingTest, setIsSendingTest] = useState(false);
 
   useEffect(() => {
+    if (!ownerId) return;
     fetchTemplates();
     fetchCampaigns();
-  }, [academyId]);
+  }, [ownerId]);
 
   const fetchTemplates = async () => {
     setLoadingTemplates(true);
@@ -126,7 +131,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
       const { data } = await supabase
         .from('email_campaign_templates')
         .select('*')
-        .eq('academy_profile_id', academyId)
+        .eq(ownerCol, ownerId!)
         .order('created_at', { ascending: false });
       setTemplates(data || []);
     } catch (err) {
@@ -142,7 +147,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
       const { data } = await supabase
         .from('email_campaigns')
         .select('*')
-        .eq('academy_profile_id', academyId)
+        .eq(ownerCol, ownerId!)
         .order('created_at', { ascending: false });
       setCampaigns(data || []);
     } catch (err) {
@@ -195,7 +200,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
     setIsSendingTest(true);
     try {
       const { error } = await supabase.functions.invoke('send-campaign-emails', {
-        body: { testMode: true, testEmail: testEmail.trim(), subject: subject.trim(), bodyHtml, academyProfileId: academyId },
+        body: { testMode: true, testEmail: testEmail.trim(), subject: subject.trim(), bodyHtml, academyProfileId: academyId, trainerProfileId: trainerId },
       });
       if (error) throw error;
       toast({ title: t('emailCampaign.toasts.testSent'), description: t('emailCampaign.toasts.testSentDesc', { email: testEmail.trim() }) });
@@ -224,7 +229,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
         await supabase
           .from('email_campaign_templates')
           .insert({
-            academy_profile_id: academyId,
+            [ownerCol]: ownerId,
             name: templateName.trim(),
             subject: subject.trim(),
             body_html: bodyHtml,
@@ -269,7 +274,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
       const { data: campaign, error: campErr } = await supabase
         .from('email_campaigns')
         .insert({
-          academy_profile_id: academyId,
+          [ownerCol]: ownerId,
           subject: subject.trim(),
           body_html: bodyHtml,
           filters,
