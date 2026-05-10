@@ -16,7 +16,9 @@ import {
   StickyNote,
   Loader2,
   ExternalLink,
+  Download,
 } from 'lucide-react';
+import { downloadInvoicePdf } from '@/lib/downloadInvoicePdf';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
@@ -622,13 +624,22 @@ export default function AcademyPlayerDetail() {
                     </div>
                     <div className="flex items-center gap-2">
                       <InvoiceStatus status={inv.status} />
-                      {inv.pdf_url && (
-                        <Button asChild variant="ghost" size="sm">
-                          <a href={inv.pdf_url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          const ok = await downloadInvoicePdf(inv.id, inv.invoice_number || undefined);
+                          if (!ok) {
+                            toast({
+                              title: t('players.detail.downloadFailed', 'Download failed'),
+                              variant: 'destructive',
+                            });
+                          }
+                        }}
+                        title={t('players.detail.downloadInvoice', 'Download invoice')}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
                 ))
