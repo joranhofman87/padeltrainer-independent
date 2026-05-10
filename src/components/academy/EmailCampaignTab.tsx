@@ -435,6 +435,22 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
                   </Select>
                 </div>
 
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('emailCampaign.recipients.tag', 'Tag')}</Label>
+                  <Select value={filterTag} onValueChange={setFilterTag}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('emailCampaign.recipients.allTags', 'All tags')}</SelectItem>
+                      <SelectItem value="untagged">{t('emailCampaign.recipients.untagged', 'Untagged')}</SelectItem>
+                      {tags.map((tag) => (
+                        <SelectItem key={tag.id} value={tag.id}>{tag.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <Separator />
 
                 <div className="flex items-center justify-between py-2">
