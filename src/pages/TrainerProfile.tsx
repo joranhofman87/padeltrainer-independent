@@ -316,6 +316,25 @@ export default function TrainerProfile() {
   const trainerCity = profile?.location || trainerLocations[0]?.location?.city;
   const trainerCitySlug = trainerCity?.toLowerCase().replace(/\s+/g, '-');
 
+  // Find province for this city -> sibling cities for internal linking + JSON-LD areaServed
+  const province = trainerCitySlug
+    ? PROVINCES.find(p => p.cities.includes(trainerCitySlug))
+    : undefined;
+  const siblingCitySlugs = province
+    ? province.cities.filter(c => c !== trainerCitySlug).slice(0, 6)
+    : [];
+
+  // Fetch top public reviews to embed as Review[] schema (rich-result eligible)
+  const { data: topReviewsData } = useQuery({
+    queryKey: ['trainer-top-reviews', trainer?.id],
+    queryFn: () => getTrainerReviews(trainer!.id),
+    enabled: !!trainer?.id,
+    staleTime: 10 * 60 * 1000,
+  });
+  const topReviews = (topReviewsData?.data || [])
+    .filter((r: any) => r.is_public && r.comment && r.comment.trim().length > 0)
+    .slice(0, 5);
+
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "Person",
@@ -326,6 +345,15 @@ export default function TrainerProfile() {
     "address": profile.location ? { "@type": "PostalAddress", "addressLocality": profile.location } : undefined,
     ...(averageRating !== null && reviewCount > 0 ? {
       "aggregateRating": { "@type": "AggregateRating", "ratingValue": averageRating, "reviewCount": reviewCount, "bestRating": 5, "worstRating": 1 }
+    } : {}),
+    ...(topReviews.length > 0 ? {
+      "review": topReviews.map((r: any) => ({
+        "@type": "Review",
+        "reviewRating": { "@type": "Rating", "ratingValue": r.rating, "bestRating": 5, "worstRating": 1 },
+        "author": { "@type": "Person", "name": r.is_anonymous ? "Anonymous" : (r.profiles?.full_name || "Player") },
+        "datePublished": r.created_at,
+        "reviewBody": r.comment,
+      }))
     } : {})
   };
 
