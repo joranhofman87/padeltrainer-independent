@@ -590,3 +590,19 @@ function organizationSchema() {
     "logo": `${SITE_URL}/favicon.png`,
   };
 }
+
+function breadcrumbSchema(lang: string, steps: Array<{ name: string; path?: string }>) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": steps.map((s, i) => {
+      const item: Record<string, unknown> = { "@type": "ListItem", "position": i + 1, "name": s.name };
+      if (s.path) item.item = `${SITE_URL}/${lang}${s.path}`;
+      return item;
+    }),
+  };
+}
+
+function homeName(lang: string): string {
+  return ({ nl: 'Home', es: 'Inicio', de: 'Startseite', fr: 'Accueil', it: 'Home' } as Record<string, string>)[lang] || 'Home';
+}
