@@ -21,7 +21,24 @@ const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard', 'chaos'];
 
 export default function ChallengeModePage() {
   const { t } = useTranslation('marketing');
+  const { lang = 'en' } = useParams<{ lang: string }>();
   const [searchParams] = useSearchParams();
+
+  const webAppSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: t('challengeMode.title', 'Challenge Mode'),
+    description: t('challengeMode.seo.description', 'Random padel challenges and match modifiers.'),
+    applicationCategory: 'GameApplication',
+    operatingSystem: 'Web',
+    url: `${MARKETING_DOMAIN}/${lang}/playground/challenge-mode`,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+  };
+  const breadcrumb = buildBreadcrumbList([
+    { name: t('nav.home', 'Home'), url: `${MARKETING_DOMAIN}/${lang}` },
+    { name: t('playground.title', 'Padel Playground'), url: `${MARKETING_DOMAIN}/${lang}/playground` },
+    { name: t('challengeMode.title', 'Challenge Mode') },
+  ]);
 
   const deepLinkedId = searchParams.get('c');
   const deepLinkedChallenge = deepLinkedId ? challenges.find(c => c.id === Number(deepLinkedId)) : null;
