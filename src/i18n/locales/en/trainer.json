@@ -1095,7 +1095,11 @@
       "sendTest": "Send test",
       "testEmailPlaceholder": "test@email.com",
       "sendToCount_one": "Send to {{count}} recipient",
-      "sendToCount_other": "Send to {{count}} recipients"
+      "sendToCount_other": "Send to {{count}} recipients",
+      "saveDraft": "Save as draft",
+      "savingDraft": "Saving...",
+      "editingDraft": "Editing draft",
+      "discardDraftChanges": "Discard"
     },
     "templates": {
       "title": "Saved Templates",
