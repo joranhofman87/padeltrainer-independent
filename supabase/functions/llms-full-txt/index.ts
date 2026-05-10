@@ -110,7 +110,9 @@ Deno.serve(async (req) => {
     });
 
     // Build output
+    const today = new Date().toISOString().slice(0, 10);
     let output = `# PadelTrainer.ai - Full Entity Catalog\n\n`;
+    output += `Last updated: ${today}\n\n`;
     output += `> Complete listing of all trainers, locations, academies, and cities on PadelTrainer.ai.\n`;
     output += `> Generated: ${new Date().toISOString()}\n\n`;
 

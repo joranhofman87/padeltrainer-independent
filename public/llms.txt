@@ -1,5 +1,7 @@
 # PadelTrainer.ai
 
+Last updated: 2026-05-10
+
 > The platform for padel trainers and academies to manage scheduling, bookings, and payments.
 
 llms-full.txt: https://padeltrainer.ai/llms-full.txt
