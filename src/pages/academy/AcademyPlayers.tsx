@@ -84,6 +84,7 @@ type UnifiedPlayer = {
   // Stable keys for metadata lookup
   guest_player_id?: string | null;
   profile_id?: string | null;
+  has_overdue_payment?: boolean;
 };
 
 function getLevelBand(rating: number | null): string {
