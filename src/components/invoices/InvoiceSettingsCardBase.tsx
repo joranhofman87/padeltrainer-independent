@@ -362,7 +362,7 @@ export function InvoiceSettingsCardBase({
         toast({ title: labels.renumberError, description: result.error, variant: 'destructive' });
       } else if (result.updated > 0) {
         setFormData((prev) => ({ ...prev, invoice_next_number: result.nextNumber }));
-        await supabase
+        await (supabase as any)
           .from(table)
           .update({ invoice_next_number: result.nextNumber } as any)
           .eq(ownerColumn, ownerId);
