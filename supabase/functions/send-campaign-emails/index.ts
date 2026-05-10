@@ -163,16 +163,16 @@ Deno.serve(async (req) => {
     // Send emails one by one
     for (const recipient of recipients) {
       try {
-        // Replace {{name}} with recipient name
-        const personalizedHtml = campaign.body_html.replace(
-          /\{\{name\}\}/gi,
-          recipient.recipient_name || "there"
-        );
+        // Replace personalization variables
+        const fullName = recipient.recipient_name || "there";
+        const firstName = fullName.trim().split(/\s+/)[0] || "there";
+        const personalizedHtml = campaign.body_html
+          .replace(/\{\{first_name\}\}/gi, firstName)
+          .replace(/\{\{name\}\}/gi, fullName);
 
-        const personalizedSubject = campaign.subject.replace(
-          /\{\{name\}\}/gi,
-          recipient.recipient_name || "there"
-        );
+        const personalizedSubject = campaign.subject
+          .replace(/\{\{first_name\}\}/gi, firstName)
+          .replace(/\{\{name\}\}/gi, fullName);
 
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
