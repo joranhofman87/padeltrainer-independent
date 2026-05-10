@@ -203,6 +203,7 @@ export default function TrainerDashboard() {
   });
 
   const trainerId = statsData?.trainerId ?? null;
+  const trainerSlug = statsData?.slug ?? null;
   const stats = statsData?.stats ?? { totalStudents: 0, openSlots: 0, monthlyEarnings: 0, followerCount: 0, profileViews: 0 };
 
   const { data: hasAcademy = false } = useQuery({
