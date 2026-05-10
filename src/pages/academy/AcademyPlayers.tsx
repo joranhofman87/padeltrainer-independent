@@ -40,6 +40,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
@@ -321,6 +322,8 @@ export default function AcademyPlayers() {
 
     setFilteredPlayers(result);
   }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
+
+  const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(filteredPlayers);
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
@@ -935,17 +938,40 @@ export default function AcademyPlayers() {
                 <Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
                   <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
-                      <TableHead>{tTrainer('players.name')}</TableHead>
+                      <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                        {tTrainer('players.name')}
+                      </SortableHeader>
                       {visibleColumns.map((key) => {
                         const col = ALL_COLUMNS.find((c) => c.key === key);
                         if (!col) return null;
+                        if (key === 'email') {
+                          return (
+                            <SortableHeader key={key} sortKey="email" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                              {col.label}
+                            </SortableHeader>
+                          );
+                        }
+                        if (key === 'skill') {
+                          return (
+                            <SortableHeader key={key} sortKey="skill" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                              {col.label}
+                            </SortableHeader>
+                          );
+                        }
+                        if (key === 'addedOn') {
+                          return (
+                            <SortableHeader key={key} sortKey="addedOn" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                              {col.label}
+                            </SortableHeader>
+                          );
+                        }
                         return <TableHead key={key} className="whitespace-nowrap">{col.label}</TableHead>;
                       })}
                       <TableHead className="w-[40px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredPlayers.map((player) => (
+                    {sortedPlayers.map((player) => (
                       <TableRow key={player.id} className="h-8">
                         <TableCell className="font-medium whitespace-nowrap max-w-[260px] truncate" title={player.full_name}>
                           <div className="flex items-center gap-1.5">
@@ -1125,7 +1151,7 @@ export default function AcademyPlayers() {
 
                 {/* Mobile Cards */}
                 <div className="md:hidden space-y-3 p-4">
-                  {filteredPlayers.map((player) => (
+                  {sortedPlayers.map((player) => (
                     <div key={player.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="min-w-0 flex-1">

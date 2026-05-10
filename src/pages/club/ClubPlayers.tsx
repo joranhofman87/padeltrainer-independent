@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,7 @@ export default function ClubPlayers() {
   const { user, loading: authLoading } = useAuth();
   const [clubProfileId, setClubProfileId] = useState<string | null>(null);
   const [players, setPlayers] = useState<ClubPlayer[]>([]);
+  const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(players);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -238,16 +240,22 @@ export default function ClubPlayers() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t('players.name')}</TableHead>
-                    <TableHead>{t('players.email')}</TableHead>
+                    <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                      {t('players.name')}
+                    </SortableHeader>
+                    <SortableHeader sortKey="email" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                      {t('players.email')}
+                    </SortableHeader>
                     <TableHead>{t('players.phone')}</TableHead>
-                    <TableHead>{t('players.rating')}</TableHead>
+                    <SortableHeader sortKey="skill" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                      {t('players.rating')}
+                    </SortableHeader>
                     <TableHead>{t('players.status')}</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {players.map(player => (
+                  {sortedPlayers.map(player => (
                     <TableRow key={player.id}>
                       <TableCell className="font-medium">{player.full_name}</TableCell>
                       <TableCell>{player.email}</TableCell>
