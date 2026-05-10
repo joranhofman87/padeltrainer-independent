@@ -53,12 +53,32 @@ const tools = [
 
 export default function Playground() {
   const { t } = useTranslation('marketing');
+  const { lang = 'en' } = useParams<{ lang: string }>();
+
+  const breadcrumb = buildBreadcrumbList([
+    { name: t('nav.home', 'Home'), url: `${MARKETING_DOMAIN}/${lang}` },
+    { name: t('playground.title', 'Padel Playground') },
+  ]);
+
+  const itemList = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: t('playground.title', 'Padel Playground'),
+    itemListElement: tools.map((tool, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: t(tool.titleKey),
+      url: `${MARKETING_DOMAIN}/${lang}${tool.to}`,
+    })),
+  };
 
   return (
     <MarketingLayout>
       <SEO
         title={t('playground.seo.title', 'Padel Playground — Fun Quizzes & Tools | PadelTrainer.ai')}
         description={t('playground.seo.description', 'Take fun padel quizzes, find your perfect racket, and test your level. Interactive tools for padel players.')}
+        url={`/${lang}/playground`}
+        structuredData={[breadcrumb, itemList]}
       />
       <div className="container mx-auto px-4 py-16 md:py-24">
         <div className="text-center mb-12">
