@@ -40,16 +40,15 @@ export function PlayerTagsCell({ academyId, playerKey, tags, selectedTagIds, not
     setBusy(true);
     try {
       // Upsert via select-or-insert
-      const filter = playerKey.guest_player_id
-        ? { col: 'guest_player_id', val: playerKey.guest_player_id }
-        : { col: 'profile_id', val: playerKey.profile_id! };
-
-      const { data: existing } = await supabase
+      const baseQuery = supabase
         .from('academy_player_metadata')
         .select('id')
-        .eq('academy_profile_id', academyId)
-        .eq(filter.col, filter.val)
-        .maybeSingle();
+        .eq('academy_profile_id', academyId);
+
+      const { data: existing } = await (playerKey.guest_player_id
+        ? baseQuery.eq('guest_player_id', playerKey.guest_player_id)
+        : baseQuery.eq('profile_id', playerKey.profile_id!)
+      ).maybeSingle();
 
       if (existing) {
         const { error } = await supabase
