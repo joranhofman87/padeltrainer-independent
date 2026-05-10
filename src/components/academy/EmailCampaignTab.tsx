@@ -160,13 +160,20 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
     if (filterLevel !== 'all' && getLevelBand(p.skill_rating) !== filterLevel) return false;
     if (filterCyclus === 'yes' && !p.has_active_cyclus) return false;
     if (filterCyclus === 'no' && p.has_active_cyclus) return false;
+    if (filterTag !== 'all') {
+      if (filterTag === 'untagged') {
+        if (p.tag_ids && p.tag_ids.length > 0) return false;
+      } else {
+        if (!p.tag_ids?.includes(filterTag)) return false;
+      }
+    }
     return true;
   });
 
   // Sync recipients when filters change
   useEffect(() => {
     setRecipients(filteredRecipients.map((p) => ({ id: p.id, full_name: p.full_name, email: p.email })));
-  }, [filterTrainer, filterLocation, filterLevel, filterCyclus, players]);
+  }, [filterTrainer, filterLocation, filterLevel, filterCyclus, filterTag, players]);
 
   const handleRemoveRecipient = (id: string) => {
     setRecipients((prev) => prev.filter((r) => r.id !== id));
