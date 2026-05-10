@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
@@ -9,9 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ArrowLeft, List, CalendarDays, AlertCircle, Download } from 'lucide-react';
+import { List, CalendarDays, AlertCircle, Download, UserPlus } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { PageHeader } from '@/components/ui/page-header';
+import { TableToolbar } from '@/components/ui/table-toolbar';
 import { 
   generateProposals,
   resetProposals,
@@ -45,7 +47,7 @@ import { useQuery } from '@tanstack/react-query';
 export default function TrainerIntakeRequests() {
   const { t } = useTranslation('cycles');
   const { user, role, loading } = useAuth();
-  const navigate = useNavigate();
+  
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Trainer profile query
@@ -143,6 +145,13 @@ export default function TrainerIntakeRequests() {
     ? requests.filter(r => r.cycle_id === selectedCycleId)
     : requests;
 
+  const searchQuery = searchParams.get('q') || '';
+  const setSearchQuery = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (!value) params.delete('q'); else params.set('q', value);
+    setSearchParams(params, { replace: true });
+  };
+
   const filteredRequests = useMemo(() => {
     let filtered = cycleFilteredRequests;
     if (statusFilter === 'skipped') {
@@ -150,8 +159,12 @@ export default function TrainerIntakeRequests() {
     } else if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(r => (r.full_name || '').toLowerCase().includes(q));
+    }
     return filtered;
-  }, [cycleFilteredRequests, statusFilter]);
+  }, [cycleFilteredRequests, statusFilter, searchQuery]);
 
   const allCount = cycleFilteredRequests.length;
   const newCount = cycleFilteredRequests.filter(r => r.status === 'new' && !r.skip_reason).length;
@@ -252,21 +265,37 @@ export default function TrainerIntakeRequests() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer/cycles')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold">{t('intakeRequests.title')}</h1>
-            <p className="text-muted-foreground hidden sm:block">
-              {t('intakeRequests.noRequestsDescription')}
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title={t('intakeRequests.title')}
+        countText={t('intakeRequests.noRequestsDescription')}
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              {t('intakeRequests.addManual', { defaultValue: 'Add registration' })}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const cycleName = selectedCycle?.name ?? 'all';
+                const date = format(new Date(), 'yyyy-MM-dd');
+                const locMap: Record<string, string> = {};
+                for (const c of cycles) {
+                  if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
+                }
+                exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData, locMap);
+              }}
+              disabled={filteredRequests.length === 0}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              CSV
+            </Button>
+          </>
+        }
+      />
 
       {/* Workflow Steps */}
       <ProposalWorkflowSteps
@@ -306,35 +335,24 @@ export default function TrainerIntakeRequests() {
           </TabsList>
         </Tabs>
 
-        <div className="flex items-center gap-2">
-          <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
-            <ToggleGroupItem value="list" aria-label="List view">
-              <List className="h-4 w-4" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="schedule" aria-label="Schedule view">
-              <CalendarDays className="h-4 w-4" />
-            </ToggleGroupItem>
-          </ToggleGroup>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              const cycleName = selectedCycle?.name ?? 'all';
-              const date = format(new Date(), 'yyyy-MM-dd');
-              const locMap: Record<string, string> = {};
-              for (const c of cycles) {
-                if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
-              }
-              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData, locMap);
-            }}
-            disabled={filteredRequests.length === 0}
-            className="h-8 text-xs"
-          >
-            <Download className="h-3 w-3 mr-1" />
-            CSV
-          </Button>
-        </div>
+        <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
+          <ToggleGroupItem value="list" aria-label="List view">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="schedule" aria-label="Schedule view">
+            <CalendarDays className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
+
+      {/* Toolbar: search */}
+      {viewMode === 'list' && (
+        <TableToolbar
+          searchPlaceholder={t('intakeRequests.searchPlaceholder', { defaultValue: 'Search by player name...' })}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
+      )}
 
       {/* Skipped reasons summary */}
       {statusFilter === 'skipped' && Object.keys(skippedReasonCounts).length > 0 && (

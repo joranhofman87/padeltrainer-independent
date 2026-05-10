@@ -20,6 +20,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import { TableToolbar } from "@/components/ui/table-toolbar";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -599,12 +601,26 @@ export default function AcademyInvoices() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">{t("invoices.title", "Facturen")}</h1>
-        <p className="text-muted-foreground text-sm">
-          {t("invoices.description", "Beheer facturen voor je academy")}
-        </p>
-      </div>
+      <PageHeader
+        title={t("invoices.title", "Facturen")}
+        description={t("invoices.description", "Beheer facturen voor je academy")}
+        actions={
+          <>
+            {draftInvoices.length > 0 && (
+              <Button size="sm" variant="outline" onClick={handleSendAllDrafts} disabled={sendingAll}>
+                {sendingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                {sendingAll
+                  ? t("invoices.sendingAll", "Sending...")
+                  : t("invoices.sendAllDrafts", "Send all drafts")} ({draftInvoices.length})
+              </Button>
+            )}
+            <Button size="sm" onClick={() => navigate('/app/academy/invoices/new')}>
+              <PlusCircle className="h-4 w-4 mr-2" />
+              {t("invoices.createInvoice", "Nieuwe factuur")}
+            </Button>
+          </>
+        }
+      />
 
       {/* Page-level tabs: Overview / Settings */}
       <Tabs value={pageTab} onValueChange={(v) => setSearchParams(v === "settings" ? { tab: "settings" } : {})}>
@@ -616,7 +632,7 @@ export default function AcademyInvoices() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-6 mt-4">
+        <TabsContent value="overview" className="space-y-4 mt-4">
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -639,38 +655,6 @@ export default function AcademyInvoices() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          onClick={() => navigate('/app/academy/invoices/new')}
-        >
-          <PlusCircle className="h-4 w-4 mr-2" />
-          {t("invoices.createInvoice", "Nieuwe factuur")}
-        </Button>
-      </div>
-
-      {/* Bulk Actions */}
-      {draftInvoices.length > 0 && (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleSendAllDrafts}
-            disabled={sendingAll}
-          >
-            {sendingAll ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4 mr-2" />
-            )}
-            {sendingAll 
-              ? t("invoices.sendingAll", "Sending...")
-              : t("invoices.sendAllDrafts", "Send all drafts")} ({draftInvoices.length})
-          </Button>
-        </div>
-      )}
 
       {/* Bulk Selection Action Bar */}
       {selectedIds.size > 0 && (
@@ -704,72 +688,66 @@ export default function AcademyInvoices() {
       )}
 
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <TabsList>
-            <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({unpaidInvoices.length})</TabsTrigger>
-            <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
-          </TabsList>
-          <div className="flex items-center gap-2 flex-1 flex-wrap">
-            {trainers.length > 0 && (
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
+        <TabsList>
+          <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({unpaidInvoices.length})</TabsTrigger>
+          <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
+        </TabsList>
+
+        <TableToolbar
+          searchPlaceholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+        >
+          {trainers.length > 0 && (
             <Select value={trainerFilter} onValueChange={setTrainerFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")}>
-                    {trainerFilter === "all"
-                      ? t("invoices.allTrainers", "Alle trainers")
-                      : (trainers as any[]).find(tr => tr.id === trainerFilter)?.name}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("invoices.allTrainers", "Alle trainers")}</SelectItem>
-                  {trainers.map((tr: any) => (
-                    <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {academyLocations.length > 0 && (
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")}>
-                    {locationFilter === "all"
-                      ? t("invoices.allLocations", "Alle locaties")
-                      : (academyLocations as any[]).find(l => l.id === locationFilter)?.name}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("invoices.allLocations", "Alle locaties")}</SelectItem>
-                  {academyLocations.map((loc: any) => (
-                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")}>
+                  {trainerFilter === "all"
+                    ? t("invoices.allTrainers", "Alle trainers")
+                    : (trainers as any[]).find(tr => tr.id === trainerFilter)?.name}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
-                <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
-                <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
-                <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
-                <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
-                <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
-                <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
+                <SelectItem value="all">{t("invoices.allTrainers", "Alle trainers")}</SelectItem>
+                {trainers.map((tr: any) => (
+                  <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-full sm:w-64"
-              />
-            </div>
-          </div>
-        </div>
+          )}
+          {academyLocations.length > 0 && (
+            <Select value={locationFilter} onValueChange={setLocationFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")}>
+                  {locationFilter === "all"
+                    ? t("invoices.allLocations", "Alle locaties")
+                    : (academyLocations as any[]).find(l => l.id === locationFilter)?.name}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("invoices.allLocations", "Alle locaties")}</SelectItem>
+                {academyLocations.map((loc: any) => (
+                  <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
+              <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
+              <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
+              <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
+              <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
+              <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
+              <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </TableToolbar>
 
         <TabsContent value={activeTab} className="mt-4">
           {isLoading ? (

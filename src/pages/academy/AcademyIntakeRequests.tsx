@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -10,6 +10,8 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { List, CalendarDays, AlertCircle, UserPlus, Download } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { PageHeader } from '@/components/ui/page-header';
+import { TableToolbar } from '@/components/ui/table-toolbar';
 import { 
   generateProposals,
   resetProposals,
@@ -44,7 +46,7 @@ export default function AcademyIntakeRequests() {
   const { t } = useTranslation('cycles');
   const { activeAcademy } = useAcademyContext();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+  
 
   // Persist UI state in URL
   const selectedCycleId = searchParams.get('cycle') || 'all';
@@ -123,6 +125,13 @@ export default function AcademyIntakeRequests() {
     ? requests.filter(r => r.cycle_id === selectedCycleId)
     : requests;
 
+  const searchQuery = searchParams.get('q') || '';
+  const setSearchQuery = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (!value) params.delete('q'); else params.set('q', value);
+    setSearchParams(params, { replace: true });
+  };
+
   const filteredRequests = useMemo(() => {
     let filtered = cycleFilteredRequests;
     if (statusFilter === 'skipped') {
@@ -132,8 +141,12 @@ export default function AcademyIntakeRequests() {
     } else if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(r => (r.full_name || '').toLowerCase().includes(q));
+    }
     return filtered;
-  }, [cycleFilteredRequests, statusFilter]);
+  }, [cycleFilteredRequests, statusFilter, searchQuery]);
 
   const allCount = cycleFilteredRequests.length;
   const newCount = cycleFilteredRequests.filter(r => r.status === 'new' && !r.skip_reason).length;
@@ -230,16 +243,37 @@ export default function AcademyIntakeRequests() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-4">
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">{t('intakeRequests.title')}</h1>
-          <p className="text-muted-foreground hidden sm:block">
-            {t('intakeRequests.noRequestsDescription')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title={t('intakeRequests.title')}
+        countText={t('intakeRequests.noRequestsDescription')}
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              {t('intakeRequests.addManual', { defaultValue: 'Add registration' })}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const cycleName = selectedCycle?.name ?? 'all';
+                const date = format(new Date(), 'yyyy-MM-dd');
+                const locMap: Record<string, string> = {};
+                for (const c of cycles) {
+                  if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
+                }
+                exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData, locMap);
+              }}
+              disabled={filteredRequests.length === 0}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              CSV
+            </Button>
+          </>
+        }
+      />
 
       {/* Workflow Steps */}
       <ProposalWorkflowSteps
@@ -254,59 +288,30 @@ export default function AcademyIntakeRequests() {
 
       {/* Status Filter Tabs + View Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-            <TabsList>
-              <TabsTrigger value="all">
-                {t('intakeRequests.filters.all')} ({allCount})
+        <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+          <TabsList>
+            <TabsTrigger value="all">
+              {t('intakeRequests.filters.all')} ({allCount})
+            </TabsTrigger>
+            <TabsTrigger value="new">
+              {t('intakeRequests.filters.new')} ({newCount})
+            </TabsTrigger>
+            {skippedCount > 0 && (
+              <TabsTrigger value="skipped">
+                {t('intakeRequests.filters.skipped')} ({skippedCount})
               </TabsTrigger>
-              <TabsTrigger value="new">
-                {t('intakeRequests.filters.new')} ({newCount})
-              </TabsTrigger>
-              {skippedCount > 0 && (
-                <TabsTrigger value="skipped">
-                  {t('intakeRequests.filters.skipped')} ({skippedCount})
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="proposed">
-                {t('intakeRequests.filters.proposed')} ({proposedCount})
-              </TabsTrigger>
-              <TabsTrigger value="confirmed">
-                {t('intakeRequests.filters.confirmed')}
-              </TabsTrigger>
-              <TabsTrigger value="waitlist">
-                {t('intakeRequests.filters.waitlist')}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowAddDialog(true)}
-            className="h-8 text-xs"
-          >
-            <UserPlus className="h-3 w-3 mr-1" />
-            {t('intakeRequests.addManual', { defaultValue: 'Add registration' })}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              const cycleName = selectedCycle?.name ?? 'all';
-              const date = format(new Date(), 'yyyy-MM-dd');
-              const locMap: Record<string, string> = {};
-              for (const c of cycles) {
-                if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
-              }
-              exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData, locMap);
-            }}
-            disabled={filteredRequests.length === 0}
-            className="h-8 text-xs"
-          >
-            <Download className="h-3 w-3 mr-1" />
-            CSV
-          </Button>
-        </div>
+            )}
+            <TabsTrigger value="proposed">
+              {t('intakeRequests.filters.proposed')} ({proposedCount})
+            </TabsTrigger>
+            <TabsTrigger value="confirmed">
+              {t('intakeRequests.filters.confirmed')}
+            </TabsTrigger>
+            <TabsTrigger value="waitlist">
+              {t('intakeRequests.filters.waitlist')}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
           <ToggleGroupItem value="list" aria-label="List view">
@@ -317,6 +322,15 @@ export default function AcademyIntakeRequests() {
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+
+      {/* Toolbar: search */}
+      {viewMode === 'list' && (
+        <TableToolbar
+          searchPlaceholder={t('intakeRequests.searchPlaceholder', { defaultValue: 'Search by player name...' })}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
+      )}
 
       {/* Skipped reasons summary */}
       {statusFilter === 'skipped' && Object.keys(skippedReasonCounts).length > 0 && (
