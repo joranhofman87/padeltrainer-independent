@@ -674,7 +674,7 @@ export default function AcademyCyclusOverview() {
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative w-full sm:w-[260px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={t('calendar.searchPlaceholder', 'Search cycles, trainers, players...')}
