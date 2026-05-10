@@ -8,6 +8,12 @@
  * Direct bot hits without the key are rejected with 401.
  */
 
+import {
+  cityFaqs, trainerFaqs, clubFaqs, academyFaqs, regionFaqs,
+  renderFaqHtml, renderPopularCitiesHtml, renderPopularRegionsHtml,
+  faqPageSchema,
+} from './seo-content.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
