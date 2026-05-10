@@ -1,3 +1,4 @@
+import { buildDynamicOgUrl } from '@/lib/dynamicOgImage';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';

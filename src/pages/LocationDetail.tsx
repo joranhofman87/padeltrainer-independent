@@ -1,3 +1,4 @@
+import { buildDynamicOgUrl } from '@/lib/dynamicOgImage';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
