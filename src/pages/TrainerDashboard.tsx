@@ -28,10 +28,10 @@ interface DashboardStats {
 
 // --- Query functions ---
 
-async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStats; trainerId: string } | null> {
+async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStats; trainerId: string; slug: string | null } | null> {
   const { data: trainerProfile } = await supabase
     .from('trainer_profiles')
-    .select('id')
+    .select('id, slug')
     .eq('user_id', userId)
     .maybeSingle();
 
