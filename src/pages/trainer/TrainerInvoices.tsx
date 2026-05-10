@@ -362,6 +362,7 @@ export default function TrainerInvoices() {
     toast.success(t("invoices.bulk.dueDateDone", "Vervaldatum bijgewerkt voor {{count}} facturen", { count: ids.length }));
   };
 
+  const handleDownloadPdf = async (invoice: Invoice) => {
     try {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
       const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
