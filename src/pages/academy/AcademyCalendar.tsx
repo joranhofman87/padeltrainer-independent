@@ -68,6 +68,7 @@ interface AcademySlot {
   trainer_name: string;
   trainer_avatar: string | null;
   location_name: string | null;
+  location_logo: string | null;
   active_bookings: number;
   pending_bookings: number;
   booked_players: BookedPlayer[];
