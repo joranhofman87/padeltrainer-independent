@@ -101,11 +101,23 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
   if (trainerMatch) {
     const slug = trainerMatch[1];
     const displayName = slugToDisplay(slug);
+    const personSchema = {
+      "@context": "https://schema.org",
+      "@type": "Person",
+      "name": displayName,
+      "jobTitle": "Padel Trainer",
+      "url": `${SITE_URL}/${lang}/trainer/${slug}`,
+    };
     return page(
       `${displayName} - Padel Trainer | PadelTrainer.ai`,
       `Book padel lessons with ${displayName}. View profile, experience, rates, and reviews on PadelTrainer.ai.`,
       `/trainer/${slug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>`
+      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>`,
+      [personSchema, breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Trainers', path: '/trainers' },
+        { name: displayName },
+      ])]
     );
   }
 
