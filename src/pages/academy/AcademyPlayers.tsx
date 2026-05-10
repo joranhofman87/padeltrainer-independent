@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Search, Upload, MoreVertical, Pencil, Trash2, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3 } from 'lucide-react';
+import { Users, UserPlus, Search, Upload, MoreVertical, Pencil, Trash2, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,10 @@ import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
 import { useSearchParams } from 'react-router-dom';
 import { EmailCampaignTab } from '@/components/academy/EmailCampaignTab';
+import { PlayerTagsCell } from '@/components/academy/PlayerTagsCell';
+import { ManagePlayerTagsDialog } from '@/components/academy/ManagePlayerTagsDialog';
+import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/academy/playerTagColors';
+import { cn } from '@/lib/utils';
 
 interface TrainerOption {
   id: string;
@@ -72,6 +76,13 @@ type UnifiedPlayer = {
   has_active_cyclus?: boolean;
   source?: string | null;
   birth_date?: string | null;
+  // Tags & metadata (academy-level)
+  metadata_id?: string;
+  tag_ids?: string[];
+  academy_notes?: string;
+  // Stable keys for metadata lookup
+  guest_player_id?: string | null;
+  profile_id?: string | null;
 };
 
 function getLevelBand(rating: number | null): string {
@@ -118,7 +129,13 @@ export default function AcademyPlayers() {
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedCyclus, setSelectedCyclus] = useState<string>('all');
+  const [selectedTagId, setSelectedTagId] = useState<string>('all');
   const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
+
+  // Tags
+  const [tags, setTags] = useState<PlayerTag[]>([]);
+  const [metadata, setMetadata] = useState<PlayerMetadata[]>([]);
+  const [showManageTags, setShowManageTags] = useState(false);
 
   // Dialogs
   const [showAddPlayer, setShowAddPlayer] = useState(false);
@@ -130,9 +147,10 @@ export default function AcademyPlayers() {
   // Column customization
   type ColumnKey =
     | 'email' | 'phone' | 'location' | 'addedOn'
-    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate';
-  const DEFAULT_COLUMNS: ColumnKey[] = ['email', 'phone', 'location', 'addedOn'];
+    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags';
+  const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'email', 'phone', 'location', 'addedOn'];
   const ALL_COLUMNS: { key: ColumnKey; label: string; isDefault: boolean }[] = [
+    { key: 'tags', label: tTrainer('players.columns.tags', 'Tags'), isDefault: true },
     { key: 'email', label: tTrainer('players.columns.email', 'Email'), isDefault: true },
     { key: 'phone', label: tTrainer('players.columns.phone', 'Phone'), isDefault: true },
     { key: 'location', label: tTrainer('players.columns.location', 'Location'), isDefault: true },
@@ -178,6 +196,7 @@ export default function AcademyPlayers() {
   useEffect(() => {
     if (!activeAcademy) return;
     fetchTrainers();
+    fetchTagsAndMetadata();
   }, [activeAcademy]);
 
   // Fetch players when trainers are loaded or academy changes
@@ -187,9 +206,40 @@ export default function AcademyPlayers() {
     }
   }, [trainers, activeAcademy]);
 
+  const fetchTagsAndMetadata = async () => {
+    if (!activeAcademy) return;
+    const [tagsRes, metaRes] = await Promise.all([
+      supabase.from('academy_player_tags').select('*').eq('academy_profile_id', activeAcademy.id).order('name'),
+      supabase.from('academy_player_metadata').select('id, guest_player_id, profile_id, notes, tag_ids').eq('academy_profile_id', activeAcademy.id),
+    ]);
+    setTags((tagsRes.data || []) as PlayerTag[]);
+    setMetadata((metaRes.data || []) as PlayerMetadata[]);
+  };
+
   // Filter by search query, selected trainer, and new filters
   useEffect(() => {
-    let result = players;
+    // Build metadata lookup maps
+    const metaByGuest = new Map<string, PlayerMetadata>();
+    const metaByProfile = new Map<string, PlayerMetadata>();
+    metadata.forEach((m) => {
+      if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
+      if (m.profile_id) metaByProfile.set(m.profile_id, m);
+    });
+
+    // Enrich players with metadata
+    let result = players.map((p) => {
+      const meta = p.type === 'guest'
+        ? metaByGuest.get(p.id)
+        : metaByProfile.get(p.id.replace(/^reg-/, ''));
+      return {
+        ...p,
+        tag_ids: meta?.tag_ids || [],
+        academy_notes: meta?.notes || '',
+        metadata_id: meta?.id,
+        guest_player_id: p.type === 'guest' ? p.id : null,
+        profile_id: p.type === 'registered' ? p.id.replace(/^reg-/, '') : null,
+      };
+    });
 
     if (selectedTrainerId && selectedTrainerId !== 'all') {
       result = result.filter((p) => p.trainer_ids?.includes(selectedTrainerId));
@@ -209,6 +259,14 @@ export default function AcademyPlayers() {
       result = result.filter((p) => !p.has_active_cyclus);
     }
 
+    if (selectedTagId && selectedTagId !== 'all') {
+      if (selectedTagId === 'untagged') {
+        result = result.filter((p) => !p.tag_ids || p.tag_ids.length === 0);
+      } else {
+        result = result.filter((p) => p.tag_ids?.includes(selectedTagId));
+      }
+    }
+
     const query = searchQuery.toLowerCase().trim();
     if (query) {
       result = result.filter(
@@ -220,7 +278,7 @@ export default function AcademyPlayers() {
     }
 
     setFilteredPlayers(result);
-  }, [searchQuery, players, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus]);
+  }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId]);
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
@@ -695,6 +753,22 @@ export default function AcademyPlayers() {
               </SelectContent>
             </Select>
 
+            <Select value={selectedTagId} onValueChange={setSelectedTagId}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder={tTrainer('players.tags.filterAll', 'All Tags')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{tTrainer('players.tags.filterAll', 'All Tags')}</SelectItem>
+                <SelectItem value="untagged">{tTrainer('players.tags.untagged', 'Untagged')}</SelectItem>
+                {tags.map((tag) => (
+                  <SelectItem key={tag.id} value={tag.id}>
+                    <span className={cn('inline-block h-2 w-2 rounded-full mr-2', getTagColorClass(tag.color).split(' ').filter(c => c.startsWith('bg-')).join(' '))} />
+                    {tag.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -739,6 +813,10 @@ export default function AcademyPlayers() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+              <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)}>
+                <Tags className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)}>
                 <Upload className="mr-2 h-4 w-4" />
                 <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
@@ -899,6 +977,21 @@ export default function AcademyPlayers() {
                                   {player.birth_date ? format(new Date(player.birth_date), 'dd-MM-yyyy') : '—'}
                                 </TableCell>
                               );
+                            case 'tags':
+                              return (
+                                <TableCell key={key} className="max-w-[240px]">
+                                  {activeAcademy && (
+                                    <PlayerTagsCell
+                                      academyId={activeAcademy.id}
+                                      playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
+                                      tags={tags}
+                                      selectedTagIds={player.tag_ids || []}
+                                      notes={player.academy_notes || ''}
+                                      onChanged={fetchTagsAndMetadata}
+                                    />
+                                  )}
+                                </TableCell>
+                              );
                             default:
                               return null;
                           }
@@ -1050,23 +1143,39 @@ export default function AcademyPlayers() {
 
         {/* Email Campaign Tab */}
         <TabsContent value="email-campaign" className="mt-4">
-          {activeAcademy && (
-            <EmailCampaignTab
-              academyId={activeAcademy.id}
-              trainers={trainers}
-              locations={allLocations}
-              players={players.map((p) => ({
-                id: p.id,
-                full_name: p.full_name,
-                email: p.email,
-                skill_rating: p.skill_rating,
-                trainer_id: p.trainer_id,
-                location_names: p.location_names,
-                has_active_cyclus: p.has_active_cyclus,
-                type: p.type,
-              }))}
-            />
-          )}
+          {activeAcademy && (() => {
+            const metaByGuest = new Map<string, PlayerMetadata>();
+            const metaByProfile = new Map<string, PlayerMetadata>();
+            metadata.forEach((m) => {
+              if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
+              if (m.profile_id) metaByProfile.set(m.profile_id, m);
+            });
+            return (
+              <EmailCampaignTab
+                academyId={activeAcademy.id}
+                trainers={trainers}
+                locations={allLocations}
+                tags={tags}
+                players={players.map((p) => {
+                  const meta = p.type === 'guest'
+                    ? metaByGuest.get(p.id)
+                    : metaByProfile.get(p.id.replace(/^reg-/, ''));
+                  return {
+                    id: p.id,
+                    full_name: p.full_name,
+                    email: p.email,
+                    skill_rating: p.skill_rating,
+                    trainer_id: p.trainer_id,
+                    trainer_ids: p.trainer_ids,
+                    location_names: p.location_names,
+                    has_active_cyclus: p.has_active_cyclus,
+                    type: p.type,
+                    tag_ids: meta?.tag_ids || [],
+                  };
+                })}
+              />
+            );
+          })()}
         </TabsContent>
       </Tabs>
 
@@ -1115,6 +1224,17 @@ export default function AcademyPlayers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Manage Tags Dialog */}
+      {activeAcademy && (
+        <ManagePlayerTagsDialog
+          open={showManageTags}
+          onOpenChange={setShowManageTags}
+          academyId={activeAcademy.id}
+          tags={tags}
+          onChanged={fetchTagsAndMetadata}
+        />
+      )}
     </div>
   );
 }

@@ -31,6 +31,7 @@ interface EmailCampaignTabProps {
   academyId: string;
   trainers: { id: string; name: string }[];
   locations: { id: string; name: string }[];
+  tags?: { id: string; name: string; color: string }[];
   players: {
     id: string;
     full_name: string;
@@ -41,6 +42,7 @@ interface EmailCampaignTabProps {
     location_names?: string[];
     has_active_cyclus?: boolean;
     type: 'guest' | 'registered';
+    tag_ids?: string[];
   }[];
 }
 
@@ -72,7 +74,7 @@ function getLevelBand(rating: number | null): string {
   return 'pro';
 }
 
-export function EmailCampaignTab({ academyId, trainers, locations, players }: EmailCampaignTabProps) {
+export function EmailCampaignTab({ academyId, trainers, locations, tags = [], players }: EmailCampaignTabProps) {
   const { t, i18n } = useTranslation('trainer');
   const dateLocale = getDateFnsLocale(i18n.language);
   const { toast } = useToast();
@@ -86,6 +88,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterWaitingList, setFilterWaitingList] = useState('all');
   const [filterCyclus, setFilterCyclus] = useState('all');
+  const [filterTag, setFilterTag] = useState('all');
 
   // Templates
   const [templates, setTemplates] = useState<CampaignTemplate[]>([]);
@@ -157,13 +160,20 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
     if (filterLevel !== 'all' && getLevelBand(p.skill_rating) !== filterLevel) return false;
     if (filterCyclus === 'yes' && !p.has_active_cyclus) return false;
     if (filterCyclus === 'no' && p.has_active_cyclus) return false;
+    if (filterTag !== 'all') {
+      if (filterTag === 'untagged') {
+        if (p.tag_ids && p.tag_ids.length > 0) return false;
+      } else {
+        if (!p.tag_ids?.includes(filterTag)) return false;
+      }
+    }
     return true;
   });
 
   // Sync recipients when filters change
   useEffect(() => {
     setRecipients(filteredRecipients.map((p) => ({ id: p.id, full_name: p.full_name, email: p.email })));
-  }, [filterTrainer, filterLocation, filterLevel, filterCyclus, players]);
+  }, [filterTrainer, filterLocation, filterLevel, filterCyclus, filterTag, players]);
 
   const handleRemoveRecipient = (id: string) => {
     setRecipients((prev) => prev.filter((r) => r.id !== id));
@@ -255,7 +265,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
 
     try {
       // 1. Create campaign
-      const filters = { trainer: filterTrainer, location: filterLocation, level: filterLevel, cyclus: filterCyclus };
+      const filters = { trainer: filterTrainer, location: filterLocation, level: filterLevel, cyclus: filterCyclus, tag: filterTag };
       const { data: campaign, error: campErr } = await supabase
         .from('email_campaigns')
         .insert({
@@ -421,6 +431,22 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
                       <SelectItem value="all">{t('emailCampaign.recipients.all')}</SelectItem>
                       <SelectItem value="yes">{t('emailCampaign.recipients.yes')}</SelectItem>
                       <SelectItem value="no">{t('emailCampaign.recipients.no')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('emailCampaign.recipients.tag', 'Tag')}</Label>
+                  <Select value={filterTag} onValueChange={setFilterTag}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('emailCampaign.recipients.allTags', 'All tags')}</SelectItem>
+                      <SelectItem value="untagged">{t('emailCampaign.recipients.untagged', 'Untagged')}</SelectItem>
+                      {tags.map((tag) => (
+                        <SelectItem key={tag.id} value={tag.id}>{tag.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
