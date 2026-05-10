@@ -21,10 +21,12 @@
  */
 
 const BOT_USER_AGENTS = [
-  'googlebot', 'google-inspectiontool', 'bingbot', 'msnbot',
-  'yandexbot', 'baiduspider', 'duckduckbot', 'applebot',
+  'googlebot', 'google-inspectiontool', 'google-extended', 'bingbot', 'msnbot',
+  'yandexbot', 'baiduspider', 'duckduckbot', 'applebot', 'applebot-extended',
   'chatgpt-user', 'oai-searchbot', 'gptbot', 'claudebot',
   'claude-web', 'anthropic-ai', 'perplexitybot', 'cohere-ai',
+  'bytespider', 'amazonbot', 'meta-externalagent', 'meta-externalfetcher',
+  'mistralai-user', 'youbot', 'diffbot', 'phindbot',
   'facebookexternalhit', 'facebot', 'twitterbot', 'linkedinbot',
   'slackbot', 'whatsapp', 'telegrambot', 'discordbot', 'pinterestbot',
   'ia_archiver', 'archive.org_bot', 'semrushbot', 'ahrefsbot',
