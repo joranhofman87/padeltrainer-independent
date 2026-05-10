@@ -13,6 +13,8 @@ import { useTrainerPlans, useClubPlan } from '@/hooks/usePricingPlans';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
+import { buildBreadcrumbList, buildFaqPage } from '@/lib/structuredData';
+import { useParams } from 'react-router-dom';
 
 export default function Pricing() {
   const { t } = useTranslation('marketing');
