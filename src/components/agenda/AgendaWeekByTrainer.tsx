@@ -250,7 +250,7 @@ export default function AgendaWeekByTrainer({
       <div className="hidden md:block overflow-x-auto">
         <div className="min-w-[820px]">
           {/* Header row */}
-          <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))_72px] border-b bg-muted/30">
+          <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))_110px] border-b bg-muted/30">
             <div className="px-3 py-2 text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
               {t('calendar.trainer', 'Trainer')}
             </div>
@@ -289,7 +289,7 @@ export default function AgendaWeekByTrainer({
             const isExpanded = expanded.has(tr.id);
             return (
               <div key={tr.id} className="border-b last:border-b-0">
-                <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))_72px] items-center gap-1 px-1 py-2">
+                <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))_110px] items-center gap-1 px-1 py-2">
                   <div className="flex items-center gap-1 min-w-0">
                     <button
                       type="button"
@@ -338,7 +338,7 @@ export default function AgendaWeekByTrainer({
                 </div>
 
                 {isExpanded && (
-                  <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))_72px] gap-1 px-1 pb-3 bg-muted/10 border-t">
+                  <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))_110px] gap-1 px-1 pb-3 bg-muted/10 border-t">
                     <div className="px-2 pt-2 text-[10px] uppercase tracking-wide text-muted-foreground">
                       {t('calendar.sessions', 'Sessions')}
                     </div>
