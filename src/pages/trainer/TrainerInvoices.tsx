@@ -452,6 +452,37 @@ export default function TrainerInvoices() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
+          {/* Bulk Selection Action Bar */}
+          {selectedIds.size > 0 && (
+            <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 shadow-sm">
+              <span className="text-sm font-medium">
+                {t("invoices.bulk.selected", "{{count}} geselecteerd", { count: selectedIds.size })}
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                <X className="h-4 w-4 mr-1" />
+                {t("invoices.bulk.clear", "Wissen")}
+              </Button>
+              <div className="ml-auto flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => setBulkEmailOpen(true)}>
+                  <Mail className="h-4 w-4 mr-1.5" />
+                  {t("invoices.bulk.sendEmail", "Verstuur e-mail")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setConfirmBulk("reset")}>
+                  <RotateCcw className="h-4 w-4 mr-1.5" />
+                  {t("invoices.bulk.resetToDraft", "Reset naar concept")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setBulkDueOpen(true)}>
+                  <CalendarIcon className="h-4 w-4 mr-1.5" />
+                  {t("invoices.bulk.updateDueDate", "Vervaldatum wijzigen")}
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => setConfirmBulk("delete")}>
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  {t("invoices.bulk.delete", "Verwijder")}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="text-2xl font-bold">€{formatEuro(totalUnpaid)}</p></CardContent></Card>
