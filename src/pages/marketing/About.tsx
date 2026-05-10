@@ -12,6 +12,8 @@ import { buildBreadcrumbList } from '@/lib/structuredData';
 
 export default function About() {
   const { t } = useTranslation('marketing');
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
 
   const values = [
     {
