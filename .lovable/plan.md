@@ -1,30 +1,28 @@
-## Problem
+## Goal
 
-In the Academy Dashboard's "Recente boekingen" widget, the same player appears multiple times (e.g. Larissa Rand × 4) instead of being grouped as one row with a session count.
+Make the Cycles tab table (under `/app/academy/calendar?tab=cycles`) use the same compact row density as the Players table, so rows aren't as tall.
 
-## Root cause
+## Reference styling (from `AcademyPlayers.tsx`)
 
-`src/pages/academy/AcademyDashboard.tsx` groups bookings by `cyclus_name + player_id`, but the Supabase select only fetches the **joined** `profiles` / `guest_players` relations — it never selects the raw `player_id` or `guest_player_id` columns. As a result the grouping key is always empty, the `if (cyclusName && playerId)` branch is never taken, and every booking row is pushed individually into `recentBookings`.
+```tsx
+<Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
+  ...
+  <TableRow className="h-8">
+```
 
-The "Cyclus —" dashes are a related symptom: when `cyclus_name` is null on the slot, no grouping happens either.
+## Change
 
-## Fix (UI/data layer only)
+In `src/pages/academy/AcademyCyclusOverview.tsx`:
 
-In `AcademyDashboard.tsx`, inside the bookings query (around line 115):
+1. On the desktop `<Table>` at line ~732, add the same density classes:
+   `className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm"`
+2. On the data `<TableRow>` at line 761, add `className="h-8 cursor-pointer hover:bg-muted/50"` (keep existing click behavior).
+3. Sticky header: add `<TableHeader className="sticky top-0 bg-background z-10">` to match the players table.
 
-1. Add `player_id, guest_player_id` to the select string so grouping has real IDs to key on.
-2. Make the grouping fall back gracefully: if `cyclus_name` is missing, group by `(cyclus_id || 'no-cyclus') + playerId` instead of skipping grouping entirely. Pull `cyclus_id` into the slot select too.
-3. Keep `sessionCount` increment behavior, so the row can show e.g. "Larissa Rand · 4 sessions" (or just dedupe — see question below).
-4. Bump the initial `.limit(10)` to a higher number (e.g. 30) since we're now collapsing rows; otherwise after grouping we may show fewer than 10 unique entries.
-
-No schema/RLS/business-logic changes. Trainer dashboard is not touched (Academy-only fix, and trainer side has its own widget).
+No changes to columns, sorting, or data — purely visual density. Mobile cards section is untouched.
 
 ## Out of scope
 
-- Visual redesign of the table
-- Trainer dashboard changes
-- Backend/edge function changes
-
-## Open question
-
-Should the grouped row show a session count (e.g. "Larissa Rand — 4 sessions in Cyclus X") or just dedupe silently to one row per player+cyclus with no count? I'd suggest showing the count since `sessionCount` is already being computed.
+- Changing column set or content
+- Changes to other tabs
+- Mobile card layout
