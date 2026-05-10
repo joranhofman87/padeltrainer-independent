@@ -34,6 +34,7 @@ import {
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { updateBookingStatus } from '@/lib/lessons';
+import { PageHeader } from '@/components/ui/page-header';
 
 interface BookingWithDetails {
   id: string;
