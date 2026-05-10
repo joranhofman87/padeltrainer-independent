@@ -116,7 +116,6 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
 
   // Test email
   const [testEmail, setTestEmail] = useState('');
-  const [showTestInput, setShowTestInput] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
 
   useEffect(() => {
@@ -564,6 +563,8 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                     value={bodyHtml}
                     onChange={setBodyHtml}
                     placeholder={t('emailCampaign.compose.bodyPlaceholder')}
+                    minHeight="320px"
+                    allowHtmlView
                   />
                 </div>
 
@@ -590,6 +591,35 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                 <Separator />
 
                 <div className="flex flex-col gap-3">
+                  {/* Test email row — always visible, recipient editable each time */}
+                  <div className="flex items-center gap-1.5 flex-wrap rounded-md border bg-muted/30 px-2 py-1.5">
+                    <FlaskConical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {t('emailCampaign.compose.sendTest')}:
+                    </span>
+                    <Input
+                      type="email"
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                      placeholder={t('emailCampaign.compose.testEmailPlaceholder')}
+                      className="h-8 flex-1 min-w-[180px] text-sm"
+                      onKeyDown={(e) => e.key === 'Enter' && handleSendTestEmail()}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSendTestEmail}
+                      disabled={isSendingTest || !testEmail.trim() || !subject.trim() || !bodyHtml.trim()}
+                    >
+                      {isSendingTest ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      {t('emailCampaign.compose.sendTest')}
+                    </Button>
+                  </div>
+
                   <div className="flex items-center gap-2 flex-wrap">
                     <Button
                       type="button"
@@ -599,42 +629,6 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                     >
                       <Eye className="mr-1.5 h-4 w-4" /> {t('emailCampaign.compose.preview')}
                     </Button>
-
-                    {!showTestInput ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setShowTestInput(true)}
-                        disabled={!subject.trim() || !bodyHtml.trim()}
-                      >
-                        <FlaskConical className="mr-1.5 h-4 w-4" /> {t('emailCampaign.compose.sendTest')}
-                      </Button>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <Input
-                          value={testEmail}
-                          onChange={(e) => setTestEmail(e.target.value)}
-                          placeholder={t('emailCampaign.compose.testEmailPlaceholder')}
-                          className="h-9 w-48"
-                          onKeyDown={(e) => e.key === 'Enter' && handleSendTestEmail()}
-                        />
-                        <Button
-                          size="sm"
-                          onClick={handleSendTestEmail}
-                          disabled={isSendingTest || !testEmail.trim()}
-                        >
-                          {isSendingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9"
-                          onClick={() => setShowTestInput(false)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
 
                     <div className="ml-auto">
                       <Button

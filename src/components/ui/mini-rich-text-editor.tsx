@@ -2,10 +2,20 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useEffect } from "react";
+import Underline from "@tiptap/extension-underline";
+import { useEffect, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
 import { Separator } from "@/components/ui/separator";
-import { Bold, List, ListOrdered, Link as LinkIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Bold,
+  Italic,
+  Underline as UnderlineIcon,
+  List,
+  ListOrdered,
+  Link as LinkIcon,
+  Code as CodeIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MiniRichTextEditorProps {
@@ -13,6 +23,10 @@ interface MiniRichTextEditorProps {
   onChange: (html: string) => void;
   placeholder?: string;
   className?: string;
+  /** CSS min-height for the editor area (e.g. "60px", "320px"). */
+  minHeight?: string;
+  /** When true, show a Visual / HTML toggle that exposes a raw HTML textarea. */
+  allowHtmlView?: boolean;
 }
 
 export function MiniRichTextEditor({
@@ -20,7 +34,11 @@ export function MiniRichTextEditor({
   onChange,
   placeholder,
   className,
+  minHeight = "60px",
+  allowHtmlView = false,
 }: MiniRichTextEditorProps) {
+  const [htmlMode, setHtmlMode] = useState(false);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -30,6 +48,7 @@ export function MiniRichTextEditor({
         code: false,
         horizontalRule: false,
       }),
+      Underline,
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
@@ -46,16 +65,17 @@ export function MiniRichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: "prose prose-sm dark:prose-invert max-w-none min-h-[60px] px-3 py-2 focus:outline-none",
+        class: "prose prose-sm dark:prose-invert max-w-none px-3 py-2 focus:outline-none",
+        style: `min-height: ${minHeight};`,
       },
     },
   });
 
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value);
+    if (editor && !htmlMode && value !== editor.getHTML()) {
+      editor.commands.setContent(value || "");
     }
-  }, [value, editor]);
+  }, [value, editor, htmlMode]);
 
   const addLink = () => {
     if (!editor) return;
@@ -63,6 +83,15 @@ export function MiniRichTextEditor({
     if (url) {
       editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
     }
+  };
+
+  const toggleHtmlMode = () => {
+    if (!editor) return;
+    if (htmlMode) {
+      // Switching back to visual: push the textarea contents into the editor
+      editor.commands.setContent(value || "");
+    }
+    setHtmlMode((m) => !m);
   };
 
   return (
@@ -77,15 +106,35 @@ export function MiniRichTextEditor({
           size="sm"
           pressed={editor?.isActive("bold") ?? false}
           onPressedChange={() => editor?.chain().focus().toggleBold().run()}
+          disabled={htmlMode}
           aria-label="Bold"
         >
           <Bold className="h-3.5 w-3.5" />
+        </Toggle>
+        <Toggle
+          size="sm"
+          pressed={editor?.isActive("italic") ?? false}
+          onPressedChange={() => editor?.chain().focus().toggleItalic().run()}
+          disabled={htmlMode}
+          aria-label="Italic"
+        >
+          <Italic className="h-3.5 w-3.5" />
+        </Toggle>
+        <Toggle
+          size="sm"
+          pressed={editor?.isActive("underline") ?? false}
+          onPressedChange={() => editor?.chain().focus().toggleUnderline().run()}
+          disabled={htmlMode}
+          aria-label="Underline"
+        >
+          <UnderlineIcon className="h-3.5 w-3.5" />
         </Toggle>
         <Separator orientation="vertical" className="mx-0.5 h-5" />
         <Toggle
           size="sm"
           pressed={editor?.isActive("bulletList") ?? false}
           onPressedChange={() => editor?.chain().focus().toggleBulletList().run()}
+          disabled={htmlMode}
           aria-label="Bullet List"
         >
           <List className="h-3.5 w-3.5" />
@@ -94,6 +143,7 @@ export function MiniRichTextEditor({
           size="sm"
           pressed={editor?.isActive("orderedList") ?? false}
           onPressedChange={() => editor?.chain().focus().toggleOrderedList().run()}
+          disabled={htmlMode}
           aria-label="Ordered List"
         >
           <ListOrdered className="h-3.5 w-3.5" />
@@ -103,12 +153,39 @@ export function MiniRichTextEditor({
           size="sm"
           pressed={editor?.isActive("link") ?? false}
           onPressedChange={addLink}
+          disabled={htmlMode}
           aria-label="Add Link"
         >
           <LinkIcon className="h-3.5 w-3.5" />
         </Toggle>
+        {allowHtmlView && (
+          <>
+            <Separator orientation="vertical" className="mx-0.5 h-5" />
+            <Button
+              type="button"
+              variant={htmlMode ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2 text-xs gap-1"
+              onClick={toggleHtmlMode}
+              aria-pressed={htmlMode}
+            >
+              <CodeIcon className="h-3.5 w-3.5" />
+              {htmlMode ? "Visual" : "HTML"}
+            </Button>
+          </>
+        )}
       </div>
-      <EditorContent editor={editor} />
+      {htmlMode ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full px-3 py-2 font-mono text-xs bg-background text-foreground focus:outline-none resize-y rounded-b-md"
+          style={{ minHeight }}
+        />
+      ) : (
+        <EditorContent editor={editor} />
+      )}
     </div>
   );
 }
