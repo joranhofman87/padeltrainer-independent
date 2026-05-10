@@ -143,6 +143,7 @@ export function SEO({
       <meta name="twitter:title" content={fullTitle} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:image" content={image || defaultImage} />
+      <meta name="twitter:image:alt" content={title} />
       
       {/* Structured Data */}
       {structuredData && (
