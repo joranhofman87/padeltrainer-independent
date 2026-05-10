@@ -141,12 +141,34 @@ export default function AgendaWeekByTrainer({
     return { sessions, hours, fillRate };
   }, [weekSlots]);
 
-  const trainerWeekHours = (trainerId: string) => {
+  const trainerWeekStats = (trainerId: string) => {
     const inner = grouped.get(trainerId);
-    if (!inner) return 0;
-    let h = 0;
-    for (const arr of inner.values()) for (const s of arr) h += durationHours(s.start_time, s.end_time);
-    return h;
+    let booked = 0, free = 0;
+    if (inner) for (const arr of inner.values()) for (const s of arr) {
+      const dur = durationHours(s.start_time, s.end_time);
+      const max = s.max_participants || 1;
+      const fill = Math.min(s.booked_count, max) / max;
+      booked += dur * fill;
+      free += dur * (1 - fill);
+    }
+    return { booked, free };
+  };
+
+  const cellStats = (slotsForCell: AgendaSlot[]) => {
+    let booked = 0, free = 0;
+    const locMap = new Map<string, { name: string; logo: string | null }>();
+    slotsForCell.forEach((s) => {
+      const dur = durationHours(s.start_time, s.end_time);
+      const max = s.max_participants || 1;
+      const fill = Math.min(s.booked_count, max) / max;
+      booked += dur * fill;
+      free += dur * (1 - fill);
+      const lkey = s.location_id || s.location_name || '';
+      if (lkey && !locMap.has(lkey)) {
+        locMap.set(lkey, { name: s.location_name || '', logo: s.location_logo || null });
+      }
+    });
+    return { booked, free, locations: Array.from(locMap.values()) };
   };
 
   const renderCell = (trainer: TrainerOption, day: Date) => {
@@ -158,6 +180,7 @@ export default function AgendaWeekByTrainer({
     const totalBooked = slotsForCell.reduce((a, s) => a + Math.min(s.booked_count, s.max_participants || 0), 0);
     const state = count === 0 ? 'empty' : getFillState({ bookedCount: totalBooked, maxParticipants: totalSeats || 1, isPast });
     const cls = fillStateClasses[state];
+    const { booked, free, locations: cellLocations } = cellStats(slotsForCell);
 
     return (
       <button
@@ -165,7 +188,7 @@ export default function AgendaWeekByTrainer({
         type="button"
         onClick={() => onCellClick?.(trainer.id, day)}
         className={cn(
-          'group relative h-16 sm:h-20 w-full rounded-md border text-left px-2 py-1.5 transition-all',
+          'group relative h-20 sm:h-24 w-full rounded-md border text-left px-2 py-1.5 transition-all',
           cls.bg,
           cls.border,
           'hover:border-primary/40 hover:shadow-sm',
@@ -174,30 +197,46 @@ export default function AgendaWeekByTrainer({
         {count === 0 ? (
           <span className="text-[11px] text-muted-foreground/60">·</span>
         ) : (
-          <div className="flex h-full flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className={cn('text-sm font-display font-semibold tabular-nums', cls.text)}>{count}</span>
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
-                {count === 1 ? t('calendar.unitSession', 'session') : t('calendar.unitSessions', 'sessions')}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-[3px]">
-              {slotsForCell.slice(0, 6).map((s) => {
-                const sState = getFillState({
-                  bookedCount: s.booked_count,
-                  maxParticipants: s.max_participants || 1,
-                  isPast: isBefore(parseISO(s.end_time), now),
-                });
-                return (
-                  <span
-                    key={s.id}
-                    className={cn('h-1.5 w-1.5 rounded-full', fillStateClasses[sState].dot)}
-                  />
-                );
-              })}
-              {slotsForCell.length > 6 && (
-                <span className="text-[9px] text-muted-foreground/70">+{slotsForCell.length - 6}</span>
+          <div className="flex h-full flex-col justify-between gap-1">
+            <div className="flex items-start justify-between gap-1">
+              <span className={cn('text-sm font-display font-semibold tabular-nums leading-none', cls.text)}>{count}</span>
+              {cellLocations.length > 0 && (
+                <div className="flex -space-x-1.5">
+                  {cellLocations.slice(0, 3).map((loc, i) =>
+                    loc.logo ? (
+                      <img
+                        key={i}
+                        src={loc.logo}
+                        alt={loc.name}
+                        className="h-4 w-4 rounded-full bg-muted object-contain ring-1 ring-card"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span
+                        key={i}
+                        className="h-4 w-4 rounded-full bg-muted ring-1 ring-card flex items-center justify-center text-[8px] font-medium text-muted-foreground"
+                      >
+                        {loc.name.slice(0, 1).toUpperCase() || '?'}
+                      </span>
+                    ),
+                  )}
+                  {cellLocations.length > 3 && (
+                    <span className="h-4 w-4 rounded-full bg-muted ring-1 ring-card flex items-center justify-center text-[8px] tabular-nums text-muted-foreground">
+                      +{cellLocations.length - 3}
+                    </span>
+                  )}
+                </div>
               )}
+            </div>
+            <div className="flex flex-col gap-0.5 text-[10px] tabular-nums leading-tight">
+              <span className="text-foreground/80">
+                <span className="font-medium">{fmtH(booked)}</span>
+                <span className="text-muted-foreground/70 ml-1">{t('calendar.cell.booked', 'booked')}</span>
+              </span>
+              <span className={cn(free > 0 ? 'text-foreground/80' : 'text-muted-foreground/60')}>
+                <span className="font-medium">{fmtH(free)}</span>
+                <span className="text-muted-foreground/70 ml-1">{t('calendar.cell.free', 'free')}</span>
+              </span>
             </div>
           </div>
         )}
