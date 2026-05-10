@@ -1,670 +1,86 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/lib/supabaseClient';
-import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye, Palette } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { formatInvoiceNumber } from '@/lib/invoiceNumber';
-import { renumberInvoices, type RenumberStatus } from '@/lib/renumberDraftInvoices';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { InvoiceSettingsCardBase, type InvoiceSettingsLabels } from '@/components/invoices/InvoiceSettingsCardBase';
 
 interface InvoiceSettingsCardProps {
   userId: string;
-  initialData?: {
-    business_name: string | null;
-    business_address: string | null;
-    kvk_number: string | null;
-    btw_number: string | null;
-    iban: string | null;
-    bic: string | null;
-    payment_terms_days: number;
-    default_vat_rate: number | null;
-    invoice_forward_emails: string[] | null;
-    invoice_reply_to_email?: string | null;
-    invoice_logo_url: string | null;
-    invoice_prefix: string | null;
-    invoice_next_number: number | null;
-    invoice_banner_color?: string | null;
-  };
+  /**
+   * Optional. Kept for backwards compatibility — the shared base
+   * self-loads from `trainer_profiles`, so this is ignored.
+   */
+  initialData?: unknown;
   onSave?: () => void;
 }
 
-export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSettingsCardProps) {
+export function InvoiceSettingsCard({ userId, onSave }: InvoiceSettingsCardProps) {
   const { t } = useTranslation('trainer');
-  const { toast } = useToast();
-  const [saving, setSaving] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    business_name: '',
-    business_address: '',
-    kvk_number: '',
-    btw_number: '',
-    iban: '',
-    bic: '',
-    payment_terms_days: 14,
-    default_vat_rate: 21,
-    custom_vat_rate: '',
-    invoice_prefix: 'INV',
-    invoice_next_number: 1,
-    invoice_include_year: true,
-    invoice_language: 'nl',
-  });
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [bannerColor, setBannerColor] = useState<string>('');
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [forwardEmails, setForwardEmails] = useState<string[]>([]);
-  const [replyToEmail, setReplyToEmail] = useState<string>('');
-  const [newEmail, setNewEmail] = useState('');
-  const [showRenumberDialog, setShowRenumberDialog] = useState(false);
-  const [renumbering, setRenumbering] = useState(false);
-  const [initialNumbering, setInitialNumbering] = useState({ prefix: '', includeYear: true, startNumber: 1 });
-  const [renumberStatuses, setRenumberStatuses] = useState<RenumberStatus[]>(['draft', 'sent', 'overdue']);
 
-  useEffect(() => {
-    if (initialData) {
-      const vatRate = initialData.default_vat_rate ?? 21;
-      const isCustom = ![21, 9, 0].includes(vatRate);
-      setFormData({
-        business_name: initialData.business_name || '',
-        business_address: initialData.business_address || '',
-        kvk_number: initialData.kvk_number || '',
-        btw_number: initialData.btw_number || '',
-        iban: initialData.iban || '',
-        bic: initialData.bic || '',
-        payment_terms_days: initialData.payment_terms_days || 14,
-        default_vat_rate: isCustom ? -1 : vatRate,
-        custom_vat_rate: isCustom ? vatRate.toString() : '',
-        invoice_prefix: initialData.invoice_prefix || '',
-        invoice_next_number: initialData.invoice_next_number || 1,
-        invoice_include_year: (initialData as any).invoice_include_year ?? true,
-        invoice_language: (initialData as any).invoice_language || 'nl',
-      });
-      setLogoUrl(initialData.invoice_logo_url || null);
-      setBannerColor((initialData as any).invoice_banner_color || '');
-      setForwardEmails(initialData.invoice_forward_emails || []);
-      setReplyToEmail((initialData as any).invoice_reply_to_email || '');
-      setInitialNumbering({
-        prefix: initialData.invoice_prefix || '',
-        includeYear: (initialData as any).invoice_include_year ?? true,
-        startNumber: initialData.invoice_next_number || 1,
-      });
-    }
-  }, [initialData]);
-
-  const isComplete = formData.business_name && formData.business_address && formData.kvk_number && formData.iban;
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingLogo(true);
-    try {
-      const ext = file.name.split('.').pop();
-      const path = `invoice-logos/${userId}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      setLogoUrl(urlData.publicUrl + '?t=' + Date.now());
-    } catch (err: any) {
-      toast({ title: 'Upload mislukt', description: err.message, variant: 'destructive' });
-    }
-    setUploadingLogo(false);
-  };
-
-  const handleRemoveLogo = async () => {
-    try {
-      await supabase.storage.from('avatars').remove([`invoice-logos/${userId}`]);
-    } catch {}
-    setLogoUrl(null);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    
-    const resolvedVatRate = formData.default_vat_rate === -1
-      ? parseFloat(formData.custom_vat_rate) || 0
-      : formData.default_vat_rate;
-
-    const { error } = await supabase
-      .from('trainer_profiles')
-      .update({
-        business_name: formData.business_name || null,
-        business_address: formData.business_address || null,
-        kvk_number: formData.kvk_number || null,
-        btw_number: formData.btw_number || null,
-        iban: formData.iban || null,
-        bic: formData.bic || null,
-        payment_terms_days: formData.payment_terms_days,
-        default_vat_rate: resolvedVatRate,
-        invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
-        invoice_reply_to_email: replyToEmail.trim() ? replyToEmail.trim().toLowerCase() : null,
-        invoice_logo_url: logoUrl || null,
-        invoice_banner_color: bannerColor || null,
-        invoice_prefix: formData.invoice_prefix || null,
-        invoice_next_number: formData.invoice_next_number || 1,
-        invoice_include_year: formData.invoice_include_year,
-        invoice_language: formData.invoice_language || 'nl',
-      } as any)
-      .eq('user_id', userId);
-
-    if (error) {
-      toast({
-        title: t('common:toasts.errorTitle'),
-        description: t('invoices.saveError'),
-        variant: 'destructive',
-      });
-    } else {
-      toast({
-        title: t('invoices.saved'),
-        description: t('invoices.savedDescription'),
-      });
-      onSave?.();
-
-      // Check if numbering format changed → offer to renumber
-      const numberingChanged =
-        formData.invoice_prefix !== initialNumbering.prefix ||
-        formData.invoice_include_year !== initialNumbering.includeYear ||
-        formData.invoice_next_number !== initialNumbering.startNumber;
-      if (numberingChanged) {
-        setShowRenumberDialog(true);
-        setInitialNumbering({ prefix: formData.invoice_prefix, includeYear: formData.invoice_include_year, startNumber: formData.invoice_next_number });
-      }
-    }
-    
-    setSaving(false);
-  };
-
-  const handleRenumberDrafts = async () => {
-    if (renumberStatuses.length === 0) {
-      setShowRenumberDialog(false);
-      return;
-    }
-    setRenumbering(true);
-    try {
-      const { data: tp } = await supabase
-        .from('trainer_profiles')
-        .select('id')
-        .eq('user_id', userId)
-        .single();
-
-      if (!tp) {
-        toast({ title: 'Trainer profiel niet gevonden', variant: 'destructive' });
-        setRenumbering(false);
-        setShowRenumberDialog(false);
-        return;
-      }
-
-      const result = await renumberInvoices({
-        ownerType: 'trainer',
-        ownerId: tp.id,
-        prefix: formData.invoice_prefix,
-        includeYear: formData.invoice_include_year,
-        startNumber: formData.invoice_next_number || 1,
-        statuses: renumberStatuses,
-      });
-      if (result.error) {
-        toast({ title: 'Fout bij hernummeren', description: result.error, variant: 'destructive' });
-      } else if (result.updated > 0) {
-        setFormData(prev => ({ ...prev, invoice_next_number: result.nextNumber }));
-        await supabase
-          .from('trainer_profiles')
-          .update({ invoice_next_number: result.nextNumber })
-          .eq('user_id', userId);
-        toast({ title: `${result.updated} facturen hernummerd` });
-      } else {
-        toast({ title: 'Geen facturen gevonden om te hernummeren' });
-      }
-    } catch {
-      toast({ title: 'Hernummeren mislukt', variant: 'destructive' });
-    }
-    setRenumbering(false);
-    setShowRenumberDialog(false);
+  const labels: InvoiceSettingsLabels = {
+    title: t('invoices.settings', 'Factuur Instellingen'),
+    description: t('invoices.settingsDescription', 'Bedrijfsgegevens voor je facturen'),
+    complete: t('invoices.complete'),
+    saved: t('invoices.saved'),
+    saveError: t('invoices.saveError'),
+    saving: t('invoices.saving'),
+    save: t('invoices.saveSettings'),
+    logo: t('invoices.logo', 'Factuurlogo'),
+    logoDescription: t('invoices.logoDescription', 'Dit logo wordt getoond op je facturen.'),
+    noLogo: t('invoices.noLogo', 'Geen logo'),
+    uploadLogo: t('invoices.uploadLogo', 'Upload logo'),
+    bannerColor: t('invoices.bannerColor', 'Banner color'),
+    bannerColorDescription: t('invoices.bannerColorDescription', 'Optional accent color shown behind the logo at the top of your invoices.'),
+    noColor: t('invoices.noColor', 'None'),
+    customColor: t('invoices.customColor', 'Custom'),
+    businessName: t('invoices.businessName', 'Bedrijfsnaam'),
+    businessNamePlaceholder: 'Jouw Bedrijf B.V.',
+    kvkNumber: t('invoices.kvkNumber', 'KvK-nummer'),
+    businessAddress: t('invoices.businessAddress', 'Bedrijfsadres'),
+    btwNumber: t('invoices.btwNumber', 'BTW-nummer'),
+    korNote: t('invoices.korNote'),
+    paymentTerms: t('invoices.paymentTerms', 'Betalingstermijn'),
+    days7: t('invoices.days7'),
+    days14: t('invoices.days14'),
+    days30: t('invoices.days30'),
+    defaultVatRate: t('invoices.defaultVatRate', 'Standaard BTW-tarief'),
+    vatStandard: t('invoices.vatStandard', 'Standaard tarief'),
+    vatReduced: t('invoices.vatReduced', 'Laag tarief'),
+    vatExempt: t('invoices.vatExempt', 'Vrijgesteld / KOR'),
+    vatCustom: t('invoices.vatCustom', 'Anders...'),
+    customVatRate: t('invoices.customVatRate', 'BTW-percentage'),
+    vatInclusiveNote: t('invoices.vatInclusiveNote', 'Lesprijzen zijn inclusief BTW. Dit tarief wordt gebruikt voor automatische facturen.'),
+    domesticNote: t('invoices.domesticNote'),
+    numbering: t('invoices.numbering', 'Factuurnummering'),
+    prefix: t('invoices.prefix', 'Prefix'),
+    nextNumber: t('invoices.nextNumber', 'Volgend nummer'),
+    includeYear: t('invoices.includeYear', 'Jaar opnemen in factuurnummer'),
+    previewNumber: t('invoices.previewNumber', 'Voorbeeld'),
+    replyToEmail: t('invoices.replyToEmail', 'Reply-to email for invoices'),
+    replyToEmailDescription: t('invoices.replyToEmailDescription', 'When a player replies to an invoice email, the reply will be sent to this address. If left empty, your account email is used.'),
+    invoiceLanguage: t('invoices.invoiceLanguage', 'Default invoice language'),
+    invoiceLanguageDescription: t('invoices.invoiceLanguageDescription', 'Used for invoice emails and the public payment page. Players with a language preference on their account get invoices in their own language.'),
+    forwardEmails: t('invoices.forwardEmails', 'Facturen doorsturen'),
+    forwardEmailsDescription: t('invoices.forwardEmailsDescription', 'Betaalde facturen worden automatisch doorgestuurd naar deze e-mailadressen (bijv. boekhoudsoftware).'),
+    renumberTitle: 'Facturen hernummeren?',
+    renumberDescription: 'De factuurnummering is gewijzigd. Selecteer welke facturen hernummerd moeten worden. Betaalde facturen blijven altijd ongewijzigd.',
+    renumberDraft: 'Concepten (draft)',
+    renumberSent: 'Verzonden (sent)',
+    renumberOverdue: 'Achterstallig (overdue)',
+    renumberConfirm: 'Hernummeren',
+    renumberCancel: 'Annuleren',
+    renumberSuccess: (count) => `${count} facturen hernummerd`,
+    renumberNothing: 'Geen facturen gevonden om te hernummeren',
+    renumberError: 'Hernummeren mislukt',
   };
 
   return (
-    <>
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            <div>
-              <CardTitle>{t('invoices.settings', 'Factuur Instellingen')}</CardTitle>
-              <CardDescription>
-                {t('invoices.settingsDescription', 'Bedrijfsgegevens voor je facturen')}
-              </CardDescription>
-            </div>
-          </div>
-          {isComplete && (
-            <div className="flex items-center gap-1 text-green-600 text-sm">
-              <CheckCircle2 className="h-4 w-4" />
-              {t('invoices.complete')}
-            </div>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Logo Upload */}
-        <div className="space-y-3 pb-4 border-b">
-          <Label>{t('invoices.logo', 'Factuurlogo')}</Label>
-          <p className="text-xs text-muted-foreground">
-            {t('invoices.logoDescription', 'Dit logo wordt getoond op je facturen.')}
-          </p>
-          <div className="flex items-center gap-4">
-            {logoUrl ? (
-              <div className="relative group">
-                <img src={logoUrl} alt="Invoice logo" className="h-14 max-w-[200px] object-contain rounded border p-1 bg-background" />
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="icon"
-                  className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={handleRemoveLogo}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            ) : (
-              <div className="h-14 w-32 rounded border border-dashed flex items-center justify-center text-muted-foreground text-xs">
-                {t('invoices.noLogo', 'Geen logo')}
-              </div>
-            )}
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingLogo}>
-              {uploadingLogo ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
-              {t('invoices.uploadLogo', 'Upload logo')}
-            </Button>
-          </div>
-        </div>
-
-        {/* Banner Color */}
-        <div className="space-y-3 pb-4 border-b">
-          <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-muted-foreground" />
-            <Label>{t('invoices.bannerColor', 'Banner color')}</Label>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t('invoices.bannerColorDescription', 'Optional accent color shown behind the logo at the top of your invoices.')}
-          </p>
-          <div className="flex items-center gap-2 flex-wrap">
-            {[
-              { color: '', label: t('invoices.noColor', 'None') },
-              { color: '#1a2332', label: 'Navy' },
-              { color: '#000000', label: 'Black' },
-              { color: '#1e3a5f', label: 'Blue' },
-              { color: '#2d4a3e', label: 'Green' },
-            ].map((preset) => (
-              <button
-                key={preset.color}
-                type="button"
-                onClick={() => setBannerColor(preset.color)}
-                className={`h-8 rounded border-2 px-3 text-xs font-medium transition-all ${
-                  bannerColor === preset.color ? 'border-primary ring-2 ring-primary/30' : 'border-border'
-                } ${preset.color ? 'text-white' : 'bg-background text-foreground'}`}
-                style={preset.color ? { backgroundColor: preset.color } : undefined}
-              >
-                {preset.label}
-              </button>
-            ))}
-            <div className="flex items-center gap-1.5">
-              <input
-                type="color"
-                value={bannerColor || '#1a2332'}
-                onChange={(e) => setBannerColor(e.target.value)}
-                className="h-8 w-8 rounded border cursor-pointer"
-              />
-              <span className="text-xs text-muted-foreground">{t('invoices.customColor', 'Custom')}</span>
-            </div>
-          </div>
-          {bannerColor && (
-            <div className="flex items-center gap-3 p-3 rounded-md" style={{ backgroundColor: bannerColor }}>
-              {logoUrl ? (
-                <img src={logoUrl} alt="Preview" className="h-8 max-w-[120px] object-contain" />
-              ) : (
-                <span className="text-white text-sm font-medium">{formData.business_name || 'Your Logo Here'}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="business_name">
-              {t('invoices.businessName', 'Bedrijfsnaam')} *
-            </Label>
-            <Input
-              id="business_name"
-              value={formData.business_name}
-              onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
-              placeholder="Jouw Bedrijf B.V."
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="kvk_number">
-              {t('invoices.kvkNumber', 'KvK-nummer')} *
-            </Label>
-            <Input
-              id="kvk_number"
-              value={formData.kvk_number}
-              onChange={(e) => setFormData({ ...formData, kvk_number: e.target.value })}
-              placeholder="12345678"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="business_address">
-            {t('invoices.businessAddress', 'Bedrijfsadres')} *
-          </Label>
-          <Textarea
-            id="business_address"
-            value={formData.business_address}
-            onChange={(e) => setFormData({ ...formData, business_address: e.target.value })}
-            placeholder="Straatnaam 123&#10;1234 AB Amsterdam"
-            rows={2}
-          />
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="btw_number">
-              {t('invoices.btwNumber', 'BTW-nummer')}
-            </Label>
-            <Input
-              id="btw_number"
-              value={formData.btw_number}
-              onChange={(e) => setFormData({ ...formData, btw_number: e.target.value })}
-              placeholder="NL123456789B01"
-            />
-            <p className="text-xs text-muted-foreground">
-              {t('invoices.korNote')}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="payment_terms_days">
-              {t('invoices.paymentTerms', 'Betalingstermijn')}
-            </Label>
-            <Select
-              value={formData.payment_terms_days.toString()}
-              onValueChange={(v) => setFormData({ ...formData, payment_terms_days: parseInt(v) })}
-            >
-              <SelectTrigger id="payment_terms_days">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">{t('invoices.days7')}</SelectItem>
-                <SelectItem value="14">{t('invoices.days14')}</SelectItem>
-                <SelectItem value="30">{t('invoices.days30')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="default_vat_rate">
-              {t('invoices.defaultVatRate', 'Standaard BTW-tarief')}
-            </Label>
-            <Select
-              value={formData.default_vat_rate.toString()}
-              onValueChange={(v) => setFormData({ ...formData, default_vat_rate: parseInt(v), custom_vat_rate: parseInt(v) === -1 ? formData.custom_vat_rate : '' })}
-            >
-              <SelectTrigger id="default_vat_rate">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="21">21% - {t('invoices.vatStandard', 'Standaard tarief')}</SelectItem>
-                <SelectItem value="9">9% - {t('invoices.vatReduced', 'Laag tarief')}</SelectItem>
-                <SelectItem value="0">0% - {t('invoices.vatExempt', 'Vrijgesteld / KOR')}</SelectItem>
-                <SelectItem value="-1">{t('invoices.vatCustom', 'Anders...')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {t('invoices.vatInclusiveNote', 'Lesprijzen zijn inclusief BTW. Dit tarief wordt gebruikt voor automatische facturen.')}
-            </p>
-          </div>
-          {formData.default_vat_rate === -1 && (
-            <div className="space-y-2">
-              <Label htmlFor="custom_vat_rate">
-                {t('invoices.customVatRate', 'BTW-percentage')}
-              </Label>
-              <Input
-                id="custom_vat_rate"
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                value={formData.custom_vat_rate}
-                onChange={(e) => setFormData({ ...formData, custom_vat_rate: e.target.value })}
-                placeholder="5"
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="iban">IBAN *</Label>
-            <Input
-              id="iban"
-              value={formData.iban}
-              onChange={(e) => setFormData({ ...formData, iban: e.target.value.toUpperCase() })}
-              placeholder="NL91 ABNA 0417 1643 00"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="bic">BIC</Label>
-            <Input
-              id="bic"
-              value={formData.bic}
-              onChange={(e) => setFormData({ ...formData, bic: e.target.value.toUpperCase() })}
-              placeholder="ABNANL2A"
-            />
-            <p className="text-xs text-muted-foreground">
-              {t('invoices.domesticNote')}
-            </p>
-          </div>
-        </div>
-
-        {/* Invoice Numbering */}
-        <div className="space-y-3 pt-4 border-t">
-          <div className="flex items-center gap-2">
-            <Hash className="h-4 w-4 text-muted-foreground" />
-            <Label>{t('invoices.numbering', 'Factuurnummering')}</Label>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="invoice_prefix">{t('invoices.prefix', 'Prefix')}</Label>
-              <Input
-                id="invoice_prefix"
-                value={formData.invoice_prefix}
-                onChange={(e) => setFormData({ ...formData, invoice_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) })}
-                placeholder="INV"
-                maxLength={10}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="invoice_next_number">{t('invoices.nextNumber', 'Volgend nummer')}</Label>
-              <Input
-                id="invoice_next_number"
-                type="number"
-                min="1"
-                value={formData.invoice_next_number}
-                onChange={(e) => setFormData({ ...formData, invoice_next_number: parseInt(e.target.value) || 1 })}
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="invoice_include_year"
-              checked={formData.invoice_include_year}
-              onChange={(e) => setFormData({ ...formData, invoice_include_year: e.target.checked })}
-              className="rounded border-input"
-            />
-            <Label htmlFor="invoice_include_year" className="text-sm font-normal cursor-pointer">{t('invoices.includeYear', 'Jaar opnemen in factuurnummer')}</Label>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Eye className="h-3.5 w-3.5" />
-            {t('invoices.previewNumber', 'Voorbeeld')}: <span className="font-mono font-medium text-foreground">{formatInvoiceNumber(formData.invoice_prefix, new Date().getFullYear(), formData.invoice_next_number || 1, formData.invoice_include_year)}</span>
-          </div>
-        </div>
-
-        {/* Reply-to email */}
-        <div className="space-y-2 pt-4 border-t">
-          <div className="flex items-center gap-2">
-            <Mail className="h-4 w-4 text-muted-foreground" />
-            <Label htmlFor="tr_reply_to">{t('invoices.replyToEmail', 'Reply-to email for invoices')}</Label>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t('invoices.replyToEmailDescription', 'When a player replies to an invoice email, the reply will be sent to this address. If left empty, your account email is used.')}
-          </p>
-          <Input
-            id="tr_reply_to"
-            type="email"
-            value={replyToEmail}
-            onChange={(e) => setReplyToEmail(e.target.value)}
-            placeholder="you@example.com"
-          />
-        </div>
-
-        {/* Default invoice language */}
-        <div className="space-y-2 pt-4 border-t">
-          <Label htmlFor="tr_invoice_language">{t('invoices.invoiceLanguage', 'Default invoice language')}</Label>
-          <p className="text-xs text-muted-foreground">
-            {t('invoices.invoiceLanguageDescription', 'Used for invoice emails and the public payment page. Players with a language preference on their account get invoices in their own language.')}
-          </p>
-          <Select value={formData.invoice_language} onValueChange={(v) => setFormData({ ...formData, invoice_language: v })}>
-            <SelectTrigger id="tr_invoice_language" className="max-w-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="nl">Nederlands</SelectItem>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="es">Español</SelectItem>
-              <SelectItem value="de">Deutsch</SelectItem>
-              <SelectItem value="fr">Français</SelectItem>
-              <SelectItem value="it">Italiano</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Invoice Forwarding Emails */}
-        <div className="space-y-3 pt-4 border-t">
-          <div className="flex items-center gap-2">
-            <Mail className="h-4 w-4 text-muted-foreground" />
-            <Label>{t('invoices.forwardEmails', 'Facturen doorsturen')}</Label>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t('invoices.forwardEmailsDescription', 'Betaalde facturen worden automatisch doorgestuurd naar deze e-mailadressen (bijv. boekhoudsoftware).')}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {forwardEmails.map((email, i) => (
-              <Badge key={i} variant="secondary" className="gap-1 pr-1">
-                {email}
-                <button
-                  type="button"
-                  onClick={() => setForwardEmails(forwardEmails.filter((_, idx) => idx !== i))}
-                  className="ml-1 rounded-full hover:bg-muted p-0.5"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              type="email"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="boekhouder@example.com"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  const email = newEmail.trim().toLowerCase();
-                  if (email && email.includes('@') && !forwardEmails.includes(email)) {
-                    setForwardEmails([...forwardEmails, email]);
-                    setNewEmail('');
-                  }
-                }
-              }}
-              className="flex-1"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                const email = newEmail.trim().toLowerCase();
-                if (email && email.includes('@') && !forwardEmails.includes(email)) {
-                  setForwardEmails([...forwardEmails, email]);
-                  setNewEmail('');
-                }
-              }}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
-          {saving ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4 mr-2" />
-          )}
-          {saving ? t('invoices.saving') : t('invoices.saveSettings')}
-        </Button>
-      </CardContent>
-    </Card>
-
-    <AlertDialog open={showRenumberDialog} onOpenChange={setShowRenumberDialog}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Facturen hernummeren?</AlertDialogTitle>
-          <AlertDialogDescription>
-            De factuurnummering is gewijzigd. Selecteer welke facturen hernummerd moeten worden. Betaalde facturen blijven altijd ongewijzigd.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="space-y-3 py-2">
-          {([
-            { value: 'draft' as RenumberStatus, label: 'Concepten (draft)' },
-            { value: 'sent' as RenumberStatus, label: 'Verzonden (sent)' },
-            { value: 'overdue' as RenumberStatus, label: 'Achterstallig (overdue)' },
-          ]).map(({ value, label }) => (
-            <label key={value} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={renumberStatuses.includes(value)}
-                onChange={(e) => {
-                  setRenumberStatuses(prev =>
-                    e.target.checked ? [...prev, value] : prev.filter(s => s !== value)
-                  );
-                }}
-                className="rounded border-input"
-              />
-              <span className="text-sm">{label}</span>
-            </label>
-          ))}
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={renumbering}>Annuleren</AlertDialogCancel>
-          <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering || renumberStatuses.length === 0}>
-            {renumbering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Hernummeren
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-    </>
+    <InvoiceSettingsCardBase
+      ownerId={userId}
+      table="trainer_profiles"
+      ownerColumn="user_id"
+      ownerType="trainer"
+      buildLogoPath={(ext) => `invoice-logos/${userId}.${ext}`}
+      labels={labels}
+      idPrefix="tr"
+      onSave={onSave}
+    />
   );
 }
