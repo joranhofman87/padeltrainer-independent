@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
     const lang = langMatch ? langMatch[1] : 'en';
     const cleanPath = path.replace(/^\/(en|nl|es|de|fr|it)/, '') || '/';
 
-    const html = renderPath(cleanPath, lang);
+    const html = await renderPath(cleanPath, lang);
 
     return new Response(html, {
       headers: {
