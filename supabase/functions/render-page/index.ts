@@ -11,8 +11,17 @@
 import {
   cityFaqs, trainerFaqs, clubFaqs, academyFaqs, regionFaqs,
   renderFaqHtml, renderPopularCitiesHtml, renderPopularRegionsHtml,
-  faqPageSchema,
+  faqPageSchema, labels,
+  renderLastUpdatedHtml, renderTldrHtml, speakableSchema,
+  aggregateRatingSchema, reviewSchemas, localBusinessSchema, courseSchema,
+  renderNearbyCitiesHtml, renderTopTrainersHtml, renderTopClubsHtml,
+  renderTrainersAtClubHtml, renderRecentReviewsHtml, renderUpcomingCyclesHtml,
+  renderProvinceCitiesHtml,
 } from './seo-content.ts';
+import {
+  fetchCityFacts, fetchTrainerFacts, fetchClubFacts, fetchAcademyFacts,
+  fetchProvinceFacts, getProvinceForCity, getNearbyCities, getProvinceBySlug,
+} from './db-facts.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -116,49 +125,120 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
   const trainerMatch = cleanPath.match(/^\/trainer\/([^/]+)$/);
   if (trainerMatch) {
     const slug = trainerMatch[1];
-    const displayName = slugToDisplay(slug);
-    const personSchema = {
+    const L = labels(lang);
+    const facts = await fetchTrainerFacts(slug).catch(() => null);
+    const displayName = facts?.name || slugToDisplay(slug);
+    const canonicalUrl = `${SITE_URL}/${lang}/trainer/${slug}`;
+
+    const personSchema: Record<string, unknown> = {
       "@context": "https://schema.org",
       "@type": "Person",
       "name": displayName,
       "jobTitle": "Padel Trainer",
-      "url": `${SITE_URL}/${lang}/trainer/${slug}`,
+      "url": canonicalUrl,
     };
+    if (facts?.bio) personSchema.description = facts.bio.slice(0, 500);
+    if (facts?.city) personSchema.address = { "@type": "PostalAddress", addressLocality: facts.city };
+    if (facts?.hourlyRate) {
+      personSchema.makesOffer = {
+        "@type": "Offer",
+        priceCurrency: "EUR",
+        price: facts.hourlyRate,
+        itemOffered: { "@type": "Service", name: "Padel coaching session" },
+      };
+    }
+    const ar = facts ? aggregateRatingSchema(facts.avgRating, facts.reviewCount) : null;
+    if (ar) personSchema.aggregateRating = ar;
+
+    const tldrParts: string[] = [];
+    if (facts?.city) tldrParts.push(`Based in ${facts.city}`);
+    if (facts?.experienceYears) tldrParts.push(`${facts.experienceYears}+ years coaching`);
+    if (facts?.hourlyRate) tldrParts.push(`From €${facts.hourlyRate}/hour`);
+    if (facts?.avgRating && facts.reviewCount > 0) tldrParts.push(`${facts.avgRating}★ (${facts.reviewCount} reviews)`);
+    if (facts?.specializations?.length) tldrParts.push(`Specializes in ${facts.specializations.slice(0, 3).join(', ')}`);
+    const tldr = tldrParts.length ? tldrParts.join(' · ') + '.' : `Padel trainer on PadelTrainer.ai.`;
+
     const faqs = trainerFaqs(displayName, lang);
-    return page(
-      `${displayName} - Padel Trainer | PadelTrainer.ai`,
-      `Book padel lessons with ${displayName}. View profile, experience, rates, and reviews on PadelTrainer.ai.`,
-      `/trainer/${slug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>
-       ${renderFaqHtml(faqs, lang)}
-       ${renderPopularCitiesHtml(lang)}`,
-      [personSchema, breadcrumbSchema(lang, [
+    const description = facts?.bio
+      ? facts.bio.slice(0, 155)
+      : `Book padel lessons with ${displayName}${facts?.city ? ` in ${facts.city}` : ''}. ${facts?.hourlyRate ? `From €${facts.hourlyRate}/hr. ` : ''}View profile, experience and reviews.`;
+
+    const reviewSds = facts ? reviewSchemas(facts.recentReviews, displayName) : [];
+    const sd: object[] = [
+      personSchema,
+      breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
-        { name: 'Trainers', path: '/trainers' },
+        { name: L.trainers, path: '/trainers' },
         { name: displayName },
-      ]), faqPageSchema(faqs)]
+      ]),
+      faqPageSchema(faqs),
+      speakableSchema(canonicalUrl),
+      ...reviewSds,
+    ];
+
+    const citySlugForNearby = facts?.city ? facts.city.toLowerCase().replace(/\s+/g, '-') : null;
+    const province = citySlugForNearby ? getProvinceForCity(citySlugForNearby) : undefined;
+    const nearby = citySlugForNearby ? getNearbyCities(citySlugForNearby) : [];
+
+    return page(
+      `${displayName} — Padel Trainer${facts?.city ? ` in ${facts.city}` : ''} | PadelTrainer.ai`,
+      description,
+      `/trainer/${slug}`, lang,
+      `<h1>${esc(displayName)}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${renderLastUpdatedHtml(facts?.lastUpdated || null, lang)}
+       ${facts?.bio ? `<p>${esc(facts.bio.slice(0, 600))}</p>` : ''}
+       ${facts?.primaryClub ? `<p><strong>${esc(L.trainersAtClub)}:</strong> <a href="${SITE_URL}/${lang}/locations/${facts.primaryClub.slug}">${esc(facts.primaryClub.name)}</a> — ${esc(facts.primaryClub.city)}</p>` : ''}
+       ${facts ? renderRecentReviewsHtml(facts.recentReviews, lang) : ''}
+       ${renderFaqHtml(faqs, lang)}
+       ${province ? renderNearbyCitiesHtml(province.name, nearby.map(c => ({ slug: c, name: slugToDisplay(c) })), lang) : ''}
+       ${renderPopularCitiesHtml(lang)}`,
+      sd
     );
   }
 
   // City trainers: /trainers/:city
   const cityTrainersMatch = cleanPath.match(/^\/trainers\/([^/]+)$/);
-  if (cityTrainersMatch) {
+  if (cityTrainersMatch && cityTrainersMatch[1] !== 'region') {
     const citySlug = cityTrainersMatch[1];
     const city = slugToDisplay(citySlug);
+    const L = labels(lang);
+    const facts = await fetchCityFacts(citySlug).catch(() => null);
+    const province = getProvinceForCity(citySlug);
+    const nearby = getNearbyCities(citySlug);
+
+    const tldrParts: string[] = [];
+    if (facts?.trainerCount) tldrParts.push(`${facts.trainerCount} certified trainers`);
+    if (facts?.locationCount) tldrParts.push(`${facts.locationCount} padel clubs`);
+    if (facts?.minRate && facts?.maxRate) tldrParts.push(`Lessons €${facts.minRate}–€${facts.maxRate}/hr (avg €${facts.avgRate})`);
+    const tldr = tldrParts.length
+      ? `${tldrParts.join(' · ')}.`
+      : `Find and book certified padel trainers in ${city}.`;
+
     const faqs = cityFaqs(city, lang);
+    const canonicalUrl = `${SITE_URL}/${lang}/trainers/${citySlug}`;
+    const description = facts?.trainerCount
+      ? `${facts.trainerCount} certified padel trainers in ${city}${facts.minRate && facts.maxRate ? ` from €${facts.minRate}–€${facts.maxRate}/hr` : ''}. Compare rates, read verified reviews, and book your first lesson.`
+      : `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`;
+
     return page(
-      `Padel Trainers in ${city} | Find & Book Lessons`,
-      `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`,
+      `Padel Trainers in ${city} | ${facts?.trainerCount ? `${facts.trainerCount} Coaches` : 'Find & Book Lessons'}`,
+      description,
       `/trainers/${citySlug}`, lang,
-      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>
+      `<h1>${esc(L.topTrainers)} ${esc(city)}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${renderLastUpdatedHtml(facts?.lastUpdated || null, lang)}
+       ${facts ? renderTopTrainersHtml(city, facts.topTrainers, lang) : ''}
+       ${facts ? renderTopClubsHtml(city, facts.topClubs, lang) : ''}
        ${renderFaqHtml(faqs, lang)}
+       ${province ? renderNearbyCitiesHtml(province.name, nearby.map(c => ({ slug: c, name: slugToDisplay(c) })), lang) : ''}
        ${renderPopularCitiesHtml(lang, citySlug)}
        ${renderPopularRegionsHtml(lang)}`,
       [breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
-        { name: 'Trainers', path: '/trainers' },
+        { name: L.trainers, path: '/trainers' },
         { name: city },
-      ]), faqPageSchema(faqs)]
+      ]), faqPageSchema(faqs), speakableSchema(canonicalUrl)]
     );
   }
 
@@ -181,8 +261,8 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
   if (padelCityMatch) {
     const citySlug = padelCityMatch[1];
     const city = slugToDisplay(citySlug);
+    const L = labels(lang);
 
-    // Try to fetch Sanity SEO fields for this city
     let seoTitle = `Padel in ${city} — Courts, Clubs & Coaches`;
     let seoDesc = `Find padel clubs and coaches in ${city}. Compare courts, book lessons and start playing padel today.`;
 
@@ -204,18 +284,33 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
       // Sanity fetch failed — use defaults
     }
 
+    const facts = await fetchCityFacts(citySlug).catch(() => null);
+    const province = getProvinceForCity(citySlug);
+    const nearby = getNearbyCities(citySlug);
+    const tldrParts: string[] = [];
+    if (facts?.locationCount) tldrParts.push(`${facts.locationCount} padel clubs`);
+    if (facts?.trainerCount) tldrParts.push(`${facts.trainerCount} certified coaches`);
+    if (facts?.minRate && facts?.maxRate) tldrParts.push(`Lessons €${facts.minRate}–€${facts.maxRate}/hr`);
+    const tldr = tldrParts.length ? `${tldrParts.join(' · ')}.` : `Discover padel in ${city}.`;
+    const canonicalUrl = `${SITE_URL}/${lang}/padel/${citySlug}`;
+
     const faqs = cityFaqs(city, lang);
     return page(
       seoTitle,
       seoDesc,
       `/padel/${citySlug}`, lang,
-      `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>
+      `<h1>Padel in ${esc(city)}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${renderLastUpdatedHtml(facts?.lastUpdated || null, lang)}
+       ${facts ? renderTopClubsHtml(city, facts.topClubs, lang) : ''}
+       ${facts ? renderTopTrainersHtml(city, facts.topTrainers, lang) : ''}
        ${renderFaqHtml(faqs, lang)}
+       ${province ? renderNearbyCitiesHtml(province.name, nearby.map(c => ({ slug: c, name: slugToDisplay(c) })), lang) : ''}
        ${renderPopularCitiesHtml(lang, citySlug)}`,
       [breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
         { name: city },
-      ]), faqPageSchema(faqs)]
+      ]), faqPageSchema(faqs), speakableSchema(canonicalUrl)]
     );
   }
 
@@ -223,27 +318,54 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
   const locationMatch = cleanPath.match(/^\/locations\/([^/]+)$/);
   if (locationMatch) {
     const locSlug = locationMatch[1];
-    const displayName = slugToDisplay(locSlug);
-    const placeSchema = {
-      "@context": "https://schema.org",
-      "@type": "SportsActivityLocation",
-      "name": displayName,
-      "url": `${SITE_URL}/${lang}/locations/${locSlug}`,
-      "sport": "Padel",
-    };
+    const L = labels(lang);
+    const facts = await fetchClubFacts(locSlug).catch(() => null);
+    const displayName = facts?.name || slugToDisplay(locSlug);
+    const canonicalUrl = `${SITE_URL}/${lang}/locations/${locSlug}`;
+
+    const placeSchema = facts
+      ? localBusinessSchema({
+          url: canonicalUrl,
+          name: facts.name,
+          city: facts.city,
+          street: facts.street,
+          postalCode: facts.postalCode,
+          country: facts.country,
+          latitude: facts.latitude,
+          longitude: facts.longitude,
+          reviewAvg: facts.reviewStats.avg,
+          reviewCount: facts.reviewStats.count,
+        })
+      : { "@context": "https://schema.org", "@type": "SportsActivityLocation", name: displayName, url: canonicalUrl, sport: "Padel" };
+
+    const tldrParts: string[] = [];
+    if (facts?.totalCourts) tldrParts.push(`${facts.totalCourts} courts${facts.indoorCourts ? ` (${facts.indoorCourts} indoor` : ''}${facts.outdoorCourts ? `${facts.indoorCourts ? ', ' : ' ('}${facts.outdoorCourts} outdoor)` : facts.indoorCourts ? ')' : ''}`);
+    if (facts?.googleRating) tldrParts.push(`${facts.googleRating}★ on Google${facts.googleReviewCount ? ` (${facts.googleReviewCount} reviews)` : ''}`);
+    if (facts?.trainersAtClub.length) tldrParts.push(`${facts.trainersAtClub.length} resident coaches`);
+    const tldr = tldrParts.length ? `${tldrParts.join(' · ')}.` : `Padel club ${displayName}.`;
+
     const faqs = clubFaqs(displayName, lang);
+    const description = facts
+      ? `${displayName} in ${facts.city}: ${facts.totalCourts || 'multiple'} padel courts${facts.googleRating ? `, rated ${facts.googleRating}★ on Google` : ''}. View trainers and book a lesson.`
+      : `Discover ${displayName}. View courts, trainers, and book padel lessons at this club.`;
+
     return page(
-      `${displayName} — Padel Club | PadelTrainer.ai`,
-      `Discover ${displayName}. View courts, trainers, and book padel lessons at this club.`,
+      `${displayName} — Padel Club${facts ? ` in ${facts.city}` : ''} | PadelTrainer.ai`,
+      description,
       `/locations/${locSlug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel club on PadelTrainer.ai</p>
+      `<h1>${esc(displayName)}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${renderLastUpdatedHtml(facts?.lastUpdated || null, lang)}
+       ${facts?.street ? `<p><strong>Address:</strong> ${esc(facts.street)}${facts.postalCode ? `, ${esc(facts.postalCode)}` : ''} ${esc(facts.city)}</p>` : ''}
+       ${facts ? renderTrainersAtClubHtml(displayName, facts.trainersAtClub, lang) : ''}
        ${renderFaqHtml(faqs, lang)}
+       ${facts ? `<p><a href="${SITE_URL}/${lang}/trainers/${facts.city.toLowerCase().replace(/\s+/g, '-')}">More trainers in ${esc(facts.city)}</a></p>` : ''}
        ${renderPopularCitiesHtml(lang)}`,
       [placeSchema, breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
-        { name: 'Locations', path: '/locations' },
+        { name: L.locations, path: '/locations' },
         { name: displayName },
-      ]), faqPageSchema(faqs)]
+      ]), faqPageSchema(faqs), speakableSchema(canonicalUrl)]
     );
   }
 
@@ -265,27 +387,61 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
   const academyMatch = cleanPath.match(/^\/academies\/([^/]+)$/);
   if (academyMatch) {
     const acSlug = academyMatch[1];
-    const displayName = slugToDisplay(acSlug);
-    const orgSchema = {
+    const L = labels(lang);
+    const facts = await fetchAcademyFacts(acSlug).catch(() => null);
+    const displayName = facts?.name || slugToDisplay(acSlug);
+    const canonicalUrl = `${SITE_URL}/${lang}/academies/${acSlug}`;
+
+    const orgSchema: Record<string, unknown> = {
       "@context": "https://schema.org",
       "@type": "EducationalOrganization",
       "name": displayName,
-      "url": `${SITE_URL}/${lang}/academies/${acSlug}`,
+      "url": canonicalUrl,
       "sport": "Padel",
     };
+    if (facts?.description) orgSchema.description = facts.description.slice(0, 500);
+    if (facts?.country) orgSchema.address = { "@type": "PostalAddress", addressCountry: facts.country };
+    const sameAs = facts ? [facts.websiteUrl, facts.social.instagram, facts.social.facebook, facts.social.linkedin].filter(Boolean) : [];
+    if (sameAs.length) orgSchema.sameAs = sameAs;
+
+    const courseSds = (facts?.upcomingCycles || []).slice(0, 5).map(c => courseSchema({
+      url: canonicalUrl,
+      name: c.name,
+      providerName: displayName,
+      providerUrl: canonicalUrl,
+      startDate: c.startDate,
+      endDate: c.endDate,
+      price: c.price,
+      currency: c.currency,
+    }));
+
+    const tldrParts: string[] = [];
+    if (facts?.trainerCount) tldrParts.push(`${facts.trainerCount} trainers`);
+    if (facts?.activeCycleCount) tldrParts.push(`${facts.activeCycleCount} upcoming programs`);
+    if (facts?.country) tldrParts.push(facts.country);
+    const tldr = tldrParts.length ? `${tldrParts.join(' · ')}.` : `Padel academy ${displayName}.`;
+
     const faqs = academyFaqs(displayName, lang);
+    const description = facts?.description
+      ? facts.description.slice(0, 155)
+      : `Discover ${displayName}. View trainers, programs, and book padel lessons.`;
+
     return page(
       `${displayName} — Padel Academy | PadelTrainer.ai`,
-      `Discover ${displayName}. View trainers, programs, and book padel lessons.`,
+      description,
       `/academies/${acSlug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel academy on PadelTrainer.ai</p>
+      `<h1>${esc(displayName)}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${renderLastUpdatedHtml(facts?.lastUpdated || null, lang)}
+       ${facts?.description ? `<p>${esc(facts.description.slice(0, 600))}</p>` : ''}
+       ${facts ? renderUpcomingCyclesHtml(facts.upcomingCycles, lang) : ''}
        ${renderFaqHtml(faqs, lang)}
        ${renderPopularCitiesHtml(lang)}`,
       [orgSchema, breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
-        { name: 'Academies', path: '/academies' },
+        { name: L.academies, path: '/academies' },
         { name: displayName },
-      ]), faqPageSchema(faqs)]
+      ]), faqPageSchema(faqs), speakableSchema(canonicalUrl), ...courseSds]
     );
   }
 
@@ -492,7 +648,10 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
   // Province/region pages: /trainers/region/:slug
   const provinceMatch = cleanPath.match(/^\/trainers\/region\/([^/]+)$/);
   if (provinceMatch) {
-    const province = slugToDisplay(provinceMatch[1]);
+    const provinceSlug = provinceMatch[1];
+    const provinceData = getProvinceBySlug(provinceSlug);
+    const province = provinceData?.name || slugToDisplay(provinceSlug);
+    const facts = await fetchProvinceFacts(provinceSlug).catch(() => null);
     const provinceMeta: Record<string, { title: string; desc: string }> = {
       en: { title: `Padel Trainers in ${province} | PadelTrainer.ai`, desc: `Find and book certified padel trainers in ${province}. Compare prices, read reviews and book your first lesson.` },
       nl: { title: `Padel Trainers in ${province} | PadelTrainer.ai`, desc: `Vind en boek gecertificeerde padel trainers in ${province}. Vergelijk prijzen, lees reviews en boek je eerste les.` },
@@ -501,14 +660,20 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
       fr: { title: `Coachs de Padel à ${province} | PadelTrainer.ai`, desc: `Trouvez et réservez des coachs de padel certifiés à ${province}. Comparez les prix, lisez les avis et réservez votre premier cours.` },
     };
     const pm = provinceMeta[lang] || provinceMeta['en']!;
+    const tldr = facts && facts.trainerCount
+      ? `${facts.trainerCount}+ certified padel resources across ${facts.cityCount} cities in ${province}.`
+      : `Padel trainers across ${province}.`;
+    const canonicalUrl = `${SITE_URL}/${lang}${cleanPath}`;
     const faqs = regionFaqs(province, lang);
     return page(
       pm.title, pm.desc, cleanPath, lang,
       `<h1>${esc(pm.title.split('|')[0].trim())}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${facts ? renderProvinceCitiesHtml(province, facts.topCities, lang) : ''}
        ${renderFaqHtml(faqs, lang)}
        ${renderPopularCitiesHtml(lang)}
        ${renderPopularRegionsHtml(lang)}`,
-      [faqPageSchema(faqs)]
+      [faqPageSchema(faqs), speakableSchema(canonicalUrl)]
     );
   }
 

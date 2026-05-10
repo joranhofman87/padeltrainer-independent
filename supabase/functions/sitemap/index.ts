@@ -85,7 +85,7 @@ function generateUrlEntry(path: string, lastmod: string, changefreq: string, pri
     for (const altLang of LANGUAGES) {
       entry += `    <xhtml:link rel="alternate" hreflang="${altLang}" href="${SITE_URL}/${altLang}${safePath}"/>\n`;
     }
-    entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${safePath}"/>\n`;
+    entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en${safePath}"/>\n`;
     entry += '  </url>\n';
   }
   return entry;
@@ -113,8 +113,8 @@ function generateBlogEntries(blogArticles: { slug: string; locale: string; canon
       for (const alt of group) {
         xml += `    <xhtml:link rel="alternate" hreflang="${alt.locale}" href="${SITE_URL}/${alt.locale}/blog/${escapeXml(alt.slug)}"/>\n`;
       }
-      const nlVersion = group.find(a => a.locale === 'nl') || group[0];
-      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.locale}/blog/${escapeXml(nlVersion.slug)}"/>\n`;
+      const enVersion = group.find(a => a.locale === 'en') || group.find(a => a.locale === 'nl') || group[0];
+      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/blog/${escapeXml(enVersion.slug)}"/>\n`;
       xml += '  </url>\n';
     }
   }
@@ -156,8 +156,8 @@ function generateSanityEntries(
       for (const alt of group) {
         result += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${pathPrefix}/${escapeXml(alt.slug)}"/>\n`;
       }
-      const nlVersion = group.find((a: { language: string }) => a.language === 'nl') || group[0];
-      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.language}/${pathPrefix}/${escapeXml(nlVersion.slug)}"/>\n`;
+      const enVersion = group.find((a: { language: string }) => a.language === 'en') || group.find((a: { language: string }) => a.language === 'nl') || group[0];
+      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/${pathPrefix}/${escapeXml(enVersion.slug)}"/>\n`;
       result += '  </url>\n';
     }
   }
@@ -381,26 +381,37 @@ Deno.serve(async (req) => {
     } else if (type === 'cities') {
       xml = xmlHeader();
 
-      // Fetch distinct cities from DB
-      const allCityRows = await fetchAllRows<{ city: string }>(
-        supabase, 'locations', 'city',
+      // Fetch city + updated_at to compute per-city max(updated_at) for B3 lastmod
+      const allCityRows = await fetchAllRows<{ city: string; updated_at: string | null }>(
+        supabase, 'locations', 'city, updated_at',
         [{ column: 'is_active', operator: 'eq', value: true }]
       );
 
       const cityMap = new Map<string, string>();
+      const cityLastmod = new Map<string, string>();
       allCityRows.forEach(loc => {
         const citySlug = loc.city.toLowerCase().replace(/\s+/g, '-');
         if (!cityMap.has(citySlug)) cityMap.set(citySlug, loc.city);
+        if (loc.updated_at) {
+          const d = loc.updated_at.split('T')[0];
+          const prev = cityLastmod.get(citySlug);
+          if (!prev || d > prev) cityLastmod.set(citySlug, d);
+        }
       });
 
       // Also fetch Sanity cityPage slugs to include cities that may not have DB locations yet
-      const sanityCitySlugs = await sanity.fetch<{ citySlug: string }[]>(
-        `*[_type == "cityPage" && !(_id in path("drafts.**"))]{ citySlug }`
-      ).catch(() => [] as { citySlug: string }[]);
+      const sanityCitySlugs = await sanity.fetch<{ citySlug: string; _updatedAt: string }[]>(
+        `*[_type == "cityPage" && !(_id in path("drafts.**"))]{ citySlug, _updatedAt }`
+      ).catch(() => [] as { citySlug: string; _updatedAt: string }[]);
 
       for (const doc of sanityCitySlugs) {
         if (doc.citySlug && !cityMap.has(doc.citySlug)) {
           cityMap.set(doc.citySlug, doc.citySlug);
+        }
+        if (doc.citySlug && doc._updatedAt) {
+          const d = doc._updatedAt.split('T')[0];
+          const prev = cityLastmod.get(doc.citySlug);
+          if (!prev || d > prev) cityLastmod.set(doc.citySlug, d);
         }
       }
 
@@ -409,8 +420,9 @@ Deno.serve(async (req) => {
       const pageCities = allCitySlugs.slice(start, start + CITIES_PER_PAGE);
 
       for (const citySlug of pageCities) {
-        xml += generateUrlEntry(`/trainers/${citySlug}`, today, 'weekly', '0.8');
-        xml += generateUrlEntry(`/padel/${citySlug}`, today, 'weekly', '0.8');
+        const lm = cityLastmod.get(citySlug) || today;
+        xml += generateUrlEntry(`/trainers/${citySlug}`, lm, 'weekly', '0.8');
+        xml += generateUrlEntry(`/padel/${citySlug}`, lm, 'weekly', '0.8');
       }
 
       xml += '</urlset>';
