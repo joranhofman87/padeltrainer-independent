@@ -701,15 +701,33 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
             {/* Email composer panel */}
             <Card className="lg:col-span-2">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">{t('emailCampaign.compose.title')}</CardTitle>
-                <CardDescription>
-                  <Trans
-                    i18nKey="emailCampaign.compose.descriptionHtml"
-                    t={t}
-                    values={{ var: '{{first_name}}' }}
-                    components={{ code: <code className="text-xs bg-muted px-1 py-0.5 rounded" /> }}
-                  />
-                </CardDescription>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base">{t('emailCampaign.compose.title')}</CardTitle>
+                    <CardDescription>
+                      <Trans
+                        i18nKey="emailCampaign.compose.descriptionHtml"
+                        t={t}
+                        values={{ var: '{{first_name}}' }}
+                        components={{ code: <code className="text-xs bg-muted px-1 py-0.5 rounded" /> }}
+                      />
+                    </CardDescription>
+                  </div>
+                  {currentDraftId && (
+                    <Badge variant="secondary" className="gap-1.5 shrink-0">
+                      <FileText className="h-3 w-3" />
+                      {t('emailCampaign.compose.editingDraft')}
+                      <button
+                        type="button"
+                        onClick={handleDiscardDraftEdit}
+                        className="ml-1 hover:text-foreground"
+                        aria-label={t('emailCampaign.compose.discardDraftChanges')}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
