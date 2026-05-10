@@ -1,18 +1,63 @@
 # PadelTrainer.ai Robots.txt
 
+# ─── Default rules for all crawlers ──────────────────────────────
 User-agent: *
 Allow: /
+Allow: /sitemaps/
+Allow: /llms.txt
+Allow: /llms-full.txt
 Disallow: /app
 Disallow: /app/
 Disallow: /*/pay/
 Disallow: /*/register/
-Disallow: /*/auth
-Disallow: /*/settings
-Disallow: /*/dashboard
 Disallow: /claim/
 Disallow: /*/claim/
+# Strip tracking params from indexed URLs
+Disallow: /*?utm_*
+Disallow: /*?ref=*
 
-# Crawl-delay for aggressive bots
+# ─── AI / LLM training & search crawlers (allowed) ──────────────
+# We explicitly permit AI assistants to read public marketing content.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+# ─── Crawl-delay for aggressive SEO bots ────────────────────────
 User-agent: AhrefsBot
 Crawl-delay: 2
 
@@ -25,7 +70,7 @@ Crawl-delay: 5
 User-agent: DotBot
 Crawl-delay: 5
 
-# Sitemap location
+# ─── Sitemap ────────────────────────────────────────────────────
 Sitemap: https://padeltrainer.ai/sitemap.xml
 
 # LLM context files for AI crawlers

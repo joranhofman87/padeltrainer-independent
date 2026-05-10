@@ -70,15 +70,17 @@ export function SEO({
         url: `${baseUrl}/${langCode}${pathWithoutLang}`
       }));
 
-  // x-default: use Dutch translation if available, else fall back to nl prefix
+  // x-default: point to the language-picker root so Google can pick the user's locale.
+  // For translated content (CMS pages with explicit per-language slugs), fall back to the
+  // English translation if available, otherwise the unprefixed path.
   const xDefaultUrl = hasTranslatedSlugs
     ? (() => {
-        const nlTranslation = translations.find(t => t.language === 'nl');
-        return nlTranslation
-          ? `${baseUrl}/nl/${pathPrefix}/${nlTranslation.slug}`
-          : `${MARKETING_DOMAIN}/nl${pathWithoutLang}`;
+        const enTranslation = translations.find(t => t.language === 'en');
+        return enTranslation
+          ? `${baseUrl}/en/${pathPrefix}/${enTranslation.slug}`
+          : `${MARKETING_DOMAIN}${pathWithoutLang || '/'}`;
       })()
-    : `${MARKETING_DOMAIN}/nl${pathWithoutLang}`;
+    : `${MARKETING_DOMAIN}${pathWithoutLang || '/'}`;
 
   return (
     <Helmet>
@@ -102,7 +104,7 @@ export function SEO({
           href={altUrl} 
         />
       ))}
-      {/* x-default points to Dutch as the primary/default language */}
+      {/* x-default points to the language-picker root for locale auto-selection */}
       <link 
         rel="alternate" 
         hrefLang="x-default" 
@@ -115,6 +117,10 @@ export function SEO({
       <meta property="og:type" content={type} />
       <meta property="og:url" content={fullUrl} />
       <meta property="og:image" content={image || defaultImage} />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:type" content="image/png" />
+      <meta property="og:image:alt" content={title} />
       <meta property="og:site_name" content="PadelTrainer.ai" />
       <meta property="og:locale" content={OG_LOCALE_MAP[currentLang] || 'en_US'} />
       {SUPPORTED_LANGUAGES.filter(l => l !== currentLang).map(l => (
@@ -137,6 +143,7 @@ export function SEO({
       <meta name="twitter:title" content={fullTitle} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:image" content={image || defaultImage} />
+      <meta name="twitter:image:alt" content={title} />
       
       {/* Structured Data */}
       {structuredData && (
