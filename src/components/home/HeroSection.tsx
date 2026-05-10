@@ -105,10 +105,10 @@ export function HeroSection() {
                 {t('homev2.hero.mock_today', 'Today · Tuesday')}
               </div>
 
-              <SlotRow time="07:30" title={t('homev2.hero.mock_row1', 'Group · 2/4')} sub="Court 2 · 60 min" status="paid" />
-              <SlotRow time="09:00" title={t('homev2.hero.mock_row2', 'Private · Daan v.')} sub="Court 1 · 45 min" status="confirmed" />
-              <SlotRow time="10:30" title={t('homev2.hero.mock_row3', 'Available')} sub="Court 3 · 60 min" status="open" />
-              <SlotRow time="12:00" title={t('homev2.hero.mock_row4', 'Group · 4/4 · Sold out')} sub="Court 2 · 60 min" status="paid" />
+              <SlotRow time="07:30" title={t('homev2.hero.mock_row1', 'Group · 2/4')} sub={t('homev2.hero.mock_row1_sub', 'Court 2 · 60 min')} status="paid" statusLabel={t('homev2.hero.status_paid', 'Paid')} />
+              <SlotRow time="09:00" title={t('homev2.hero.mock_row2', 'Private · Daan v.')} sub={t('homev2.hero.mock_row2_sub', 'Court 1 · 45 min')} status="confirmed" statusLabel={t('homev2.hero.status_confirmed', 'Confirmed')} />
+              <SlotRow time="10:30" title={t('homev2.hero.mock_row3', 'Available')} sub={t('homev2.hero.mock_row3_sub', 'Court 3 · 60 min')} status="open" statusLabel={t('homev2.hero.status_open', 'Auto-fill on')} />
+              <SlotRow time="12:00" title={t('homev2.hero.mock_row4', 'Group · 4/4 · Sold out')} sub={t('homev2.hero.mock_row4_sub', 'Court 2 · 60 min')} status="paid" statusLabel={t('homev2.hero.status_paid', 'Paid')} />
 
               <div className="flex items-center gap-2 px-3 py-2 mt-2 rounded-lg bg-navy-50 text-[11px] sm:text-xs text-navy-600">
                 <GoogleCalendarLogo className="w-4 h-4 flex-shrink-0" />
