@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
 
 // ─── Route Matching ─────────────────────────────────────────────
 
-function renderPath(cleanPath: string, lang: string): string {
+async function renderPath(cleanPath: string, lang: string): Promise<string> {
   // Homepage
   if (cleanPath === '/' || cleanPath === '') {
     const titles: Record<string, string> = {
