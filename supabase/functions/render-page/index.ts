@@ -628,12 +628,19 @@ async function resolvePublicHandle(handle: string): Promise<{ owner_type: string
 // ─── HTML Builder ───────────────────────────────────────────────
 
 function page(title: string, description: string, urlPath: string, lang: string, body: string, structuredData?: object[]): string {
-  const canonicalUrl = `${SITE_URL}/${lang}${urlPath}`;
+  // Canonical normalization: strip trailing slash (except root), collapse double slashes
+  const normalizePath = (p: string) => {
+    if (!p || p === '/') return '';
+    const collapsed = p.replace(/\/{2,}/g, '/');
+    return collapsed.endsWith('/') ? collapsed.slice(0, -1) : collapsed;
+  };
+  const canonicalPath = normalizePath(urlPath);
+  const canonicalUrl = `${SITE_URL}/${lang}${canonicalPath}`;
   const ogImage = `${SITE_URL}/og-image.png`;
   const ogLocale = OG_LOCALE_MAP[lang] || 'en_US';
 
   const hreflangTags = SUPPORTED_LANGS
-    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${urlPath}">`)
+    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${canonicalPath}">`)
     .join('\n  ');
   const ogLocaleAlternates = SUPPORTED_LANGS
     .filter(l => l !== lang)
@@ -653,7 +660,7 @@ function page(title: string, description: string, urlPath: string, lang: string,
   <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${canonicalUrl}">
   ${hreflangTags}
-  <link rel="alternate" hreflang="x-default" href="${SITE_URL}${urlPath || '/'}">
+  <link rel="alternate" hreflang="x-default" href="${SITE_URL}/en${canonicalPath}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:description" content="${esc(description)}">
