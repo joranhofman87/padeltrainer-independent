@@ -1162,6 +1162,11 @@
       "campaignSent": "Campaign sent!",
       "campaignSentDesc": "Emails are being sent to {{count}} recipients.",
       "campaignError": "Could not send campaign.",
+      "draftSaved": "Draft saved",
+      "draftSavedDesc": "You can come back to finish it later.",
+      "draftError": "Could not save draft.",
+      "draftDeleted": "Draft deleted",
+      "draftLoaded": "Draft loaded",
       "error": "Error"
     }
   }
