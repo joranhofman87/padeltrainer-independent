@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { Target, Heart, Users, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+import { buildBreadcrumbList } from '@/lib/structuredData';
 
 export default function About() {
   const { t } = useTranslation('marketing');
