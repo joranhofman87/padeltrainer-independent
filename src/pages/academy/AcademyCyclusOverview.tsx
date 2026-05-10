@@ -742,21 +742,21 @@ export default function AcademyCyclusOverview() {
           <Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
-                <TableHead className="w-[40px]">
+                <TableHead className="w-[40px] whitespace-nowrap">
                   <Checkbox
                     checked={sortedData.length > 0 && selectedIds.size === sortedData.length}
                     onCheckedChange={toggleSelectAll}
                   />
                 </TableHead>
-                <SortableTableHead sortKey="cyclus_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.name')}</SortableTableHead>
-                <SortableTableHead sortKey="trainer_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.trainer')}</SortableTableHead>
-                <TableHead>{t('cyclesTab.location')}</TableHead>
-                <TableHead>{t('cyclesTab.dayTime')}</TableHead>
-                <SortableTableHead sortKey="period_start" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.period')}</SortableTableHead>
-                <SortableTableHead sortKey="sessions" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.sessions')}</SortableTableHead>
-                <SortableTableHead sortKey="player_count" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.players')}</SortableTableHead>
-                <TableHead>{t('cyclesTab.price')}</TableHead>
-                <TableHead>{t('cyclesTab.occupancy')}</TableHead>
+                <SortableTableHead sortKey="cyclus_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.name')}</SortableTableHead>
+                <SortableTableHead sortKey="trainer_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.trainer')}</SortableTableHead>
+                <TableHead className="whitespace-nowrap">{t('cyclesTab.location')}</TableHead>
+                <TableHead className="whitespace-nowrap">{t('cyclesTab.dayTime')}</TableHead>
+                <SortableTableHead sortKey="period_start" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.period')}</SortableTableHead>
+                <SortableTableHead sortKey="sessions" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.sessions')}</SortableTableHead>
+                <SortableTableHead sortKey="player_count" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.players')}</SortableTableHead>
+                <TableHead className="whitespace-nowrap">{t('cyclesTab.price')}</TableHead>
+                <TableHead className="whitespace-nowrap">{t('cyclesTab.occupancy')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
