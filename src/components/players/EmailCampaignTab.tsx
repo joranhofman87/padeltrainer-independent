@@ -326,13 +326,36 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   };
 
 
+  const subjectInputRef = useRef<HTMLInputElement | null>(null);
+
   const insertVariable = (variable: string) => {
     document.execCommand('insertText', false, `{{${variable}}}`);
   };
 
-  const getPreviewHtml = () => {
-    return bodyHtml.replace(/\{\{name\}\}/gi, 'Jan de Vries');
+  const insertSubjectVariable = (variable: string) => {
+    const token = `{{${variable}}}`;
+    const el = subjectInputRef.current;
+    if (!el) {
+      setSubject((s) => s + token);
+      return;
+    }
+    const start = el.selectionStart ?? subject.length;
+    const end = el.selectionEnd ?? subject.length;
+    const next = subject.slice(0, start) + token + subject.slice(end);
+    setSubject(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    });
   };
+
+  const applyPreviewVars = (s: string) =>
+    s
+      .replace(/\{\{first_name\}\}/gi, 'Jan')
+      .replace(/\{\{name\}\}/gi, 'Jan de Vries');
+
+  const getPreviewHtml = () => applyPreviewVars(bodyHtml);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
