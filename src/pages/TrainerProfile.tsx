@@ -728,6 +728,9 @@ export default function TrainerProfile() {
         <ProfileFullWidthSection>
           <VideoGallery trainerProfileId={trainer.id} />
         </ProfileFullWidthSection>
+
+        <SeoFaq items={trainerFaqs(profile.full_name || 'this trainer', currentLang)} />
+      </ProfileFullWidthSection>
       </ProfileLayout>
     </>
   );
