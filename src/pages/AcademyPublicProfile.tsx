@@ -417,6 +417,8 @@ export default function AcademyPublicProfile() {
 
         {/* Reviews */}
         {academy.id && <AcademyReviews academyId={academy.id} />}
+
+        <SeoFaq items={academyFaqs(academy.name, currentLang)} />
       </ProfileLayout>
     </>
   );

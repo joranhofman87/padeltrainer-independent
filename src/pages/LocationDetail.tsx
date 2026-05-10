@@ -837,6 +837,8 @@ export default function LocationDetail() {
         {/* Learn to Play Padel Section */}
         <LocationLearnSection lang={currentLang} />
 
+        <SeoFaq items={clubFaqs(location.name, currentLang)} />
+
         {location && user && (
           <ClaimClubDialog
             open={showClaimDialog}

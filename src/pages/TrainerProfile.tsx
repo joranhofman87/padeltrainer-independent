@@ -729,8 +729,9 @@ export default function TrainerProfile() {
           <VideoGallery trainerProfileId={trainer.id} />
         </ProfileFullWidthSection>
 
-        <SeoFaq items={trainerFaqs(profile.full_name || 'this trainer', currentLang)} />
-      </ProfileFullWidthSection>
+        <ProfileFullWidthSection>
+          <SeoFaq items={trainerFaqs(profile.full_name || 'this trainer', currentLang)} className="py-4" />
+        </ProfileFullWidthSection>
       </ProfileLayout>
     </>
   );
