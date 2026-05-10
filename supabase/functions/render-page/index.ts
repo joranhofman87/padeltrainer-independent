@@ -114,16 +114,19 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       "jobTitle": "Padel Trainer",
       "url": `${SITE_URL}/${lang}/trainer/${slug}`,
     };
+    const faqs = trainerFaqs(displayName, lang);
     return page(
       `${displayName} - Padel Trainer | PadelTrainer.ai`,
       `Book padel lessons with ${displayName}. View profile, experience, rates, and reviews on PadelTrainer.ai.`,
       `/trainer/${slug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>`,
+      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>
+       ${renderFaqHtml(faqs, lang)}
+       ${renderPopularCitiesHtml(lang)}`,
       [personSchema, breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
         { name: 'Trainers', path: '/trainers' },
         { name: displayName },
-      ])]
+      ]), faqPageSchema(faqs)]
     );
   }
 
@@ -132,16 +135,20 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
   if (cityTrainersMatch) {
     const citySlug = cityTrainersMatch[1];
     const city = slugToDisplay(citySlug);
+    const faqs = cityFaqs(city, lang);
     return page(
       `Padel Trainers in ${city} | Find & Book Lessons`,
       `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`,
       `/trainers/${citySlug}`, lang,
-      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>`,
+      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>
+       ${renderFaqHtml(faqs, lang)}
+       ${renderPopularCitiesHtml(lang, citySlug)}
+       ${renderPopularRegionsHtml(lang)}`,
       [breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
         { name: 'Trainers', path: '/trainers' },
         { name: city },
-      ])]
+      ]), faqPageSchema(faqs)]
     );
   }
 
