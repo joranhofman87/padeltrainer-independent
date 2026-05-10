@@ -16,7 +16,7 @@ import {
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, LayoutGrid, ArrowLeft, Plus, Clock, BarChart3, Repeat, SlidersHorizontal, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, LayoutGrid, ArrowLeft, Plus, Clock, BarChart3, Repeat, SlidersHorizontal, X, User, MapPin, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
