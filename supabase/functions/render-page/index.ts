@@ -526,12 +526,16 @@ function page(title: string, description: string, urlPath: string, lang: string,
   <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${canonicalUrl}">
   ${hreflangTags}
-  <link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${urlPath}">
+  <link rel="alternate" hreflang="x-default" href="${SITE_URL}${urlPath || '/'}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:description" content="${esc(description)}">
   <meta property="og:url" content="${canonicalUrl}">
   <meta property="og:image" content="${ogImage}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="${esc(title)}">
   <meta property="og:site_name" content="PadelTrainer.ai">
   <meta property="og:locale" content="${ogLocale}">
   ${ogLocaleAlternates}
@@ -539,6 +543,7 @@ function page(title: string, description: string, urlPath: string, lang: string,
   <meta name="twitter:title" content="${esc(title)}">
   <meta name="twitter:description" content="${esc(description)}">
   <meta name="twitter:image" content="${ogImage}">
+  <meta name="twitter:image:alt" content="${esc(title)}">
   <link rel="icon" href="${SITE_URL}/favicon.ico">
   ${sdScripts}
 </head>
