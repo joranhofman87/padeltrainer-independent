@@ -444,18 +444,9 @@ export default function AcademyPlayerDetail() {
                 const todayIso = new Date().toISOString().slice(0, 10);
                 const overdueCount = invoices.filter((inv) => {
                   const status = (inv.status || '').toLowerCase();
-                  const isPaid = status === 'paid';
-                  const isClosed = status === 'cancelled' || status === 'draft' || status === 'void';
-                  if (status === 'overdue') return true;
-                  return !!(inv as any).invoice_date === false
-                    ? false
-                    : !!inv.invoice_date && false;
-                }).length || invoices.filter((inv) => {
-                  const status = (inv.status || '').toLowerCase();
                   if (status === 'overdue') return true;
                   if (status === 'paid' || status === 'cancelled' || status === 'draft' || status === 'void') return false;
-                  const due = (inv as any).due_date as string | null | undefined;
-                  return !!due && due < todayIso;
+                  return !!inv.due_date && inv.due_date < todayIso;
                 }).length;
                 if (!overdueCount) return null;
                 return (
