@@ -15,8 +15,25 @@ type Phase = 'intro' | 'quiz' | 'result';
 
 export default function RedFlagQuiz() {
   const { t } = useTranslation('marketing');
+  const { lang = 'en' } = useParams<{ lang: string }>();
   const [searchParams] = useSearchParams();
   const isChallenge = searchParams.get('ref') === 'challenge';
+
+  const quizSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Quiz',
+    name: t('redFlagQuiz.seo.title', "What's Your Padel Red Flag?"),
+    description: t('redFlagQuiz.seo.description', 'Find out your padel red flag in 2 minutes.'),
+    educationalLevel: 'beginner',
+    learningResourceType: 'Quiz',
+    about: { '@type': 'Thing', name: 'Padel' },
+    url: `${MARKETING_DOMAIN}/${lang}/playground/red-flag-quiz`,
+  };
+  const breadcrumb = buildBreadcrumbList([
+    { name: t('nav.home', 'Home'), url: `${MARKETING_DOMAIN}/${lang}` },
+    { name: t('playground.title', 'Padel Playground'), url: `${MARKETING_DOMAIN}/${lang}/playground` },
+    { name: t('redFlagQuiz.intro.title', "What's Your Padel Red Flag?") },
+  ]);
 
   const [phase, setPhase] = useState<Phase>('intro');
   const [currentQ, setCurrentQ] = useState(0);
