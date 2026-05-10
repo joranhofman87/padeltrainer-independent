@@ -101,6 +101,8 @@ export default function RateMyCourtPage() {
       <SEO
         title={t('rateMyCourtPage.seo.title', 'Rate My Padel Court | PadelTrainer.ai')}
         description={t('rateMyCourtPage.seo.description', 'Rate your padel club across 10 categories. Help other players find the best courts.')}
+        url={`/${lang}/playground/rate-my-court`}
+        structuredData={[breadcrumb, webAppSchema]}
       />
       <div className="container mx-auto px-4 py-16 md:py-24 max-w-xl">
         {/* Header */}
