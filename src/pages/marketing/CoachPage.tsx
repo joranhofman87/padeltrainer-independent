@@ -151,15 +151,21 @@ export default function CoachPage() {
     ...(coach.specialties?.length ? { "knowsAbout": coach.specialties } : {}),
   };
 
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${lang}` },
+    { name: 'Padel Coaches', url: `/${lang}/padel-coaches` },
+    { name: coach.name },
+  ]);
+
   return (
     <MarketingLayout>
       <SEO
-        title={coach.seo?.titleTag || `${coach.name} — Padel Content Creator`}
+        title={coach.seo?.titleTag || `${coach.name} - Padel Content Creator`}
         description={coach.seo?.metaDescription || coach.shortTagline || coach.bio || `Watch quality padel content by ${coach.name}, featured on PadelTrainer.ai`}
         url={`/padel-coaches/${slug}`}
         type="article"
         image={coach.profileImageUrl || undefined}
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema]}
         noIndex={coach.seo?.indexable === false}
         translations={translationsList}
         pathPrefix="padel-coaches"
