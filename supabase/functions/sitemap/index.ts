@@ -85,7 +85,7 @@ function generateUrlEntry(path: string, lastmod: string, changefreq: string, pri
     for (const altLang of LANGUAGES) {
       entry += `    <xhtml:link rel="alternate" hreflang="${altLang}" href="${SITE_URL}/${altLang}${safePath}"/>\n`;
     }
-    entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${safePath}"/>\n`;
+    entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en${safePath}"/>\n`;
     entry += '  </url>\n';
   }
   return entry;
@@ -114,7 +114,7 @@ function generateBlogEntries(blogArticles: { slug: string; locale: string; canon
         xml += `    <xhtml:link rel="alternate" hreflang="${alt.locale}" href="${SITE_URL}/${alt.locale}/blog/${escapeXml(alt.slug)}"/>\n`;
       }
       const nlVersion = group.find(a => a.locale === 'nl') || group[0];
-      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.locale}/blog/${escapeXml(nlVersion.slug)}"/>\n`;
+      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/blog/${escapeXml(nlVersion.slug)}"/>\n`;
       xml += '  </url>\n';
     }
   }
@@ -157,7 +157,7 @@ function generateSanityEntries(
         result += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${pathPrefix}/${escapeXml(alt.slug)}"/>\n`;
       }
       const nlVersion = group.find((a: { language: string }) => a.language === 'nl') || group[0];
-      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.language}/${pathPrefix}/${escapeXml(nlVersion.slug)}"/>\n`;
+      result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/${pathPrefix}/${escapeXml(nlVersion.slug)}"/>\n`;
       result += '  </url>\n';
     }
   }
