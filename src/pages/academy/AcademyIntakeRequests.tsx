@@ -10,6 +10,8 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { List, CalendarDays, AlertCircle, UserPlus, Download } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { PageHeader } from '@/components/ui/page-header';
+import { TableToolbar } from '@/components/ui/table-toolbar';
 import { 
   generateProposals,
   resetProposals,
