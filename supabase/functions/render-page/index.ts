@@ -425,6 +425,30 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
     return page(staticMatch.title, staticMatch.desc, cleanPath, lang, `<h1>${esc(staticMatch.title)}</h1>`);
   }
 
+  // Short link: /<handle> for trainer or academy
+  const shortMatch = cleanPath.match(/^\/([a-z0-9][a-z0-9-]*)$/i);
+  if (shortMatch && !isReservedShortHandle(shortMatch[1])) {
+    const handle = shortMatch[1].toLowerCase();
+    const resolved = await resolvePublicHandle(handle);
+    if (resolved) {
+      const canonicalPath = resolved.owner_type === 'academy'
+        ? `/academies/${resolved.slug}`
+        : `/trainer/${resolved.slug}`;
+      const displayName = slugToDisplay(resolved.slug);
+      const isAcademy = resolved.owner_type === 'academy';
+      return page(
+        isAcademy
+          ? `${displayName} — Padel Academy | PadelTrainer.ai`
+          : `${displayName} — Padel Trainer | PadelTrainer.ai`,
+        isAcademy
+          ? `Discover ${displayName}. View trainers, programs, and book padel lessons.`
+          : `Book padel lessons with ${displayName}. View profile, experience, rates, and reviews on PadelTrainer.ai.`,
+        canonicalPath, lang,
+        `<h1>${esc(displayName)}</h1><p><a href="${SITE_URL}/${lang}${canonicalPath}">View profile</a></p>`
+      );
+    }
+  }
+
   // Fallback
   return page(
     'PadelTrainer.ai — Find & Book Padel Trainers',
@@ -432,6 +456,46 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
     cleanPath, lang,
     `<h1>PadelTrainer.ai</h1><p>Find and book certified padel trainers near you.</p>`
   );
+}
+
+const RESERVED_SHORT_HANDLES = new Set([
+  'app','api','pay','auth','signup','login','onboarding','admin',
+  'trainer','trainers','academy','academies','club','clubs',
+  'locations','location','book','register','claim',
+  'playground','learn','learning','topics','blog',
+  'padel','padel-strokes','padel-coaches','padel-rules','video-tips','gear',
+  'brand','partner','privacy','terms','founding-trainers','about','pricing',
+  'rating','sitemap','robots','llms','assets','static','public',
+  'manifest','favicon','sw','service-worker','share','www','mail',
+  'home','index','search','contact','support','help','docs',
+  'en','nl','es','de','fr','it',
+]);
+
+function isReservedShortHandle(handle: string): boolean {
+  return RESERVED_SHORT_HANDLES.has(handle.toLowerCase());
+}
+
+async function resolvePublicHandle(handle: string): Promise<{ owner_type: string; slug: string } | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return null;
+    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/resolve_public_handle`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+        'Authorization': `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({ _handle: handle }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !data.owner_type || !data.slug) return null;
+    return data as { owner_type: string; slug: string };
+  } catch {
+    return null;
+  }
 }
 
 // ─── HTML Builder ───────────────────────────────────────────────
