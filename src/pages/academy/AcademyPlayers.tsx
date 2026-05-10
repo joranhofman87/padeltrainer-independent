@@ -218,7 +218,28 @@ export default function AcademyPlayers() {
 
   // Filter by search query, selected trainer, and new filters
   useEffect(() => {
-    let result = players;
+    // Build metadata lookup maps
+    const metaByGuest = new Map<string, PlayerMetadata>();
+    const metaByProfile = new Map<string, PlayerMetadata>();
+    metadata.forEach((m) => {
+      if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
+      if (m.profile_id) metaByProfile.set(m.profile_id, m);
+    });
+
+    // Enrich players with metadata
+    let result = players.map((p) => {
+      const meta = p.type === 'guest'
+        ? metaByGuest.get(p.id)
+        : metaByProfile.get(p.id.replace(/^reg-/, ''));
+      return {
+        ...p,
+        tag_ids: meta?.tag_ids || [],
+        academy_notes: meta?.notes || '',
+        metadata_id: meta?.id,
+        guest_player_id: p.type === 'guest' ? p.id : null,
+        profile_id: p.type === 'registered' ? p.id.replace(/^reg-/, '') : null,
+      };
+    });
 
     if (selectedTrainerId && selectedTrainerId !== 'all') {
       result = result.filter((p) => p.trainer_ids?.includes(selectedTrainerId));
