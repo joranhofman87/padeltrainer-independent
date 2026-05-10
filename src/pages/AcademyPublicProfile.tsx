@@ -214,7 +214,39 @@ export default function AcademyPublicProfile() {
         "name": t.profile?.full_name,
         "jobTitle": "Padel Trainer"
       }))
-    }
+    },
+    ...openCycles.slice(0, 10).map((c: any) => ({
+      "@context": "https://schema.org",
+      "@type": "Course",
+      "name": c.name,
+      "description": c.description || `${c.name} — padel cycle by ${academy.name}`,
+      "url": `${profileUrl}#cycle-${c.id}`,
+      "provider": {
+        "@type": "EducationalOrganization",
+        "name": academy.name,
+        "url": profileUrl,
+        "sameAs": academy.website_url || undefined,
+      },
+      "inLanguage": currentLang,
+      ...(c.start_date && c.end_date ? {
+        "hasCourseInstance": [{
+          "@type": "CourseInstance",
+          "courseMode": "onsite",
+          "startDate": c.start_date,
+          "endDate": c.end_date,
+          ...(c.location?.city ? { "location": { "@type": "Place", "name": c.location.name, "address": { "@type": "PostalAddress", "addressLocality": c.location.city } } } : {}),
+        }]
+      } : {}),
+      ...(c.total_price || c.price_per_session ? {
+        "offers": {
+          "@type": "Offer",
+          "price": String(c.total_price ?? c.price_per_session),
+          "priceCurrency": c.currency || 'EUR',
+          "availability": "https://schema.org/InStock",
+          "url": profileUrl,
+        }
+      } : {}),
+    }))
   ] : undefined;
 
   if (academyLoading) {
