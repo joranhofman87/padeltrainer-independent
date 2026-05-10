@@ -101,11 +101,23 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
   if (trainerMatch) {
     const slug = trainerMatch[1];
     const displayName = slugToDisplay(slug);
+    const personSchema = {
+      "@context": "https://schema.org",
+      "@type": "Person",
+      "name": displayName,
+      "jobTitle": "Padel Trainer",
+      "url": `${SITE_URL}/${lang}/trainer/${slug}`,
+    };
     return page(
       `${displayName} - Padel Trainer | PadelTrainer.ai`,
       `Book padel lessons with ${displayName}. View profile, experience, rates, and reviews on PadelTrainer.ai.`,
       `/trainer/${slug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>`
+      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>`,
+      [personSchema, breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Trainers', path: '/trainers' },
+        { name: displayName },
+      ])]
     );
   }
 
@@ -118,7 +130,12 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       `Padel Trainers in ${city} | Find & Book Lessons`,
       `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`,
       `/trainers/${citySlug}`, lang,
-      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>`
+      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Trainers', path: '/trainers' },
+        { name: city },
+      ])]
     );
   }
 
@@ -128,7 +145,11 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       'Find Padel Trainers | PadelTrainer.ai',
       'Browse all certified padel trainers. Filter by location, level, and specialization.',
       '/trainers', lang,
-      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers. Filter by location, level, and specialization.</p>`
+      `<h1>Find Padel Trainers</h1><p>Browse all certified padel trainers. Filter by location, level, and specialization.</p>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Trainers' },
+      ])]
     );
   }
 
@@ -164,7 +185,11 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       seoTitle,
       seoDesc,
       `/padel/${citySlug}`, lang,
-      `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>`
+      `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: city },
+      ])]
     );
   }
 
@@ -173,11 +198,23 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
   if (locationMatch) {
     const locSlug = locationMatch[1];
     const displayName = slugToDisplay(locSlug);
+    const placeSchema = {
+      "@context": "https://schema.org",
+      "@type": "SportsActivityLocation",
+      "name": displayName,
+      "url": `${SITE_URL}/${lang}/locations/${locSlug}`,
+      "sport": "Padel",
+    };
     return page(
       `${displayName} — Padel Club | PadelTrainer.ai`,
       `Discover ${displayName}. View courts, trainers, and book padel lessons at this club.`,
       `/locations/${locSlug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel club on PadelTrainer.ai</p>`
+      `<h1>${esc(displayName)}</h1><p>Padel club on PadelTrainer.ai</p>`,
+      [placeSchema, breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Locations', path: '/locations' },
+        { name: displayName },
+      ])]
     );
   }
 
@@ -187,7 +224,11 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       'Padel Locations | PadelTrainer.ai',
       'Browse all padel clubs and locations. Find courts near you.',
       '/locations', lang,
-      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations. Find courts near you.</p>`
+      `<h1>Padel Locations</h1><p>Browse all padel clubs and locations. Find courts near you.</p>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Locations' },
+      ])]
     );
   }
 
@@ -196,11 +237,23 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
   if (academyMatch) {
     const acSlug = academyMatch[1];
     const displayName = slugToDisplay(acSlug);
+    const orgSchema = {
+      "@context": "https://schema.org",
+      "@type": "EducationalOrganization",
+      "name": displayName,
+      "url": `${SITE_URL}/${lang}/academies/${acSlug}`,
+      "sport": "Padel",
+    };
     return page(
       `${displayName} — Padel Academy | PadelTrainer.ai`,
       `Discover ${displayName}. View trainers, programs, and book padel lessons.`,
       `/academies/${acSlug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel academy on PadelTrainer.ai</p>`
+      `<h1>${esc(displayName)}</h1><p>Padel academy on PadelTrainer.ai</p>`,
+      [orgSchema, breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Academies', path: '/academies' },
+        { name: displayName },
+      ])]
     );
   }
 
@@ -213,7 +266,12 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       fr: { title: 'Blog Padel — Conseils, Actualités & Entraînement | PadelTrainer.ai', desc: 'Lisez les derniers articles padel, conseils d\'entraînement et stratégies de match.' },
     };
     const m = blogMeta[lang] || { title: 'Padel Blog — Tips, News & Training Advice | PadelTrainer.ai', desc: 'Read the latest padel articles, training tips, match strategies, and industry news.' };
-    return page(m.title, m.desc, '/blog', lang, `<h1>${esc(m.title.split('|')[0].trim())}</h1>`);
+    return page(m.title, m.desc, '/blog', lang, `<h1>${esc(m.title.split('|')[0].trim())}</h1>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Blog' },
+      ])]
+    );
   }
 
   // Blog article: /blog/:slug
@@ -223,11 +281,29 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
     const title = slugToDisplay(slug);
     const readVerb: Record<string, string> = { nl: 'Lees', es: 'Lee', de: 'Lesen', fr: 'Lire' };
     const verb = readVerb[lang] || 'Read';
+    const articleSchema = {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": title,
+      "url": `${SITE_URL}/${lang}/blog/${slug}`,
+      "author": { "@type": "Organization", "name": "PadelTrainer.ai" },
+      "publisher": {
+        "@type": "Organization",
+        "name": "PadelTrainer.ai",
+        "logo": { "@type": "ImageObject", "url": `${SITE_URL}/favicon.png` },
+      },
+      "mainEntityOfPage": { "@type": "WebPage", "@id": `${SITE_URL}/${lang}/blog/${slug}` },
+    };
     return page(
       `${title} | PadelTrainer.ai Blog`,
       `${verb} "${title}" — PadelTrainer.ai`,
       `/blog/${slug}`, lang,
-      `<h1>${esc(title)}</h1>`
+      `<h1>${esc(title)}</h1>`,
+      [articleSchema, breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Blog', path: '/blog' },
+        { name: title },
+      ])]
     );
   }
 
@@ -589,4 +665,20 @@ function organizationSchema() {
     "url": SITE_URL,
     "logo": `${SITE_URL}/favicon.png`,
   };
+}
+
+function breadcrumbSchema(lang: string, steps: Array<{ name: string; path?: string }>) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": steps.map((s, i) => {
+      const item: Record<string, unknown> = { "@type": "ListItem", "position": i + 1, "name": s.name };
+      if (s.path !== undefined) item.item = `${SITE_URL}/${lang}${s.path}`;
+      return item;
+    }),
+  };
+}
+
+function homeName(lang: string): string {
+  return ({ nl: 'Home', es: 'Inicio', de: 'Startseite', fr: 'Accueil', it: 'Home' } as Record<string, string>)[lang] || 'Home';
 }
