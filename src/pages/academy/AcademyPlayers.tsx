@@ -924,13 +924,20 @@ export default function AcademyPlayers() {
                   <TableBody>
                     {filteredPlayers.map((player) => (
                       <TableRow key={player.id} className="h-8">
-                        <TableCell className="font-medium whitespace-nowrap max-w-[200px] truncate" title={player.full_name}>
-                          <Link
-                            to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
-                            className="hover:underline text-foreground"
-                          >
-                            {player.full_name}
-                          </Link>
+                        <TableCell className="font-medium whitespace-nowrap max-w-[260px] truncate" title={player.full_name}>
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
+                              className="hover:underline text-foreground truncate"
+                            >
+                              {player.full_name}
+                            </Link>
+                            {player.has_overdue_payment && (
+                              <Badge variant="destructive" className="h-5 px-1.5 text-[11px] shrink-0" title={tTrainer('players.payment.overdueTooltip', 'Has overdue invoice')}>
+                                {tTrainer('players.payment.overdue', 'Overdue')}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         {visibleColumns.map((key) => {
                           switch (key) {
