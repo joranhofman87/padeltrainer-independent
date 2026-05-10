@@ -27,6 +27,8 @@ import { useTranslation } from 'react-i18next';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { logger } from '@/lib/logger';
 import { getCitiesWithTrainers, type CityWithTrainerCount } from '@/lib/cities';
+import { SeoFaq } from '@/components/seo/SeoFaq';
+import { cityFaqs } from '@/lib/seoFaqs';
 
 interface TrainerWithProfile {
   id: string;
@@ -596,6 +598,7 @@ export default function TrainersCity() {
             </div>
           </section>
         )}
+        <SeoFaq items={cityFaqs(displayCity, currentLang)} />
       </main>
     </MarketingLayout>
   );

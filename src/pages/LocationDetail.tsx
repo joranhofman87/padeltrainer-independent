@@ -7,6 +7,8 @@ import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
 import { WaitingListCard } from '@/components/waitingList';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
+import { SeoFaq } from '@/components/seo/SeoFaq';
+import { clubFaqs } from '@/lib/seoFaqs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -836,6 +838,8 @@ export default function LocationDetail() {
 
         {/* Learn to Play Padel Section */}
         <LocationLearnSection lang={currentLang} />
+
+        <SeoFaq items={clubFaqs(location.name, currentLang)} />
 
         {location && user && (
           <ClaimClubDialog

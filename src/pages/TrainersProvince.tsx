@@ -10,6 +10,8 @@ import { useTranslation } from 'react-i18next';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getProvinceBySlug, PROVINCES, type Province } from '@/lib/provinces';
 import { getCitiesWithTrainers, type CityWithTrainerCount } from '@/lib/cities';
+import { SeoFaq } from '@/components/seo/SeoFaq';
+import { regionFaqs } from '@/lib/seoFaqs';
 
 export default function TrainersProvince() {
   const { province } = useParams<{ province: string }>();
@@ -207,6 +209,7 @@ export default function TrainersProvince() {
             </div>
           </section>
         )}
+        <SeoFaq items={regionFaqs(provinceData.name, currentLang)} />
       </main>
     </MarketingLayout>
   );
