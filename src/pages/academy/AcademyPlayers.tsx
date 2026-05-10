@@ -45,7 +45,7 @@ import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { EmailCampaignTab } from '@/components/academy/EmailCampaignTab';
 import { PlayerTagsCell } from '@/components/academy/PlayerTagsCell';
 import { PlayerNotesCell } from '@/components/academy/PlayerNotesCell';
