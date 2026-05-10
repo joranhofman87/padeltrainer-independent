@@ -143,6 +143,11 @@ export default function AcademyCyclusOverview() {
       }
 
       // Exclude registration-type cycles — they're intake forms, not real scheduled cycles
+      const registrationCycleIds = new Set(
+        [...(academyCycles || []), ...trainerCycles]
+          .filter(c => c.type === 'registration')
+          .map(c => c.id)
+      );
       const allCycles: any[] = [...(academyCycles || []), ...trainerCycles]
         .filter(c => c.type !== 'registration');
 
