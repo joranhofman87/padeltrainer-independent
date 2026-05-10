@@ -72,6 +72,9 @@ const KNOWN_LONG_KEYS = new Set<string>([
   'fr::playground.seo.title',
   'fr::redFlagQuiz.seo.title',
   // Italian
+  'it::home.features.title',
+  'it::home.cta.title',
+  'it::rateMyCourtPage.seo.title',
   'it::cityPage.title',
   'it::provincePage.title',
   'it::seo.home.title',
