@@ -323,6 +323,8 @@ export default function AcademyPlayers() {
     setFilteredPlayers(result);
   }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
 
+  const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(filteredPlayers);
+
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
 
