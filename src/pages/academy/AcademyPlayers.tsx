@@ -986,6 +986,18 @@ export default function AcademyPlayers() {
                                       playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
                                       tags={tags}
                                       selectedTagIds={player.tag_ids || []}
+                                      onChanged={fetchTagsAndMetadata}
+                                    />
+                                  )}
+                                </TableCell>
+                              );
+                            case 'internalNotes':
+                              return (
+                                <TableCell key={key} className="max-w-[260px]">
+                                  {activeAcademy && (
+                                    <PlayerNotesCell
+                                      academyId={activeAcademy.id}
+                                      playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
                                       notes={player.academy_notes || ''}
                                       onChanged={fetchTagsAndMetadata}
                                     />
