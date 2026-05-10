@@ -39,13 +39,14 @@ Deno.serve(async (req) => {
     const lang = langMatch ? langMatch[1] : 'en';
     const cleanPath = path.replace(/^\/(en|nl|es|de|fr|it)/, '') || '/';
 
-    const html = await renderPath(cleanPath, lang);
+    const { html, status } = await renderPath(cleanPath, lang);
 
     return new Response(html, {
+      status,
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': status === 404 ? 'public, max-age=300' : 'public, max-age=3600',
       },
     });
   } catch (error) {
