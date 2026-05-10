@@ -16,7 +16,9 @@ import {
   StickyNote,
   Loader2,
   ExternalLink,
+  Download,
 } from 'lucide-react';
+import { downloadInvoicePdf } from '@/lib/downloadInvoicePdf';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
