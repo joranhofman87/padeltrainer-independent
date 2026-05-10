@@ -106,25 +106,75 @@ export async function fetchCityFacts(citySlug: string): Promise<CityFacts | null
   return cached(`city:${citySlug}`, TTL_MS, async () => {
     const cityName = slugToCityName(citySlug);
 
-    // Locations in this city
+    // Locations in this city (case-insensitive — covers "Amsterdam" + "AMSTERDAM")
     const { data: locs } = await supabase
       .from('locations')
       .select('id, slug, name, city, indoor_courts, outdoor_courts, number_of_courts, google_rating, google_review_count, updated_at')
       .ilike('city', cityName)
       .eq('is_active', true)
-      .limit(500);
+      .limit(1000);
 
     const locations = locs || [];
+    const locationIds = locations.map(l => l.id);
 
-    // Trainers in this city — match via profiles.location (free-text city)
+    // Trainers via trainer_locations join (reliable: city is canonical via locations)
+    let trainerProfileIds: string[] = [];
+    if (locationIds.length > 0) {
+      const { data: tloc } = await supabase
+        .from('trainer_locations')
+        .select('trainer_id')
+        .in('location_id', locationIds)
+        .limit(2000);
+      trainerProfileIds = Array.from(new Set((tloc || []).map(t => t.trainer_id)));
+    }
+
+    // Fallback / supplement: profiles.location ILIKE city (covers trainers with no club link)
     const { data: tprof } = await supabase
       .from('profiles')
       .select('user_id, full_name, location, updated_at')
       .ilike('location', cityName)
       .limit(500);
 
-    const userIds = (tprof || []).map(p => p.user_id);
-    if (userIds.length === 0 && locations.length === 0) {
+    const fallbackUserIds = (tprof || []).map(p => p.user_id);
+
+    // Resolve trainer_profiles for both sets
+    let trainers: Array<{ slug: string; name: string; rate: number | null; updated_at: string }> = [];
+    if (trainerProfileIds.length > 0 || fallbackUserIds.length > 0) {
+      const { data: tpsByIds } = trainerProfileIds.length > 0
+        ? await supabase
+            .from('trainer_profiles')
+            .select('id, user_id, slug, hourly_rate, updated_at')
+            .in('id', trainerProfileIds)
+            .eq('is_public', true)
+        : { data: [] as Array<{ id: string; user_id: string; slug: string | null; hourly_rate: number | null; updated_at: string }> };
+
+      const { data: tpsByUsers } = fallbackUserIds.length > 0
+        ? await supabase
+            .from('trainer_profiles')
+            .select('id, user_id, slug, hourly_rate, updated_at')
+            .in('user_id', fallbackUserIds)
+            .eq('is_public', true)
+        : { data: [] as Array<{ id: string; user_id: string; slug: string | null; hourly_rate: number | null; updated_at: string }> };
+
+      const allTps = [...(tpsByIds || []), ...(tpsByUsers || [])];
+      const dedup = new Map(allTps.map(t => [t.id, t]));
+
+      // Fetch profile names in one batch
+      const userIds = Array.from(new Set([...dedup.values()].map(t => t.user_id)));
+      const { data: profs } = userIds.length > 0
+        ? await supabase.from('profiles').select('user_id, full_name').in('user_id', userIds)
+        : { data: [] as Array<{ user_id: string; full_name: string | null }> };
+      const nameByUser = new Map((profs || []).map(p => [p.user_id, p.full_name]));
+
+      trainers = [...dedup.values()].map(t => ({
+        slug: t.slug || t.user_id,
+        name: nameByUser.get(t.user_id) || 'Trainer',
+        rate: t.hourly_rate ? Number(t.hourly_rate) : null,
+        updated_at: t.updated_at,
+      }));
+    }
+
+    if (trainers.length === 0 && locations.length === 0) {
       return {
         trainerCount: 0, locationCount: 0,
         minRate: null, maxRate: null, avgRate: null,
@@ -132,30 +182,12 @@ export async function fetchCityFacts(citySlug: string): Promise<CityFacts | null
       };
     }
 
-    let trainers: Array<{ slug: string; name: string; rate: number | null; updated_at: string }> = [];
-    if (userIds.length > 0) {
-      const { data: tps } = await supabase
-        .from('trainer_profiles')
-        .select('user_id, slug, hourly_rate, updated_at')
-        .in('user_id', userIds)
-        .eq('is_public', true);
-      const profByUser = new Map((tprof || []).map(p => [p.user_id, p]));
-      trainers = (tps || []).map(t => {
-        const p = profByUser.get(t.user_id);
-        return {
-          slug: t.slug || t.user_id,
-          name: p?.full_name || 'Trainer',
-          rate: t.hourly_rate ? Number(t.hourly_rate) : null,
-          updated_at: t.updated_at,
-        };
-      });
-    }
-
     const rates = trainers.map(t => t.rate).filter((r): r is number => r != null && r > 0);
     const minRate = rates.length ? Math.min(...rates) : null;
     const maxRate = rates.length ? Math.max(...rates) : null;
     const avgRate = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null;
 
+    // Top trainers: prefer those with rates, sort by rate desc as a proxy
     const topTrainers = [...trainers]
       .sort((a, b) => (b.rate || 0) - (a.rate || 0))
       .slice(0, 5)
