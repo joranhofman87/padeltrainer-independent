@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -68,6 +69,7 @@ interface AcademySlot {
   trainer_name: string;
   trainer_avatar: string | null;
   location_name: string | null;
+  location_logo: string | null;
   active_bookings: number;
   pending_bookings: number;
   booked_players: BookedPlayer[];
@@ -278,7 +280,7 @@ export default function AcademyCalendar() {
       .select(`
         id, trainer_id, start_time, end_time, max_participants, is_public,
         location_id, cyclus_id, cyclus_name, rating_system, min_rating, max_rating,
-        price_per_session, locations(name)
+        price_per_session, locations(name, logo_url)
       `)
       .in("trainer_id", trainerIds)
       .gte("start_time", rangeStart.toISOString())
@@ -370,6 +372,7 @@ export default function AcademyCalendar() {
         trainer_name: profile?.full_name || "Unknown",
         trainer_avatar: profile?.avatar_url || null,
         location_name: slot.locations?.name || null,
+        location_logo: slot.locations?.logo_url || null,
         active_bookings: counts.active,
         pending_bookings: counts.pending,
         booked_players: counts.players,
@@ -648,7 +651,9 @@ export default function AcademyCalendar() {
         trainer_avatar: s.trainer_avatar,
         max_participants: s.max_participants || 4,
         booked_count: s.active_bookings + s.pending_bookings,
+        location_id: s.location_id,
         location_name: s.location_name,
+        location_logo: s.location_logo,
         is_public: s.is_public,
       }));
   }, [slots, selectedTrainerId, selectedLocationId]);
@@ -669,7 +674,9 @@ export default function AcademyCalendar() {
         trainer_avatar: s.trainer_avatar,
         max_participants: s.max_participants || 4,
         booked_count: s.active_bookings + s.pending_bookings,
+        location_id: s.location_id,
         location_name: s.location_name,
+        location_logo: s.location_logo,
         is_public: s.is_public,
       }));
   }, [monthSlots, selectedTrainerId, selectedLocationId]);
@@ -678,6 +685,51 @@ export default function AcademyCalendar() {
     () => trainers.map((tr) => ({ id: tr.id, name: tr.name, avatar: tr.avatar })),
     [trainers],
   );
+
+  // Summary tiles: scoped to visible range (week or month)
+  const summaryStats = useMemo(() => {
+    const sourceSlots = isMonth ? agendaMonthSlots : agendaSlots;
+
+    const trainerMap = new Map<string, { id: string; name: string; avatar: string | null }>();
+    const locMap = new Map<string, { id: string; name: string; logo: string | null }>();
+    let bookedHours = 0;
+    let freeHours = 0;
+
+    sourceSlots.forEach((s) => {
+      const dur = (parseISO(s.end_time).getTime() - parseISO(s.start_time).getTime()) / 3_600_000;
+      const max = s.max_participants || 1;
+      const booked = Math.min(s.booked_count, max);
+      const fillRatio = booked / max;
+      bookedHours += dur * fillRatio;
+      freeHours += dur * (1 - fillRatio);
+
+      if (s.trainer_id && !trainerMap.has(s.trainer_id)) {
+        trainerMap.set(s.trainer_id, {
+          id: s.trainer_id,
+          name: s.trainer_name,
+          avatar: s.trainer_avatar,
+        });
+      }
+      const lkey = s.location_id || s.location_name || '__none__';
+      if (!locMap.has(lkey) && (s.location_id || s.location_name)) {
+        locMap.set(lkey, {
+          id: s.location_id || lkey,
+          name: s.location_name || '',
+          logo: s.location_logo || null,
+        });
+      }
+    });
+
+    return {
+      activeTrainers: Array.from(trainerMap.values()),
+      activeLocations: Array.from(locMap.values()),
+      bookedHours,
+      freeHours,
+    };
+  }, [isMonth, agendaSlots, agendaMonthSlots]);
+
+  const fmtHours = (h: number) =>
+    h <= 0 ? '0h' : h % 1 === 0 ? `${h}h` : `${h.toFixed(1)}h`;
 
   if (loading && slots.length === 0) {
     return (
@@ -724,6 +776,109 @@ export default function AcademyCalendar() {
 
       <main className="container mx-auto px-4 py-5 sm:py-6 space-y-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
+          {/* ── Overview tiles (only for week/day/month) ── */}
+          {isPrimaryView && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+              {/* Active trainers */}
+              <div className="rounded-lg border bg-card px-3 py-2.5">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                  {t("calendar.summary.activeTrainers", "Trainers training")}
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-1">
+                  <span className="text-2xl font-display font-semibold tabular-nums">
+                    {summaryStats.activeTrainers.length}
+                  </span>
+                  <div className="flex -space-x-2">
+                    {summaryStats.activeTrainers.slice(0, 4).map((tr) => {
+                      const initials = tr.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
+                      return (
+                        <Avatar key={tr.id} className="h-6 w-6 ring-2 ring-card">
+                          <AvatarImage src={tr.avatar || undefined} alt={tr.name} />
+                          <AvatarFallback className="text-[9px]">{initials}</AvatarFallback>
+                        </Avatar>
+                      );
+                    })}
+                    {summaryStats.activeTrainers.length > 4 && (
+                      <span className="h-6 w-6 rounded-full bg-muted ring-2 ring-card flex items-center justify-center text-[9px] tabular-nums text-muted-foreground">
+                        +{summaryStats.activeTrainers.length - 4}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Active locations */}
+              <div className="rounded-lg border bg-card px-3 py-2.5">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                  {t("calendar.summary.locationsInUse", "Locations in use")}
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-1">
+                  <span className="text-2xl font-display font-semibold tabular-nums">
+                    {summaryStats.activeLocations.length}
+                  </span>
+                  <div className="flex -space-x-2">
+                    {summaryStats.activeLocations.slice(0, 4).map((loc, i) => (
+                      loc.logo ? (
+                        <img
+                          key={loc.id + i}
+                          src={loc.logo}
+                          alt={loc.name}
+                          className="h-6 w-6 rounded-full bg-muted object-contain ring-2 ring-card"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span
+                          key={loc.id + i}
+                          className="h-6 w-6 rounded-full bg-muted ring-2 ring-card flex items-center justify-center text-[9px] font-medium text-muted-foreground"
+                        >
+                          {loc.name.slice(0, 1).toUpperCase() || '?'}
+                        </span>
+                      )
+                    ))}
+                    {summaryStats.activeLocations.length > 4 && (
+                      <span className="h-6 w-6 rounded-full bg-muted ring-2 ring-card flex items-center justify-center text-[9px] tabular-nums text-muted-foreground">
+                        +{summaryStats.activeLocations.length - 4}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Booked hours */}
+              <div className="rounded-lg border bg-card px-3 py-2.5">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                  {t("calendar.summary.bookedHours", "Booked hours")}
+                </div>
+                <div className="mt-1">
+                  <span className="text-2xl font-display font-semibold tabular-nums text-foreground">
+                    {fmtHours(summaryStats.bookedHours)}
+                  </span>
+                  <span className="ml-1.5 text-[11px] text-muted-foreground">
+                    {t("calendar.summary.training", "training")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Free hours */}
+              <div className="rounded-lg border bg-card px-3 py-2.5">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                  {t("calendar.summary.freeHours", "Free hours")}
+                </div>
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className={cn(
+                    "text-2xl font-display font-semibold tabular-nums",
+                    summaryStats.freeHours > 0 ? "text-foreground" : "text-muted-foreground",
+                  )}>
+                    {fmtHours(summaryStats.freeHours)}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {t("calendar.summary.openCapacity", "open")}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Primary view switcher + date nav (only for week/day/month) ── */}
           {isPrimaryView && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

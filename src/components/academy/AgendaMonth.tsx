@@ -1,19 +1,21 @@
 /**
  * Lightweight month view for the Agenda.
  *
- * Shows a calendar month grid. Each day cell shows the total session
- * count and up to 4 trainer dots (color from `getTrainerHue`). Clicking
- * a day jumps to the Day view at that date.
+ * Shows a calendar month grid. Each day cell summarises the day with:
+ *  - total session count
+ *  - up to 2 location rows (logo + name)
+ *  - booked / total seats and a free-spots indicator
+ * Clicking a day jumps to the Day view.
  */
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   format, parseISO, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays,
-  isSameMonth, isToday,
+  isSameMonth, isToday, isBefore,
 } from 'date-fns';
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { getTrainerHue } from './agendaTokens';
+import { fillStateClasses, getFillState } from './agendaTokens';
 import type { AgendaSlot } from './AgendaWeekByTrainer';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
@@ -59,6 +61,8 @@ export default function AgendaMonth({ slots, currentDate, onDayClick }: Props) {
     [gridStart, dateFnsLocale],
   );
 
+  const now = new Date();
+
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
       {/* Weekday header */}
@@ -81,10 +85,33 @@ export default function AgendaMonth({ slots, currentDate, onDayClick }: Props) {
           const key = format(day, 'yyyy-MM-dd');
           const daySlots = byDay.get(key) || [];
 
-          // unique trainers (up to 4 dots)
-          const trainers = Array.from(
-            new Map(daySlots.filter((s) => s.trainer_id).map((s) => [s.trainer_id!, s])).values(),
+          // Aggregate per location (id || name as fallback key)
+          const locMap = new Map<string, { name: string; logo: string | null; count: number }>();
+          daySlots.forEach((s) => {
+            const k = s.location_id || s.location_name || '__none__';
+            const existing = locMap.get(k);
+            if (existing) {
+              existing.count += 1;
+            } else {
+              locMap.set(k, {
+                name: s.location_name || t('calendar.noLocation', 'No location'),
+                logo: s.location_logo || null,
+                count: 1,
+              });
+            }
+          });
+          const locations = Array.from(locMap.values()).sort((a, b) => b.count - a.count);
+
+          const totalSeats = daySlots.reduce((a, s) => a + (s.max_participants || 0), 0);
+          const bookedSeats = daySlots.reduce(
+            (a, s) => a + Math.min(s.booked_count, s.max_participants || 0),
+            0,
           );
+          const freeSeats = Math.max(0, totalSeats - bookedSeats);
+          const isPast = daySlots.length > 0 && daySlots.every((s) => isBefore(parseISO(s.end_time), now));
+          const fillState = daySlots.length === 0
+            ? 'empty'
+            : getFillState({ bookedCount: bookedSeats, maxParticipants: totalSeats || 1, isPast });
 
           return (
             <button
@@ -92,13 +119,14 @@ export default function AgendaMonth({ slots, currentDate, onDayClick }: Props) {
               type="button"
               onClick={() => onDayClick?.(day)}
               className={cn(
-                'min-h-[88px] sm:min-h-[104px] border-b border-r last:border-r-0 p-2 text-left transition-colors',
+                'min-h-[112px] sm:min-h-[132px] border-b border-r last:border-r-0 p-2 text-left transition-colors flex flex-col gap-1.5',
                 'hover:bg-accent/30',
                 !inMonth && 'bg-muted/20 text-muted-foreground/60',
                 today && 'bg-primary/5',
                 idx % 7 === 6 && 'border-r-0',
               )}
             >
+              {/* Header: date + session count */}
               <div className="flex items-baseline justify-between">
                 <span
                   className={cn(
@@ -110,28 +138,67 @@ export default function AgendaMonth({ slots, currentDate, onDayClick }: Props) {
                 </span>
                 {daySlots.length > 0 && (
                   <span className="text-[10px] tabular-nums text-muted-foreground">
-                    {daySlots.length}
+                    {daySlots.length} {daySlots.length === 1
+                      ? t('calendar.unitSession', 'session')
+                      : t('calendar.unitSessions', 'sessions')}
                   </span>
                 )}
               </div>
 
-              {trainers.length > 0 && (
-                <div className="mt-2 flex flex-wrap items-center gap-1">
-                  {trainers.slice(0, 4).map((s, i) => {
-                    const hue = getTrainerHue(s.trainer_id, i);
-                    return <span key={s.trainer_id} className={cn('h-1.5 w-1.5 rounded-full', hue.ring)} />;
-                  })}
-                  {trainers.length > 4 && (
-                    <span className="text-[9px] text-muted-foreground/70">+{trainers.length - 4}</span>
+              {/* Location rows */}
+              {locations.length > 0 && (
+                <div className="space-y-0.5 min-w-0">
+                  {locations.slice(0, 2).map((loc, i) => (
+                    <div key={i} className="flex items-center gap-1 min-w-0">
+                      {loc.logo ? (
+                        <img
+                          src={loc.logo}
+                          alt=""
+                          className="h-3.5 w-3.5 rounded-sm object-contain bg-muted shrink-0"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span className="h-3.5 w-3.5 rounded-sm bg-muted shrink-0" />
+                      )}
+                      <span className="text-[10px] text-foreground/80 truncate min-w-0 flex-1">
+                        {loc.name}
+                      </span>
+                      {loc.count > 1 && (
+                        <span className="text-[9px] text-muted-foreground tabular-nums shrink-0">
+                          ×{loc.count}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                  {locations.length > 2 && (
+                    <div className="text-[9px] text-muted-foreground/70">
+                      +{locations.length - 2} {t('calendar.more', 'more')}
+                    </div>
                   )}
                 </div>
               )}
 
-              {daySlots.length > 0 && (
-                <div className="mt-1 hidden sm:block text-[10px] text-muted-foreground truncate">
-                  {daySlots.length === 1
-                    ? t('calendar.unitSession', 'session')
-                    : t('calendar.unitSessions', 'sessions')}
+              {/* Footer: capacity + free badge */}
+              {totalSeats > 0 && (
+                <div className="mt-auto flex items-center justify-between gap-1">
+                  <span className="text-[10px] tabular-nums text-muted-foreground">
+                    {bookedSeats}/{totalSeats}
+                  </span>
+                  {!isPast && (
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full border px-1.5 py-0 text-[9px] font-medium tabular-nums',
+                        fillStateClasses[fillState].bg,
+                        fillStateClasses[fillState].border,
+                        fillStateClasses[fillState].text,
+                      )}
+                    >
+                      <span className={cn('h-1 w-1 rounded-full', fillStateClasses[fillState].dot)} />
+                      {freeSeats === 0
+                        ? t('calendar.full', 'Full')
+                        : `${freeSeats} ${t('calendar.free', 'free')}`}
+                    </span>
+                  )}
                 </div>
               )}
             </button>

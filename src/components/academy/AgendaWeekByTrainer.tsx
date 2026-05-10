@@ -26,7 +26,9 @@ export interface AgendaSlot {
   trainer_avatar: string | null;
   max_participants: number;
   booked_count: number;
+  location_id?: string | null;
   location_name?: string | null;
+  location_logo?: string | null;
   is_public: boolean;
 }
 
