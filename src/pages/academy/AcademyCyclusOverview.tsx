@@ -729,8 +729,8 @@ export default function AcademyCyclusOverview() {
       {/* Desktop Table */}
       <Card className="hidden md:block">
         <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
+          <Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
+            <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead className="w-[40px]">
                   <Checkbox
@@ -758,7 +758,7 @@ export default function AcademyCyclusOverview() {
                 </TableRow>
               ) : (
                 sortedData.map((group) => (
-                  <TableRow key={group.group_key} className="cursor-pointer hover:bg-muted/50" onClick={() => handleRowClick(group)}>
+                  <TableRow key={group.group_key} className="h-8 cursor-pointer hover:bg-muted/50" onClick={() => handleRowClick(group)}>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selectedIds.has(group.group_key)} onCheckedChange={() => toggleSelect(group.group_key)} />
                     </TableCell>
