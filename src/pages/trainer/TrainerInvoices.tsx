@@ -9,18 +9,25 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
+import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InvoiceSettingsCard } from "@/components/trainer/InvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
-import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TableToolbar } from "@/components/ui/table-toolbar";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl, enUS } from "date-fns/locale";
@@ -68,7 +75,31 @@ export default function TrainerInvoices() {
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkDueOpen, setBulkDueOpen] = useState(false);
+  const [bulkDueDate, setBulkDueDate] = useState<Date | undefined>(undefined);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = (visible: Invoice[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = visible.length > 0 && visible.every((i) => next.has(i.id));
+      if (allSelected) visible.forEach((i) => next.delete(i.id));
+      else visible.forEach((i) => next.add(i.id));
+      return next;
+    });
+  };
 
   const formatEuro = (amount: number) =>
     amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -268,6 +299,69 @@ export default function TrainerInvoices() {
     },
   });
 
+  // ========== Bulk actions ==========
+  const selectedInvoices = invoices.filter((i) => selectedIds.has(i.id));
+
+  const handleBulkReset = async () => {
+    setBulkRunning(true);
+    const ids = [...selectedIds];
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "draft", sent_at: null, paid_at: null })
+      .in("id", ids);
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    if (error) {
+      toast.error(t("invoices.bulk.resetError", "Kon facturen niet resetten"));
+      return;
+    }
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    toast.success(t("invoices.bulk.resetDone", "{{count}} facturen gereset", { count: ids.length }));
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkRunning(true);
+    const drafts = selectedInvoices.filter((i) => i.status === "draft").map((i) => i.id);
+    const others = selectedInvoices.filter((i) => i.status !== "draft").map((i) => i.id);
+    let ok = 0, fail = 0;
+    if (drafts.length) {
+      const { error } = await supabase.from("invoices").delete().in("id", drafts);
+      if (error) fail += drafts.length; else ok += drafts.length;
+    }
+    if (others.length) {
+      const { error } = await supabase.from("invoices").update({ status: "cancelled" }).in("id", others);
+      if (error) fail += others.length; else ok += others.length;
+    }
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    if (fail > 0) toast.error(t("invoices.bulk.deletePartial", "{{ok}} verwerkt, {{fail}} mislukt", { ok, fail }));
+    else toast.success(t("invoices.bulk.deleteDone", "{{count}} facturen verwijderd", { count: ok }));
+  };
+
+  const handleBulkUpdateDueDate = async () => {
+    if (!bulkDueDate) return;
+    setBulkRunning(true);
+    const ids = [...selectedIds];
+    const yyyy = bulkDueDate.getFullYear();
+    const mm = String(bulkDueDate.getMonth() + 1).padStart(2, "0");
+    const dd = String(bulkDueDate.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const { error } = await supabase.from("invoices").update({ due_date: dateStr }).in("id", ids);
+    setBulkRunning(false);
+    if (error) {
+      toast.error(t("invoices.bulk.dueDateError", "Vervaldatum bijwerken mislukt"));
+      return;
+    }
+    setBulkDueOpen(false);
+    setBulkDueDate(undefined);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    toast.success(t("invoices.bulk.dueDateDone", "Vervaldatum bijgewerkt voor {{count}} facturen", { count: ids.length }));
+  };
+
   const handleDownloadPdf = async (invoice: Invoice) => {
     try {
       const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
@@ -358,6 +452,37 @@ export default function TrainerInvoices() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
+          {/* Bulk Selection Action Bar */}
+          {selectedIds.size > 0 && (
+            <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 shadow-sm">
+              <span className="text-sm font-medium">
+                {t("invoices.bulk.selected", "{{count}} geselecteerd", { count: selectedIds.size })}
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                <X className="h-4 w-4 mr-1" />
+                {t("invoices.bulk.clear", "Wissen")}
+              </Button>
+              <div className="ml-auto flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => setBulkEmailOpen(true)}>
+                  <Mail className="h-4 w-4 mr-1.5" />
+                  {t("invoices.bulk.sendEmail", "Verstuur e-mail")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setConfirmBulk("reset")}>
+                  <RotateCcw className="h-4 w-4 mr-1.5" />
+                  {t("invoices.bulk.resetToDraft", "Reset naar concept")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setBulkDueOpen(true)}>
+                  <CalendarIcon className="h-4 w-4 mr-1.5" />
+                  {t("invoices.bulk.updateDueDate", "Vervaldatum wijzigen")}
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => setConfirmBulk("delete")}>
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  {t("invoices.bulk.delete", "Verwijder")}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="text-2xl font-bold">€{formatEuro(totalUnpaid)}</p></CardContent></Card>
@@ -408,6 +533,13 @@ export default function TrainerInvoices() {
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead className="w-10">
+                              <Checkbox
+                                checked={filteredInvoices.length > 0 && filteredInvoices.every((i) => selectedIds.has(i.id))}
+                                onCheckedChange={() => toggleSelectAllVisible(filteredInvoices)}
+                                aria-label="Select all"
+                              />
+                            </TableHead>
                             <TableHead>{t("invoices.number", "Nummer")}</TableHead>
                             <TableHead>{t("invoices.player", "Klant")}</TableHead>
                             <TableHead>{t("invoices.date", "Datum")}</TableHead>
@@ -432,6 +564,13 @@ export default function TrainerInvoices() {
                         <TableBody>
                           {filteredInvoices.map((inv) => (
                             <TableRow key={inv.id} className="cursor-pointer" onClick={() => navigate(`/app/trainer/invoices/${inv.id}/edit`)}>
+                              <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={selectedIds.has(inv.id)}
+                                  onCheckedChange={() => toggleSelect(inv.id)}
+                                  aria-label={`Select ${inv.invoice_number}`}
+                                />
+                              </TableCell>
                               <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                               <TableCell>{inv.player_name}</TableCell>
                               <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
@@ -468,10 +607,19 @@ export default function TrainerInvoices() {
                     {filteredInvoices.map((inv) => (
                       <Card key={inv.id} className="cursor-pointer" onClick={() => navigate(`/app/trainer/invoices/${inv.id}/edit`)}>
                         <CardContent className="p-4">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <p className="font-mono text-sm font-medium">{inv.invoice_number}</p>
-                              <p className="text-sm text-muted-foreground">{inv.player_name}</p>
+                          <div className="flex items-start justify-between mb-2 gap-2">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
+                                <Checkbox
+                                  checked={selectedIds.has(inv.id)}
+                                  onCheckedChange={() => toggleSelect(inv.id)}
+                                  aria-label={`Select ${inv.invoice_number}`}
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-mono text-sm font-medium truncate">{inv.invoice_number}</p>
+                                <p className="text-sm text-muted-foreground truncate">{inv.player_name}</p>
+                              </div>
                             </div>
                             <div className="flex items-center gap-1.5">
                               {getStatusBadge(inv)}
@@ -525,6 +673,84 @@ export default function TrainerInvoices() {
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
       />
+
+      <BulkInvoiceEmailDialog
+        open={bulkEmailOpen}
+        onClose={() => setBulkEmailOpen(false)}
+        invoiceIds={[...selectedIds]}
+        language={i18n.language || "nl"}
+        onSent={() => {
+          setSelectedIds(new Set());
+          queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+        }}
+      />
+
+      <Dialog open={bulkDueOpen} onOpenChange={(o) => !bulkRunning && setBulkDueOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("invoices.bulk.updateDueDateTitle", "Vervaldatum wijzigen")}</DialogTitle>
+            <DialogDescription>
+              {t("invoices.bulk.updateDueDateDesc", "Stel een nieuwe vervaldatum in voor {{count}} geselecteerde factu(u)r(en).", { count: selectedIds.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn("w-full justify-start text-left font-normal", !bulkDueDate && "text-muted-foreground")}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {bulkDueDate ? format(bulkDueDate, "dd MMM yyyy", { locale: dateFnsLocale }) : t("invoices.bulk.pickDate", "Kies een datum")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={bulkDueDate} onSelect={setBulkDueDate} initialFocus className={cn("p-3 pointer-events-auto")} />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDueOpen(false)} disabled={bulkRunning}>
+              {t("common.cancel", "Annuleren")}
+            </Button>
+            <Button onClick={handleBulkUpdateDueDate} disabled={!bulkDueDate || bulkRunning}>
+              {bulkRunning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t("common.save", "Opslaan")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmBulk === "reset"
+                ? t("invoices.bulk.confirmResetTitle", "{{count}} facturen resetten naar concept?", { count: selectedIds.size })
+                : t("invoices.bulk.confirmDeleteTitle", "{{count}} facturen verwijderen?", { count: selectedIds.size })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmBulk === "reset"
+                ? t("invoices.bulk.confirmResetDesc", "Status, verzenddatum en betaaldatum worden gewist. Dit kan niet ongedaan worden gemaakt.")
+                : t("invoices.bulk.confirmDeleteDesc", "Concepten worden definitief verwijderd. Verstuurde facturen worden geannuleerd.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkRunning}>{t("common.cancel", "Annuleren")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmBulk === "reset") handleBulkReset();
+                else if (confirmBulk === "delete") handleBulkDelete();
+              }}
+              disabled={bulkRunning}
+            >
+              {bulkRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              {t("common.confirm", "Bevestigen")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
