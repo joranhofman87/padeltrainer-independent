@@ -648,7 +648,10 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
   // Province/region pages: /trainers/region/:slug
   const provinceMatch = cleanPath.match(/^\/trainers\/region\/([^/]+)$/);
   if (provinceMatch) {
-    const province = slugToDisplay(provinceMatch[1]);
+    const provinceSlug = provinceMatch[1];
+    const provinceData = getProvinceBySlug(provinceSlug);
+    const province = provinceData?.name || slugToDisplay(provinceSlug);
+    const facts = await fetchProvinceFacts(provinceSlug).catch(() => null);
     const provinceMeta: Record<string, { title: string; desc: string }> = {
       en: { title: `Padel Trainers in ${province} | PadelTrainer.ai`, desc: `Find and book certified padel trainers in ${province}. Compare prices, read reviews and book your first lesson.` },
       nl: { title: `Padel Trainers in ${province} | PadelTrainer.ai`, desc: `Vind en boek gecertificeerde padel trainers in ${province}. Vergelijk prijzen, lees reviews en boek je eerste les.` },
@@ -657,14 +660,20 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
       fr: { title: `Coachs de Padel à ${province} | PadelTrainer.ai`, desc: `Trouvez et réservez des coachs de padel certifiés à ${province}. Comparez les prix, lisez les avis et réservez votre premier cours.` },
     };
     const pm = provinceMeta[lang] || provinceMeta['en']!;
+    const tldr = facts && facts.trainerCount
+      ? `${facts.trainerCount}+ certified padel resources across ${facts.cityCount} cities in ${province}.`
+      : `Padel trainers across ${province}.`;
+    const canonicalUrl = `${SITE_URL}/${lang}${cleanPath}`;
     const faqs = regionFaqs(province, lang);
     return page(
       pm.title, pm.desc, cleanPath, lang,
       `<h1>${esc(pm.title.split('|')[0].trim())}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${facts ? renderProvinceCitiesHtml(province, facts.topCities, lang) : ''}
        ${renderFaqHtml(faqs, lang)}
        ${renderPopularCitiesHtml(lang)}
        ${renderPopularRegionsHtml(lang)}`,
-      [faqPageSchema(faqs)]
+      [faqPageSchema(faqs), speakableSchema(canonicalUrl)]
     );
   }
 
