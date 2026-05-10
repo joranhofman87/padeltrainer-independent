@@ -105,10 +105,10 @@ export function HeroSection() {
                 {t('homev2.hero.mock_today', 'Today · Tuesday')}
               </div>
 
-              <SlotRow time="07:30" title={t('homev2.hero.mock_row1', 'Group · 2/4')} sub="Court 2 · 60 min" status="paid" />
-              <SlotRow time="09:00" title={t('homev2.hero.mock_row2', 'Private · Daan v.')} sub="Court 1 · 45 min" status="confirmed" />
-              <SlotRow time="10:30" title={t('homev2.hero.mock_row3', 'Available')} sub="Court 3 · 60 min" status="open" />
-              <SlotRow time="12:00" title={t('homev2.hero.mock_row4', 'Group · 4/4 · Sold out')} sub="Court 2 · 60 min" status="paid" />
+              <SlotRow time="07:30" title={t('homev2.hero.mock_row1', 'Group · 2/4')} sub={t('homev2.hero.mock_row1_sub', 'Court 2 · 60 min')} status="paid" statusLabel={t('homev2.hero.status_paid', 'Paid')} />
+              <SlotRow time="09:00" title={t('homev2.hero.mock_row2', 'Private · Daan v.')} sub={t('homev2.hero.mock_row2_sub', 'Court 1 · 45 min')} status="confirmed" statusLabel={t('homev2.hero.status_confirmed', 'Confirmed')} />
+              <SlotRow time="10:30" title={t('homev2.hero.mock_row3', 'Available')} sub={t('homev2.hero.mock_row3_sub', 'Court 3 · 60 min')} status="open" statusLabel={t('homev2.hero.status_open', 'Auto-fill on')} />
+              <SlotRow time="12:00" title={t('homev2.hero.mock_row4', 'Group · 4/4 · Sold out')} sub={t('homev2.hero.mock_row4_sub', 'Court 2 · 60 min')} status="paid" statusLabel={t('homev2.hero.status_paid', 'Paid')} />
 
               <div className="flex items-center gap-2 px-3 py-2 mt-2 rounded-lg bg-navy-50 text-[11px] sm:text-xs text-navy-600">
                 <GoogleCalendarLogo className="w-4 h-4 flex-shrink-0" />
@@ -150,11 +150,13 @@ function SlotRow({
   title,
   sub,
   status,
+  statusLabel,
 }: {
   time: string;
   title: string;
   sub: string;
   status: 'paid' | 'confirmed' | 'open';
+  statusLabel: string;
 }) {
   const isOpen = status === 'open';
   return (
@@ -175,13 +177,13 @@ function SlotRow({
         </div>
       </div>
       {status === 'paid' && (
-        <span className="text-[10px] sm:text-xs font-medium text-success bg-success-soft px-2 py-1 rounded-full flex-shrink-0">Paid</span>
+        <span className="text-[10px] sm:text-xs font-medium text-success bg-success-soft px-2 py-1 rounded-full flex-shrink-0">{statusLabel}</span>
       )}
       {status === 'confirmed' && (
-        <span className="text-[10px] sm:text-xs font-medium text-brand-700 bg-brand-50 px-2 py-1 rounded-full flex-shrink-0">Confirmed</span>
+        <span className="text-[10px] sm:text-xs font-medium text-brand-700 bg-brand-50 px-2 py-1 rounded-full flex-shrink-0">{statusLabel}</span>
       )}
       {status === 'open' && (
-        <span className="text-[10px] sm:text-xs font-medium text-navy-500 flex-shrink-0">Auto-fill on</span>
+        <span className="text-[10px] sm:text-xs font-medium text-navy-500 flex-shrink-0">{statusLabel}</span>
       )}
     </div>
   );
