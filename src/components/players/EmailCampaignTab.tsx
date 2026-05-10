@@ -553,16 +553,28 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                   <Trans
                     i18nKey="emailCampaign.compose.descriptionHtml"
                     t={t}
-                    values={{ var: '{{name}}' }}
+                    values={{ var: '{{first_name}}' }}
                     components={{ code: <code className="text-xs bg-muted px-1 py-0.5 rounded" /> }}
                   />
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="campaign-subject">{t('emailCampaign.compose.subject')}</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="campaign-subject">{t('emailCampaign.compose.subject')}</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => insertSubjectVariable('first_name')}
+                    >
+                      {t('emailCampaign.compose.insertName', { name: '{{first_name}}' })}
+                    </Button>
+                  </div>
                   <Input
                     id="campaign-subject"
+                    ref={subjectInputRef}
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     placeholder={t('emailCampaign.compose.subjectPlaceholder')}
@@ -577,9 +589,9 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                       variant="ghost"
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={() => insertVariable('name')}
+                      onClick={() => insertVariable('first_name')}
                     >
-                      {t('emailCampaign.compose.insertName', { name: '{{name}}' })}
+                      {t('emailCampaign.compose.insertName', { name: '{{first_name}}' })}
                     </Button>
                   </div>
                   <MiniRichTextEditor
