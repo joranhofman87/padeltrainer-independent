@@ -874,10 +874,12 @@ export default function AcademyPlayers() {
                     {filteredPlayers.map((player) => (
                       <TableRow key={player.id} className="h-8">
                         <TableCell className="font-medium whitespace-nowrap max-w-[200px] truncate" title={player.full_name}>
-                          {player.full_name}
-                          {player.notes && !isColVisible('notes') && (
-                            <span className="ml-2 text-xs text-muted-foreground">·</span>
-                          )}
+                          <Link
+                            to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
+                            className="hover:underline text-foreground"
+                          >
+                            {player.full_name}
+                          </Link>
                         </TableCell>
                         {visibleColumns.map((key) => {
                           switch (key) {
