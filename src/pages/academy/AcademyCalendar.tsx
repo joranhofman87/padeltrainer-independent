@@ -16,7 +16,7 @@ import {
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, LayoutGrid, ArrowLeft, Plus, Clock, BarChart3, Repeat, SlidersHorizontal, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, LayoutGrid, ArrowLeft, Plus, Clock, BarChart3, Repeat, SlidersHorizontal, X, User, MapPin, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -926,28 +926,67 @@ export default function AcademyCalendar() {
           )}
 
           {/* Active filter chips */}
-          {isPrimaryView && filtersActive && (
-            <div className="flex flex-wrap items-center gap-1.5 mt-3">
-              {selectedTrainerId !== "all" && (
-                <button
-                  onClick={() => setSelectedTrainerId("all")}
-                  className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-xs hover:bg-muted/40"
-                >
-                  {trainers.find((tr) => tr.id === selectedTrainerId)?.name}
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-              {selectedLocationId !== "all" && (
-                <button
-                  onClick={() => setSelectedLocationId("all")}
-                  className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-xs hover:bg-muted/40"
-                >
-                  {locations.find((l) => l.id === selectedLocationId)?.name}
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          )}
+          {isPrimaryView && filtersActive && (() => {
+            const trainerName = selectedTrainerId !== "all" ? trainers.find((tr) => tr.id === selectedTrainerId)?.name : null;
+            const locationName = selectedLocationId !== "all" ? locations.find((l) => l.id === selectedLocationId)?.name : null;
+            const scopeLabel = trainerName && locationName
+              ? t("calendar.scopeTrainerAtLocation", { trainer: trainerName, location: locationName, defaultValue: "{{trainer}} at {{location}}" })
+              : (trainerName || locationName);
+            return (
+              <>
+                <div className="flex flex-wrap items-center gap-2 mt-3">
+                  <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                    <Filter className="h-3 w-3" />
+                    {t("calendar.filteredBy", { defaultValue: "Filtered by" })}
+                  </span>
+                  {trainerName && (
+                    <button
+                      onClick={() => setSelectedTrainerId("all")}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 text-primary px-3 py-1 text-sm font-medium hover:bg-primary/15 transition-colors"
+                      aria-label={t("calendar.clearTrainerFilter", { defaultValue: "Clear trainer filter" })}
+                    >
+                      <User className="h-3.5 w-3.5" />
+                      {trainerName}
+                      <X className="h-3.5 w-3.5 opacity-70" />
+                    </button>
+                  )}
+                  {locationName && (
+                    <button
+                      onClick={() => setSelectedLocationId("all")}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 text-primary px-3 py-1 text-sm font-medium hover:bg-primary/15 transition-colors"
+                      aria-label={t("calendar.clearLocationFilter", { defaultValue: "Clear location filter" })}
+                    >
+                      <MapPin className="h-3.5 w-3.5" />
+                      {locationName}
+                      <X className="h-3.5 w-3.5 opacity-70" />
+                    </button>
+                  )}
+                  {activeFilterCount > 1 && (
+                    <button
+                      onClick={() => { setSelectedTrainerId("all"); setSelectedLocationId("all"); }}
+                      className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline ml-1"
+                    >
+                      {t("calendar.clearAll", { defaultValue: "Clear all" })}
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <Filter className="h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {t("calendar.showingScope", { scope: scopeLabel, defaultValue: "Showing {{scope}}" })}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => { setSelectedTrainerId("all"); setSelectedLocationId("all"); }}
+                    className="shrink-0 text-xs font-medium underline-offset-2 hover:underline"
+                  >
+                    {t("calendar.showAll", { defaultValue: "Show all" })}
+                  </button>
+                </div>
+              </>
+            );
+          })()}
 
           {/* Secondary navigation: less-used sections (above agenda so it stays visible) */}
           {isPrimaryView && (
