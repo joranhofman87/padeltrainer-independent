@@ -221,16 +221,19 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       "url": `${SITE_URL}/${lang}/locations/${locSlug}`,
       "sport": "Padel",
     };
+    const faqs = clubFaqs(displayName, lang);
     return page(
       `${displayName} — Padel Club | PadelTrainer.ai`,
       `Discover ${displayName}. View courts, trainers, and book padel lessons at this club.`,
       `/locations/${locSlug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel club on PadelTrainer.ai</p>`,
+      `<h1>${esc(displayName)}</h1><p>Padel club on PadelTrainer.ai</p>
+       ${renderFaqHtml(faqs, lang)}
+       ${renderPopularCitiesHtml(lang)}`,
       [placeSchema, breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
         { name: 'Locations', path: '/locations' },
         { name: displayName },
-      ])]
+      ]), faqPageSchema(faqs)]
     );
   }
 
