@@ -48,6 +48,7 @@ import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
 import { useSearchParams } from 'react-router-dom';
 import { EmailCampaignTab } from '@/components/academy/EmailCampaignTab';
 import { PlayerTagsCell } from '@/components/academy/PlayerTagsCell';
+import { PlayerNotesCell } from '@/components/academy/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/academy/ManagePlayerTagsDialog';
 import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/academy/playerTagColors';
 import { cn } from '@/lib/utils';
