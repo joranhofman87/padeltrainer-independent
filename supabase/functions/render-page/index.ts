@@ -194,15 +194,18 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       // Sanity fetch failed — use defaults
     }
 
+    const faqs = cityFaqs(city, lang);
     return page(
       seoTitle,
       seoDesc,
       `/padel/${citySlug}`, lang,
-      `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>`,
+      `<h1>Padel in ${esc(city)}</h1><p>Find padel courts, clubs and coaches in ${esc(city)}.</p>
+       ${renderFaqHtml(faqs, lang)}
+       ${renderPopularCitiesHtml(lang, citySlug)}`,
       [breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
         { name: city },
-      ])]
+      ]), faqPageSchema(faqs)]
     );
   }
 
