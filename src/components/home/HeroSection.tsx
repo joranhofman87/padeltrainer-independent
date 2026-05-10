@@ -150,11 +150,13 @@ function SlotRow({
   title,
   sub,
   status,
+  statusLabel,
 }: {
   time: string;
   title: string;
   sub: string;
   status: 'paid' | 'confirmed' | 'open';
+  statusLabel: string;
 }) {
   const isOpen = status === 'open';
   return (
@@ -175,13 +177,13 @@ function SlotRow({
         </div>
       </div>
       {status === 'paid' && (
-        <span className="text-[10px] sm:text-xs font-medium text-success bg-success-soft px-2 py-1 rounded-full flex-shrink-0">Paid</span>
+        <span className="text-[10px] sm:text-xs font-medium text-success bg-success-soft px-2 py-1 rounded-full flex-shrink-0">{statusLabel}</span>
       )}
       {status === 'confirmed' && (
-        <span className="text-[10px] sm:text-xs font-medium text-brand-700 bg-brand-50 px-2 py-1 rounded-full flex-shrink-0">Confirmed</span>
+        <span className="text-[10px] sm:text-xs font-medium text-brand-700 bg-brand-50 px-2 py-1 rounded-full flex-shrink-0">{statusLabel}</span>
       )}
       {status === 'open' && (
-        <span className="text-[10px] sm:text-xs font-medium text-navy-500 flex-shrink-0">Auto-fill on</span>
+        <span className="text-[10px] sm:text-xs font-medium text-navy-500 flex-shrink-0">{statusLabel}</span>
       )}
     </div>
   );
