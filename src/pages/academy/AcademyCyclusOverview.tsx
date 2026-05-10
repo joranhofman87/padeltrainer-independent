@@ -142,7 +142,9 @@ export default function AcademyCyclusOverview() {
         trainerCycles = data || [];
       }
 
-      const allCycles: any[] = [...(academyCycles || []), ...trainerCycles];
+      // Exclude registration-type cycles — they're intake forms, not real scheduled cycles
+      const allCycles: any[] = [...(academyCycles || []), ...trainerCycles]
+        .filter(c => c.type !== 'registration');
 
       // Deduplicate by id
       const cycleMap = new Map<string, any>();
