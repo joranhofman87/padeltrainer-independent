@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
