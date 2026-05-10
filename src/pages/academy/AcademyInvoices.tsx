@@ -688,72 +688,66 @@ export default function AcademyInvoices() {
       )}
 
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <TabsList>
-            <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({unpaidInvoices.length})</TabsTrigger>
-            <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
-          </TabsList>
-          <div className="flex items-center gap-2 flex-1 flex-wrap">
-            {trainers.length > 0 && (
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
+        <TabsList>
+          <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({unpaidInvoices.length})</TabsTrigger>
+          <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
+        </TabsList>
+
+        <TableToolbar
+          searchPlaceholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+        >
+          {trainers.length > 0 && (
             <Select value={trainerFilter} onValueChange={setTrainerFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")}>
-                    {trainerFilter === "all"
-                      ? t("invoices.allTrainers", "Alle trainers")
-                      : (trainers as any[]).find(tr => tr.id === trainerFilter)?.name}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("invoices.allTrainers", "Alle trainers")}</SelectItem>
-                  {trainers.map((tr: any) => (
-                    <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {academyLocations.length > 0 && (
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")}>
-                    {locationFilter === "all"
-                      ? t("invoices.allLocations", "Alle locaties")
-                      : (academyLocations as any[]).find(l => l.id === locationFilter)?.name}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("invoices.allLocations", "Alle locaties")}</SelectItem>
-                  {academyLocations.map((loc: any) => (
-                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={t("invoices.allTrainers", "Alle trainers")}>
+                  {trainerFilter === "all"
+                    ? t("invoices.allTrainers", "Alle trainers")
+                    : (trainers as any[]).find(tr => tr.id === trainerFilter)?.name}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
-                <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
-                <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
-                <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
-                <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
-                <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
-                <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
+                <SelectItem value="all">{t("invoices.allTrainers", "Alle trainers")}</SelectItem>
+                {trainers.map((tr: any) => (
+                  <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-full sm:w-64"
-              />
-            </div>
-          </div>
-        </div>
+          )}
+          {academyLocations.length > 0 && (
+            <Select value={locationFilter} onValueChange={setLocationFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={t("invoices.allLocations", "Alle locaties")}>
+                  {locationFilter === "all"
+                    ? t("invoices.allLocations", "Alle locaties")
+                    : (academyLocations as any[]).find(l => l.id === locationFilter)?.name}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("invoices.allLocations", "Alle locaties")}</SelectItem>
+                {academyLocations.map((loc: any) => (
+                  <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
+              <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
+              <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
+              <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
+              <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
+              <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
+              <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </TableToolbar>
 
         <TabsContent value={activeTab} className="mt-4">
           {isLoading ? (
