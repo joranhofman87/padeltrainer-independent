@@ -22,6 +22,8 @@ export default function Academies() {
   const { t } = useTranslation(['academy', 'common']);
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
+  const { lang } = useParams<{ lang: string }>();
+  const currentLang = lang || 'en';
 
   const [academies, setAcademies] = useState<Partial<AcademyProfile>[]>([]);
   const [loading, setLoading] = useState(true);
