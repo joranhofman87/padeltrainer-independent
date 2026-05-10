@@ -39,13 +39,14 @@ Deno.serve(async (req) => {
     const lang = langMatch ? langMatch[1] : 'en';
     const cleanPath = path.replace(/^\/(en|nl|es|de|fr|it)/, '') || '/';
 
-    const html = await renderPath(cleanPath, lang);
+    const { html, status } = await renderPath(cleanPath, lang);
 
     return new Response(html, {
+      status,
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': status === 404 ? 'public, max-age=300' : 'public, max-age=3600',
       },
     });
   } catch (error) {
@@ -59,7 +60,16 @@ Deno.serve(async (req) => {
 
 // ─── Route Matching ─────────────────────────────────────────────
 
-async function renderPath(cleanPath: string, lang: string): Promise<string> {
+async function renderPath(cleanPath: string, lang: string): Promise<{ html: string; status: number }> {
+  const html = await renderPathInner(cleanPath, lang);
+  // Sentinel emitted only by the fallback branch — return 404 + noindex caching.
+  if (html.includes('<!-- render-page:notfound -->')) {
+    return { html, status: 404 };
+  }
+  return { html, status: 200 };
+}
+
+async function renderPathInner(cleanPath: string, lang: string): Promise<string> {
   // Homepage
   if (cleanPath === '/' || cleanPath === '') {
     const titles: Record<string, string> = {
@@ -555,12 +565,23 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
     }
   }
 
-  // Fallback
+  // Fallback — unknown path, surface a real 404 to crawlers
+  const titles404: Record<string, string> = {
+    nl: 'Pagina niet gevonden', es: 'Página no encontrada', de: 'Seite nicht gefunden',
+    fr: 'Page introuvable', it: 'Pagina non trovata',
+  };
+  const descs404: Record<string, string> = {
+    nl: 'Deze pagina bestaat niet (meer). Bekijk onze trainers en clubs.',
+    es: 'Esta página no existe. Explora nuestros entrenadores y clubes.',
+    de: 'Diese Seite existiert nicht. Entdecke unsere Trainer und Clubs.',
+    fr: "Cette page n'existe pas. Découvrez nos entraîneurs et clubs.",
+    it: 'Questa pagina non esiste. Scopri i nostri istruttori e club.',
+  };
   return page(
-    'PadelTrainer.ai — Find & Book Padel Trainers',
-    'Find and book certified padel trainers near you.',
+    titles404[lang] || 'Page not found',
+    descs404[lang] || 'This page does not exist. Explore our trainers and clubs.',
     cleanPath, lang,
-    `<h1>PadelTrainer.ai</h1><p>Find and book certified padel trainers near you.</p>`
+    `<!-- render-page:notfound --><h1>${esc(titles404[lang] || 'Page not found')}</h1><p>${esc(descs404[lang] || 'This page does not exist.')}</p><p><a href="${SITE_URL}/${lang}/trainers">Browse trainers</a> · <a href="${SITE_URL}/${lang}/locations">Browse clubs</a></p>`
   );
 }
 
@@ -607,12 +628,19 @@ async function resolvePublicHandle(handle: string): Promise<{ owner_type: string
 // ─── HTML Builder ───────────────────────────────────────────────
 
 function page(title: string, description: string, urlPath: string, lang: string, body: string, structuredData?: object[]): string {
-  const canonicalUrl = `${SITE_URL}/${lang}${urlPath}`;
+  // Canonical normalization: strip trailing slash (except root), collapse double slashes
+  const normalizePath = (p: string) => {
+    if (!p || p === '/') return '';
+    const collapsed = p.replace(/\/{2,}/g, '/');
+    return collapsed.endsWith('/') ? collapsed.slice(0, -1) : collapsed;
+  };
+  const canonicalPath = normalizePath(urlPath);
+  const canonicalUrl = `${SITE_URL}/${lang}${canonicalPath}`;
   const ogImage = `${SITE_URL}/og-image.png`;
   const ogLocale = OG_LOCALE_MAP[lang] || 'en_US';
 
   const hreflangTags = SUPPORTED_LANGS
-    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${urlPath}">`)
+    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${canonicalPath}">`)
     .join('\n  ');
   const ogLocaleAlternates = SUPPORTED_LANGS
     .filter(l => l !== lang)
@@ -632,7 +660,7 @@ function page(title: string, description: string, urlPath: string, lang: string,
   <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${canonicalUrl}">
   ${hreflangTags}
-  <link rel="alternate" hreflang="x-default" href="${SITE_URL}${urlPath || '/'}">
+  <link rel="alternate" hreflang="x-default" href="${SITE_URL}/en${canonicalPath}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:description" content="${esc(description)}">
