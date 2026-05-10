@@ -425,25 +425,26 @@ export default function AcademyCalendar() {
         });
       });
 
-      // 2) Registered players: distinct profiles tied to academy trainers via
-      //    bookings or intake_requests
+      // 2) Registered players: distinct profiles tied to academy trainers via bookings.
+      //    Use a two-step query (slot ids first, then bookings) to match the AcademyPlayers
+      //    page and avoid PostgREST nested-filter pitfalls.
       if (trainerIds.length > 0) {
         const profileIds = new Set<string>();
 
-        const { data: bookingPlayers } = await (supabase
-          .from('bookings')
-          .select('player_id, availability_slots!inner(trainer_id)')
-          .in('availability_slots.trainer_id', trainerIds)
-          .not('player_id', 'is', null)
-          .not('status', 'eq', 'cancelled') as any);
-        bookingPlayers?.forEach((b: any) => { if (b.player_id) profileIds.add(b.player_id); });
+        const { data: trainerSlotIds } = await supabase
+          .from('availability_slots')
+          .select('id')
+          .in('trainer_id', trainerIds);
 
-        const { data: intakePlayers } = await (supabase as any)
-          .from('intake_requests')
-          .select('player_id, trainer_id')
-          .in('trainer_id', trainerIds)
-          .not('player_id', 'is', null);
-        intakePlayers?.forEach((r: any) => { if (r.player_id) profileIds.add(r.player_id); });
+        const slotIdList = (trainerSlotIds || []).map((s: any) => s.id);
+        if (slotIdList.length > 0) {
+          const { data: bookingPlayers } = await supabase
+            .from('bookings')
+            .select('player_id')
+            .in('slot_id', slotIdList)
+            .not('player_id', 'is', null);
+          bookingPlayers?.forEach((b: any) => { if (b.player_id) profileIds.add(b.player_id); });
+        }
 
         // Drop ids already covered by a linked guest record
         linkedProfileIds.forEach((id) => profileIds.delete(id));
