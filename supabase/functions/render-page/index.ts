@@ -125,27 +125,75 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
   const trainerMatch = cleanPath.match(/^\/trainer\/([^/]+)$/);
   if (trainerMatch) {
     const slug = trainerMatch[1];
-    const displayName = slugToDisplay(slug);
-    const personSchema = {
+    const L = labels(lang);
+    const facts = await fetchTrainerFacts(slug).catch(() => null);
+    const displayName = facts?.name || slugToDisplay(slug);
+    const canonicalUrl = `${SITE_URL}/${lang}/trainer/${slug}`;
+
+    const personSchema: Record<string, unknown> = {
       "@context": "https://schema.org",
       "@type": "Person",
       "name": displayName,
       "jobTitle": "Padel Trainer",
-      "url": `${SITE_URL}/${lang}/trainer/${slug}`,
+      "url": canonicalUrl,
     };
+    if (facts?.bio) personSchema.description = facts.bio.slice(0, 500);
+    if (facts?.city) personSchema.address = { "@type": "PostalAddress", addressLocality: facts.city };
+    if (facts?.hourlyRate) {
+      personSchema.makesOffer = {
+        "@type": "Offer",
+        priceCurrency: "EUR",
+        price: facts.hourlyRate,
+        itemOffered: { "@type": "Service", name: "Padel coaching session" },
+      };
+    }
+    const ar = facts ? aggregateRatingSchema(facts.avgRating, facts.reviewCount) : null;
+    if (ar) personSchema.aggregateRating = ar;
+
+    const tldrParts: string[] = [];
+    if (facts?.city) tldrParts.push(`Based in ${facts.city}`);
+    if (facts?.experienceYears) tldrParts.push(`${facts.experienceYears}+ years coaching`);
+    if (facts?.hourlyRate) tldrParts.push(`From €${facts.hourlyRate}/hour`);
+    if (facts?.avgRating && facts.reviewCount > 0) tldrParts.push(`${facts.avgRating}★ (${facts.reviewCount} reviews)`);
+    if (facts?.specializations?.length) tldrParts.push(`Specializes in ${facts.specializations.slice(0, 3).join(', ')}`);
+    const tldr = tldrParts.length ? tldrParts.join(' · ') + '.' : `Padel trainer on PadelTrainer.ai.`;
+
     const faqs = trainerFaqs(displayName, lang);
-    return page(
-      `${displayName} - Padel Trainer | PadelTrainer.ai`,
-      `Book padel lessons with ${displayName}. View profile, experience, rates, and reviews on PadelTrainer.ai.`,
-      `/trainer/${slug}`, lang,
-      `<h1>${esc(displayName)}</h1><p>Padel Trainer on PadelTrainer.ai</p>
-       ${renderFaqHtml(faqs, lang)}
-       ${renderPopularCitiesHtml(lang)}`,
-      [personSchema, breadcrumbSchema(lang, [
+    const description = facts?.bio
+      ? facts.bio.slice(0, 155)
+      : `Book padel lessons with ${displayName}${facts?.city ? ` in ${facts.city}` : ''}. ${facts?.hourlyRate ? `From €${facts.hourlyRate}/hr. ` : ''}View profile, experience and reviews.`;
+
+    const reviewSds = facts ? reviewSchemas(facts.recentReviews, displayName) : [];
+    const sd: object[] = [
+      personSchema,
+      breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
-        { name: 'Trainers', path: '/trainers' },
+        { name: L.trainers, path: '/trainers' },
         { name: displayName },
-      ]), faqPageSchema(faqs)]
+      ]),
+      faqPageSchema(faqs),
+      speakableSchema(canonicalUrl),
+      ...reviewSds,
+    ];
+
+    const citySlugForNearby = facts?.city ? facts.city.toLowerCase().replace(/\s+/g, '-') : null;
+    const province = citySlugForNearby ? getProvinceForCity(citySlugForNearby) : undefined;
+    const nearby = citySlugForNearby ? getNearbyCities(citySlugForNearby) : [];
+
+    return page(
+      `${displayName} — Padel Trainer${facts?.city ? ` in ${facts.city}` : ''} | PadelTrainer.ai`,
+      description,
+      `/trainer/${slug}`, lang,
+      `<h1>${esc(displayName)}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${renderLastUpdatedHtml(facts?.lastUpdated || null, lang)}
+       ${facts?.bio ? `<p>${esc(facts.bio.slice(0, 600))}</p>` : ''}
+       ${facts?.primaryClub ? `<p><strong>${esc(L.trainersAtClub)}:</strong> <a href="${SITE_URL}/${lang}/locations/${facts.primaryClub.slug}">${esc(facts.primaryClub.name)}</a> — ${esc(facts.primaryClub.city)}</p>` : ''}
+       ${facts ? renderRecentReviewsHtml(facts.recentReviews, lang) : ''}
+       ${renderFaqHtml(faqs, lang)}
+       ${province ? renderNearbyCitiesHtml(province.name, nearby.map(c => ({ slug: c, name: slugToDisplay(c) })), lang) : ''}
+       ${renderPopularCitiesHtml(lang)}`,
+      sd
     );
   }
 
