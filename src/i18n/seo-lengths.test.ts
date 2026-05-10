@@ -11,9 +11,10 @@
  * To clear an allowlist entry: shorten the copy in every locale, then remove
  * the key from KNOWN_LONG_KEYS.
  */
+/// <reference types="node" />
 import { describe, it, expect } from 'vitest';
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const TITLE_SUFFIX = ' | PadelTrainer.ai';
 const TITLE_MAX = 60;
