@@ -132,6 +132,9 @@ export default function AcademyPlayers() {
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedCyclus, setSelectedCyclus] = useState<string>('all');
   const [selectedTagId, setSelectedTagId] = useState<string>('all');
+  const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
+  const [overdueGuestIds, setOverdueGuestIds] = useState<Set<string>>(new Set());
+  const [overdueProfileIds, setOverdueProfileIds] = useState<Set<string>>(new Set());
   const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
 
   // Tags
