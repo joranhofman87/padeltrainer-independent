@@ -278,7 +278,7 @@ export default function AcademyPlayers() {
     }
 
     setFilteredPlayers(result);
-  }, [searchQuery, players, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId]);
+  }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId]);
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
