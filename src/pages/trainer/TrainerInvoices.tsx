@@ -17,6 +17,7 @@ import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InvoiceSettingsCard } from "@/components/trainer/InvoiceSettingsCard";
+import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -79,7 +80,7 @@ export default function TrainerInvoices() {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from("trainer_profiles")
-        .select("id, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year, invoice_language, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, use_manual_invoicing, invoice_logo_url")
+        .select("id, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year, invoice_language, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, use_manual_invoicing, invoice_logo_url, invoice_banner_color, invoice_reply_to_email")
         .eq("user_id", user.id)
         .single();
       if (error) throw error;
@@ -511,6 +512,9 @@ export default function TrainerInvoices() {
               initialData={trainerProfile}
               onSave={() => queryClient.invalidateQueries({ queryKey: ["trainer-profile-id"] })}
             />
+          )}
+          {trainerId && (
+            <ExtraCostPresetsCard trainerId={trainerId} />
           )}
         </TabsContent>
       </Tabs>

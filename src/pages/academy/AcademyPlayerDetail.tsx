@@ -30,7 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { getTagColorClass, PlayerTag } from '@/components/academy/playerTagColors';
+import { getTagColorClass, PlayerTag } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
 import {
   LineChart,

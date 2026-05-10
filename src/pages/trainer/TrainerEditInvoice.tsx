@@ -19,6 +19,7 @@ import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -260,9 +261,23 @@ export default function TrainerEditInvoice() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">{t('invoiceEdit.lineItems')}</CardTitle>
-              <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setLineItems(prev => [...prev, { description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: vatRate }])}>
-                <Plus className="h-3 w-3 mr-1" />{t('invoiceEdit.addLine')}
-              </Button>
+              <div className="flex items-center gap-1">
+                <ExtraCostPresetPicker
+                  trainerId={(invoice?.trainer_id as string) || null}
+                  onSelect={(cost) => {
+                    setLineItems(prev => [...prev, {
+                      description: cost.description,
+                      quantity: 1,
+                      unit_price: cost.price,
+                      amount: cost.price,
+                      vat_rate: cost.vat_rate,
+                    }]);
+                  }}
+                />
+                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setLineItems(prev => [...prev, { description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: vatRate }])}>
+                  <Plus className="h-3 w-3 mr-1" />{t('invoiceEdit.addLine')}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>

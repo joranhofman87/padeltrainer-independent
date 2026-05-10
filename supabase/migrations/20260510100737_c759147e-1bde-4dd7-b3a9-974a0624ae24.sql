@@ -1,0 +1,1 @@
+ALTER TABLE public.trainer_profiles ADD COLUMN IF NOT EXISTS invoice_banner_color TEXT;

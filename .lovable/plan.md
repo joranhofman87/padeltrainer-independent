@@ -1,101 +1,87 @@
 ## Goal
 
-Take the clean header + toolbar pattern we landed on the Players page and reuse it on every list/table screen. Two outcomes: (1) consistent UX across Players, Registrations, Invoices, etc., and (2) less duplicated layout code per page.
+Bring the Trainer side to feature + visual parity with the Academy side. Academy is the source of truth. Differences should remain only where they reflect the structural distinction "an academy can have multiple trainers and own things on their behalf."
 
-## The Players pattern (target)
+## Audit summary
 
-```text
-[Title    N items]                         [Secondary action] [Primary action]
-[Tabs]                                                     [Optional view toggle]
-[ Search 🔍 ] [Filter] [Filter] [Filter]                [Columns ⌄] [Extras]
-[ ── table / cards ── ]
-```
+| Area | Academy (leading) | Trainer (today) | Gap |
+|---|---|---|---|
+| **Calendar / Agenda** | `AgendaWeekByTrainer` + `AgendaMonth` (location logos, capacity, status pills), 4-tile summary bar (Active trainers / Locations / Booked h / Free h), `AcademyTrainerHours` tab, `AcademyReportsTab` | `TrainerCalendarGrid` only, day/week/month buttons, generic Available/Pending/Booked counts, sub-page border-b header | Big — new Agenda views + summary not used at all |
+| **Registrations** | `PageHeader`, `TableToolbar`, search-first, Add + CSV in header, Workflow steps, Tabs + List/Schedule toggle | Same after recent refactor | Done |
+| **Players** | `PageHeader` + 3 tabs (All / Create / Email Campaign) + filters (Trainers, Locations, Levels, Cyclus, Tags, Payments) + Columns dropdown + tags + import + email campaigns + manage tags dialog | Old layout: title + buttons, status pill filter row, search only, single Players card, no tabs, no tags, no columns, no campaigns | Big — table is the leading change the user keeps mentioning |
+| **Invoices list** | New `PageHeader` + `TableToolbar`, stats cards, **bulk select + bulk actions** (email, reset to draft, due date, delete), Send all drafts in header, settings tab with `AcademyInvoiceSettingsCard` + `ExtraCostPresetsCard` | New `PageHeader` + `TableToolbar` + stats + Send all drafts (just refactored) | Missing bulk select/actions, missing Extra-cost presets, missing banner color in settings |
+| **Create invoice** | Adds line items, `ExtraCostPresetsCard` quick-add, supports `prices_include_vat`, `payment_terms_days` from settings | Adds line items, `prices_include_vat`, `payment_terms_days` from settings, but **no Extra-cost preset quick-add buttons** | Add preset quick-add row |
+| **Invoice settings** | `business_name`, address, KvK, BTW, IBAN, BIC, terms, VAT, forward emails, **reply-to**, **logo**, prefix/next/year, **banner color**, language | Same except **no banner color**; otherwise parity exists | Add banner color field |
+| **Dashboard** | `UnpaidBookingsCard`, `AcademyCalendarOverview`, etc. | `UnpaidBookingsCard`, `TrainerSetupChecklist`, custom monthly earnings | Smaller — visual polish only |
+| **Misc** | Container `py-6 space-y-4`, `PageHeader` everywhere | `TrainerCalendar` still uses old "Sub-page Header" `border-b` shell | Adopt unified shell |
 
-Three rules:
-1. **Header row**: page title + count on the left, action buttons on the right (no separate description card, no separate "Action Buttons" row).
-2. **Tabs row**: status tabs only. Optional right-aligned view toggle (List/Schedule).
-3. **Toolbar row**: search input is always first (left), then filters in a wrap row, then trailing slot (Columns dropdown, CSV button).
+## Plan (in priority order)
 
-## Approach
+### 1. Trainer Players page — adopt full Academy parity (highest impact)
 
-Two small shared components in `src/components/ui/`:
+Rewrite `src/pages/TrainerPlayers.tsx` to mirror `AcademyPlayers.tsx`:
+- `PageHeader` with title + count + actions (Tags, Import, Add player).
+- Tabs: **All players / Create / Email campaign** (reuse `EmailCampaignTab`, `ImportPlayersTab`, `AddPlayerForm`).
+- Toolbar: search first, then Levels, Cyclus, Tags, Payments, Columns dropdown. (Trainer filter and Locations filter are academy-only and stay omitted.)
+- Tags: reuse `ManagePlayerTagsDialog`, `PlayerTagsCell`, `PlayerNotesCell` from `components/academy/`.
+- Move shared bits (`PlayerTagsCell`, `PlayerNotesCell`, `ManagePlayerTagsDialog`, `EmailCampaignTab`, `playerTagColors`) from `components/academy/` to `components/players/` so both pages import from one place. No behaviour change, just relocation + import path updates in Academy.
 
-- **`PageHeader`** — title, optional subtitle, item count, right-side action slot.
-- **`TableToolbar`** — search input prop + filter children + trailing slot. Handles wrap + spacing.
+### 2. Trainer Calendar — adopt new Agenda views + summary
 
-Both are pure presentational, no data fetching. They wrap existing primitives (`Input`, `Button`, etc.) and standardise spacing (`gap-2`, `flex-wrap`, search `min-w-[200px] max-w-sm`).
+In `src/pages/TrainerCalendar.tsx`:
+- Replace the "Sub-page Header" with `PageHeader` (title + Add slot action), wrapped in the standard container.
+- Add the 4-tile overview: **Locations in use / Booked hours / Free hours** for the visible range. (Drop "Active trainers" — single trainer.)
+- Add view tabs: **Day / Week / Month** as in Academy.
+- For Week and Month, render `AgendaWeekByTrainer` / `AgendaMonth` filtered to the single trainer (these components already accept a trainers list — pass the one trainer). Keep the existing `TrainerCalendarGrid` only for Day view, or replace with the Agenda day equivalent if simpler.
+- Move `AgendaWeekByTrainer`, `AgendaMonth`, `agendaTokens.ts` from `components/academy/` to `components/agenda/` so both sides import from a neutral location.
 
-Page-level changes are mostly: delete duplicated layout JSX, swap in `<PageHeader …>` and `<TableToolbar search={…}>{filters}</TableToolbar>`. Stats cards, bulk-action bars, tables themselves stay unchanged.
+### 3. Trainer Invoices — bulk actions + extras
 
-## Pages in scope (this iteration)
+In `src/pages/trainer/TrainerInvoices.tsx`:
+- Add the same bulk-selection sticky bar (checkboxes per row + select-all in table header) with actions: Send email, Reset to draft, Update due date, Delete. Reuse `BulkInvoiceEmailDialog`.
+- Add `ExtraCostPresetsCard` to the Settings tab (`trainer_id` variant — extend `ExtraCostPresetsCard` to accept either `academyProfileId` or `trainerProfileId`).
+- Settings: add **invoice banner color** field to `InvoiceSettingsCard` to match `AcademyInvoiceSettingsCard`.
 
-1. **`src/pages/academy/AcademyInvoices.tsx`**
-   - Replace header block (lines 600–607), action button row (643–652), and the toolbar inside the Tabs block (708–772) with `PageHeader` + `TableToolbar`.
-   - Keep the stats card grid and the bulk-action sticky bar.
-   - Move "New invoice" into the header's action slot (matches Players' "Add player").
+### 4. Trainer Create / Edit Invoice — preset quick-add row
 
-2. **`src/pages/trainer/TrainerInvoices.tsx`** — same treatment, parity with academy.
+In `src/pages/trainer/TrainerCreateInvoice.tsx` and `TrainerEditInvoice.tsx`:
+- Add the preset quick-add row that appends preset line items (same buttons that exist in `AcademyCreateInvoice.tsx`).
 
-3. **`src/pages/academy/AcademyIntakeRequests.tsx`** ("Registrations")
-   - Replace header (235–242) with `PageHeader`.
-   - Move "Add registration" + "CSV" buttons into header's action slot.
-   - Keep `ProposalWorkflowSteps` between header and tabs.
-   - Tabs row keeps the right-side List/Schedule toggle.
-   - Add a `TableToolbar` row with search (filter by player name) + cycle/status filters that already exist further down.
+### 5. Visual & shell consistency pass
 
-4. **`src/pages/TrainerIntakeRequests.tsx`** — same treatment.
+- Container: every Trainer top-level page uses `container mx-auto px-4 py-6 space-y-4` and starts with `PageHeader`. Audit:
+  - `TrainerCalendar` (drop border-b sub-page header)
+  - `TrainerEarnings`, `TrainerBookings`, `TrainerWaitingList`, `TrainerScheduleOverview`, `TrainerCycles`, `TrainerCyclus`, `TrainerAnalytics`, `TrainerSettings`, `TrainerProfile` — convert any custom page headers to `PageHeader`.
+- All routes use `/app/trainer/...` (one stale `/trainer/calendar` link in TrainerPlayers).
 
-## Pages out of scope this round (call out, don't touch yet)
+### 6. Component relocation summary (one PR-sized cleanup)
 
-These also have tables but each has bespoke quirks; doing them in a follow-up keeps the diff reviewable:
+| From | To | Used by |
+|---|---|---|
+| `components/academy/AgendaWeekByTrainer.tsx` | `components/agenda/AgendaWeekByTrainer.tsx` | Academy + Trainer calendar |
+| `components/academy/AgendaMonth.tsx` | `components/agenda/AgendaMonth.tsx` | Academy + Trainer calendar |
+| `components/academy/agendaTokens.ts` | `components/agenda/agendaTokens.ts` | both |
+| `components/academy/PlayerTagsCell.tsx` | `components/players/PlayerTagsCell.tsx` | both |
+| `components/academy/PlayerNotesCell.tsx` | `components/players/PlayerNotesCell.tsx` | both |
+| `components/academy/ManagePlayerTagsDialog.tsx` | `components/players/ManagePlayerTagsDialog.tsx` | both |
+| `components/academy/EmailCampaignTab.tsx` | `components/players/EmailCampaignTab.tsx` | both |
+| `components/academy/playerTagColors.ts` | `components/players/playerTagColors.ts` | both |
 
-- `AcademyWaitingList.tsx`, `TrainerWaitingList.tsx`
-- `AcademyTrainers.tsx`
-- `ClubPlayers.tsx`, `ClubCycles.tsx`
-- `AcademyCycles.tsx` (already close to the pattern after recent change)
-- Admin pages (`AdminUsers`, `AdminTrainers`, `AdminPricing`, `AdminPlayerRatings`)
+`AcademyInvoiceSettingsCard` and `InvoiceSettingsCard` stay separate for now — they read different DB tables (`academy_profiles` vs `trainer_profiles`). A later refactor can collapse them behind a `useInvoiceProfile(ownerType, id)` hook.
 
-Once `PageHeader` + `TableToolbar` are in, converting each is a 5-minute swap.
+## Out of scope this round
 
-## Component shape
+- Multi-trainer-only features (location/trainer filters on Trainer pages, AcademyTrainers, AcademyTrainerHours, AcademyReportsTab) — these legitimately stay academy-only.
+- DB schema changes — assumes `guest_player_tags`, `guest_player_tag_assignments`, etc. already work for trainer-owned players (they do; tags are scoped by `trainer_id`).
+- Mobile-only redesigns beyond what comes free with `PageHeader` + `TableToolbar`.
 
-```tsx
-// PageHeader
-<PageHeader
-  title={t('invoices.title')}
-  count={invoices.length}
-  countLabel={{ one: 'invoice', other: 'invoices' }}
-  description={t('invoices.description')}  // optional, hidden on small screens
-  actions={
-    <>
-      <Button variant="outline" size="sm">…</Button>
-      <Button size="sm">…</Button>
-    </>
-  }
-/>
+## Suggested execution order
 
-// TableToolbar
-<TableToolbar
-  searchPlaceholder={t('invoices.searchPlaceholder')}
-  searchValue={searchQuery}
-  onSearchChange={setSearchQuery}
-  trailing={<ColumnsDropdown />}  // optional right-side slot
->
-  <Select …/>  {/* trainer */}
-  <Select …/>  {/* location */}
-  <Select …/>  {/* status */}
-</TableToolbar>
-```
+1. Move the eight shared components to neutral folders (mechanical, low-risk).
+2. Trainer Players parity — biggest perceived gap.
+3. Trainer Calendar parity — biggest functional gap.
+4. Trainer Invoices bulk + presets + banner color.
+5. Trainer Create/Edit Invoice presets row.
+6. Visual shell pass on the remaining trainer pages.
 
-## Refactor wins
-
-- Each page loses ~20–40 lines of layout JSX.
-- Single place to tweak spacing, mobile wrap behaviour, search width.
-- Future pages get the standard header/toolbar for free.
-
-## Out of scope
-
-- Table internals (columns, sorting, row rendering).
-- Stats cards, bulk-action bars, mutations.
-- Mobile card-vs-table switch logic.
-- Admin and Club pages (queued for the next pass).
+Each step is independently shippable so we can review and adjust as we go.
