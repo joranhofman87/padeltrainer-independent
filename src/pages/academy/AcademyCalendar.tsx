@@ -279,7 +279,7 @@ export default function AcademyCalendar() {
       .select(`
         id, trainer_id, start_time, end_time, max_participants, is_public,
         location_id, cyclus_id, cyclus_name, rating_system, min_rating, max_rating,
-        price_per_session, locations(name)
+        price_per_session, locations(name, logo_url)
       `)
       .in("trainer_id", trainerIds)
       .gte("start_time", rangeStart.toISOString())
