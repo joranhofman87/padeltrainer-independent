@@ -60,7 +60,16 @@ Deno.serve(async (req) => {
 
 // ─── Route Matching ─────────────────────────────────────────────
 
-async function renderPath(cleanPath: string, lang: string): Promise<string> {
+async function renderPath(cleanPath: string, lang: string): Promise<{ html: string; status: number }> {
+  const html = await renderPathInner(cleanPath, lang);
+  // Sentinel emitted only by the fallback branch — return 404 + noindex caching.
+  if (html.includes('<!-- render-page:notfound -->')) {
+    return { html, status: 404 };
+  }
+  return { html, status: 200 };
+}
+
+async function renderPathInner(cleanPath: string, lang: string): Promise<string> {
   // Homepage
   if (cleanPath === '/' || cleanPath === '') {
     const titles: Record<string, string> = {
