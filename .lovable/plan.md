@@ -1,27 +1,30 @@
-## Bug
+## Problem
 
-Clicking a day cell or day header in the week table calls `setCurrentDate(day)` and switches to the Day tab, but `AcademyDayGrid` ignores the new date and keeps showing the day that was selected when the grid first mounted (defaults to today).
+In the Academy Dashboard's "Recente boekingen" widget, the same player appears multiple times (e.g. Larissa Rand × 4) instead of being grouped as one row with a session count.
 
-## Cause
+## Root cause
 
-In `src/components/academy/AcademyDayGrid.tsx` (line 442–447):
+`src/pages/academy/AcademyDashboard.tsx` groups bookings by `cyclus_name + player_id`, but the Supabase select only fetches the **joined** `profiles` / `guest_players` relations — it never selects the raw `player_id` or `guest_player_id` columns. As a result the grouping key is always empty, the `if (cyclusName && playerId)` branch is never taken, and every booking row is pushed individually into `recentBookings`.
 
-```ts
-const todayKey = format(new Date(), 'yyyy-MM-dd');
-const defaultDay = weekDays.find(d => d.dayKey === todayKey)?.dayKey || weekDays[0].dayKey;
-const [selectedDayKey, setSelectedDayKey] = useState(defaultDay);
-```
+The "Cyclus —" dashes are a related symptom: when `cyclus_name` is null on the slot, no grouping happens either.
 
-`selectedDayKey` is initialised once and never re-syncs when the parent's `currentDate` prop changes. So clicking "WOE 13" in the week view updates `currentDate` upstream, but the day grid still renders today's tab. The same applies to `TrainerDayGrid` if it uses the same pattern.
+## Fix (UI/data layer only)
 
-## Fix
+In `AcademyDashboard.tsx`, inside the bookings query (around line 115):
 
-In `AcademyDayGrid`:
-- Add a `useEffect` that updates `selectedDayKey` to `format(currentDate, 'yyyy-MM-dd')` whenever `currentDate` changes (when the new key exists in `weekDays`).
-- Keep the local `useState` so users can still switch days via the in-grid tab strip without round-tripping to the parent.
+1. Add `player_id, guest_player_id` to the select string so grouping has real IDs to key on.
+2. Make the grouping fall back gracefully: if `cyclus_name` is missing, group by `(cyclus_id || 'no-cyclus') + playerId` instead of skipping grouping entirely. Pull `cyclus_id` into the slot select too.
+3. Keep `sessionCount` increment behavior, so the row can show e.g. "Larissa Rand · 4 sessions" (or just dedupe — see question below).
+4. Bump the initial `.limit(10)` to a higher number (e.g. 30) since we're now collapsing rows; otherwise after grouping we may show fewer than 10 unique entries.
 
-Check `src/components/trainer/TrainerDayGrid.tsx` (or equivalent) for the same pattern and apply the same effect.
+No schema/RLS/business-logic changes. Trainer dashboard is not touched (Academy-only fix, and trainer side has its own widget).
 
 ## Out of scope
 
-No changes to date arithmetic, timezone handling, or the week table itself. Just sync the day-grid's selected tab to the incoming `currentDate` prop.
+- Visual redesign of the table
+- Trainer dashboard changes
+- Backend/edge function changes
+
+## Open question
+
+Should the grouped row show a session count (e.g. "Larissa Rand — 4 sessions in Cyclus X") or just dedupe silently to one row per player+cyclus with no count? I'd suggest showing the count since `sessionCount` is already being computed.
