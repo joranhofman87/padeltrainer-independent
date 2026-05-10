@@ -77,6 +77,7 @@ async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStat
 
   return {
     trainerId: currentTrainerId,
+    slug: (trainerProfile as { slug?: string | null }).slug ?? null,
     stats: {
       totalStudents: guestResult.count || 0,
       openSlots: openSlotsCount,
