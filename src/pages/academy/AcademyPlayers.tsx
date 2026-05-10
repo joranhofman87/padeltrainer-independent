@@ -238,6 +238,14 @@ export default function AcademyPlayers() {
       result = result.filter((p) => !p.has_active_cyclus);
     }
 
+    if (selectedTagId && selectedTagId !== 'all') {
+      if (selectedTagId === 'untagged') {
+        result = result.filter((p) => !p.tag_ids || p.tag_ids.length === 0);
+      } else {
+        result = result.filter((p) => p.tag_ids?.includes(selectedTagId));
+      }
+    }
+
     const query = searchQuery.toLowerCase().trim();
     if (query) {
       result = result.filter(
