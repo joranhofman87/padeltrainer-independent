@@ -1,36 +1,46 @@
 ## Problem
 
-The agenda's "All Players" sidebar (in `AcademyDayGrid`) only shows players that already have a non-cancelled booking with one of the academy's trainers. That's why the count (e.g. 105) is much lower than the full roster shown on the Players page, and trainers can't drag a brand-new or never-booked player onto a slot.
+When a trainer (or location) filter is active, the chip below the Week/Day/Month switcher is rendered with neutral background + plain border. It looks like a passive label rather than an active filter, so trainers easily miss that the agenda is scoped to one person and get confused by "missing" data.
 
-The source is `fetchAllKnownPlayers` in `src/pages/academy/AcademyCalendar.tsx`, which only joins through `bookings`.
+Source: `src/pages/academy/AcademyCalendar.tsx` lines 928-950, plus a small helper banner above the agenda content.
 
-## Goal
+## Plan (UI only)
 
-The sidebar should list every player known to the academy (same set as the Players page tab "All Players"), so trainers can search any player and drag them onto a slot.
+In `AcademyCalendar.tsx`, upgrade the active-filter strip so it reads as a clear, dismissable scope indicator:
 
-## Plan
+1. **Stronger chips** (lines 931-948):
+   - Use `bg-primary/10 border-primary/40 text-primary font-medium` (theme tokens, no hardcoded colors).
+   - Slightly larger: `px-3 py-1.5 text-sm`.
+   - Prefix with a small icon (`User` for trainer chip, `MapPin` for location chip).
+   - Keep the `X` to clear, with `aria-label` (e.g. "Clear trainer filter").
 
-1. **Replace `fetchAllKnownPlayers` in `src/pages/academy/AcademyCalendar.tsx`** to mirror the logic used by `AcademyPlayers.fetchPlayers`:
-   - **Guest players**: union of
-     - `guest_players` where `trainer_id IN (academyTrainerIds)`
-     - `guest_players` where `academy_profile_id = activeAcademy.id AND trainer_id IS NULL`
-     - dedupe by id; mark `is_guest: true`
-   - **Registered players**: distinct `profiles` referenced via the academy's trainers (through `bookings.player_id` and `intake_requests.player_id` joined on `availability_slots.trainer_id IN trainerIds`), excluding any whose id is already covered by a linked guest record (matches AcademyPlayers' linked-id dedupe). Mark `is_guest: false`.
-   - Map each into the existing `KnownPlayer` shape (`id`, `full_name`, `skill_rating`, `rating_system`, `is_guest`).
-   - Sort alphabetically and `setAllKnownPlayers(...)`.
+2. **Leading label** in front of the chips:
+   - Small uppercase muted label `Filtered by` (i18n key `calendar.filteredBy`, with NL fallback "Gefilterd op") so the row clearly signals "the view is narrowed".
+   - Trailing "Clear all" link button when more than one filter is active, calling both setters.
 
-2. **No UI changes** required: the sidebar already renders `allKnownPlayers.length` as the badge and filters `filteredSidebarPlayers` by `sidebarSearch`, so increasing the underlying list automatically fixes the count and the search.
+3. **Banner above the agenda body** (new, only when `filtersActive`):
+   - A compact one-line bar with `bg-primary/5 border border-primary/20 text-primary` that says e.g. "Showing Patrick van der Welle only" / "Showing TPVU only" / combined ("Showing Patrick van der Welle at TPVU"). i18n: `calendar.showingScope` with `{trainer}` / `{location}` interpolation.
+   - Right-aligned "Show all" button that resets both filters.
+   - Rendered inside the same primary-view container, just before the Day/Week/Month grids, so it's visible regardless of which sub-view is active.
 
-3. **Keep the drag/drop contract intact**: `KnownPlayer.id` for guests stays the raw `guest_players.id` (with `is_guest: true`), for registered players stays the raw `profiles.id`. This matches what the existing booking flow expects on drop, so no consumer changes are needed.
+4. **No logic changes**: filter state, query effects, and chip clearing behavior stay as-is. Pure presentation upgrade.
 
-4. **Refresh trigger**: `fetchAllKnownPlayers` keeps being called on the existing effect (mount + academy change). No extra invalidation needed for this fix.
+## i18n keys to add (academy.json, all locales)
+
+- `calendar.filteredBy` ("Filtered by" / "Gefilterd op")
+- `calendar.clearAll` ("Clear all" / "Alles wissen")
+- `calendar.showingScope` ("Showing {{scope}}" / "Toont {{scope}}")
+- `calendar.scopeTrainer` ("{{name}}")
+- `calendar.scopeTrainerAtLocation` ("{{trainer}} at {{location}}" / "{{trainer}} bij {{location}}")
+- `calendar.showAll` ("Show all" / "Toon alles")
 
 ## Out of scope
 
-- Refactoring the AcademyPlayers query into a shared hook (can be a follow-up; for now we duplicate the minimal query needed for the sidebar to keep the change small and isolated).
-- Showing extra metadata (location, has_active_cyclus, status badges) in the sidebar — the sidebar stays a lean name + rating list as today.
-- Changing the Players page itself.
+- Changing how the filter is opened (Filters popover stays the same).
+- Persisting filter state across sessions.
+- Adding new filter dimensions.
 
-## Files to edit
+## File to edit
 
-- `src/pages/academy/AcademyCalendar.tsx` — rewrite `fetchAllKnownPlayers` only.
+- `src/pages/academy/AcademyCalendar.tsx`
+- `src/i18n/locales/{en,nl,fr,es,it}/academy.json`
