@@ -9,9 +9,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Check, ArrowLeft, Star } from 'lucide-react';
 import { LocalizedLink } from '@/components/LocalizedLink';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useLocalizedPath } from '@/hooks/useLocalizedPath';
 import { toast } from '@/hooks/use-toast';
+import { buildBreadcrumbList } from '@/lib/structuredData';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 
 interface SelectedLocation {
   id: string;
