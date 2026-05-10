@@ -26,6 +26,7 @@ import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
+import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
 import { useQuery } from '@tanstack/react-query';
 
 const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
@@ -232,6 +233,15 @@ export default function AcademyDashboard() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Shareable profile link */}
+      {activeAcademy?.slug && (
+        <Card className="mb-6">
+          <CardContent className="p-4 sm:p-6">
+            <ShareableProfileLink handle={activeAcademy.slug} />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Trial Banner */}
       {isTrialing && trialDaysRemaining > 0 && (
         <Alert className="mb-6 border-primary bg-primary/5">

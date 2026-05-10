@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { logger } from '@/lib/logger';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
+import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { getTrainerAcademy } from '@/lib/academy';
@@ -28,10 +29,10 @@ interface DashboardStats {
 
 // --- Query functions ---
 
-async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStats; trainerId: string } | null> {
+async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStats; trainerId: string; slug: string | null } | null> {
   const { data: trainerProfile } = await supabase
     .from('trainer_profiles')
-    .select('id')
+    .select('id, slug')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -77,6 +78,7 @@ async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStat
 
   return {
     trainerId: currentTrainerId,
+    slug: (trainerProfile as { slug?: string | null }).slug ?? null,
     stats: {
       totalStudents: guestResult.count || 0,
       openSlots: openSlotsCount,
@@ -201,6 +203,7 @@ export default function TrainerDashboard() {
   });
 
   const trainerId = statsData?.trainerId ?? null;
+  const trainerSlug = statsData?.slug ?? null;
   const stats = statsData?.stats ?? { totalStudents: 0, openSlots: 0, monthlyEarnings: 0, followerCount: 0, profileViews: 0 };
 
   const { data: hasAcademy = false } = useQuery({
@@ -245,6 +248,15 @@ export default function TrainerDashboard() {
 
       {/* Pending Attendance Actions */}
       <PendingAttendanceCard mode="trainer" trainerId={trainerId ?? undefined} />
+
+      {/* Shareable profile link */}
+      {trainerSlug && (
+        <Card className="mb-6">
+          <CardContent className="p-4 sm:p-6">
+            <ShareableProfileLink handle={trainerSlug} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
