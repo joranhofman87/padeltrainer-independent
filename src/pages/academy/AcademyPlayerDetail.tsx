@@ -439,6 +439,31 @@ export default function AcademyPlayerDetail() {
                   {player.skill_rating.toFixed(1)} {(player.rating_system || 'knltb').toUpperCase()}
                 </Badge>
               )}
+              {(() => {
+                const todayIso = new Date().toISOString().slice(0, 10);
+                const overdueCount = invoices.filter((inv) => {
+                  const status = (inv.status || '').toLowerCase();
+                  const isPaid = status === 'paid';
+                  const isClosed = status === 'cancelled' || status === 'draft' || status === 'void';
+                  if (status === 'overdue') return true;
+                  return !!(inv as any).invoice_date === false
+                    ? false
+                    : !!inv.invoice_date && false;
+                }).length || invoices.filter((inv) => {
+                  const status = (inv.status || '').toLowerCase();
+                  if (status === 'overdue') return true;
+                  if (status === 'paid' || status === 'cancelled' || status === 'draft' || status === 'void') return false;
+                  const due = (inv as any).due_date as string | null | undefined;
+                  return !!due && due < todayIso;
+                }).length;
+                if (!overdueCount) return null;
+                return (
+                  <Badge variant="destructive">
+                    {t('players.detail.overdueBadge', 'Overdue payment')}
+                    {overdueCount > 1 ? ` (${overdueCount})` : ''}
+                  </Badge>
+                );
+              })()}
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
               {player.email && (
