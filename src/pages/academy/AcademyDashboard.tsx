@@ -26,6 +26,7 @@ import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
+import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
 import { useQuery } from '@tanstack/react-query';
 
 const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
