@@ -439,9 +439,19 @@ export default function AcademyDayGrid({
   }, [weekStart, dateFnsLocale]);
 
   // Selected day tab
+  const currentDateKey = format(currentDate, 'yyyy-MM-dd');
   const todayKey = format(new Date(), 'yyyy-MM-dd');
-  const defaultDay = weekDays.find(d => d.dayKey === todayKey)?.dayKey || weekDays[0].dayKey;
+  const defaultDay = weekDays.find(d => d.dayKey === currentDateKey)?.dayKey
+    || weekDays.find(d => d.dayKey === todayKey)?.dayKey
+    || weekDays[0].dayKey;
   const [selectedDayKey, setSelectedDayKey] = useState(defaultDay);
+
+  // Sync selected day with parent's currentDate when it changes
+  useEffect(() => {
+    if (weekDays.find(d => d.dayKey === currentDateKey)) {
+      setSelectedDayKey(currentDateKey);
+    }
+  }, [currentDateKey, weekDays]);
 
   // Ensure selectedDayKey is valid for this week
   const activeDayKey = weekDays.find(d => d.dayKey === selectedDayKey) ? selectedDayKey : weekDays[0].dayKey;
