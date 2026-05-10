@@ -35,6 +35,7 @@ import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { logger } from '@/lib/logger';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
 
 interface EarningsBooking {
   id: string;
@@ -338,32 +339,21 @@ export default function TrainerEarnings() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/trainer')}>
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <div>
-                <h1 className="text-xl font-bold">{t('earningsPage.title')}</h1>
-                <p className="text-sm text-muted-foreground">{t('earningsPage.subtitle')}</p>
-              </div>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+      <main className="container mx-auto px-4 py-6 space-y-4">
+        <PageHeader
+          title={t('earningsPage.title')}
+          description={t('earningsPage.subtitle')}
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowSettings(!showSettings)}
             >
               <Settings className="h-4 w-4 mr-2" />
               {showSettings ? t('earningsPage.hideSettings') : t('earningsPage.invoiceSettings')}
             </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8">
+          }
+        />
         {/* Club Payment Info Card - Show for club trainers */}
         {academyPaymentInfo?.isAcademyTrainer && (
           <Card className={`mb-6 ${academyPaymentInfo.academyChargesEnabled 
