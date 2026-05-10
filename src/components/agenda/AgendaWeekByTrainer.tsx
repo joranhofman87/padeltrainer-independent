@@ -285,7 +285,7 @@ export default function AgendaWeekByTrainer({
             const hue = getTrainerHue(tr.id, i);
             const initials = tr.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || '?';
             const firstName = tr.name.split(' ')[0];
-            const hours = trainerWeekHours(tr.id);
+            const { booked: trBooked, free: trFree } = trainerWeekStats(tr.id);
             const isExpanded = expanded.has(tr.id);
             return (
               <div key={tr.id} className="border-b last:border-b-0">
