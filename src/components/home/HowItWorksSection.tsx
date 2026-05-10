@@ -10,19 +10,28 @@ const heatLevels = [
   'bg-brand-500',
   'bg-brand-50',
 ];
-const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function AvailabilityMock() {
+  const { t } = useTranslation('marketing');
+  const days = [
+    t('homev2.howItWorks.day_mon', 'Mon'),
+    t('homev2.howItWorks.day_tue', 'Tue'),
+    t('homev2.howItWorks.day_wed', 'Wed'),
+    t('homev2.howItWorks.day_thu', 'Thu'),
+    t('homev2.howItWorks.day_fri', 'Fri'),
+    t('homev2.howItWorks.day_sat', 'Sat'),
+    t('homev2.howItWorks.day_sun', 'Sun'),
+  ];
   return (
     <div className="mock-window p-5 md:p-6">
       <div className="flex items-center gap-2 text-xs text-navy-700/70 mb-5">
         <span className="mock-dot bg-[#ff5f57]" />
         <span className="mock-dot bg-[#febc2e]" />
         <span className="mock-dot bg-[#28c840]" />
-        <span className="ml-3">Setup · Step 1 of 4</span>
+        <span className="ml-3">{t('homev2.howItWorks.mock_setup_step', 'Setup · Step 1 of 4')}</span>
       </div>
       <div className="text-[11px] font-semibold tracking-[0.14em] text-navy-900 mb-3">
-        WEEKLY AVAILABILITY
+        {t('homev2.howItWorks.mock_weekly_availability', 'WEEKLY AVAILABILITY')}
       </div>
       <div className="grid grid-cols-7 gap-2 md:gap-3">
         {days.map((d, i) => (
@@ -34,11 +43,11 @@ function AvailabilityMock() {
       </div>
       <div className="grid grid-cols-2 gap-3 mt-5">
         <div className="rounded-xl border border-navy-900/10 px-4 py-3">
-          <div className="text-[11px] text-navy-700/70">Group size</div>
-          <div className="font-display font-bold text-navy-900">2 – 4 players</div>
+          <div className="text-[11px] text-navy-700/70">{t('homev2.howItWorks.mock_group_size', 'Group size')}</div>
+          <div className="font-display font-bold text-navy-900">{t('homev2.howItWorks.mock_group_size_value', '2 – 4 players')}</div>
         </div>
         <div className="rounded-xl border border-navy-900/10 px-4 py-3">
-          <div className="text-[11px] text-navy-700/70">Per player</div>
+          <div className="text-[11px] text-navy-700/70">{t('homev2.howItWorks.mock_per_player', 'Per player')}</div>
           <div className="font-display font-bold text-navy-900">€18 / 60 min</div>
         </div>
       </div>
@@ -47,27 +56,28 @@ function AvailabilityMock() {
 }
 
 function BookingPageMock() {
+  const { t } = useTranslation('marketing');
   return (
     <div className="mock-window p-5 md:p-6">
       <div className="flex items-center gap-2 text-xs text-navy-700/70 mb-5">
         <span className="mock-dot bg-[#ff5f57]" />
         <span className="mock-dot bg-[#febc2e]" />
         <span className="mock-dot bg-[#28c840]" />
-        <span className="ml-3">Your booking page</span>
+        <span className="ml-3">{t('homev2.howItWorks.mock_booking_page', 'Your booking page')}</span>
       </div>
       <div className="flex items-center justify-between gap-2 rounded-xl bg-navy-50/60 border border-navy-900/5 px-4 py-2.5 text-sm">
         <span className="text-navy-700/80 truncate">
-          padeltrainer.ai/<span className="text-brand-600 font-semibold">your-name</span>
+          padeltrainer.ai/<span className="text-brand-600 font-semibold">{t('homev2.howItWorks.mock_your_name', 'your-name')}</span>
         </span>
         <button className="inline-flex items-center gap-1 text-xs font-semibold text-navy-900 px-2.5 py-1 rounded-md border border-navy-900/10 bg-white">
-          <Copy className="h-3 w-3" /> Copy
+          <Copy className="h-3 w-3" /> {t('homev2.howItWorks.mock_copy', 'Copy')}
         </button>
       </div>
       <div className="grid grid-cols-3 gap-2 mt-4">
         {[
-          ['Instagram', 'Bio link'],
-          ['WhatsApp', 'Status'],
-          ['QR', 'On-court'],
+          ['Instagram', t('homev2.howItWorks.mock_bio_link', 'Bio link')],
+          ['WhatsApp', t('homev2.howItWorks.mock_status', 'Status')],
+          ['QR', t('homev2.howItWorks.mock_oncourt', 'On-court')],
         ].map(([a, b]) => (
           <div key={a} className="rounded-xl border border-navy-900/10 px-3 py-2 text-center">
             <div className="text-xs font-semibold text-navy-900">{a}</div>
@@ -82,11 +92,15 @@ function BookingPageMock() {
           </div>
           <div>
             <div className="font-semibold text-navy-900 text-sm">René Lindenbergh</div>
-            <div className="text-[11px] text-navy-700/70">Founder · RL Padel Performance</div>
+            <div className="text-[11px] text-navy-700/70">{t('homev2.howItWorks.mock_founder_role', 'Founder · RL Padel Performance')}</div>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 mt-3">
-          {['Tue 18:00', 'Wed 09:00', 'Sat 11:00'].map((s) => (
+          {[
+            `${t('homev2.howItWorks.day_tue', 'Tue')} 18:00`,
+            `${t('homev2.howItWorks.day_wed', 'Wed')} 09:00`,
+            `${t('homev2.howItWorks.day_sat', 'Sat')} 11:00`,
+          ].map((s) => (
             <div key={s} className="rounded-lg bg-brand-50 text-brand-700 text-xs font-semibold py-2 text-center">
               {s}
             </div>
@@ -97,38 +111,49 @@ function BookingPageMock() {
   );
 }
 
-const calendarSlots: Array<Array<{ time: string; label: string; tone: 'orange' | 'navy' }>> = [
-  [
-    { time: '07:30', label: 'Group', tone: 'orange' },
-    { time: '12:00', label: 'Lunch', tone: 'navy' },
-  ],
-  [
-    { time: '09:00', label: 'Daan', tone: 'orange' },
-    { time: '18:00', label: 'Group', tone: 'orange' },
-  ],
-  [
-    { time: '10:00', label: 'Vet', tone: 'navy' },
-    { time: '19:00', label: 'Group', tone: 'orange' },
-  ],
-  [
-    { time: '08:00', label: 'Private', tone: 'orange' },
-    { time: '17:30', label: 'Group', tone: 'orange' },
-  ],
-  [
-    { time: '07:30', label: 'Group', tone: 'orange' },
-    { time: '19:00', label: 'Family', tone: 'navy' },
-  ],
-];
-const weekShort = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
-
 function CalendarMock() {
+  const { t } = useTranslation('marketing');
+  const labelGroup = t('homev2.howItWorks.mock_label_group', 'Group');
+  const labelPrivate = t('homev2.howItWorks.mock_label_private', 'Private');
+  const labelLunch = t('homev2.howItWorks.mock_label_lunch', 'Lunch');
+  const labelFamily = t('homev2.howItWorks.mock_label_family', 'Family');
+  const labelVet = t('homev2.howItWorks.mock_label_vet', 'Vet');
+  const calendarSlots: Array<Array<{ time: string; label: string; tone: 'orange' | 'navy' }>> = [
+    [
+      { time: '07:30', label: labelGroup, tone: 'orange' },
+      { time: '12:00', label: labelLunch, tone: 'navy' },
+    ],
+    [
+      { time: '09:00', label: 'Daan', tone: 'orange' },
+      { time: '18:00', label: labelGroup, tone: 'orange' },
+    ],
+    [
+      { time: '10:00', label: labelVet, tone: 'navy' },
+      { time: '19:00', label: labelGroup, tone: 'orange' },
+    ],
+    [
+      { time: '08:00', label: labelPrivate, tone: 'orange' },
+      { time: '17:30', label: labelGroup, tone: 'orange' },
+    ],
+    [
+      { time: '07:30', label: labelGroup, tone: 'orange' },
+      { time: '19:00', label: labelFamily, tone: 'navy' },
+    ],
+  ];
+  const weekShort = [
+    t('homev2.howItWorks.day_mon_short', 'MON'),
+    t('homev2.howItWorks.day_tue_short', 'TUE'),
+    t('homev2.howItWorks.day_wed_short', 'WED'),
+    t('homev2.howItWorks.day_thu_short', 'THU'),
+    t('homev2.howItWorks.day_fri_short', 'FRI'),
+  ];
   return (
     <div className="mock-window p-5 md:p-6">
       <div className="flex items-center gap-2 text-xs text-navy-700/70 mb-5">
         <span className="mock-dot bg-[#ff5f57]" />
         <span className="mock-dot bg-[#febc2e]" />
         <span className="mock-dot bg-[#28c840]" />
-        <span className="ml-3">Calendar · synced</span>
+        <span className="ml-3">{t('homev2.howItWorks.mock_calendar_synced', 'Calendar · synced')}</span>
       </div>
       <div className="overflow-x-auto no-scrollbar -mx-1 px-1">
         <div className="grid grid-cols-5 gap-2 min-w-[480px] md:min-w-0">
@@ -156,7 +181,7 @@ function CalendarMock() {
       </div>
       <div className="mt-5 flex items-center gap-2 rounded-xl bg-navy-50/60 px-3 py-2.5 text-xs text-navy-900">
         <RefreshCw className="h-3.5 w-3.5 text-brand-600" />
-        Last sync · 28 sec ago
+        {t('homev2.howItWorks.mock_last_sync', 'Last sync · 28 sec ago')}
       </div>
     </div>
   );
