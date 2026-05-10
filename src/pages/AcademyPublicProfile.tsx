@@ -37,6 +37,7 @@ import {
   type AcademyProfile 
 } from '@/lib/academy';
 import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
+import { getActiveCycles } from '@/lib/cycles';
 import { AcademyPublicOpenSlots } from '@/components/academy/AcademyPublicOpenSlots';
 import { WaitingListCard } from '@/components/waitingList';
 import { AcademyReviews } from '@/components/reviews/AcademyReviews';
@@ -126,6 +127,14 @@ export default function AcademyPublicProfile() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Open cycles → emit Course JSON-LD for rich results
+  const { data: openCycles = [] } = useQuery({
+    queryKey: ['academy-public-cycles', academy?.id],
+    queryFn: () => getActiveCycles('academy', academy!.id),
+    enabled: !!academy?.id,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Record view (fire-and-forget)
   useEffect(() => {
     if (academy?.id) {
@@ -205,7 +214,39 @@ export default function AcademyPublicProfile() {
         "name": t.profile?.full_name,
         "jobTitle": "Padel Trainer"
       }))
-    }
+    },
+    ...openCycles.slice(0, 10).map((c: any) => ({
+      "@context": "https://schema.org",
+      "@type": "Course",
+      "name": c.name,
+      "description": c.description || `${c.name} — padel cycle by ${academy.name}`,
+      "url": `${profileUrl}#cycle-${c.id}`,
+      "provider": {
+        "@type": "EducationalOrganization",
+        "name": academy.name,
+        "url": profileUrl,
+        "sameAs": academy.website_url || undefined,
+      },
+      "inLanguage": currentLang,
+      ...(c.start_date && c.end_date ? {
+        "hasCourseInstance": [{
+          "@type": "CourseInstance",
+          "courseMode": "onsite",
+          "startDate": c.start_date,
+          "endDate": c.end_date,
+          ...(c.location?.city ? { "location": { "@type": "Place", "name": c.location.name, "address": { "@type": "PostalAddress", "addressLocality": c.location.city } } } : {}),
+        }]
+      } : {}),
+      ...(c.total_price || c.price_per_session ? {
+        "offers": {
+          "@type": "Offer",
+          "price": String(c.total_price ?? c.price_per_session),
+          "priceCurrency": c.currency || 'EUR',
+          "availability": "https://schema.org/InStock",
+          "url": profileUrl,
+        }
+      } : {}),
+    }))
   ] : undefined;
 
   if (academyLoading) {

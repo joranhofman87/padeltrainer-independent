@@ -151,6 +151,22 @@ export default function StrokePage() {
         { "@type": "ListItem", "position": 3, "name": stroke.seo?.breadcrumbLabel || stroke.h1 },
       ],
     },
+    ...(stroke.keyTips && stroke.keyTips.length > 0 ? [{
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": `How to play the ${stroke.h1}`,
+      "description": stroke.shortDescription,
+      "inLanguage": lang,
+      "image": defaultImage,
+      "totalTime": "PT15M",
+      "step": stroke.keyTips.map((tip, i) => ({
+        "@type": "HowToStep",
+        "position": i + 1,
+        "name": `Step ${i + 1}`,
+        "text": tip,
+        "url": `${pageUrl}#tip-${i + 1}`,
+      })),
+    }] : []),
   ];
 
   return (

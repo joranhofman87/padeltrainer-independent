@@ -31,7 +31,8 @@ import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { TrainerOpenCycles } from '@/components/trainer/TrainerOpenCycles';
 import { TrainerOpenSlots } from '@/components/trainer/TrainerOpenSlots';
 import { WaitingListCard } from '@/components/waitingList';
-import { getTrainerAverageRating } from '@/lib/reviews';
+import { getTrainerAverageRating, getTrainerReviews } from '@/lib/reviews';
+import { PROVINCES } from '@/lib/provinces';
 import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
@@ -315,6 +316,25 @@ export default function TrainerProfile() {
   const trainerCity = profile?.location || trainerLocations[0]?.location?.city;
   const trainerCitySlug = trainerCity?.toLowerCase().replace(/\s+/g, '-');
 
+  // Find province for this city -> sibling cities for internal linking + JSON-LD areaServed
+  const province = trainerCitySlug
+    ? PROVINCES.find(p => p.cities.includes(trainerCitySlug))
+    : undefined;
+  const siblingCitySlugs = province
+    ? province.cities.filter(c => c !== trainerCitySlug).slice(0, 6)
+    : [];
+
+  // Fetch top public reviews to embed as Review[] schema (rich-result eligible)
+  const { data: topReviewsData } = useQuery({
+    queryKey: ['trainer-top-reviews', trainer?.id],
+    queryFn: () => getTrainerReviews(trainer!.id),
+    enabled: !!trainer?.id,
+    staleTime: 10 * 60 * 1000,
+  });
+  const topReviews = (topReviewsData?.data || [])
+    .filter((r: any) => r.is_public && r.comment && r.comment.trim().length > 0)
+    .slice(0, 5);
+
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "Person",
@@ -325,6 +345,15 @@ export default function TrainerProfile() {
     "address": profile.location ? { "@type": "PostalAddress", "addressLocality": profile.location } : undefined,
     ...(averageRating !== null && reviewCount > 0 ? {
       "aggregateRating": { "@type": "AggregateRating", "ratingValue": averageRating, "reviewCount": reviewCount, "bestRating": 5, "worstRating": 1 }
+    } : {}),
+    ...(topReviews.length > 0 ? {
+      "review": topReviews.map((r: any) => ({
+        "@type": "Review",
+        "reviewRating": { "@type": "Rating", "ratingValue": r.rating, "bestRating": 5, "worstRating": 1 },
+        "author": { "@type": "Person", "name": r.is_anonymous ? "Anonymous" : (r.profiles?.full_name || "Player") },
+        "datePublished": r.created_at,
+        "reviewBody": r.comment,
+      }))
     } : {})
   };
 
@@ -607,6 +636,37 @@ export default function TrainerProfile() {
                     <MapPin className="h-4 w-4" />
                     {t('common:viewAllTrainersIn', { city: trainerCity, defaultValue: `View all trainers in ${trainerCity}` })} →
                   </LocalizedLink>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* More trainers in {province} — internal SEO link block */}
+            {province && siblingCitySlugs.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <MapPin className="h-4 w-4 text-primary" />
+                    {t('common:moreTrainersInProvince', { province: province.name, defaultValue: `More trainers in ${province.name}` })}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    <LocalizedLink
+                      to={`/trainers/region/${province.slug}`}
+                      className="text-sm text-primary hover:underline font-medium"
+                    >
+                      {province.name} →
+                    </LocalizedLink>
+                    {siblingCitySlugs.map(citySlug => (
+                      <LocalizedLink
+                        key={citySlug}
+                        to={`/trainers/${citySlug}`}
+                        className="text-sm text-muted-foreground hover:text-primary hover:underline capitalize"
+                      >
+                        {citySlug.replace(/-/g, ' ')}
+                      </LocalizedLink>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             )}
