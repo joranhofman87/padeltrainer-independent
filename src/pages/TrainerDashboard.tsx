@@ -14,7 +14,6 @@ import { logger } from '@/lib/logger';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
-import { Card as ShareCard, CardContent as ShareCardContent } from '@/components/ui/card';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { getTrainerAcademy } from '@/lib/academy';
