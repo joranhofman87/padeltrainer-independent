@@ -303,6 +303,12 @@ export default function AcademyPlayers() {
       }
     }
 
+    if (selectedPaymentStatus === 'overdue') {
+      result = result.filter((p) => p.has_overdue_payment === true);
+    } else if (selectedPaymentStatus === 'ok') {
+      result = result.filter((p) => !p.has_overdue_payment);
+    }
+
     const query = searchQuery.toLowerCase().trim();
     if (query) {
       result = result.filter(
@@ -314,7 +320,7 @@ export default function AcademyPlayers() {
     }
 
     setFilteredPlayers(result);
-  }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId]);
+  }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
