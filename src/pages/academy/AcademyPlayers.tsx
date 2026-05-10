@@ -203,6 +203,7 @@ export default function AcademyPlayers() {
     if (!activeAcademy) return;
     fetchTrainers();
     fetchTagsAndMetadata();
+    fetchOverduePayments();
   }, [activeAcademy]);
 
   // Fetch players when trainers are loaded or academy changes
@@ -220,6 +221,30 @@ export default function AcademyPlayers() {
     ]);
     setTags((tagsRes.data || []) as PlayerTag[]);
     setMetadata((metaRes.data || []) as PlayerMetadata[]);
+  };
+
+  const fetchOverduePayments = async () => {
+    if (!activeAcademy) return;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from('invoices')
+      .select('guest_player_id, player_id, status, due_date, paid_at')
+      .eq('academy_profile_id', activeAcademy.id);
+    const guests = new Set<string>();
+    const profiles = new Set<string>();
+    for (const inv of (data || []) as any[]) {
+      const status = (inv.status || '').toLowerCase();
+      const isPaid = status === 'paid' || !!inv.paid_at;
+      const isClosed = status === 'cancelled' || status === 'draft' || status === 'void';
+      const explicitlyOverdue = status === 'overdue';
+      const pastDue = inv.due_date && inv.due_date < todayIso && !isPaid && !isClosed;
+      if (explicitlyOverdue || pastDue) {
+        if (inv.guest_player_id) guests.add(inv.guest_player_id);
+        if (inv.player_id) profiles.add(inv.player_id);
+      }
+    }
+    setOverdueGuestIds(guests);
+    setOverdueProfileIds(profiles);
   };
 
   // Filter by search query, selected trainer, and new filters
