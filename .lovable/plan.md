@@ -1,45 +1,41 @@
 ## Problem
-Only Rene appears in the Cycles tab. The other 8 trainers vanished after the previous fix that filtered out `type='registration'` cycles.
+The four "Padeltraining…" rows still bundle every slot of a registration cycle into one giant per-trainer row (Patrick 84, Yannick 70, Rene 42, Tygho 126 sessions). Each of those numbers is actually 5–9 separate weekly classes that the user wants to see as individual cycli (one row per recurring weekly slot, with its 1–4 booked players).
 
-## Root cause
-For this academy, all real scheduled cycles are stored as cycles with `type='registration'` (the intake-form record doubles as the schedule container). Their `availability_slots` are the actual weekly sessions and most have real bookings:
+Example (Tygho): 126 slots = 9 weekly series × 14 weeks. Each series has its own day-of-week, start time, end time, and roster of up to 4 players. Those should be 9 rows, not 1.
+
+## Solution
+When building per-trainer groups inside a cycle, sub-group by the recurring schedule key, not just trainer.
+
+### Change (single file: `src/pages/academy/AcademyCyclusOverview.tsx`)
+
+In `fetchCyclusData`, replace the current `slotsByTrainer` Map with a `slotsBySeries` Map keyed by:
 
 ```
-Tygho     126/126 slots booked
-Yannick    70/70  slots booked
-Patrick    70/84  slots booked
-Rene       42/42  slots booked  (+275 legacy orphan slots)
-Rikkert     0/44  slots booked
+`${trainer_id}::${weekday(start_time)}::${HH:mm(start_time)}-${HH:mm(end_time)}`
 ```
 
-The previous patch dropped every cycle and every slot whose cycle was `type='registration'`, which removed all of the above except Rene's 275 legacy orphan slots (no `cycles` row → not filtered).
+Apply this sub-grouping in **both** processing paths:
+1. The cycles-table loop (lines ~292–399, the `else` branch where `slotsByTrainer.size > 0`).
+2. The orphan-slots loop (lines ~404–456) — already groups by trainer; expand the same way for consistency.
 
-What we actually want to hide is only the standalone intake form (a `registration` cycle with **zero scheduled slots**), not the real per-trainer scheduled rows that happen to live under a registration cycle.
+For each series:
+- `group_key`: `${cycleId}::${seriesKey}` (or `${cyclusId}::${seriesKey}` for orphans) — keeps selection/sort stable.
+- `cyclus_name`: derive a per-series label so the rows are distinguishable. Use `${weekdayName} ${HH:mm} - ${first booked player name}` when there are bookings, otherwise `${weekdayName} ${HH:mm}`. This mirrors the legacy "Maandag 14:00 - Floris" format the user already likes. Only do this for slots inside a registration-type cycle; for non-registration cycles keep `cycle.name` so they still group as one named cyclus.
+- `day_time`: as today (`${weekdayName} HH:mm - HH:mm`), now naturally consistent within the series.
+- `period_start` / `period_end`: first/last `start_time` within the series.
+- `sessions`: `seriesSlots.length` (will become 14, not 126).
+- `player_names` / `player_count`: union of names across all slots in the series — equals the recurring 1–4 players for the class.
+- `max_participants`, `price_per_session`, `location_name`, `first_slot_id`, `status`, `type`: take from the first slot in the series; price falls back to `cycle.price_per_session`.
 
-## Changes (single file: `src/pages/academy/AcademyCyclusOverview.tsx`)
+### Detail-view click target
+`handleRowClick` opens by `cyclus_id`. For series rows we still pass the same `cyclus_id` — but also pass `first_slot_id` so the detail page can scope to that series. Verify `AcademyCycleDetail` already supports a `slot` query/state param; if not, follow up in a separate task. (No changes to detail page in this plan.)
 
-### 1. Remove the blanket type filter (lines ~145–152)
-- Drop the `registrationCycleIds` Set and the `.filter(c => c.type !== 'registration')` on `allCycles`.
-- Drop the `allSlots = allSlots.filter(s => !registrationCycleIds.has(s.cyclus_id))` line.
-- Result: cycles + slots of every type are processed again.
-
-### 2. Hide only empty registration intake forms (lines ~311–344)
-In the `if (slotsByTrainer.size === 0)` branch (the no-slots placeholder), early-return when `cycle.type === 'registration'`:
-
-```ts
-if (slotsByTrainer.size === 0) {
-  if (cycle.type === 'registration') return; // skip empty intake forms
-  // …existing placeholder push…
-}
-```
-
-This drops the four placeholder rows the user previously complained about (84/70/42/126 sessions) while keeping every real, slot-backed per-trainer row visible.
-
-### 3. No other changes
-- Per-trainer slot grouping already produces one row per (cycle × trainer), so all 9 trainers will reappear.
-- Counts shown (`sessions = trainerSlots.length`, `player_count = unique booked names`) reflect actual scheduled sessions, matching the detail view.
+### What stays
+- The empty-intake-form skip (`if (cycle.type === 'registration' && slotsByTrainer.size === 0) return;`) remains.
+- Sorting, filters, time filter, single-line row styling, header — unchanged.
+- Non-registration cycles still render as one row per trainer (most have a single weekly schedule anyway, and the cycle name is meaningful).
 
 ## Out of scope
-- No schema changes.
-- No UI/styling changes (single-line row layout from the previous turn stays).
-- Time filter ("Huidig") behaviour unchanged.
+- Schema changes. No new `series_id` column is added; we derive the series key on the fly.
+- Detail page rework.
+- Mobile card view (still untouched).

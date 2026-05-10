@@ -335,20 +335,47 @@ export default function AcademyCyclusOverview() {
             has_slots: false,
           });
         } else {
-          // Create one row per trainer within this cycle
-          slotsByTrainer.forEach((trainerSlots, trainerId) => {
+          const isRegistration = cycle.type === 'registration';
+
+          // For registration cycles each weekly recurring slot is its own cyclus.
+          // For other cycle types keep one row per trainer (cycle name is meaningful).
+          const seriesMap = new Map<string, any[]>();
+          cyclusSlots.forEach((slot: any) => {
+            const tid = slot.trainer_id || '';
+            let key: string;
+            if (isRegistration) {
+              try {
+                const sd = parseISO(slot.start_time);
+                const ed = parseISO(slot.end_time);
+                key = `${tid}::${sd.getDay()}::${format(sd, 'HH:mm')}-${format(ed, 'HH:mm')}`;
+              } catch {
+                key = `${tid}::?`;
+              }
+            } else {
+              key = tid;
+            }
+            if (!seriesMap.has(key)) seriesMap.set(key, []);
+            seriesMap.get(key)!.push(slot);
+          });
+
+          seriesMap.forEach((seriesSlots, seriesKey) => {
+            const trainerId = seriesSlots[0].trainer_id || '';
             const trainerName = trainerNameMap[trainerId] || 'Unknown';
-            const first = trainerSlots[0];
-            const last = trainerSlots[trainerSlots.length - 1];
+            const sorted = [...seriesSlots].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+            const first = sorted[0];
+            const last = sorted[sorted.length - 1];
 
             const locationName = (first.locations as any)?.name || (cycle.locations as any)?.name || null;
 
             let dayTime = '—';
+            let dayName = '';
+            let startHHMM = '';
             try {
               const startDate = parseISO(first.start_time);
               const endDate = parseISO(first.end_time);
-              const dayName = format(startDate, 'EEEE', { locale: dateLocale });
-              dayTime = `${dayName} ${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
+              dayName = format(startDate, 'EEEE', { locale: dateLocale });
+              startHHMM = format(startDate, 'HH:mm');
+              dayTime = `${dayName} ${startHHMM} - ${format(endDate, 'HH:mm')}`;
             } catch { /* ignore */ }
 
             const periodStart = first.start_time || cycle.start_date || new Date().toISOString();
@@ -356,28 +383,39 @@ export default function AcademyCyclusOverview() {
 
             const allPlayerNames = new Set<string>();
             let maxBooked = 0;
-            trainerSlots.forEach((s: any) => {
+            seriesSlots.forEach((s: any) => {
               const names = playerNamesMap[s.id] || [];
               names.forEach((n: string) => allPlayerNames.add(n));
               const count = bookingCountMap[s.id] || 0;
               if (count > maxBooked) maxBooked = count;
             });
-            const intakePlayers = intakePlayerMap[cycleId] || [];
-            intakePlayers.forEach(n => allPlayerNames.add(n));
+            if (!isRegistration) {
+              const intakePlayers = intakePlayerMap[cycleId] || [];
+              intakePlayers.forEach(n => allPlayerNames.add(n));
+            }
 
             const pricePerSession = cycle.price_per_session ?? first.price_per_session ?? null;
 
+            // Per-series label for registration cycles, e.g. "Maandag 18:00 - Floris"
+            let cyclusName = cycle.name || cycleId;
+            if (isRegistration) {
+              const firstPlayer = Array.from(allPlayerNames)[0];
+              cyclusName = firstPlayer
+                ? `${dayName} ${startHHMM} - ${firstPlayer}`
+                : `${dayName} ${startHHMM}`;
+            }
+
             grouped.push({
-              group_key: `${cycleId}::${trainerId}`,
+              group_key: `${cycleId}::${seriesKey}`,
               cyclus_id: cycleId,
-              cyclus_name: cycle.name || cycleId,
+              cyclus_name: cyclusName,
               trainer_name: trainerName,
               trainer_id: trainerId,
               location_name: locationName,
               day_time: dayTime,
               period_start: periodStart,
               period_end: periodEnd,
-              sessions: trainerSlots.length,
+              sessions: seriesSlots.length,
               player_names: Array.from(allPlayerNames).sort(),
               player_count: allPlayerNames.size,
               price_per_session: pricePerSession,
@@ -385,7 +423,7 @@ export default function AcademyCyclusOverview() {
               max_booked: maxBooked,
               first_slot_id: first.id,
               status: cycle.status || 'draft',
-              type: cycle.type || 'cyclus',
+              type: isRegistration ? 'cyclus' : (cycle.type || 'cyclus'),
               has_slots: true,
             });
           });
