@@ -30,15 +30,14 @@ export default function ShortLinkResolver({ handle: handleProp, lang = 'en' }: P
       setTarget(null);
       return;
     }
-    supabase
-      .rpc('resolve_public_handle', { _handle: handle })
-      .then(({ data }) => {
-        if (cancelled) return;
-        setTarget((data as ResolveResult) ?? null);
-      })
-      .catch(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('resolve_public_handle', { _handle: handle });
+        if (!cancelled) setTarget((data as ResolveResult) ?? null);
+      } catch {
         if (!cancelled) setTarget(null);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
