@@ -196,6 +196,7 @@ export default function AcademyPlayers() {
   useEffect(() => {
     if (!activeAcademy) return;
     fetchTrainers();
+    fetchTagsAndMetadata();
   }, [activeAcademy]);
 
   // Fetch players when trainers are loaded or academy changes
@@ -204,6 +205,16 @@ export default function AcademyPlayers() {
       fetchPlayers();
     }
   }, [trainers, activeAcademy]);
+
+  const fetchTagsAndMetadata = async () => {
+    if (!activeAcademy) return;
+    const [tagsRes, metaRes] = await Promise.all([
+      supabase.from('academy_player_tags').select('*').eq('academy_profile_id', activeAcademy.id).order('name'),
+      supabase.from('academy_player_metadata').select('id, guest_player_id, profile_id, notes, tag_ids').eq('academy_profile_id', activeAcademy.id),
+    ]);
+    setTags((tagsRes.data || []) as PlayerTag[]);
+    setMetadata((metaRes.data || []) as PlayerMetadata[]);
+  };
 
   // Filter by search query, selected trainer, and new filters
   useEffect(() => {
