@@ -71,6 +71,8 @@ export default function RedFlagQuiz() {
       <SEO
         title={t('redFlagQuiz.seo.title', "What's Your Padel Red Flag? | Fun Quiz — PadelTrainer.ai")}
         description={t('redFlagQuiz.seo.description', 'Every padel player has a red flag. Take this 2-minute quiz to find out yours — and challenge your padel partner to take it too.')}
+        url={`/${lang}/playground/red-flag-quiz`}
+        structuredData={[breadcrumb, quizSchema]}
       />
 
       <div className="min-h-[70vh] flex items-center justify-center py-12">
