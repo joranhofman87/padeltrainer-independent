@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { buildBreadcrumbList } from '@/lib/structuredData';
 import { useTranslation } from 'react-i18next';
 import { Building2, MapPin, Users, Search, CheckCircle, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
