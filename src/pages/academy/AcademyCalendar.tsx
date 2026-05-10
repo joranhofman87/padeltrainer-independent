@@ -371,6 +371,7 @@ export default function AcademyCalendar() {
         trainer_name: profile?.full_name || "Unknown",
         trainer_avatar: profile?.avatar_url || null,
         location_name: slot.locations?.name || null,
+        location_logo: slot.locations?.logo_url || null,
         active_bookings: counts.active,
         pending_bookings: counts.pending,
         booked_players: counts.players,
