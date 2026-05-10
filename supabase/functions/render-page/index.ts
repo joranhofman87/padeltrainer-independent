@@ -199,23 +199,46 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
 
   // City trainers: /trainers/:city
   const cityTrainersMatch = cleanPath.match(/^\/trainers\/([^/]+)$/);
-  if (cityTrainersMatch) {
+  if (cityTrainersMatch && cityTrainersMatch[1] !== 'region') {
     const citySlug = cityTrainersMatch[1];
     const city = slugToDisplay(citySlug);
+    const L = labels(lang);
+    const facts = await fetchCityFacts(citySlug).catch(() => null);
+    const province = getProvinceForCity(citySlug);
+    const nearby = getNearbyCities(citySlug);
+
+    const tldrParts: string[] = [];
+    if (facts?.trainerCount) tldrParts.push(`${facts.trainerCount} certified trainers`);
+    if (facts?.locationCount) tldrParts.push(`${facts.locationCount} padel clubs`);
+    if (facts?.minRate && facts?.maxRate) tldrParts.push(`Lessons €${facts.minRate}–€${facts.maxRate}/hr (avg €${facts.avgRate})`);
+    const tldr = tldrParts.length
+      ? `${tldrParts.join(' · ')}.`
+      : `Find and book certified padel trainers in ${city}.`;
+
     const faqs = cityFaqs(city, lang);
+    const canonicalUrl = `${SITE_URL}/${lang}/trainers/${citySlug}`;
+    const description = facts?.trainerCount
+      ? `${facts.trainerCount} certified padel trainers in ${city}${facts.minRate && facts.maxRate ? ` from €${facts.minRate}–€${facts.maxRate}/hr` : ''}. Compare rates, read verified reviews, and book your first lesson.`
+      : `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`;
+
     return page(
-      `Padel Trainers in ${city} | Find & Book Lessons`,
-      `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`,
+      `Padel Trainers in ${city} | ${facts?.trainerCount ? `${facts.trainerCount} Coaches` : 'Find & Book Lessons'}`,
+      description,
       `/trainers/${citySlug}`, lang,
-      `<h1>Padel Trainers in ${esc(city)}</h1><p>Find and book padel trainers in ${esc(city)}.</p>
+      `<h1>${esc(L.topTrainers)} ${esc(city)}</h1>
+       ${renderTldrHtml(tldr, lang)}
+       ${renderLastUpdatedHtml(facts?.lastUpdated || null, lang)}
+       ${facts ? renderTopTrainersHtml(city, facts.topTrainers, lang) : ''}
+       ${facts ? renderTopClubsHtml(city, facts.topClubs, lang) : ''}
        ${renderFaqHtml(faqs, lang)}
+       ${province ? renderNearbyCitiesHtml(province.name, nearby.map(c => ({ slug: c, name: slugToDisplay(c) })), lang) : ''}
        ${renderPopularCitiesHtml(lang, citySlug)}
        ${renderPopularRegionsHtml(lang)}`,
       [breadcrumbSchema(lang, [
         { name: homeName(lang), path: '' },
-        { name: 'Trainers', path: '/trainers' },
+        { name: L.trainers, path: '/trainers' },
         { name: city },
-      ]), faqPageSchema(faqs)]
+      ]), faqPageSchema(faqs), speakableSchema(canonicalUrl)]
     );
   }
 
