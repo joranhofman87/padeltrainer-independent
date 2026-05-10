@@ -265,7 +265,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, tags = [], pl
 
     try {
       // 1. Create campaign
-      const filters = { trainer: filterTrainer, location: filterLocation, level: filterLevel, cyclus: filterCyclus };
+      const filters = { trainer: filterTrainer, location: filterLocation, level: filterLevel, cyclus: filterCyclus, tag: filterTag };
       const { data: campaign, error: campErr } = await supabase
         .from('email_campaigns')
         .insert({
