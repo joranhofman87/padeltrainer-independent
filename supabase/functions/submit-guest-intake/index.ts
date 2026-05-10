@@ -180,6 +180,33 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Resolve effective location: prefer explicit form value, fall back to cycle's location
+    let effectiveLocationId: string | null = locationId || null;
+    if (!effectiveLocationId) {
+      const { data: cycleLoc } = await adminClient
+        .from("cycles")
+        .select("location_id")
+        .eq("id", cycleId)
+        .maybeSingle();
+      effectiveLocationId = cycleLoc?.location_id || null;
+      // Fall back to club's location if cycle is owned by a club without its own location
+      if (!effectiveLocationId) {
+        const { data: cycleOwner } = await adminClient
+          .from("cycles")
+          .select("owner_type, owner_id")
+          .eq("id", cycleId)
+          .maybeSingle();
+        if (cycleOwner?.owner_type === "club" && cycleOwner.owner_id) {
+          const { data: club } = await adminClient
+            .from("club_profiles")
+            .select("location_id")
+            .eq("id", cycleOwner.owner_id)
+            .maybeSingle();
+          effectiveLocationId = club?.location_id || null;
+        }
+      }
+    }
+
     // Insert intake request
     const { data: intakeData, error: intakeError } = await adminClient
       .from("intake_requests")
@@ -199,7 +226,7 @@ Deno.serve(async (req) => {
         preferred_duration_minutes: preferredDurationMinutes || 60,
         sessions_per_week: sessionsPerWeek || 1,
         preferred_trainer_ids: preferredTrainerIds || [],
-        location_id: locationId || null,
+        location_id: effectiveLocationId,
         notes: notes || null,
         consent_given: consentGiven ?? true,
         metadata: { ...(metadata || {}), client_ip: clientIp },
