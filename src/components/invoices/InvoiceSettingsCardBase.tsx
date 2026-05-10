@@ -284,7 +284,7 @@ export function InvoiceSettingsCardBase({
         ? parseFloat(formData.custom_vat_rate) || 0
         : formData.default_vat_rate;
 
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from(table)
       .update({
         business_name: formData.business_name || null,
