@@ -74,7 +74,7 @@ function getLevelBand(rating: number | null): string {
   return 'pro';
 }
 
-export function EmailCampaignTab({ academyId, trainers, locations, players }: EmailCampaignTabProps) {
+export function EmailCampaignTab({ academyId, trainers, locations, tags = [], players }: EmailCampaignTabProps) {
   const { t, i18n } = useTranslation('trainer');
   const dateLocale = getDateFnsLocale(i18n.language);
   const { toast } = useToast();
@@ -88,6 +88,7 @@ export function EmailCampaignTab({ academyId, trainers, locations, players }: Em
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterWaitingList, setFilterWaitingList] = useState('all');
   const [filterCyclus, setFilterCyclus] = useState('all');
+  const [filterTag, setFilterTag] = useState('all');
 
   // Templates
   const [templates, setTemplates] = useState<CampaignTemplate[]>([]);
