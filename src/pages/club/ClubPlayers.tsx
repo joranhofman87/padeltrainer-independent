@@ -55,6 +55,7 @@ export default function ClubPlayers() {
   const { user, loading: authLoading } = useAuth();
   const [clubProfileId, setClubProfileId] = useState<string | null>(null);
   const [players, setPlayers] = useState<ClubPlayer[]>([]);
+  const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(players);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
