@@ -68,7 +68,7 @@ function durationHours(start: string, end: string): number {
 }
 
 export default function AgendaWeekByTrainer({
-  slots, trainers, currentDate, onCellClick, onTrainerClick, onDayHeaderClick, onSlotClick,
+  slots, trainers, currentDate, summary, onCellClick, onTrainerClick, onDayHeaderClick, onSlotClick,
 }: Props) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
