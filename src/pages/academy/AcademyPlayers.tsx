@@ -728,13 +728,31 @@ export default function AcademyPlayers() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">{t('nav.players')}</h1>
-        <p className="text-muted-foreground">
-          {players.length} {players.length === 1 ? 'player' : 'players'}
-        </p>
+    <div className="container mx-auto px-4 py-6 space-y-4">
+      {/* Header: title + primary actions on one row */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">{t('nav.players')}</h1>
+          <p className="text-sm text-muted-foreground">
+            {players.length} {players.length === 1 ? 'player' : 'players'}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)}>
+            <Tags className="mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
+            <span className="sm:hidden">Import</span>
+          </Button>
+          <Button size="sm" onClick={() => setShowAddPlayer(true)}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">{tTrainer('players.addPlayer')}</span>
+            <span className="sm:hidden">Add</span>
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -756,9 +774,19 @@ export default function AcademyPlayers() {
         </div>
 
         {/* All Players Tab */}
-        <TabsContent value="all-players" className="space-y-4 mt-4">
-          {/* Filters row */}
+        <TabsContent value="all-players" className="space-y-3 mt-3">
+          {/* Toolbar: search first, filters next, columns at the end */}
           <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={tTrainer('players.searchPlayers')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
             {trainers.length > 0 && (
               <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
                 <SelectTrigger className="w-[160px]">
@@ -843,65 +871,39 @@ export default function AcademyPlayers() {
               </SelectContent>
             </Select>
 
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder={tTrainer('players.searchPlayers')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-
-            <div className="flex gap-2 ml-auto">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="hidden md:inline-flex">
-                    <Columns3 className="mr-2 h-4 w-4" />
-                    {tTrainer('players.columns.button', 'Columns')}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>{tTrainer('players.columns.default', 'Default')}</DropdownMenuLabel>
-                  {ALL_COLUMNS.filter((c) => c.isDefault).map((c) => (
-                    <DropdownMenuCheckboxItem
-                      key={c.key}
-                      checked={isColVisible(c.key)}
-                      onCheckedChange={() => toggleColumn(c.key)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {c.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>{tTrainer('players.columns.optional', 'Optional')}</DropdownMenuLabel>
-                  {ALL_COLUMNS.filter((c) => !c.isDefault).map((c) => (
-                    <DropdownMenuCheckboxItem
-                      key={c.key}
-                      checked={isColVisible(c.key)}
-                      onCheckedChange={() => toggleColumn(c.key)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {c.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)}>
-                <Tags className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)}>
-                <Upload className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
-                <span className="sm:hidden">Import</span>
-              </Button>
-              <Button size="sm" onClick={() => setShowAddPlayer(true)}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{tTrainer('players.addPlayer')}</span>
-                <span className="sm:hidden">Add</span>
-              </Button>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="ml-auto hidden md:inline-flex">
+                  <Columns3 className="mr-2 h-4 w-4" />
+                  {tTrainer('players.columns.button', 'Columns')}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>{tTrainer('players.columns.default', 'Default')}</DropdownMenuLabel>
+                {ALL_COLUMNS.filter((c) => c.isDefault).map((c) => (
+                  <DropdownMenuCheckboxItem
+                    key={c.key}
+                    checked={isColVisible(c.key)}
+                    onCheckedChange={() => toggleColumn(c.key)}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {c.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>{tTrainer('players.columns.optional', 'Optional')}</DropdownMenuLabel>
+                {ALL_COLUMNS.filter((c) => !c.isDefault).map((c) => (
+                  <DropdownMenuCheckboxItem
+                    key={c.key}
+                    checked={isColVisible(c.key)}
+                    onCheckedChange={() => toggleColumn(c.key)}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {c.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Players Table */}
