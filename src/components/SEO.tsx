@@ -70,15 +70,17 @@ export function SEO({
         url: `${baseUrl}/${langCode}${pathWithoutLang}`
       }));
 
-  // x-default: use Dutch translation if available, else fall back to nl prefix
+  // x-default: point to the language-picker root so Google can pick the user's locale.
+  // For translated content (CMS pages with explicit per-language slugs), fall back to the
+  // English translation if available, otherwise the unprefixed path.
   const xDefaultUrl = hasTranslatedSlugs
     ? (() => {
-        const nlTranslation = translations.find(t => t.language === 'nl');
-        return nlTranslation
-          ? `${baseUrl}/nl/${pathPrefix}/${nlTranslation.slug}`
-          : `${MARKETING_DOMAIN}/nl${pathWithoutLang}`;
+        const enTranslation = translations.find(t => t.language === 'en');
+        return enTranslation
+          ? `${baseUrl}/en/${pathPrefix}/${enTranslation.slug}`
+          : `${MARKETING_DOMAIN}${pathWithoutLang || '/'}`;
       })()
-    : `${MARKETING_DOMAIN}/nl${pathWithoutLang}`;
+    : `${MARKETING_DOMAIN}${pathWithoutLang || '/'}`;
 
   return (
     <Helmet>
