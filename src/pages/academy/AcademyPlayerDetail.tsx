@@ -38,7 +38,10 @@ import {
   CartesianGrid,
   Tooltip as RTooltip,
   ResponsiveContainer,
+  AreaChart,
+  Area,
 } from 'recharts';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface PlayerCore {
   full_name: string;
