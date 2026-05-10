@@ -7,17 +7,17 @@
  *   - x-default pointing at the English locale
  *   - basic Open Graph + Twitter tags
  */
-import { describe, expect, it, beforeEach } from 'vitest';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { SEO } from './SEO';
 
-function render(url: string, currentRoutePath = '/en/trainer/jane-doe') {
+function render(url: string, route = '/en/trainer/jane-doe') {
   const helmetContext: { helmet?: any } = {};
-  renderToStaticMarkup(
+  renderToString(
     <HelmetProvider context={helmetContext}>
-      <MemoryRouter initialEntries={[currentRoutePath]}>
+      <MemoryRouter initialEntries={[route]}>
         <Routes>
           <Route
             path="/:lang/*"
@@ -33,7 +33,8 @@ function render(url: string, currentRoutePath = '/en/trainer/jane-doe') {
       </MemoryRouter>
     </HelmetProvider>,
   );
-  const helmet = helmetContext.helmet!;
+  const helmet = helmetContext.helmet;
+  if (!helmet) throw new Error('Helmet context not populated');
   return {
     title: helmet.title.toString(),
     meta: helmet.meta.toString(),
@@ -42,10 +43,6 @@ function render(url: string, currentRoutePath = '/en/trainer/jane-doe') {
 }
 
 describe('SEO component', () => {
-  beforeEach(() => {
-    // Helmet caches per-render in static mode; nothing to reset.
-  });
-
   it('emits canonical without trailing slash', () => {
     const { link } = render('/en/trainer/jane-doe/');
     expect(link).toContain('rel="canonical"');
@@ -60,7 +57,6 @@ describe('SEO component', () => {
       expect(link).toContain(`https://padeltrainer.ai/${l}/trainer/jane-doe`);
     }
     expect(link).toContain('hreflang="x-default"');
-    // x-default must point at /en, not the unprefixed root (which 301s to NL).
     const xDefault = /hreflang="x-default"\s+href="([^"]+)"/.exec(link)?.[1];
     expect(xDefault).toBe('https://padeltrainer.ai/en/trainer/jane-doe');
   });
