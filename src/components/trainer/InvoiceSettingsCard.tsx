@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
-import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye } from 'lucide-react';
+import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye, Palette } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { renumberInvoices, type RenumberStatus } from '@/lib/renumberDraftInvoices';
@@ -31,6 +31,7 @@ interface InvoiceSettingsCardProps {
     invoice_logo_url: string | null;
     invoice_prefix: string | null;
     invoice_next_number: number | null;
+    invoice_banner_color?: string | null;
   };
   onSave?: () => void;
 }
@@ -56,6 +57,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
     invoice_language: 'nl',
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [bannerColor, setBannerColor] = useState<string>('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
@@ -86,6 +88,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         invoice_language: (initialData as any).invoice_language || 'nl',
       });
       setLogoUrl(initialData.invoice_logo_url || null);
+      setBannerColor((initialData as any).invoice_banner_color || '');
       setForwardEmails(initialData.invoice_forward_emails || []);
       setReplyToEmail((initialData as any).invoice_reply_to_email || '');
       setInitialNumbering({
@@ -145,6 +148,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
         invoice_reply_to_email: replyToEmail.trim() ? replyToEmail.trim().toLowerCase() : null,
         invoice_logo_url: logoUrl || null,
+        invoice_banner_color: bannerColor || null,
         invoice_prefix: formData.invoice_prefix || null,
         invoice_next_number: formData.invoice_next_number || 1,
         invoice_include_year: formData.invoice_include_year,
