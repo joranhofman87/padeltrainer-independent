@@ -564,6 +564,13 @@ export default function TrainerInvoices() {
                         <TableBody>
                           {filteredInvoices.map((inv) => (
                             <TableRow key={inv.id} className="cursor-pointer" onClick={() => navigate(`/app/trainer/invoices/${inv.id}/edit`)}>
+                              <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={selectedIds.has(inv.id)}
+                                  onCheckedChange={() => toggleSelect(inv.id)}
+                                  aria-label={`Select ${inv.invoice_number}`}
+                                />
+                              </TableCell>
                               <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                               <TableCell>{inv.player_name}</TableCell>
                               <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
