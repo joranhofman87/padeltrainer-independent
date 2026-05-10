@@ -977,6 +977,21 @@ export default function AcademyPlayers() {
                                   {player.birth_date ? format(new Date(player.birth_date), 'dd-MM-yyyy') : '—'}
                                 </TableCell>
                               );
+                            case 'tags':
+                              return (
+                                <TableCell key={key} className="max-w-[240px]">
+                                  {activeAcademy && (
+                                    <PlayerTagsCell
+                                      academyId={activeAcademy.id}
+                                      playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
+                                      tags={tags}
+                                      selectedTagIds={player.tag_ids || []}
+                                      notes={player.academy_notes || ''}
+                                      onChanged={fetchTagsAndMetadata}
+                                    />
+                                  )}
+                                </TableCell>
+                              );
                             default:
                               return null;
                           }
