@@ -173,6 +173,8 @@ export default function ChallengeModePage() {
       <SEO
         title={t('challengeMode.seo.title', 'Padel Challenge Mode — Training Drills & Match Modifiers')}
         description={t('challengeMode.seo.description', 'Level up your padel game with random challenges. Practice drills to build skills or match modifiers to make games more fun.')}
+        url={`/${lang}/playground/challenge-mode`}
+        structuredData={[breadcrumb, webAppSchema]}
       />
       <div className="container mx-auto px-4 py-8 md:py-16 max-w-xl">
         {/* Mode toggle */}
