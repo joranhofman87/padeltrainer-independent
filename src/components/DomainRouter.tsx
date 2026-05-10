@@ -327,6 +327,7 @@ export function DomainRouter() {
           <Route path="trainers" element={<AcademyTrainers />} />
           <Route path="trainers/:trainerId" element={<AcademyTrainerDetail />} />
           <Route path="players" element={<AcademyPlayers />} />
+          <Route path="players/:playerId" element={<AcademyPlayerDetail />} />
           <Route path="open-slots" element={<Navigate to="/app/academy/calendar?tab=cycles" replace />} />
           <Route path="locations" element={<AcademyLocations />} />
           <Route path="cycles" element={<AcademyCycles />} />
