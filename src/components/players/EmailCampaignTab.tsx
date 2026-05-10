@@ -179,8 +179,13 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
     return true;
   });
 
-  // Sync recipients when filters change
+  // Sync recipients when filters change (skipped while loading a draft)
+  const skipNextRecipientSync = useRef(false);
   useEffect(() => {
+    if (skipNextRecipientSync.current) {
+      skipNextRecipientSync.current = false;
+      return;
+    }
     setRecipients(filteredRecipients.map((p) => ({ id: p.id, full_name: p.full_name, email: p.email })));
   }, [filterTrainer, filterLocation, filterLevel, filterCyclus, filterTag, players]);
 
