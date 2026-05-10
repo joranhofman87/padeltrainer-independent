@@ -219,9 +219,23 @@ export default function TrainerCreateInvoice() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">{t('invoiceForm.lineItems.title')}</CardTitle>
-            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setLineItems(prev => [...prev, { description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: 21 }])}>
-              <Plus className="h-3 w-3 mr-1" />{t('invoiceForm.lineItems.addRow')}
-            </Button>
+            <div className="flex items-center gap-1">
+              <ExtraCostPresetPicker
+                trainerId={trainerId}
+                onSelect={(cost) => {
+                  setLineItems(prev => [...prev, {
+                    description: cost.description,
+                    quantity: 1,
+                    unit_price: cost.price,
+                    amount: cost.price,
+                    vat_rate: cost.vat_rate,
+                  }]);
+                }}
+              />
+              <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setLineItems(prev => [...prev, { description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: 21 }])}>
+                <Plus className="h-3 w-3 mr-1" />{t('invoiceForm.lineItems.addRow')}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
