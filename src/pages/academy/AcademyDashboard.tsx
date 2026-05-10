@@ -114,13 +114,14 @@ export default function AcademyDashboard() {
             .from('bookings')
             .select(`
               id, status, payment_status, paid_externally, created_at,
+              player_id, guest_player_id,
               profiles:player_id (full_name),
               guest_players:guest_player_id (full_name),
-              availability_slots!inner (trainer_id, start_time, cyclus_name)
+              availability_slots!inner (trainer_id, start_time, cyclus_name, cyclus_id)
             `)
             .in('availability_slots.trainer_id', trainerIds)
             .order('created_at', { ascending: false })
-            .limit(10),
+            .limit(40),
           supabase
             .from('guest_players')
             .select('id, full_name, email, has_trained, created_at')
@@ -148,16 +149,16 @@ export default function AcademyDashboard() {
             .limit(50),
         ]);
 
-        // Process bookings - group by cyclus + player
+        // Process bookings - group by cyclus + player (fall back to cyclus_id when name missing)
         const rawBookings = bookingsRes.data || [];
         const groupedBookings: any[] = [];
         const cyclusPlayerMap = new Map<string, any>();
         for (const b of rawBookings) {
-          const slot = b.availability_slots as any;
-          const cyclusName = slot?.cyclus_name;
+          const slot = (b as any).availability_slots;
+          const cyclusKey = slot?.cyclus_name || slot?.cyclus_id || 'no-cyclus';
           const playerId = (b as any).player_id || (b as any).guest_player_id || '';
-          if (cyclusName && playerId) {
-            const key = `${cyclusName}::${playerId}`;
+          if (playerId) {
+            const key = `${cyclusKey}::${playerId}`;
             if (!cyclusPlayerMap.has(key)) {
               cyclusPlayerMap.set(key, { ...b, sessionCount: 1 });
               groupedBookings.push(cyclusPlayerMap.get(key));
@@ -168,7 +169,7 @@ export default function AcademyDashboard() {
             groupedBookings.push({ ...b, sessionCount: 1 });
           }
         }
-        recentBookings = groupedBookings;
+        recentBookings = groupedBookings.slice(0, 10);
 
         // Process players - merge guest + registered
         const seenPlayerIds = new Set<string>();
