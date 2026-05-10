@@ -742,21 +742,21 @@ export default function AcademyCyclusOverview() {
           <Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
-                <TableHead className="w-[40px]">
+                <TableHead className="w-[40px] whitespace-nowrap">
                   <Checkbox
                     checked={sortedData.length > 0 && selectedIds.size === sortedData.length}
                     onCheckedChange={toggleSelectAll}
                   />
                 </TableHead>
-                <SortableTableHead sortKey="cyclus_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.name')}</SortableTableHead>
-                <SortableTableHead sortKey="trainer_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.trainer')}</SortableTableHead>
-                <TableHead>{t('cyclesTab.location')}</TableHead>
-                <TableHead>{t('cyclesTab.dayTime')}</TableHead>
-                <SortableTableHead sortKey="period_start" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.period')}</SortableTableHead>
-                <SortableTableHead sortKey="sessions" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.sessions')}</SortableTableHead>
-                <SortableTableHead sortKey="player_count" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('cyclesTab.players')}</SortableTableHead>
-                <TableHead>{t('cyclesTab.price')}</TableHead>
-                <TableHead>{t('cyclesTab.occupancy')}</TableHead>
+                <SortableTableHead sortKey="cyclus_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.name')}</SortableTableHead>
+                <SortableTableHead sortKey="trainer_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.trainer')}</SortableTableHead>
+                <TableHead className="whitespace-nowrap">{t('cyclesTab.location')}</TableHead>
+                <TableHead className="whitespace-nowrap">{t('cyclesTab.dayTime')}</TableHead>
+                <SortableTableHead sortKey="period_start" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.period')}</SortableTableHead>
+                <SortableTableHead sortKey="sessions" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.sessions')}</SortableTableHead>
+                <SortableTableHead sortKey="player_count" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.players')}</SortableTableHead>
+                <TableHead className="whitespace-nowrap">{t('cyclesTab.price')}</TableHead>
+                <TableHead className="whitespace-nowrap">{t('cyclesTab.occupancy')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -772,29 +772,26 @@ export default function AcademyCyclusOverview() {
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selectedIds.has(group.group_key)} onCheckedChange={() => toggleSelect(group.group_key)} />
                     </TableCell>
-                    <TableCell className="font-medium max-w-[200px]">
-                      <div className="flex items-center gap-2">
+                    <TableCell className="font-medium max-w-[200px]" title={group.cyclus_name}>
+                      <div className="flex items-center gap-2 min-w-0">
                         <span className="truncate">{group.cyclus_name}</span>
                         {getTypeBadge(group.type)}
                       </div>
                     </TableCell>
-                    <TableCell>{group.trainer_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{group.location_name || '—'}</TableCell>
+                    <TableCell className="whitespace-nowrap max-w-[160px] truncate" title={group.trainer_name}>{group.trainer_name}</TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap max-w-[180px] truncate" title={group.location_name || ''}>{group.location_name || '—'}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">{group.day_time}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">
                       {format(parseISO(group.period_start), 'd MMM', { locale: dateLocale })}
                       {' → '}
                       {format(parseISO(group.period_end), 'd MMM yyyy', { locale: dateLocale })}
                     </TableCell>
-                    <TableCell className="text-center">{group.sessions > 0 ? group.sessions : '—'}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-center whitespace-nowrap">{group.sessions > 0 ? group.sessions : '—'}</TableCell>
+                    <TableCell className="max-w-[240px]">
                       {group.player_count > 0 ? (
-                        <div className="flex items-center gap-1.5">
-                          <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-sm">{group.player_names.slice(0, 3).join(', ')}</span>
-                          {group.player_names.length > 3 && (
-                            <Badge variant="secondary" className="text-xs">+{group.player_names.length - 3}</Badge>
-                          )}
+                        <div className="flex items-center gap-1.5 min-w-0" title={group.player_names.join(', ')}>
+                          <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-sm truncate">{group.player_names.join(', ')}</span>
                         </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -803,7 +800,7 @@ export default function AcademyCyclusOverview() {
                     <TableCell className="whitespace-nowrap">
                       {group.price_per_session != null ? formatPrice(group.price_per_session) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
-                    <TableCell>{getStatusBadge(group)}</TableCell>
+                    <TableCell className="whitespace-nowrap">{getStatusBadge(group)}</TableCell>
                   </TableRow>
                 ))
               )}

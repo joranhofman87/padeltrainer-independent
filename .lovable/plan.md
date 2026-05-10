@@ -1,28 +1,27 @@
 ## Goal
+Make every row in the Cycles table render on a single fixed-height line, matching the style used by the Players table.
 
-Make the Cycles tab table (under `/app/academy/calendar?tab=cycles`) use the same compact row density as the Players table, so rows aren't as tall.
+## Changes (single file: `src/pages/academy/AcademyCyclusOverview.tsx`)
 
-## Reference styling (from `AcademyPlayers.tsx`)
+Apply the same per-cell pattern Players uses: `whitespace-nowrap` + `max-w-[…]` + `truncate` + `title` for the full value on hover. Keep `h-8` on `TableRow`.
 
-```tsx
-<Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
-  ...
-  <TableRow className="h-8">
-```
+### Per-column updates (rows ~775–806)
 
-## Change
+- **Naam**: keep `max-w-[200px]`; ensure inner wrapper is `min-w-0` so `truncate` works next to the type badge. Add `title={group.cyclus_name}`.
+- **Trainer**: `whitespace-nowrap max-w-[160px] truncate` + `title={group.trainer_name}`.
+- **Locatie**: `whitespace-nowrap max-w-[180px] truncate` + `title={group.location_name}`.
+- **Dag / Tijd**: already nowrap — leave as is.
+- **Periode**: already nowrap — leave as is.
+- **Sessies**: unchanged.
+- **Spelers**: rewrite to mirror Players' truncated list pattern:
+  - Replace the current `flex` block that prints up to 3 comma-joined names with a single truncated string of all names (`group.player_names.join(', ')`) inside `max-w-[240px] truncate` + `title=` full list, with the `Users` icon kept inline and `+N` badge removed (or kept as a subtle count next to the icon — choose one and apply consistently). Recommended: drop `+N` and rely on truncate + tooltip, like Players does for emails/locations.
+- **Prijs**: unchanged (already nowrap).
+- **Bezetting (status badge)**: add `whitespace-nowrap`.
 
-In `src/pages/academy/AcademyCyclusOverview.tsx`:
-
-1. On the desktop `<Table>` at line ~732, add the same density classes:
-   `className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm"`
-2. On the data `<TableRow>` at line 761, add `className="h-8 cursor-pointer hover:bg-muted/50"` (keep existing click behavior).
-3. Sticky header: add `<TableHeader className="sticky top-0 bg-background z-10">` to match the players table.
-
-No changes to columns, sorting, or data — purely visual density. Mobile cards section is untouched.
+### Header row
+Add `whitespace-nowrap` to each `TableHead` (matches Players line 942) so headers don't wrap either.
 
 ## Out of scope
-
-- Changing column set or content
-- Changes to other tabs
-- Mobile card layout
+- No data/business-logic changes.
+- Mobile card view (below `md`) untouched.
+- No new columns or sorting changes.
