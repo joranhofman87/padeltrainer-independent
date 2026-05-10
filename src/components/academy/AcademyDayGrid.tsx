@@ -683,16 +683,26 @@ export default function AcademyDayGrid({
             </div>
 
             {/* Player sidebar */}
-            {sidebarOpen && (
+            {sidebarOpen ? (
               <div className="w-56 shrink-0 hidden md:flex flex-col border rounded-lg bg-background max-h-[600px]">
                 <div className="p-2 border-b space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold">
-                      {t('calendar.allPlayers', { defaultValue: 'All Players' })}
-                    </p>
-                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                      {allKnownPlayers.length}
-                    </Badge>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <p className="text-xs font-semibold truncate">
+                        {t('calendar.allPlayers', { defaultValue: 'All Players' })}
+                      </p>
+                      <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                        {allKnownPlayers.length}
+                      </Badge>
+                    </div>
+                    <button
+                      onClick={() => setSidebarOpen(false)}
+                      className="text-muted-foreground hover:text-foreground p-0.5 -mr-0.5 rounded hover:bg-muted/40"
+                      aria-label={t('calendar.collapsePlayers', { defaultValue: 'Collapse players' })}
+                      title={t('calendar.collapsePlayers', { defaultValue: 'Collapse players' })}
+                    >
+                      <PanelRightClose className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   <div className="relative">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
@@ -715,6 +725,21 @@ export default function AcademyDayGrid({
                   )}
                 </DroppableSidebarPool>
               </div>
+            ) : (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="hidden md:flex shrink-0 flex-col items-center gap-2 rounded-lg border bg-background px-1.5 py-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                aria-label={t('calendar.expandPlayers', { defaultValue: 'Show players' })}
+                title={t('calendar.expandPlayers', { defaultValue: 'Show players' })}
+              >
+                <PanelRightOpen className="h-4 w-4" />
+                <span className="[writing-mode:vertical-rl] rotate-180 font-medium">
+                  {t('calendar.allPlayers', { defaultValue: 'All Players' })}
+                </span>
+                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                  {allKnownPlayers.length}
+                </Badge>
+              </button>
             )}
           </div>
         </div>
