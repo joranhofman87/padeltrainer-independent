@@ -72,6 +72,7 @@ interface InvoiceItem {
   id: string;
   invoice_number: string | null;
   invoice_date: string | null;
+  due_date: string | null;
   total: number | null;
   status: string | null;
   pdf_url: string | null;
@@ -257,8 +258,8 @@ export default function AcademyPlayerDetail() {
 
       // Invoices
       const invQuery = parsed.kind === 'guest'
-        ? supabase.from('invoices').select('id, invoice_number, invoice_date, total, status, pdf_url').eq('guest_player_id', parsed.id).order('invoice_date', { ascending: false })
-        : supabase.from('invoices').select('id, invoice_number, invoice_date, total, status, pdf_url').eq('player_id', parsed.id).order('invoice_date', { ascending: false });
+        ? supabase.from('invoices').select('id, invoice_number, invoice_date, due_date, total, status, pdf_url').eq('guest_player_id', parsed.id).order('invoice_date', { ascending: false })
+        : supabase.from('invoices').select('id, invoice_number, invoice_date, due_date, total, status, pdf_url').eq('player_id', parsed.id).order('invoice_date', { ascending: false });
       const { data: invs } = await invQuery;
       setInvoices((invs || []) as InvoiceItem[]);
 
@@ -439,6 +440,22 @@ export default function AcademyPlayerDetail() {
                   {player.skill_rating.toFixed(1)} {(player.rating_system || 'knltb').toUpperCase()}
                 </Badge>
               )}
+              {(() => {
+                const todayIso = new Date().toISOString().slice(0, 10);
+                const overdueCount = invoices.filter((inv) => {
+                  const status = (inv.status || '').toLowerCase();
+                  if (status === 'overdue') return true;
+                  if (status === 'paid' || status === 'cancelled' || status === 'draft' || status === 'void') return false;
+                  return !!inv.due_date && inv.due_date < todayIso;
+                }).length;
+                if (!overdueCount) return null;
+                return (
+                  <Badge variant="destructive">
+                    {t('players.detail.overdueBadge', 'Overdue payment')}
+                    {overdueCount > 1 ? ` (${overdueCount})` : ''}
+                  </Badge>
+                );
+              })()}
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
               {player.email && (

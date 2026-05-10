@@ -84,6 +84,7 @@ type UnifiedPlayer = {
   // Stable keys for metadata lookup
   guest_player_id?: string | null;
   profile_id?: string | null;
+  has_overdue_payment?: boolean;
 };
 
 function getLevelBand(rating: number | null): string {
@@ -131,6 +132,9 @@ export default function AcademyPlayers() {
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedCyclus, setSelectedCyclus] = useState<string>('all');
   const [selectedTagId, setSelectedTagId] = useState<string>('all');
+  const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
+  const [overdueGuestIds, setOverdueGuestIds] = useState<Set<string>>(new Set());
+  const [overdueProfileIds, setOverdueProfileIds] = useState<Set<string>>(new Set());
   const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
 
   // Tags
@@ -199,6 +203,7 @@ export default function AcademyPlayers() {
     if (!activeAcademy) return;
     fetchTrainers();
     fetchTagsAndMetadata();
+    fetchOverduePayments();
   }, [activeAcademy]);
 
   // Fetch players when trainers are loaded or academy changes
@@ -218,6 +223,30 @@ export default function AcademyPlayers() {
     setMetadata((metaRes.data || []) as PlayerMetadata[]);
   };
 
+  const fetchOverduePayments = async () => {
+    if (!activeAcademy) return;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from('invoices')
+      .select('guest_player_id, player_id, status, due_date, paid_at')
+      .eq('academy_profile_id', activeAcademy.id);
+    const guests = new Set<string>();
+    const profiles = new Set<string>();
+    for (const inv of (data || []) as any[]) {
+      const status = (inv.status || '').toLowerCase();
+      const isPaid = status === 'paid' || !!inv.paid_at;
+      const isClosed = status === 'cancelled' || status === 'draft' || status === 'void';
+      const explicitlyOverdue = status === 'overdue';
+      const pastDue = inv.due_date && inv.due_date < todayIso && !isPaid && !isClosed;
+      if (explicitlyOverdue || pastDue) {
+        if (inv.guest_player_id) guests.add(inv.guest_player_id);
+        if (inv.player_id) profiles.add(inv.player_id);
+      }
+    }
+    setOverdueGuestIds(guests);
+    setOverdueProfileIds(profiles);
+  };
+
   // Filter by search query, selected trainer, and new filters
   useEffect(() => {
     // Build metadata lookup maps
@@ -233,13 +262,18 @@ export default function AcademyPlayers() {
       const meta = p.type === 'guest'
         ? metaByGuest.get(p.id)
         : metaByProfile.get(p.id.replace(/^reg-/, ''));
+      const guestId = p.type === 'guest' ? p.id : null;
+      const profileId = p.type === 'registered' ? p.id.replace(/^reg-/, '') : null;
       return {
         ...p,
         tag_ids: meta?.tag_ids || [],
         academy_notes: meta?.notes || '',
         metadata_id: meta?.id,
-        guest_player_id: p.type === 'guest' ? p.id : null,
-        profile_id: p.type === 'registered' ? p.id.replace(/^reg-/, '') : null,
+        guest_player_id: guestId,
+        profile_id: profileId,
+        has_overdue_payment:
+          (guestId && overdueGuestIds.has(guestId)) ||
+          (profileId && overdueProfileIds.has(profileId)) || false,
       };
     });
 
@@ -269,6 +303,12 @@ export default function AcademyPlayers() {
       }
     }
 
+    if (selectedPaymentStatus === 'overdue') {
+      result = result.filter((p) => p.has_overdue_payment === true);
+    } else if (selectedPaymentStatus === 'ok') {
+      result = result.filter((p) => !p.has_overdue_payment);
+    }
+
     const query = searchQuery.toLowerCase().trim();
     if (query) {
       result = result.filter(
@@ -280,7 +320,7 @@ export default function AcademyPlayers() {
     }
 
     setFilteredPlayers(result);
-  }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId]);
+  }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
@@ -771,6 +811,17 @@ export default function AcademyPlayers() {
               </SelectContent>
             </Select>
 
+            <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder={tTrainer('players.payment.filterAll', 'Payment status')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{tTrainer('players.payment.filterAll', 'All payments')}</SelectItem>
+                <SelectItem value="overdue">{tTrainer('players.payment.overdue', 'Overdue')}</SelectItem>
+                <SelectItem value="ok">{tTrainer('players.payment.ok', 'No overdue')}</SelectItem>
+              </SelectContent>
+            </Select>
+
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -873,13 +924,20 @@ export default function AcademyPlayers() {
                   <TableBody>
                     {filteredPlayers.map((player) => (
                       <TableRow key={player.id} className="h-8">
-                        <TableCell className="font-medium whitespace-nowrap max-w-[200px] truncate" title={player.full_name}>
-                          <Link
-                            to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
-                            className="hover:underline text-foreground"
-                          >
-                            {player.full_name}
-                          </Link>
+                        <TableCell className="font-medium whitespace-nowrap max-w-[260px] truncate" title={player.full_name}>
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
+                              className="hover:underline text-foreground truncate"
+                            >
+                              {player.full_name}
+                            </Link>
+                            {player.has_overdue_payment && (
+                              <Badge variant="destructive" className="h-5 px-1.5 text-[11px] shrink-0" title={tTrainer('players.payment.overdueTooltip', 'Has overdue invoice')}>
+                                {tTrainer('players.payment.overdue', 'Overdue')}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         {visibleColumns.map((key) => {
                           switch (key) {
