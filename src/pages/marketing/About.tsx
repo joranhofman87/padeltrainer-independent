@@ -60,13 +60,18 @@ export default function About() {
     }
   };
 
+  const breadcrumbSchema = buildBreadcrumbList([
+    { name: 'Home', url: `/${currentLang}` },
+    { name: t('about.hero.title'), url: `/${currentLang}/about` },
+  ]);
+
   return (
     <MarketingLayout>
       <SEO 
         title={`${t('about.hero.title')} ${t('about.hero.titleHighlight')}`}
         description={t('about.hero.subtitle')}
         url="/about"
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbSchema]}
       />
       {/* Hero */}
       <section className="py-20 bg-background">
