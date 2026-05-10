@@ -129,7 +129,13 @@ export default function AcademyPlayers() {
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedCyclus, setSelectedCyclus] = useState<string>('all');
+  const [selectedTagId, setSelectedTagId] = useState<string>('all');
   const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
+
+  // Tags
+  const [tags, setTags] = useState<PlayerTag[]>([]);
+  const [metadata, setMetadata] = useState<PlayerMetadata[]>([]);
+  const [showManageTags, setShowManageTags] = useState(false);
 
   // Dialogs
   const [showAddPlayer, setShowAddPlayer] = useState(false);
