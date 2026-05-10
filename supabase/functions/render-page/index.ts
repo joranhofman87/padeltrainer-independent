@@ -266,7 +266,12 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
       fr: { title: 'Blog Padel — Conseils, Actualités & Entraînement | PadelTrainer.ai', desc: 'Lisez les derniers articles padel, conseils d\'entraînement et stratégies de match.' },
     };
     const m = blogMeta[lang] || { title: 'Padel Blog — Tips, News & Training Advice | PadelTrainer.ai', desc: 'Read the latest padel articles, training tips, match strategies, and industry news.' };
-    return page(m.title, m.desc, '/blog', lang, `<h1>${esc(m.title.split('|')[0].trim())}</h1>`);
+    return page(m.title, m.desc, '/blog', lang, `<h1>${esc(m.title.split('|')[0].trim())}</h1>`,
+      [breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Blog' },
+      ])]
+    );
   }
 
   // Blog article: /blog/:slug
@@ -276,11 +281,29 @@ async function renderPath(cleanPath: string, lang: string): Promise<string> {
     const title = slugToDisplay(slug);
     const readVerb: Record<string, string> = { nl: 'Lees', es: 'Lee', de: 'Lesen', fr: 'Lire' };
     const verb = readVerb[lang] || 'Read';
+    const articleSchema = {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": title,
+      "url": `${SITE_URL}/${lang}/blog/${slug}`,
+      "author": { "@type": "Organization", "name": "PadelTrainer.ai" },
+      "publisher": {
+        "@type": "Organization",
+        "name": "PadelTrainer.ai",
+        "logo": { "@type": "ImageObject", "url": `${SITE_URL}/favicon.png` },
+      },
+      "mainEntityOfPage": { "@type": "WebPage", "@id": `${SITE_URL}/${lang}/blog/${slug}` },
+    };
     return page(
       `${title} | PadelTrainer.ai Blog`,
       `${verb} "${title}" — PadelTrainer.ai`,
       `/blog/${slug}`, lang,
-      `<h1>${esc(title)}</h1>`
+      `<h1>${esc(title)}</h1>`,
+      [articleSchema, breadcrumbSchema(lang, [
+        { name: homeName(lang), path: '' },
+        { name: 'Blog', path: '/blog' },
+        { name: title },
+      ])]
     );
   }
 
