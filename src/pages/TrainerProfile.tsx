@@ -652,7 +652,7 @@ export default function TrainerProfile() {
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
                     <LocalizedLink
-                      to={`/trainers/province/${province.slug}`}
+                      to={`/trainers/region/${province.slug}`}
                       className="text-sm text-primary hover:underline font-medium"
                     >
                       {province.name} →
