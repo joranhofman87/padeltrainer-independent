@@ -1,0 +1,155 @@
+import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { supabase } from '@/lib/supabaseClient';
+import { useToast } from '@/hooks/use-toast';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Check, Plus, Loader2 } from 'lucide-react';
+import { getTagColorClass, PlayerTag } from './playerTagColors';
+import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
+
+interface PlayerTagsCellProps {
+  academyId: string;
+  /** UnifiedPlayer id (may be 'reg-<profileId>' or guest player id) */
+  playerKey: { guest_player_id: string | null; profile_id: string | null };
+  tags: PlayerTag[];
+  selectedTagIds: string[];
+  notes: string;
+  onChanged: () => void;
+}
+
+export function PlayerTagsCell({ academyId, playerKey, tags, selectedTagIds, notes, onChanged }: PlayerTagsCellProps) {
+  const { t } = useTranslation('trainer');
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [localTagIds, setLocalTagIds] = useState<string[]>(selectedTagIds);
+  const [localNotes, setLocalNotes] = useState(notes);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { setLocalTagIds(selectedTagIds); }, [selectedTagIds]);
+  useEffect(() => { setLocalNotes(notes); }, [notes]);
+
+  const selectedTags = tags.filter(t => selectedTagIds.includes(t.id));
+
+  const persist = async (tagIds: string[], noteText: string) => {
+    if (!playerKey.guest_player_id && !playerKey.profile_id) return;
+    setBusy(true);
+    try {
+      // Upsert via select-or-insert
+      const filter = playerKey.guest_player_id
+        ? { col: 'guest_player_id', val: playerKey.guest_player_id }
+        : { col: 'profile_id', val: playerKey.profile_id! };
+
+      const { data: existing } = await supabase
+        .from('academy_player_metadata')
+        .select('id')
+        .eq('academy_profile_id', academyId)
+        .eq(filter.col, filter.val)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('academy_player_metadata')
+          .update({ tag_ids: tagIds, notes: noteText.trim() || null })
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('academy_player_metadata')
+          .insert({
+            academy_profile_id: academyId,
+            guest_player_id: playerKey.guest_player_id,
+            profile_id: playerKey.profile_id,
+            tag_ids: tagIds,
+            notes: noteText.trim() || null,
+          } as any);
+        if (error) throw error;
+      }
+      onChanged();
+    } catch (err: any) {
+      logger.error('Error saving player metadata', err);
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleTag = (tagId: string) => {
+    const next = localTagIds.includes(tagId)
+      ? localTagIds.filter(id => id !== tagId)
+      : [...localTagIds, tagId];
+    setLocalTagIds(next);
+    persist(next, localNotes);
+  };
+
+  const saveNotes = () => {
+    if (localNotes === notes) return;
+    persist(localTagIds, localNotes);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="flex flex-wrap gap-1 items-center min-h-[24px] hover:bg-muted/50 rounded px-1 -mx-1 w-full text-left">
+          {selectedTags.length === 0 ? (
+            <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+              <Plus className="h-3 w-3" /> {t('players.tags.add', 'Add')}
+            </span>
+          ) : (
+            selectedTags.map(tag => (
+              <Badge key={tag.id} variant="outline" className={cn('h-5 px-1.5 text-[11px] border', getTagColorClass(tag.color))}>
+                {tag.name}
+              </Badge>
+            ))
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3 space-y-3" align="start">
+        <div className="space-y-1.5">
+          <Label className="text-xs flex items-center justify-between">
+            {t('players.tags.label', 'Tags')}
+            {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+          </Label>
+          <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+            {tags.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('players.tags.noneCreated', 'No tags created yet')}</p>
+            ) : tags.map(tag => {
+              const isSelected = localTagIds.includes(tag.id);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => toggleTag(tag.id)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition',
+                    getTagColorClass(tag.color),
+                    !isSelected && 'opacity-50 hover:opacity-100',
+                  )}
+                >
+                  {isSelected && <Check className="h-3 w-3" />}
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">{t('players.tags.notesLabel', 'Notes')}</Label>
+          <Textarea
+            value={localNotes}
+            onChange={(e) => setLocalNotes(e.target.value)}
+            onBlur={saveNotes}
+            rows={3}
+            placeholder={t('players.tags.notesPlaceholder', 'Internal notes about this player...')}
+            className="text-sm"
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
