@@ -125,6 +125,13 @@ export default function AcademyIntakeRequests() {
     ? requests.filter(r => r.cycle_id === selectedCycleId)
     : requests;
 
+  const searchQuery = searchParams.get('q') || '';
+  const setSearchQuery = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (!value) params.delete('q'); else params.set('q', value);
+    setSearchParams(params, { replace: true });
+  };
+
   const filteredRequests = useMemo(() => {
     let filtered = cycleFilteredRequests;
     if (statusFilter === 'skipped') {
@@ -134,8 +141,12 @@ export default function AcademyIntakeRequests() {
     } else if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(r => (r.full_name || '').toLowerCase().includes(q));
+    }
     return filtered;
-  }, [cycleFilteredRequests, statusFilter]);
+  }, [cycleFilteredRequests, statusFilter, searchQuery]);
 
   const allCount = cycleFilteredRequests.length;
   const newCount = cycleFilteredRequests.filter(r => r.status === 'new' && !r.skip_reason).length;
