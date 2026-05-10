@@ -149,7 +149,7 @@ export default function AcademyPlayerDetail() {
       } else if (parsed.kind === 'profile') {
         const { data } = await supabase
           .from('profiles')
-          .select('id, full_name, email, phone, skill_rating, rating_system, date_of_birth, created_at')
+          .select('id, full_name, email, phone, skill_rating, rating_system, birth_date, created_at')
           .eq('id', parsed.id)
           .maybeSingle();
         if (data) {
@@ -161,11 +161,11 @@ export default function AcademyPlayerDetail() {
             rating_system: (data as any).rating_system ?? null,
             notes: null,
             source: null,
-            birth_date: (data as any).date_of_birth ?? null,
+            birth_date: (data as any).birth_date ?? null,
             created_at: (data as any).created_at,
             type: 'registered',
             guest_player_id: null,
-            profile_id: data.id,
+            profile_id: (data as any).id,
           };
         }
       }
