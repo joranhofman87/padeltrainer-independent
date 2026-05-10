@@ -51,10 +51,16 @@ export function SEO({
   
   const pathWithoutLang = url?.replace(/^\/(en|nl|es|de|fr|it)/, '') || '';
   
-  const fullUrl = url 
-    ? `${baseUrl}/${currentLang}${pathWithoutLang}` 
-    : `${baseUrl}/${currentLang}`;
-  
+  // Canonical normalization: strip trailing slash (except root), collapse double slashes
+  const normalizePath = (p: string) => {
+    if (!p || p === '/') return '';
+    const collapsed = p.replace(/\/{2,}/g, '/');
+    return collapsed.endsWith('/') ? collapsed.slice(0, -1) : collapsed;
+  };
+  const canonicalPath = normalizePath(pathWithoutLang);
+
+  const fullUrl = `${baseUrl}/${currentLang}${canonicalPath}`;
+
   const defaultImage = `${MARKETING_DOMAIN}/og-image.png`;
 
   // If we have CMS translations with actual slugs, use those for hreflang
@@ -67,20 +73,23 @@ export function SEO({
       }))
     : SUPPORTED_LANGUAGES.map(langCode => ({
         lang: langCode,
-        url: `${baseUrl}/${langCode}${pathWithoutLang}`
+        url: `${baseUrl}/${langCode}${canonicalPath}`
       }));
 
-  // x-default: point to the language-picker root so Google can pick the user's locale.
-  // For translated content (CMS pages with explicit per-language slugs), fall back to the
-  // English translation if available, otherwise the unprefixed path.
+  // x-default points at the English version (global default).
+  // Prior behaviour pointed at the unprefixed URL which 301s to NL — wrong default for the global market.
   const xDefaultUrl = hasTranslatedSlugs
     ? (() => {
         const enTranslation = translations.find(t => t.language === 'en');
         return enTranslation
           ? `${baseUrl}/en/${pathPrefix}/${enTranslation.slug}`
-          : `${MARKETING_DOMAIN}${pathWithoutLang || '/'}`;
+          : `${baseUrl}/en${canonicalPath}`;
       })()
-    : `${MARKETING_DOMAIN}${pathWithoutLang || '/'}`;
+    : `${baseUrl}/en${canonicalPath}`;
+
+  // Optional search-engine verification (set via Vite env vars in deployment).
+  const gscToken = (import.meta as any).env?.VITE_GOOGLE_SITE_VERIFICATION as string | undefined;
+  const bingToken = (import.meta as any).env?.VITE_BING_SITE_VERIFICATION as string | undefined;
 
   return (
     <Helmet>
@@ -88,6 +97,8 @@ export function SEO({
       <title>{fullTitle}</title>
       <meta name="description" content={description} />
       {noIndex && <meta name="robots" content="noindex, nofollow" />}
+      {gscToken && <meta name="google-site-verification" content={gscToken} />}
+      {bingToken && <meta name="msvalidate.01" content={bingToken} />}
       
       {/* Language */}
       <html lang={currentLang} />
@@ -104,7 +115,7 @@ export function SEO({
           href={altUrl} 
         />
       ))}
-      {/* x-default points to the language-picker root for locale auto-selection */}
+      {/* x-default points at the English locale (global default) */}
       <link 
         rel="alternate" 
         hrefLang="x-default" 
