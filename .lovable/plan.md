@@ -1,117 +1,167 @@
 
-# Growth-hacker SEO roadmap — what's left to win
+# SEO + LLM Visibility Audit — May 2026
 
-You've nailed the foundation (bot rendering, schemas, hreflang, llms.txt, sitemaps, fonts). The next gains come from **content depth, internal linking, Core Web Vitals, and entity signals** — the levers Google actually uses to rank.
+Acting as SEO/Growth manager. Sanity owns marketing content, so this audit focuses on **technical SEO, schema depth, programmatic on-page enrichment, internal linking, and Generative-Engine-Optimization (GEO) signals** that drive ChatGPT / Claude / Perplexity citations.
 
-Below is a prioritized list. Each item has effort (S/M/L), expected impact (★1-3), and what it unlocks.
-
----
-
-## Tier 1 — Highest leverage, ship first
-
-### 1. Programmatic content depth on city/province pages (M, ★★★)
-Right now `/en/trainers/utrecht` renders just a title + `<p>Find and book…</p>` for bots. That's thin content. Competitors with 800-1500 words rank above us by default.
-- For each city add: trainer count, avg price, top 3 trainers, top 3 clubs, weather/season note, FAQ block (3-5 Q&A), nearby cities (internal links), "popular searches" chips.
-- Generate from existing DB data — no new content writing required.
-- Same pattern for `/trainers/region/<province>` and `/padel/<club>`.
-- Expected: rank for 100s of "padel trainer in {city}" long-tails currently invisible.
-
-### 2. FAQPage + HowTo + Review schemas (M, ★★★)
-Already have Person/Org/Breadcrumb/Article. Missing the high-CTR rich-result types:
-- **FAQPage** on every city, trainer, academy, learning article (uses generated FAQ block from #1).
-- **HowTo** on `/strokes/*`, `/learn/*`, `/video-tips/*` step-by-step content.
-- **AggregateRating + Review** on trainer profiles using existing `trainer_reviews` table.
-- **Course** schema on academy/cycle pages.
-- **Event** schema on tournament pages.
-- Expected: stars/FAQ accordions in SERPs → +20-40% CTR even at same rank.
-
-### 3. Internal linking engine (M, ★★★)
-Pages with <3 internal inbound links get crawled rarely. Today city pages live in isolation.
-- Auto-generate "Padel in nearby cities" block (5-10 links) on every city page using `provinces.ts`.
-- "More trainers in {province}" on every trainer profile.
-- "Other articles in {topic}" carousel on blog/learning posts (already have `topics.ts`).
-- Footer mega-menu with top 50 cities (renders for bots too).
-- Expected: deep pages get crawled + ranked. Compounds with #1.
-
-### 4. Core Web Vitals pass on render-page output (S, ★★★)
-The bot HTML has zero CSS, but the **human SPA** is what Google ranks for CWV. Run real-user check:
-- Audit current LCP/CLS/INP via PageSpeed on `/`, `/trainers/utrecht`, `/trainer/<top>`, `/blog/<top>`.
-- Quick wins: image `width`/`height` on every `<img>`, `loading="lazy"` audit, eliminate render-blocking JS chunks, preload hero image.
-- Self-host `Inter` + `Plus Jakarta Sans` under `/fonts/*.woff2` (carry-over from Phase 3).
-- Expected: green CWV → ~10% rank lift across the board (confirmed Google ranking factor).
+I crawled the live site as Googlebot and reviewed render-page, sitemap, llms.txt, SEO.tsx, structuredData.ts, og-image, and the marketing page set.
 
 ---
 
-## Tier 2 — Authority & freshness signals
+## Score card
 
-### 5. Dynamic, dated, human-friendly OG images per entity (M, ★★)
-Currently every page shares `og-image.png`. Generate per-trainer / per-city / per-article OG cards via an edge function (already have share-card patterns from `ratingShareCard.ts`, `redFlagShareCard.ts`).
-- Boosts social CTR (LinkedIn, X, WhatsApp, Slack previews).
-- Indirect rank lift via increased referral + brand-search volume.
+| Area | Status | Notes |
+|---|---|---|
+| Bot rendering (Cloudflare → render-page) | Strong | 200 OK, ~10KB HTML, real 404s |
+| Hreflang + x-default | Strong | en default, all 6 locales |
+| Sitemaps (index + 12 shards) | Good | Static lastmod (today) for ALL urls = signal noise |
+| llms.txt / llms-full.txt | Good | Static curation + live entity catalog |
+| Schema: Org/Person/Breadcrumb/FAQ | Good | Present on city + entity pages |
+| Schema: Review, AggregateRating, Course, Event, HowTo, VideoObject, SpeakableSpecification | Missing | Major gap |
+| OG images per entity | Done | dynamic SVG via og-image fn |
+| Press kit, Powered-by badge | Done | |
+| Programmatic depth on entity pages (bot HTML) | Weak | No DB-derived facts in bot HTML |
+| Author entities + sameAs | Missing | Articles cite "Organization" only |
+| Internal linking (bot HTML) | Weak | Only generic 21-city list, no contextual crosslinks |
+| Localized labels in render-page | Weak | "Trainers" / "Blog" / "FAQ" hardcoded EN on all locales |
+| CWV (human SPA) | Unmeasured | Self-hosted fonts still pending |
+| GSC / Bing verification | Wired, unset | Need tokens in env |
+| IndexNow (Bing/Yandex fast indexing) | Missing | |
+| Image / Video sitemaps | Missing | |
 
-### 6. Pillar pages for high-volume queries (L, ★★★)
-Blog has pillar hubs — extend to commercial intent:
-- "Best padel trainers in Europe 2026" (programmatic top-100 ranked by reviews).
-- "How much does a padel coach cost?" (calculator + price ranges from your data).
-- "Find a padel club near you" map page.
-- Each becomes a hub linking to all relevant city/trainer pages = link equity distribution.
+---
 
-### 7. User-generated content velocity (M, ★★)
-Fresh, unique content is the cheapest ranking lever.
-- Encourage court reviews (already built) — email past players a one-click review link.
-- Trainer testimonials publicly displayed = unique text per profile = solves thin-content problem at scale.
-- "Recently booked / recently reviewed" feed on city pages = freshness signal.
+## Tier 1 — Highest leverage (ship next sprint)
 
-### 8. External backlink loops (S setup, ★★)
-- Submit `/llms.txt` to llms.txt directories.
-- Public API + "Powered by PadelTrainer.ai" badge for partner clubs (the existing external API).
-- Free embeddable trainer-finder widget for club websites → backlinks.
-- Press kit page with high-res logos for journalists.
+### A1. Enrich render-page bot HTML with live DB facts (M, ★★★)
+Single biggest gap. Today `/en/trainers/utrecht` says "Find and book padel trainers in Utrecht" — that's it. Bot HTML must answer the exact query.
+- City pages: `count(trainers)`, `min/avg hourly_rate`, `count(clubs)`, top 5 trainers (name, slug, rate, rating), top 5 clubs, intro paragraph stitched from those facts.
+- Trainer pages: `hourly_rate`, `years_experience`, `specializations`, `aggregate rating + review count`, home city/club, last 2 review snippets. Unlocks real `AggregateRating` + `Review` schema.
+- Club pages: indoor/outdoor courts, address, geo, list of trainers at this club.
+- Academy pages: trainer count, active cycle count.
+- Cache 1h at edge keyed on path; ~50ms added per cold render.
+
+### A2. Review/AggregateRating/Course/Event/LocalBusiness schema (S, ★★★)
+Once A1 ships the data:
+- Trainer profile → `Person` + `aggregateRating` + up to 5 `Review`.
+- Academy cycles → `Course` with `provider`, `offers.price`, `courseInstance.startDate`.
+- Tournaments → `Event`.
+- Clubs with reviews → `LocalBusiness` + `aggregateRating` + `geo`.
+Result: review stars in SERP → +20-40% CTR with no rank change.
+
+### A3. GEO — make pages citation-ready for LLMs (M, ★★★)
+ChatGPT / Claude / Perplexity preferentially cite pages with:
+- Factual, dated TL;DR top of page: "As of {Month YYYY}, PadelTrainer.ai lists {N} certified padel trainers across {C} cities in {K} countries."
+- Visible "Last updated: {date}" line on every entity / city page.
+- Q&A worded the way users prompt LLMs ("How much does a padel coach in Utrecht charge?" not "Pricing").
+- Comparison tables ("Padel vs Tennis lessons", "Group vs Private cost").
+- Outbound links to authoritative sources (FIP, national federations) on learning pages — outbound link graph is a trust signal for LLMs.
+- `SpeakableSpecification` on FAQ + intro blocks for voice assistants.
+- Visible byline + `Person` author with `sameAs` on Sanity articles.
+
+### A4. Contextual internal linking in bot HTML (S, ★★)
+Today every city page links to the same 21 popular cities. Make it contextual:
+- Trainer → "More trainers in {city}", "Other trainers in {province}", "Clubs where {trainer} teaches".
+- City → "Nearby cities in {province}" (5), "Top clubs in {city}" (5), "Top academies in {city}".
+- Province → every city in that province.
+- Club → "Trainers at {club}", "Other clubs in {city}".
+- Academy → "Other academies in {country}".
+All from existing `provinces.ts` + DB. Compounds A1.
+
+### A5. Localize section labels in render-page (XS, ★★)
+`render-page` hardcodes "Trainers", "Locations", "Blog", "Frequently Asked Questions" in English on `/nl/`, `/es/`, `/de/`, `/fr/`, `/it/`. Add a per-lang label map. Improves local SERPs and hreflang quality signal.
+
+---
+
+## Tier 2 — Authority & discoverability
+
+### B1. Author entities + Organization sameAs (S, ★★)
+- Add `sameAs` to Organization JSON-LD: LinkedIn, X, Instagram, GitHub, Crunchbase. Disambiguates the brand for Knowledge Graph + LLMs.
+- Replace `author: Organization` on articles with a real `Person` (`url`, `sameAs`, `jobTitle`). Build `/author/{slug}` pages from a small Sanity author schema.
+
+### B2. IndexNow + Google Indexing API (S, ★★)
+- IndexNow key file at `/{key}.txt`; ping `api.indexnow.org` from a Cloud Function on Sanity publish, new trainer go-live, new city's first trainer. Bing + Yandex re-crawl within minutes.
+- Google Indexing API cron for `JobPosting` + `Event` URLs (the only types Google supports).
+
+### B3. Per-URL `lastmod` in sitemaps (S, ★★)
+All sitemap URLs currently emit today's date — Google deprioritizes "always today" sitemaps. Use `updated_at` from each row (trainers, locations, academies, articles).
+
+### B4. Image + Video sitemaps (S, ★)
+- `sitemap-images.xml` for trainer avatars, club photos, racket images.
+- `sitemap-videos.xml` for `/video-tips/*` with thumbnails + durations.
+
+### B5. Trailing-slash 301 in Cloudflare worker (XS, ★)
+Canonical normalization is client-side only. Add a 301 in the worker so external links to `/en/trainers/utrecht/` collapse before they reach the SPA.
+
+### B6. llms.txt freshness (XS, ★)
+- Add `<link rel="llms" href="/llms.txt">` to HTML head.
+- Regenerate `llms.txt` weekly via cron with current top-N trainers/cities.
 
 ---
 
 ## Tier 3 — Technical hardening & monitoring
 
-### 9. SEO regression CI (S, ★★)
-- Lighthouse CI per PR on 5 representative URLs (already have `.github/workflows/`).
-- Schema validator in CI (curl render-page + run through `schema-dts` validator).
-- Broken-link crawler weekly (Lychee / Linkinator).
-- Alert on sitemap URL count drops >10% week-over-week.
+### C1. CWV pass on human SPA (M, ★★)
+- PageSpeed audit on `/en`, top city, top trainer, top blog post.
+- Self-host Inter + Plus Jakarta Sans woff2 with `font-display: swap` + preload.
+- Explicit `width`/`height` on every `<img>` to kill CLS.
+- Eager + `fetchpriority="high"` on hero images.
+- Code-split heavy admin chunks out of marketing entry.
 
-### 10. Search Console + Bing Webmaster integration (S, ★)
-- Verify both, submit sitemap-index.
-- Wire GSC API to a `/admin/seo` dashboard showing: top queries, CTR by URL, indexing status, coverage errors.
-- Catches deindexing issues days earlier than third-party tools.
+### C2. Set GSC + Bing verification (XS, ★)
+Env vars `VITE_GOOGLE_SITE_VERIFICATION` + `VITE_BING_SITE_VERIFICATION` are wired in `SEO.tsx` — just need real values in deployment env, then submit sitemap-index in both consoles.
 
-### 11. Trailing-slash + canonical hygiene (S, ★)
-Carry-over from Phase 3. Decide policy (no trailing slash recommended for SEO), enforce 301s in Cloudflare worker, ensure all canonicals + sitemap + internal links agree.
+### C3. Schema regression CI (S, ★★)
+GitHub Action that curls 5 representative URLs through `render-page` and validates JSON-LD with `schema-dts` / structured-data-testing-tool. Fails PR on broken schema.
 
-### 12. 404 + bot-aware soft-404 handling (S, ★)
-Render real 404 status for unknown trainer/city slugs in `render-page` (currently returns 200 fallback). Soft 404s waste crawl budget.
-
-### 13. Country-targeted subfolders for top markets (M, ★★)
-You have `nl/es/de/fr/it` — but the hreflang `x-default` points to `nl`. Switch to `en` or geo-detect. Consider adding `en-gb`, `es-es`, `de-de`, `de-at` variants for Search Console country targeting if you have local trainer density.
+### C4. Sitemap drift alert (XS, ★)
+Weekly job that compares current sitemap URL count to last week and Slack-pings if drop >10%. Catches deindexing fast.
 
 ---
 
-## Tier 4 — Content engine (compounds over months)
+## Tier 4 — Compounding plays
 
-### 14. AI-assisted localized blog at scale (L, ★★★)
-You already have Sanity + AI generation infra. Use it:
-- 50 long-tail "padel + {topic} + {city}" articles per month per locale.
-- Topic clusters around: rules, gear, technique, level systems, tournaments.
-- Each article links into 3 city pages + 3 trainer pages.
+### D1. Programmatic pillar pages (M, ★★★)
+- "Best padel trainers in Europe 2026" (top-100 by rating, programmatic).
+- "How much does a padel coach cost?" (calculator + price ranges per country, charts).
+- "Find a padel club near you" (map, server-rendered cluster summary for bots).
+Each becomes a hub redistributing link equity to city / trainer pages.
 
-### 15. Video SEO (M, ★★)
-`VideoTips` exists. Add `VideoObject` schema with thumbnails, transcripts, chapters. Embed YouTube + transcribe to text below = double indexing surface.
+### D2. UGC velocity loop (M, ★★)
+- Email past players a one-click court / trainer review link (3 questions, 30s).
+- "Recently reviewed" feed on city pages → freshness signal.
 
-### 16. Glossary / "What is …" pages (M, ★★)
-Capture top-of-funnel + AI-overview real estate. "What is padel?", "What is a bandeja?", "Padel vs tennis" — these are the queries ChatGPT/Gemini cite.
+### D3. Backlink loops (S, ★★)
+- Submit `/llms.txt` to llms-txt directories (`directory.llmstxt.cloud`, etc.).
+- Embeddable trainer-finder widget for partner club sites → branded backlinks.
+- Public READ API documented on `/press`.
+
+### D4. VideoObject + transcripts on /video-tips (M, ★★)
+Double indexing surface + Google Video carousel eligibility.
 
 ---
 
-## Recommended next sprint
+## Recommended next sprint (1 week, ordered)
 
-If you want a single 1-week sprint that moves the needle most: **#1 + #2 + #3** in parallel. They share infrastructure (city/trainer page renderers), reuse existing data, and unlock measurable rank/CTR gains within 2-4 weeks of recrawl.
+Each step unlocks the next:
 
-Tell me which tier or items you want to scope first and I'll write the implementation plan for those specifically.
+1. **A1** DB enrichment in render-page — foundation
+2. **A2** Review/AggregateRating/Course schemas — uses A1 data
+3. **A4** contextual internal links — uses A1 data
+4. **A5** localized labels — XS, same PR
+5. **B3** real lastmod in sitemaps — XS, same PR
+6. **A3** GEO TL;DR + last-updated + speakable — uses A1 data
+
+Parallel quick wins: **B1** (sameAs + author), **B5** (worker 301), **C2** (GSC/Bing tokens).
+
+Expected outcome in 4-6 weeks: city long-tails ("padel trainer Utrecht", "padel coach Madrid prijs") begin ranking page-1, trainer profiles eligible for SERP star ratings, ChatGPT/Claude begin citing PadelTrainer.ai for "where can I book a padel coach" prompts.
+
+---
+
+## What to ask ChatGPT / Claude to validate
+
+1. "What technical SEO gaps are missing from this audit for a multilingual marketplace?"
+2. "Rank these Tier-1 items by expected impact on organic traffic in 90 days."
+3. "What additional schema types would help a padel-coach marketplace appear in AI Overviews?"
+4. "Audit our llms.txt + llms-full.txt against current best practice (May 2026)."
+
+Tell me which tier to scope into a build plan — I recommend Tier 1 (A1 → A5 + B3) as a single coordinated PR.
