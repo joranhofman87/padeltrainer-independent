@@ -1,71 +1,46 @@
-## 1. Fix the "Add link" button in the email composer
 
-**Problem:** Clicking the link icon in the rich text editor toolbar does nothing.
+## Reminder
+**Manual follow-up:** Redeploy `docs/cloudflare-worker.js` to Cloudflare (expanded bot allowlist + sitemap/llms proxy). This plan does not touch it.
 
-**Cause:** The link button is implemented as a shadcn `Toggle` (a Radix Toggle), which steals focus from the editor on mousedown. By the time `addLink()` runs, the text selection in the editor is lost, so `setLink()` has nothing to attach the link to and silently no-ops. The other toggles (bold/italic/underline) only need an active selection to format, so they hide the issue. Some browsers also dislike `window.prompt` triggered from a Toggle's `onPressedChange`.
+## Goal
+Validate everything shipped in Phases 1–3 and produce a fresh audit report you can cross-check with 3rd party tools (PageSpeed, Rich Results Test, Schema.org validator, Ahrefs/Screaming Frog, llms.txt validators, etc.).
 
-**Fix in `src/components/ui/mini-rich-text-editor.tsx`:**
-- Replace the link `Toggle` with a plain `Button` styled identically.
-- Add `onMouseDown={(e) => e.preventDefault()}` so the editor keeps focus and the selection is preserved when the prompt opens.
-- Capture the current URL on the link mark (if any) so the prompt prefills the existing href when editing an existing link, and supports an empty input to remove the link.
-- After `setLink`, if no text is selected, insert the URL itself as the link text (so clicking the button on an empty selection still produces a usable link instead of nothing).
+## Validation steps
 
-No behavior changes for other toolbar buttons.
+1. **Static assets (served from origin/preview)**
+   - `public/robots.txt` — confirm sitemap reference + bot allowlist
+   - `public/sitemap.xml` — confirm sitemap-index references children
+   - `public/llms.txt` + `public/llms-full.txt` — confirm `Last updated` header present
+   - `index.html` — confirm: early `<html lang>` script, font preload + swap pattern, `color-scheme` + `prefers-color-scheme` loader, no blocking Google Fonts link
 
-## 2. Save and resume email campaigns as drafts
+2. **Edge functions (live)**
+   - `render-page`: curl with Googlebot UA for representative routes
+     - `/nl` (home) → expect localized title/desc, hreflang, BreadcrumbList + Organization JSON-LD
+     - `/en/trainer/<slug>` → Person schema
+     - `/en/padel/<slug>` → SportsActivityLocation schema
+     - `/en/academies/<slug>` → EducationalOrganization schema
+     - `/en/blog/<slug>` → Article schema
+     - confirm breadcrumb includes Home (the empty-path fix)
+   - `llms-full-txt`: curl and confirm dynamic `Last updated:` + `Generated:` headers
+   - `sitemap`: spot-check `?type=index`, `?type=static`, one location page; confirm per-URL `lastmod`
 
-**Goal:** A user composing a campaign can save it as a draft, leave the page, and come back later to finish and send it.
+3. **Marketing page schemas (SPA-rendered, but also covered by render-page)**
+   - View source via render-page for: `Playground` (ItemList), `RedFlagQuiz` (Quiz), `ChallengeMode` + `RateMyCourt` (WebApplication), `Trainers` / `Academies` / `About` / `Coaches` / `CoachPage` / `Pricing` (Phase-1 schemas)
 
-**Backend (no schema migration needed):**
-- Reuse the existing `email_campaigns` table — it already has `status = 'draft'` and `filters` jsonb.
-- Recipients of a draft are stored in the same `email_campaign_recipients` table, with the existing `status = 'pending'` (they are only actually sent when the user hits "Send"). The send flow already inserts these rows; we just insert them at draft time too.
-- The existing `send-campaign-emails` edge function already accepts `campaignId` and processes pending recipients, so for a draft-then-send flow we:
-  - Update the draft row's `subject`, `body_html`, `filters`, `total_recipients`.
-  - Replace its recipient rows (delete-then-insert) so the recipient set always matches the latest filters at send time.
-  - Then invoke `send-campaign-emails` with the same `campaignId`.
+4. **Tests**
+   - Run `src/i18n/seo-lengths.test.ts` (vitest) — confirm SEO length lint still green and check for stale KNOWN_LONG_KEYS warnings
+   - Run `supabase/functions/render-page/index.test.ts` (deno) — confirm the existing render-page integration tests still pass after Phase-2 schema additions
 
-**UI changes in `src/components/players/EmailCampaignTab.tsx`:**
-
-Composer panel:
-- Add a "Save as draft" button next to "Send to N", with a `FileText` icon. Disabled when subject + body are empty.
-- Track `currentDraftId: string | null` in component state. Loading a draft sets it; saving updates it; sending a draft updates and then dispatches the same `id`; resetting after a successful send clears it.
-- Show a small "Editing draft" indicator in the composer header when `currentDraftId` is set, with an "X" to discard (clears state, does NOT delete the row).
-- Auto-fill `currentDraftId` when the user opens a draft from history.
-
-History tab:
-- Split the campaigns list into two sections: **Drafts** (status = 'draft') at the top, and **Sent / In progress** below (everything else).
-- For each draft row, add icon buttons:
-  - **Open** (Pencil) → loads subject, body, filters, and recipients into the composer; sets `currentDraftId`; switches to the Compose tab.
-  - **Delete** (Trash) → deletes the draft row (cascade deletes recipient rows via existing FK if present; otherwise delete recipients first), with a confirm.
-- Sent campaigns remain read-only (current behavior).
-
-Send flow:
-- On "Send", if `currentDraftId` is set, reuse that row (update subject/body/filters, replace recipients, then invoke `send-campaign-emails`). Otherwise insert a new row as today.
-- After a successful send, the row's status becomes `sending`/`sent` via the existing edge function. Local state clears `currentDraftId`.
-
-Save-as-draft flow:
-- Insert a new row with `status: 'draft'` (or update the existing one) using current subject, body_html, filters, total_recipients.
-- Replace its recipient rows with the current `recipients[]`.
-- Toast "Draft saved", set `currentDraftId`, refresh the history list. Stay on the compose tab (no reset).
-
-Loading a draft:
-- Fetch the campaign row + its `email_campaign_recipients`.
-- Populate `subject`, `bodyHtml`, the six `filterX` states from `filters`, and `recipients`.
-- Set `currentDraftId`, switch to the compose tab.
-
-### Translation keys (English; user can translate)
-Add to the `trainer` namespace under `emailCampaign`:
-- `compose.saveDraft` = "Save as draft"
-- `compose.draftSaved` = "Draft saved"
-- `compose.editingDraft` = "Editing draft — your changes won't be sent until you press Send"
-- `compose.discardDraftChanges` = "Discard changes"
-- `history.draftsTitle` = "Drafts"
-- `history.sentTitle` = "Sent campaigns"
-- `history.openDraft` = "Open draft"
-- `history.deleteDraft` = "Delete draft"
-- `history.confirmDeleteDraft` = "Delete this draft? This can't be undone."
+5. **Audit report**
+   - Write `/mnt/documents/seo-llm-audit-2026-05-10.md` summarizing per-check status (PASS/FAIL/WARN), with curl excerpts and links to 3rd-party validators:
+     - https://search.google.com/test/rich-results (per representative URL)
+     - https://validator.schema.org
+     - https://pagespeed.web.dev
+     - https://llmstxt.org / llms.txt validators
+     - https://www.xml-sitemaps.com/validate-xml-sitemap.html
+   - Include the Cloudflare worker redeploy reminder at the top.
 
 ## Out of scope
-- No new database tables or RLS changes (existing `email_campaigns` policies already cover drafts).
-- No autosave — drafts are explicit-only to keep behavior predictable.
-- No draft for templates (templates already serve that purpose for reusable content).
+- No code edits in this loop (validation only)
+- No Cloudflare worker redeploy (manual user action)
+- No new SEO copy changes
