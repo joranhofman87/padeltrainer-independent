@@ -596,6 +596,7 @@ export default function TrainersCity() {
             </div>
           </section>
         )}
+        <SeoFaq items={cityFaqs(displayCity, currentLang)} />
       </main>
     </MarketingLayout>
   );

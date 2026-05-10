@@ -207,6 +207,7 @@ export default function TrainersProvince() {
             </div>
           </section>
         )}
+        <SeoFaq items={regionFaqs(provinceData.name, currentLang)} />
       </main>
     </MarketingLayout>
   );
