@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useFollowTrainer } from '@/hooks/useFollowTrainer';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
+import { SeoFaq } from '@/components/seo/SeoFaq';
+import { trainerFaqs } from '@/lib/seoFaqs';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

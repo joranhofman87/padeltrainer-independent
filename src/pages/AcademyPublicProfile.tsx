@@ -41,6 +41,8 @@ import { AcademyPublicOpenSlots } from '@/components/academy/AcademyPublicOpenSl
 import { WaitingListCard } from '@/components/waitingList';
 import { AcademyReviews } from '@/components/reviews/AcademyReviews';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
+import { SeoFaq } from '@/components/seo/SeoFaq';
+import { academyFaqs } from '@/lib/seoFaqs';
 import { useAuth } from '@/hooks/useAuth';
 import { getMarketingUrl, MARKETING_DOMAIN } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
