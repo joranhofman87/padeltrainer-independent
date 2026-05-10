@@ -1148,16 +1148,8 @@ export default function AcademyPlayers() {
               academyId={activeAcademy.id}
               trainers={trainers}
               locations={allLocations}
-              players={players.map((p) => ({
-                id: p.id,
-                full_name: p.full_name,
-                email: p.email,
-                skill_rating: p.skill_rating,
-                trainer_id: p.trainer_id,
-                location_names: p.location_names,
-                has_active_cyclus: p.has_active_cyclus,
-                type: p.type,
-              }))}
+              tags={tags}
+              players={filteredPlayers.length === players.length ? enrichForCampaign(players, metadata) : enrichForCampaign(players, metadata)}
             />
           )}
         </TabsContent>
