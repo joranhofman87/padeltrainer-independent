@@ -673,7 +673,7 @@ function breadcrumbSchema(lang: string, steps: Array<{ name: string; path?: stri
     "@type": "BreadcrumbList",
     "itemListElement": steps.map((s, i) => {
       const item: Record<string, unknown> = { "@type": "ListItem", "position": i + 1, "name": s.name };
-      if (s.path) item.item = `${SITE_URL}/${lang}${s.path}`;
+      if (s.path !== undefined) item.item = `${SITE_URL}/${lang}${s.path}`;
       return item;
     }),
   };
