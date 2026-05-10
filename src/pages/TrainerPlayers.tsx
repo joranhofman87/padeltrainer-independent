@@ -280,6 +280,8 @@ export default function TrainerPlayers() {
     setFilteredPlayers(result);
   }, [searchQuery, players, metadata, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
 
+  const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(filteredPlayers);
+
   const fetchPlayers = async () => {
     if (!trainerId) return;
     setLoading(true);
