@@ -673,7 +673,9 @@ export default function AcademyCalendar() {
         trainer_avatar: s.trainer_avatar,
         max_participants: s.max_participants || 4,
         booked_count: s.active_bookings + s.pending_bookings,
+        location_id: s.location_id,
         location_name: s.location_name,
+        location_logo: s.location_logo,
         is_public: s.is_public,
       }));
   }, [monthSlots, selectedTrainerId, selectedLocationId]);
