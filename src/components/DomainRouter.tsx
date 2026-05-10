@@ -178,6 +178,7 @@ const AcademyTrainerDetail = lazy(() => import('@/pages/academy/AcademyTrainerDe
 
 const AcademyWaitingList = lazy(() => import('@/pages/academy/AcademyWaitingList'));
 const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
+const AcademyPlayerDetail = lazy(() => import('@/pages/academy/AcademyPlayerDetail'));
 
 const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
 const AcademyCreateInvoice = lazy(() => import('@/pages/academy/AcademyCreateInvoice'));
