@@ -673,6 +673,84 @@ export default function TrainerInvoices() {
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
       />
+
+      <BulkInvoiceEmailDialog
+        open={bulkEmailOpen}
+        onClose={() => setBulkEmailOpen(false)}
+        invoiceIds={[...selectedIds]}
+        language={i18n.language || "nl"}
+        onSent={() => {
+          setSelectedIds(new Set());
+          queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+        }}
+      />
+
+      <Dialog open={bulkDueOpen} onOpenChange={(o) => !bulkRunning && setBulkDueOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("invoices.bulk.updateDueDateTitle", "Vervaldatum wijzigen")}</DialogTitle>
+            <DialogDescription>
+              {t("invoices.bulk.updateDueDateDesc", "Stel een nieuwe vervaldatum in voor {{count}} geselecteerde factu(u)r(en).", { count: selectedIds.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn("w-full justify-start text-left font-normal", !bulkDueDate && "text-muted-foreground")}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {bulkDueDate ? format(bulkDueDate, "dd MMM yyyy", { locale: dateFnsLocale }) : t("invoices.bulk.pickDate", "Kies een datum")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={bulkDueDate} onSelect={setBulkDueDate} initialFocus className={cn("p-3 pointer-events-auto")} />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDueOpen(false)} disabled={bulkRunning}>
+              {t("common.cancel", "Annuleren")}
+            </Button>
+            <Button onClick={handleBulkUpdateDueDate} disabled={!bulkDueDate || bulkRunning}>
+              {bulkRunning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t("common.save", "Opslaan")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmBulk === "reset"
+                ? t("invoices.bulk.confirmResetTitle", "{{count}} facturen resetten naar concept?", { count: selectedIds.size })
+                : t("invoices.bulk.confirmDeleteTitle", "{{count}} facturen verwijderen?", { count: selectedIds.size })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmBulk === "reset"
+                ? t("invoices.bulk.confirmResetDesc", "Status, verzenddatum en betaaldatum worden gewist. Dit kan niet ongedaan worden gemaakt.")
+                : t("invoices.bulk.confirmDeleteDesc", "Concepten worden definitief verwijderd. Verstuurde facturen worden geannuleerd.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkRunning}>{t("common.cancel", "Annuleren")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmBulk === "reset") handleBulkReset();
+                else if (confirmBulk === "delete") handleBulkDelete();
+              }}
+              disabled={bulkRunning}
+            >
+              {bulkRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              {t("common.confirm", "Bevestigen")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
