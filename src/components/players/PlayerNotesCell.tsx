@@ -10,13 +10,15 @@ import { StickyNote, Loader2 } from 'lucide-react';
 import { logger } from '@/lib/logger';
 
 interface PlayerNotesCellProps {
-  academyId: string;
+  /** Owner: pass either academyId OR trainerId (one required). */
+  academyId?: string;
+  trainerId?: string;
   playerKey: { guest_player_id: string | null; profile_id: string | null };
   notes: string;
   onChanged: () => void;
 }
 
-export function PlayerNotesCell({ academyId, playerKey, notes, onChanged }: PlayerNotesCellProps) {
+export function PlayerNotesCell({ academyId, trainerId, playerKey, notes, onChanged }: PlayerNotesCellProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -25,15 +27,19 @@ export function PlayerNotesCell({ academyId, playerKey, notes, onChanged }: Play
 
   useEffect(() => { setLocalNotes(notes); }, [notes]);
 
+  const ownerCol = academyId ? 'academy_profile_id' : 'trainer_profile_id';
+  const ownerId = academyId ?? trainerId;
+
   const persist = async () => {
     if (localNotes === notes) return;
     if (!playerKey.guest_player_id && !playerKey.profile_id) return;
+    if (!ownerId) return;
     setBusy(true);
     try {
       const baseQuery = supabase
         .from('academy_player_metadata')
         .select('id')
-        .eq('academy_profile_id', academyId);
+        .eq(ownerCol, ownerId);
 
       const { data: existing } = await (playerKey.guest_player_id
         ? baseQuery.eq('guest_player_id', playerKey.guest_player_id)
@@ -51,7 +57,7 @@ export function PlayerNotesCell({ academyId, playerKey, notes, onChanged }: Play
         const { error } = await supabase
           .from('academy_player_metadata')
           .insert({
-            academy_profile_id: academyId,
+            [ownerCol]: ownerId,
             guest_player_id: playerKey.guest_player_id,
             profile_id: playerKey.profile_id,
             notes: trimmed,

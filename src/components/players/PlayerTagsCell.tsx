@@ -11,14 +11,16 @@ import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 
 interface PlayerTagsCellProps {
-  academyId: string;
+  /** Owner: pass either academyId OR trainerId (one required). */
+  academyId?: string;
+  trainerId?: string;
   playerKey: { guest_player_id: string | null; profile_id: string | null };
   tags: PlayerTag[];
   selectedTagIds: string[];
   onChanged: () => void;
 }
 
-export function PlayerTagsCell({ academyId, playerKey, tags, selectedTagIds, onChanged }: PlayerTagsCellProps) {
+export function PlayerTagsCell({ academyId, trainerId, playerKey, tags, selectedTagIds, onChanged }: PlayerTagsCellProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -28,15 +30,18 @@ export function PlayerTagsCell({ academyId, playerKey, tags, selectedTagIds, onC
   useEffect(() => { setLocalTagIds(selectedTagIds); }, [selectedTagIds]);
 
   const selectedTags = tags.filter(tag => selectedTagIds.includes(tag.id));
+  const ownerCol = academyId ? 'academy_profile_id' : 'trainer_profile_id';
+  const ownerId = academyId ?? trainerId!;
 
   const persist = async (tagIds: string[]) => {
     if (!playerKey.guest_player_id && !playerKey.profile_id) return;
+    if (!ownerId) return;
     setBusy(true);
     try {
       const baseQuery = supabase
         .from('academy_player_metadata')
         .select('id')
-        .eq('academy_profile_id', academyId);
+        .eq(ownerCol, ownerId);
 
       const { data: existing } = await (playerKey.guest_player_id
         ? baseQuery.eq('guest_player_id', playerKey.guest_player_id)
@@ -53,7 +58,7 @@ export function PlayerTagsCell({ academyId, playerKey, tags, selectedTagIds, onC
         const { error } = await supabase
           .from('academy_player_metadata')
           .insert({
-            academy_profile_id: academyId,
+            [ownerCol]: ownerId,
             guest_player_id: playerKey.guest_player_id,
             profile_id: playerKey.profile_id,
             tag_ids: tagIds,

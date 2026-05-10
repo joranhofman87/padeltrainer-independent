@@ -15,26 +15,31 @@ import { logger } from '@/lib/logger';
 interface ManagePlayerTagsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  academyId: string;
+  /** Owner: pass either academyId OR trainerId (one required). */
+  academyId?: string;
+  trainerId?: string;
   tags: PlayerTag[];
   onChanged: () => void;
 }
 
-export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, tags, onChanged }: ManagePlayerTagsDialogProps) {
+export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerId, tags, onChanged }: ManagePlayerTagsDialogProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState<string>('blue');
   const [busy, setBusy] = useState(false);
 
+  const ownerCol = academyId ? 'academy_profile_id' : 'trainer_profile_id';
+  const ownerId = academyId ?? trainerId;
+
   const handleCreate = async () => {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || !ownerId) return;
     setBusy(true);
     try {
       const { error } = await supabase
         .from('academy_player_tags')
-        .insert({ academy_profile_id: academyId, name, color: newColor } as any);
+        .insert({ [ownerCol]: ownerId, name, color: newColor } as any);
       if (error) throw error;
       setNewName('');
       onChanged();
