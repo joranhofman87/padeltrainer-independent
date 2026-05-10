@@ -733,7 +733,7 @@ function RatingTrendCard({
   ratingSystem: string | null;
   currentRating: number | null;
   isGuest: boolean;
-  t: (k: string, d?: string) => string;
+  t: any;
 }) {
   const lowerIsBetter = (ratingSystem || 'knltb').toLowerCase() === 'knltb';
   const systemLabel = (ratingSystem || 'knltb').toUpperCase();
