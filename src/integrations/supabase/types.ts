@@ -5756,6 +5756,95 @@ export type Database = {
         }
         Relationships: []
       }
+      academy_trainers_owner: {
+        Row: {
+          academy_profile_id: string | null
+          created_at: string | null
+          id: string | null
+          invited_by: string | null
+          joined_at: string | null
+          payment_percentage: number | null
+          show_on_academy_page: boolean | null
+          status: string | null
+          trainer_profile_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          academy_profile_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          invited_by?: string | null
+          joined_at?: string | null
+          payment_percentage?: number | null
+          show_on_academy_page?: boolean | null
+          status?: string | null
+          trainer_profile_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          academy_profile_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          invited_by?: string | null
+          joined_at?: string | null
+          payment_percentage?: number | null
+          show_on_academy_page?: boolean | null
+          status?: string | null
+          trainer_profile_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_profiles_owner: {
         Row: {
           banner_url: string | null
