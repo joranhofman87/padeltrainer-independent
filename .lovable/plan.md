@@ -1,72 +1,57 @@
-## Decisions locked in
-- **Strict access** to org billing: only managers with `role='owner'` (or admins) can read/write billing columns. Multiple owners are already supported — any number of `manager` rows can carry `role='owner'`.
-- **Keep visible** to anyone who can already see a profile: `phone`, `birth_date`, `email`. Lockdown only covers true billing/PII: `billing_address`, `billing_btw_number`, `billing_business_name`, `stripe_customer_id` on `profiles`.
+## What this finding means
 
-## What ships
+`supabase/functions/generate-invoice/index.ts` builds the invoice HTML with raw template literals. User-controlled fields (player name, business name, address, BTW number, notes, line item descriptions/dates, even trainer business fields) are interpolated **without HTML escaping**.
 
-### 1. Migration
+On its own this HTML is only delivered to authorised callers, but two things make it a real XSS sink:
 
-Column-level `REVOKE SELECT` from `authenticated` + `anon`:
-- `trainer_profiles`: `iban, bic, btw_number, kvk_number, mollie_customer_id, stripe_customer_id, platform_fee_override`
-- `academy_profiles`: same seven columns
-- `club_profiles`: `mollie_customer_id, stripe_customer_id` (the only sensitive ones it has)
-- `profiles`: `billing_address, billing_btw_number, billing_business_name, stripe_customer_id`
+1. `src/lib/downloadInvoicePdf.ts` falls back to `printWindow.document.write(data.html)` when no `pdfUrl` is returned. Any `<script>` / `onerror=` payload in the HTML executes in the trainer's browser.
+2. `update-public-invoice-details` lets an unauthenticated holder of a public invoice token write `playerBusinessName`, `playerAddress`, `playerBtwNumber`. So a player (or anyone with the public link) can plant a payload that fires when the trainer downloads the invoice and the PDF path fails.
 
-Four `SECURITY DEFINER` safe views (owned by `postgres`, granted to `authenticated`) following the existing `trainer_profiles_safe` pattern documented in `mem://security/financial-data-isolation-safe-views`:
+## Fix plan
 
-```sql
-CREATE OR REPLACE VIEW public.trainer_profiles_owner AS
-  SELECT * FROM public.trainer_profiles
-  WHERE auth.uid() = user_id OR public.is_admin(auth.uid());
+### 1. Escape all user-controlled fields in `generate-invoice/index.ts`
 
-CREATE OR REPLACE VIEW public.academy_profiles_owner AS
-  SELECT * FROM public.academy_profiles
-  WHERE public.is_academy_owner(auth.uid(), id) OR public.is_admin(auth.uid());
+Add a helper at top of the file:
 
-CREATE OR REPLACE VIEW public.club_profiles_owner AS
-  SELECT * FROM public.club_profiles
-  WHERE public.is_club_owner(auth.uid(), id) OR public.is_admin(auth.uid());
-
-CREATE OR REPLACE VIEW public.profiles_owner AS
-  SELECT * FROM public.profiles
-  WHERE auth.uid() = user_id OR public.is_admin(auth.uid());
+```ts
+const esc = (s: unknown) =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 ```
 
-`SELECT, UPDATE` granted on each view to `authenticated`. UPDATE flows through the view as owner (postgres), so the existing UPDATE column permissions on the base table are not affected — owners keep full edit rights.
+Wrap every interpolated user/trainer string in `generateInvoiceHTML()`:
 
-`is_*_owner()` already check `role='owner'`, so multi-owner is supported out of the box.
+- `invoice.trainer.business_name`, `business_address`, `kvk_number`, `btw_number`, `iban`, `bic`
+- `invoice.player_business_name`, `player_name`, `player_address`, `player_btw_number`
+- `invoice.invoice_number` (defence in depth)
+- `invoice.notes`
+- Line items: `item.description` (and the formatted date string is safe, but wrap to be consistent)
+- `invoice.logo_url` inside `src="..."` and `alt`
+- `invoice.payment_url` in `href` — additionally validate it starts with `https://` to block `javascript:` URLs
 
-### 2. Code swaps
+Numeric/date/currency outputs from `Intl.NumberFormat` / `formatDate` / `formatCurrency` don't need escaping.
 
-| File | Change |
-|---|---|
-| `src/lib/auth.ts` | `getProfile` and `getTrainerProfile` repointed to `profiles_owner` / `trainer_profiles_owner` (caller is always self) |
-| `src/lib/academy.ts` (`getAcademyBySlug` preview, `getAcademyById`) | Narrow `select('*')` to explicit non-billing column list (called by non-owner managers too) |
-| `src/lib/club.ts` (`getClubById`) | Same — narrow to non-billing columns |
-| `src/pages/TrainerEarnings.tsx`, `src/pages/trainer/TrainerInvoices.tsx` | Read from `trainer_profiles_owner` (owner-only billing context) |
-| `src/components/admin/TrainerEditDialog.tsx`, `AcademyEditDialog.tsx` | Read `platform_fee_override` via `_owner` view (admin passes the WHERE) |
+The PDF rendering path already runs through `sanitize()` and `pdf-lib` — no XSS risk there, no change needed.
 
-Edge functions and `MollieDisconnectSection` are unaffected — service role bypasses everything; the disconnect dialog only does UPDATEs which keep working.
+### 2. Remove the unsafe `document.write` fallback in `src/lib/downloadInvoicePdf.ts`
 
-### 3. Memory update
+Replace the HTML print-window fallback with a clear error toast/return value. If we ever want a print fallback later, render into a sandboxed iframe (`sandbox="allow-same-origin"` only, no `allow-scripts`) instead of `document.write`. Callers already handle a `false` return.
 
-Update `mem://security/financial-data-isolation-safe-views` to record the four new owner views and which surfaces consume them.
+### 3. (defence in depth) length-cap the public-write fields
 
-## UX impact
+In `update-public-invoice-details`, trim and cap `playerBusinessName` / `playerAddress` / `playerBtwNumber` to sane lengths (e.g. 200 / 500 / 32 chars). Out of scope for this XSS fix but cheap and prevents abuse of the same input vector — flag only, do not block this PR on it.
 
-| Surface | Change |
-|---|---|
-| Owner trainer Settings, Invoices, Earnings | None visible. Reads via owner view. |
-| Owner academy/club Settings, Invoices | None visible. |
-| Co-owner (additional `role='owner'` manager) | Full billing access — strict rule already allows multiple owners. |
-| Co-manager (`role='manager'`) of an academy/club | **Loses** billing visibility. Sees roster, schedule, ops as before. Promote them to owner if they need invoicing. |
-| Academy/club manager viewing rosters of their trainers | **Loses** trainer's personal IBAN/BTW/KvK/Mollie/Stripe customer IDs. Sees name, bio, rate, phone, email, birth date, public fields. |
-| Trainer viewing booked player profile | Phone, email, birth date stay visible. **Loses** billing address / business name / BTW. |
-| Admin pages | None visible (admins pass the view WHERE). |
-| Public pages, edge functions, Mollie/Stripe webhooks | None — server-side service role unaffected. |
+## Files touched
 
-## Risk register
+- `supabase/functions/generate-invoice/index.ts` — add `esc()`, wrap interpolations, validate `payment_url` / `logo_url` schemes
+- `src/lib/downloadInvoicePdf.ts` — drop `document.write` fallback, return false / surface error
 
-- **`select('*')` failures** post-REVOKE — already audited and listed above; all five call sites get fixed in the same change.
-- **Co-manager regression** — explicitly intended; documented above so support can promote co-managers when asked.
-- **Linter noise** — these views will add to the existing "Security Definer View" linter findings, which the security memory already accepts as the documented safe-view pattern.
+## Verification
+
+- Manually re-render an invoice where a field contains `<img src=x onerror=alert(1)>` and confirm it appears as literal text in both the served HTML and any fallback path.
+- Generate a normal invoice and confirm PDF + HTML still render correctly (apostrophes, ampersands, accented characters in names/addresses look right).
+- Mark the `invoice_html_xss` finding fixed after deploy.
