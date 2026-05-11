@@ -509,7 +509,7 @@ export function InvoiceSettingsCardBase({
                 style={{ backgroundColor: bannerColor }}
               >
                 {logoUrl ? (
-                  <img src={logoUrl} alt="Preview" className="h-8 max-w-[120px] object-contain" />
+                  <img src={logoUrl} alt="Preview" className="h-8 max-w-[120px] object-contain" loading="lazy" decoding="async" />
                 ) : (
                   <span className="text-white text-sm font-medium">
                     {formData.business_name || 'Your Logo Here'}

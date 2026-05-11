@@ -1,94 +1,65 @@
-# Code-quality cleanup (items 11–15)
+# Performance cleanup (items 16–18)
 
-Tackled in order of risk/leverage. Items 14 and 15 are quick, mechanical wins. Items 11–13 are larger and proposed as scoped first passes, not full rewrites.
+## #16 — Stop shipping 108 MB of sitemaps in the repo
 
-## #14 — Delete duplicate Supabase client (quick, do first)
+**Current state:**
+- `public/sitemaps/` = 108 MB across 11 XML files (cities-1: 20MB, cities-2: 20MB, cities-3: 12MB, locations-1..6: ~57MB, content: 2.1MB, etc.)
+- `public/sitemap.xml` (index) hardcodes paths like `/sitemaps/sitemap-locations-1.xml`
+- `public/llms-full.txt` = 2.1 MB
+- `.github/workflows/sitemap.yml` runs weekly, curls `supabase/functions/sitemap`, and **commits the output back into `public/sitemaps/`**
+- The `sitemap` edge function already exists and serves all variants (`?type=index|static|content|locations-N|cities-N`)
 
-We currently ship two `createClient` calls:
-- `src/integrations/supabase/client.ts` (auto-generated, must not be edited)
-- `src/lib/supabaseClient.ts` (manual, used by ~208 files; only 4 files use the integrations one)
+So the generator is already there; we're just needlessly persisting + bundling its output.
 
-Both have identical auth config (`localStorage`, persist, autoRefresh), so two `GoTrueClient` instances are running for no reason.
+**Fix:**
+1. **Cloudflare proxy rule** (per `mem://infrastructure/cloudflare-configuration`): route `padeltrainer.com/sitemap.xml` and `padeltrainer.com/sitemaps/*` to the edge function (`/functions/v1/sitemap?type=...`), with the worker mapping path → `?type=` param. Set CDN cache headers on the edge function response (`Cache-Control: public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800`).
+2. **Edge function update**: ensure `sitemap/index.ts` emits the cache headers above, and that the `?type=index` response uses absolute URLs pointing at the same `/sitemaps/...` paths so crawlers don't see edge-function URLs.
+3. **Delete from repo**: remove `public/sitemaps/` and `public/sitemap.xml` entirely; add `public/sitemaps/` to `.gitignore` as a safety net.
+4. **Replace the weekly workflow**: `.github/workflows/sitemap.yml` no longer commits files. Either delete it, or repurpose it as a smoke-test that curls each `?type=...` variant and fails if any returns non-200 / empty XML — much smaller change set, no commits.
+5. **`llms-full.txt`** (2.1 MB): same treatment. The content is already programmatically generatable. Add a `llms` edge function (or a `?type=llms-full` branch on the sitemap function), proxy `/llms-full.txt` to it, delete the file. Keep the small `/llms.txt` index in the repo since it's tiny and human-readable.
 
-**Fix:** Replace the body of `src/lib/supabaseClient.ts` with a pure re-export:
-```ts
-export { supabase } from "@/integrations/supabase/client";
-export type { Database } from "@/integrations/supabase/types";
-```
-No call-site changes needed; both import paths resolve to the same singleton. Removes the dual-client warning and keeps existing imports working. (We can't delete `integrations/client.ts` — it's auto-generated.)
+**Net effect:** dist/ shrinks by ~110 MB. Each deploy ships less, browser cache & CDN handle freshness, sitemaps stay current without weekly commits.
 
-## #15 — Translation parity check
+## #17 — Lazy loading + WebP for images
 
-Current key counts: en 5214, nl 5318, de 4644, fr 4582, es 4739, it 5079.
+**Current state:**
+- 10 `<img>` tags in `src/`. Only **2** have `loading="lazy"` (`PressKit.tsx`, `AcademyProfile.tsx`).
+- 6 missing it: `VideoTipPage.tsx` (×2), `TrainerProfile.tsx`, `TrainerCalendar.tsx`, `AdminBlogEditor.tsx`, `InvoiceSettingsCardBase.tsx`, `DataProcessingDialog.tsx`. Two more (`ChallengeCard.tsx` logo, blog cover preview) are above-the-fold or always-visible — leave eager.
+- OG images: `og-image.png` (21K), `og-trainers.png` (74K), `og-locations.png` (103K). PNG is wasteful; WebP gets ~70% smaller.
 
-**Fix in two parts:**
-1. Add `scripts/check-i18n-parity.ts` that loads every JSON under `src/i18n/locales/<lang>/`, flattens keys, and diffs each non-en locale against `en`. Exit non-zero with a per-locale list of missing keys (capped output).
-2. Wire it into the existing CI workflow (the weekly + PR workflow already in `.github/workflows`) as a fast `bun run i18n:check` step. Add the script to `package.json`.
+**Fix:**
+1. Add `loading="lazy" decoding="async"` to the 6 below-the-fold imgs listed above. Skip the 2 logo/cover-preview cases.
+2. Convert `og-image.png`, `og-trainers.png`, `og-locations.png` to WebP via `cwebp -q 85`. **Keep the `.png` originals** because Facebook/LinkedIn historically had patchy WebP support for OG cards — but ship `.webp` versions and update `<meta property="og:image">` only after verifying renderers (Twitter validator, FB sharing debugger). Safer interim: just re-encode the PNGs with `pngquant --quality=70-85` for an immediate ~50% drop with zero compatibility risk. Recommend this as the default.
+3. Audit `<meta property="og:image">` references across `index.html` and any per-page meta components; no path changes if we keep PNGs.
 
-Backfill is **not** in scope for this task — the check just stops the bleeding. We'll generate a one-time report of missing keys and surface it for triage.
+## #18 — `forcedTheme="light"` + unused `next-themes`
 
-## #11 — God components (first pass, one file)
+**Current state:**
+- `src/App.tsx`: `<ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light" enableSystem={false}>`
+- `next-themes` is still imported by `src/components/Logo.tsx` and `src/components/ui/sonner.tsx` (both call `useTheme()`).
+- Project memory commits to "Theme-aware design tokens" (light theme only, marketing pages explicitly light).
 
-Five files >1.5k lines. A full break-up of all of them is multi-day work and risky given how interactive they are (TanStack Query optimistic strategy memory, fragile-components memory). Proposal: do **one** as the template this round — `AddSlotDialog.tsx` (1772 lines, narrowest blast radius vs. CycleForm/ProposalScheduleGrid which are flagged as fragile God Components in memory).
+**Decision needed (low-friction options):**
+- **Option A (recommended): Remove `next-themes`.** Drop the dependency, drop `<ThemeProvider>`, hardcode `theme="light"` in `Logo.tsx` and `sonner.tsx` (or pick the light variants directly). Bundle shrinks slightly, dead code removed.
+- **Option B: Keep dark-mode capability for later.** Drop `forcedTheme="light"`, leave `defaultTheme="light"`, but leave `enableSystem={false}` so behavior stays identical today. No visible change, lib stays useful for future dark mode.
 
-Steps:
-1. Extract pure sub-components into `src/components/slots/addSlot/`: `SlotBasicsSection`, `SlotScheduleSection`, `SlotPricingSection`, `SlotVisibilitySection`, `SlotConflictsBanner`.
-2. Lift form state into a single `useAddSlotForm()` hook (reducer-based) so child components subscribe via context instead of prop-drilling.
-3. Memoize each section with `React.memo` and stable callbacks.
-4. Keep the public dialog API unchanged — same props, same `onSaved` contract.
-
-CycleForm / ProposalScheduleGrid / TrainerScheduleOverview / AcademyEditDialog stay as-is this round; we'll log them in `.lovable/plan.md` as follow-ups.
-
-## #12 — 51 components calling Supabase directly (scoped first pass)
-
-Full migration is 51 files. First pass: pick the 10 most-touched call-sites and move them behind hooks in `src/hooks/` (or `src/lib/*.ts` data modules where a hook isn't natural). Criteria for the 10: largest by line count + components that re-fetch on every render.
-
-Pattern per migration:
-- New `useXxx()` hook returning `{ data, isLoading, error, ... }` via TanStack Query, with a stable `queryKey` and the project's standard `staleTime` + `keepPreviousData` defaults (per memory).
-- Component switches from inline `supabase.from(...)` to the hook.
-- Mutations get `useXxxMutation()` with `onSuccess` invalidations against the related keys.
-
-Remaining 41 components get tracked as a follow-up list in `.lovable/plan.md`.
-
-## #13 — Zero TODO/FIXME (process item, not code)
-
-Nothing to "fix" in code. Action: append a note to `.lovable/plan.md` recommending a human review pass on the five God Components from #11 before further feature work, and adopt a convention of leaving `// TODO(owner): …` markers when intentionally deferring work. No automation in this task.
+I'll go with **Option A** unless you want to preserve the option for dark mode later — there's no current consumer benefiting from `next-themes` being installed.
 
 ## Order of execution
 
-1. #14 client dedupe (5 min, zero risk)
-2. #15 i18n parity script + CI wiring (~30 min)
-3. #12 first 10 hook migrations
-4. #11 `AddSlotDialog` decomposition (largest; do last, verify build + manual smoke of slot-create flow)
-5. #13 note appended to plan doc
+1. #18 — smallest change, isolated.
+2. #17 — `loading="lazy"` edits + `pngquant` re-encode of OG images.
+3. #16 — split into two PRs in spirit (but one turn here):
+   a. Edge function: emit cache headers, verify `?type=...` variants return correct URLs.
+   b. Cloudflare worker: add `/sitemap.xml` and `/sitemaps/*` routing rule (and `/llms-full.txt`).
+   c. Delete `public/sitemaps/`, `public/sitemap.xml`, `public/llms-full.txt`; gitignore the dir; rewrite or delete the weekly workflow.
 
-## Out of scope (logged as follow-ups)
+## Out of scope
 
-- Breaking up CycleForm, ProposalScheduleGrid, TrainerScheduleOverview, AcademyEditDialog
-- Migrating the remaining ~41 direct-Supabase components
-- Backfilling missing de/fr/es/it/nl translation keys
+- Switching OG images to `.webp` and updating meta tags (compatibility risk; needs validator runs).
+- Implementing dark mode UI (only mentioned as the alternative to removal).
+- Image optimization for user-uploaded content (different problem; lives in storage / on-the-fly transforms).
 
----
+## Open question for you
 
-## Execution log
-
-**Done:**
-- #14 — `src/lib/supabaseClient.ts` now re-exports the canonical client. All 208 importers continue to work; only one `GoTrueClient` runs.
-- #15 — `scripts/check-i18n-parity.ts` added, wired into `package.json` (`bun run i18n:check`) and `.github/workflows/test.yml`. Initial run shows 1559 missing keys (de:415, fr:475, es:466, it:142, nl:61). CI step is `continue-on-error: true` until the backfill lands; flip to hard-fail after.
-- #13 — Note recorded below. Convention: when intentionally deferring work, leave a `// TODO(owner): ...` marker so future audits can find it (current count: 0 — was the original red flag).
-
-**Recommended human review pass before further feature work** on these God Components (per technical-debt memory):
-- `CycleForm.tsx` (2108 lines) — fragile
-- `ProposalScheduleGrid.tsx` (1960) — fragile
-- `TrainerScheduleOverview.tsx` (1865)
-- `AddSlotDialog.tsx` (1772)
-- `AcademyEditDialog.tsx` (1553)
-
-**Deferred (need their own focused sessions):**
-- #11 — Decomposing `AddSlotDialog` is ~1.7k lines of refactor touching the slot-create flow. Worth doing as a single dedicated turn with a manual smoke test plan, not bundled with other items.
-- #12 — Migrating 10 components off direct `supabase.from(...)` calls into hooks. Requires choosing the 10 deliberately (largest re-fetchers) and per-component query-key alignment with existing TanStack invalidations. Best done one at a time to keep diffs reviewable.
-
-**Remaining backlog:**
-- Backfill missing translation keys (1559 across 5 locales).
-- Decompose CycleForm / ProposalScheduleGrid / TrainerScheduleOverview / AcademyEditDialog.
-- Migrate the remaining ~41 direct-Supabase components.
+For #18, do you want **A) remove `next-themes` entirely** or **B) keep it for future dark mode**? I'll default to A unless you say otherwise.

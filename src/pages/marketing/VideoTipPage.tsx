@@ -169,7 +169,7 @@ export default function VideoTipPage() {
             if (video.thumbnailUrl) {
               return (
                 <div className="aspect-video bg-muted rounded-xl overflow-hidden mb-6">
-                  <img src={video.thumbnailUrl} alt={video.title} className="w-full h-full object-cover" />
+                  <img src={video.thumbnailUrl} alt={video.title} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                 </div>
               );
             }
@@ -194,7 +194,7 @@ export default function VideoTipPage() {
             <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-8">
               <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center overflow-hidden">
                 {video.trainer.profileImageUrl ? (
-                  <img src={video.trainer.profileImageUrl} alt={video.trainer.name} className="w-full h-full object-cover" />
+                  <img src={video.trainer.profileImageUrl} alt={video.trainer.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                 ) : (
                   <User className="h-6 w-6 text-muted-foreground" />
                 )}

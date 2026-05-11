@@ -1,4 +1,3 @@
-import { useTheme } from 'next-themes';
 import logoDark from '@/assets/logo-dark.svg';
 import logoLight from '@/assets/logo-light.svg';
 
@@ -8,10 +7,8 @@ interface LogoProps {
 }
 
 export function Logo({ className = 'h-7', variant = 'auto' }: LogoProps) {
-  const { resolvedTheme } = useTheme();
-  const src = variant === 'dark'
-    ? logoLight
-    : resolvedTheme === 'dark' ? logoLight : logoDark;
+  // App is light-mode only; 'dark' variant means show the light logo (for use on dark backgrounds).
+  const src = variant === 'dark' ? logoLight : logoDark;
 
   return (
     <img

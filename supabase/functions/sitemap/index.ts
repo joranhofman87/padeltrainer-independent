@@ -474,7 +474,8 @@ Deno.serve(async (req) => {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/xml',
-        'Cache-Control': 'public, max-age=3600',
+        // Long edge/CDN cache; refresh weekly. SWR keeps responses warm during regen.
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
       },
     });
   } catch (error) {

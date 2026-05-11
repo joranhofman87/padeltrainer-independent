@@ -403,7 +403,7 @@ export function DataProcessingDialog({ open, onOpenChange, onSuccess }: DataProc
                             )}
                             <span className="truncate flex-1">{result.location_name}</span>
                             {result.logo_url && (
-                              <img src={result.logo_url} alt="" className="h-6 w-6 object-contain rounded" />
+                              <img src={result.logo_url} alt="" className="h-6 w-6 object-contain rounded" loading="lazy" decoding="async" />
                             )}
                           </div>
                         ))}
