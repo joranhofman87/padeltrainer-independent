@@ -67,7 +67,7 @@ export function PasswordStrengthIndicator({ password, className }: PasswordStren
         <ul className="text-xs space-y-0.5 text-muted-foreground">
           <RequirementItem 
             met={strength.checks.minLength} 
-            label={t('passwordStrength.requirements.minLength', 'At least 6 characters')} 
+            label={t('passwordStrength.requirements.minLength', 'At least 8 characters')} 
           />
           <RequirementItem 
             met={strength.checks.hasUppercase} 
