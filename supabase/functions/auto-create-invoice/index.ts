@@ -45,6 +45,7 @@ serve(async (req) => {
         payment_status,
         availability_slots!inner(
           trainer_id,
+          academy_profile_id,
           start_time,
           end_time,
           location_id,
