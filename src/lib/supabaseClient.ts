@@ -1,22 +1,15 @@
 /**
- * Supabase client using standard localStorage.
- * 
- * With single-domain routing (no more subdomains), we no longer need
- * cross-subdomain cookie sharing. Standard localStorage is reliable.
+ * Compatibility re-export.
  *
- * Import this instead of the auto-generated client:
- *   import { supabase } from "@/lib/supabaseClient";
+ * Historically this file created its own Supabase client, which meant the app
+ * shipped two GoTrueClient instances (this one + the auto-generated one in
+ * src/integrations/supabase/client.ts) with identical config. That triggered
+ * "Multiple GoTrueClient instances detected" warnings and split auth state.
+ *
+ * Both files now resolve to the SAME singleton. Existing imports from either
+ * path continue to work unchanged. Prefer the canonical path in new code:
+ *
+ *   import { supabase } from "@/integrations/supabase/client";
  */
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/integrations/supabase/types';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    storage: localStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+export { supabase } from "@/integrations/supabase/client";
+export type { Database } from "@/integrations/supabase/types";
