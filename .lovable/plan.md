@@ -67,3 +67,28 @@ Nothing to "fix" in code. Action: append a note to `.lovable/plan.md` recommendi
 - Breaking up CycleForm, ProposalScheduleGrid, TrainerScheduleOverview, AcademyEditDialog
 - Migrating the remaining ~41 direct-Supabase components
 - Backfilling missing de/fr/es/it/nl translation keys
+
+---
+
+## Execution log
+
+**Done:**
+- #14 — `src/lib/supabaseClient.ts` now re-exports the canonical client. All 208 importers continue to work; only one `GoTrueClient` runs.
+- #15 — `scripts/check-i18n-parity.ts` added, wired into `package.json` (`bun run i18n:check`) and `.github/workflows/test.yml`. Initial run shows 1559 missing keys (de:415, fr:475, es:466, it:142, nl:61). CI step is `continue-on-error: true` until the backfill lands; flip to hard-fail after.
+- #13 — Note recorded below. Convention: when intentionally deferring work, leave a `// TODO(owner): ...` marker so future audits can find it (current count: 0 — was the original red flag).
+
+**Recommended human review pass before further feature work** on these God Components (per technical-debt memory):
+- `CycleForm.tsx` (2108 lines) — fragile
+- `ProposalScheduleGrid.tsx` (1960) — fragile
+- `TrainerScheduleOverview.tsx` (1865)
+- `AddSlotDialog.tsx` (1772)
+- `AcademyEditDialog.tsx` (1553)
+
+**Deferred (need their own focused sessions):**
+- #11 — Decomposing `AddSlotDialog` is ~1.7k lines of refactor touching the slot-create flow. Worth doing as a single dedicated turn with a manual smoke test plan, not bundled with other items.
+- #12 — Migrating 10 components off direct `supabase.from(...)` calls into hooks. Requires choosing the 10 deliberately (largest re-fetchers) and per-component query-key alignment with existing TanStack invalidations. Best done one at a time to keep diffs reviewable.
+
+**Remaining backlog:**
+- Backfill missing translation keys (1559 across 5 locales).
+- Decompose CycleForm / ProposalScheduleGrid / TrainerScheduleOverview / AcademyEditDialog.
+- Migrate the remaining ~41 direct-Supabase components.
