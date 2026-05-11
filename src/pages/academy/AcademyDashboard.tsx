@@ -235,11 +235,14 @@ export default function AcademyDashboard() {
     <div className="container mx-auto px-4 py-8">
       {/* Shareable profile link */}
       {activeAcademy?.slug && (
-        <Card className="mb-6">
-          <CardContent className="p-4 sm:p-6">
-            <ShareableProfileLink handle={activeAcademy.slug} />
-          </CardContent>
-        </Card>
+        <div className="mb-4 rounded-lg border bg-card px-3 py-2">
+          <ShareableProfileLink
+            handle={activeAcademy.slug}
+            basePath="academies"
+            lang={i18n.language}
+            compact
+          />
+        </div>
       )}
 
       {/* Trial Banner */}
