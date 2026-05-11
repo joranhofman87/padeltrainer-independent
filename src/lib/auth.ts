@@ -322,7 +322,7 @@ export async function setUserRole(userId: string, role: UserRole, timezone?: str
 export async function getProfile(userId: string): Promise<FetchResult<UserProfile | null>> {
   try {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('profiles_owner' as any)
       .select('*')
       .eq('user_id', userId)
       .single();
