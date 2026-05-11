@@ -46,8 +46,24 @@ interface InvoiceData {
   };
 }
 
+// Escape user-controlled values before HTML interpolation (XSS defence)
+const esc = (s: unknown): string =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+// Only allow http(s) URLs in href/src to block javascript: and data: payloads
+const safeUrl = (u: unknown): string => {
+  const s = String(u ?? '').trim();
+  return /^https?:\/\//i.test(s) ? esc(s) : '';
+};
+
 function generateInvoiceHTML(invoice: InvoiceData): string {
-  const accentColor = invoice.banner_color || '#16a34a';
+  const rawAccent = invoice.banner_color || '#16a34a';
+  const accentColor = /^#[0-9a-fA-F]{3,8}$/.test(rawAccent) ? rawAccent : '#16a34a';
   
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -61,12 +77,12 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
   const lineItemsHTML = invoice.line_items.map(item => `
     <tr>
       <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
-        ${item.description}
-        ${item.date ? `<br><span style="font-size: 12px; color: #6b7280;">${formatDate(item.date)}</span>` : ''}
+        ${esc(item.description)}
+        ${item.date ? `<br><span style="font-size: 12px; color: #6b7280;">${esc(formatDate(item.date))}</span>` : ''}
       </td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.unit_price)}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.quantity * item.unit_price)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">${Number(item.quantity) || 0}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${esc(formatCurrency(item.unit_price))}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${esc(formatCurrency(item.quantity * item.unit_price))}</td>
     </tr>
   `).join('');
 
@@ -114,34 +130,34 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
 </head>
 <body>
   <div class="branded-header">
-    ${invoice.logo_url ? `<img src="${invoice.logo_url}" alt="Logo" />` : `<h2>${invoice.trainer.business_name}</h2>`}
+    ${invoice.logo_url && safeUrl(invoice.logo_url) ? `<img src="${safeUrl(invoice.logo_url)}" alt="Logo" />` : `<h2>${esc(invoice.trainer.business_name)}</h2>`}
   </div>
   <div class="invoice-container">
     <div class="header">
       <h1 class="invoice-title">FACTUUR</h1>
       <div class="invoice-meta">
-        <p><strong>Factuurnummer:</strong> ${invoice.invoice_number}</p>
-        <p><strong>Factuurdatum:</strong> ${formatDate(invoice.invoice_date)}</p>
-        <p><strong>Vervaldatum:</strong> ${formatDate(invoice.due_date)}</p>
+        <p><strong>Factuurnummer:</strong> ${esc(invoice.invoice_number)}</p>
+        <p><strong>Factuurdatum:</strong> ${esc(formatDate(invoice.invoice_date))}</p>
+        <p><strong>Vervaldatum:</strong> ${esc(formatDate(invoice.due_date))}</p>
       </div>
     </div>
 
     <div class="parties">
       <div class="party">
         <div class="party-label">Van</div>
-        <div class="party-name">${invoice.trainer.business_name}</div>
-        <div class="party-details">${invoice.trainer.business_address}</div>
+        <div class="party-name">${esc(invoice.trainer.business_name)}</div>
+        <div class="party-details">${esc(invoice.trainer.business_address)}</div>
         <div class="party-details" style="margin-top: 8px;">
-          KvK: ${invoice.trainer.kvk_number}
-          ${invoice.trainer.btw_number ? `<br>BTW: ${invoice.trainer.btw_number}` : ''}
+          KvK: ${esc(invoice.trainer.kvk_number)}
+          ${invoice.trainer.btw_number ? `<br>BTW: ${esc(invoice.trainer.btw_number)}` : ''}
         </div>
       </div>
       <div class="party">
         <div class="party-label">Aan</div>
-        ${invoice.player_business_name ? `<div class="party-name">${invoice.player_business_name}</div>` : ''}
-        <div class="${invoice.player_business_name ? 'party-details' : 'party-name'}">${invoice.player_name}</div>
-        ${invoice.player_address ? `<div class="party-details">${invoice.player_address}</div>` : ''}
-        ${invoice.player_btw_number ? `<div class="party-details" style="margin-top: 8px;">BTW: ${invoice.player_btw_number}</div>` : ''}
+        ${invoice.player_business_name ? `<div class="party-name">${esc(invoice.player_business_name)}</div>` : ''}
+        <div class="${invoice.player_business_name ? 'party-details' : 'party-name'}">${esc(invoice.player_name)}</div>
+        ${invoice.player_address ? `<div class="party-details">${esc(invoice.player_address)}</div>` : ''}
+        ${invoice.player_btw_number ? `<div class="party-details" style="margin-top: 8px;">BTW: ${esc(invoice.player_btw_number)}</div>` : ''}
       </div>
     </div>
 
@@ -162,7 +178,7 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
     <div class="totals">
       <div class="totals-row">
         <span>Subtotaal</span>
-        <span>${formatCurrency(invoice.subtotal)}</span>
+        <span>${esc(formatCurrency(invoice.subtotal))}</span>
       </div>
       ${(() => {
         const nonZeroEntries = invoice.vat_breakdown 
@@ -173,34 +189,34 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
             .sort(([a], [b]) => Number(a) - Number(b))
             .map(([rate, data]) => `
               <div class="totals-row">
-                <span>BTW ${rate}%</span>
-                <span>${formatCurrency((data as any).vat)}</span>
+                <span>BTW ${esc(rate)}%</span>
+                <span>${esc(formatCurrency((data as any).vat))}</span>
               </div>
             `).join('');
         } else {
           return `<div class="totals-row">
-            <span>BTW ${invoice.vat_rate}%</span>
-            <span>${formatCurrency(invoice.vat_amount)}</span>
+            <span>BTW ${Number(invoice.vat_rate) || 0}%</span>
+            <span>${esc(formatCurrency(invoice.vat_amount))}</span>
           </div>`;
         }
       })()}
       <div class="totals-row total">
         <span>Totaal</span>
-        <span>${formatCurrency(invoice.total)}</span>
+        <span>${esc(formatCurrency(invoice.total))}</span>
       </div>
     </div>
 
-    ${invoice.payment_url ? `
+    ${invoice.payment_url && safeUrl(invoice.payment_url) ? `
     <div class="payment-info">
       <div class="payment-title">Betaal online</div>
       <div style="display: flex; align-items: center; gap: 24px;">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(invoice.payment_url)}&size=100x100&color=${(invoice.banner_color || '#16a34a').replace('#', '')}" 
+        <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(invoice.payment_url)}&size=100x100&color=${(invoice.banner_color || '#16a34a').replace('#', '').replace(/[^a-fA-F0-9]/g, '')}" 
              alt="QR code" width="80" height="80" style="border-radius: 6px;" />
         <div>
           <p style="margin: 0 0 4px 0; font-size: 13px;">Scan de QR code of klik op de link om online te betalen:</p>
-          <a href="${invoice.payment_url}" style="color: ${accentColor}; font-weight: bold; word-break: break-all; font-size: 13px;">${invoice.payment_url}</a>
+          <a href="${safeUrl(invoice.payment_url)}" style="color: ${accentColor}; font-weight: bold; word-break: break-all; font-size: 13px;">${safeUrl(invoice.payment_url)}</a>
           <p style="margin-top: 6px; font-size: 12px; color: #6b7280;">
-            Referentie: ${invoice.invoice_number} · Vervaldatum: ${formatDate(invoice.due_date)}
+            Referentie: ${esc(invoice.invoice_number)} · Vervaldatum: ${esc(formatDate(invoice.due_date))}
           </p>
         </div>
       </div>
@@ -210,26 +226,26 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
       <div class="payment-title">Betalingsgegevens</div>
       <div class="payment-row">
         <span class="payment-label">IBAN:</span>
-        <span>${invoice.trainer.iban}</span>
+        <span>${esc(invoice.trainer.iban)}</span>
       </div>
       ${invoice.trainer.bic ? `
       <div class="payment-row">
         <span class="payment-label">BIC:</span>
-        <span>${invoice.trainer.bic}</span>
+        <span>${esc(invoice.trainer.bic)}</span>
       </div>
       ` : ''}
       <div class="payment-row">
         <span class="payment-label">Referentie:</span>
-        <span>${invoice.invoice_number}</span>
+        <span>${esc(invoice.invoice_number)}</span>
       </div>
       <div class="payment-row">
         <span class="payment-label">Vervaldatum:</span>
-        <span>${formatDate(invoice.due_date)}</span>
+        <span>${esc(formatDate(invoice.due_date))}</span>
       </div>
     </div>
     `}
 
-    ${invoice.notes ? `<div class="notes">${invoice.notes}</div>` : ''}
+    ${invoice.notes ? `<div class="notes">${esc(invoice.notes).replace(/\n/g, '<br>')}</div>` : ''}
   </div>
 </body>
 </html>
