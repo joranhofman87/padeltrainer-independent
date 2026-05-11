@@ -31,16 +31,8 @@ export async function downloadInvoicePdf(invoiceId: string, invoiceNumber?: stri
     }
   }
 
-  // Fallback: open HTML for printing
-  if (data?.html) {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(data.html);
-      printWindow.document.close();
-      printWindow.onload = () => printWindow.print();
-    }
-    return true;
-  }
-
+  // No safe fallback: previously we did document.write(data.html), but that
+  // executes any scripts in the returned HTML and is an XSS sink. Surface
+  // failure to the caller instead so they can show a toast.
   return false;
 }
