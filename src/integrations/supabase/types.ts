@@ -48,6 +48,13 @@ export type Database = {
             foreignKeyName: "academy_followers_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_followers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -63,6 +70,13 @@ export type Database = {
             columns: ["player_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -130,6 +144,13 @@ export type Database = {
             foreignKeyName: "academy_locations_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_locations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -180,6 +201,13 @@ export type Database = {
             columns: ["academy_profile_id"]
             isOneToOne: false
             referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_managers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -244,6 +272,13 @@ export type Database = {
             columns: ["academy_profile_id"]
             isOneToOne: true
             referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -315,6 +350,13 @@ export type Database = {
             foreignKeyName: "academy_player_metadata_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_metadata_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
           },
@@ -330,6 +372,13 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_metadata_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -381,6 +430,13 @@ export type Database = {
             foreignKeyName: "academy_player_tags_trainer_profile_id_fkey"
             columns: ["trainer_profile_id"]
             isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_tags_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
             referencedRelation: "trainer_profiles_safe"
             referencedColumns: ["id"]
           },
@@ -411,6 +467,13 @@ export type Database = {
             columns: ["academy_profile_id"]
             isOneToOne: false
             referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_profile_views_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -643,6 +706,13 @@ export type Database = {
             foreignKeyName: "academy_trainer_invitations_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainer_invitations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -658,6 +728,13 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainer_invitations_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -718,6 +795,13 @@ export type Database = {
             foreignKeyName: "academy_trainers_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -733,6 +817,13 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -967,6 +1058,13 @@ export type Database = {
             foreignKeyName: "availability_slots_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_slots_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -996,6 +1094,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_slots_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -1225,6 +1330,13 @@ export type Database = {
             foreignKeyName: "bookings_player_id_fkey"
             columns: ["player_id"]
             isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
           },
@@ -1371,6 +1483,13 @@ export type Database = {
             foreignKeyName: "club_followers_club_profile_id_fkey"
             columns: ["club_profile_id"]
             isOneToOne: false
+            referencedRelation: "club_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_followers_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
             referencedRelation: "club_profiles_public"
             referencedColumns: ["id"]
           },
@@ -1386,6 +1505,13 @@ export type Database = {
             columns: ["player_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -1435,6 +1561,13 @@ export type Database = {
             columns: ["club_profile_id"]
             isOneToOne: false
             referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_managers_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -1499,6 +1632,13 @@ export type Database = {
             columns: ["club_profile_id"]
             isOneToOne: true
             referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: true
+            referencedRelation: "club_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -1575,6 +1715,13 @@ export type Database = {
             foreignKeyName: "club_players_club_profile_id_fkey"
             columns: ["club_profile_id"]
             isOneToOne: false
+            referencedRelation: "club_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_players_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
             referencedRelation: "club_profiles_public"
             referencedColumns: ["id"]
           },
@@ -1590,6 +1737,13 @@ export type Database = {
             columns: ["linked_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_players_linked_profile_id_fkey"
+            columns: ["linked_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -1633,6 +1787,13 @@ export type Database = {
             columns: ["club_profile_id"]
             isOneToOne: false
             referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_profile_views_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -1798,6 +1959,13 @@ export type Database = {
             foreignKeyName: "club_tournaments_club_profile_id_fkey"
             columns: ["club_profile_id"]
             isOneToOne: false
+            referencedRelation: "club_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_tournaments_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
             referencedRelation: "club_profiles_public"
             referencedColumns: ["id"]
           },
@@ -1859,6 +2027,13 @@ export type Database = {
             foreignKeyName: "club_trainer_invitations_club_profile_id_fkey"
             columns: ["club_profile_id"]
             isOneToOne: false
+            referencedRelation: "club_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_trainer_invitations_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
             referencedRelation: "club_profiles_public"
             referencedColumns: ["id"]
           },
@@ -1874,6 +2049,13 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_trainer_invitations_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -2188,6 +2370,13 @@ export type Database = {
             foreignKeyName: "email_campaign_templates_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaign_templates_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -2203,6 +2392,13 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaign_templates_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -2275,6 +2471,13 @@ export type Database = {
             foreignKeyName: "email_campaigns_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaigns_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -2297,6 +2500,13 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaigns_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -2351,6 +2561,13 @@ export type Database = {
             foreignKeyName: "extra_cost_presets_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_cost_presets_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -2366,6 +2583,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_cost_presets_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -2453,6 +2677,13 @@ export type Database = {
             foreignKeyName: "guest_players_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -2468,6 +2699,13 @@ export type Database = {
             columns: ["linked_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_linked_profile_id_fkey"
+            columns: ["linked_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -2496,6 +2734,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -2613,6 +2858,13 @@ export type Database = {
             columns: ["player_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -2770,6 +3022,13 @@ export type Database = {
             foreignKeyName: "invoices_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -2798,6 +3057,13 @@ export type Database = {
             foreignKeyName: "invoices_player_id_fkey"
             columns: ["player_id"]
             isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
           },
@@ -2813,6 +3079,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -3398,6 +3671,13 @@ export type Database = {
             foreignKeyName: "partner_banners_club_profile_id_fkey"
             columns: ["club_profile_id"]
             isOneToOne: false
+            referencedRelation: "club_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_banners_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
             referencedRelation: "club_profiles_public"
             referencedColumns: ["id"]
           },
@@ -3535,6 +3815,13 @@ export type Database = {
             foreignKeyName: "player_locations_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_locations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
           },
@@ -3581,6 +3868,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_rating_history_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -3639,6 +3933,13 @@ export type Database = {
             foreignKeyName: "profile_videos_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_videos_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -3654,6 +3955,13 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_videos_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -3785,6 +4093,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proposed_assignments_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -3989,6 +4304,13 @@ export type Database = {
             foreignKeyName: "reviews_player_id_fkey"
             columns: ["player_id"]
             isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
           },
@@ -4004,6 +4326,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -4128,6 +4457,13 @@ export type Database = {
             columns: ["player_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -4400,6 +4736,13 @@ export type Database = {
             foreignKeyName: "trainer_followers_player_id_fkey"
             columns: ["player_id"]
             isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
           },
@@ -4415,6 +4758,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_followers_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -4473,6 +4823,13 @@ export type Database = {
             foreignKeyName: "trainer_locations_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_locations_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
             referencedRelation: "trainer_profiles_safe"
             referencedColumns: ["id"]
           },
@@ -4524,6 +4881,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: true
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -4602,6 +4966,13 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_profile_views_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -4845,6 +5216,13 @@ export type Database = {
             foreignKeyName: "trainer_working_hours_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_working_hours_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
             referencedRelation: "trainer_profiles_safe"
             referencedColumns: ["id"]
           },
@@ -5019,6 +5397,13 @@ export type Database = {
             foreignKeyName: "waiting_list_entries_player_id_fkey"
             columns: ["player_id"]
             isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waiting_list_entries_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
           },
@@ -5061,6 +5446,13 @@ export type Database = {
             foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: true
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
             referencedRelation: "academy_profiles_public"
             referencedColumns: ["id"]
           },
@@ -5072,6 +5464,168 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      academy_profiles_owner: {
+        Row: {
+          banner_url: string | null
+          bic: string | null
+          btw_number: string | null
+          business_address: string | null
+          business_name: string | null
+          contact_email: string | null
+          country: string | null
+          created_at: string | null
+          created_by: string | null
+          default_vat_rate: number | null
+          description: string | null
+          general_terms: string | null
+          iban: string | null
+          id: string | null
+          invoice_banner_color: string | null
+          invoice_forward_emails: string[] | null
+          invoice_include_year: boolean | null
+          invoice_language: string | null
+          invoice_logo_url: string | null
+          invoice_next_number: number | null
+          invoice_prefix: string | null
+          invoice_reply_to_email: string | null
+          is_public: boolean | null
+          is_verified: boolean | null
+          kvk_number: string | null
+          last_processed_payment_id: string | null
+          logo_url: string | null
+          mollie_customer_id: string | null
+          name: string | null
+          payment_terms_days: number | null
+          phone: string | null
+          platform_fee_override: number | null
+          slug: string | null
+          social_facebook: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
+          stripe_customer_id: string | null
+          subscription_ends_at: string | null
+          subscription_id: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          timezone: string | null
+          trial_ends_at: string | null
+          updated_at: string | null
+          waiting_list_enabled: boolean | null
+          warning_max_age_diff_years: number | null
+          warning_max_rating_spread: number | null
+          website_url: string | null
+          welcome_message: string | null
+        }
+        Insert: {
+          banner_url?: string | null
+          bic?: string | null
+          btw_number?: string | null
+          business_address?: string | null
+          business_name?: string | null
+          contact_email?: string | null
+          country?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          default_vat_rate?: number | null
+          description?: string | null
+          general_terms?: string | null
+          iban?: string | null
+          id?: string | null
+          invoice_banner_color?: string | null
+          invoice_forward_emails?: string[] | null
+          invoice_include_year?: boolean | null
+          invoice_language?: string | null
+          invoice_logo_url?: string | null
+          invoice_next_number?: number | null
+          invoice_prefix?: string | null
+          invoice_reply_to_email?: string | null
+          is_public?: boolean | null
+          is_verified?: boolean | null
+          kvk_number?: string | null
+          last_processed_payment_id?: string | null
+          logo_url?: string | null
+          mollie_customer_id?: string | null
+          name?: string | null
+          payment_terms_days?: number | null
+          phone?: string | null
+          platform_fee_override?: number | null
+          slug?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          timezone?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          waiting_list_enabled?: boolean | null
+          warning_max_age_diff_years?: number | null
+          warning_max_rating_spread?: number | null
+          website_url?: string | null
+          welcome_message?: string | null
+        }
+        Update: {
+          banner_url?: string | null
+          bic?: string | null
+          btw_number?: string | null
+          business_address?: string | null
+          business_name?: string | null
+          contact_email?: string | null
+          country?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          default_vat_rate?: number | null
+          description?: string | null
+          general_terms?: string | null
+          iban?: string | null
+          id?: string | null
+          invoice_banner_color?: string | null
+          invoice_forward_emails?: string[] | null
+          invoice_include_year?: boolean | null
+          invoice_language?: string | null
+          invoice_logo_url?: string | null
+          invoice_next_number?: number | null
+          invoice_prefix?: string | null
+          invoice_reply_to_email?: string | null
+          is_public?: boolean | null
+          is_verified?: boolean | null
+          kvk_number?: string | null
+          last_processed_payment_id?: string | null
+          logo_url?: string | null
+          mollie_customer_id?: string | null
+          name?: string | null
+          payment_terms_days?: number | null
+          phone?: string | null
+          platform_fee_override?: number | null
+          slug?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          timezone?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          waiting_list_enabled?: boolean | null
+          warning_max_age_diff_years?: number | null
+          warning_max_rating_spread?: number | null
+          website_url?: string | null
+          welcome_message?: string | null
+        }
+        Relationships: []
       }
       academy_profiles_public: {
         Row: {
@@ -5202,6 +5756,101 @@ export type Database = {
         }
         Relationships: []
       }
+      club_profiles_owner: {
+        Row: {
+          banner_url: string | null
+          claimed_at: string | null
+          contact_email: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string | null
+          is_verified: boolean | null
+          last_processed_payment_id: string | null
+          location_id: string | null
+          logo_url: string | null
+          mollie_customer_id: string | null
+          phone: string | null
+          social_facebook: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
+          stripe_customer_id: string | null
+          subscription_ends_at: string | null
+          subscription_id: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          trial_ends_at: string | null
+          updated_at: string | null
+          welcome_message: string | null
+        }
+        Insert: {
+          banner_url?: string | null
+          claimed_at?: string | null
+          contact_email?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string | null
+          is_verified?: boolean | null
+          last_processed_payment_id?: string | null
+          location_id?: string | null
+          logo_url?: string | null
+          mollie_customer_id?: string | null
+          phone?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          welcome_message?: string | null
+        }
+        Update: {
+          banner_url?: string | null
+          claimed_at?: string | null
+          contact_email?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string | null
+          is_verified?: boolean | null
+          last_processed_payment_id?: string | null
+          location_id?: string | null
+          logo_url?: string | null
+          mollie_customer_id?: string | null
+          phone?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          welcome_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_profiles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: true
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_profiles_public: {
         Row: {
           banner_url: string | null
@@ -5326,6 +5975,72 @@ export type Database = {
           },
         ]
       }
+      profiles_owner: {
+        Row: {
+          avatar_url: string | null
+          billing_address: string | null
+          billing_btw_number: string | null
+          billing_business_name: string | null
+          bio: string | null
+          birth_date: string | null
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string | null
+          location: string | null
+          phone: string | null
+          preferred_language: string | null
+          rating_member_id: string | null
+          rating_system: string | null
+          skill_rating: number | null
+          stripe_customer_id: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          billing_address?: string | null
+          billing_btw_number?: string | null
+          billing_business_name?: string | null
+          bio?: string | null
+          birth_date?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          location?: string | null
+          phone?: string | null
+          preferred_language?: string | null
+          rating_member_id?: string | null
+          rating_system?: string | null
+          skill_rating?: number | null
+          stripe_customer_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          billing_address?: string | null
+          billing_btw_number?: string | null
+          billing_business_name?: string | null
+          bio?: string | null
+          birth_date?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          location?: string | null
+          phone?: string | null
+          preferred_language?: string | null
+          rating_member_id?: string | null
+          rating_system?: string | null
+          skill_rating?: number | null
+          stripe_customer_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles_public: {
         Row: {
           avatar_url: string | null
@@ -5438,10 +6153,209 @@ export type Database = {
             foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: true
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: true
             referencedRelation: "trainer_profiles_safe"
             referencedColumns: ["id"]
           },
         ]
+      }
+      trainer_profiles_owner: {
+        Row: {
+          bic: string | null
+          btw_number: string | null
+          business_address: string | null
+          business_name: string | null
+          certifications: string[] | null
+          coaching_method: string | null
+          coaching_since_year: number | null
+          created_at: string | null
+          default_vat_rate: number | null
+          experience_years: number | null
+          favourite_quote: string | null
+          general_terms: string | null
+          hourly_rate: number | null
+          iban: string | null
+          id: string | null
+          invoice_banner_color: string | null
+          invoice_forward_emails: string[] | null
+          invoice_include_year: boolean | null
+          invoice_language: string | null
+          invoice_logo_url: string | null
+          invoice_next_number: number | null
+          invoice_prefix: string | null
+          invoice_reply_to_email: string | null
+          is_public: boolean | null
+          is_verified: boolean | null
+          knltb_rating: number | null
+          kvk_number: string | null
+          last_processed_payment_id: string | null
+          mollie_customer_id: string | null
+          payment_terms_days: number | null
+          platform_fee_override: number | null
+          preferred_max_rating: number | null
+          preferred_min_rating: number | null
+          preferred_rating_system: string | null
+          prices_include_vat: boolean | null
+          require_booking_approval: boolean | null
+          schedule_weeks_ahead: number | null
+          slot_duration_minutes: number | null
+          slot_gap_minutes: number | null
+          slug: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
+          specializations: string[] | null
+          stripe_customer_id: string | null
+          subscription_ends_at: string | null
+          subscription_id: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          timezone: string | null
+          trainer_rating_system: string | null
+          trial_ends_at: string | null
+          trial_started_at: string | null
+          updated_at: string | null
+          use_manual_invoicing: boolean | null
+          user_id: string | null
+          video_url: string | null
+          waiting_list_enabled: boolean | null
+          website_url: string | null
+          welcome_message: string | null
+        }
+        Insert: {
+          bic?: string | null
+          btw_number?: string | null
+          business_address?: string | null
+          business_name?: string | null
+          certifications?: string[] | null
+          coaching_method?: string | null
+          coaching_since_year?: number | null
+          created_at?: string | null
+          default_vat_rate?: number | null
+          experience_years?: number | null
+          favourite_quote?: string | null
+          general_terms?: string | null
+          hourly_rate?: number | null
+          iban?: string | null
+          id?: string | null
+          invoice_banner_color?: string | null
+          invoice_forward_emails?: string[] | null
+          invoice_include_year?: boolean | null
+          invoice_language?: string | null
+          invoice_logo_url?: string | null
+          invoice_next_number?: number | null
+          invoice_prefix?: string | null
+          invoice_reply_to_email?: string | null
+          is_public?: boolean | null
+          is_verified?: boolean | null
+          knltb_rating?: number | null
+          kvk_number?: string | null
+          last_processed_payment_id?: string | null
+          mollie_customer_id?: string | null
+          payment_terms_days?: number | null
+          platform_fee_override?: number | null
+          preferred_max_rating?: number | null
+          preferred_min_rating?: number | null
+          preferred_rating_system?: string | null
+          prices_include_vat?: boolean | null
+          require_booking_approval?: boolean | null
+          schedule_weeks_ahead?: number | null
+          slot_duration_minutes?: number | null
+          slot_gap_minutes?: number | null
+          slug?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          specializations?: string[] | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          timezone?: string | null
+          trainer_rating_system?: string | null
+          trial_ends_at?: string | null
+          trial_started_at?: string | null
+          updated_at?: string | null
+          use_manual_invoicing?: boolean | null
+          user_id?: string | null
+          video_url?: string | null
+          waiting_list_enabled?: boolean | null
+          website_url?: string | null
+          welcome_message?: string | null
+        }
+        Update: {
+          bic?: string | null
+          btw_number?: string | null
+          business_address?: string | null
+          business_name?: string | null
+          certifications?: string[] | null
+          coaching_method?: string | null
+          coaching_since_year?: number | null
+          created_at?: string | null
+          default_vat_rate?: number | null
+          experience_years?: number | null
+          favourite_quote?: string | null
+          general_terms?: string | null
+          hourly_rate?: number | null
+          iban?: string | null
+          id?: string | null
+          invoice_banner_color?: string | null
+          invoice_forward_emails?: string[] | null
+          invoice_include_year?: boolean | null
+          invoice_language?: string | null
+          invoice_logo_url?: string | null
+          invoice_next_number?: number | null
+          invoice_prefix?: string | null
+          invoice_reply_to_email?: string | null
+          is_public?: boolean | null
+          is_verified?: boolean | null
+          knltb_rating?: number | null
+          kvk_number?: string | null
+          last_processed_payment_id?: string | null
+          mollie_customer_id?: string | null
+          payment_terms_days?: number | null
+          platform_fee_override?: number | null
+          preferred_max_rating?: number | null
+          preferred_min_rating?: number | null
+          preferred_rating_system?: string | null
+          prices_include_vat?: boolean | null
+          require_booking_approval?: boolean | null
+          schedule_weeks_ahead?: number | null
+          slot_duration_minutes?: number | null
+          slot_gap_minutes?: number | null
+          slug?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          specializations?: string[] | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          timezone?: string | null
+          trainer_rating_system?: string | null
+          trial_ends_at?: string | null
+          trial_started_at?: string | null
+          updated_at?: string | null
+          use_manual_invoicing?: boolean | null
+          user_id?: string | null
+          video_url?: string | null
+          waiting_list_enabled?: boolean | null
+          website_url?: string | null
+          welcome_message?: string | null
+        }
+        Relationships: []
       }
       trainer_profiles_safe: {
         Row: {
