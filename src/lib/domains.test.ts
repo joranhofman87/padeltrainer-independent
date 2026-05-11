@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { getAppUrl, getMarketingUrl, getMarketingPath } from './domains';
+import {
+  getAppUrl,
+  getMarketingUrl,
+  getMarketingPath,
+  getAcademyShortUrl,
+  getTrainerShortUrl,
+} from './domains';
 
 describe('getAppUrl', () => {
   it('prefixes path with /app', () => {
