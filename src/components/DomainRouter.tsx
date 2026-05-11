@@ -443,3 +443,21 @@ function LegacyRedirect({ prefix }: { prefix: string }) {
   const remaining = path.startsWith(basePath) ? path.slice(basePath.length) : '';
   return <Navigate to={`${prefix}${remaining}${window.location.search}`} replace />;
 }
+
+/**
+ * Redirects unlocalized short links (`/a/:slug`, `/t/:slug`) to their
+ * canonical localized public profile page. Picks the user's preferred
+ * language from localStorage, falling back to `nl`.
+ */
+function ShortLinkRedirect({ kind }: { kind: 'academy' | 'trainer' }) {
+  const path = window.location.pathname;
+  const slug = path.split('/')[2] ?? '';
+  const stored = (() => {
+    try { return localStorage.getItem('i18nextLng'); } catch { return null; }
+  })();
+  const lang = (stored?.split('-')[0]) || 'nl';
+  const target = kind === 'academy'
+    ? `/${lang}/academies/${slug}`
+    : `/${lang}/trainer/${slug}`;
+  return <Navigate to={`${target}${window.location.search}`} replace />;
+}
