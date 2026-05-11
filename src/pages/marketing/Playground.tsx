@@ -3,41 +3,50 @@ import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
-import { Target, AlertTriangle, BarChart3, Star, Dices, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { buildBreadcrumbList } from '@/lib/structuredData';
 import { MARKETING_DOMAIN } from '@/lib/domains';
-import { MarketingHero, MarketingSection, IconTile } from '@/components/marketing/sections';
+import { MarketingHero, MarketingSection } from '@/components/marketing/sections';
+import {
+  MockWindow,
+  MiniQuizDots,
+  MiniRacketSwatch,
+  MiniBarChart,
+  MiniStarRating,
+  MiniCourtDiagram,
+} from '@/components/marketing/visuals';
+import { HeroVisualPlayground } from '@/components/marketing/visuals/HeroScenes';
 
 const tools = [
   {
     titleKey: 'playground.redFlagQuiz.title',
     descKey: 'playground.redFlagQuiz.desc',
     to: '/playground/red-flag-quiz',
-    icon: AlertTriangle,
+    Visual: MiniQuizDots,
   },
   {
     titleKey: 'playground.racketFinder.title',
     descKey: 'playground.racketFinder.desc',
     to: '/playground/racket-finder',
-    icon: Target,
+    Visual: MiniRacketSwatch,
   },
   {
     titleKey: 'playground.levelTest.title',
     descKey: 'playground.levelTest.desc',
     to: '/playground/level-test',
-    icon: BarChart3,
+    Visual: MiniBarChart,
   },
   {
     titleKey: 'playground.rateMyCourt.title',
     descKey: 'playground.rateMyCourt.desc',
     to: '/playground/rate-my-court',
-    icon: Star,
+    Visual: MiniStarRating,
   },
   {
     titleKey: 'playground.challengeMode.title',
     descKey: 'playground.challengeMode.desc',
     to: '/playground/challenge-mode',
-    icon: Dices,
+    Visual: MiniCourtDiagram,
   },
 ];
 
@@ -75,19 +84,26 @@ export default function Playground() {
         eyebrow={t('playground.eyebrow', 'Interactive tools')}
         title={t('playground.title', 'Padel Playground')}
         subtitle={t('playground.subtitle', 'Fun quizzes, tools, and interactive experiences for padel lovers.')}
+        visual={<HeroVisualPlayground />}
       />
 
       <MarketingSection background="default">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {tools.map((tool, index) => {
-            const Icon = tool.icon;
+          {tools.map((tool) => {
+            const { Visual } = tool;
             return (
               <LocalizedLink
                 key={tool.to}
                 to={tool.to}
                 className="group block card-chip p-6 transition-all hover:-translate-y-0.5 hover:shadow-mock"
               >
-                <IconTile icon={<Icon className="h-6 w-6" />} size="lg" className="mb-4" />
+                <MockWindow
+                  title={t(tool.titleKey)}
+                  className="mb-5"
+                  bodyClassName="py-6 flex items-center justify-center bg-cream/30"
+                >
+                  <Visual className="scale-150" />
+                </MockWindow>
                 <h2 className="font-display text-xl font-bold text-navy-900 mb-2 group-hover:text-brand-600 transition-colors">
                   {t(tool.titleKey)}
                 </h2>

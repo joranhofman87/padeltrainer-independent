@@ -19,6 +19,7 @@ import {
   MarketingFAQ,
   IconTile,
 } from '@/components/marketing/sections';
+import { HeroVisualPricing } from '@/components/marketing/visuals/HeroScenes';
 import { cn } from '@/lib/utils';
 
 export default function Pricing() {
@@ -115,6 +116,7 @@ export default function Pricing() {
         eyebrow={t('pricing.hero.eyebrow', 'Pricing')}
         title={t('pricing.hero.title')}
         subtitle={t('pricing.hero.subtitle')}
+        visual={<HeroVisualPricing />}
       />
 
       {/* Player tier */}

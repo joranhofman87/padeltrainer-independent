@@ -12,6 +12,7 @@ import {
   MarketingFinalCTA,
   IconTile,
 } from '@/components/marketing/sections';
+import { HeroVisualAbout } from '@/components/marketing/visuals/HeroScenes';
 
 export default function About() {
   const { t } = useTranslation('marketing');
@@ -69,6 +70,7 @@ export default function About() {
           </>
         }
         subtitle={t('about.hero.subtitle')}
+        visual={<HeroVisualAbout />}
       />
 
       {/* Story */}

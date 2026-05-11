@@ -1,89 +1,75 @@
-# Marketing visual refresh - rollout plan
-
-Bring every marketing page up to the look and feel of the new homepage. **No database, schema, copy, or business-logic changes** - this is purely a visual / presentation pass using the existing design system (`docs/DESIGN_SYSTEM.md`, tokens in `src/index.css`, primitives in `tailwind.config.ts`).
-
 ## Goal
 
-Every marketing surface should feel like it belongs to the same product as the new homepage: confident navy + brand-orange palette, Plus Jakarta display headings, generous spacing, soft cards, dot-grid backdrops, mock windows where useful, and consistent CTA primitives.
+Replace the generic Lucide-icon tiles and flat visuals on the remaining marketing pages with the same Tailwind-built mini illustrations and mock-window style used on the new homepage (`HeroSection`, `SolutionOverview`, `HowItWorksSection`, `JobsToBeDoneSection`). No copy, no data, no routes — purely a visual upgrade.
 
-## What "homepage look" means (the kit we'll reuse)
+## Visual vocabulary to reuse (from homepage)
 
-Pulled from `src/components/home/*` and `docs/DESIGN_SYSTEM.md`:
+- **Mini illustrations**: small Tailwind compositions like `MiniCalendarGrid`, `MiniChecklist`, `MiniPhoneBooking`, `MiniShield` in `SolutionOverview.tsx` (rounded chips, brand/muted swatches, no raster art).
+- **Mock window** chrome (card with traffic-light dots and a faux toolbar) used in the hero.
+- **Brand-tinted icon tile** with `bg-brand-500 text-white` for featured / `bg-brand-50 text-brand-600` default (already wrapped in `IconTile`).
+- **`card-chip`** surface + `dot-grid` backdrops + `eyebrow` pill + `pill-primary` / `pill-ghost` CTAs.
+- **`section-cream`** alternating with white for vertical rhythm.
 
-- **Eyebrow chip** (`.eyebrow` or the inline navy pill from HeroSection) above every section heading
-- **Display headings**: `font-display font-extrabold tracking-[-0.02em]`, responsive scale `text-3xl sm:text-4xl md:text-5xl`
-- **Section rhythm**: `py-16 md:py-24 lg:py-32`, alternating `bg-background` / `section-cream` / `section-off`, occasional `bg-navy-950` final CTA
-- **Containers**: `max-w-7xl mx-auto px-4 md:px-6`
-- **Surfaces**: `.card-chip` for content cards, `.mock-window` + `.mock-bar` for product previews, `.dot-grid` backdrops on hero/CTA
-- **CTAs**: `.pill-primary` and `.pill-ghost` only, h-12, with `ArrowRight` icon
-- **Trust row**: check-icon list under hero CTAs (`Check` lucide, `text-brand-500`)
-- **Icon tiles**: `w-12 h-12 rounded-xl bg-brand-50 text-brand-600`
-- **Final CTA**: dark navy section with dot-grid overlay, identical to `FinalCTASection`
+## Step 1 — Extract a small illustration kit
 
-## Shared building blocks to extract first (one-time work)
+Create `src/components/marketing/visuals/` with reusable, theme-token-only SVG/Tailwind primitives so any page can drop them in:
 
-Before touching pages, lift these out of `src/components/home/` into reusable marketing primitives so we don't fork styles:
+- `MockWindow.tsx` (already partially in `sections/`, promote and standardise: traffic-light dots, header bar, `card-chip` body, optional caption).
+- `MiniCalendarGrid.tsx`, `MiniChecklist.tsx`, `MiniPhoneBooking.tsx`, `MiniShield.tsx` (lifted from `SolutionOverview` and exported).
+- New small ones to cover other pages' topics (still pure Tailwind/SVG, no new deps):
+  - `MiniBarChart` — pricing / analytics tiles.
+  - `MiniRacketSwatch` — racket finder / listings empty-state and topic tiles.
+  - `MiniCourtDiagram` — strokes, rules, level test.
+  - `MiniVideoFrame` — video tips listing/tiles.
+  - `MiniArticleCard` — blog/learn/topic tiles.
+  - `MiniQuizDots` — quiz/level-test/red-flag.
+  - `MiniMapPin` — city landing, coach pages.
+- Single `index.ts` barrel, all using `text-brand-*`, `bg-muted`, `text-navy-*` tokens — no hard-coded colors.
 
-```
-src/components/marketing/sections/
-  MarketingHero.tsx        // eyebrow + h1 + sub + CTA row + trust row + optional right-side mock
-  MarketingSection.tsx     // wraps children in eyebrow + heading + container + alt bg
-  EyebrowChip.tsx
-  IconTile.tsx
-  MockWindow.tsx           // already implicit in CSS - wrap as a component for reuse
-  MarketingFinalCTA.tsx    // generalized FinalCTASection (title / sub / primary CTA props)
-  MarketingFAQ.tsx         // generalized FAQSection
-```
+These are presentation-only, framework-free, < 80 lines each.
 
-These are pure presentational wrappers; no logic changes. Existing home sections get refactored to consume them so the homepage stays identical.
+## Step 2 — Page-by-page visual swap
 
-## Page-by-page rollout (priority order)
+Same pattern on every page: keep markup/data/i18n; replace the current `lucide` icon-in-circle blocks or stock visuals with the new primitives wrapped in `IconTile` / `MockWindow`, and ensure section backgrounds alternate `section-cream` ↔ white.
 
-Tier 1 - high-traffic pillar pages (do first):
+**Tier A — Pillars / high-traffic**
+- `Pricing.tsx` — swap plan-feature icons for `IconTile` + `MiniBarChart` hero visual; reuse `MarketingFinalCTA`.
+- `About.tsx` — replace big emoji/icon header with `MockWindow` showing a faux dashboard; values grid uses `IconTile`.
+- `Coaches.tsx` + `CoachPage.tsx` — coach card avatars get the homepage chip frame; empty/hero gets `MiniMapPin` mock window.
+- `LearnIndex.tsx` / `TopicsIndex.tsx` / `TopicPage.tsx` / `LearningArticlePage.tsx` / `BlogPost.tsx` — article tiles use `MiniArticleCard`; hero uses `MockWindow` with mini article preview.
 
-1. **Pricing** (`Pricing.tsx`) - replace shadcn `Card` plan cards with `.card-chip` styling, add hero with eyebrow + dot-grid, swap buttons for `.pill-primary` / `.pill-ghost`, finish with `MarketingFinalCTA`.
-2. **About** (`About.tsx`) - new hero, values grid using `IconTile`, stats row in navy band, final CTA.
-3. **Coaches index** (`Coaches.tsx`) + **CoachPage** - hero + filter bar styling, coach cards using `.card-chip`.
-4. **LearnIndex** + **TopicsIndex** + **TopicPage** - pillar hub treatment: eyebrow, large display h1, topic cards as `.card-chip` grid, dot-grid hero backdrop.
-5. **Blog** + **BlogPost** - hero band, article cards in `.card-chip`, post header with eyebrow + display heading + meta row, sticky TOC styled with navy tokens.
+**Tier B — Tools / playground**
+- `Playground.tsx` — tool tiles get `IconTile` + matching `Mini*` (e.g. `RacketFinder` → `MiniRacketSwatch`, `RateMyCourt` → `MiniCourtDiagram`, `RedFlagQuiz` → `MiniQuizDots`).
+- `RacketFinder.tsx`, `RacketListing.tsx`, `RacketDetail.tsx` — hero/empty states use `MiniRacketSwatch` inside a `MockWindow`; filter chips already updated.
+- `PadelLevelTest.tsx`, `RedFlagQuiz.tsx`, `ChallengeModePage.tsx` — quiz intro hero with `MiniQuizDots`; result cards reuse `card-chip`.
+- `Strokes.tsx` / `StrokePage.tsx`, `Rules.tsx` / `RulesPage.tsx` — illustrate with `MiniCourtDiagram`.
+- `VideoTips.tsx` / `VideoTipPage.tsx` — thumbnails framed in `MiniVideoFrame` / `MockWindow`.
+- `RateMyCourtPage.tsx` — `MiniCourtDiagram` + score bars made of `MiniBarChart`.
 
-Tier 2 - tools / playground:
+**Tier C — Supporting**
+- `Partner.tsx`, `PressKit.tsx`, `FoundingTrainers.tsx`, `CityLanding.tsx`, `PublicRatingCard.tsx`, `Privacy.tsx`, `Terms.tsx` — heroes use `MarketingHero`, supporting visuals swapped to `IconTile` + appropriate `Mini*`. Legal pages keep prose, only hero gets the new chrome.
 
-6. **Playground**, **RacketFinder**, **RacketListing**, **RacketDetail**, **PadelLevelTest**, **RedFlagQuiz**, **RateMyCourtPage**, **ChallengeModePage** - shared tool-page shell: hero with `.mock-window` style preview where it fits, results screens use `.card-chip`.
-7. **Strokes** + **StrokePage**, **VideoTips** + **VideoTipPage**, **Rules** + **RulesPage** - learning-content shell mirroring blog treatment.
+## Step 3 — Audit & QA
 
-Tier 3 - supporting / legal:
-
-8. **Partner**, **PressKit**, **FoundingTrainers** - hero + section rhythm + final CTA.
-9. **Privacy**, **Terms** - lighter touch: just hero band + typography pass, keep long-form readable (`prose` width).
-10. **CityLanding**, **PublicRatingCard**, **LearningArticlePage** - apply shell, keep dynamic content as-is.
-
-`Brand.tsx` already mirrors the design system - leave as reference.
-
-## Cross-cutting tasks
-
-- **MarketingLayout** (`src/components/marketing/MarketingLayout.tsx`) - audit nav + footer for token consistency (navy text, brand CTA), no structural changes.
-- **MegaMenu** - re-skin chips/cards to match `.card-chip` + brand-50 hover.
-- **SEO component** - no changes (this is purely visual).
-- **i18n** - no copy changes; only restructure markup. If a heading needs to split into eyebrow + h1, reuse existing keys.
-- **Dark mode** - verify each refreshed page in dark mode since marketing is light-first; tokens already handle it.
-- **Mobile-first QA** at 360 / 414 / 768 / 1280 per design-system rule.
+- Grep for ad-hoc `bg-gradient-to-*`, hex colors, `text-white`/`bg-black`, and inline color styles on the listed pages; replace with tokens.
+- Verify dark mode and `1267px` desktop + 375px mobile for every changed page.
+- Confirm no functional/route/i18n key change vs. `git diff`.
+- Lighthouse-style sanity: no new images shipped (all SVG/Tailwind), no new deps.
 
 ## Guardrails
 
-- No new colors; only tokens from `index.css` / `tailwind.config.ts`.
-- No em-dashes in any copy touched.
-- Keep all routes, props, data fetching, and translations identical.
-- Don't introduce new animation libs; reuse existing `animate-floaty` / framer-motion already in use.
-- Keep `staleTime` and query behavior untouched.
-
-## Suggested execution order in build mode
-
-1. Land the shared primitives in `src/components/marketing/sections/` and refactor `Home.tsx` sections to use them (no visual diff on homepage).
-2. Ship Tier 1 pages one PR at a time, each with before/after screenshots at mobile + desktop.
-3. Ship Tier 2 and Tier 3 in batches grouped by shared shell.
+- Frontend/presentation only. No DB, edge functions, RLS, schema, copy, SEO metadata, routes.
+- Only tokens from `src/index.css` + `tailwind.config.ts`. No new colors. No em-dashes.
+- No new animation/illustration libraries. Reuse `framer-motion` only if already imported on a page.
+- Keep existing props, data fetching, translation keys, analytics events untouched.
 
 ## Out of scope
 
-- Database, edge functions, schema, RLS, content rewrites, SEO metadata changes, new features, new routes.
+Detail pages where the visual already comes from CMS imagery (`BlogPost` body, `LearningArticlePage` body, `CoachPage` profile photo) — only their hero/cards get the new chrome; user-supplied media stays as-is.
 
+## Rollout
+
+1. Land Step 1 (visual kit) + retrofit `SolutionOverview` to import from it (no homepage diff).
+2. Ship Tier A as one batch with before/after screenshots.
+3. Ship Tier B in one batch.
+4. Ship Tier C in one batch.
