@@ -255,7 +255,7 @@
       "createAccountHelp": "Kies een wachtwoord om je account aan te maken. hiermee kun je je aanmelding volgen en je boekingen beheren.",
       "password": "Wachtwoord",
       "passwordPlaceholder": "Kies een wachtwoord",
-      "passwordMin": "Wachtwoord moet minimaal 6 tekens bevatten",
+      "passwordMin": "Wachtwoord moet minimaal 8 tekens bevatten",
       "nameMin": "Naam moet minimaal 2 tekens bevatten",
       "emailInvalid": "Vul een geldig e-mailadres in",
       "submitError": "Aanmelding kon niet worden verzonden",

@@ -66,7 +66,7 @@
   "validation": {
     "required": "Ce champ est obligatoire",
     "invalidEmail": "Adresse e-mail invalide",
-    "passwordMinLength": "Le mot de passe doit contenir au moins 6 caractères"
+    "passwordMinLength": "Le mot de passe doit contenir au moins 8 caractères"
   },
   "time": {
     "minutes": "minutes",

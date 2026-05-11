@@ -216,7 +216,7 @@
       "createAccountHelp": "Choisissez un mot de passe pour créer votre compte. Cela vous permettra de suivre votre inscription et de gérer vos réservations.",
       "password": "Mot de passe",
       "passwordPlaceholder": "Créer un mot de passe",
-      "passwordMin": "Le mot de passe doit contenir au moins 6 caractères",
+      "passwordMin": "Le mot de passe doit contenir au moins 8 caractères",
       "nameMin": "Le nom doit contenir au moins 2 caractères",
       "emailInvalid": "Veuillez entrer une adresse e-mail valide",
       "submitError": "Échec de l'envoi de la candidature",

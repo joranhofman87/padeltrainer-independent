@@ -66,7 +66,7 @@
   "validation": {
     "required": "Dit veld is verplicht",
     "invalidEmail": "Ongeldig e-mailadres",
-    "passwordMinLength": "Wachtwoord moet minimaal 6 tekens bevatten"
+    "passwordMinLength": "Wachtwoord moet minimaal 8 tekens bevatten"
   },
   "time": {
     "minutes": "minuten",

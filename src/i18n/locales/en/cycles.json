@@ -229,7 +229,7 @@
       "createAccountHelp": "Choose a password to create your account. This lets you track your application and manage your bookings.",
       "password": "Password",
       "passwordPlaceholder": "Create a password",
-      "passwordMin": "Password must be at least 6 characters",
+      "passwordMin": "Password must be at least 8 characters",
       "nameMin": "Name must be at least 2 characters",
       "emailInvalid": "Please enter a valid email address",
       "submitError": "Failed to submit application",

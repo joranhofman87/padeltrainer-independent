@@ -66,7 +66,7 @@
   "validation": {
     "required": "Dieses Feld ist erforderlich",
     "invalidEmail": "Ungültige E-Mail-Adresse",
-    "passwordMinLength": "Passwort muss mindestens 6 Zeichen lang sein"
+    "passwordMinLength": "Passwort muss mindestens 8 Zeichen lang sein"
   },
   "time": {
     "minutes": "Minuten",
