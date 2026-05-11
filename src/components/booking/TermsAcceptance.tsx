@@ -1,16 +1,8 @@
-import { useRef, useEffect } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Loader2, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-
-function SafeHTML({ html, className }: { html: string; className?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.innerHTML = html;
-  }, [html]);
-  return <div ref={ref} className={className} />;
-}
+import { SafeHtml } from '@/components/ui/SafeHtml';
 
 interface TermsAcceptanceProps {
   terms: string | null;
@@ -40,7 +32,7 @@ export default function TermsAcceptance({ terms, loading, accepted, onAcceptChan
           <FileText className="h-4 w-4" />
           {t('generalTerms', 'General Terms')}
         </div>
-        <SafeHTML
+        <SafeHtml
           html={terms}
           className="prose prose-xs dark:prose-invert max-w-none text-xs"
         />
