@@ -156,7 +156,7 @@ export default function TrainerEarnings() {
       .single();
 
     if (data) {
-      setTrainerInfo(data as TrainerBusinessInfo);
+      setTrainerInfo(data as unknown as TrainerBusinessInfo);
     }
   };
 
