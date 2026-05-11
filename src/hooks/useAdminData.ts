@@ -166,7 +166,7 @@ export function useAdminTrainers() {
     queryFn: async (): Promise<TrainerProfileAdmin[]> => {
       // Fetch trainer profiles with all fields
       const { data: trainers, error: trainersError } = await supabase
-        .from("trainer_profiles")
+        .from("trainer_profiles_owner" as any)
         .select(`
           id, user_id, slug, subscription_status, trial_ends_at, trial_started_at, 
           is_public, is_verified, created_at,
@@ -175,7 +175,7 @@ export function useAdminTrainers() {
           social_youtube, social_linkedin, business_name, business_address,
           kvk_number, btw_number, iban
         `)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false }) as { data: any[] | null, error: any };
 
       if (trainersError) throw trainersError;
       if (!trainers || trainers.length === 0) return [];

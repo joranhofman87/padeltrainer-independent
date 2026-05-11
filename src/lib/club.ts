@@ -58,7 +58,7 @@ export async function isLocationClaimed(locationId: string): Promise<boolean> {
 export async function getClubProfileByLocation(locationId: string): Promise<ClubProfile | null> {
   const { data, error } = await supabase
     .from('club_profiles')
-    .select('*')
+    .select('id, location_id, description, contact_email, phone, logo_url, is_verified, claimed_at, created_at, updated_at, banner_url, subscription_status, subscription_tier, subscription_id, trial_ends_at, subscription_ends_at, created_by, social_instagram, social_facebook, social_tiktok, social_youtube, social_linkedin, last_processed_payment_id, welcome_message')
     .eq('location_id', locationId)
     .maybeSingle();
 

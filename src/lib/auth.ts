@@ -322,7 +322,7 @@ export async function setUserRole(userId: string, role: UserRole, timezone?: str
 export async function getProfile(userId: string): Promise<FetchResult<UserProfile | null>> {
   try {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('profiles_owner' as any)
       .select('*')
       .eq('user_id', userId)
       .single();
@@ -333,7 +333,7 @@ export async function getProfile(userId: string): Promise<FetchResult<UserProfil
       logger.error('Error fetching profile', error as any, { component: 'auth' });
       return { data: null, failed: true };
     }
-    return { data: data as UserProfile, failed: false };
+    return { data: data as unknown as UserProfile, failed: false };
   } catch (err) {
     logger.error('Exception fetching profile', err as Error, { component: 'auth' });
     return { data: null, failed: true };
@@ -354,13 +354,13 @@ export async function updateProfile(userId: string, updates: Partial<UserProfile
 
 export async function getTrainerProfile(userId: string): Promise<TrainerProfile | null> {
   const { data, error } = await supabase
-    .from('trainer_profiles')
+    .from('trainer_profiles_owner' as any)
     .select('*')
     .eq('user_id', userId)
     .single();
   
   if (error || !data) return null;
-  return data as TrainerProfile;
+  return data as unknown as TrainerProfile;
 }
 
 export async function sendPasswordResetEmail(email: string) {

@@ -179,11 +179,11 @@ export function TrainerEditDialog({
       
       // Fetch platform fee override
       supabase
-        .from("trainer_profiles")
+        .from("trainer_profiles_owner" as any)
         .select("platform_fee_override")
         .eq("id", trainer.id)
         .single()
-        .then(({ data }) => {
+        .then(({ data }: { data: any }) => {
           setPlatformFeeOverride(data?.platform_fee_override?.toString() || "");
         });
     }

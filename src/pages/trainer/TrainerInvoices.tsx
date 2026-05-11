@@ -110,12 +110,12 @@ export default function TrainerInvoices() {
     queryFn: async () => {
       if (!user?.id) return null;
       const { data, error } = await supabase
-        .from("trainer_profiles")
+        .from("trainer_profiles_owner" as any)
         .select("id, invoice_forward_emails, invoice_prefix, invoice_next_number, invoice_include_year, invoice_language, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, use_manual_invoicing, invoice_logo_url, invoice_banner_color, invoice_reply_to_email")
         .eq("user_id", user.id)
         .single();
       if (error) throw error;
-      return data;
+      return data as any;
     },
     enabled: !!user?.id,
   });
