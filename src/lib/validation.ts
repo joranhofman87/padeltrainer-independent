@@ -97,7 +97,7 @@ export interface PasswordStrength {
 
 export function calculatePasswordStrength(password: string): PasswordStrength {
   const checks = {
-    minLength: password.length >= 6,
+    minLength: password.length >= 8,
     hasUppercase: /[A-Z]/.test(password),
     hasLowercase: /[a-z]/.test(password),
     hasNumber: /\d/.test(password),
