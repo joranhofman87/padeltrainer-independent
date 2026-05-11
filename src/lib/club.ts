@@ -642,7 +642,7 @@ export async function inviteClubTrainer(
     .eq('email', trainerEmail.toLowerCase())
     .single();
 
-  let trainerProfileId = null;
+  let trainerProfileId: string | null = null;
   if (profile) {
     const { data: trainerProfile } = await supabase
       .from('trainer_profiles')

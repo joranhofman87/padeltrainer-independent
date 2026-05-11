@@ -345,7 +345,7 @@ export async function getTrainerAcademy(trainerProfileId: string): Promise<Parti
     return null;
   }
 
-  return data?.academy_profile || null;
+  return (data?.academy_profile || null) as Partial<AcademyProfile> | null;
 }
 
 // Get academies at a location (for club/location page display)
@@ -1091,7 +1091,7 @@ export async function getPublicAcademies(): Promise<Partial<AcademyProfile>[]> {
     return [];
   }
 
-  return data || [];
+  return (data || []) as Partial<AcademyProfile>[];
 }
 
 // ===================== Manager Management Functions =====================

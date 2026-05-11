@@ -214,7 +214,7 @@ export function useAdminTrainers() {
             avatar_url: profile.avatar_url,
           } : null,
         };
-      });
+      }) as TrainerProfileAdmin[];
     },
     enabled: isAdmin === true,
     staleTime: STALE_TIME,

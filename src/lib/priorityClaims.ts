@@ -322,7 +322,7 @@ export async function declineClaimWithToken(token: string, reason?: string) {
   const { data, error } = await supabase.rpc('respond_to_priority_claim', {
     _token: token,
     _action: 'decline',
-    _reason: reason ?? null,
+    _reason: reason,
   });
   if (error) throw error;
   return data;
