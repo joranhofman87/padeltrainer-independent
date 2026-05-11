@@ -1,83 +1,75 @@
-# Sitemap generation workflow - syncs weekly
-name: Regenerate Sitemap
+# Sitemap smoke test - weekly health check on the sitemap edge function.
+# Sitemaps are served on-demand via supabase/functions/sitemap (proxied by Cloudflare),
+# so nothing is committed back to the repo. This workflow only verifies that every
+# variant returns a non-empty XML payload with at least one <url> entry.
+name: Sitemap Smoke Test
 
 on:
   schedule:
-    # Run weekly on Monday at 6:00 AM UTC
     - cron: '0 6 * * 1'
   workflow_dispatch:
-    # Allow manual triggering from GitHub Actions UI
 
 jobs:
-  regenerate-sitemap:
+  smoke-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create sitemaps directory
-        run: mkdir -p public/sitemaps
-
-      - name: Fetch sitemap index
-        run: |
-          curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=index" > public/sitemap.xml
-          echo "Sitemap index generated"
-
-      - name: Fetch static sitemap
-        run: |
-          curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=static" > public/sitemaps/sitemap-static.xml
-          echo "Static: $(grep -c '<url>' public/sitemaps/sitemap-static.xml || true) URLs"
-
-      - name: Fetch content sitemap
-        run: |
-          curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=content" > public/sitemaps/sitemap-content.xml
-          echo "Content: $(grep -c '<url>' public/sitemaps/sitemap-content.xml || true) URLs"
-
-      - name: Fetch location sitemaps
+      - name: Check sitemap index
         run: |
           set -euo pipefail
-          PAGES=$(grep -oP 'sitemap-locations-\K[0-9]+' public/sitemap.xml | sort -n | tail -1 || echo 0)
-          echo "Location pages to fetch: $PAGES"
-          for PAGE in $(seq 1 "$PAGES"); do
-            FILE="public/sitemaps/sitemap-locations-${PAGE}.xml"
-            curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=locations&page=${PAGE}" > "$FILE"
-            echo "Locations page ${PAGE}: $(grep -c '<url>' "$FILE" || true) URLs"
-          done
+          BODY=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
+            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=index")
+          echo "$BODY" | grep -q '<sitemap>' || (echo "Index missing <sitemap> entries" && exit 1)
+          echo "Index OK"
 
-      - name: Fetch city sitemaps
+      - name: Check static sitemap
         run: |
           set -euo pipefail
-          PAGES=$(grep -oP 'sitemap-cities-\K[0-9]+' public/sitemap.xml | sort -n | tail -1 || echo 0)
-          echo "City pages to fetch: $PAGES"
-          for PAGE in $(seq 1 "$PAGES"); do
-            FILE="public/sitemaps/sitemap-cities-${PAGE}.xml"
-            curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=cities&page=${PAGE}" > "$FILE"
-            echo "Cities page ${PAGE}: $(grep -c '<url>' "$FILE" || true) URLs"
-          done
+          COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
+            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=static" \
+            | grep -c '<url>')
+          [ "$COUNT" -gt 0 ] || (echo "Static sitemap empty" && exit 1)
+          echo "Static: $COUNT URLs"
 
-      - name: Fetch provinces sitemap
+      - name: Check content sitemap
         run: |
-          curl -sf --max-time 120 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=provinces" > public/sitemaps/sitemap-provinces.xml
-          echo "Provinces: $(grep -c '<url>' public/sitemaps/sitemap-provinces.xml || true) URLs"
+          set -euo pipefail
+          COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
+            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=content" \
+            | grep -c '<url>')
+          [ "$COUNT" -gt 0 ] || (echo "Content sitemap empty" && exit 1)
+          echo "Content: $COUNT URLs"
 
-      - name: Regenerate llms-full.txt
+      - name: Check locations page 1
         run: |
-          curl -sf --max-time 180 --retry 2 --retry-delay 5 "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt" > public/llms-full.txt
-          LINES=$(wc -l < public/llms-full.txt)
-          echo "llms-full.txt: ${LINES} lines"
+          set -euo pipefail
+          COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
+            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=locations&page=1" \
+            | grep -c '<url>')
+          [ "$COUNT" -gt 0 ] || (echo "Locations page 1 empty" && exit 1)
+          echo "Locations p1: $COUNT URLs"
 
-      - name: Summary
+      - name: Check cities page 1
         run: |
-          TOTAL=$(find public/sitemaps -name '*.xml' -exec grep -c '<url>' {} + 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
-          echo "Total URLs across all sitemaps: $TOTAL"
+          set -euo pipefail
+          COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
+            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=cities&page=1" \
+            | grep -c '<url>')
+          [ "$COUNT" -gt 0 ] || (echo "Cities page 1 empty" && exit 1)
+          echo "Cities p1: $COUNT URLs"
 
-      - name: Commit and push if changed
+      - name: Check provinces sitemap
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add public/sitemap.xml public/sitemaps/ public/llms-full.txt
-          git diff --staged --quiet || git commit -m "chore: regenerate sitemaps & llms-full.txt [skip ci]"
-          git push
+          set -euo pipefail
+          COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
+            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=provinces" \
+            | grep -c '<url>')
+          [ "$COUNT" -gt 0 ] || (echo "Provinces empty" && exit 1)
+          echo "Provinces: $COUNT URLs"
+
+      - name: Check llms-full
+        run: |
+          set -euo pipefail
+          BYTES=$(curl -sf --max-time 180 --retry 2 --retry-delay 5 \
+            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt" | wc -c)
+          [ "$BYTES" -gt 1000 ] || (echo "llms-full.txt suspiciously small" && exit 1)
+          echo "llms-full.txt: $BYTES bytes"
