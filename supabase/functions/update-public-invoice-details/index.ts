@@ -38,11 +38,11 @@ serve(async (req) => {
 
     const { data: invoice, error: fetchErr } = await supabase
       .from("invoices")
-      .select("id, status, player_id, guest_player_id")
+      .select("id, status, player_id, guest_player_id, public_token_revoked_at")
       .eq("public_token", publicToken)
       .maybeSingle();
 
-    if (fetchErr || !invoice) {
+    if (fetchErr || !invoice || invoice.public_token_revoked_at) {
       return new Response(JSON.stringify({ error: "not_found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

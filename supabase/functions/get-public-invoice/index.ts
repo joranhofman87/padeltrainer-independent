@@ -26,11 +26,11 @@ serve(async (req) => {
 
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
-      .select("id, invoice_number, invoice_date, due_date, player_name, player_id, player_business_name, player_address, player_btw_number, total, subtotal, vat_amount, vat_rate, line_items, status, mollie_payment_url, academy_profile_id, trainer_id, public_token, guest_player_id")
+      .select("id, invoice_number, invoice_date, due_date, player_name, player_id, player_business_name, player_address, player_btw_number, total, subtotal, vat_amount, vat_rate, line_items, status, mollie_payment_url, academy_profile_id, trainer_id, public_token, guest_player_id, public_token_revoked_at")
       .eq("public_token", publicToken)
       .single();
 
-    if (invError || !invoice) {
+    if (invError || !invoice || invoice.public_token_revoked_at) {
       return new Response(JSON.stringify({ error: "Invoice not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

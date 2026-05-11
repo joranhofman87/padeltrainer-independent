@@ -115,12 +115,12 @@ serve(async (req) => {
     // Fetch invoice
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
-      .select("id, invoice_number, total, player_name, player_id, trainer_id, academy_profile_id, status, mollie_payment_id, mollie_payment_url, public_token")
+      .select("id, invoice_number, total, player_name, player_id, trainer_id, academy_profile_id, status, mollie_payment_id, mollie_payment_url, public_token, public_token_revoked_at")
       .eq("id", invoiceId)
       .single();
 
-    if (invError || !invoice) {
-      logStep("Invoice not found", { invoiceId });
+    if (invError || !invoice || invoice.public_token_revoked_at) {
+      logStep("Invoice not found or revoked", { invoiceId });
       return new Response(JSON.stringify({ error: "Invoice not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
