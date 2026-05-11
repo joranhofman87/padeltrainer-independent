@@ -7,7 +7,7 @@ export interface Certification {
   country: string;
   description: string | null;
   is_active: boolean;
-  display_order: number;
+  display_order: number | null;
   created_at: string;
 }
 
@@ -16,7 +16,7 @@ export interface Specialization {
   name: string;
   description: string | null;
   is_active: boolean;
-  display_order: number;
+  display_order: number | null;
   created_at: string;
 }
 
