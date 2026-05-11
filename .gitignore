@@ -25,3 +25,8 @@ dist-ssr
 
 # Local test credentials - never commit
 test-accounts.json
+
+# Environment files - never commit (may contain secrets)
+.env
+.env.local
+.env.*.local

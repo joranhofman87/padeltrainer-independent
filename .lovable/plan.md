@@ -1,58 +1,40 @@
 ## Goal
 
-Add real, social-friendly short links for both academies and trainers, then surface them in the dashboard share cards instead of the long localized URLs.
+Address audit point #2: ensure `.env` is never committed so a future dev dropping a real secret into it can't leak it.
 
-- `padeltrainer.ai/a/{slug}` → academy public profile
-- `padeltrainer.ai/t/{slug}` → trainer public profile
+## Current state
+
+`.env` contains only public values (Supabase project ref, URL, and anon/publishable key). They are safe to expose, but the file is not gitignored, so any future addition (e.g. a service role key, Stripe secret, etc.) would be silently committed.
+
+```
+SUPABASE_PUBLISHABLE_KEY="..."   # anon key, public
+SUPABASE_URL="..."               # public
+VITE_SUPABASE_PROJECT_ID="..."   # public
+VITE_SUPABASE_PUBLISHABLE_KEY="..." # anon key, public
+VITE_SUPABASE_URL="..."          # public
+```
 
 ## Changes
 
-### 1. New short-link routes in `DomainRouter.tsx`
+1. **`.gitignore`** — add an `.env` block:
+   ```
+   # Environment files - never commit (may contain secrets)
+   .env
+   .env.local
+   .env.*.local
+   ```
+   Keep `.env.example` allowed (none exists today; not creating one).
 
-Add two unlocalized routes mounted outside the `:lang` block so they work on bare `padeltrainer.ai/...`:
+2. **Leave `.env` content alone.** Lovable Cloud auto-generates and overwrites `.env` on every sandbox start with both the `VITE_`-prefixed and unprefixed Supabase variables. Renaming or deleting entries would be reverted on the next regeneration and could break edge-function-adjacent code paths that read the unprefixed names. The audit's "rename to VITE_ only" suggestion does not apply cleanly here because the file is platform-managed, not hand-authored.
 
-```
-/a/:slug  →  <Navigate to={`/${lang}/academies/${slug}`} replace />
-/t/:slug  →  <Navigate to={`/${lang}/trainer/${slug}`} replace />
-```
-
-Implemented as tiny `ShortLinkRedirect` components that read `:slug` and the current i18n language (fallback `nl`). The trainer profile route already accepts a slug in place of an id (`/trainer/:trainerId` resolves by slug), so no backend lookup is needed.
-
-### 2. Helpers in `src/lib/domains.ts`
-
-Add:
-- `getAcademyShortUrl(slug)` → `${MARKETING_DOMAIN}/a/${slug}`
-- `getTrainerShortUrl(slug)` → `${MARKETING_DOMAIN}/t/${slug}`
-
-Plus matching unit tests in `domains.test.ts`.
-
-### 3. `ShareableProfileLink` accepts a short URL
-
-Update `src/components/profile/ShareableProfileLink.tsx`:
-- New optional `shortUrl?: string` prop.
-- When provided, the displayed / copied / shared value is `shortUrl`. Display still strips `https://` so the row stays compact.
-- When omitted, current behaviour is unchanged (so anything else using the component keeps working).
-
-### 4. Wire it up on the dashboards
-
-- `src/pages/academy/AcademyDashboard.tsx`: pass `shortUrl={getAcademyShortUrl(handle)}` (keep `basePath="academies"` and `lang` as canonical fallback).
-- `src/pages/TrainerDashboard.tsx`: pass `shortUrl={getTrainerShortUrl(trainerSlug)}`.
-
-Result: both share cards now show `padeltrainer.ai/a/jan-de-vries` and `padeltrainer.ai/t/rene` respectively.
-
-### 5. Bot/SSR + sitemap awareness
-
-- The short paths should be ignored by the sitemap (they're redirects, not canonical pages) — no sitemap changes needed.
-- Update the dynamic-rendering / Cloudflare worker config and `llms.txt` only if those files explicitly enumerate route prefixes that bots can hit. Verified during implementation; if `/a/` and `/t/` aren't whitelisted there, add them so crawlers follow the redirect cleanly.
+3. **No code changes.** A repo search confirms no source file reads the unprefixed `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` from the client bundle (only `VITE_*` and `import.meta.env.VITE_*` are referenced). Edge functions read their own `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` from the Supabase runtime, not from this `.env`.
 
 ## Out of scope
 
-- Club / player short links.
-- Custom analytics on short-link clicks.
-- Database changes, slug changes, or new tables.
-- SEO canonical changes — the short URL is a client-side `<Navigate replace>`, the user lands on the full localized page (same SEO surface as today).
+- Rotating the anon key (not needed; it's public by design and protected by RLS).
+- Editing `src/integrations/supabase/client.ts` or `.env` (both are platform-managed).
+- A separate audit pass on RLS coverage (the auditor flagged this as a follow-up; happy to tackle it next if you want).
 
-## Notes
+## Note on git history
 
-- `/a/` and `/t/` are short, unused, and don't collide with existing routes (`academies`, `app`, `auth`, `trainer`, `trainers`, etc.).
-- Using single-letter prefixes keeps URLs compact for social bios and DMs, matching the homepage mock copy ("padeltrainer.ai/rene" style).
+Gitignoring `.env` now stops future leaks but does not remove the currently-tracked file from git history. Since the values in it today are all public (anon key + project ref + URL), no rotation is required. If a real secret is ever committed by accident in the future, it must be rotated immediately — gitignore is prevention, not cleanup.
