@@ -76,12 +76,12 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
   const lineItemsHTML = invoice.line_items.map(item => `
     <tr>
       <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
-        ${item.description}
-        ${item.date ? `<br><span style="font-size: 12px; color: #6b7280;">${formatDate(item.date)}</span>` : ''}
+        ${esc(item.description)}
+        ${item.date ? `<br><span style="font-size: 12px; color: #6b7280;">${esc(formatDate(item.date))}</span>` : ''}
       </td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.unit_price)}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.quantity * item.unit_price)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">${Number(item.quantity) || 0}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${esc(formatCurrency(item.unit_price))}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${esc(formatCurrency(item.quantity * item.unit_price))}</td>
     </tr>
   `).join('');
 
