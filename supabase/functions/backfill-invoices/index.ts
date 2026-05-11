@@ -1,13 +1,13 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { requireAdmin, corsHeaders as sharedCors } from "../_shared/auth.ts";
-
-const corsHeaders = sharedCors;
+import { requireAdmin } from "../_shared/auth.ts";
+import { restrictedCors } from "../_shared/cors.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BACKFILL-INVOICES] ${step}`, details ? JSON.stringify(details) : "");
 };
 
 serve(async (req) => {
+  const corsHeaders = restrictedCors(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

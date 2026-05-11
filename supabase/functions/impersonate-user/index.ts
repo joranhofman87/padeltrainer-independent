@@ -1,11 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { restrictedCors } from "../_shared/cors.ts";
 
 Deno.serve(async (req) => {
+  const corsHeaders = restrictedCors(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -62,13 +59,14 @@ Deno.serve(async (req) => {
     }
 
     // Check that the target user is not an admin (cannot impersonate other admins)
-    const { data: targetRoleData } = await supabaseAdmin
+    const { data: targetAdminRows } = await supabaseAdmin
       .from("user_roles")
       .select("role")
       .eq("user_id", target_user_id)
-      .single();
+      .eq("role", "admin")
+      .limit(1);
 
-    if (targetRoleData?.role === "admin") {
+    if (targetAdminRows && targetAdminRows.length > 0) {
       return new Response(
         JSON.stringify({ error: "Cannot impersonate other admin users" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
