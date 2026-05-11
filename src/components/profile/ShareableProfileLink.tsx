@@ -56,15 +56,18 @@ export function ShareableProfileLink({
   basePath,
   lang = 'nl',
   compact = false,
+  shortUrl,
 }: Props) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
 
   if (!handle) return null;
 
-  const fullUrl = basePath
-    ? getMarketingUrl(`${basePath}/${handle}`, lang)
-    : `https://${HOST}/${handle}`;
+  const fullUrl = shortUrl
+    ? shortUrl
+    : basePath
+      ? getMarketingUrl(`${basePath}/${handle}`, lang)
+      : `https://${HOST}/${handle}`;
   const display = fullUrl.replace(/^https?:\/\//, '');
 
   const copy = async () => {
