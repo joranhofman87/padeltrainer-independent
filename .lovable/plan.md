@@ -1,46 +1,97 @@
-# Allowlist signupRole in signup-user edge function
+# Enable strictNullChecks (#10) — phased rollout
 
-## Problem
+## Goal
 
-`supabase/functions/signup-user/index.ts:213-217` upserts `signupRole` straight from the request body into `public.user_roles` using the service role:
+Flip `strictNullChecks: true` in `tsconfig.json` and `tsconfig.app.json` to catch null/undefined bugs at compile time. Currently 88 errors across 42 files block this. Fix in focused waves so each commit is reviewable and revertable, then enable the flag in the final wave.
 
-```ts
-if (signupRole) {
-  await supabaseAdmin
-    .from('user_roles')
-    .upsert({ user_id: user.id, role: signupRole }, { onConflict: 'user_id,role' });
-}
-```
+## Strategy
 
-The `app_role` enum includes `admin`, so `POST /signup-user { role: "admin", ... }` would self-grant admin on signup. Direct privilege escalation.
+- Keep `strictNullChecks: false` until the very last step. Do **not** flip it incrementally per file (TS doesn't allow per-file overrides without project references, and turning it on with errors breaks dev/CI).
+- After each wave, re-run `npx tsc -p tsconfig.app.json --noEmit --strictNullChecks` to confirm the error count drops as expected.
+- Fix patterns (in order of preference):
+  1. **Tighten the type at the source** — if a query/helper returns `string | null` but logically can't be null after a guard, narrow with an `if (!x) return` early exit.
+  2. **Optional chaining + nullish coalescing** (`x?.y ?? fallback`) for display-only paths.
+  3. **Non-null assertion `!`** only when there's a runtime invariant the type system can't see, with a `// reason: …` comment.
+  4. **Update generated types** are off-limits (`src/integrations/supabase/types.ts`). Wrap call sites instead.
 
-## Fix
+## Waves
 
-In `supabase/functions/signup-user/index.ts`:
+### Wave 1 — Library/util layer (clean foundation, 14 errors, 6 files)
 
-1. Define an allowlist constant:
-   ```ts
-   const ALLOWED_SIGNUP_ROLES = ['player', 'trainer', 'club', 'academy'] as const;
-   type SignupRole = typeof ALLOWED_SIGNUP_ROLES[number];
-   ```
-2. Right after destructuring the body (line 159), validate:
-   ```ts
-   if (signupRole !== undefined && !ALLOWED_SIGNUP_ROLES.includes(signupRole as SignupRole)) {
-     return new Response(
-       JSON.stringify({ error: "Invalid role" }),
-       { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-     );
-   }
-   ```
-3. Keep the existing `if (signupRole) { upsert(...) }` block — it's now safe because invalid values were rejected above.
+Fix shared helpers first so downstream pages get free wins.
 
-## Verification
+- `src/lib/certifications.ts` (9)
+- `src/lib/academy.ts` (2)
+- `src/lib/club.ts` (1)
+- `src/lib/priorityClaims.ts` (1)
+- `src/hooks/useAdminData.ts` (1)
 
-- `curl` the deployed function with `role: "admin"` → expect `400 { error: "Invalid role" }` and no row inserted in `user_roles`.
-- `curl` with `role: "player"` → expect success and a `user_roles` row with `role='player'`.
-- `psql` confirms no `admin` row was created for the test user.
+### Wave 2 — Public marketing/profile pages (28 errors, 6 files)
 
-## Out of scope
+Read-heavy, low risk.
 
-- Auditing other edge functions that touch `user_roles` (separate finding if any exist).
-- Removing the client-supplied `role` entirely in favor of role inference from the signup page route — bigger refactor; allowlist is the minimal correct fix.
+- `src/pages/LocationDetail.tsx` (9)
+- `src/pages/marketing/BlogPost.tsx` (6)
+- `src/pages/AcademyPublicProfile.tsx` (6)
+- `src/pages/TrainerProfile.tsx` (4)
+- `src/components/home/HomeFeaturedSections.tsx` (4)
+- `src/pages/TrainersCity.tsx` (2)
+
+### Wave 3 — Invoices (10 errors, 7 files)
+
+Cluster — same null-handling patterns repeat across trainer + academy parity.
+
+- `src/pages/trainer/TrainerInvoices.tsx` (3)
+- `src/pages/academy/AcademyInvoices.tsx` (3)
+- `src/pages/trainer/TrainerEditInvoice.tsx` (1)
+- `src/pages/trainer/TrainerCreateInvoice.tsx` (1)
+- `src/pages/academy/AcademyEditInvoice.tsx` (1)
+- `src/pages/academy/AcademyCreateInvoice.tsx` (1)
+- `src/components/invoices/EditInvoiceDialog.tsx` (1)
+- `src/components/invoices/CreateCustomInvoiceDialog.tsx` (1)
+- `src/components/trainer/InvoiceList.tsx` (1)
+
+### Wave 4 — Slots, cycles, calendars (16 errors, 11 files)
+
+Higher complexity — interactive scheduling code. Touch each file in parity (trainer + academy).
+
+- `src/pages/academy/AcademySlotDetail.tsx` (3)
+- `src/components/trainer/AddSlotDialog.tsx` (3)
+- `src/pages/trainer/TrainerSlotDetail.tsx` (2)
+- `src/pages/CycleRegistration.tsx` (2)
+- `src/components/academy/SlotDetailDialog.tsx` (1)
+- `src/components/cycles/CycleForm.tsx` (1)
+- `src/components/cycles/IntakeRequestDetailSheet.tsx` (1)
+- `src/pages/club/ClubCalendar.tsx` (1)
+- `src/pages/club/ClubCycles.tsx` (1)
+- `src/pages/academy/AcademyCalendar.tsx` (1)
+- `src/pages/TrainerScheduleOverview.tsx` (1)
+- `src/pages/OpenSlots.tsx` (1)
+
+### Wave 5 — Onboarding, invitations, misc (10 errors, 9 files)
+
+Long tail.
+
+- `src/pages/club/ClubTrainerInvitation.tsx` (2)
+- `src/pages/academy/AcademyTrainerInvitation.tsx` (2)
+- `src/pages/club/ClubSettings.tsx` (1)
+- `src/pages/academy/AcademyPlayerDetail.tsx` (1)
+- `src/pages/academy/AcademyIntakeRequests.tsx` (1)
+- `src/pages/TrainerIntakeRequests.tsx` (1)
+- `src/components/trainer/onboarding/OnboardingStep3Schedule.tsx` (1)
+- `src/components/reviews/TrainerReviews.tsx` (1)
+- `src/components/profiles/VideoManager.tsx` (1)
+- `src/components/profiles/VideoGallery.tsx` (1)
+
+### Wave 6 — Flip the flag
+
+After waves 1-5 reduce the count to 0:
+
+- `tsconfig.json`: `"strictNullChecks": true`
+- `tsconfig.app.json`: `"strictNullChecks": true`
+- Final verification: `npx tsc -p tsconfig.app.json --noEmit` clean.
+- No revert path needed because all callsites are now safe.
+
+## This message scope
+
+Execute **Wave 1 only** (library/util layer, ~14 errors across 6 files). Stop and report the new error count so the next wave can be picked up in a fresh message — keeps each round reviewable. Subsequent waves (2-6) will each be their own message.
