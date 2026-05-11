@@ -76,10 +76,24 @@ serve(async (req) => {
     ].join(' ');
 
     const state = generateState();
+    const composedState = `academy_${academyProfileId}_${state}`;
+
+    const { error: stateInsertError } = await supabaseClient
+      .from('mollie_oauth_states')
+      .insert({
+        state: composedState,
+        entity_type: 'academy',
+        entity_id: academyProfileId,
+        user_id: user.id,
+      });
+    if (stateInsertError) {
+      throw new Error(`Failed to persist OAuth state: ${stateInsertError.message}`);
+    }
+
     const authUrl = new URL('https://my.mollie.com/oauth2/authorize');
     authUrl.searchParams.set('client_id', mollieClientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('state', `academy_${academyProfileId}_${state}`);
+    authUrl.searchParams.set('state', composedState);
     authUrl.searchParams.set('scope', scopes);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('approval_prompt', 'auto');
