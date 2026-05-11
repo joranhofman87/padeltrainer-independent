@@ -192,7 +192,7 @@ Deno.serve(async (req) => {
       details: {
         deleted_count: results.deleted.length,
         error_count: results.errors.length,
-        preserved_users: PRESERVED_USER_IDS,
+        preserved_users: preservedUserIds,
       },
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
       user_agent: req.headers.get("user-agent"),
