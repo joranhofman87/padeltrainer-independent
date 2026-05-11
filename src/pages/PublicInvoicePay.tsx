@@ -26,6 +26,26 @@ const dateLocales: Record<string, any> = { nl, en: enUS, de, fr, es, it };
 const getDateLocale = (lang: string) => dateLocales[lang?.slice(0, 2)] ?? nl;
 import { toast } from "sonner";
 
+// Keep the /pay/:token URL out of Referer headers — these tokens grant access
+// to invoice PII until the invoice is paid.
+function useNoReferrerMeta() {
+  useEffect(() => {
+    const prev = document.querySelector('meta[name="referrer"]');
+    const prevContent = prev?.getAttribute("content") ?? null;
+    let tag = prev as HTMLMetaElement | null;
+    if (!tag) {
+      tag = document.createElement("meta");
+      tag.setAttribute("name", "referrer");
+      document.head.appendChild(tag);
+    }
+    tag.setAttribute("content", "no-referrer");
+    return () => {
+      if (prevContent !== null) tag!.setAttribute("content", prevContent);
+      else tag!.parentNode?.removeChild(tag!);
+    };
+  }, []);
+}
+
 
 const formatEuro = (amount: number | null | undefined) =>
   (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
