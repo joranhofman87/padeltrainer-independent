@@ -22,7 +22,7 @@ import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainers, getAcademyLocations, getAcademyViewStats, getAcademyTrainersWithProfiles } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { getMarketingUrl } from '@/lib/domains';
+import { getMarketingUrl, getAcademyShortUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
@@ -240,6 +240,7 @@ export default function AcademyDashboard() {
             handle={activeAcademy.slug}
             basePath="academies"
             lang={i18n.language}
+            shortUrl={getAcademyShortUrl(activeAcademy.slug)}
             compact
           />
         </div>

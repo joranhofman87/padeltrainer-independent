@@ -42,6 +42,24 @@ export function getMarketingPath(path: string, lang: string = 'nl'): string {
 }
 
 /**
+ * Short, social-friendly share URL for an academy public profile.
+ * Resolves via the unlocalized `/a/:slug` route which redirects to the
+ * canonical localized academy page.
+ */
+export function getAcademyShortUrl(slug: string): string {
+  return `${MARKETING_DOMAIN}/a/${slug}`;
+}
+
+/**
+ * Short, social-friendly share URL for a trainer public profile.
+ * Resolves via the unlocalized `/t/:slug` route which redirects to the
+ * canonical localized trainer page.
+ */
+export function getTrainerShortUrl(slug: string): string {
+  return `${MARKETING_DOMAIN}/t/${slug}`;
+}
+
+/**
  * Get the appropriate auth redirect URL based on environment.
  * Always returns a full URL for OAuth/email redirects.
  */

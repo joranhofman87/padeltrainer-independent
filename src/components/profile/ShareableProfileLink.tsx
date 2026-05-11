@@ -18,6 +18,8 @@ interface Props {
   lang?: string;
   /** Render in a slim inline row (no helper text, smaller controls). */
   compact?: boolean;
+  /** Optional short URL to display/copy/share instead of the canonical long one. */
+  shortUrl?: string;
 }
 
 const HOST = 'padeltrainer.ai';
@@ -54,15 +56,18 @@ export function ShareableProfileLink({
   basePath,
   lang = 'nl',
   compact = false,
+  shortUrl,
 }: Props) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
 
   if (!handle) return null;
 
-  const fullUrl = basePath
-    ? getMarketingUrl(`${basePath}/${handle}`, lang)
-    : `https://${HOST}/${handle}`;
+  const fullUrl = shortUrl
+    ? shortUrl
+    : basePath
+      ? getMarketingUrl(`${basePath}/${handle}`, lang)
+      : `https://${HOST}/${handle}`;
   const display = fullUrl.replace(/^https?:\/\//, '');
 
   const copy = async () => {

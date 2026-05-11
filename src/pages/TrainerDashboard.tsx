@@ -14,6 +14,7 @@ import { logger } from '@/lib/logger';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
+import { getTrainerShortUrl } from '@/lib/domains';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { getTrainerAcademy } from '@/lib/academy';
@@ -253,7 +254,7 @@ export default function TrainerDashboard() {
       {trainerSlug && (
         <Card className="mb-6">
           <CardContent className="p-4 sm:p-6">
-            <ShareableProfileLink handle={trainerSlug} />
+            <ShareableProfileLink handle={trainerSlug} shortUrl={getTrainerShortUrl(trainerSlug)} />
           </CardContent>
         </Card>
       )}
