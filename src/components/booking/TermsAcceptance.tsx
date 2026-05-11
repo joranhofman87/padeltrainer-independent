@@ -32,7 +32,7 @@ export default function TermsAcceptance({ terms, loading, accepted, onAcceptChan
           <FileText className="h-4 w-4" />
           {t('generalTerms', 'General Terms')}
         </div>
-        <SafeHTML
+        <SafeHtml
           html={terms}
           className="prose prose-xs dark:prose-invert max-w-none text-xs"
         />
