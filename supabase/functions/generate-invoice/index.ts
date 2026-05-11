@@ -46,6 +46,21 @@ interface InvoiceData {
   };
 }
 
+// Escape user-controlled values before HTML interpolation (XSS defence)
+const esc = (s: unknown): string =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+// Only allow http(s) URLs in href/src to block javascript: and data: payloads
+const safeUrl = (u: unknown): string => {
+  const s = String(u ?? '').trim();
+  return /^https?:\/\//i.test(s) ? esc(s) : '';
+};
+
 function generateInvoiceHTML(invoice: InvoiceData): string {
   const accentColor = invoice.banner_color || '#16a34a';
   
