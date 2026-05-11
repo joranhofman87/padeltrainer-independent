@@ -1,16 +1,12 @@
-## Resolve flagged npm vulnerabilities
+## Remove `bootstrap-admin-password` backdoor edge function
 
-A fresh dependency scan reports **no high or critical vulnerabilities**, so the protobufjs / minimatch / picomatch advisories from the audit appear to already be resolved in the current lockfile (likely fixed by earlier dependency updates).
+The function lets anyone with `BOOTSTRAP_SECRET` reset any non-admin user's password. There are zero references to it anywhere in the codebase, and admin password resets already have a proper gated path (`admin-reset-password`). Best fix: delete it outright.
 
-### Plan
-
-1. Run `bun audit` (or `npm audit --json`) inside the sandbox to get an authoritative current list of advisories with severities and affected paths.
-2. If anything high/critical remains:
-   - Prefer `bun update <pkg>` (or transitive overrides via `package.json` `"overrides"`) to bump only the vulnerable packages.
-   - Re-run the audit to confirm clean.
-3. If only moderates remain (typical for transitive dev-only deps), document which ones and whether a fix requires a breaking major bump — surface that to you before touching it.
-4. Report the final audit result.
+### Changes
+1. Delete folder `supabase/functions/bootstrap-admin-password/`.
+2. Call `supabase--delete_edge_functions` with `["bootstrap-admin-password"]` to remove the deployed function from the backend.
+3. After deletion, you can also remove the `BOOTSTRAP_ENABLED` and `BOOTSTRAP_SECRET` runtime secrets from Cloud settings (manual step — not managed by tools, but I'll remind you in the final message).
 
 ### Out of scope
-- Major version upgrades of direct dependencies (React, Vite, etc.) unless required to clear a critical CVE.
-- Touching unrelated packages.
+- Auditing other edge functions (already covered in earlier rounds).
+- Any code changes elsewhere — nothing in the app calls this function.
