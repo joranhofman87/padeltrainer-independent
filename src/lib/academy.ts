@@ -251,7 +251,7 @@ export async function getAcademyBySlug(slug: string, preview = false): Promise<P
 export async function getAcademyById(id: string): Promise<AcademyProfile | null> {
   const { data, error } = await supabase
     .from('academy_profiles')
-    .select('*')
+    .select('id, name, slug, description, logo_url, banner_url, contact_email, phone, website_url, social_instagram, social_facebook, social_linkedin, social_youtube, social_tiktok, is_verified, is_public, subscription_status, subscription_tier, trial_ends_at, subscription_id, subscription_ends_at, created_by, created_at, updated_at, country, general_terms, waiting_list_enabled, last_processed_payment_id, welcome_message, business_name, business_address, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color, timezone, warning_max_rating_spread, warning_max_age_diff_years, invoice_include_year, invoice_reply_to_email, invoice_language')
     .eq('id', id)
     .maybeSingle();
 
