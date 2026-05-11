@@ -46,10 +46,10 @@ export default function ResetPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       toast({
         title: t('signIn.error', 'Error'),
-        description: t('resetPassword.passwordTooShort', 'Password must be at least 6 characters'),
+        description: t('resetPassword.passwordTooShort', 'Password must be at least 8 characters'),
         variant: 'destructive',
       });
       return;
