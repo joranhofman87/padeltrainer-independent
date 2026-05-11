@@ -5,11 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const PRESERVED_USER_IDS = [
-  "256b0ed5-1563-4eb5-899b-df559c5e9090", // info@padeltrainer.ai
-  "9bcc1c6f-7978-49bb-aa06-6f1be4135fc7", // joranhofman87@gmail.com
-];
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -67,11 +62,33 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Resolve preserved user IDs at runtime: every admin is preserved.
+    const { data: adminRows, error: adminFetchError } = await supabaseAdmin
+      .from("user_roles")
+      .select("user_id")
+      .eq("role", "admin");
+
+    if (adminFetchError) {
+      console.error("Error fetching admin users:", adminFetchError);
+      return new Response(
+        JSON.stringify({ error: "Failed to load preserved admins" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const preservedUserIds = Array.from(new Set((adminRows ?? []).map((r) => r.user_id)));
+    if (preservedUserIds.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Refusing to run: no admin users to preserve" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Get all user IDs except preserved ones
     const { data: allProfiles, error: profilesError } = await supabaseAdmin
       .from("profiles")
       .select("user_id, email, full_name")
-      .not("user_id", "in", `(${PRESERVED_USER_IDS.join(",")})`);
+      .not("user_id", "in", `(${preservedUserIds.join(",")})`);
 
     if (profilesError) {
       console.error("Error fetching profiles:", profilesError);
@@ -175,7 +192,7 @@ Deno.serve(async (req) => {
       details: {
         deleted_count: results.deleted.length,
         error_count: results.errors.length,
-        preserved_users: PRESERVED_USER_IDS,
+        preserved_users: preservedUserIds,
       },
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
       user_agent: req.headers.get("user-agent"),
@@ -188,7 +205,7 @@ Deno.serve(async (req) => {
         message: `Cleanup complete. Deleted ${results.deleted.length} users.`,
         deleted: results.deleted,
         errors: results.errors,
-        preserved: PRESERVED_USER_IDS,
+        preserved: preservedUserIds,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
