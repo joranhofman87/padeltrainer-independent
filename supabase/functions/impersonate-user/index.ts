@@ -62,13 +62,14 @@ Deno.serve(async (req) => {
     }
 
     // Check that the target user is not an admin (cannot impersonate other admins)
-    const { data: targetRoleData } = await supabaseAdmin
+    const { data: targetAdminRows } = await supabaseAdmin
       .from("user_roles")
       .select("role")
       .eq("user_id", target_user_id)
-      .single();
+      .eq("role", "admin")
+      .limit(1);
 
-    if (targetRoleData?.role === "admin") {
+    if (targetAdminRows && targetAdminRows.length > 0) {
       return new Response(
         JSON.stringify({ error: "Cannot impersonate other admin users" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
