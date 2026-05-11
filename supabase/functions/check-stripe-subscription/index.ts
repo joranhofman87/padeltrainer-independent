@@ -28,10 +28,13 @@ serve(async (req) => {
     if (!authHeader) throw new Error("No authorization header");
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !userData.user) throw new Error("Authentication failed");
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
+      logStep("Auth failed", { error: claimsError?.message });
+      throw new Error("Authentication failed");
+    }
 
-    const user = userData.user;
+    const user = { id: claimsData.claims.sub as string };
     logStep("User authenticated", { userId: user.id });
 
     const { type = "trainer", profileId } = await req.json();
