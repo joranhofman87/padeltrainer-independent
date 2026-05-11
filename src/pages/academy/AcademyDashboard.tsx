@@ -240,6 +240,7 @@ export default function AcademyDashboard() {
             handle={activeAcademy.slug}
             basePath="academies"
             lang={i18n.language}
+            shortUrl={getAcademyShortUrl(activeAcademy.slug)}
             compact
           />
         </div>
