@@ -279,7 +279,7 @@ export default function ClubSignup() {
                 onChange={(e) => setPassword(e.target.value)}
                 className={errors.password ? 'border-destructive' : ''}
                 required
-                minLength={6}
+                minLength={8}
                 data-testid="input-signup-password"
               />
               <PasswordStrengthIndicator password={password} />
