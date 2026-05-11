@@ -1,32 +1,58 @@
-## Problem
+## Goal
 
-On `/app/academy`, the dashboard shows a `ShareableProfileLink` card at the top with the academy slug. Two issues:
+Add real, social-friendly short links for both academies and trainers, then surface them in the dashboard share cards instead of the long localized URLs.
 
-1. **Copy link is broken / points to a 404.** `ShareableProfileLink` hardcodes the URL as `https://padeltrainer.ai/{handle}`. The real academy public page lives at `https://padeltrainer.ai/{lang}/academies/{slug}` (see `DomainRouter.tsx` route `academies/:slug`). So the copied URL goes nowhere, and on insecure browser contexts `navigator.clipboard.writeText` can also silently fail with no fallback.
-2. **The card is visually too big** for what it is — full-width Card with `p-4 sm:p-6`, a label, an Input, and two icon buttons stacked with helper text.
+- `padeltrainer.ai/a/{slug}` → academy public profile
+- `padeltrainer.ai/t/{slug}` → trainer public profile
 
-The user wants the card kept prominent but slimmer, and the copy action to actually work and point to the right URL.
+## Changes
 
-## Changes (frontend only)
+### 1. New short-link routes in `DomainRouter.tsx`
 
-### 1. `src/components/profile/ShareableProfileLink.tsx`
+Add two unlocalized routes mounted outside the `:lang` block so they work on bare `padeltrainer.ai/...`:
 
-- Add a `basePath` prop (e.g. `"academies"`) and an optional `lang` prop. Build the URL via `getMarketingUrl(\`${basePath}/${handle}\`, lang)` from `src/lib/domains.ts`. Fall back to current behavior (`padeltrainer.ai/{handle}`) when no `basePath` is provided so trainer / player usages keep working.
-- Compact layout variant: drop the separate `Label` + helper paragraph, use a single inline row — small "Share link" label inline, monospace URL truncated with `truncate`, and Copy + Share icon buttons (`size="icon"`, `h-8 w-8`). Provide a `compact` prop (default false) to opt in without affecting other call sites.
-- Reliability: keep `navigator.clipboard.writeText` as the primary path, but add a fallback using a hidden `<textarea>` + `document.execCommand('copy')` when the Clipboard API is unavailable or throws (covers http previews, older Safari, etc.). Keep the existing toast on success / failure.
+```
+/a/:slug  →  <Navigate to={`/${lang}/academies/${slug}`} replace />
+/t/:slug  →  <Navigate to={`/${lang}/trainer/${slug}`} replace />
+```
 
-### 2. `src/pages/academy/AcademyDashboard.tsx`
+Implemented as tiny `ShortLinkRedirect` components that read `:slug` and the current i18n language (fallback `nl`). The trainer profile route already accepts a slug in place of an id (`/trainer/:trainerId` resolves by slug), so no backend lookup is needed.
 
-- Render the share link in a slimmer container — replace the `Card` + `CardContent p-4 sm:p-6` wrapper with a compact bordered row (`rounded-lg border bg-card px-3 py-2 mb-4 flex items-center gap-3`) so the section keeps a clear visual presence at the top of the dashboard but takes roughly half the vertical space.
-- Pass `basePath="academies"` (and the active language from `useTranslation().i18n.language` or the existing param if available) to `ShareableProfileLink`, plus `compact`.
+### 2. Helpers in `src/lib/domains.ts`
 
-### Out of scope
+Add:
+- `getAcademyShortUrl(slug)` → `${MARKETING_DOMAIN}/a/${slug}`
+- `getTrainerShortUrl(slug)` → `${MARKETING_DOMAIN}/t/${slug}`
 
-- Trainer / player dashboards (their share links use the legacy host pattern; not requested here).
-- Copy translations, analytics, routing, database changes.
+Plus matching unit tests in `domains.test.ts`.
 
-## Technical notes
+### 3. `ShareableProfileLink` accepts a short URL
 
-- `getMarketingUrl` already returns the full `https://padeltrainer.ai/{lang}/...` string, ideal for clipboard text.
-- Display string for the input shows the URL without the `https://` prefix to keep it compact (matches current style).
-- No new dependencies; `compact` mode reuses existing shadcn `Input` + `Button` primitives.
+Update `src/components/profile/ShareableProfileLink.tsx`:
+- New optional `shortUrl?: string` prop.
+- When provided, the displayed / copied / shared value is `shortUrl`. Display still strips `https://` so the row stays compact.
+- When omitted, current behaviour is unchanged (so anything else using the component keeps working).
+
+### 4. Wire it up on the dashboards
+
+- `src/pages/academy/AcademyDashboard.tsx`: pass `shortUrl={getAcademyShortUrl(handle)}` (keep `basePath="academies"` and `lang` as canonical fallback).
+- `src/pages/TrainerDashboard.tsx`: pass `shortUrl={getTrainerShortUrl(trainerSlug)}`.
+
+Result: both share cards now show `padeltrainer.ai/a/jan-de-vries` and `padeltrainer.ai/t/rene` respectively.
+
+### 5. Bot/SSR + sitemap awareness
+
+- The short paths should be ignored by the sitemap (they're redirects, not canonical pages) — no sitemap changes needed.
+- Update the dynamic-rendering / Cloudflare worker config and `llms.txt` only if those files explicitly enumerate route prefixes that bots can hit. Verified during implementation; if `/a/` and `/t/` aren't whitelisted there, add them so crawlers follow the redirect cleanly.
+
+## Out of scope
+
+- Club / player short links.
+- Custom analytics on short-link clicks.
+- Database changes, slug changes, or new tables.
+- SEO canonical changes — the short URL is a client-side `<Navigate replace>`, the user lands on the full localized page (same SEO surface as today).
+
+## Notes
+
+- `/a/` and `/t/` are short, unused, and don't collide with existing routes (`academies`, `app`, `auth`, `trainer`, `trainers`, etc.).
+- Using single-letter prefixes keeps URLs compact for social bios and DMs, matching the homepage mock copy ("padeltrainer.ai/rene" style).
