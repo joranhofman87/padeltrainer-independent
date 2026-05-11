@@ -1,11 +1,8 @@
-## Bump ResetPassword min length to 8
+## Shorten forward-invoice signed URL TTL
 
-Yes — `src/pages/ResetPassword.tsx:49` still enforces `< 6`, while `validation.ts` treats 8 as the minimum strong-password baseline. Align the reset flow with the rest of the app.
+Yes — `supabase/functions/forward-invoice/index.ts:137` issues a 7-day signed URL for the invoice PDF. Anyone with the link has unauthenticated access for a week, longer than necessary.
 
 ### Change
-In `src/pages/ResetPassword.tsx` `handleSubmit`:
-- Replace `if (password.length < 6)` with `if (password.length < 8)`.
-- Update the toast description fallback string to "Password must be at least 8 characters".
-- Update the i18n key `resetPassword.passwordTooShort` default to match (translation files keep existing keys; English fallback updated inline — translations can be refreshed separately if desired).
+- Replace `604800` with `86400` (24 hours) and update the trailing comment.
 
 No other files affected.
