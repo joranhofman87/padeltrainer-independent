@@ -333,7 +333,7 @@ export async function getProfile(userId: string): Promise<FetchResult<UserProfil
       logger.error('Error fetching profile', error as any, { component: 'auth' });
       return { data: null, failed: true };
     }
-    return { data: data as UserProfile, failed: false };
+    return { data: data as unknown as UserProfile, failed: false };
   } catch (err) {
     logger.error('Exception fetching profile', err as Error, { component: 'auth' });
     return { data: null, failed: true };
