@@ -99,7 +99,7 @@ describe('TrainerSignup', () => {
     const schema = z.object({
       fullName: z.string().trim().min(2),
       email: z.string().trim().email('Please enter a valid email address'),
-      password: z.string().min(6),
+      password: z.string().min(8),
     });
     const result = schema.safeParse({ fullName: 'John', email: 'not-an-email', password: 'password123' });
     expect(result.success).toBe(false);
