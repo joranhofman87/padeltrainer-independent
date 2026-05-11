@@ -25,3 +25,12 @@ jobs:
 
       - name: Run unit tests
         run: npm test
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Check i18n parity
+        run: bun scripts/check-i18n-parity.ts
+        continue-on-error: true

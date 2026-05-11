@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "i18n:check": "bun scripts/check-i18n-parity.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
