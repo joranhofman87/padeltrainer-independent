@@ -154,9 +154,6 @@ serve(async (req) => {
   }
 
   try {
-    const mollieApiKey = Deno.env.get("MOLLIE_API_KEY");
-    if (!mollieApiKey) throw new Error("MOLLIE_API_KEY is not set");
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -225,23 +222,36 @@ serve(async (req) => {
       }
     }
 
-    // Build fetch URL with testmode if needed
-    const isTestMode = mollieApiKey.startsWith("test_");
-    const authToken = recipientAccessToken || mollieApiKey;
+    // SECURITY: Refuse to process if no connected-account token resolves.
+    // Falling back to the platform API key would let an attacker forge metadata
+    // on any payment in our Mollie OAuth app and have us flip arbitrary
+    // bookings/invoices to "paid".
     if (!recipientAccessToken) {
-      logStep("⚠️ WARNING: Falling back to platform API key for payment lookup", { paymentId, trainerId });
+      logStep("No connected-account token resolved, refusing to process", { paymentId, trainerId });
+      await notifySlackError(
+        "mollie-webhook",
+        "Refused payment processing: no connected Mollie account resolved",
+        { paymentId, trainerId },
+      );
+      // 200 so Mollie doesn't retry forever; we've alerted internally.
+      return new Response("OK", { status: 200 });
     }
+
+    // Use platform key prefix only as a hint for whether to query test mode.
+    // The actual API call is always made with the connected-account token.
+    const platformKey = Deno.env.get("MOLLIE_API_KEY") ?? "";
+    const isTestMode = platformKey.startsWith("test_");
     let fetchUrl = `https://api.mollie.com/v2/payments/${paymentId}`;
-    if (isTestMode && recipientAccessToken) {
+    if (isTestMode) {
       fetchUrl += "?testmode=true";
     }
 
-    logStep("Fetching payment from Mollie", { useConnectedToken: !!recipientAccessToken, isTestMode });
+    logStep("Fetching payment from Mollie", { useConnectedToken: true, isTestMode });
 
-    // Fetch payment details from Mollie
+    // Fetch payment details from Mollie using the connected-account token only.
     const mollieResponse = await fetch(fetchUrl, {
       headers: {
-        "Authorization": `Bearer ${authToken}`,
+        "Authorization": `Bearer ${recipientAccessToken}`,
       },
     });
 
