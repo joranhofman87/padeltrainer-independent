@@ -2679,6 +2679,7 @@ export type Database = {
           player_name: string
           prices_include_vat: boolean
           public_token: string
+          public_token_revoked_at: string | null
           sent_at: string | null
           status: string
           subtotal: number
@@ -2712,6 +2713,7 @@ export type Database = {
           player_name: string
           prices_include_vat?: boolean
           public_token?: string
+          public_token_revoked_at?: string | null
           sent_at?: string | null
           status?: string
           subtotal?: number
@@ -2745,6 +2747,7 @@ export type Database = {
           player_name?: string
           prices_include_vat?: boolean
           public_token?: string
+          public_token_revoked_at?: string | null
           sent_at?: string | null
           status?: string
           subtotal?: number
