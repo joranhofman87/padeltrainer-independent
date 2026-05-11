@@ -1,7 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders, requireAdmin } from "../_shared/auth.ts";
+import { requireAdmin } from "../_shared/auth.ts";
+import { restrictedCors } from "../_shared/cors.ts";
 
 Deno.serve(async (req) => {
+  const corsHeaders = restrictedCors(req);
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   const auth = await requireAdmin(req);
