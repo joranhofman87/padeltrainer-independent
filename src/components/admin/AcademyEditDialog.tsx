@@ -231,11 +231,11 @@ export function AcademyEditDialog({
       
       // Fetch platform fee override
       supabase
-        .from("academy_profiles")
+        .from("academy_profiles_owner" as any)
         .select("platform_fee_override")
         .eq("id", academy.id)
         .single()
-        .then(({ data }) => {
+        .then(({ data }: { data: any }) => {
           setPlatformFeeOverride(data?.platform_fee_override?.toString() || "");
         });
     }
