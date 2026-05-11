@@ -45,6 +45,35 @@ serve(async (req) => {
       });
     }
 
+    // Authorization: caller must be admin, the invoice's trainer, or a manager
+    // of the invoice's academy. Service-role calls bypass this check.
+    if (!auth.isServiceRole) {
+      const userId = auth.user.id;
+      const [{ data: trainerProfile }, { data: adminRow }] = await Promise.all([
+        supabase.from("trainer_profiles").select("id").eq("user_id", userId).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+      ]);
+      const isAdmin = !!adminRow;
+      const isOwningTrainer = trainerProfile?.id && trainerProfile.id === invoice.trainer_id;
+      let isAcademyManager = false;
+      if (!isAdmin && !isOwningTrainer && invoice.academy_profile_id) {
+        const { data: managed } = await supabase
+          .from("academy_managers")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("academy_profile_id", invoice.academy_profile_id)
+          .maybeSingle();
+        isAcademyManager = !!managed;
+      }
+      if (!isAdmin && !isOwningTrainer && !isAcademyManager) {
+        logStep("Forbidden: caller does not own invoice", { userId, invoiceId });
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Must be active and unpaid
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       return new Response(
