@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import type { SeoFields } from '@/lib/sanity';
 import { buildBreadcrumbList } from '@/lib/structuredData';
 import { MarketingHero, MarketingSection } from '@/components/marketing/sections';
+import { HeroVisualCoaches } from '@/components/marketing/visuals/HeroScenes';
 
 interface CoachListItem {
   _id: string;
@@ -68,6 +69,7 @@ export default function Coaches() {
         eyebrow="Creators we love"
         title="Padel Content Creators"
         subtitle="We curate the best padel content from independent coaches and creators. These creators are not affiliated with PadelTrainer.ai - we feature them because of the quality of their tutorials, drills, and tips."
+        visual={<HeroVisualCoaches />}
       />
 
       <section className="max-w-3xl mx-auto px-4 md:px-6 -mt-6">
