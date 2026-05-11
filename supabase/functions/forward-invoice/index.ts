@@ -134,7 +134,7 @@ const handler = async (req: Request): Promise<Response> => {
     const pdfFileName = `${folderKey}/${invoice.invoice_number}.pdf`;
     const { data: signedUrl } = await supabase.storage
       .from("invoices")
-      .createSignedUrl(pdfFileName, 604800); // 7 days
+      .createSignedUrl(pdfFileName, 86400); // 24 hours
 
     const pdfLink = signedUrl?.signedUrl || invoice.pdf_url || "";
 
