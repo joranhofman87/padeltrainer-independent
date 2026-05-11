@@ -354,13 +354,13 @@ export async function updateProfile(userId: string, updates: Partial<UserProfile
 
 export async function getTrainerProfile(userId: string): Promise<TrainerProfile | null> {
   const { data, error } = await supabase
-    .from('trainer_profiles')
+    .from('trainer_profiles_owner' as any)
     .select('*')
     .eq('user_id', userId)
     .single();
   
   if (error || !data) return null;
-  return data as TrainerProfile;
+  return data as unknown as TrainerProfile;
 }
 
 export async function sendPasswordResetEmail(email: string) {
