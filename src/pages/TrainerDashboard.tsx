@@ -253,7 +253,7 @@ export default function TrainerDashboard() {
       {trainerSlug && (
         <Card className="mb-6">
           <CardContent className="p-4 sm:p-6">
-            <ShareableProfileLink handle={trainerSlug} />
+            <ShareableProfileLink handle={trainerSlug} shortUrl={getTrainerShortUrl(trainerSlug)} />
           </CardContent>
         </Card>
       )}
