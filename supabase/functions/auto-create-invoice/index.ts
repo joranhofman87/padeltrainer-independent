@@ -71,6 +71,43 @@ serve(async (req) => {
     const slot = bookings[0].availability_slots as any;
     const trainerId = slot.trainer_id;
 
+    // Authorization: caller must be admin, the slot's trainer, or a manager
+    // of the slot's academy. Service-role calls (cron) bypass this check.
+    if (!auth.isServiceRole) {
+      const userId = auth.user.id;
+      const trainerSlotIds = new Set(bookings.map((b: any) => b.availability_slots?.trainer_id).filter(Boolean));
+      const academyIds = new Set(bookings.map((b: any) => b.availability_slots?.academy_profile_id).filter(Boolean));
+
+      const [{ data: trainerProfile }, { data: adminRow }] = await Promise.all([
+        supabase.from("trainer_profiles").select("id").eq("user_id", userId).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+      ]);
+      const isAdmin = !!adminRow;
+      const callerTrainerId = trainerProfile?.id ?? null;
+      const ownsAllAsTrainer = callerTrainerId
+        ? [...trainerSlotIds].every((tid) => tid === callerTrainerId)
+        : false;
+
+      let ownsViaAcademy = false;
+      if (!isAdmin && !ownsAllAsTrainer && academyIds.size > 0) {
+        const { data: managed } = await supabase
+          .from("academy_managers")
+          .select("academy_profile_id")
+          .eq("user_id", userId);
+        const managedSet = new Set((managed ?? []).map((m: any) => m.academy_profile_id));
+        ownsViaAcademy = [...academyIds].every((aid) => managedSet.has(aid));
+      }
+
+      if (!isAdmin && !ownsAllAsTrainer && !ownsViaAcademy) {
+        logStep("Forbidden: caller does not own these bookings", { userId });
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+
     // Auto-detect split payment from slot if not explicitly passed
     if (!splitAmongPlayers && slot.split_payment === true) {
       const uniquePlayers = new Set(bookings.map((b) => b.player_id || b.guest_player_id).filter(Boolean));
