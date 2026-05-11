@@ -536,6 +536,8 @@ export default function TrainerProfile() {
                         src={trainerAcademy.logo_url} 
                         alt={trainerAcademy.name} 
                         className="h-16 w-16 rounded-lg object-cover border"
+                        loading="lazy"
+                        decoding="async"
                       />
                     )}
                     <div className="flex-1">

@@ -402,7 +402,7 @@ function CoverImageCard({
       <CardContent className="space-y-3">
         {coverImageUrl ? (
           <div className="aspect-[1200/630] bg-muted rounded-lg overflow-hidden">
-            <img src={coverImageUrl} alt="Cover" className="w-full h-full object-cover" />
+            <img src={coverImageUrl} alt="Cover" className="w-full h-full object-cover" loading="lazy" decoding="async" />
           </div>
         ) : (
           <div className="aspect-[1200/630] bg-muted rounded-lg flex items-center justify-center text-muted-foreground text-sm">
