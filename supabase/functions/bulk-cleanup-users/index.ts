@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
         message: `Cleanup complete. Deleted ${results.deleted.length} users.`,
         deleted: results.deleted,
         errors: results.errors,
-        preserved: PRESERVED_USER_IDS,
+        preserved: preservedUserIds,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
