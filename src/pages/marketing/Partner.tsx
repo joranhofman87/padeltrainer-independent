@@ -111,23 +111,22 @@ export default function Partner() {
         description={t('partner.subtitle')}
         url="/partner"
       />
-      <section className="py-20 md:py-32">
-        <div className="container mx-auto px-4">
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 dot-grid opacity-60 -z-10" aria-hidden />
+        <div className="relative max-w-2xl mx-auto px-4 md:px-6 pt-16 pb-12 md:pt-24 md:pb-16">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="max-w-2xl mx-auto"
           >
-            {/* Header */}
             <div className="text-center mb-12">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-6">
-                <Handshake className="h-8 w-8 text-primary" />
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-brand-50 text-brand-600 mb-6 mx-auto">
+                <Handshake className="h-7 w-7" />
               </div>
-              <h1 className="text-3xl md:text-4xl font-bold mb-4">
+              <h1 className="font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] text-navy-900 mb-4">
                 {t('partner.title')}
               </h1>
-              <p className="text-lg text-muted-foreground">
+              <p className="text-lg text-navy-700 leading-relaxed">
                 {t('partner.subtitle')}
               </p>
             </div>
@@ -149,7 +148,7 @@ export default function Partner() {
                 </p>
               </motion.div>
             ) : (
-              <div className="bg-card border rounded-lg p-6 md:p-8 shadow-sm">
+              <div className="card-chip p-6 md:p-8">
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                     {/* Honeypot field - hidden from real users */}

@@ -19,18 +19,21 @@ export default function Privacy() {
         url="/privacy"
         noIndex={false}
       />
-      <div className="container mx-auto px-4 py-16 max-w-4xl">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <h1 className="text-4xl font-bold mb-8">{t('privacy.title')}</h1>
-          <p className="text-muted-foreground mb-8">
-            {t('privacy.lastUpdated', { date: formattedDate })}
-          </p>
-
-          <div className="prose prose-lg max-w-none space-y-8">
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 dot-grid opacity-60 -z-10" aria-hidden />
+        <div className="relative max-w-3xl mx-auto px-4 md:px-6 pt-16 md:pt-24">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+            <span className="eyebrow">Legal</span>
+            <h1 className="mt-4 font-display text-4xl md:text-5xl font-extrabold tracking-[-0.02em] text-navy-900 mb-4">
+              {t('privacy.title')}
+            </h1>
+            <p className="text-navy-600">{t('privacy.lastUpdated', { date: formattedDate })}</p>
+          </motion.div>
+        </div>
+      </div>
+      <div className="max-w-3xl mx-auto px-4 md:px-6 pb-16 pt-8">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
+          <div className="prose prose-lg max-w-none space-y-8 text-navy-700">
             {/* 1. Introduction */}
             <section>
               <h2 className="text-2xl font-semibold mb-4">{s('introduction.title')}</h2>

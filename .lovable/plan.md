@@ -1,167 +1,89 @@
+# Marketing visual refresh - rollout plan
 
-# SEO + LLM Visibility Audit — May 2026
+Bring every marketing page up to the look and feel of the new homepage. **No database, schema, copy, or business-logic changes** - this is purely a visual / presentation pass using the existing design system (`docs/DESIGN_SYSTEM.md`, tokens in `src/index.css`, primitives in `tailwind.config.ts`).
 
-Acting as SEO/Growth manager. Sanity owns marketing content, so this audit focuses on **technical SEO, schema depth, programmatic on-page enrichment, internal linking, and Generative-Engine-Optimization (GEO) signals** that drive ChatGPT / Claude / Perplexity citations.
+## Goal
 
-I crawled the live site as Googlebot and reviewed render-page, sitemap, llms.txt, SEO.tsx, structuredData.ts, og-image, and the marketing page set.
+Every marketing surface should feel like it belongs to the same product as the new homepage: confident navy + brand-orange palette, Plus Jakarta display headings, generous spacing, soft cards, dot-grid backdrops, mock windows where useful, and consistent CTA primitives.
 
----
+## What "homepage look" means (the kit we'll reuse)
 
-## Score card
+Pulled from `src/components/home/*` and `docs/DESIGN_SYSTEM.md`:
 
-| Area | Status | Notes |
-|---|---|---|
-| Bot rendering (Cloudflare → render-page) | Strong | 200 OK, ~10KB HTML, real 404s |
-| Hreflang + x-default | Strong | en default, all 6 locales |
-| Sitemaps (index + 12 shards) | Good | Static lastmod (today) for ALL urls = signal noise |
-| llms.txt / llms-full.txt | Good | Static curation + live entity catalog |
-| Schema: Org/Person/Breadcrumb/FAQ | Good | Present on city + entity pages |
-| Schema: Review, AggregateRating, Course, Event, HowTo, VideoObject, SpeakableSpecification | Missing | Major gap |
-| OG images per entity | Done | dynamic SVG via og-image fn |
-| Press kit, Powered-by badge | Done | |
-| Programmatic depth on entity pages (bot HTML) | Weak | No DB-derived facts in bot HTML |
-| Author entities + sameAs | Missing | Articles cite "Organization" only |
-| Internal linking (bot HTML) | Weak | Only generic 21-city list, no contextual crosslinks |
-| Localized labels in render-page | Weak | "Trainers" / "Blog" / "FAQ" hardcoded EN on all locales |
-| CWV (human SPA) | Unmeasured | Self-hosted fonts still pending |
-| GSC / Bing verification | Wired, unset | Need tokens in env |
-| IndexNow (Bing/Yandex fast indexing) | Missing | |
-| Image / Video sitemaps | Missing | |
+- **Eyebrow chip** (`.eyebrow` or the inline navy pill from HeroSection) above every section heading
+- **Display headings**: `font-display font-extrabold tracking-[-0.02em]`, responsive scale `text-3xl sm:text-4xl md:text-5xl`
+- **Section rhythm**: `py-16 md:py-24 lg:py-32`, alternating `bg-background` / `section-cream` / `section-off`, occasional `bg-navy-950` final CTA
+- **Containers**: `max-w-7xl mx-auto px-4 md:px-6`
+- **Surfaces**: `.card-chip` for content cards, `.mock-window` + `.mock-bar` for product previews, `.dot-grid` backdrops on hero/CTA
+- **CTAs**: `.pill-primary` and `.pill-ghost` only, h-12, with `ArrowRight` icon
+- **Trust row**: check-icon list under hero CTAs (`Check` lucide, `text-brand-500`)
+- **Icon tiles**: `w-12 h-12 rounded-xl bg-brand-50 text-brand-600`
+- **Final CTA**: dark navy section with dot-grid overlay, identical to `FinalCTASection`
 
----
+## Shared building blocks to extract first (one-time work)
 
-## Tier 1 — Highest leverage (ship next sprint)
+Before touching pages, lift these out of `src/components/home/` into reusable marketing primitives so we don't fork styles:
 
-### A1. Enrich render-page bot HTML with live DB facts (M, ★★★)
-Single biggest gap. Today `/en/trainers/utrecht` says "Find and book padel trainers in Utrecht" — that's it. Bot HTML must answer the exact query.
-- City pages: `count(trainers)`, `min/avg hourly_rate`, `count(clubs)`, top 5 trainers (name, slug, rate, rating), top 5 clubs, intro paragraph stitched from those facts.
-- Trainer pages: `hourly_rate`, `years_experience`, `specializations`, `aggregate rating + review count`, home city/club, last 2 review snippets. Unlocks real `AggregateRating` + `Review` schema.
-- Club pages: indoor/outdoor courts, address, geo, list of trainers at this club.
-- Academy pages: trainer count, active cycle count.
-- Cache 1h at edge keyed on path; ~50ms added per cold render.
+```
+src/components/marketing/sections/
+  MarketingHero.tsx        // eyebrow + h1 + sub + CTA row + trust row + optional right-side mock
+  MarketingSection.tsx     // wraps children in eyebrow + heading + container + alt bg
+  EyebrowChip.tsx
+  IconTile.tsx
+  MockWindow.tsx           // already implicit in CSS - wrap as a component for reuse
+  MarketingFinalCTA.tsx    // generalized FinalCTASection (title / sub / primary CTA props)
+  MarketingFAQ.tsx         // generalized FAQSection
+```
 
-### A2. Review/AggregateRating/Course/Event/LocalBusiness schema (S, ★★★)
-Once A1 ships the data:
-- Trainer profile → `Person` + `aggregateRating` + up to 5 `Review`.
-- Academy cycles → `Course` with `provider`, `offers.price`, `courseInstance.startDate`.
-- Tournaments → `Event`.
-- Clubs with reviews → `LocalBusiness` + `aggregateRating` + `geo`.
-Result: review stars in SERP → +20-40% CTR with no rank change.
+These are pure presentational wrappers; no logic changes. Existing home sections get refactored to consume them so the homepage stays identical.
 
-### A3. GEO — make pages citation-ready for LLMs (M, ★★★)
-ChatGPT / Claude / Perplexity preferentially cite pages with:
-- Factual, dated TL;DR top of page: "As of {Month YYYY}, PadelTrainer.ai lists {N} certified padel trainers across {C} cities in {K} countries."
-- Visible "Last updated: {date}" line on every entity / city page.
-- Q&A worded the way users prompt LLMs ("How much does a padel coach in Utrecht charge?" not "Pricing").
-- Comparison tables ("Padel vs Tennis lessons", "Group vs Private cost").
-- Outbound links to authoritative sources (FIP, national federations) on learning pages — outbound link graph is a trust signal for LLMs.
-- `SpeakableSpecification` on FAQ + intro blocks for voice assistants.
-- Visible byline + `Person` author with `sameAs` on Sanity articles.
+## Page-by-page rollout (priority order)
 
-### A4. Contextual internal linking in bot HTML (S, ★★)
-Today every city page links to the same 21 popular cities. Make it contextual:
-- Trainer → "More trainers in {city}", "Other trainers in {province}", "Clubs where {trainer} teaches".
-- City → "Nearby cities in {province}" (5), "Top clubs in {city}" (5), "Top academies in {city}".
-- Province → every city in that province.
-- Club → "Trainers at {club}", "Other clubs in {city}".
-- Academy → "Other academies in {country}".
-All from existing `provinces.ts` + DB. Compounds A1.
+Tier 1 - high-traffic pillar pages (do first):
 
-### A5. Localize section labels in render-page (XS, ★★)
-`render-page` hardcodes "Trainers", "Locations", "Blog", "Frequently Asked Questions" in English on `/nl/`, `/es/`, `/de/`, `/fr/`, `/it/`. Add a per-lang label map. Improves local SERPs and hreflang quality signal.
+1. **Pricing** (`Pricing.tsx`) - replace shadcn `Card` plan cards with `.card-chip` styling, add hero with eyebrow + dot-grid, swap buttons for `.pill-primary` / `.pill-ghost`, finish with `MarketingFinalCTA`.
+2. **About** (`About.tsx`) - new hero, values grid using `IconTile`, stats row in navy band, final CTA.
+3. **Coaches index** (`Coaches.tsx`) + **CoachPage** - hero + filter bar styling, coach cards using `.card-chip`.
+4. **LearnIndex** + **TopicsIndex** + **TopicPage** - pillar hub treatment: eyebrow, large display h1, topic cards as `.card-chip` grid, dot-grid hero backdrop.
+5. **Blog** + **BlogPost** - hero band, article cards in `.card-chip`, post header with eyebrow + display heading + meta row, sticky TOC styled with navy tokens.
 
----
+Tier 2 - tools / playground:
 
-## Tier 2 — Authority & discoverability
+6. **Playground**, **RacketFinder**, **RacketListing**, **RacketDetail**, **PadelLevelTest**, **RedFlagQuiz**, **RateMyCourtPage**, **ChallengeModePage** - shared tool-page shell: hero with `.mock-window` style preview where it fits, results screens use `.card-chip`.
+7. **Strokes** + **StrokePage**, **VideoTips** + **VideoTipPage**, **Rules** + **RulesPage** - learning-content shell mirroring blog treatment.
 
-### B1. Author entities + Organization sameAs (S, ★★)
-- Add `sameAs` to Organization JSON-LD: LinkedIn, X, Instagram, GitHub, Crunchbase. Disambiguates the brand for Knowledge Graph + LLMs.
-- Replace `author: Organization` on articles with a real `Person` (`url`, `sameAs`, `jobTitle`). Build `/author/{slug}` pages from a small Sanity author schema.
+Tier 3 - supporting / legal:
 
-### B2. IndexNow + Google Indexing API (S, ★★)
-- IndexNow key file at `/{key}.txt`; ping `api.indexnow.org` from a Cloud Function on Sanity publish, new trainer go-live, new city's first trainer. Bing + Yandex re-crawl within minutes.
-- Google Indexing API cron for `JobPosting` + `Event` URLs (the only types Google supports).
+8. **Partner**, **PressKit**, **FoundingTrainers** - hero + section rhythm + final CTA.
+9. **Privacy**, **Terms** - lighter touch: just hero band + typography pass, keep long-form readable (`prose` width).
+10. **CityLanding**, **PublicRatingCard**, **LearningArticlePage** - apply shell, keep dynamic content as-is.
 
-### B3. Per-URL `lastmod` in sitemaps (S, ★★)
-All sitemap URLs currently emit today's date — Google deprioritizes "always today" sitemaps. Use `updated_at` from each row (trainers, locations, academies, articles).
+`Brand.tsx` already mirrors the design system - leave as reference.
 
-### B4. Image + Video sitemaps (S, ★)
-- `sitemap-images.xml` for trainer avatars, club photos, racket images.
-- `sitemap-videos.xml` for `/video-tips/*` with thumbnails + durations.
+## Cross-cutting tasks
 
-### B5. Trailing-slash 301 in Cloudflare worker (XS, ★)
-Canonical normalization is client-side only. Add a 301 in the worker so external links to `/en/trainers/utrecht/` collapse before they reach the SPA.
+- **MarketingLayout** (`src/components/marketing/MarketingLayout.tsx`) - audit nav + footer for token consistency (navy text, brand CTA), no structural changes.
+- **MegaMenu** - re-skin chips/cards to match `.card-chip` + brand-50 hover.
+- **SEO component** - no changes (this is purely visual).
+- **i18n** - no copy changes; only restructure markup. If a heading needs to split into eyebrow + h1, reuse existing keys.
+- **Dark mode** - verify each refreshed page in dark mode since marketing is light-first; tokens already handle it.
+- **Mobile-first QA** at 360 / 414 / 768 / 1280 per design-system rule.
 
-### B6. llms.txt freshness (XS, ★)
-- Add `<link rel="llms" href="/llms.txt">` to HTML head.
-- Regenerate `llms.txt` weekly via cron with current top-N trainers/cities.
+## Guardrails
 
----
+- No new colors; only tokens from `index.css` / `tailwind.config.ts`.
+- No em-dashes in any copy touched.
+- Keep all routes, props, data fetching, and translations identical.
+- Don't introduce new animation libs; reuse existing `animate-floaty` / framer-motion already in use.
+- Keep `staleTime` and query behavior untouched.
 
-## Tier 3 — Technical hardening & monitoring
+## Suggested execution order in build mode
 
-### C1. CWV pass on human SPA (M, ★★)
-- PageSpeed audit on `/en`, top city, top trainer, top blog post.
-- Self-host Inter + Plus Jakarta Sans woff2 with `font-display: swap` + preload.
-- Explicit `width`/`height` on every `<img>` to kill CLS.
-- Eager + `fetchpriority="high"` on hero images.
-- Code-split heavy admin chunks out of marketing entry.
+1. Land the shared primitives in `src/components/marketing/sections/` and refactor `Home.tsx` sections to use them (no visual diff on homepage).
+2. Ship Tier 1 pages one PR at a time, each with before/after screenshots at mobile + desktop.
+3. Ship Tier 2 and Tier 3 in batches grouped by shared shell.
 
-### C2. Set GSC + Bing verification (XS, ★)
-Env vars `VITE_GOOGLE_SITE_VERIFICATION` + `VITE_BING_SITE_VERIFICATION` are wired in `SEO.tsx` — just need real values in deployment env, then submit sitemap-index in both consoles.
+## Out of scope
 
-### C3. Schema regression CI (S, ★★)
-GitHub Action that curls 5 representative URLs through `render-page` and validates JSON-LD with `schema-dts` / structured-data-testing-tool. Fails PR on broken schema.
+- Database, edge functions, schema, RLS, content rewrites, SEO metadata changes, new features, new routes.
 
-### C4. Sitemap drift alert (XS, ★)
-Weekly job that compares current sitemap URL count to last week and Slack-pings if drop >10%. Catches deindexing fast.
-
----
-
-## Tier 4 — Compounding plays
-
-### D1. Programmatic pillar pages (M, ★★★)
-- "Best padel trainers in Europe 2026" (top-100 by rating, programmatic).
-- "How much does a padel coach cost?" (calculator + price ranges per country, charts).
-- "Find a padel club near you" (map, server-rendered cluster summary for bots).
-Each becomes a hub redistributing link equity to city / trainer pages.
-
-### D2. UGC velocity loop (M, ★★)
-- Email past players a one-click court / trainer review link (3 questions, 30s).
-- "Recently reviewed" feed on city pages → freshness signal.
-
-### D3. Backlink loops (S, ★★)
-- Submit `/llms.txt` to llms-txt directories (`directory.llmstxt.cloud`, etc.).
-- Embeddable trainer-finder widget for partner club sites → branded backlinks.
-- Public READ API documented on `/press`.
-
-### D4. VideoObject + transcripts on /video-tips (M, ★★)
-Double indexing surface + Google Video carousel eligibility.
-
----
-
-## Recommended next sprint (1 week, ordered)
-
-Each step unlocks the next:
-
-1. **A1** DB enrichment in render-page — foundation
-2. **A2** Review/AggregateRating/Course schemas — uses A1 data
-3. **A4** contextual internal links — uses A1 data
-4. **A5** localized labels — XS, same PR
-5. **B3** real lastmod in sitemaps — XS, same PR
-6. **A3** GEO TL;DR + last-updated + speakable — uses A1 data
-
-Parallel quick wins: **B1** (sameAs + author), **B5** (worker 301), **C2** (GSC/Bing tokens).
-
-Expected outcome in 4-6 weeks: city long-tails ("padel trainer Utrecht", "padel coach Madrid prijs") begin ranking page-1, trainer profiles eligible for SERP star ratings, ChatGPT/Claude begin citing PadelTrainer.ai for "where can I book a padel coach" prompts.
-
----
-
-## What to ask ChatGPT / Claude to validate
-
-1. "What technical SEO gaps are missing from this audit for a multilingual marketplace?"
-2. "Rank these Tier-1 items by expected impact on organic traffic in 90 days."
-3. "What additional schema types would help a padel-coach marketplace appear in AI Overviews?"
-4. "Audit our llms.txt + llms-full.txt against current best practice (May 2026)."
-
-Tell me which tier to scope into a build plan — I recommend Tier 1 (A1 → A5 + B3) as a single coordinated PR.

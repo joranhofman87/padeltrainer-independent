@@ -1,9 +1,6 @@
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
@@ -15,16 +12,17 @@ import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { useState } from 'react';
 import { BannerZone } from '@/components/sponsors/BannerZone';
+import { MarketingHero, MarketingSection, MarketingFinalCTA } from '@/components/marketing/sections';
+import { cn } from '@/lib/utils';
+
 function BlogPostCardSkeleton() {
   return (
-    <Card className="h-full">
-      <CardContent className="p-6">
-        <Skeleton className="h-5 w-20 mb-3" />
-        <Skeleton className="h-6 w-full mb-2" />
-        <Skeleton className="h-4 w-full mb-4" />
-        <Skeleton className="h-4 w-32" />
-      </CardContent>
-    </Card>
+    <div className="card-chip p-6">
+      <Skeleton className="h-5 w-20 mb-3" />
+      <Skeleton className="h-6 w-full mb-2" />
+      <Skeleton className="h-4 w-full mb-4" />
+      <Skeleton className="h-4 w-32" />
+    </div>
   );
 }
 
@@ -32,13 +30,11 @@ function EmptyState() {
   const { t } = useTranslation('marketing');
   return (
     <div className="text-center py-16">
-      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
-        <FileText className="h-8 w-8 text-muted-foreground" />
+      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-navy-50 mb-4">
+        <FileText className="h-8 w-8 text-navy-500" />
       </div>
-      <h2 className="text-xl font-semibold mb-2">{t('blog.notFound.title')}</h2>
-      <p className="text-muted-foreground max-w-md mx-auto">
-        {t('blog.notFound.description')}
-      </p>
+      <h2 className="font-display text-xl font-bold text-navy-900 mb-2">{t('blog.notFound.title')}</h2>
+      <p className="text-navy-600 max-w-md mx-auto">{t('blog.notFound.description')}</p>
     </div>
   );
 }
@@ -49,26 +45,31 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ delay: index * 0.1 }}
+      transition={{ delay: index * 0.05 }}
     >
-      <LocalizedLink to={`/blog/${article.slug}`}>
-        <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
-          <CardContent className="p-6">
-            {article.category && (
-              <Badge variant="secondary" className="mb-3">{article.category}</Badge>
-            )}
-            <CardTitle className="text-lg mb-2 hover:text-primary transition-colors line-clamp-2">
-              {article.h1 || article.title}
-            </CardTitle>
-            <CardDescription className="line-clamp-2 mb-4">
-              {article.excerpt}
-            </CardDescription>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{article.datePublished ? new Date(article.datePublished).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' }) : ''}</span>
-              <span>{calculateReadTime(article.bodySections, article.content)}</span>
-            </div>
-          </CardContent>
-        </Card>
+      <LocalizedLink to={`/blog/${article.slug}`} className="block group h-full">
+        <div className="card-chip p-6 h-full flex flex-col transition-all group-hover:-translate-y-0.5 group-hover:shadow-mock">
+          {article.category && (
+            <span className="self-start text-xs rounded-full bg-brand-50 text-brand-700 px-2.5 py-1 font-semibold uppercase tracking-wide mb-3">
+              {article.category}
+            </span>
+          )}
+          <h3 className="font-display text-lg font-bold text-navy-900 mb-2 group-hover:text-brand-600 transition-colors line-clamp-2">
+            {article.h1 || article.title}
+          </h3>
+          <p className="text-navy-600 line-clamp-2 mb-4 flex-1">{article.excerpt}</p>
+          <div className="flex items-center gap-4 text-xs text-navy-500">
+            <span>
+              {article.datePublished
+                ? new Date(article.datePublished).toLocaleDateString(dateLocale, {
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                : ''}
+            </span>
+            <span>{calculateReadTime(article.bodySections, article.content)}</span>
+          </div>
+        </div>
       </LocalizedLink>
     </motion.div>
   );
@@ -93,9 +94,18 @@ export default function Blog() {
   });
 
   const articles = data?.articles || [];
-  const featuredPost = articles.find(a => a.isFeatured) || articles[0];
-  const recentPosts = articles.filter(a => a !== featuredPost);
-  const dateLocale = i18n.language === 'nl' ? 'nl-NL' : i18n.language === 'de' ? 'de-DE' : i18n.language === 'es' ? 'es-ES' : i18n.language === 'fr' ? 'fr-FR' : 'en-US';
+  const featuredPost = articles.find((a) => a.isFeatured) || articles[0];
+  const recentPosts = articles.filter((a) => a !== featuredPost);
+  const dateLocale =
+    i18n.language === 'nl'
+      ? 'nl-NL'
+      : i18n.language === 'de'
+        ? 'de-DE'
+        : i18n.language === 'es'
+          ? 'es-ES'
+          : i18n.language === 'fr'
+            ? 'fr-FR'
+            : 'en-US';
 
   const breadcrumbListSD = {
     '@context': 'https://schema.org',
@@ -106,65 +116,78 @@ export default function Blog() {
     ],
   };
 
-  const blogSD = articles.length > 0 ? {
-    '@context': 'https://schema.org',
-    '@type': 'Blog',
-    name: t('blog.title'),
-    description: t('blog.subtitle'),
-    url: `${MARKETING_DOMAIN}/blog`,
-    blogPost: articles.slice(0, 10).map(a => ({
-      '@type': 'BlogPosting',
-      headline: a.title,
-      description: a.excerpt,
-      datePublished: a.datePublished,
-      ...(a.authorName ? { author: { '@type': 'Person', name: a.authorName } } : {}),
-      url: `${MARKETING_DOMAIN}/${lang}/blog/${a.slug}`
-    }))
-  } : undefined;
+  const blogSD =
+    articles.length > 0
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'Blog',
+          name: t('blog.title'),
+          description: t('blog.subtitle'),
+          url: `${MARKETING_DOMAIN}/blog`,
+          blogPost: articles.slice(0, 10).map((a) => ({
+            '@type': 'BlogPosting',
+            headline: a.title,
+            description: a.excerpt,
+            datePublished: a.datePublished,
+            ...(a.authorName ? { author: { '@type': 'Person', name: a.authorName } } : {}),
+            url: `${MARKETING_DOMAIN}/${lang}/blog/${a.slug}`,
+          })),
+        }
+      : undefined;
 
   const structuredData = [breadcrumbListSD, ...(blogSD ? [blogSD] : [])];
 
   return (
     <MarketingLayout>
-      <SEO
+      <SEO title={t('blog.title')} description={t('blog.subtitle')} url="/blog" structuredData={structuredData} />
+
+      <MarketingHero
+        eyebrow={t('blog.eyebrow', 'Stories & insights')}
         title={t('blog.title')}
-        description={t('blog.subtitle')}
-        url="/blog"
-        structuredData={structuredData}
+        subtitle={t('blog.subtitle')}
+        compact
       />
-      {/* Hero */}
-      <section className="py-16 bg-background">
-        <div className="container mx-auto px-4">
-          <Breadcrumbs items={[
-            { label: t('blog.title', 'Blog') },
-          ]} />
-          <motion.div className="text-center max-w-3xl mx-auto" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">{t('blog.title')}</h1>
-            <p className="text-xl text-muted-foreground">{t('blog.subtitle')}</p>
-          </motion.div>
-        </div>
-      </section>
+
+      <div className="max-w-7xl mx-auto px-4 md:px-6">
+        <Breadcrumbs items={[{ label: t('blog.title', 'Blog') }]} />
+      </div>
 
       {/* Category filters */}
       {categories.length > 0 && (
-        <section className="py-4 border-b">
-          <div className="container mx-auto px-4 flex flex-wrap gap-2">
-            <Badge
-              variant={!selectedCategory ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => { setSelectedCategory(undefined); setPage(1); }}
+        <section className="border-b border-navy-100">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory(undefined);
+                setPage(1);
+              }}
+              className={cn(
+                'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                !selectedCategory
+                  ? 'bg-navy-900 text-white'
+                  : 'bg-card border border-navy-100 text-navy-700 hover:text-brand-600',
+              )}
             >
               All
-            </Badge>
-            {categories.map(cat => (
-              <Badge
+            </button>
+            {categories.map((cat) => (
+              <button
                 key={cat}
-                variant={selectedCategory === cat ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => { setSelectedCategory(cat); setPage(1); }}
+                type="button"
+                onClick={() => {
+                  setSelectedCategory(cat);
+                  setPage(1);
+                }}
+                className={cn(
+                  'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                  selectedCategory === cat
+                    ? 'bg-navy-900 text-white'
+                    : 'bg-card border border-navy-100 text-navy-700 hover:text-brand-600',
+                )}
               >
                 {cat}
-              </Badge>
+              </button>
             ))}
           </div>
         </section>
@@ -172,76 +195,96 @@ export default function Blog() {
 
       {/* Content */}
       {isLoading ? (
-        <section className="py-12">
-          <div className="container mx-auto px-4">
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3, 4, 5, 6].map(i => <BlogPostCardSkeleton key={i} />)}
-            </div>
+        <MarketingSection background="default">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <BlogPostCardSkeleton key={i} />
+            ))}
           </div>
-        </section>
+        </MarketingSection>
       ) : articles.length === 0 ? (
-        <section className="py-12">
-          <div className="container mx-auto px-4"><EmptyState /></div>
-        </section>
+        <MarketingSection background="default">
+          <EmptyState />
+        </MarketingSection>
       ) : (
         <>
           {/* Featured Post */}
           {featuredPost && (
-            <section className="py-12">
-              <div className="container mx-auto px-4">
-                <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-                  <LocalizedLink to={`/blog/${featuredPost.slug}`}>
-                    <Card className="overflow-hidden hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
-                      <CardContent className="p-8">
-                        {featuredPost.category && <Badge className="w-fit mb-4">{featuredPost.category}</Badge>}
-                        <CardTitle className="text-2xl md:text-3xl mb-4 hover:text-primary transition-colors">{featuredPost.h1 || featuredPost.title}</CardTitle>
-                        <CardDescription className="text-base mb-4">{featuredPost.excerpt}</CardDescription>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4" />
-                            {featuredPost.datePublished && new Date(featuredPost.datePublished).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            {calculateReadTime(featuredPost.bodySections, featuredPost.content)}
-                          </span>
-                          {(
-                             <span>by {featuredPost.authorName || 'Padel Trainer AI'}</span>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
+            <section className="py-12 md:py-16">
+              <div className="max-w-7xl mx-auto px-4 md:px-6">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                >
+                  <LocalizedLink to={`/blog/${featuredPost.slug}`} className="block group">
+                    <div className="card-chip p-8 md:p-10 transition-all group-hover:-translate-y-0.5 group-hover:shadow-mock">
+                      {featuredPost.category && (
+                        <span className="inline-block text-xs rounded-full bg-brand-50 text-brand-700 px-2.5 py-1 font-semibold uppercase tracking-wide mb-4">
+                          {featuredPost.category}
+                        </span>
+                      )}
+                      <h2 className="font-display text-2xl md:text-4xl font-extrabold tracking-[-0.02em] text-navy-900 mb-4 group-hover:text-brand-600 transition-colors">
+                        {featuredPost.h1 || featuredPost.title}
+                      </h2>
+                      <p className="text-base md:text-lg text-navy-600 mb-4">{featuredPost.excerpt}</p>
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-navy-500">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          {featuredPost.datePublished &&
+                            new Date(featuredPost.datePublished).toLocaleDateString(dateLocale, {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {calculateReadTime(featuredPost.bodySections, featuredPost.content)}
+                        </span>
+                        <span>by {featuredPost.authorName || 'Padel Trainer AI'}</span>
+                      </div>
+                    </div>
                   </LocalizedLink>
                 </motion.div>
               </div>
             </section>
           )}
 
-          {/* Sponsor Banner */}
-          <BannerZone zone="blog-listing" category={selectedCategory} className="container mx-auto px-4 py-6" />
+          <BannerZone zone="blog-listing" category={selectedCategory} className="max-w-7xl mx-auto px-4 md:px-6 py-6" />
 
-          {/* Recent Posts Grid */}
           {recentPosts.length > 0 && (
-            <section className="py-12">
-              <div className="container mx-auto px-4">
-                <h2 className="text-2xl font-bold mb-8">{t('blog.recentArticles')}</h2>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {recentPosts.map((article, index) => (
-                    <ArticleCard key={article._id} article={article} dateLocale={dateLocale} index={index} />
-                  ))}
-                </div>
+            <MarketingSection
+              background="default"
+              heading={t('blog.recentArticles')}
+              align="left"
+              headerClassName="mb-8 md:mb-10"
+            >
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {recentPosts.map((article, index) => (
+                  <ArticleCard key={article._id} article={article} dateLocale={dateLocale} index={index} />
+                ))}
               </div>
-            </section>
+            </MarketingSection>
           )}
 
-          {/* Pagination */}
           {data && data.totalPages > 1 && (
             <section className="py-8">
-              <div className="container mx-auto px-4 flex justify-center gap-2">
-                {Array.from({ length: data.totalPages }, (_, i) => i + 1).map(p => (
-                  <Button key={p} variant={p === page ? 'default' : 'outline'} size="sm" onClick={() => setPage(p)}>
+              <div className="max-w-7xl mx-auto px-4 md:px-6 flex justify-center gap-2">
+                {Array.from({ length: data.totalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPage(p)}
+                    className={cn(
+                      'h-9 min-w-9 rounded-full px-3 text-sm font-semibold transition-colors',
+                      p === page
+                        ? 'bg-navy-900 text-white'
+                        : 'bg-card border border-navy-100 text-navy-700 hover:text-brand-600',
+                    )}
+                  >
                     {p}
-                  </Button>
+                  </button>
                 ))}
               </div>
             </section>
@@ -249,21 +292,17 @@ export default function Blog() {
         </>
       )}
 
-      {/* CTA */}
-      <section className="py-16 bg-accent/30">
-        <div className="container mx-auto px-4">
-          <motion.div className="text-center max-w-xl mx-auto" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-2xl font-bold mb-4">{t('blog.readyToFind', 'Ready to find your perfect padel trainer?')}</h2>
-            <p className="text-muted-foreground mb-6">{t('blog.browseTrainers', 'Browse our network of certified trainers.')}</p>
-            <Button asChild>
-              <LocalizedLink to="/trainers" className="flex items-center gap-2">
-                {t('blog.findTrainers', 'Find Trainers')}
-                <ArrowRight className="h-4 w-4" />
-              </LocalizedLink>
-            </Button>
-          </motion.div>
-        </div>
-      </section>
+      <MarketingFinalCTA
+        title={t('blog.readyToFind', 'Ready to find your perfect padel trainer?')}
+        body={t('blog.browseTrainers', 'Browse our network of certified trainers.')}
+        primaryHref={`/${lang}/trainers`}
+        primaryLabel={
+          <>
+            {t('blog.findTrainers', 'Find Trainers')}
+            <ArrowRight className="ml-2 h-5 w-5" />
+          </>
+        }
+      />
     </MarketingLayout>
   );
 }
