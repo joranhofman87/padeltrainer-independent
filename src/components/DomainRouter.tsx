@@ -352,6 +352,10 @@ export function DomainRouter() {
         </Route>
         <Route path="/app/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
 
+        {/* ===== SHORT-LINK REDIRECTS (social-friendly) ===== */}
+        <Route path="/a/:slug" element={<ShortLinkRedirect kind="academy" />} />
+        <Route path="/t/:slug" element={<ShortLinkRedirect kind="trainer" />} />
+
         {/* ===== LEGACY REDIRECTS ===== */}
         <Route path="/auth" element={<Navigate to="/app/auth" replace />} />
         <Route path="/forgot-password" element={<Navigate to="/app/forgot-password" replace />} />
