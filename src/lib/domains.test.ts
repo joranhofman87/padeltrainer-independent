@@ -44,3 +44,13 @@ describe('getMarketingPath', () => {
     expect(getMarketingPath('', 'nl')).toBe('/nl');
   });
 });
+
+describe('short link helpers', () => {
+  it('builds an academy short url', () => {
+    expect(getAcademyShortUrl('jan-de-vries')).toBe('https://padeltrainer.ai/a/jan-de-vries');
+  });
+
+  it('builds a trainer short url', () => {
+    expect(getTrainerShortUrl('rene')).toBe('https://padeltrainer.ai/t/rene');
+  });
+});
