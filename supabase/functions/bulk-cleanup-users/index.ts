@@ -62,11 +62,33 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Resolve preserved user IDs at runtime: every admin is preserved.
+    const { data: adminRows, error: adminFetchError } = await supabaseAdmin
+      .from("user_roles")
+      .select("user_id")
+      .eq("role", "admin");
+
+    if (adminFetchError) {
+      console.error("Error fetching admin users:", adminFetchError);
+      return new Response(
+        JSON.stringify({ error: "Failed to load preserved admins" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const preservedUserIds = Array.from(new Set((adminRows ?? []).map((r) => r.user_id)));
+    if (preservedUserIds.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Refusing to run: no admin users to preserve" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Get all user IDs except preserved ones
     const { data: allProfiles, error: profilesError } = await supabaseAdmin
       .from("profiles")
       .select("user_id, email, full_name")
-      .not("user_id", "in", `(${PRESERVED_USER_IDS.join(",")})`);
+      .not("user_id", "in", `(${preservedUserIds.join(",")})`);
 
     if (profilesError) {
       console.error("Error fetching profiles:", profilesError);
