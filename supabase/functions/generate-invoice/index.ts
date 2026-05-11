@@ -62,7 +62,8 @@ const safeUrl = (u: unknown): string => {
 };
 
 function generateInvoiceHTML(invoice: InvoiceData): string {
-  const accentColor = invoice.banner_color || '#16a34a';
+  const rawAccent = invoice.banner_color || '#16a34a';
+  const accentColor = /^#[0-9a-fA-F]{3,8}$/.test(rawAccent) ? rawAccent : '#16a34a';
   
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
