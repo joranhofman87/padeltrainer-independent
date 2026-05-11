@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { requireUser, corsHeaders as sharedCors } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+const corsHeaders = sharedCors;
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(
@@ -19,10 +15,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const auth = await requireUser(req);
+  if (auth instanceof Response) return auth;
+  const supabase = auth.supabase;
+
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { invoiceId } = await req.json();
     if (!invoiceId) {
@@ -46,6 +43,35 @@ serve(async (req) => {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Authorization: caller must be admin, the invoice's trainer, or a manager
+    // of the invoice's academy. Service-role calls bypass this check.
+    if (!auth.isServiceRole) {
+      const userId = auth.user.id;
+      const [{ data: trainerProfile }, { data: adminRow }] = await Promise.all([
+        supabase.from("trainer_profiles").select("id").eq("user_id", userId).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+      ]);
+      const isAdmin = !!adminRow;
+      const isOwningTrainer = trainerProfile?.id && trainerProfile.id === invoice.trainer_id;
+      let isAcademyManager = false;
+      if (!isAdmin && !isOwningTrainer && invoice.academy_profile_id) {
+        const { data: managed } = await supabase
+          .from("academy_managers")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("academy_profile_id", invoice.academy_profile_id)
+          .maybeSingle();
+        isAcademyManager = !!managed;
+      }
+      if (!isAdmin && !isOwningTrainer && !isAcademyManager) {
+        logStep("Forbidden: caller does not own invoice", { userId, invoiceId });
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Must be active and unpaid

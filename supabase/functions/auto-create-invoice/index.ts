@@ -1,10 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { requireUser, corsHeaders as sharedCors } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const corsHeaders = sharedCors;
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[AUTO-CREATE-INVOICE] ${step}`, details ? JSON.stringify(details) : "");
@@ -15,10 +12,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const auth = await requireUser(req);
+  if (auth instanceof Response) return auth;
+  const supabase = auth.supabase;
+
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
     const bookingIds: string[] = body.bookingIds || (body.bookingId ? [body.bookingId] : []);
@@ -47,6 +45,7 @@ serve(async (req) => {
         payment_status,
         availability_slots!inner(
           trainer_id,
+          academy_profile_id,
           start_time,
           end_time,
           location_id,
@@ -72,6 +71,43 @@ serve(async (req) => {
     // Get trainer ID from first booking
     const slot = bookings[0].availability_slots as any;
     const trainerId = slot.trainer_id;
+
+    // Authorization: caller must be admin, the slot's trainer, or a manager
+    // of the slot's academy. Service-role calls (cron) bypass this check.
+    if (!auth.isServiceRole) {
+      const userId = auth.user.id;
+      const trainerSlotIds = new Set(bookings.map((b: any) => b.availability_slots?.trainer_id).filter(Boolean));
+      const academyIds = new Set(bookings.map((b: any) => b.availability_slots?.academy_profile_id).filter(Boolean));
+
+      const [{ data: trainerProfile }, { data: adminRow }] = await Promise.all([
+        supabase.from("trainer_profiles").select("id").eq("user_id", userId).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+      ]);
+      const isAdmin = !!adminRow;
+      const callerTrainerId = trainerProfile?.id ?? null;
+      const ownsAllAsTrainer = callerTrainerId
+        ? [...trainerSlotIds].every((tid) => tid === callerTrainerId)
+        : false;
+
+      let ownsViaAcademy = false;
+      if (!isAdmin && !ownsAllAsTrainer && academyIds.size > 0) {
+        const { data: managed } = await supabase
+          .from("academy_managers")
+          .select("academy_profile_id")
+          .eq("user_id", userId);
+        const managedSet = new Set((managed ?? []).map((m: any) => m.academy_profile_id));
+        ownsViaAcademy = [...academyIds].every((aid) => managedSet.has(aid));
+      }
+
+      if (!isAdmin && !ownsAllAsTrainer && !ownsViaAcademy) {
+        logStep("Forbidden: caller does not own these bookings", { userId });
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
 
     // Auto-detect split payment from slot if not explicitly passed
     if (!splitAmongPlayers && slot.split_payment === true) {
