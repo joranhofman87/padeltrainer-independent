@@ -81,6 +81,51 @@ serve(async (req) => {
     const entityId = stateParts[1];
     logStep("Parsed state", { entityType, entityId });
 
+    // Validate state against the row stored when the OAuth flow was initiated.
+    const { data: storedState, error: stateLookupError } = await supabaseClient
+      .from('mollie_oauth_states')
+      .select('entity_type, entity_id, expires_at, used_at')
+      .eq('state', state)
+      .maybeSingle();
+
+    if (stateLookupError) {
+      logStep("State lookup failed", { error: stateLookupError });
+      return redirectToFrontend('error', { message: 'Failed to validate OAuth state' });
+    }
+    if (!storedState) {
+      logStep("State not found in store");
+      return redirectToFrontend('error', { message: 'Invalid OAuth state' });
+    }
+    if (storedState.used_at) {
+      logStep("State already used", { used_at: storedState.used_at });
+      return redirectToFrontend('error', { message: 'OAuth state already used' });
+    }
+    if (new Date(storedState.expires_at) < new Date()) {
+      logStep("State expired", { expires_at: storedState.expires_at });
+      return redirectToFrontend('error', { message: 'OAuth state expired' });
+    }
+    if (storedState.entity_type !== entityType || storedState.entity_id !== entityId) {
+      logStep("State entity mismatch", {
+        claimed: { entityType, entityId },
+        stored: { entity_type: storedState.entity_type, entity_id: storedState.entity_id },
+      });
+      return redirectToFrontend('error', { message: 'OAuth state mismatch' });
+    }
+
+    // Atomically mark used to prevent replay/race.
+    const { data: consumed, error: consumeError } = await supabaseClient
+      .from('mollie_oauth_states')
+      .update({ used_at: new Date().toISOString() })
+      .eq('state', state)
+      .is('used_at', null)
+      .select('state')
+      .maybeSingle();
+
+    if (consumeError || !consumed) {
+      logStep("Failed to consume state (likely race)", { error: consumeError });
+      return redirectToFrontend('error', { message: 'OAuth state already used' });
+    }
+
     // The redirect URI must match exactly what was used when creating the authorization URL
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const redirectUri = `${supabaseUrl}/functions/v1/mollie-callback`;
