@@ -636,7 +636,7 @@ export default function AdminUsers() {
                   <TableCell>
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Edit"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedUser(u);

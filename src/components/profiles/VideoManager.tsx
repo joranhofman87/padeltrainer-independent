@@ -146,7 +146,7 @@ export function VideoManager({ trainerProfileId, academyProfileId }: VideoManage
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon"
+                    size="icon" aria-label="Delete"
                     onClick={() => handleDelete(video.id)}
                     className="text-destructive hover:text-destructive"
                   >

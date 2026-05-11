@@ -225,7 +225,7 @@ export default function AcademyCreateInvoice() {
     <div className="container mx-auto px-4 py-6 max-w-3xl space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/app/academy/invoices')}>
+        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/academy/invoices')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>

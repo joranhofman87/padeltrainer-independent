@@ -212,7 +212,7 @@ export default function TrainerSubscription() {
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/trainer')}>
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/trainer')}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="flex items-center gap-3">

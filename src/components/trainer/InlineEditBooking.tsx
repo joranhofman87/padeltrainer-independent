@@ -130,7 +130,7 @@ export function InlineEditBooking({ booking, trainerId, onBookingUpdated, onClos
     <div className="border rounded-lg p-4 space-y-4 bg-muted/30 mt-1">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium">{t("bookings.editBooking", "Edit Booking")}</h4>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+        <Button variant="ghost" size="icon" aria-label="Close" className="h-7 w-7" onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       </div>

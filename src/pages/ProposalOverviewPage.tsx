@@ -403,7 +403,7 @@ export default function ProposalOverviewPage() {
       {/* Top bar */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={handleBack}>
+          <Button variant="ghost" size="icon" aria-label="Go back" onClick={handleBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>

@@ -329,7 +329,7 @@ export default function AcademyTrainers() {
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
-                                    size="icon"
+                                    size="icon" aria-label="Open in new tab"
                                     onClick={() =>
                                       navigate(
                                         localizePath(
@@ -348,7 +348,7 @@ export default function AcademyTrainers() {
                             </TooltipProvider>
                             <Button
                               variant="ghost"
-                              size="icon"
+                              size="icon" aria-label="Next"
                               onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
                             >
                               <ChevronRight className="h-4 w-4" />
@@ -398,7 +398,7 @@ export default function AcademyTrainers() {
                         />
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Next"
                           className="h-8 w-8"
                           onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
                         >

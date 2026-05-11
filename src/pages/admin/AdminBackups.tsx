@@ -240,7 +240,7 @@ export default function AdminBackups() {
                         <TableCell>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="icon" aria-label="Delete"
                             onClick={(e) => {
                               e.stopPropagation();
                               setDeleteFolder(backup.name);
@@ -268,7 +268,7 @@ export default function AdminBackups() {
                                     </span>
                                     <Button
                                       variant="ghost"
-                                      size="icon"
+                                      size="icon" aria-label="Download"
                                       className="h-7 w-7"
                                       onClick={() =>
                                         handleDownload(backup.name, file.name)

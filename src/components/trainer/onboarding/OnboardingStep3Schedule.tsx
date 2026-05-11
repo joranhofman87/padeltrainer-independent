@@ -399,7 +399,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
                 <Button
                   onClick={handleAddSlot}
                   disabled={!slotDate || !slotTime || addingSlot}
-                  size="icon"
+                  size="icon" aria-label="Add"
                   className="shrink-0"
                 >
                   <Plus className="h-4 w-4" />
@@ -417,7 +417,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
                       </div>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Delete"
                         className="h-8 w-8 text-muted-foreground hover:text-destructive"
                         onClick={() => handleRemoveSlot(slot.id)}
                       >

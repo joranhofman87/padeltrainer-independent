@@ -212,13 +212,13 @@ export default function ClubCalendar() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               {/* Navigation controls */}
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
+                <Button variant="outline" size="icon" aria-label="Previous" className="h-8 w-8" onClick={navigatePrevious}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <Button variant="outline" size="sm" onClick={goToToday}>
                   {t("calendar.today", "Today")}
                 </Button>
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
+                <Button variant="outline" size="icon" aria-label="Next" className="h-8 w-8" onClick={navigateNext}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
                 <div className="text-sm font-medium ml-4 hidden sm:block">{getDateRangeLabel()}</div>

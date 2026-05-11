@@ -600,7 +600,7 @@ export default function AcademySlotDetail() {
       <div className="min-h-screen bg-background">
         <div className="border-b bg-background/60">
           <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <Skeleton className="h-6 w-48" />
@@ -619,7 +619,7 @@ export default function AcademySlotDetail() {
       <div className="min-h-screen bg-background">
         <div className="border-b bg-background/60">
           <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <h1 className="text-xl font-bold">{t('calendar.slotNotFound', 'Slot not found')}</h1>
@@ -639,7 +639,7 @@ export default function AcademySlotDetail() {
       <div className="border-b bg-background/60">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
@@ -872,7 +872,7 @@ export default function AcademySlotDetail() {
                               </Select>
                               {!isCycleSlot && (
                                 <Button
-                                  type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                                  type="button" size="icon" aria-label="Remove" variant="ghost" className="h-8 w-8 shrink-0"
                                   onClick={() => setEditExtraCosts(editExtraCosts.filter((_, i) => i !== idx))}
                                 >
                                   <Minus className="h-3 w-3" />

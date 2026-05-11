@@ -317,7 +317,7 @@ export default function TrainerCyclus() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/trainer")}>
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate("/trainer")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
@@ -377,7 +377,7 @@ export default function TrainerCyclus() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <CollapsibleTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button variant="ghost" size="icon" aria-label="Next" className="h-8 w-8">
                             {expandedCyclus === cyclus.cyclus_id ? (
                               <ChevronDown className="h-4 w-4" />
                             ) : (
@@ -414,7 +414,7 @@ export default function TrainerCyclus() {
 
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" aria-label="Open actions menu">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>

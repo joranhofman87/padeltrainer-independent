@@ -338,7 +338,7 @@ export default function TrainerCalendar() {
       {/* Sub-page Header */}
       <div className="border-b bg-background">
         <div className="container mx-auto px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/trainer")}>
+          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate("/trainer")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-xl font-display font-semibold">{t("calendar.title")}</h1>
@@ -430,13 +430,13 @@ export default function TrainerCalendar() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={navigatePrevious}>
+              <Button variant="outline" size="icon" aria-label="Previous" className="h-9 w-9" onClick={navigatePrevious}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <div className="min-w-[160px] sm:min-w-[200px] text-center font-medium text-sm tabular-nums">
                 {getDateRangeLabel()}
               </div>
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={navigateNext}>
+              <Button variant="outline" size="icon" aria-label="Next" className="h-9 w-9" onClick={navigateNext}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
               <Button variant="outline" size="sm" className="h-9" onClick={goToToday}>

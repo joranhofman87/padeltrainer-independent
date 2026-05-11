@@ -325,7 +325,7 @@ export default function TrainerSlotDetail() {
     return (
       <div className="min-h-screen bg-background">
         <div className="border-b bg-background/60"><div className="container mx-auto px-4 py-3 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
+          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
           <Skeleton className="h-6 w-48" />
         </div></div>
         <main className="container mx-auto px-4 py-6 space-y-4"><Skeleton className="h-32 w-full" /><Skeleton className="h-48 w-full" /></main>
@@ -336,7 +336,7 @@ export default function TrainerSlotDetail() {
   if (!detail) {
     return (
       <div className="min-h-screen bg-background"><div className="border-b bg-background/60"><div className="container mx-auto px-4 py-3 flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
+        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         <h1 className="text-xl font-bold">{t('calendar.slotNotFound', 'Sessie niet gevonden')}</h1>
       </div></div></div>
     );
@@ -351,7 +351,7 @@ export default function TrainerSlotDetail() {
       <div className="border-b bg-background/60">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
             <div>
               <h1 className="text-lg font-bold">{format(startDate, 'EEEE d MMMM yyyy', { locale: dateLocale })}</h1>
               <p className="text-sm text-muted-foreground">
@@ -442,7 +442,7 @@ export default function TrainerSlotDetail() {
                             <div key={idx} className="flex items-center gap-2">
                               <Input className={`flex-1 h-8 text-xs ${isCycleSlot ? 'opacity-60' : ''}`} placeholder={t('calendar.description', 'Omschrijving')} value={ec.description} disabled={isCycleSlot} onChange={e => { const u = [...editExtraCosts]; u[idx] = { ...u[idx], description: e.target.value }; setEditExtraCosts(u); }} />
                               <Input className={`w-20 h-8 text-xs ${isCycleSlot ? 'opacity-60' : ''}`} type="number" step="0.01" min={0} placeholder="€" value={ec.amount || ''} disabled={isCycleSlot} onChange={e => { const u = [...editExtraCosts]; u[idx] = { ...u[idx], amount: Number(e.target.value) }; setEditExtraCosts(u); }} />
-                              {!isCycleSlot && (<Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => setEditExtraCosts(editExtraCosts.filter((_, i) => i !== idx))}><Minus className="h-3 w-3" /></Button>)}
+                              {!isCycleSlot && (<Button type="button" size="icon" aria-label="Remove" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => setEditExtraCosts(editExtraCosts.filter((_, i) => i !== idx))}><Minus className="h-3 w-3" /></Button>)}
                             </div>
                           ))}
                         </div>

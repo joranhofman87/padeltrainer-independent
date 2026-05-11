@@ -387,7 +387,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Delete"
                       className="h-8 w-8 text-destructive hover:text-destructive"
                       onClick={() => handleDeleteReview(review.id)}
                     >

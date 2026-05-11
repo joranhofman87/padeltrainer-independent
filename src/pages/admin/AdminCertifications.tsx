@@ -280,7 +280,7 @@ export default function AdminCertifications() {
       {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
+          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/admin')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -358,14 +358,14 @@ export default function AdminCertifications() {
                               <div className="flex items-center gap-1">
                                 <Button
                                   variant="ghost"
-                                  size="icon"
+                                  size="icon" aria-label="Edit"
                                   onClick={() => openCertDialog(cert)}
                                 >
                                   <Edit className="h-4 w-4" />
                                 </Button>
                                 <Button
                                   variant="ghost"
-                                  size="icon"
+                                  size="icon" aria-label="Delete"
                                   onClick={() => openDeleteDialog('cert', cert.id, cert.name)}
                                 >
                                   <Trash2 className="h-4 w-4 text-destructive" />
@@ -423,14 +423,14 @@ export default function AdminCertifications() {
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="icon" aria-label="Edit"
                             onClick={() => openSpecDialog(spec)}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="icon" aria-label="Delete"
                             onClick={() => openDeleteDialog('spec', spec.id, spec.name)}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />

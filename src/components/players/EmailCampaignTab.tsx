@@ -648,7 +648,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                         <span className="text-muted-foreground truncate ml-2 max-w-[100px]">{p.email}</span>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Close"
                           className="h-5 w-5 ml-1 opacity-0 group-hover:opacity-100 shrink-0"
                           onClick={() => handleRemoveRecipient(p.id)}
                         >
@@ -681,7 +681,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                   />
                   <Button
                     variant="outline"
-                    size="icon"
+                    size="icon" aria-label="Add"
                     className="h-7 w-7 shrink-0"
                     onClick={handleAddManualRecipient}
                     disabled={!addEmail.trim()}
@@ -907,7 +907,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                           <div className="flex items-center gap-1">
                             <Button
                               variant="ghost"
-                              size="icon"
+                              size="icon" aria-label="Edit"
                               className="h-7 w-7"
                               onClick={(e) => { e.stopPropagation(); handleLoadTemplate(tmpl); }}
                             >
@@ -915,7 +915,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                             </Button>
                             <Button
                               variant="ghost"
-                              size="icon"
+                              size="icon" aria-label="Delete"
                               className="h-7 w-7 text-destructive"
                               onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(tmpl.id); }}
                             >

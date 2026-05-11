@@ -141,7 +141,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
                   ))}
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon" aria-label="Delete"
                     className="h-7 w-7 ml-1 text-destructive"
                     onClick={() => handleDelete(tag.id)}
                     disabled={busy}

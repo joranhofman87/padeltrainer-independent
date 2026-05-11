@@ -248,7 +248,7 @@ export default function DayAvailabilityPicker({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Close"
                         className="h-9 w-9 text-muted-foreground hover:text-destructive"
                         onClick={() => removeTimeBlock(day, index)}
                         disabled={disabled}

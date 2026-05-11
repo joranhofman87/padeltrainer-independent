@@ -820,7 +820,7 @@ export default function TrainerPlayers() {
                             {player.type === 'guest' && player.originalGuest ? (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                                  <Button variant="ghost" size="icon" aria-label="Open actions menu" className="h-7 w-7">
                                     <MoreVertical className="h-4 w-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -862,7 +862,7 @@ export default function TrainerPlayers() {
                           {player.type === 'guest' && player.originalGuest && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Button variant="ghost" size="icon" aria-label="Open actions menu" className="h-8 w-8">
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>

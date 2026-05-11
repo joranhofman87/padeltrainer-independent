@@ -308,7 +308,7 @@ export default function AdminOnboardingEmails() {
                             </Button>
                             <Button
                               variant="ghost"
-                              size="icon"
+                              size="icon" aria-label="Copy"
                               onClick={() => handleDuplicate(template)}
                               disabled={createMutation.isPending}
                               title={t("onboardingEmails.duplicate")}
@@ -317,7 +317,7 @@ export default function AdminOnboardingEmails() {
                             </Button>
                             <Button
                               variant="ghost"
-                              size="icon"
+                              size="icon" aria-label="Edit"
                               onClick={() => handleEdit(template)}
                               title={t("onboardingEmails.edit")}
                             >
@@ -325,7 +325,7 @@ export default function AdminOnboardingEmails() {
                             </Button>
                             <Button
                               variant="ghost"
-                              size="icon"
+                              size="icon" aria-label="Delete"
                               onClick={() => handleDelete(template)}
                               title={t("onboardingEmails.delete")}
                             >

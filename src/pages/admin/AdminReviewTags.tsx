@@ -355,12 +355,12 @@ export default function AdminReviewTags() {
                           checked={tag.is_active}
                           onCheckedChange={() => handleToggleActive(tag)}
                         />
-                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(tag)}>
+                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEditDialog(tag)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Delete"
                           onClick={() => openDeleteDialog(tag)}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />

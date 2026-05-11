@@ -75,7 +75,7 @@ export default function AdminBlog() {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" asChild>
+                    <Button variant="ghost" size="icon" aria-label="Edit" asChild>
                       <a href={`${SANITY_STUDIO_URL}/structure/blogPost;${article._id}`} target="_blank" rel="noopener noreferrer">
                         <Pencil className="h-4 w-4" />
                       </a>

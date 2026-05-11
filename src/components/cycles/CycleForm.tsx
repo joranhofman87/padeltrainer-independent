@@ -1092,7 +1092,7 @@ export default function CycleForm({
                         <Button
                           type="button"
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Delete"
                           className="h-5 w-5 mx-auto"
                           onClick={() => {
                             const colName = priceColumns[ci];
@@ -1174,7 +1174,7 @@ export default function CycleForm({
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Delete"
                       onClick={() => setPriceTable(priceTable.filter((_, i) => i !== index))}
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
@@ -1342,7 +1342,7 @@ export default function CycleForm({
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Delete"
                       onClick={() => setCyclusOptions(cyclusOptions.filter((_, i) => i !== index))}
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
@@ -1807,7 +1807,7 @@ export default function CycleForm({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Delete"
                         onClick={() => setExtraCosts(extraCosts.filter((_, i) => i !== index))}
                       >
                         <Trash2 className="h-4 w-4 text-muted-foreground" />

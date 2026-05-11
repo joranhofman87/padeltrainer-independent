@@ -515,13 +515,13 @@ export default function AdminLocations() {
                       {location.website_url && (
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Open in new tab"
                           onClick={() => window.open(location.website_url!, '_blank')}
                         >
                           <ExternalLink className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(location)}>
+                      <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEditDialog(location)}>
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => toggleActive(location)}>

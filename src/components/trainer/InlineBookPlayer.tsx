@@ -207,7 +207,7 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
             <UserPlus className="h-4 w-4" />
             {t("bookings.bookForPlayer")}
           </h4>
-          <Button variant="ghost" size="icon" className="h-7 w-7" type="button" onClick={onClose}>
+          <Button variant="ghost" size="icon" aria-label="Close" className="h-7 w-7" type="button" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -257,7 +257,7 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
                         ))}
                       </SelectContent>
                     </Select>
-                    {currentPlayerId && <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => clearPlayerSlot(selectionIndex)}><X className="h-4 w-4" /></Button>}
+                    {currentPlayerId && <Button type="button" variant="ghost" size="icon" aria-label="Close" className="h-8 w-8 shrink-0" onClick={() => clearPlayerSlot(selectionIndex)}><X className="h-4 w-4" /></Button>}
                     {!currentPlayerId && isFirst && <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => setShowAddPlayer(true)}><UserPlus className="h-4 w-4" /></Button>}
                   </div>
                 );

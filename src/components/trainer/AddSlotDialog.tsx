@@ -1330,7 +1330,7 @@ export function BulkCreateContent({
                               <Button
                                 type="button"
                                 variant="ghost"
-                                size="icon"
+                                size="icon" aria-label="Delete"
                                 className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
                                 onClick={() => {
                                   const newCosts = slot.extraCosts.filter((_, i) => i !== costIndex);
@@ -1634,7 +1634,7 @@ export function BulkCreateContent({
                             <Button
                               type="button"
                               variant="outline"
-                              size="icon"
+                              size="icon" aria-label="Add"
                               className="h-8 w-8 shrink-0"
                               onClick={() => {
                                 setAddPlayerContext({ slotIndex: index, playerIndex });

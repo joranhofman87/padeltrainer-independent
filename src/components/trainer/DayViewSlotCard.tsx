@@ -185,7 +185,7 @@ export function DayViewSlotCard({
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
+                <Button variant="outline" size="icon" aria-label="Open actions menu">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -290,7 +290,7 @@ export function DayViewSlotCard({
                         {onEditBooking && (
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="icon" aria-label="Edit"
                             className="h-8 w-8"
                             onClick={() => onEditBooking(player.bookingId)}
                             title={t("bookings.editBooking")}

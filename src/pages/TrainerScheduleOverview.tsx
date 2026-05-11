@@ -1233,7 +1233,7 @@ export default function TrainerScheduleOverview() {
                 {key !== "__individual__" && (
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon" aria-label="Edit"
                     className="h-7 w-7 shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1331,7 +1331,7 @@ export default function TrainerScheduleOverview() {
                             </Button>
                             <Button
                               variant="ghost"
-                              size="icon"
+                              size="icon" aria-label="Edit"
                               className="h-7 w-7"
                               onClick={() =>
                                 navigate(
@@ -1345,7 +1345,7 @@ export default function TrainerScheduleOverview() {
                             {active.length > 0 && (
                               <Button
                                 variant="ghost"
-                                size="icon"
+                                size="icon" aria-label="Next"
                                 className="h-7 w-7"
                                 onClick={() => toggleSlot(slot.id)}
                               >
@@ -1404,7 +1404,7 @@ export default function TrainerScheduleOverview() {
                                     </button>
                                     <Button
                                       variant="ghost"
-                                      size="icon"
+                                      size="icon" aria-label="Close"
                                       className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                                       onClick={() => setRemoveBookingId(b.id)}
                                       title={t("scheduleOverview.removePlayer", "Remove player")}
@@ -1618,7 +1618,7 @@ export default function TrainerScheduleOverview() {
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Delete"
                       className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
                       onClick={() => {
                         const updated = cycleEditData.extraCosts.filter((_, i) => i !== idx);
@@ -1735,7 +1735,7 @@ export default function TrainerScheduleOverview() {
                       </div>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Close"
                         className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
                         onClick={() => setConfirmRemoveCyclePlayer(player)}
                         disabled={removingPlayerFromCycle === player.id}

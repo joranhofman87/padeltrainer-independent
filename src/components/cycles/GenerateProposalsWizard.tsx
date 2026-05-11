@@ -507,7 +507,7 @@ export function GenerateProposalsWizard({
                       </Select>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Delete"
                         className="h-8 w-8 shrink-0"
                         onClick={() => removeWindow(config.trainerId, idx)}
                       >

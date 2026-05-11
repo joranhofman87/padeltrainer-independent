@@ -457,7 +457,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                     {invoice.status !== 'cancelled' && (
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Delete"
                         onClick={() => setDeleteConfirm({ open: true, invoice })}
                         disabled={actionLoading === invoice.id}
                         title={invoice.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
@@ -483,7 +483,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Edit"
                           onClick={() => setEditInvoice(invoice)}
                           title="Bewerken"
                         >
@@ -522,7 +522,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                     {isAdmin && (
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Delete"
                         onClick={() => setVoidConfirm({ open: true, invoice })}
                         disabled={actionLoading === invoice.id}
                         title={invoice.status === 'draft' ? 'Verwijderen (admin)' : 'Annuleren (admin)'}
@@ -533,7 +533,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                     
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Download"
                       onClick={() => handleDownload(invoice)}
                       disabled={actionLoading === invoice.id}
                       title="Download PDF"

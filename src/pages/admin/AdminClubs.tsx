@@ -341,7 +341,7 @@ export default function AdminClubs() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" aria-label="Open actions menu" onClick={(e) => e.stopPropagation()}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
