@@ -305,6 +305,7 @@ function PlayerDetails({
 }
 
 export default function PublicInvoicePay() {
+  useNoReferrerMeta();
   const { t, i18n } = useTranslation("common");
   const { token } = useParams<{ token: string }>();
   
