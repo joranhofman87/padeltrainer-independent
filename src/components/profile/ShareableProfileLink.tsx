@@ -18,6 +18,8 @@ interface Props {
   lang?: string;
   /** Render in a slim inline row (no helper text, smaller controls). */
   compact?: boolean;
+  /** Optional short URL to display/copy/share instead of the canonical long one. */
+  shortUrl?: string;
 }
 
 const HOST = 'padeltrainer.ai';
