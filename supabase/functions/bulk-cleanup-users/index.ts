@@ -5,11 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const PRESERVED_USER_IDS = [
-  "256b0ed5-1563-4eb5-899b-df559c5e9090", // info@padeltrainer.ai
-  "9bcc1c6f-7978-49bb-aa06-6f1be4135fc7", // joranhofman87@gmail.com
-];
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
