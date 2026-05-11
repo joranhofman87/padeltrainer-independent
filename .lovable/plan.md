@@ -1,24 +1,11 @@
-## Harden Reditus webhook signature verification
+## Bump ResetPassword min length to 8
 
-Yes, both points are valid security improvements. Apply them to `supabase/functions/reditus-referral-webhook/index.ts`.
+Yes — `src/pages/ResetPassword.tsx:49` still enforces `< 6`, while `validation.ts` treats 8 as the minimum strong-password baseline. Align the reset flow with the rest of the app.
 
-### Changes
+### Change
+In `src/pages/ResetPassword.tsx` `handleSubmit`:
+- Replace `if (password.length < 6)` with `if (password.length < 8)`.
+- Update the toast description fallback string to "Password must be at least 8 characters".
+- Update the i18n key `resetPassword.passwordTooShort` default to match (translation files keep existing keys; English fallback updated inline — translations can be refreshed separately if desired).
 
-**1. Make signature verification mandatory (fail-closed)**
-
-Replace the `if (webhookSecret) { ... }` block so that:
-- Missing `REDITUS_WEBHOOK_SECRET` → 500 (misconfiguration, never accept traffic)
-- Missing `x-signature` header → 401
-- Invalid signature → 401
-
-**2. Constant-time signature comparison**
-
-Add a `constantTimeEqual(a, b)` helper and use it inside `verifySignature` instead of `computed === signature`, to prevent timing attacks on HMAC comparison.
-
-### Files
-
-- `supabase/functions/reditus-referral-webhook/index.ts` — only file touched.
-
-### After
-
-- Mark the relevant security finding as fixed (if one exists for this), otherwise just note in security memory that Reditus webhook now requires signed requests.
+No other files affected.
