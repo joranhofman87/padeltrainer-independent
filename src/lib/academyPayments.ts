@@ -48,7 +48,7 @@ export async function checkAcademyConnectStatus(academyProfileId: string): Promi
 export async function getAcademyMollieAccount(academyProfileId: string) {
   const { data, error } = await supabase
     .from('academy_mollie_accounts')
-    .select('*')
+    .select('id, academy_profile_id, mollie_organization_id, charges_enabled, payouts_enabled, onboarding_complete, created_at, updated_at')
     .eq('academy_profile_id', academyProfileId)
     .maybeSingle();
 
