@@ -1,23 +1,27 @@
-## Add security meta tags to index.html
+# Restrict `testEmail` in `send-invoice-email` to the caller's own email
 
-Partial yes. Two different risk profiles here:
+## Problem
 
-### 1. `X-Content-Type-Options: nosniff` — safe to add now
-Cheap, no compatibility risk. Add as a meta tag right after the existing `referrer` meta.
+`supabase/functions/send-invoice-email/index.ts` accepts an arbitrary `testEmail` from the request body and sends a real (PDF-attached) invoice email from `noreply@app.padeltrainer.ai` to that address. Any authenticated user could send "[TEST] Invoice" emails from our domain to any recipient — phishing-from-our-domain risk.
 
-```html
-<meta http-equiv="X-Content-Type-Options" content="nosniff" />
-```
+## Fix
 
-### 2. `Content-Security-Policy` — recommend NOT adding via `<meta>`
-The app loads from many third parties: Supabase (`*.supabase.co`), Sanity CDN, Google Fonts, Reditus, PostHog, Stripe, Mollie, Google Analytics, Lovable preview, etc. A strict CSP added blindly via meta will break the app immediately, and meta-tag CSP can't use `frame-ancestors` or `report-uri`, so it's strictly worse than a header.
+Validate that `testEmail`, when provided, matches the authenticated caller's own email address. Reject mismatches with 403.
 
-Recommendation:
-- Skip the meta CSP.
-- Set `Content-Security-Policy` (and `X-Frame-Options`, `Strict-Transport-Security`) at the Cloudflare worker layer, where the existing dynamic-rendering proxy already lives. That can be rolled out in Report-Only mode first to avoid breakage.
-- Treat that as a separate task (out of scope for this quick fix).
+### Change (single file)
 
-### Files
-- `index.html` — add the single `X-Content-Type-Options` meta line.
+`supabase/functions/send-invoice-email/index.ts`
 
-No other files affected.
+1. When loading the user (around line 41), also capture `user.email` into `authenticatedUserEmail`.
+2. Right after parsing `testEmail` (line 60), add:
+   - If `testEmail` is set and `isServiceRole` is false:
+     - Normalize both sides (`trim().toLowerCase()`).
+     - If `authenticatedUserEmail` is missing or doesn't match, return `403 { error: "test_email_must_match_caller" }`.
+   - Service-role calls remain unrestricted (internal/admin tooling).
+
+No other behavior changes. `previewOnly` (which doesn't actually send) is unaffected.
+
+## Out of scope
+
+- No UI changes. The existing "send test" UI already uses the logged-in user's email by default; this just enforces it server-side.
+- No changes to non-test sends (those go to the invoice's resolved recipient).

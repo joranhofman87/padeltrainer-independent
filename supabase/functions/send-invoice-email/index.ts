@@ -37,6 +37,7 @@ const handler = async (req: Request): Promise<Response> => {
     const isServiceRole = token === supabaseServiceKey;
 
     let authenticatedUserId: string | null = null;
+    let authenticatedUserEmail: string | null = null;
     if (!isServiceRole) {
       const { data: { user }, error: authError } = await supabase.auth.getUser(token);
       if (authError || !user) {
@@ -46,6 +47,7 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
       authenticatedUserId = user.id;
+      authenticatedUserEmail = user.email ?? null;
     }
 
     const body = await req.json();
