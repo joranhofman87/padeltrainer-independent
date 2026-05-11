@@ -61,6 +61,19 @@ const handler = async (req: Request): Promise<Response> => {
       : null;
     const testEmail = typeof body.testEmail === "string" && body.testEmail.trim() ? body.testEmail.trim() : null;
     const previewOnly = body.previewOnly === true;
+
+    // Security: a test send may only be delivered to the caller's own auth email.
+    // Prevents using this endpoint to phish from our domain.
+    if (testEmail && !isServiceRole) {
+      const normalizedTest = testEmail.toLowerCase();
+      const normalizedCaller = (authenticatedUserEmail || "").toLowerCase();
+      if (!normalizedCaller || normalizedTest !== normalizedCaller) {
+        return new Response(
+          JSON.stringify({ success: false, error: "test_email_must_match_caller" }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+    }
     if (!invoiceId) {
       return new Response(
         JSON.stringify({ error: "Missing invoiceId" }),
