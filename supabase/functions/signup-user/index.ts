@@ -162,6 +162,15 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Missing required fields: email, password, fullName");
     }
 
+    // Allowlist signup roles — never accept 'admin' or arbitrary enum values from the client
+    const ALLOWED_SIGNUP_ROLES = ['player', 'trainer', 'club', 'academy'] as const;
+    if (signupRole !== undefined && signupRole !== null && !ALLOWED_SIGNUP_ROLES.includes(signupRole as typeof ALLOWED_SIGNUP_ROLES[number])) {
+      return new Response(
+        JSON.stringify({ error: "Invalid role" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     // Check if user already exists
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
     const existingUser = existingUsers?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
