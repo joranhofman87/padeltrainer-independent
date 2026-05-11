@@ -237,8 +237,10 @@ serve(async (req) => {
       return new Response("OK", { status: 200 });
     }
 
-    // Build fetch URL with testmode if the connected token is a test token
-    const isTestMode = recipientAccessToken.startsWith("test_");
+    // Use platform key prefix only as a hint for whether to query test mode.
+    // The actual API call is always made with the connected-account token.
+    const platformKey = Deno.env.get("MOLLIE_API_KEY") ?? "";
+    const isTestMode = platformKey.startsWith("test_");
     let fetchUrl = `https://api.mollie.com/v2/payments/${paymentId}`;
     if (isTestMode) {
       fetchUrl += "?testmode=true";
