@@ -47,17 +47,28 @@ Deno.serve(async (req) => {
     const webhookSecret = Deno.env.get("REDITUS_WEBHOOK_SECRET");
     const rawBody = await req.text();
 
-    // Verify signature if secret is configured
-    if (webhookSecret) {
-      const signature = req.headers.get("x-signature") || "";
-      const valid = await verifySignature(rawBody, signature, webhookSecret);
-      if (!valid) {
-        console.error("Invalid webhook signature");
-        return new Response(JSON.stringify({ error: "Invalid signature" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    // Mandatory signature verification (fail-closed)
+    if (!webhookSecret) {
+      console.error("REDITUS_WEBHOOK_SECRET not configured");
+      return new Response(JSON.stringify({ error: "Webhook not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const signature = req.headers.get("x-signature") || "";
+    if (!signature) {
+      return new Response(JSON.stringify({ error: "Missing signature" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const valid = await verifySignature(rawBody, signature, webhookSecret);
+    if (!valid) {
+      console.error("Invalid webhook signature");
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const payload = JSON.parse(rawBody);
