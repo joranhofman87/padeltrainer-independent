@@ -4,7 +4,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
-import { ThemeProvider } from "next-themes";
 import { DomainRouter } from "@/components/DomainRouter";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { PageTracker } from "@/components/PageTracker";
@@ -27,22 +26,20 @@ const queryClient = new QueryClient({
 });
 
 const App = () => (
-  <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light" enableSystem={false}>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <OfflineBanner />
-        <BrowserRouter>
-          <ScrollToTop />
-          <PageTracker />
-          <AuthProvider>
-            <DomainRouter />
-          </AuthProvider>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </ThemeProvider>
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <OfflineBanner />
+      <BrowserRouter>
+        <ScrollToTop />
+        <PageTracker />
+        <AuthProvider>
+          <DomainRouter />
+        </AuthProvider>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
 );
 
 export default App;
