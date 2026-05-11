@@ -1,12 +1,16 @@
-## Fix XSS in TermsAcceptance.tsx
+## Resolve flagged npm vulnerabilities
 
-Replace the local `SafeHTML` helper (which sets `innerHTML` without sanitization) with the existing `SafeHtml` component from `@/components/ui/SafeHtml` that runs DOMPurify.
+A fresh dependency scan reports **no high or critical vulnerabilities**, so the protobufjs / minimatch / picomatch advisories from the audit appear to already be resolved in the current lockfile (likely fixed by earlier dependency updates).
 
-### Changes
-- `src/components/booking/TermsAcceptance.tsx`
-  - Remove the inline `SafeHTML` function and unused `useRef`/`useEffect` imports.
-  - Import `SafeHtml` from `@/components/ui/SafeHtml`.
-  - Replace `<SafeHTML html={terms} className="..." />` with `<SafeHtml html={terms} className="..." />`.
+### Plan
+
+1. Run `bun audit` (or `npm audit --json`) inside the sandbox to get an authoritative current list of advisories with severities and affected paths.
+2. If anything high/critical remains:
+   - Prefer `bun update <pkg>` (or transitive overrides via `package.json` `"overrides"`) to bump only the vulnerable packages.
+   - Re-run the audit to confirm clean.
+3. If only moderates remain (typical for transitive dev-only deps), document which ones and whether a fix requires a breaking major bump — surface that to you before touching it.
+4. Report the final audit result.
 
 ### Out of scope
-- Other components (audit confirms only this file uses the unsanitized pattern).
+- Major version upgrades of direct dependencies (React, Vite, etc.) unless required to clear a critical CVE.
+- Touching unrelated packages.
