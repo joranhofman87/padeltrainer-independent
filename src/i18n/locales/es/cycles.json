@@ -216,7 +216,7 @@
       "createAccountHelp": "Elige una contraseña para crear tu cuenta. Así podrás seguir tu inscripción y gestionar tus reservas.",
       "password": "Contraseña",
       "passwordPlaceholder": "Crea una contraseña",
-      "passwordMin": "La contraseña debe tener al menos 6 caracteres",
+      "passwordMin": "La contraseña debe tener al menos 8 caracteres",
       "nameMin": "El nombre debe tener al menos 2 caracteres",
       "emailInvalid": "Introduce una dirección de correo válida",
       "submitError": "Error al enviar la solicitud",

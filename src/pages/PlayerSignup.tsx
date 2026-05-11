@@ -22,7 +22,7 @@ import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
   email: z.string().trim().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 export default function PlayerSignup() {
@@ -276,7 +276,7 @@ export default function PlayerSignup() {
                 onChange={(e) => setPassword(e.target.value)}
                 className={errors.password ? 'border-destructive' : ''}
                 required
-                minLength={6}
+                minLength={8}
                 data-testid="input-signup-password"
               />
               <PasswordStrengthIndicator password={password} />
