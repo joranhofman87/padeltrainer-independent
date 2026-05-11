@@ -1091,7 +1091,7 @@ export async function getPublicAcademies(): Promise<Partial<AcademyProfile>[]> {
     return [];
   }
 
-  return data || [];
+  return (data || []) as Partial<AcademyProfile>[];
 }
 
 // ===================== Manager Management Functions =====================
