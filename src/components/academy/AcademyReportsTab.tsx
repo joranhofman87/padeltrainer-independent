@@ -223,13 +223,13 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       {/* Period controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrev}>
+          <Button variant="outline" size="icon" aria-label="Previous" className="h-8 w-8" onClick={navigatePrev}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-[180px] text-center font-medium text-sm capitalize">
             {periodLabel}
           </div>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
+          <Button variant="outline" size="icon" aria-label="Next" className="h-8 w-8" onClick={navigateNext}>
             <ChevronRight className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={goToday}>

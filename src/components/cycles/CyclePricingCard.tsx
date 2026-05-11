@@ -155,7 +155,7 @@ export default function CyclePricingCard({
                   <SelectItem value="per_session">{t('pricing.perSession', 'Per session')}</SelectItem>
                 </SelectContent>
               </Select>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeExtraCost(i)}>
+              <Button type="button" variant="ghost" size="icon" aria-label="Delete" className="h-8 w-8" onClick={() => removeExtraCost(i)}>
                 <Trash2 className="h-3.5 w-3.5 text-destructive" />
               </Button>
             </div>

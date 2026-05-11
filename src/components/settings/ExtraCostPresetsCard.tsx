@@ -114,7 +114,7 @@ export function ExtraCostPresetsCard({ trainerId, academyProfileId }: ExtraCostP
                     </div>
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Delete"
                       className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
                       onClick={() => handleDelete(preset.id)}
                     >

@@ -1141,7 +1141,7 @@ export function AcademyEditDialog({
                       <TableCell>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Delete"
                           onClick={() => handleRemoveLocation(loc.id)}
                           className="h-8 w-8 text-destructive hover:text-destructive"
                         >
@@ -1263,7 +1263,7 @@ export function AcademyEditDialog({
                       <TableCell>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Delete"
                           onClick={() => handleRemoveTrainer(trainer.id)}
                           className="h-8 w-8 text-destructive hover:text-destructive"
                         >
@@ -1406,7 +1406,7 @@ export function AcademyEditDialog({
                       <TableCell>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Delete"
                           onClick={() => handleRemoveManager(manager.id)}
                           className="h-8 w-8 text-destructive hover:text-destructive"
                         >

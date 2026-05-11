@@ -298,7 +298,7 @@ export default function OpenSlots() {
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer')}>
+              <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/trainer')}>
                 <ArrowLeft className="h-5 w-5" />
               </Button>
               <h1 className="font-bold text-lg">{t('openSlots.title', 'Open Slots')}</h1>

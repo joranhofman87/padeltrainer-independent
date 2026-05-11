@@ -315,7 +315,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
                       {onEditBooking && (
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Edit"
                           className="h-6 w-6"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -398,7 +398,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
               {onEditSlot && (
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon" aria-label="Edit"
                   className="h-8 w-8"
                   onClick={() => onEditSlot(slot)}
                   title={t("common:edit", "Edit")}
@@ -409,7 +409,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
               {slot.cyclus_id && onDuplicateCyclus && (
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon" aria-label="Copy"
                   className="h-8 w-8"
                   onClick={() => onDuplicateCyclus(slot.cyclus_id!)}
                   title={t("calendar.duplicateCyclus")}
@@ -420,7 +420,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
               {onDeleteSlot && (
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon" aria-label="Delete"
                   className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                   onClick={() => onDeleteSlot(slot)}
                   title={t("common:delete", "Delete")}

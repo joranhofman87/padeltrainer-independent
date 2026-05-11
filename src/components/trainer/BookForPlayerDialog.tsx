@@ -570,7 +570,7 @@ export function BookForPlayerDialog({
                           <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
+                            size="icon" aria-label="Close"
                             className="h-8 w-8 shrink-0"
                             onClick={() => clearPlayerSlot(selectionIndex)}
                           >

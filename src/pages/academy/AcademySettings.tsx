@@ -574,7 +574,7 @@ export default function AcademySettings() {
                     {isOwner && manager.role !== 'owner' && (
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Delete"
                         onClick={() => handleRemoveManager(manager.id)}
                         disabled={removingManagerId === manager.id}
                       >

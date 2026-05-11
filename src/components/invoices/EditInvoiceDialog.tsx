@@ -410,7 +410,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Delete"
                       className="h-7 w-7"
                       onClick={() => removeLineItem(i)}
                       disabled={lineItems.length <= 1}

@@ -317,7 +317,7 @@ export default function AdminRatingSystems() {
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate("/admin")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <span className="font-bold text-xl">{t("ratingSystems.title")}</span>
@@ -370,12 +370,12 @@ export default function AdminRatingSystems() {
                         checked={system.is_active}
                         onCheckedChange={() => handleToggleActive(system)}
                       />
-                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(system)}>
+                      <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEditDialog(system)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Delete"
                         onClick={() => openDeleteDialog(system)}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />

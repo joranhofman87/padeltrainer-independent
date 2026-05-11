@@ -158,7 +158,7 @@ export function CreateAcademyTrainerDialog({
                     </div>
                     <Button
                       variant="outline"
-                      size="icon"
+                      size="icon" aria-label="Copy"
                       onClick={handleCopyPassword}
                     >
                       {copied ? (

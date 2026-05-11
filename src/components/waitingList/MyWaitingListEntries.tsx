@@ -127,7 +127,7 @@ export default function MyWaitingListEntries() {
               <AlertDialogTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon" aria-label="Delete"
                   className="text-muted-foreground hover:text-destructive"
                   disabled={deletingId === entry.id}
                 >

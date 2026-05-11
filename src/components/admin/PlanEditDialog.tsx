@@ -149,7 +149,7 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
+                        size="icon" aria-label="Close"
                         onClick={() => removeFeature(index)}
                       >
                         <X className="h-4 w-4" />
@@ -168,7 +168,7 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
                         }
                       }}
                     />
-                    <Button type="button" variant="outline" size="icon" onClick={addFeature}>
+                    <Button type="button" variant="outline" size="icon" aria-label="Add" onClick={addFeature}>
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>

@@ -266,7 +266,7 @@ export default function ClubSettings() {
                 {isOwner && manager.role !== "owner" && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="text-destructive">
+                      <Button variant="ghost" size="icon" aria-label="Delete" className="text-destructive">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </AlertDialogTrigger>

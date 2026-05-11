@@ -335,7 +335,7 @@ function MobileDayView({
       <div className="flex items-center justify-between px-2">
         <Button
           variant="ghost"
-          size="icon"
+          size="icon" aria-label="Previous"
           onClick={() => onDateChange(subDays(selectedDate, 1))}
         >
           <ChevronLeft className="h-5 w-5" />
@@ -350,7 +350,7 @@ function MobileDayView({
         </div>
         <Button
           variant="ghost"
-          size="icon"
+          size="icon" aria-label="Next"
           onClick={() => onDateChange(addDays(selectedDate, 1))}
         >
           <ChevronRight className="h-5 w-5" />
@@ -501,7 +501,7 @@ function DayView({
       <div className="flex items-center justify-between">
         <Button
           variant="ghost"
-          size="icon"
+          size="icon" aria-label="Previous"
           onClick={onNavigatePrevious}
         >
           <ChevronLeft className="h-5 w-5" />
@@ -516,7 +516,7 @@ function DayView({
         </div>
         <Button
           variant="ghost"
-          size="icon"
+          size="icon" aria-label="Next"
           onClick={onNavigateNext}
         >
           <ChevronRight className="h-5 w-5" />

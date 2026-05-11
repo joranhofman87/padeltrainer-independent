@@ -428,7 +428,7 @@ export function InvoiceSettingsCardBase({
                   <Button
                     type="button"
                     variant="destructive"
-                    size="icon"
+                    size="icon" aria-label="Delete"
                     className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={handleRemoveLogo}
                   >
@@ -807,7 +807,7 @@ export function InvoiceSettingsCardBase({
               <Button
                 type="button"
                 variant="outline"
-                size="icon"
+                size="icon" aria-label="Add"
                 onClick={() => {
                   const email = newEmail.trim().toLowerCase();
                   if (email && email.includes('@') && !forwardEmails.includes(email)) {

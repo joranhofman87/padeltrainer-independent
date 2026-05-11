@@ -190,7 +190,7 @@ export function BookingSummary({
                       <div className="flex items-center gap-3">
                         <Button
                           variant="outline"
-                          size="icon"
+                          size="icon" aria-label="Remove"
                           className="h-8 w-8"
                           onClick={() => onQuantityChange(Math.max(minGroup, quantity - 1))}
                           disabled={quantity <= minGroup}
@@ -200,7 +200,7 @@ export function BookingSummary({
                         <span className="font-semibold text-lg w-8 text-center">{quantity}</span>
                         <Button
                           variant="outline"
-                          size="icon"
+                          size="icon" aria-label="Add"
                           className="h-8 w-8"
                           onClick={() => onQuantityChange(Math.min(spotsAvailable, quantity + 1))}
                           disabled={quantity >= spotsAvailable}

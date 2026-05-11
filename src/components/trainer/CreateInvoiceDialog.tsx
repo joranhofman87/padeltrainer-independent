@@ -354,7 +354,7 @@ export function CreateInvoiceDialog({
                         <Button
                           type="button"
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Delete"
                           className="mt-7"
                           onClick={() => removeLineItem(index)}
                         >

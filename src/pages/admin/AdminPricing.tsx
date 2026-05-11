@@ -113,7 +113,7 @@ export default function AdminPricing() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate("/admin")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <h1 className="text-2xl font-bold">{t("pricing.title")}</h1>
@@ -165,14 +165,14 @@ export default function AdminPricing() {
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Edit"
                           onClick={() => setEditingPlan(plan)}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Delete"
                           onClick={() => setDeletingPlan(plan)}
                           className="text-destructive hover:text-destructive"
                         >
@@ -231,14 +231,14 @@ export default function AdminPricing() {
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Edit"
                           onClick={() => setEditingPlan(plan)}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon" aria-label="Delete"
                           onClick={() => setDeletingPlan(plan)}
                           className="text-destructive hover:text-destructive"
                         >

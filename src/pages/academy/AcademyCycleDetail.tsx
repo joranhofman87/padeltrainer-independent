@@ -624,7 +624,7 @@ export default function AcademyCycleDetail() {
       {/* Header */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/app/academy/cycles')}>
+          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/academy/cycles')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1 min-w-0">
@@ -647,12 +647,12 @@ export default function AcademyCycleDetail() {
               <ExternalLink className="h-4 w-4 mr-1" />
               {t('actions.shareLink')}
             </Button>
-            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setShowSettings(true)}>
+            <Button variant="outline" size="icon" aria-label="Settings" className="h-9 w-9" onClick={() => setShowSettings(true)}>
               <Settings className="h-4 w-4" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-9 w-9">
+                <Button variant="outline" size="icon" aria-label="Open actions menu" className="h-9 w-9">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>

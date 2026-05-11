@@ -285,12 +285,12 @@ export default function ClubTournaments() {
                     >
                       {tournament.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(tournament)}>
+                    <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEditDialog(tournament)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label="Delete"
                       className="text-destructive"
                       onClick={() => openDeleteDialog(tournament.id)}
                     >

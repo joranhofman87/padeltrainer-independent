@@ -1,6 +1,7 @@
 import { test, expect } from '../playwright-fixture';
 import { ROUTES } from './fixtures/test-data';
 import { dismissCookieConsent } from './fixtures/helpers';
+import AxeBuilder from '@axe-core/playwright';
 
 test.describe('Accessibility Tests', () => {
   test.beforeEach(async ({ page }) => {
@@ -129,5 +130,63 @@ test.describe('Accessibility Tests', () => {
         }
       }
     });
+  });
+
+  test.describe('Axe Audit', () => {
+    // Top public routes — keep this list small so CI stays fast.
+    // Authenticated routes are deferred until a logged-in fixture is wired.
+    const PUBLIC_ROUTES: { name: string; path: string }[] = [
+      { name: 'home', path: ROUTES.home },
+      { name: 'trainers', path: ROUTES.trainers },
+      { name: 'locations', path: ROUTES.locations },
+      { name: 'academies', path: ROUTES.academies },
+      { name: 'pricing', path: ROUTES.pricing },
+      { name: 'about', path: ROUTES.about },
+      { name: 'auth', path: ROUTES.auth },
+      { name: 'blog', path: '/en/blog' },
+      { name: 'learn', path: '/en/learn' },
+      { name: 'playground', path: '/en/playground' },
+    ];
+
+    for (const route of PUBLIC_ROUTES) {
+      test(`${route.name} has no serious or critical axe violations`, async ({ page }) => {
+        await page.goto(route.path);
+        await dismissCookieConsent(page);
+        // Let async content (hero, hydration) settle.
+        await page.waitForLoadState('networkidle').catch(() => {});
+
+        const results = await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa'])
+          // Color-contrast on dynamic gradient backgrounds is noisy and burns down separately.
+          .disableRules(['color-contrast'])
+          .analyze();
+
+        const blocking = results.violations.filter(
+          (v) => v.impact === 'serious' || v.impact === 'critical'
+        );
+
+        // Surface non-blocking issues for triage without failing CI.
+        const advisory = results.violations.filter(
+          (v) => v.impact !== 'serious' && v.impact !== 'critical'
+        );
+        if (advisory.length > 0) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[axe:${route.name}] ${advisory.length} non-blocking issue(s):`,
+            advisory.map((v) => `${v.id} (${v.impact})`).join(', ')
+          );
+        }
+
+        if (blocking.length > 0) {
+          const summary = blocking
+            .map((v) => `- ${v.id} [${v.impact}]: ${v.help} (${v.nodes.length} node(s))`)
+            .join('\n');
+          throw new Error(
+            `[axe:${route.name}] ${blocking.length} blocking violation(s):\n${summary}`
+          );
+        }
+        expect(blocking).toHaveLength(0);
+      });
+    }
   });
 });

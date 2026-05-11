@@ -276,14 +276,14 @@ export default function ClubPlayers() {
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="icon" aria-label="Edit"
                             onClick={() => openEditDialog(player)}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="icon" aria-label="Delete"
                             onClick={() => {
                               setDeletingPlayer(player);
                               setShowDeleteDialog(true);

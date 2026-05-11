@@ -190,7 +190,7 @@ export default function TrainerCreateInvoice() {
   return (
     <div className="container mx-auto px-4 py-6 max-w-3xl space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer/invoices')}>
+        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/trainer/invoices')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
