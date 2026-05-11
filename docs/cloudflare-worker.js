@@ -1,23 +1,43 @@
 /**
- * Cloudflare Worker: Bot Detection Proxy for PadelTrainer.ai
- * 
- * This worker detects bot User-Agents and routes them to the 
- * render-page Edge Function for server-rendered HTML. 
- * Human users get the normal SPA from Lovable.
- * 
- * DEPLOYMENT:
- * 1. Set up padeltrainer.ai on Cloudflare (DNS proxy)
- * 2. Create a new Worker in Cloudflare dashboard
- * 3. Paste this code
- * 4. Add route: padeltrainer.ai/* → this worker
- * 5. Set environment variables:
- *    - ORIGIN_URL: Your Lovable preview/published URL (e.g., https://padeltrainer.lovable.app)
- *    - RENDER_FUNCTION_URL: Your Supabase Edge Function URL 
- *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page)
- *    - SITEMAP_FUNCTION_URL: Your Supabase sitemap Edge Function URL
- *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap)
- *    - LLMS_FUNCTION_URL: Your Supabase llms-full-txt Edge Function URL
- *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt)
+ * Cloudflare Worker: Bot Detection + Sitemap/LLM Proxy for PadelTrainer.ai
+ *
+ * Responsibilities:
+ *  1. Proxy SEO discovery URLs to Supabase Edge Functions (sitemaps + llms-full.txt).
+ *  2. Detect bot User-Agents and route them to the render-page Edge Function
+ *     for server-rendered HTML (with rate-limit + circuit-breaker + cache).
+ *  3. Pass everything else through to the Lovable origin (the SPA).
+ *
+ * Proxied URL contract (these MUST resolve via this worker, otherwise they 404):
+ *    /sitemap.xml                         -> SITEMAP_FUNCTION_URL?type=index
+ *    /sitemaps/sitemap-static.xml         -> SITEMAP_FUNCTION_URL?type=static
+ *    /sitemaps/sitemap-content.xml        -> SITEMAP_FUNCTION_URL?type=content
+ *    /sitemaps/sitemap-provinces.xml      -> SITEMAP_FUNCTION_URL?type=provinces
+ *    /sitemaps/sitemap-locations-{N}.xml  -> SITEMAP_FUNCTION_URL?type=locations&page={N}
+ *    /sitemaps/sitemap-cities-{N}.xml     -> SITEMAP_FUNCTION_URL?type=cities&page={N}
+ *    /llms-full.txt                       -> LLMS_FUNCTION_URL
+ *
+ * DEPLOYMENT (manual, in Cloudflare dashboard — cannot be done from this repo):
+ * 1. Make sure padeltrainer.ai DNS is on Cloudflare and proxied (orange cloud).
+ * 2. Workers & Pages -> Create Worker -> paste the contents of this file.
+ * 3. Add route: `padeltrainer.ai/*` -> this worker (zone: padeltrainer.ai).
+ * 4. Set Worker environment variables (Settings -> Variables):
+ *    - ORIGIN_URL            e.g. https://padeltrainer.lovable.app
+ *    - RENDER_FUNCTION_URL   e.g. https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page
+ *    - SITEMAP_FUNCTION_URL  e.g. https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap
+ *    - LLMS_FUNCTION_URL     e.g. https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt
+ *    - SUPABASE_ANON_KEY     project anon key (required: forwarded as Bearer token to all
+ *                            Supabase Edge Function calls — proxies AND render-page)
+ *
+ * Smoke test after deploying:
+ *    curl -I https://padeltrainer.ai/sitemap.xml                       # 200 application/xml
+ *    curl -I https://padeltrainer.ai/sitemaps/sitemap-static.xml       # 200 application/xml
+ *    curl -I https://padeltrainer.ai/sitemaps/sitemap-content.xml      # 200 application/xml
+ *    curl -I https://padeltrainer.ai/sitemaps/sitemap-provinces.xml    # 200 application/xml
+ *    curl -I https://padeltrainer.ai/sitemaps/sitemap-locations-1.xml  # 200 application/xml
+ *    curl -I https://padeltrainer.ai/sitemaps/sitemap-cities-1.xml     # 200 application/xml
+ *    curl -I https://padeltrainer.ai/llms-full.txt                     # 200 text/plain
+ *
+ * If any return 404, the route isn't attached to the zone or an env var is missing.
  */
 
 const BOT_USER_AGENTS = [
