@@ -1,51 +1,133 @@
-# A11y cleanup (items 19–21)
+# Cron service-role fix + verification
 
-## #19 — 195 icon-only buttons missing `aria-label`
+## Context
 
-Two-track approach: enforce going forward, fix the worst offenders now.
+`enrich-clubs` and `fetch-location-logos` now call `requireAdmin` (which accepts the service-role bearer as a short-circuit). The two pg_cron jobs that drive them are still wired with the **anon key** as bearer, so they will start returning 401 on every tick.
 
-**Track A: ESLint rule (build-time guarantee)**
-- Add a local ESLint plugin at `eslint-rules/button-icon-aria-label.js`. Custom rule that flags any JSX `<Button …>` (or aliased import) where:
-  - `size="icon"` is set, AND
-  - none of `aria-label`, `aria-labelledby`, `title` is set, AND
-  - the button has no readable text child (only an icon component / SVG).
-- Wire into `eslint.config.js`: register the local plugin, set rule to `error`. Build will fail on regressions.
-- Also extend the rule to catch `IconButton` / `<button …>` usages with the same heuristic so we don't just push the violations one level down.
+Two pieces:
 
-**Track B: First-wave fixes (manual, the patterns that repeat hundreds of times)**
+```
+schedule_enrichment_job()   → cron 'enrich-locations-background'    every 2 min   → enrich-clubs
+schedule_logo_fetch_job()   → cron 'fetch-location-logos-background' every 15 min → fetch-location-logos
+```
 
-195 violations cluster into ~5 patterns. Fix the patterns, not the file list.
+Both functions hardcode the anon key inside `cron_command`. The cron jobs themselves were already scheduled with that command, so updating the wrapper functions alone does nothing — the live `cron.job` rows must also be re-scheduled.
 
-1. Back-arrow header buttons (~80 instances): `<Button variant="ghost" size="icon" onClick={() => navigate(-1 | "/trainer" | …)}><ArrowLeft …/></Button>`. Add `aria-label={t('common.back')}`. Add the `common.back` key to `en.json` if not present, mirror to nl/de/fr/es/it.
-2. Calendar prev/next chevrons (~30 instances). `aria-label={t('common.previous')}` / `t('common.next')`.
-3. Close (X) buttons in dialogs/sheets/banners that don't already use the shadcn `<DialogClose>` (which already labels itself). `aria-label={t('common.close')}`.
-4. Row-action menu triggers (`<MoreVertical />`, `<MoreHorizontal />`): `aria-label={t('common.actions')}`.
-5. Add/remove row buttons (the `<Plus />` / `<Minus />` / `<Trash2 />` in editors): `aria-label={t('common.add')}` / `t('common.remove')` / `t('common.delete')`.
+## #1 — Fix the live cron jobs (insert tool, NOT a migration)
 
-After the wave, run `bun run lint` — if any violations remain (one-offs that don't fit the patterns), fix them inline. Then the rule stays at `error`.
+Per the project's cron-job guidance: SQL that contains the project's anon/service keys should be executed via the insert tool, not committed in a migration file (so it doesn't leak into remixes).
 
-**Out of scope:** retrofitting `aria-label` for non-icon buttons that happen to wrap only an icon (a separate, smaller cleanup); changing button visuals.
+Run, in one transaction:
+```sql
+SELECT cron.unschedule('enrich-locations-background');
+SELECT cron.unschedule('fetch-location-logos-background');
 
-## #20 — Missing alt attribute on `<img>`
+SELECT cron.schedule(
+  'enrich-locations-background',
+  '*/2 * * * *',
+  $cron$
+    SELECT net.http_post(
+      url := 'https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/enrich-clubs',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer <SUPABASE_SERVICE_ROLE_KEY>'
+      ),
+      body := '{"batch_size": 5, "fill_missing_only": true}'::jsonb
+    ) AS request_id;
+  $cron$
+);
 
-Only one offender currently:
-- `src/pages/TrainerProfile.tsx:535` — academy logo `<img>` with no `alt`. Set `alt={trainerAcademy.name || ''}`.
+SELECT cron.schedule(
+  'fetch-location-logos-background',
+  '*/15 * * * *',
+  $cron$
+    SELECT net.http_post(
+      url := 'https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/fetch-location-logos',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer <SUPABASE_SERVICE_ROLE_KEY>'
+      ),
+      body := '{"batch_size": 10}'::jsonb
+    ) AS request_id;
+  $cron$
+);
+```
+The `<SUPABASE_SERVICE_ROLE_KEY>` placeholder is filled in inline at execution time from the project's stored secret (already configured). Nothing secret lands in the repo.
 
-Also worth a tiny preventive add: an ESLint rule via `eslint-plugin-jsx-a11y` (`alt-text`). Lighter than writing it ourselves. Add `eslint-plugin-jsx-a11y` and turn on `jsx-a11y/alt-text` plus `jsx-a11y/anchor-has-content` (and report-only on the rest of `recommended` so we don't drown in warnings on day one).
+## #2 — Fix the wrapper functions (migration, no secret)
 
-## #21 — Axe accessibility tests on top routes
+`schedule_enrichment_job()` / `schedule_logo_fetch_job()` are admin-callable RPCs used to re-create the cron jobs from the UI / admin panel. They currently embed the anon key in source. Replace them so they read the bearer from a GUC instead, with a clear error if it's not set:
 
-- Install `@axe-core/playwright`.
-- Extend `e2e/accessibility.spec.ts` with a new `Axe Audit` block that loops the top 10 public routes and runs `AxeBuilder({ page }).withTags(['wcag2a','wcag2aa']).analyze()`. Fail on any `serious`/`critical` violation; allow `moderate`/`minor` to surface as warnings (logged, not failing) for now to keep CI green while we burn down the backlog.
-- Top 10 routes (from `e2e/fixtures/test-data.ts` ROUTES + most-trafficked marketing pages): `/`, `/trainers`, `/locations`, `/academies`, `/blog`, `/pricing`, `/about`, `/learn`, `/playground`, `/auth`. Confirm exact list against `ROUTES` during implementation.
-- Skip authenticated routes for now — they need fixture login, deferred to a follow-up.
+```sql
+-- (committed in a migration — no secret here)
+CREATE OR REPLACE FUNCTION public.schedule_enrichment_job()
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  job_id bigint;
+  sr_key text;
+  cron_command text;
+BEGIN
+  IF NOT public.is_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'Only admins can manage cron jobs';
+  END IF;
+
+  sr_key := current_setting('app.settings.service_role_key', true);
+  IF sr_key IS NULL OR sr_key = '' THEN
+    RAISE EXCEPTION 'app.settings.service_role_key is not configured';
+  END IF;
+
+  SELECT jobid INTO job_id FROM cron.job WHERE jobname = 'enrich-locations-background';
+  IF job_id IS NOT NULL THEN RETURN job_id; END IF;
+
+  cron_command := format(
+    $cmd$SELECT net.http_post(
+      url := 'https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/enrich-clubs',
+      headers := jsonb_build_object(
+        'Content-Type','application/json',
+        'Authorization', 'Bearer %s'
+      ),
+      body := '{"batch_size": 5, "fill_missing_only": true}'::jsonb
+    ) AS request_id;$cmd$,
+    sr_key
+  );
+
+  SELECT cron.schedule('enrich-locations-background','*/2 * * * *', cron_command) INTO job_id;
+  RETURN job_id;
+END;
+$$;
+```
+Same shape for `schedule_logo_fetch_job()`.
+
+The GUC `app.settings.service_role_key` is set once via the insert tool with `ALTER DATABASE postgres SET app.settings.service_role_key = '<key>'` — also kept out of the migration file. (Standalone DB-level GUC SETs are allowed when run ad-hoc; the "no `ALTER DATABASE postgres` in migrations" rule is exactly because the value would otherwise get committed.)
+
+After the GUC is set, any future admin click on "Re-schedule cron job" produces a job that uses the SR key with no source-code secret.
+
+## #3 — Verification (curl_edge_functions)
+
+After step #1 lands, hit each endpoint:
+
+| Function | Auth | Expected |
+|---|---|---|
+| `enrich-clubs` | no Authorization | 401 |
+| `enrich-clubs` | Bearer SUPABASE_ANON_KEY | 401 (admin guard) |
+| `enrich-clubs` | Bearer SUPABASE_SERVICE_ROLE_KEY | 200 |
+| `fetch-location-logos` | no Authorization | 401 |
+| `fetch-location-logos` | Bearer SUPABASE_SERVICE_ROLE_KEY | 200 |
+| `impersonate-user` | no Authorization | 401 |
+| `admin-reset-password` | no Authorization | 401 |
+| `create-admin-trainer` | no Authorization | 401 |
+| `get-admin-stats` | no Authorization | 401 |
+| `get-admin-stats` | preview admin session | 200 |
+
+Then wait 2–3 minutes and `cron.job_run_details` for both jobs should show `succeeded`.
 
 ## Order
 
-1. #20 — one-line fix + plugin install.
-2. #21 — install + spec extension; gives us a measuring tape.
-3. #19 — ESLint rule; then first-wave fixes; then flip rule to `error`.
+1. Insert-tool SQL (step #1) — unblocks the cron immediately.
+2. Migration (step #2) — committable cleanup of the wrapper functions.
+3. Curl verification (step #3).
 
-## Open question
+## Out of scope
 
-For the i18n keys used in #19 (`common.back`, `common.previous`, `common.next`, `common.close`, `common.actions`, `common.add`, `common.remove`, `common.delete`): these likely already exist in EN — we'll reuse if so. If any are missing in non-en locales, the i18n parity check (added in the previous round) will flag them; we'll add the missing translations as part of this change. Confirming you're OK with that approach (no separate "translate everything" step).
+- Migrating the inline SR key in cron jobs to Postgres `vault.secrets` (cleaner long-term but pg_cron + vault interplay isn't already wired in this project — separate refactor).
+- Re-auditing every other `requireAdmin` edge function caller for cron usage (only these two were flagged as currently broken).
