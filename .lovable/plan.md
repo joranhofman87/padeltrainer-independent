@@ -1,18 +1,24 @@
-## Fix weak temp password generation
+## Harden Reditus webhook signature verification
 
-Replace `Math.random()` in `supabase/functions/create-admin-trainer/index.ts` `generatePassword()` with `crypto.getRandomValues()` (Web Crypto API, available in Deno).
+Yes, both points are valid security improvements. Apply them to `supabase/functions/reditus-referral-webhook/index.ts`.
 
-### Change
-```ts
-function generatePassword(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
-  const bytes = new Uint8Array(12);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map(b => chars[b % chars.length]).join('');
-}
-```
+### Changes
+
+**1. Make signature verification mandatory (fail-closed)**
+
+Replace the `if (webhookSecret) { ... }` block so that:
+- Missing `REDITUS_WEBHOOK_SECRET` → 500 (misconfiguration, never accept traffic)
+- Missing `x-signature` header → 401
+- Invalid signature → 401
+
+**2. Constant-time signature comparison**
+
+Add a `constantTimeEqual(a, b)` helper and use it inside `verifySignature` instead of `computed === signature`, to prevent timing attacks on HMAC comparison.
+
+### Files
+
+- `supabase/functions/reditus-referral-webhook/index.ts` — only file touched.
 
 ### After
-- Mark `weak_temp_password_gen` finding as fixed.
 
-No other files affected.
+- Mark the relevant security finding as fixed (if one exists for this), otherwise just note in security memory that Reditus webhook now requires signed requests.
