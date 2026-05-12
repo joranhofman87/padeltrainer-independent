@@ -1,6 +1,21 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { restrictedCors } from "../_shared/cors.ts";
 
+const MIN_LEN = 12;
+const MAX_LEN = 128;
+
+function validatePasswordPolicy(pw: string): string | null {
+  if (pw !== pw.trim()) return "password_invalid_whitespace";
+  if (pw.length < MIN_LEN) return "password_too_short";
+  if (pw.length > MAX_LEN) return "password_too_long";
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].reduce(
+    (n, re) => n + (re.test(pw) ? 1 : 0),
+    0,
+  );
+  if (classes < 3) return "password_too_weak";
+  return null;
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = restrictedCors(req);
   // Handle CORS preflight
