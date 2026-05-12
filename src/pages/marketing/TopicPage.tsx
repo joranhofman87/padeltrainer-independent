@@ -206,6 +206,15 @@ export default function TopicPage() {
   if (error || !topic) {
     return (
       <MarketingLayout>
+        <SEO
+          title={t('topics.notFound', 'Topic not found')}
+          description={t('topics.notFoundDesc', 'This topic page could not be found.')}
+          url={`/${slug || ''}`}
+          noIndex
+        />
+        <Helmet>
+          <meta name="prerender-status-code" content="404" />
+        </Helmet>
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">{t('topics.notFound', 'Topic not found')}</h1>
           <p className="text-muted-foreground mb-6">{t('topics.notFoundDesc', 'This topic page could not be found.')}</p>
