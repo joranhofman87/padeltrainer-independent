@@ -175,7 +175,8 @@ function buildStructuredData(topic: TopicDetail, slug: string, currentLang: stri
 // ── Main page ──
 
 export default function TopicPage() {
-  const { slug } = useParams<{ slug: string }>();
+  const params = useParams<{ slug?: string; topicSlug?: string }>();
+  const slug = params.slug || params.topicSlug;
   const { t, i18n } = useTranslation('marketing');
   const currentLang = i18n.language || 'en';
 
