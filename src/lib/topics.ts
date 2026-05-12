@@ -81,7 +81,7 @@ export interface TopicDetail extends TopicSummary {
 
 const ARTICLE_COUNT_PROJECTION = `"articleCount": count(*[_type == "learningArticle" && references(^._id) && !(_id in path("drafts.**"))])`;
 
-export const TOPICS_LIST_QUERY = `*[_type == "topic" && isIndexable != false && !(_id in path("drafts.**"))] | order(title asc) {
+export const TOPICS_LIST_QUERY = `*[_type == "topic" && isIndexable != false && language == $lang && !(_id in path("drafts.**"))] | order(title asc) {
   _id,
   title,
   "slug": slug.current,
@@ -92,7 +92,7 @@ export const TOPICS_LIST_QUERY = `*[_type == "topic" && isIndexable != false && 
   ${ARTICLE_COUNT_PROJECTION}
 }`;
 
-export const ALL_TOPICS_LIST_QUERY = `*[_type == "topic" && !(_id in path("drafts.**"))] | order(title asc) {
+export const ALL_TOPICS_LIST_QUERY = `*[_type == "topic" && language == $lang && !(_id in path("drafts.**"))] | order(title asc) {
   _id,
   title,
   "slug": slug.current,
@@ -103,7 +103,7 @@ export const ALL_TOPICS_LIST_QUERY = `*[_type == "topic" && !(_id in path("draft
   ${ARTICLE_COUNT_PROJECTION}
 }`;
 
-export const TOPIC_BY_SLUG_QUERY = `*[_type == "topic" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+export const TOPIC_BY_SLUG_QUERY = `*[_type == "topic" && slug.current == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
   _id,
   title,
   "slug": slug.current,
@@ -184,12 +184,13 @@ export function buildArticleItemList(
 
 // ── Fetch helpers ──
 
-export async function getTopicBySlug(slug: string): Promise<TopicDetail | null> {
-  return sanityClient.fetch<TopicDetail | null>(TOPIC_BY_SLUG_QUERY, { slug });
+export async function getTopicBySlug(slug: string, lang: string): Promise<TopicDetail | null> {
+  return sanityClient.fetch<TopicDetail | null>(TOPIC_BY_SLUG_QUERY, { slug, lang });
 }
 
-export async function getTopics(indexableOnly = true): Promise<TopicSummary[]> {
+export async function getTopics(lang: string, indexableOnly = true): Promise<TopicSummary[]> {
   return sanityClient.fetch<TopicSummary[]>(
-    indexableOnly ? TOPICS_LIST_QUERY : ALL_TOPICS_LIST_QUERY
+    indexableOnly ? TOPICS_LIST_QUERY : ALL_TOPICS_LIST_QUERY,
+    { lang }
   );
 }

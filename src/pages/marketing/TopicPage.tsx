@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { useQuery } from '@tanstack/react-query';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
@@ -124,7 +125,7 @@ function GroupedArticles({ articles, t }: { articles: ReferencingArticle[]; t: (
 // ── Structured data ──
 
 function buildStructuredData(topic: TopicDetail, slug: string, currentLang: string) {
-  const url = `${MARKETING_DOMAIN}/${currentLang}/topics/${slug}`;
+  const url = `${MARKETING_DOMAIN}/${currentLang}/${slug}`;
 
   const collectionPage = {
     "@context": "https://schema.org",
@@ -175,13 +176,14 @@ function buildStructuredData(topic: TopicDetail, slug: string, currentLang: stri
 // ── Main page ──
 
 export default function TopicPage() {
-  const { slug } = useParams<{ slug: string }>();
+  const params = useParams<{ slug?: string; topicSlug?: string }>();
+  const slug = params.slug || params.topicSlug;
   const { t, i18n } = useTranslation('marketing');
   const currentLang = i18n.language || 'en';
 
   const { data: topic, isLoading, error } = useQuery({
-    queryKey: ['topic', slug],
-    queryFn: () => getTopicBySlug(slug!),
+    queryKey: ['topic', currentLang, slug],
+    queryFn: () => getTopicBySlug(slug!, currentLang),
     enabled: !!slug,
     staleTime: 1000 * 60 * 10,
   });
@@ -205,6 +207,15 @@ export default function TopicPage() {
   if (error || !topic) {
     return (
       <MarketingLayout>
+        <SEO
+          title={t('topics.notFound', 'Topic not found')}
+          description={t('topics.notFoundDesc', 'This topic page could not be found.')}
+          url={`/${slug || ''}`}
+          noIndex
+        />
+        <Helmet>
+          <meta name="prerender-status-code" content="404" />
+        </Helmet>
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">{t('topics.notFound', 'Topic not found')}</h1>
           <p className="text-muted-foreground mb-6">{t('topics.notFoundDesc', 'This topic page could not be found.')}</p>
@@ -245,7 +256,7 @@ export default function TopicPage() {
       <SEO
         title={topic.seo?.titleTag || topic.h1 || topic.title}
         description={topic.seo?.metaDescription || topic.description || topic.intro || ''}
-        url={`/topics/${slug}`}
+        url={`/${slug}`}
         type="website"
         structuredData={structuredData}
         noIndex={!topic.isIndexable}
@@ -526,7 +537,7 @@ export default function TopicPage() {
               </h2>
               <div className="flex flex-wrap gap-3">
                 {topic.relatedTopics.map(related => (
-                  <LocalizedLink key={related._id} to={`/topics/${related.slug}`}>
+                  <LocalizedLink key={related._id} to={`/${related.slug}`}>
                     <Badge
                       variant="outline"
                       className="text-sm px-4 py-2 hover:bg-accent transition-colors cursor-pointer"
@@ -551,7 +562,7 @@ export default function TopicPage() {
           {topic.parentTopic && (
             <div className="mt-8 p-4 border rounded-lg bg-card">
               <LocalizedLink
-                to={`/topics/${topic.parentTopic.slug}`}
+                to={`/${topic.parentTopic.slug}`}
                 className="flex items-center gap-2 text-primary hover:underline font-medium"
               >
                 <ArrowLeft className="h-4 w-4" />

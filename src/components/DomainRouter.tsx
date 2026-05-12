@@ -425,6 +425,10 @@ export function DomainRouter() {
           <Route path="founding-trainers" element={<FoundingTrainers />} />
           <Route path="brand" element={<Brand />} />
           <Route path="press" element={<PressKit />} />
+          {/* Localized topic hubs (e.g. /nl/slagen, /en/strokes). MUST stay last so
+              all static routes above win. TopicPage renders NotFound when no Sanity
+              topic matches the (lang, slug) pair. */}
+          <Route path=":topicSlug" element={<TopicPage />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />

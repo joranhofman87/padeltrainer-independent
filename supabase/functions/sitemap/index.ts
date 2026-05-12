@@ -136,6 +136,7 @@ function generateSanityEntries(
   const groups = new Map<string, any[]>();
   for (const doc of docs) {
     if (filterFn && !filterFn(doc)) continue;
+    if (!doc?.slug) continue; // skip docs without a slug — defensive
     const lang = doc.language || 'en';
     const rootId = doc.translationOf?._ref || doc._id;
     const group = groups.get(rootId) || [];
@@ -321,8 +322,8 @@ Deno.serve(async (req) => {
         sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; seo: { indexable?: boolean } | null; _updatedAt: string }[]>(
           `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, seo, _updatedAt }`
         ),
-        sanity.fetch<{ slug: string; isIndexable: boolean; _updatedAt: string }[]>(
-          `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, "isIndexable": coalesce(isIndexable, true), _updatedAt }`
+        sanity.fetch<{ slug: string; language: string; contentType: string | null; isIndexable: boolean; _updatedAt: string }[]>(
+          `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, language, contentType, "isIndexable": coalesce(isIndexable, true), _updatedAt }`
         ),
         sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; _updatedAt: string }[]>(
           `*[_type == "product" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, _updatedAt }`
@@ -338,10 +339,32 @@ Deno.serve(async (req) => {
         (doc) => doc.seo?.indexable !== false
       );
       xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6', today);
-      for (const topic of sanityTopics || []) {
-        if (!topic.isIndexable) continue;
-        const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
-        xml += generateUrlEntry(`/topics/${topic.slug}`, topicLastmod, 'weekly', '0.6');
+      // Group topics by slug-language-key so we can emit hreflang alternates
+      // (topic docs don't share a translationOf ref, so we group by contentType when available, else by slug).
+      const topicGroups = new Map<string, typeof sanityTopics>();
+      for (const t of sanityTopics || []) {
+        if (!t.isIndexable || !t.language || !t.slug) continue;
+        const key = (t as { contentType?: string }).contentType || t.slug;
+        const g = topicGroups.get(key) || [];
+        g.push(t);
+        topicGroups.set(key, g);
+      }
+      for (const [, group] of topicGroups) {
+        for (const topic of group) {
+          const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
+          const safeSlug = escapeXml(topic.slug);
+          xml += '  <url>\n';
+          xml += `    <loc>${SITE_URL}/${topic.language}/${safeSlug}</loc>\n`;
+          xml += `    <lastmod>${topicLastmod}</lastmod>\n`;
+          xml += `    <changefreq>weekly</changefreq>\n`;
+          xml += `    <priority>0.7</priority>\n`;
+          for (const alt of group) {
+            xml += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${escapeXml(alt.slug)}"/>\n`;
+          }
+          const enVersion = group.find((a) => a.language === 'en') || group[0];
+          xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/${escapeXml(enVersion.slug)}"/>\n`;
+          xml += '  </url>\n';
+        }
       }
 
       xml += '</urlset>';
