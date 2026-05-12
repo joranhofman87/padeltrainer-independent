@@ -26,8 +26,8 @@ export default function TopicsIndex() {
   const currentLang = i18n.language || 'en';
 
   const { data: topics = [], isLoading } = useQuery({
-    queryKey: ['topics-index'],
-    queryFn: () => getTopics(true),
+    queryKey: ['topics-index', currentLang],
+    queryFn: () => getTopics(currentLang, true),
     staleTime: 1000 * 60 * 10,
   });
 
