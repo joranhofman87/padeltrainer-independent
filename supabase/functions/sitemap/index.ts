@@ -339,11 +339,32 @@ Deno.serve(async (req) => {
         (doc) => doc.seo?.indexable !== false
       );
       xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6', today);
-      for (const topic of sanityTopics || []) {
-        if (!topic.isIndexable || !topic.language || !topic.slug) continue;
-        const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
-        // Localized hub URL (canonical): /{lang}/{slug}
-        xml += generateUrlEntry(`/${topic.language}/${topic.slug}`, topicLastmod, 'weekly', '0.7');
+      // Group topics by slug-language-key so we can emit hreflang alternates
+      // (topic docs don't share a translationOf ref, so we group by contentType when available, else by slug).
+      const topicGroups = new Map<string, typeof sanityTopics>();
+      for (const t of sanityTopics || []) {
+        if (!t.isIndexable || !t.language || !t.slug) continue;
+        const key = (t as { contentType?: string }).contentType || t.slug;
+        const g = topicGroups.get(key) || [];
+        g.push(t);
+        topicGroups.set(key, g);
+      }
+      for (const [, group] of topicGroups) {
+        for (const topic of group) {
+          const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
+          const safeSlug = escapeXml(topic.slug);
+          xml += '  <url>\n';
+          xml += `    <loc>${SITE_URL}/${topic.language}/${safeSlug}</loc>\n`;
+          xml += `    <lastmod>${topicLastmod}</lastmod>\n`;
+          xml += `    <changefreq>weekly</changefreq>\n`;
+          xml += `    <priority>0.7</priority>\n`;
+          for (const alt of group) {
+            xml += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${escapeXml(alt.slug)}"/>\n`;
+          }
+          const enVersion = group.find((a) => a.language === 'en') || group[0];
+          xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/${escapeXml(enVersion.slug)}"/>\n`;
+          xml += '  </url>\n';
+        }
       }
 
       xml += '</urlset>';
