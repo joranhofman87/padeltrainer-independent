@@ -13,6 +13,35 @@ import { useAuth } from '@/hooks/useAuth';
 import { Logo } from '@/components/Logo';
 import { captureUtmParams } from '@/lib/utm';
 import { MegaMenu, MegaMenuMobile } from '@/components/marketing/MegaMenu';
+import { useQuery } from '@tanstack/react-query';
+import { getTopics } from '@/lib/topics';
+
+function FooterTopics() {
+  const { t, i18n } = useTranslation('marketing');
+  const currentLang = i18n.language || 'en';
+  const { data: topics } = useQuery({
+    queryKey: ['footer-topics', currentLang],
+    queryFn: () => getTopics(currentLang),
+    staleTime: 1000 * 60 * 30,
+  });
+
+  if (!topics || topics.length === 0) return null;
+
+  return (
+    <div>
+      <h4 className="font-semibold mb-4">{t('footer.padelTopics', 'Padel topics')}</h4>
+      <ul className="space-y-2 text-sm text-muted-foreground">
+        {topics.slice(0, 12).map(topic => (
+          <li key={topic._id}>
+            <LocalizedLink to={`/${topic.slug}`} className="hover:text-primary transition-colors">
+              {topic.title}
+            </LocalizedLink>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 const getDashboardPath = (role?: string | null) => {
   switch (role) {
@@ -295,6 +324,9 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><LocalizedLink to="/playground" className="hover:text-primary transition-colors">{t('nav.playground', 'Playground')}</LocalizedLink></li>
               </ul>
             </div>
+
+            {/* Padel topics — locale-aware hub links from Sanity */}
+            <FooterTopics />
 
             {/* Popular Cities */}
             <div>

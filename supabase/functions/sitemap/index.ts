@@ -349,6 +349,7 @@ Deno.serve(async (req) => {
         g.push(t);
         topicGroups.set(key, g);
       }
+      let topicUrlCount = 0;
       for (const [, group] of topicGroups) {
         for (const topic of group) {
           const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
@@ -364,8 +365,10 @@ Deno.serve(async (req) => {
           const enVersion = group.find((a) => a.language === 'en') || group[0];
           xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/en/${escapeXml(enVersion.slug)}"/>\n`;
           xml += '  </url>\n';
+          topicUrlCount++;
         }
       }
+      console.log(`[sitemap:content] topic urls emitted: ${topicUrlCount} (groups: ${topicGroups.size})`);
 
       xml += '</urlset>';
 

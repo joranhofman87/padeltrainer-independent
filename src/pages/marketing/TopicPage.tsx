@@ -260,6 +260,10 @@ export default function TopicPage() {
         type="website"
         structuredData={structuredData}
         noIndex={!topic.isIndexable}
+        translations={[
+          { language: currentLang, slug: slug! },
+          ...(topic.alternates ?? []),
+        ]}
       />
 
       {/* Back Button */}

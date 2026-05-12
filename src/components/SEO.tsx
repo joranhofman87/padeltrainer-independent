@@ -63,13 +63,15 @@ export function SEO({
 
   const defaultImage = `${MARKETING_DOMAIN}/og-image.png`;
 
-  // If we have CMS translations with actual slugs, use those for hreflang
-  const hasTranslatedSlugs = translations && translations.length > 0 && pathPrefix;
+  // If we have CMS translations with actual slugs, use those for hreflang.
+  // pathPrefix is optional — when empty, slugs live directly under /<lang>/<slug>.
+  const hasTranslatedSlugs = !!(translations && translations.length > 0);
+  const prefixSegment = pathPrefix ? `/${pathPrefix}` : '';
 
   const alternateUrls = hasTranslatedSlugs
-    ? translations.map(t => ({
+    ? translations!.map(t => ({
         lang: t.language,
-        url: `${baseUrl}/${t.language}/${pathPrefix}/${t.slug}`
+        url: `${baseUrl}/${t.language}${prefixSegment}/${t.slug}`
       }))
     : SUPPORTED_LANGUAGES.map(langCode => ({
         lang: langCode,
@@ -80,9 +82,9 @@ export function SEO({
   // Prior behaviour pointed at the unprefixed URL which 301s to NL — wrong default for the global market.
   const xDefaultUrl = hasTranslatedSlugs
     ? (() => {
-        const enTranslation = translations.find(t => t.language === 'en');
+        const enTranslation = translations!.find(t => t.language === 'en');
         return enTranslation
-          ? `${baseUrl}/en/${pathPrefix}/${enTranslation.slug}`
+          ? `${baseUrl}/en${prefixSegment}/${enTranslation.slug}`
           : `${baseUrl}/en${canonicalPath}`;
       })()
     : `${baseUrl}/en${canonicalPath}`;

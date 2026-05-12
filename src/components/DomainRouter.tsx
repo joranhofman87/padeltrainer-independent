@@ -377,8 +377,8 @@ export function DomainRouter() {
           <Route path="about" element={<About />} />
           <Route path="blog" element={<Blog />} />
           <Route path="blog/:slug" element={<BlogPost />} />
-          <Route path="rules" element={<Navigate to="padel-rules" replace />} />
-          <Route path="rules/:slug" element={<RulesPage />} />
+          {/* Note: legacy /:lang/rules redirect removed so the :topicSlug catch route below
+              can serve the topic hub at /en/rules. /padel-rules remains the canonical Rules listing. */}
           <Route path="padel-rules" element={<Rules />} />
           <Route path="padel-rules/:slug" element={<RulesPage />} />
           <Route path="padel-strokes" element={<Strokes />} />

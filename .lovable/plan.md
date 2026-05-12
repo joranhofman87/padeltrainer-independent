@@ -1,79 +1,112 @@
-## Goal
+## Topic-hub fixes 2–5
 
-Make localized topic hub URLs like `/nl/slagen`, `/en/strokes`, `/en/drills` resolve to the existing `TopicPage`, render full content (h1, intro, body, related items), and appear in the sitemap. Currently they fall through to NotFound, which is the root cause of the indexation drop.
+### 1. Free up `/:lang/rules` for the topic catch route
 
-## Validation summary
-
-- Sanity has 60 indexable `topic` docs across 6 languages with localized slugs (verified by direct GROQ).
-- `DomainRouter.tsx` only mounts `/:lang/topics/:slug`; no `/:lang/{localizedSlug}` route exists.
-- `getTopicBySlug` in `src/lib/topics.ts` does not filter by `language` — wrong-language docs can leak.
-- The sitemap edge function emits topic entries as `/topics/{slug}` (no language prefix), so localized hubs are absent from the sitemap.
-- Issue 2 (`/padel/:city` blank shell) is out of scope per your decision.
-
-## Changes
-
-### 1. `src/lib/topics.ts` — language-aware fetching
-- Update `TOPIC_BY_SLUG_QUERY` and `TOPICS_LIST_QUERY` to filter by `language == $lang`.
-- Change `getTopicBySlug(slug, lang)` and `getTopics(lang, indexableOnly)` signatures to require `lang`.
-- Add a new helper `getTopicByLocalizedSlug(slug, lang)` that returns `null` when no doc matches (used by the catch route to decide between rendering and 404).
-
-### 2. `src/pages/marketing/TopicPage.tsx` — pass current language and accept either route
-- Read `slug` and (optional) `lang` from `useParams`; resolve current language via `useTranslation`.
-- Pass `lang` into `getTopicBySlug`.
-- When a topic is fetched via the localized catch route (no `topics/` segment), set canonical URL to `/{lang}/{slug}`. When fetched via `/topics/:slug`, set canonical to the localized URL too — so the legacy URL has a single canonical pointing at the new one.
-- Update `TopicsIndex` cards to link to `/{slug}` instead of `/topics/{slug}`.
-
-### 3. `src/pages/marketing/TopicsIndex.tsx`
-- Pass current `lang` into `getTopics`.
-- Update card links to `/{slug}` (LocalizedLink already prepends `/{lang}`).
-
-### 4. `src/components/DomainRouter.tsx` — add catch route
-Inside the existing `/:lang` `<Route>`, add as the LAST child route:
+`src/components/DomainRouter.tsx` lines 380–381 currently:
 
 ```tsx
-<Route path=":topicSlug" element={<TopicPage />} />
+<Route path="rules" element={<Navigate to="padel-rules" replace />} />
+<Route path="rules/:slug" element={<RulesPage />} />
 ```
 
-Placed last so all existing static routes (`pricing`, `blog`, `learn`, `topics`, `padel-rules`, `padel-strokes`, `padel-coaches`, `video-tips`, `trainers`, `locations`, `academies`, `gear`, `padel`, `claim`, `playground`, `register`, etc.) win. Keep `/topics/:slug` as legacy alias.
+Changes:
+- Delete the `rules` Navigate so `/en/rules`, `/de/regeln-pickup`, etc. fall through to the `:topicSlug` catch route at line 431.
+- Delete the bare `rules/:slug` route. `padel-rules/:slug` (line 383) is already the canonical detail route.
+- Add explicit, slug-specific 301-style redirects for any legacy URLs that need preservation. Today there are no inbound legacy `/<lang>/rules/<slug>` references in the codebase (`rg "rules/" src/` confirms only `padel-rules/` is linked), so no per-slug redirects are needed for now. If we later identify inbound deep links, we add them as individual `<Route path="rules/scoring" element={<Navigate to="../padel-rules/scoring" replace />} />` lines — never a blanket parent redirect.
 
-`TopicPage` will:
-- If `lang` is not in `SUPPORTED_LANGUAGES` → render NotFound (handled by LanguageRouter already).
-- If `getTopicByLocalizedSlug(slug, lang)` returns null → render the existing "Topic not found" UI but with `<SEO noIndex />` and a `meta name="prerender-status-code" content="404"` so the Cloudflare bot proxy serves a real 404 to crawlers (per the `mem://seo/dynamic-rendering-strategy` setup).
-- Otherwise render normally.
+The English `rules` topic doc has slug `rules` (verified in Sanity), so `/en/rules` will resolve to the topic hub. Other locales already use distinct slugs (`padel-regeln`, `reglas`, `regles-padel`, `padel-regels`) and weren't affected by the legacy redirect.
 
-### 5. `supabase/functions/sitemap/index.ts`
-In the `type === 'content'` branch, change the topic fetch to include `language`:
+### 2. Hreflang alternates on TopicPage
+
+`src/lib/topics.ts` — extend `TopicDetail` and `TOPIC_BY_SLUG_QUERY`:
 
 ```ts
-sanity.fetch(`*[_type == "topic" && !(_id in path("drafts.**"))]{
-  "slug": slug.current, language, "isIndexable": coalesce(isIndexable, true), _updatedAt
-}`)
+// add to TopicDetail
+alternates: { language: string; slug: string }[] | null;
+
+// inside TOPIC_BY_SLUG_QUERY projection
+"alternates": *[_type == "topic" && contentType == ^.contentType && _id != ^._id && !(_id in path("drafts.**"))]{
+  language, "slug": slug.current
+},
 ```
 
-Then emit one entry per topic doc:
+Note: grouping by `contentType` works because every topic doc has a `contentType` field and shared values across languages (verified — 12 contentTypes × 5 languages = 60 docs, no nulls).
+
+`src/pages/marketing/TopicPage.tsx` — pass alternates plus a self entry into `<SEO />`:
+
+```tsx
+const translations = [
+  { language: currentLang, slug: slug! },
+  ...(topic.alternates ?? []),
+];
+
+<SEO
+  ...
+  translations={translations}
+  pathPrefix=""   // topics live at /<lang>/<slug>, no prefix
+/>
+```
+
+`src/components/SEO.tsx` already accepts `translations` + `pathPrefix` and emits per-language `<link rel="alternate" hreflang>` plus `x-default` pointing to the EN slug. One small adjustment: when `pathPrefix === ""`, the current code builds `…/${pathPrefix}/${slug}` which produces a double slash. Update the alternate URL builder to omit the prefix segment when empty:
 
 ```ts
-for (const topic of sanityTopics || []) {
-  if (!topic.isIndexable || !topic.language || !topic.slug) continue;
-  const lastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
-  xml += generateUrlEntry(`/${topic.language}/${topic.slug}`, lastmod, 'weekly', '0.7');
-}
+const segment = pathPrefix ? `/${pathPrefix}` : '';
+url: `${baseUrl}/${t.language}${segment}/${t.slug}`
 ```
 
-Remove the old `/topics/${slug}` emission (those URLs become legacy aliases — not added to sitemap to avoid duplicate-canonical signals).
+Apply the same fix to the `xDefaultUrl` branch.
 
-### 6. `public/llms.txt`
-Add a section listing the localized topic hubs (one bullet per `{lang}/{slug}` pair) under "Learning hubs", so LLM crawlers discover them.
+### 3. Sitemap audit (`supabase/functions/sitemap/index.ts` lines 343–368)
 
-## Out of scope (per your answers)
-- `/padel/:city` blank shell — separate ticket.
-- Adding/removing static routes inside `/:lang` — left untouched.
-- Translating any UI strings inside TopicPage that still hardcode English.
+Re-read of the loop shows it does emit one `<url>` per topic doc (`for (const topic of group)` inside the outer `for (const [, group] of topicGroups)`), and the Sanity query at line 325–327 returns all 60 indexable docs (verified: total=60, indexable=60, no missing slug/language). The "31/60" production count is most likely deployment lag — the previous edit to this function may not have been redeployed.
 
-## Verification checklist (after implementation)
-1. Build succeeds.
-2. `/en/strokes`, `/nl/slagen`, `/nl/regels`, `/nl/oefeningen`, `/de/aufschlag`, `/fr/regles-padel`, `/es/golpes` all render an `<h1>` with the topic title and intro paragraph.
-3. `/en/topics/strokes` (legacy) still renders and its `<link rel="canonical">` points at `/en/strokes`.
-4. `/en/some-nonsense-slug` returns the NotFound UI with `noindex` meta.
-5. `/en/pricing`, `/en/blog`, `/en/topics` (static routes) still render their normal pages — not the topic catch route.
-6. Curl the sitemap content function and confirm 60 new `<loc>` entries (`/{lang}/{slug}` for indexable topics).
+Action:
+- Re-deploy the `sitemap` edge function so the published `sitemap-content.xml` is regenerated with the current loop.
+- Add a defensive log line (`console.log('topic urls emitted', topicUrlCount)`) to confirm 60 entries on the next request.
+- After deploy, re-fetch `/sitemap-content.xml` and grep for `<loc>https://padeltrainer.ai/[a-z]{2}/(strokes|serve|rules|...)` — expect 60 hub `<url>` blocks each containing 5 `<xhtml:link hreflang>` siblings + 1 `x-default`.
+- If the live count is still <60 after redeploy, the next investigation step is XML serialization (e.g. an upstream gzip truncation or response size limit) — not the loop itself.
+
+No code logic change to the loop is planned in this pass; only redeploy + counter log.
+
+### 4. Surface hub links in footer
+
+`src/components/marketing/MarketingLayout.tsx` footer currently has columns: Platform, Learn Padel, Popular Cities, Company, Legal.
+
+Add a new "Padel topics" column between "Learn Padel" and "Popular Cities" listing the 12 hubs for the current locale. Slugs are locale-specific, so fetch them client-side via the existing `getTopics(lang)` helper from `src/lib/topics.ts` (already cached by react-query for `TopicsIndex`).
+
+```tsx
+const { data: topics } = useQuery({
+  queryKey: ['footer-topics', currentLang],
+  queryFn: () => getTopics(currentLang),
+  staleTime: 1000 * 60 * 30,
+});
+
+// render up to 12 LocalizedLink items pointing to /${slug}
+```
+
+The header dropdown / megamenu already links to `/topics` (the index). We are not adding 12 hub items to the global header in this pass — footer is the minimum acceptable surface specified by the user, and the existing `/topics` index already provides a discoverable entry point with internal anchors to each hub.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `src/components/DomainRouter.tsx` | Remove lines 380–381 (rules Navigate + rules/:slug). |
+| `src/lib/topics.ts` | Extend `TopicDetail.alternates` + projection in `TOPIC_BY_SLUG_QUERY`. |
+| `src/pages/marketing/TopicPage.tsx` | Pass `translations` + `pathPrefix=""` to `<SEO />`. |
+| `src/components/SEO.tsx` | Handle empty `pathPrefix` in alternate + x-default URL builders. |
+| `supabase/functions/sitemap/index.ts` | Add `topicUrlCount` log; redeploy. |
+| `src/components/marketing/MarketingLayout.tsx` | New "Padel topics" footer column populated from `getTopics(lang)`. |
+
+### Out of scope
+
+- No new global-header dropdown.
+- No /padel-topics index page (existing `/topics` route covers it).
+- No changes to the `:topicSlug` catch route or to any other static `/lang/*` route.
+- No bulk redirect maps; only specific legacy slug redirects if/when identified.
+
+### Verification after publish
+
+1. `/en/rules`, `/en/strokes`, `/nl/slagen`, `/de/padel-regeln` render the topic hub (H1, intro, related cards).
+2. View source on `/en/strokes` → expect `<link rel="alternate" hreflang="nl" href=".../nl/slagen">` etc., plus `x-default` → `/en/strokes`.
+3. `https://padeltrainer.ai/sitemap-content.xml` contains 60 `<url>` blocks for topic hubs, each with 5 `<xhtml:link hreflang>` + 1 x-default.
+4. Footer on every locale shows a "Padel topics" column with 12 links resolving to `/<lang>/<slug>`.
