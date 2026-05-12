@@ -377,10 +377,11 @@ export default function AdminUsers() {
   const handleResetPassword = async () => {
     if (!selectedUser || !newPassword) return;
 
-    if (newPassword.length < 6) {
+    const policyError = validateAdminPassword(newPassword);
+    if (policyError) {
       toast({
         title: "Error",
-        description: "Password must be at least 6 characters",
+        description: policyError,
         variant: "destructive",
       });
       return;
@@ -401,11 +402,12 @@ export default function AdminUsers() {
 
       setNewPassword("");
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to update password";
+      const rawMessage = error instanceof Error ? error.message : "Failed to update password";
+      const friendly = SERVER_PW_ERROR_MAP[rawMessage] ?? rawMessage;
       logger.error("Failed to reset password", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
-        description: errorMessage,
+        description: friendly,
         variant: "destructive",
       });
     } finally {
