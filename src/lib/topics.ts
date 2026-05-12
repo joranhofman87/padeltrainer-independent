@@ -75,6 +75,7 @@ export interface TopicDetail extends TopicSummary {
     shortTagline: string | null;
     profileImageUrl: string | null;
   }[] | null;
+  alternates: { language: string; slug: string }[] | null;
 }
 
 // ── Queries ──
@@ -160,6 +161,10 @@ export const TOPIC_BY_SLUG_QUERY = `*[_type == "topic" && slug.current == $slug 
     "slug": slug.current,
     shortTagline,
     "profileImageUrl": profileImage.asset->url
+  },
+  "alternates": *[_type == "topic" && contentType == ^.contentType && _id != ^._id && !(_id in path("drafts.**"))]{
+    language,
+    "slug": slug.current
   }
 }`;
 
