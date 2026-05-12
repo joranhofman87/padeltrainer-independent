@@ -321,8 +321,8 @@ Deno.serve(async (req) => {
         sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; seo: { indexable?: boolean } | null; _updatedAt: string }[]>(
           `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, seo, _updatedAt }`
         ),
-        sanity.fetch<{ slug: string; isIndexable: boolean; _updatedAt: string }[]>(
-          `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, "isIndexable": coalesce(isIndexable, true), _updatedAt }`
+        sanity.fetch<{ slug: string; language: string; isIndexable: boolean; _updatedAt: string }[]>(
+          `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, language, "isIndexable": coalesce(isIndexable, true), _updatedAt }`
         ),
         sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; _updatedAt: string }[]>(
           `*[_type == "product" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, _updatedAt }`
@@ -339,9 +339,10 @@ Deno.serve(async (req) => {
       );
       xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6', today);
       for (const topic of sanityTopics || []) {
-        if (!topic.isIndexable) continue;
+        if (!topic.isIndexable || !topic.language || !topic.slug) continue;
         const topicLastmod = topic._updatedAt ? topic._updatedAt.split('T')[0] : today;
-        xml += generateUrlEntry(`/topics/${topic.slug}`, topicLastmod, 'weekly', '0.6');
+        // Localized hub URL (canonical): /{lang}/{slug}
+        xml += generateUrlEntry(`/${topic.language}/${topic.slug}`, topicLastmod, 'weekly', '0.7');
       }
 
       xml += '</urlset>';
