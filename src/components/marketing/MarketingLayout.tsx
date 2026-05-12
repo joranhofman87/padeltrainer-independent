@@ -296,6 +296,9 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               </ul>
             </div>
 
+            {/* Padel topics — locale-aware hub links from Sanity */}
+            <FooterTopics />
+
             {/* Popular Cities */}
             <div>
               <h4 className="font-semibold mb-4">{t('footer.popularCities')}</h4>
