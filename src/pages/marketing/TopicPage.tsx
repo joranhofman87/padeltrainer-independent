@@ -180,8 +180,8 @@ export default function TopicPage() {
   const currentLang = i18n.language || 'en';
 
   const { data: topic, isLoading, error } = useQuery({
-    queryKey: ['topic', slug],
-    queryFn: () => getTopicBySlug(slug!),
+    queryKey: ['topic', currentLang, slug],
+    queryFn: () => getTopicBySlug(slug!, currentLang),
     enabled: !!slug,
     staleTime: 1000 * 60 * 10,
   });
