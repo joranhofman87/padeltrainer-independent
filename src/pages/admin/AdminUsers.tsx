@@ -53,6 +53,48 @@ import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { useTableSort } from "@/hooks/useTableSort";
 import { logger } from "@/lib/logger";
 
+const PASSWORD_MIN_LEN = 12;
+const PASSWORD_MAX_LEN = 128;
+
+function validateAdminPassword(pw: string): string | null {
+  if (pw !== pw.trim()) return "Password cannot start or end with whitespace";
+  if (pw.length < PASSWORD_MIN_LEN) return `Password must be at least ${PASSWORD_MIN_LEN} characters`;
+  if (pw.length > PASSWORD_MAX_LEN) return `Password must be at most ${PASSWORD_MAX_LEN} characters`;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].reduce(
+    (n, re) => n + (re.test(pw) ? 1 : 0),
+    0,
+  );
+  if (classes < 3) return "Use at least 3 of: lowercase, uppercase, digit, symbol";
+  return null;
+}
+
+const SERVER_PW_ERROR_MAP: Record<string, string> = {
+  password_too_short: `Password must be at least ${PASSWORD_MIN_LEN} characters`,
+  password_too_long: `Password must be at most ${PASSWORD_MAX_LEN} characters`,
+  password_too_weak: "Use at least 3 of: lowercase, uppercase, digit, symbol",
+  password_invalid_whitespace: "Password cannot start or end with whitespace",
+};
+
+function generateStrongPassword(length = 16): string {
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const digits = "23456789";
+  const symbols = "!@#$%^&*()-_=+[]{}";
+  const all = lower + upper + digits + symbols;
+  const buf = new Uint32Array(length);
+  crypto.getRandomValues(buf);
+  const required = [lower, upper, digits, symbols];
+  const out: string[] = required.map((set, i) => set[buf[i] % set.length]);
+  for (let i = required.length; i < length; i++) {
+    out.push(all[buf[i] % all.length]);
+  }
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor((buf[i] / 0xffffffff) * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out.join("");
+}
+
 interface UserDiscount {
   id: string;
   discount_percent: number;
