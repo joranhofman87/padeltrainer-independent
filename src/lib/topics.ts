@@ -184,12 +184,13 @@ export function buildArticleItemList(
 
 // ── Fetch helpers ──
 
-export async function getTopicBySlug(slug: string): Promise<TopicDetail | null> {
-  return sanityClient.fetch<TopicDetail | null>(TOPIC_BY_SLUG_QUERY, { slug });
+export async function getTopicBySlug(slug: string, lang: string): Promise<TopicDetail | null> {
+  return sanityClient.fetch<TopicDetail | null>(TOPIC_BY_SLUG_QUERY, { slug, lang });
 }
 
-export async function getTopics(indexableOnly = true): Promise<TopicSummary[]> {
+export async function getTopics(lang: string, indexableOnly = true): Promise<TopicSummary[]> {
   return sanityClient.fetch<TopicSummary[]>(
-    indexableOnly ? TOPICS_LIST_QUERY : ALL_TOPICS_LIST_QUERY
+    indexableOnly ? TOPICS_LIST_QUERY : ALL_TOPICS_LIST_QUERY,
+    { lang }
   );
 }
