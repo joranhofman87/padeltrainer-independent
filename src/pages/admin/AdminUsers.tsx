@@ -53,6 +53,48 @@ import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { useTableSort } from "@/hooks/useTableSort";
 import { logger } from "@/lib/logger";
 
+const PASSWORD_MIN_LEN = 12;
+const PASSWORD_MAX_LEN = 128;
+
+function validateAdminPassword(pw: string): string | null {
+  if (pw !== pw.trim()) return "Password cannot start or end with whitespace";
+  if (pw.length < PASSWORD_MIN_LEN) return `Password must be at least ${PASSWORD_MIN_LEN} characters`;
+  if (pw.length > PASSWORD_MAX_LEN) return `Password must be at most ${PASSWORD_MAX_LEN} characters`;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].reduce(
+    (n, re) => n + (re.test(pw) ? 1 : 0),
+    0,
+  );
+  if (classes < 3) return "Use at least 3 of: lowercase, uppercase, digit, symbol";
+  return null;
+}
+
+const SERVER_PW_ERROR_MAP: Record<string, string> = {
+  password_too_short: `Password must be at least ${PASSWORD_MIN_LEN} characters`,
+  password_too_long: `Password must be at most ${PASSWORD_MAX_LEN} characters`,
+  password_too_weak: "Use at least 3 of: lowercase, uppercase, digit, symbol",
+  password_invalid_whitespace: "Password cannot start or end with whitespace",
+};
+
+function generateStrongPassword(length = 16): string {
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const digits = "23456789";
+  const symbols = "!@#$%^&*()-_=+[]{}";
+  const all = lower + upper + digits + symbols;
+  const buf = new Uint32Array(length);
+  crypto.getRandomValues(buf);
+  const required = [lower, upper, digits, symbols];
+  const out: string[] = required.map((set, i) => set[buf[i] % set.length]);
+  for (let i = required.length; i < length; i++) {
+    out.push(all[buf[i] % all.length]);
+  }
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor((buf[i] / 0xffffffff) * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out.join("");
+}
+
 interface UserDiscount {
   id: string;
   discount_percent: number;
@@ -335,10 +377,11 @@ export default function AdminUsers() {
   const handleResetPassword = async () => {
     if (!selectedUser || !newPassword) return;
 
-    if (newPassword.length < 6) {
+    const policyError = validateAdminPassword(newPassword);
+    if (policyError) {
       toast({
         title: "Error",
-        description: "Password must be at least 6 characters",
+        description: policyError,
         variant: "destructive",
       });
       return;
@@ -359,11 +402,12 @@ export default function AdminUsers() {
 
       setNewPassword("");
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to update password";
+      const rawMessage = error instanceof Error ? error.message : "Failed to update password";
+      const friendly = SERVER_PW_ERROR_MAP[rawMessage] ?? rawMessage;
       logger.error("Failed to reset password", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
-        description: errorMessage,
+        description: friendly,
         variant: "destructive",
       });
     } finally {
@@ -776,21 +820,41 @@ export default function AdminUsers() {
             <div className="border-t" />
 
             {/* Reset Password Section */}
-            <div className="space-y-3">
+            <div className="space-y-2">
               <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Reset Password</h4>
               <div className="flex items-center gap-2">
                 <Input
-                  type="password"
+                  type="text"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="New password (min 6 chars)"
-                  className="flex-1"
+                  placeholder={`Min ${PASSWORD_MIN_LEN} chars, mix of upper/lower/digit/symbol`}
+                  className="flex-1 font-mono"
+                  autoComplete="new-password"
                 />
-                <Button onClick={handleResetPassword} disabled={actionLoading || newPassword.length < 6} size="sm">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNewPassword(generateStrongPassword(16))}
+                  disabled={actionLoading}
+                >
+                  Generate
+                </Button>
+                <Button
+                  onClick={handleResetPassword}
+                  disabled={actionLoading || validateAdminPassword(newPassword) !== null}
+                  size="sm"
+                >
                   {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Reset
                 </Button>
               </div>
+              {newPassword.length > 0 && validateAdminPassword(newPassword) && (
+                <p className="text-xs text-destructive">{validateAdminPassword(newPassword)}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Minimum {PASSWORD_MIN_LEN} characters with at least 3 of: lowercase, uppercase, digit, symbol. Ask the user to change it after first login.
+              </p>
             </div>
 
             {selectedUser?.role !== "admin" && (
