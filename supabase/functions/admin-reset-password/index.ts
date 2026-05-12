@@ -60,16 +60,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!new_password) {
+    if (!new_password || typeof new_password !== "string") {
       return new Response(
         JSON.stringify({ error: "new_password is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (new_password.length < 8) {
+    const policyError = validatePasswordPolicy(new_password);
+    if (policyError) {
       return new Response(
-        JSON.stringify({ error: "Password must be at least 8 characters" }),
+        JSON.stringify({ error: policyError }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

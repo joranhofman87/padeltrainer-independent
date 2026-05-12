@@ -1,27 +1,39 @@
-# Restrict `testEmail` in `send-invoice-email` to the caller's own email
+# Strengthen admin-set password requirements
 
-## Problem
+## Goal
 
-`supabase/functions/send-invoice-email/index.ts` accepts an arbitrary `testEmail` from the request body and sends a real (PDF-attached) invoice email from `noreply@app.padeltrainer.ai` to that address. Any authenticated user could send "[TEST] Invoice" emails from our domain to any recipient — phishing-from-our-domain risk.
+Make admin-set passwords meaningfully strong, since these are passwords an admin chooses for someone else's account. Bring both the server endpoint and the admin UI in line.
 
-## Fix
+## Policy
 
-Validate that `testEmail`, when provided, matches the authenticated caller's own email address. Reject mismatches with 403.
+- **Minimum 12 characters** (admin-set bar; users will be told to change after first login).
+- **Must contain at least 3 of 4 character classes:** lowercase, uppercase, digit, symbol.
+- **Maximum 128 characters** (sanity bound; matches Supabase Auth limit).
+- Reject pure whitespace and leading/trailing whitespace.
 
-### Change (single file)
+12 chars + 3-of-4 classes is the standard recommendation for admin-set / service passwords (NIST 800-63B compatible when combined with disallowed-list checks; Supabase already has HIBP enabled per project policy).
 
-`supabase/functions/send-invoice-email/index.ts`
+## Changes
 
-1. When loading the user (around line 41), also capture `user.email` into `authenticatedUserEmail`.
-2. Right after parsing `testEmail` (line 60), add:
-   - If `testEmail` is set and `isServiceRole` is false:
-     - Normalize both sides (`trim().toLowerCase()`).
-     - If `authenticatedUserEmail` is missing or doesn't match, return `403 { error: "test_email_must_match_caller" }`.
-   - Service-role calls remain unrestricted (internal/admin tooling).
+### 1. `supabase/functions/admin-reset-password/index.ts`
+Replace the single `length < 8` check with a small helper that enforces the policy above and returns a specific error code per failure (`password_too_short`, `password_too_weak`, `password_too_long`, `password_invalid_whitespace`). Keep the response shape (`{ error: string }`) so existing UI keeps working.
 
-No other behavior changes. `previewOnly` (which doesn't actually send) is unaffected.
+### 2. `src/pages/admin/AdminUsers.tsx`
+- Update placeholder copy from `"New password (min 6 chars)"` to reflect the new policy (e.g. `"Min 12 chars, mix of upper/lower/digit/symbol"`).
+- Update the disabled-button check from `newPassword.length < 6` to a client-side mirror of the server policy (shared inline validator).
+- Show a small inline hint listing the requirements under the input so the admin knows what's required before submitting.
+- Map server error codes to user-friendly toast messages.
+
+### 3. (Optional, low-risk) Suggest-a-password button
+Add a "Generate" button next to the input that fills in a 16-char cryptographically-random password meeting the policy (using `crypto.getRandomValues`). Makes it easy for admins to do the right thing. Can be skipped if you prefer a smaller change.
 
 ## Out of scope
 
-- No UI changes. The existing "send test" UI already uses the logged-in user's email by default; this just enforces it server-side.
-- No changes to non-test sends (those go to the invoice's resolved recipient).
+- No changes to user self-service password reset (`ResetPassword.tsx`) — that's gated by Supabase's own auth password policy.
+- No DB migration; this is pure validation logic.
+- No change to the existing admin-can't-reset-other-admin guard.
+
+## Files touched
+
+- `supabase/functions/admin-reset-password/index.ts`
+- `src/pages/admin/AdminUsers.tsx`
