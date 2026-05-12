@@ -136,6 +136,7 @@ function generateSanityEntries(
   const groups = new Map<string, any[]>();
   for (const doc of docs) {
     if (filterFn && !filterFn(doc)) continue;
+    if (!doc?.slug) continue; // skip docs without a slug — defensive
     const lang = doc.language || 'en';
     const rootId = doc.translationOf?._ref || doc._id;
     const group = groups.get(rootId) || [];
