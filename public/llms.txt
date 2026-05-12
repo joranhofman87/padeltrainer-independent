@@ -110,8 +110,9 @@ This platform is available in:
 - `/{lang}/video-tips/:slug` - Individual video tip
 - `/{lang}/padel-coaches` - Featured padel coaches
 - `/{lang}/padel-coaches/:slug` - Individual coach profile
-- `/{lang}/topics` - Topic clusters
-- `/{lang}/topics/:slug` - Individual topic page
+- `/{lang}/topics` - Topic clusters index
+- `/{lang}/topics/:slug` - Individual topic page (legacy alias; canonical is `/{lang}/:slug`)
+- `/{lang}/:slug` - Localized topic hub (e.g. `/en/strokes`, `/nl/slagen`, `/nl/regels`, `/nl/oefeningen`, `/de/aufschlag`, `/fr/regles-padel`, `/es/golpes`)
 - `/{lang}/gear/rackets` - Padel racket directory
 - `/{lang}/gear/rackets/:slug` - Individual racket review
 - `/{lang}/playground` - Playground hub with quizzes and tools
