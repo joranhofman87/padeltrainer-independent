@@ -245,7 +245,7 @@ export default function TopicPage() {
       <SEO
         title={topic.seo?.titleTag || topic.h1 || topic.title}
         description={topic.seo?.metaDescription || topic.description || topic.intro || ''}
-        url={`/topics/${slug}`}
+        url={`/${slug}`}
         type="website"
         structuredData={structuredData}
         noIndex={!topic.isIndexable}
