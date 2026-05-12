@@ -820,21 +820,41 @@ export default function AdminUsers() {
             <div className="border-t" />
 
             {/* Reset Password Section */}
-            <div className="space-y-3">
+            <div className="space-y-2">
               <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Reset Password</h4>
               <div className="flex items-center gap-2">
                 <Input
-                  type="password"
+                  type="text"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="New password (min 6 chars)"
-                  className="flex-1"
+                  placeholder={`Min ${PASSWORD_MIN_LEN} chars, mix of upper/lower/digit/symbol`}
+                  className="flex-1 font-mono"
+                  autoComplete="new-password"
                 />
-                <Button onClick={handleResetPassword} disabled={actionLoading || newPassword.length < 6} size="sm">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNewPassword(generateStrongPassword(16))}
+                  disabled={actionLoading}
+                >
+                  Generate
+                </Button>
+                <Button
+                  onClick={handleResetPassword}
+                  disabled={actionLoading || validateAdminPassword(newPassword) !== null}
+                  size="sm"
+                >
                   {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Reset
                 </Button>
               </div>
+              {newPassword.length > 0 && validateAdminPassword(newPassword) && (
+                <p className="text-xs text-destructive">{validateAdminPassword(newPassword)}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Minimum {PASSWORD_MIN_LEN} characters with at least 3 of: lowercase, uppercase, digit, symbol. Ask the user to change it after first login.
+              </p>
             </div>
 
             {selectedUser?.role !== "admin" && (
