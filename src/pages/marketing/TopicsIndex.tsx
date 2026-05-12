@@ -101,7 +101,7 @@ export default function TopicsIndex() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.03 }}
               >
-                <LocalizedLink to={`/topics/${topic.slug}`} className="block h-full group">
+                <LocalizedLink to={`/${topic.slug}`} className="block h-full group">
                   <div className="card-chip p-5 h-full transition-all group-hover:-translate-y-0.5 group-hover:shadow-mock">
                     <h3 className="font-display text-base font-bold text-navy-900 mb-2 group-hover:text-brand-600 transition-colors capitalize">
                       {topic.title}

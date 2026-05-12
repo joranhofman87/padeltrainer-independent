@@ -124,7 +124,7 @@ function GroupedArticles({ articles, t }: { articles: ReferencingArticle[]; t: (
 // ── Structured data ──
 
 function buildStructuredData(topic: TopicDetail, slug: string, currentLang: string) {
-  const url = `${MARKETING_DOMAIN}/${currentLang}/topics/${slug}`;
+  const url = `${MARKETING_DOMAIN}/${currentLang}/${slug}`;
 
   const collectionPage = {
     "@context": "https://schema.org",
@@ -526,7 +526,7 @@ export default function TopicPage() {
               </h2>
               <div className="flex flex-wrap gap-3">
                 {topic.relatedTopics.map(related => (
-                  <LocalizedLink key={related._id} to={`/topics/${related.slug}`}>
+                  <LocalizedLink key={related._id} to={`/${related.slug}`}>
                     <Badge
                       variant="outline"
                       className="text-sm px-4 py-2 hover:bg-accent transition-colors cursor-pointer"
@@ -551,7 +551,7 @@ export default function TopicPage() {
           {topic.parentTopic && (
             <div className="mt-8 p-4 border rounded-lg bg-card">
               <LocalizedLink
-                to={`/topics/${topic.parentTopic.slug}`}
+                to={`/${topic.parentTopic.slug}`}
                 className="flex items-center gap-2 text-primary hover:underline font-medium"
               >
                 <ArrowLeft className="h-4 w-4" />
