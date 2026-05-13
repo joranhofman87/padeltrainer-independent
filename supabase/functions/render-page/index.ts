@@ -726,7 +726,23 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
         <p>${esc(description)}</p>
         ${cardsHtml ? `<ul>${cardsHtml}</ul>` : ''}
         <p><a href="${SITE_URL}/${lang}/${esc(topicSlug)}">View full guide</a></p>`;
-      return page(`${title} | PadelTrainer.ai`, description, `/${topicSlug}`, lang, body, undefined, alternates);
+      const topicUrl = `${SITE_URL}/${lang}/${topicSlug}`;
+      const sd: object[] = [
+        {
+          "@context": "https://schema.org",
+          "@type": "CollectionPage",
+          "name": title,
+          "description": description,
+          "url": topicUrl,
+          "isPartOf": { "@type": "WebSite", "name": "PadelTrainer.ai", "url": SITE_URL },
+          "inLanguage": lang,
+        },
+        breadcrumbSchema(lang, [
+          { name: homeName(lang), path: '' },
+          { name: title },
+        ]),
+      ];
+      return page(`${title} | PadelTrainer.ai`, description, `/${topicSlug}`, lang, body, sd, alternates);
     }
   }
 
