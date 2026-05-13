@@ -59,7 +59,7 @@ export default function LearnIndex() {
     return acc;
   }, {});
 
-  const structuredData = {
+  const collectionPageSchema = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
     name: t('learn.seoTitle', 'Learn Padel - Guides, Tactics & Drills'),
@@ -76,6 +76,17 @@ export default function LearnIndex() {
       })),
     },
   };
+
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: `${MARKETING_DOMAIN}/${currentLang}` },
+      { '@type': 'ListItem', position: 2, name: t('learn.title', 'Learn Padel'), item: `${MARKETING_DOMAIN}/${currentLang}/learn` },
+    ],
+  };
+
+  const structuredData = [collectionPageSchema, breadcrumbSchema];
 
   const activeTopicTitle = activeTopic
     ? articles.find((a) => a.topics?.some((tp) => tp.slug === activeTopic))

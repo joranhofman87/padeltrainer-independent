@@ -336,27 +336,38 @@ export default function TrainerProfile() {
     .filter((r: any) => r.is_public && r.comment && r.comment.trim().length > 0)
     .slice(0, 5);
 
-  const structuredData = {
-    "@context": "https://schema.org",
-    "@type": "Person",
-    "name": profile.full_name,
-    "jobTitle": "Padel Trainer",
-    "image": profile.avatar_url,
-    "url": `https://padeltrainer.ai/${currentLang}/trainer/${trainerSlug}`,
-    "address": profile.location ? { "@type": "PostalAddress", "addressLocality": profile.location } : undefined,
-    ...(averageRating !== null && reviewCount > 0 ? {
-      "aggregateRating": { "@type": "AggregateRating", "ratingValue": averageRating, "reviewCount": reviewCount, "bestRating": 5, "worstRating": 1 }
-    } : {}),
-    ...(topReviews.length > 0 ? {
-      "review": topReviews.map((r: any) => ({
-        "@type": "Review",
-        "reviewRating": { "@type": "Rating", "ratingValue": r.rating, "bestRating": 5, "worstRating": 1 },
-        "author": { "@type": "Person", "name": r.is_anonymous ? "Anonymous" : (r.profiles?.full_name || "Player") },
-        "datePublished": r.created_at,
-        "reviewBody": r.comment,
-      }))
-    } : {})
-  };
+  // Person schema. Skip entirely when bio is empty — a stub Person profile is worse than none for SEO.
+  const personUrl = `https://padeltrainer.ai/${currentLang}/trainer/${trainerSlug}`;
+  const knowsAbout = Array.from(new Set([
+    'Padel',
+    ...((trainer as any).specializations || []),
+    ...((trainer as any).specialties || []),
+  ])).filter(Boolean);
+  const structuredData = profile.bio && profile.bio.trim()
+    ? {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": profile.full_name,
+        "jobTitle": "Padel Coach",
+        "description": profile.bio,
+        "knowsAbout": knowsAbout,
+        ...(profile.avatar_url && { "image": profile.avatar_url }),
+        "url": personUrl,
+        ...(profile.location && { "address": { "@type": "PostalAddress", "addressLocality": profile.location } }),
+        ...(averageRating !== null && reviewCount > 0 ? {
+          "aggregateRating": { "@type": "AggregateRating", "ratingValue": averageRating, "reviewCount": reviewCount, "bestRating": 5, "worstRating": 1 }
+        } : {}),
+        ...(topReviews.length > 0 ? {
+          "review": topReviews.map((r: any) => ({
+            "@type": "Review",
+            "reviewRating": { "@type": "Rating", "ratingValue": r.rating, "bestRating": 5, "worstRating": 1 },
+            "author": { "@type": "Person", "name": r.is_anonymous ? "Anonymous" : (r.profiles?.full_name || "Player") },
+            "datePublished": r.created_at,
+            "reviewBody": r.comment,
+          }))
+        } : {})
+      }
+    : null;
 
   const breadcrumbData = {
     "@context": "https://schema.org",
@@ -386,7 +397,7 @@ export default function TrainerProfile() {
           title: profile.full_name || 'Padel Trainer',
           subtitle: trainer.hourly_rate ? `From €${trainer.hourly_rate}/hour · Book on PadelTrainer.ai` : 'Book on PadelTrainer.ai',
         })}
-        structuredData={[structuredData, breadcrumbData]}
+        structuredData={[structuredData, breadcrumbData].filter(Boolean) as object[]}
       />
       <ProfileLayout
         bannerUrl={trainerAcademy?.banner_url}

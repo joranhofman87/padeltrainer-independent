@@ -151,7 +151,9 @@ export default function StrokePage() {
         { "@type": "ListItem", "position": 3, "name": stroke.seo?.breadcrumbLabel || stroke.h1 },
       ],
     },
-    ...(stroke.keyTips && stroke.keyTips.length > 0 ? [{
+    // HowTo: only emit when ≥3 steps to satisfy Google's HowTo quality bar.
+    // Below 3 steps, Article schema alone is more reliable than thin HowTo.
+    ...(stroke.keyTips && stroke.keyTips.length >= 3 ? [{
       "@context": "https://schema.org",
       "@type": "HowTo",
       "name": `How to play the ${stroke.h1}`,
