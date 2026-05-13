@@ -951,3 +951,51 @@ function breadcrumbSchema(lang: string, steps: Array<{ name: string; path?: stri
 function homeName(lang: string): string {
   return ({ nl: 'Home', es: 'Inicio', de: 'Startseite', fr: 'Accueil', it: 'Home' } as Record<string, string>)[lang] || 'Home';
 }
+
+// ─── Topic hub (Sanity) ────────────────────────────────────────
+
+const SANITY_PROJECT_ID = 'ru3aqhjn';
+const SANITY_DATASET = 'production';
+const TOPIC_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface TopicHubData {
+  title?: string;
+  h1?: string;
+  intro?: string;
+  description?: string;
+  contentType?: string;
+  alternates?: Array<{ language: string; slug: string }>;
+  featuredGuides?: Array<{ slug: string; title?: string; h1?: string }>;
+}
+
+const topicHubCache = new Map<string, { data: TopicHubData | null; at: number }>();
+
+async function fetchTopicHub(lang: string, slug: string): Promise<TopicHubData | null> {
+  const key = `${lang}:${slug}`;
+  const cached = topicHubCache.get(key);
+  if (cached && Date.now() - cached.at < TOPIC_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  try {
+    const groq = `*[_type=="topic" && slug.current==$slug && language==$lang && !(_id in path("drafts.**"))][0]{
+      title, h1, intro, description, contentType,
+      "alternates": *[_type=="topic" && contentType==^.contentType && _id!=^._id && !(_id in path("drafts.**"))]{
+        language, "slug": slug.current
+      },
+      "featuredGuides": featuredGuides[]->{ "slug": slug.current, title, h1 }
+    }`;
+    const url = `https://${SANITY_PROJECT_ID}.apicdn.sanity.io/v2024-01-01/data/query/${SANITY_DATASET}?query=${encodeURIComponent(groq)}&%24slug=${encodeURIComponent(JSON.stringify(slug))}&%24lang=${encodeURIComponent(JSON.stringify(lang))}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) {
+      topicHubCache.set(key, { data: null, at: Date.now() });
+      return null;
+    }
+    const json = await res.json();
+    const data = (json && json.result) ? (json.result as TopicHubData) : null;
+    topicHubCache.set(key, { data, at: Date.now() });
+    return data;
+  } catch (err) {
+    console.error('fetchTopicHub error:', err);
+    return null;
+  }
+}
