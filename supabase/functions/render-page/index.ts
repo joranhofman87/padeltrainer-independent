@@ -707,6 +707,29 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     return page(staticMatch.title, staticMatch.desc, cleanPath, lang, `<h1>${esc(staticMatch.title)}</h1>`);
   }
 
+  // Topic hub: /<lang>/<topic-slug> (locale-specific slugs from Sanity)
+  const topicHubMatch = cleanPath.match(/^\/([a-z0-9][a-z0-9-]*)$/i);
+  if (topicHubMatch && !isReservedShortHandle(topicHubMatch[1])) {
+    const topicSlug = topicHubMatch[1].toLowerCase();
+    const topic = await fetchTopicHub(lang, topicSlug);
+    if (topic) {
+      const title = topic.h1 || topic.title || slugToDisplay(topicSlug);
+      const description = (topic.description || topic.intro || `Everything about ${title.toLowerCase()} in padel.`).slice(0, 200);
+      const alternates: Array<{ lang: string; slug: string }> = [
+        { lang, slug: topicSlug },
+        ...(topic.alternates || []).filter(a => a && a.language && a.slug).map(a => ({ lang: a.language, slug: a.slug })),
+      ];
+      const cardsHtml = (topic.featuredGuides || []).slice(0, 6)
+        .map(g => `<li><a href="${SITE_URL}/${lang}/learn/${esc(g.slug)}">${esc(g.h1 || g.title)}</a></li>`)
+        .join('');
+      const body = `<h1>${esc(title)}</h1>
+        <p>${esc(description)}</p>
+        ${cardsHtml ? `<ul>${cardsHtml}</ul>` : ''}
+        <p><a href="${SITE_URL}/${lang}/${esc(topicSlug)}">View full guide</a></p>`;
+      return page(`${title} | PadelTrainer.ai`, description, `/${topicSlug}`, lang, body, undefined, alternates);
+    }
+  }
+
   // Short link: /<handle> for trainer or academy
   const shortMatch = cleanPath.match(/^\/([a-z0-9][a-z0-9-]*)$/i);
   if (shortMatch && !isReservedShortHandle(shortMatch[1])) {
