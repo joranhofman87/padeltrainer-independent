@@ -871,7 +871,7 @@ function page(
   <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${canonicalUrl}">
   ${hreflangTags}
-  <link rel="alternate" hreflang="x-default" href="${SITE_URL}/en${canonicalPath}">
+  <link rel="alternate" hreflang="x-default" href="${xDefaultHref}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:description" content="${esc(description)}">
