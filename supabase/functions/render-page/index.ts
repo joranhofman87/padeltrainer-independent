@@ -816,7 +816,15 @@ async function resolvePublicHandle(handle: string): Promise<{ owner_type: string
 
 // ─── HTML Builder ───────────────────────────────────────────────
 
-function page(title: string, description: string, urlPath: string, lang: string, body: string, structuredData?: object[]): string {
+function page(
+  title: string,
+  description: string,
+  urlPath: string,
+  lang: string,
+  body: string,
+  structuredData?: object[],
+  alternates?: Array<{ lang: string; slug: string }>,
+): string {
   // Canonical normalization: strip trailing slash (except root), collapse double slashes
   const normalizePath = (p: string) => {
     if (!p || p === '/') return '';
@@ -828,9 +836,23 @@ function page(title: string, description: string, urlPath: string, lang: string,
   const ogImage = `${SITE_URL}/og-image.png`;
   const ogLocale = OG_LOCALE_MAP[lang] || 'en_US';
 
-  const hreflangTags = SUPPORTED_LANGS
-    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${canonicalPath}">`)
-    .join('\n  ');
+  let hreflangTags: string;
+  let xDefaultHref: string;
+  if (alternates && alternates.length > 0) {
+    // Use explicit per-language slugs (for routes where slugs differ per locale, e.g. topic hubs)
+    hreflangTags = alternates
+      .map(a => `<link rel="alternate" hreflang="${a.lang}" href="${SITE_URL}/${a.lang}/${a.slug}">`)
+      .join('\n  ');
+    const enAlt = alternates.find(a => a.lang === 'en');
+    xDefaultHref = enAlt
+      ? `${SITE_URL}/en/${enAlt.slug}`
+      : `${SITE_URL}/${lang}${canonicalPath}`;
+  } else {
+    hreflangTags = SUPPORTED_LANGS
+      .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${canonicalPath}">`)
+      .join('\n  ');
+    xDefaultHref = `${SITE_URL}/en${canonicalPath}`;
+  }
   const ogLocaleAlternates = SUPPORTED_LANGS
     .filter(l => l !== lang)
     .map(l => `<meta property="og:locale:alternate" content="${OG_LOCALE_MAP[l]}">`)
