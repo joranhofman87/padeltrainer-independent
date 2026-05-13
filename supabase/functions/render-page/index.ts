@@ -707,6 +707,29 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     return page(staticMatch.title, staticMatch.desc, cleanPath, lang, `<h1>${esc(staticMatch.title)}</h1>`);
   }
 
+  // Topic hub: /<lang>/<topic-slug> (locale-specific slugs from Sanity)
+  const topicHubMatch = cleanPath.match(/^\/([a-z0-9][a-z0-9-]*)$/i);
+  if (topicHubMatch && !isReservedShortHandle(topicHubMatch[1])) {
+    const topicSlug = topicHubMatch[1].toLowerCase();
+    const topic = await fetchTopicHub(lang, topicSlug);
+    if (topic) {
+      const title = topic.h1 || topic.title || slugToDisplay(topicSlug);
+      const description = (topic.description || topic.intro || `Everything about ${title.toLowerCase()} in padel.`).slice(0, 200);
+      const alternates: Array<{ lang: string; slug: string }> = [
+        { lang, slug: topicSlug },
+        ...(topic.alternates || []).filter(a => a && a.language && a.slug).map(a => ({ lang: a.language, slug: a.slug })),
+      ];
+      const cardsHtml = (topic.featuredGuides || []).slice(0, 6)
+        .map(g => `<li><a href="${SITE_URL}/${lang}/learn/${esc(g.slug)}">${esc(g.h1 || g.title)}</a></li>`)
+        .join('');
+      const body = `<h1>${esc(title)}</h1>
+        <p>${esc(description)}</p>
+        ${cardsHtml ? `<ul>${cardsHtml}</ul>` : ''}
+        <p><a href="${SITE_URL}/${lang}/${esc(topicSlug)}">View full guide</a></p>`;
+      return page(`${title} | PadelTrainer.ai`, description, `/${topicSlug}`, lang, body, undefined, alternates);
+    }
+  }
+
   // Short link: /<handle> for trainer or academy
   const shortMatch = cleanPath.match(/^\/([a-z0-9][a-z0-9-]*)$/i);
   if (shortMatch && !isReservedShortHandle(shortMatch[1])) {
@@ -793,7 +816,15 @@ async function resolvePublicHandle(handle: string): Promise<{ owner_type: string
 
 // ─── HTML Builder ───────────────────────────────────────────────
 
-function page(title: string, description: string, urlPath: string, lang: string, body: string, structuredData?: object[]): string {
+function page(
+  title: string,
+  description: string,
+  urlPath: string,
+  lang: string,
+  body: string,
+  structuredData?: object[],
+  alternates?: Array<{ lang: string; slug: string }>,
+): string {
   // Canonical normalization: strip trailing slash (except root), collapse double slashes
   const normalizePath = (p: string) => {
     if (!p || p === '/') return '';
@@ -805,9 +836,23 @@ function page(title: string, description: string, urlPath: string, lang: string,
   const ogImage = `${SITE_URL}/og-image.png`;
   const ogLocale = OG_LOCALE_MAP[lang] || 'en_US';
 
-  const hreflangTags = SUPPORTED_LANGS
-    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${canonicalPath}">`)
-    .join('\n  ');
+  let hreflangTags: string;
+  let xDefaultHref: string;
+  if (alternates && alternates.length > 0) {
+    // Use explicit per-language slugs (for routes where slugs differ per locale, e.g. topic hubs)
+    hreflangTags = alternates
+      .map(a => `<link rel="alternate" hreflang="${a.lang}" href="${SITE_URL}/${a.lang}/${a.slug}">`)
+      .join('\n  ');
+    const enAlt = alternates.find(a => a.lang === 'en');
+    xDefaultHref = enAlt
+      ? `${SITE_URL}/en/${enAlt.slug}`
+      : `${SITE_URL}/${lang}${canonicalPath}`;
+  } else {
+    hreflangTags = SUPPORTED_LANGS
+      .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${canonicalPath}">`)
+      .join('\n  ');
+    xDefaultHref = `${SITE_URL}/en${canonicalPath}`;
+  }
   const ogLocaleAlternates = SUPPORTED_LANGS
     .filter(l => l !== lang)
     .map(l => `<meta property="og:locale:alternate" content="${OG_LOCALE_MAP[l]}">`)
@@ -826,7 +871,7 @@ function page(title: string, description: string, urlPath: string, lang: string,
   <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${canonicalUrl}">
   ${hreflangTags}
-  <link rel="alternate" hreflang="x-default" href="${SITE_URL}/en${canonicalPath}">
+  <link rel="alternate" hreflang="x-default" href="${xDefaultHref}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:description" content="${esc(description)}">
@@ -905,4 +950,52 @@ function breadcrumbSchema(lang: string, steps: Array<{ name: string; path?: stri
 
 function homeName(lang: string): string {
   return ({ nl: 'Home', es: 'Inicio', de: 'Startseite', fr: 'Accueil', it: 'Home' } as Record<string, string>)[lang] || 'Home';
+}
+
+// ─── Topic hub (Sanity) ────────────────────────────────────────
+
+const SANITY_PROJECT_ID = 'ru3aqhjn';
+const SANITY_DATASET = 'production';
+const TOPIC_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface TopicHubData {
+  title?: string;
+  h1?: string;
+  intro?: string;
+  description?: string;
+  contentType?: string;
+  alternates?: Array<{ language: string; slug: string }>;
+  featuredGuides?: Array<{ slug: string; title?: string; h1?: string }>;
+}
+
+const topicHubCache = new Map<string, { data: TopicHubData | null; at: number }>();
+
+async function fetchTopicHub(lang: string, slug: string): Promise<TopicHubData | null> {
+  const key = `${lang}:${slug}`;
+  const cached = topicHubCache.get(key);
+  if (cached && Date.now() - cached.at < TOPIC_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  try {
+    const groq = `*[_type=="topic" && slug.current==$slug && language==$lang && !(_id in path("drafts.**"))][0]{
+      title, h1, intro, description, contentType,
+      "alternates": *[_type=="topic" && contentType==^.contentType && _id!=^._id && !(_id in path("drafts.**"))]{
+        language, "slug": slug.current
+      },
+      "featuredGuides": featuredGuides[]->{ "slug": slug.current, title, h1 }
+    }`;
+    const url = `https://${SANITY_PROJECT_ID}.apicdn.sanity.io/v2024-01-01/data/query/${SANITY_DATASET}?query=${encodeURIComponent(groq)}&%24slug=${encodeURIComponent(JSON.stringify(slug))}&%24lang=${encodeURIComponent(JSON.stringify(lang))}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) {
+      topicHubCache.set(key, { data: null, at: Date.now() });
+      return null;
+    }
+    const json = await res.json();
+    const data = (json && json.result) ? (json.result as TopicHubData) : null;
+    topicHubCache.set(key, { data, at: Date.now() });
+    return data;
+  } catch (err) {
+    console.error('fetchTopicHub error:', err);
+    return null;
+  }
 }

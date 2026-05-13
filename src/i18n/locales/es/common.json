@@ -61,7 +61,8 @@
     "legal": "Legal",
     "privacy": "Política de privacidad",
     "terms": "Términos de servicio",
-    "rights": "Todos los derechos reservados."
+    "rights": "Todos los derechos reservados.",
+    "padelTopics": "Temas de pádel"
   },
   "validation": {
     "required": "Este campo es obligatorio",
