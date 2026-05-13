@@ -61,7 +61,8 @@
     "legal": "Rechtliches",
     "privacy": "Datenschutz",
     "terms": "AGB",
-    "rights": "Alle Rechte vorbehalten."
+    "rights": "Alle Rechte vorbehalten.",
+    "padelTopics": "Padel Themen"
   },
   "validation": {
     "required": "Dieses Feld ist erforderlich",

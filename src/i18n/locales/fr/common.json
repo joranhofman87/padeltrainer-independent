@@ -61,7 +61,8 @@
     "legal": "Mentions légales",
     "privacy": "Politique de confidentialité",
     "terms": "Conditions d'utilisation",
-    "rights": "Tous droits réservés."
+    "rights": "Tous droits réservés.",
+    "padelTopics": "Sujets de padel"
   },
   "validation": {
     "required": "Ce champ est obligatoire",

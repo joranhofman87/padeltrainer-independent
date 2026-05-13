@@ -61,7 +61,8 @@
     "legal": "Juridisch",
     "privacy": "Privacybeleid",
     "terms": "Algemene voorwaarden",
-    "rights": "Alle rechten voorbehouden."
+    "rights": "Alle rechten voorbehouden.",
+    "padelTopics": "Padel onderwerpen"
   },
   "validation": {
     "required": "Dit veld is verplicht",
