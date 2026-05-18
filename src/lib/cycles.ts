@@ -400,9 +400,15 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
     if (clubCycles) allCycles.push(...clubCycles.map(toCycle));
   }
   
-  return allCycles.sort((a, b) => 
-    new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
-  );
+  return allCycles.sort((a, b) => {
+    // Always-open first
+    if (a.is_always_open && !b.is_always_open) return -1;
+    if (!a.is_always_open && b.is_always_open) return 1;
+    if (a.is_always_open && b.is_always_open) {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    return new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
+  });
 }
 
 export async function getCycle(cycleId: string): Promise<Cycle | null> {
