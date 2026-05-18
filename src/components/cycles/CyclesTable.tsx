@@ -160,7 +160,7 @@ export default function CyclesTable({
           comparison = (a.location?.name || '').localeCompare(b.location?.name || '');
           break;
         case 'start_date':
-          comparison = new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
+          comparison = new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
           break;
         case 'status':
           comparison = a.status.localeCompare(b.status);
