@@ -152,7 +152,7 @@
       "personalInfo": "Información personal",
       "name": "Nombre completo",
       "email": "Email",
-      "phone": "Teléfono (opcional)",
+      "phone": "Teléfono",
       "rating": "Tu nivel/clasificación",
       "ratingLabel": "Nivel/Clasificación",
       "ratingSystem": "Sistema de clasificación",
