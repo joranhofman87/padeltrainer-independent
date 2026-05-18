@@ -467,6 +467,7 @@ export async function updateCycle(cycleId: string, updates: Partial<CycleInput>)
   if (updates.start_date !== undefined) updateData.start_date = updates.start_date;
   if (updates.end_date !== undefined) updateData.end_date = updates.end_date;
   if (updates.enrollment_deadline !== undefined) updateData.enrollment_deadline = updates.enrollment_deadline;
+  if (updates.is_always_open !== undefined) updateData.is_always_open = updates.is_always_open;
   if (updates.settings !== undefined) updateData.settings = updates.settings as Json;
   if (updates.status !== undefined) updateData.status = updates.status;
   if (updates.location_id !== undefined) updateData.location_id = updates.location_id;
