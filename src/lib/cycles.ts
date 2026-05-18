@@ -331,7 +331,7 @@ export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy',
     .eq('owner_type', ownerType)
     .eq('owner_id', ownerId)
     .eq('status', 'open')
-    .order('start_date', { ascending: true });
+    .order('start_date', { ascending: true, nullsFirst: true });
 
   if (error) throw error;
   return (data || []).map(toCycle);
