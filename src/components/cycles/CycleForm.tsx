@@ -781,6 +781,7 @@ export default function CycleForm({
             </div>
             )}
 
+            {!watchedAlwaysOpen && (
             <FormField
               control={form.control}
               name="enrollment_deadline"
