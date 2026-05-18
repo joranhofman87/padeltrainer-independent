@@ -164,7 +164,7 @@
       "personalInfo": "Personal Information",
       "name": "Full Name",
       "email": "Email",
-      "phone": "Phone (optional)",
+      "phone": "Phone",
       "rating": "Current Rating",
       "ratingLabel": "Current Rating",
       "ratingSystem": "Rating System",
