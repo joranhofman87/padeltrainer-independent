@@ -298,6 +298,7 @@ export default function CycleForm({
   const watchedWeeks = form.watch('number_of_weeks');
   const watchedAssignedTrainer = form.watch('assigned_trainer_id');
   const watchedStartDate = form.watch('start_date');
+  const watchedAlwaysOpen = form.watch('is_always_open');
 
   // Auto-sync end_date from start_date + weeks (for non-event types)
   useEffect(() => {
