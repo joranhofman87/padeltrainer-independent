@@ -183,7 +183,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
   const handleSuccess = () => setIsSuccess(true);
 
   const isEnrollmentClosed = cycle && cycle.status !== 'open';
-  const isDeadlinePassed = !!(cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date());
+  const isDeadlinePassed = !!(!cycle?.is_always_open && cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date());
   const canApply = cycle && !isEnrollmentClosed && !hasApplied;
   const isWaitlistMode = !!(canApply && isDeadlinePassed);
 
