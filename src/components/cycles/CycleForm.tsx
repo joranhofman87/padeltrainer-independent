@@ -384,18 +384,29 @@ export default function CycleForm({
       // For cyclus, auto-generate name from day + time
       let cycleName = values.name;
       if (!isRegistration && !isEvent) {
-        const dayName = format(values.start_date, 'EEEE');
+        const dayName = values.start_date ? format(values.start_date, 'EEEE') : '';
         cycleName = `${dayName} ${values.start_time}–${values.end_time}`;
       }
 
+      const alwaysOpen = isRegistration && values.is_always_open;
+
       // Calculate end date
-      let endDate: string;
-      if (values.end_date) {
-        endDate = format(values.end_date, 'yyyy-MM-dd');
-      } else if (isEvent) {
-        endDate = format(values.start_date, 'yyyy-MM-dd');
+      let endDate: string | null;
+      let startDate: string | null;
+      if (alwaysOpen) {
+        startDate = null;
+        endDate = null;
       } else {
-        endDate = format(addWeeks(values.start_date, values.number_of_weeks || 10), 'yyyy-MM-dd');
+        startDate = values.start_date ? format(values.start_date, 'yyyy-MM-dd') : null;
+        if (values.end_date) {
+          endDate = format(values.end_date, 'yyyy-MM-dd');
+        } else if (isEvent && values.start_date) {
+          endDate = format(values.start_date, 'yyyy-MM-dd');
+        } else if (values.start_date && values.number_of_weeks) {
+          endDate = format(addWeeks(values.start_date, values.number_of_weeks), 'yyyy-MM-dd');
+        } else {
+          endDate = null;
+        }
       }
 
       const input: CycleInput = {
@@ -403,9 +414,10 @@ export default function CycleForm({
         owner_id: ownerId,
         name: cycleName,
         description: (isEvent || isRegistration) ? values.description : undefined,
-        start_date: format(values.start_date, 'yyyy-MM-dd'),
+        start_date: startDate,
         end_date: endDate,
-        enrollment_deadline: values.enrollment_deadline?.toISOString(),
+        enrollment_deadline: alwaysOpen ? null : values.enrollment_deadline?.toISOString(),
+        is_always_open: alwaysOpen,
         settings,
         status: andOpen ? 'open' : (cycle?.status || 'draft'),
         type: formType,
