@@ -90,6 +90,7 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
   }, [locationId, user]);
 
   const isDeadlinePassed = (cycle: Cycle) => {
+    if (cycle.is_always_open) return false;
     return cycle.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
   };
 
