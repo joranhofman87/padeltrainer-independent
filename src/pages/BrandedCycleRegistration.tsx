@@ -309,19 +309,27 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
 
             {/* Compact meta row */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4" />
-                <span>
-                  {format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}
-                </span>
-              </div>
-              {cycle.enrollment_deadline && (
-                <div className="flex items-center gap-1.5 text-sm text-orange-600 dark:text-orange-400">
-                  <Clock className="h-4 w-4" />
-                  <span>
-                    {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
-                  </span>
-                </div>
+              {cycle.is_always_open ? (
+                <Badge variant="secondary">{t('alwaysOpen.badge', 'Always open')}</Badge>
+              ) : (
+                <>
+                  {cycle.start_date && cycle.end_date && (
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      <span>
+                        {format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}
+                      </span>
+                    </div>
+                  )}
+                  {cycle.enrollment_deadline && (
+                    <div className="flex items-center gap-1.5 text-sm text-orange-600 dark:text-orange-400">
+                      <Clock className="h-4 w-4" />
+                      <span>
+                        {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
               <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
                 {t(`status.${cycle.status}`)}
