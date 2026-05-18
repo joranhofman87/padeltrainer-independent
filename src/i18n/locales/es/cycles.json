@@ -106,7 +106,11 @@
     "pricesIncludeVat": "Precios con IVA incluido",
     "pricesIncludeVatHint": "Los jugadores verán: \"Todos los precios incluyen IVA\"",
     "pricesExcludeVatHint": "Los jugadores verán: \"Todos los precios excluyen IVA\"",
-    "totalLabel": "Total"
+    "totalLabel": "Total",
+    "alwaysOpen": {
+      "label": "Inscripción abierta (sin fechas fijas)",
+      "help": "Este formulario permanece abierto hasta que lo cierres. Los jugadores pueden inscribirse en cualquier momento."
+    }
   },
   "detail": {
     "pricesIncludeVat": "Todos los precios incluyen IVA",
@@ -468,5 +472,8 @@
     "pending": "Pendientes",
     "declined": "Rechazados",
     "booked": "Reservados"
+  },
+  "alwaysOpen": {
+    "badge": "Siempre abierto"
   }
 }

@@ -106,7 +106,11 @@
     "pricesIncludeVat": "Prix TTC (TVA incluse)",
     "pricesIncludeVatHint": "Les joueurs verront : \"Tous les prix incluent la TVA\"",
     "pricesExcludeVatHint": "Les joueurs verront : \"Tous les prix sont hors TVA\"",
-    "totalLabel": "Total"
+    "totalLabel": "Total",
+    "alwaysOpen": {
+      "label": "Inscription ouverte (sans dates fixes)",
+      "help": "Ce formulaire reste ouvert jusqu'à ce que vous le fermiez. Les joueurs peuvent s'inscrire à tout moment."
+    }
   },
   "detail": {
     "pricesIncludeVat": "Tous les prix incluent la TVA",
@@ -468,5 +472,8 @@
     "pending": "En attente",
     "declined": "Refusés",
     "booked": "Réservés"
+  },
+  "alwaysOpen": {
+    "badge": "Toujours ouvert"
   }
 }
