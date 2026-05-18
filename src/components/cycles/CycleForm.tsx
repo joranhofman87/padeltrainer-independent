@@ -816,6 +816,7 @@ export default function CycleForm({
                 </FormItem>
               )}
             />
+            )}
 
             {/* Location Picker - for academies/clubs with locations, or trainers */}
             {locations.length > 0 ? (
