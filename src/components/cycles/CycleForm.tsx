@@ -747,7 +747,7 @@ export default function CycleForm({
                 )}
               />
               </>
-            )}
+            ))}
 
             {/* Timeframe - only for cyclus */}
             {!isRegistration && !isEvent && (
