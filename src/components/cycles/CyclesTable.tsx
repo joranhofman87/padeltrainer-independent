@@ -192,9 +192,11 @@ export default function CyclesTable({
     );
   };
 
-  const formatPeriod = (startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+  const formatPeriod = (cycle: Cycle) => {
+    if (cycle.is_always_open) return t('alwaysOpen.badge', 'Always open');
+    if (!cycle.start_date || !cycle.end_date) return '-';
+    const start = new Date(cycle.start_date);
+    const end = new Date(cycle.end_date);
     const weeks = differenceInWeeks(end, start);
     return `${format(start, 'MMM d', { locale })} - ${format(end, 'MMM d', { locale })} (${weeks}w)`;
   };
