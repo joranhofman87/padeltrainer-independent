@@ -157,9 +157,10 @@ export default function CycleForm({
   const formSchema = z.object({
     name: (isRegistration || isEvent) ? z.string().min(2) : z.string().optional().default(''),
     description: z.string().optional().default(''),
-    start_date: z.date(),
+    is_always_open: z.boolean().default(false),
+    start_date: z.date().optional(),
     end_date: isEvent ? z.date().optional() : z.date().optional(),
-    number_of_weeks: isEvent ? z.coerce.number().optional().default(1) : z.coerce.number().min(1).max(52),
+    number_of_weeks: isEvent ? z.coerce.number().optional().default(1) : z.coerce.number().min(1).max(52).optional(),
     start_time: z.string().default('09:00'),
     end_time: z.string().default('10:00'),
     enrollment_deadline: z.date().optional(),
@@ -182,6 +183,9 @@ export default function CycleForm({
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
     message: 'Min group size must be ≤ max group size',
     path: ['min_group_size'],
+  }).refine(data => data.is_always_open || !!data.start_date, {
+    message: 'Start date is required',
+    path: ['start_date'],
   });
 
   type FormValues = z.infer<typeof formSchema>;
