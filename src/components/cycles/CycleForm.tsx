@@ -227,9 +227,10 @@ export default function CycleForm({
       form.reset({
         name: cycle?.name || '',
         description: cycle?.description || '',
-        start_date: cycle ? new Date(cycle.start_date) : new Date(),
+        is_always_open: cycle?.is_always_open ?? false,
+        start_date: cycle?.start_date ? new Date(cycle.start_date) : (cycle?.is_always_open ? undefined : new Date()),
         end_date: cycle?.end_date ? new Date(cycle.end_date) : undefined,
-        number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
+        number_of_weeks: cycle?.start_date && cycle?.end_date ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
         start_time: (cycle?.settings as any)?.start_time || '09:00',
         end_time: (cycle?.settings as any)?.end_time || '10:00',
         enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
