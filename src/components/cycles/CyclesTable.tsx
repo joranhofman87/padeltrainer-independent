@@ -338,7 +338,7 @@ export default function CyclesTable({
                     )}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
-                    <span className="text-sm">{formatPeriod(cycle.start_date, cycle.end_date)}</span>
+                    <span className="text-sm">{formatPeriod(cycle)}</span>
                   </TableCell>
                   <TableCell>{getStatusBadge(cycle.status)}</TableCell>
                   <TableCell className="hidden lg:table-cell">
