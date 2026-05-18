@@ -554,7 +554,28 @@ export default function CycleForm({
               />
             )}
 
-            {isEvent ? (
+            {/* Always-open toggle: registrations only */}
+            {isRegistration && (
+              <FormField
+                control={form.control}
+                name="is_always_open"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start gap-3 rounded-md border p-4">
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>{t('form.alwaysOpen.label', 'Open registration (no fixed dates)')}</FormLabel>
+                      <FormDescription className="text-xs">
+                        {t('form.alwaysOpen.help', 'This form stays open until you close it from the registrations list. Players can apply at any time.')}
+                      </FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {!watchedAlwaysOpen && (isEvent ? (
               /* Event: start date + end date */
               <div className="grid grid-cols-2 gap-4">
                 <FormField
