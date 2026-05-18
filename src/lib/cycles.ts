@@ -16,9 +16,10 @@ export interface Cycle {
   owner_id: string;
   name: string;
   description: string | null;
-  start_date: string;
-  end_date: string;
+  start_date: string | null;
+  end_date: string | null;
   enrollment_deadline: string | null;
+  is_always_open: boolean;
   settings: CycleSettings;
   status: 'draft' | 'open' | 'closed' | 'archived';
   type: 'registration' | 'cyclus' | 'event';
@@ -234,9 +235,10 @@ export interface CycleInput {
   owner_id: string;
   name: string;
   description?: string;
-  start_date: string;
-  end_date: string;
-  enrollment_deadline?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  enrollment_deadline?: string | null;
+  is_always_open?: boolean;
   settings?: CycleSettings;
   status?: 'draft' | 'open' | 'closed' | 'archived';
   type?: 'registration' | 'cyclus' | 'event';
@@ -329,7 +331,7 @@ export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy',
     .eq('owner_type', ownerType)
     .eq('owner_id', ownerId)
     .eq('status', 'open')
-    .order('start_date', { ascending: true });
+    .order('start_date', { ascending: true, nullsFirst: true });
 
   if (error) throw error;
   return (data || []).map(toCycle);
@@ -398,9 +400,15 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
     if (clubCycles) allCycles.push(...clubCycles.map(toCycle));
   }
   
-  return allCycles.sort((a, b) => 
-    new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
-  );
+  return allCycles.sort((a, b) => {
+    // Always-open first
+    if (a.is_always_open && !b.is_always_open) return -1;
+    if (!a.is_always_open && b.is_always_open) return 1;
+    if (a.is_always_open && b.is_always_open) {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    return new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
+  });
 }
 
 export async function getCycle(cycleId: string): Promise<Cycle | null> {
@@ -431,9 +439,10 @@ export async function createCycle(input: CycleInput): Promise<Cycle> {
     owner_id: input.owner_id,
     name: input.name,
     description: input.description || null,
-    start_date: input.start_date,
-    end_date: input.end_date,
-    enrollment_deadline: input.enrollment_deadline || null,
+    start_date: input.is_always_open ? null : (input.start_date ?? null),
+    end_date: input.is_always_open ? null : (input.end_date ?? null),
+    enrollment_deadline: input.is_always_open ? null : (input.enrollment_deadline || null),
+    is_always_open: input.is_always_open ?? false,
     settings: (input.settings || {}) as Json,
     status: input.status || 'draft',
     type: input.type || 'registration',
@@ -464,6 +473,7 @@ export async function updateCycle(cycleId: string, updates: Partial<CycleInput>)
   if (updates.start_date !== undefined) updateData.start_date = updates.start_date;
   if (updates.end_date !== undefined) updateData.end_date = updates.end_date;
   if (updates.enrollment_deadline !== undefined) updateData.enrollment_deadline = updates.enrollment_deadline;
+  if (updates.is_always_open !== undefined) updateData.is_always_open = updates.is_always_open;
   if (updates.settings !== undefined) updateData.settings = updates.settings as Json;
   if (updates.status !== undefined) updateData.status = updates.status;
   if (updates.location_id !== undefined) updateData.location_id = updates.location_id;

@@ -118,7 +118,11 @@
     "pricesExcludeVatHint": "Players will see: \"All prices exclude VAT\"",
     "availableDays": "Available Days & Times",
     "availableDaysHelp": "Select which days and time frames are available for training. Players will only see these options.",
-    "totalLabel": "Totale"
+    "totalLabel": "Totale",
+    "alwaysOpen": {
+      "label": "Iscrizione aperta (senza date fisse)",
+      "help": "Questo modulo resta aperto finché non lo chiudi. I giocatori possono iscriversi in qualsiasi momento."
+    }
   },
   "detail": {
     "pricesIncludeVat": "All prices include VAT",
@@ -512,5 +516,8 @@
     "pending": "In attesa",
     "declined": "Rifiutati",
     "booked": "Prenotati"
+  },
+  "alwaysOpen": {
+    "badge": "Sempre aperta"
   }
 }

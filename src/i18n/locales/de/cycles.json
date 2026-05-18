@@ -110,7 +110,11 @@
     "pricesExcludeVatHint": "Spieler sehen: \"Alle Preise verstehen sich zzgl. MwSt.\"",
     "availableDays": "Verfügbare Tage & Zeiten",
     "availableDaysHelp": "Wähle aus, an welchen Tagen und zu welchen Zeiten trainiert werden kann. Spieler sehen nur diese Optionen.",
-    "totalLabel": "Gesamt"
+    "totalLabel": "Gesamt",
+    "alwaysOpen": {
+      "label": "Offene Anmeldung (keine festen Termine)",
+      "help": "Dieses Formular bleibt offen, bis du es schließt. Spieler können sich jederzeit anmelden."
+    }
   },
   "detail": {
     "pricesIncludeVat": "Alle Preise verstehen sich inkl. MwSt.",
@@ -482,5 +486,8 @@
     "pending": "Offen",
     "declined": "Abgelehnt",
     "booked": "Gebucht"
+  },
+  "alwaysOpen": {
+    "badge": "Immer offen"
   }
 }

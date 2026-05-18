@@ -157,9 +157,10 @@ export default function CycleForm({
   const formSchema = z.object({
     name: (isRegistration || isEvent) ? z.string().min(2) : z.string().optional().default(''),
     description: z.string().optional().default(''),
-    start_date: z.date(),
+    is_always_open: z.boolean().default(false),
+    start_date: z.date().optional(),
     end_date: isEvent ? z.date().optional() : z.date().optional(),
-    number_of_weeks: isEvent ? z.coerce.number().optional().default(1) : z.coerce.number().min(1).max(52),
+    number_of_weeks: isEvent ? z.coerce.number().optional().default(1) : z.coerce.number().min(1).max(52).optional(),
     start_time: z.string().default('09:00'),
     end_time: z.string().default('10:00'),
     enrollment_deadline: z.date().optional(),
@@ -182,6 +183,9 @@ export default function CycleForm({
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
     message: 'Min group size must be ≤ max group size',
     path: ['min_group_size'],
+  }).refine(data => data.is_always_open || !!data.start_date, {
+    message: 'Start date is required',
+    path: ['start_date'],
   });
 
   type FormValues = z.infer<typeof formSchema>;
@@ -191,9 +195,10 @@ export default function CycleForm({
     defaultValues: {
       name: cycle?.name || '',
       description: cycle?.description || '',
-      start_date: cycle ? new Date(cycle.start_date) : new Date(),
+      is_always_open: cycle?.is_always_open ?? false,
+      start_date: cycle?.start_date ? new Date(cycle.start_date) : (cycle?.is_always_open ? undefined : new Date()),
       end_date: cycle?.end_date ? new Date(cycle.end_date) : undefined,
-      number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
+      number_of_weeks: cycle?.start_date && cycle?.end_date ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
       start_time: (cycle?.settings as any)?.start_time || '09:00',
       end_time: (cycle?.settings as any)?.end_time || '10:00',
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
@@ -222,9 +227,10 @@ export default function CycleForm({
       form.reset({
         name: cycle?.name || '',
         description: cycle?.description || '',
-        start_date: cycle ? new Date(cycle.start_date) : new Date(),
+        is_always_open: cycle?.is_always_open ?? false,
+        start_date: cycle?.start_date ? new Date(cycle.start_date) : (cycle?.is_always_open ? undefined : new Date()),
         end_date: cycle?.end_date ? new Date(cycle.end_date) : undefined,
-        number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
+        number_of_weeks: cycle?.start_date && cycle?.end_date ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
         start_time: (cycle?.settings as any)?.start_time || '09:00',
         end_time: (cycle?.settings as any)?.end_time || '10:00',
         enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
@@ -292,6 +298,7 @@ export default function CycleForm({
   const watchedWeeks = form.watch('number_of_weeks');
   const watchedAssignedTrainer = form.watch('assigned_trainer_id');
   const watchedStartDate = form.watch('start_date');
+  const watchedAlwaysOpen = form.watch('is_always_open');
 
   // Auto-sync end_date from start_date + weeks (for non-event types)
   useEffect(() => {
@@ -378,18 +385,29 @@ export default function CycleForm({
       // For cyclus, auto-generate name from day + time
       let cycleName = values.name;
       if (!isRegistration && !isEvent) {
-        const dayName = format(values.start_date, 'EEEE');
+        const dayName = values.start_date ? format(values.start_date, 'EEEE') : '';
         cycleName = `${dayName} ${values.start_time}–${values.end_time}`;
       }
 
+      const alwaysOpen = isRegistration && values.is_always_open;
+
       // Calculate end date
-      let endDate: string;
-      if (values.end_date) {
-        endDate = format(values.end_date, 'yyyy-MM-dd');
-      } else if (isEvent) {
-        endDate = format(values.start_date, 'yyyy-MM-dd');
+      let endDate: string | null;
+      let startDate: string | null;
+      if (alwaysOpen) {
+        startDate = null;
+        endDate = null;
       } else {
-        endDate = format(addWeeks(values.start_date, values.number_of_weeks || 10), 'yyyy-MM-dd');
+        startDate = values.start_date ? format(values.start_date, 'yyyy-MM-dd') : null;
+        if (values.end_date) {
+          endDate = format(values.end_date, 'yyyy-MM-dd');
+        } else if (isEvent && values.start_date) {
+          endDate = format(values.start_date, 'yyyy-MM-dd');
+        } else if (values.start_date && values.number_of_weeks) {
+          endDate = format(addWeeks(values.start_date, values.number_of_weeks), 'yyyy-MM-dd');
+        } else {
+          endDate = null;
+        }
       }
 
       const input: CycleInput = {
@@ -397,9 +415,10 @@ export default function CycleForm({
         owner_id: ownerId,
         name: cycleName,
         description: (isEvent || isRegistration) ? values.description : undefined,
-        start_date: format(values.start_date, 'yyyy-MM-dd'),
+        start_date: startDate,
         end_date: endDate,
-        enrollment_deadline: values.enrollment_deadline?.toISOString(),
+        enrollment_deadline: alwaysOpen ? null : values.enrollment_deadline?.toISOString(),
+        is_always_open: alwaysOpen,
         settings,
         status: andOpen ? 'open' : (cycle?.status || 'draft'),
         type: formType,
@@ -535,7 +554,28 @@ export default function CycleForm({
               />
             )}
 
-            {isEvent ? (
+            {/* Always-open toggle: registrations only */}
+            {isRegistration && (
+              <FormField
+                control={form.control}
+                name="is_always_open"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start gap-3 rounded-md border p-4">
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>{t('form.alwaysOpen.label', 'Open registration (no fixed dates)')}</FormLabel>
+                      <FormDescription className="text-xs">
+                        {t('form.alwaysOpen.help', 'This form stays open until you close it from the registrations list. Players can apply at any time.')}
+                      </FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {!watchedAlwaysOpen && (isEvent ? (
               /* Event: start date + end date */
               <div className="grid grid-cols-2 gap-4">
                 <FormField
@@ -707,7 +747,7 @@ export default function CycleForm({
                 )}
               />
               </>
-            )}
+            ))}
 
             {/* Timeframe - only for cyclus */}
             {!isRegistration && !isEvent && (
@@ -741,6 +781,7 @@ export default function CycleForm({
             </div>
             )}
 
+            {!watchedAlwaysOpen && (
             <FormField
               control={form.control}
               name="enrollment_deadline"
@@ -775,6 +816,7 @@ export default function CycleForm({
                 </FormItem>
               )}
             />
+            )}
 
             {/* Location Picker - for academies/clubs with locations, or trainers */}
             {locations.length > 0 ? (

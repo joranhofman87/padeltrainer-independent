@@ -2185,9 +2185,10 @@ export type Database = {
           created_at: string
           currency: string | null
           description: string | null
-          end_date: string
+          end_date: string | null
           enrollment_deadline: string | null
           id: string
+          is_always_open: boolean
           location_id: string | null
           name: string
           owner_id: string
@@ -2195,7 +2196,7 @@ export type Database = {
           price_per_session: number | null
           price_table: Json | null
           settings: Json | null
-          start_date: string
+          start_date: string | null
           status: string
           terms: string | null
           total_price: number | null
@@ -2206,9 +2207,10 @@ export type Database = {
           created_at?: string
           currency?: string | null
           description?: string | null
-          end_date: string
+          end_date?: string | null
           enrollment_deadline?: string | null
           id?: string
+          is_always_open?: boolean
           location_id?: string | null
           name: string
           owner_id: string
@@ -2216,7 +2218,7 @@ export type Database = {
           price_per_session?: number | null
           price_table?: Json | null
           settings?: Json | null
-          start_date: string
+          start_date?: string | null
           status?: string
           terms?: string | null
           total_price?: number | null
@@ -2227,9 +2229,10 @@ export type Database = {
           created_at?: string
           currency?: string | null
           description?: string | null
-          end_date?: string
+          end_date?: string | null
           enrollment_deadline?: string | null
           id?: string
+          is_always_open?: boolean
           location_id?: string | null
           name?: string
           owner_id?: string
@@ -2237,7 +2240,7 @@ export type Database = {
           price_per_session?: number | null
           price_table?: Json | null
           settings?: Json | null
-          start_date?: string
+          start_date?: string | null
           status?: string
           terms?: string | null
           total_price?: number | null

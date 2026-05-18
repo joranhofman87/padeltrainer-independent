@@ -1,135 +1,61 @@
-## Goal
+# Always-Open Registration Forms
 
-Comprehensive schema.org JSON-LD coverage on every public page, sourced from Sanity / DB fields, emitted client-side via `SEO` and server-side via the `render-page` edge function so bots see it without JS execution.
+Today every registration is tied to a `start_date`, `end_date` and optional `enrollment_deadline` on the `cycles` table. We want a new flavor: a registration form an academy (or club/trainer) can leave open indefinitely so prospects can apply at any time, and it shows on the location landing page as long as the owner keeps it marked open.
 
-## Audit of current state
+## Approach
 
-The codebase already emits structured data on most public pages via `<SEO structuredData={[...]} />` and the `react-helmet-async` head. Existing coverage:
+Add an `is_always_open` boolean flag on `cycles`. When true:
+- The form behaves like a registration (`type = 'registration'`), but date fields are not required and not enforced.
+- The cycle form UI greys out / hides the date range + enrollment deadline.
+- Public listings (`LocationOpenCycles`, academy/club profile, etc.) show it whenever `status = 'open'`, with no date label.
+- Sorting falls back to created/updated date rather than `start_date`.
+- Visibility is controlled solely by the owner toggling `status` between `open` and `closed` (or unpublishing).
 
-| Page | Currently emits |
-|---|---|
-| `Home` | WebSite + Organization |
-| `BlogPost` | Article + Breadcrumb (+ Blog) |
-| `Blog` index | Blog + Breadcrumb |
-| `LearningArticlePage` | Article/CollectionPage + WebPage + Breadcrumb |
-| `StrokePage` | Article + Breadcrumb + HowTo (when `keyTips` non-empty) |
-| `Strokes` index | Breadcrumb + ItemList |
-| `RulesPage` | Article + Breadcrumb |
-| `Rules` index | Breadcrumb + FAQPage + ItemList |
-| `TopicPage` | CollectionPage + WebPage + Breadcrumb |
-| `CoachPage` | Person + Breadcrumb |
-| `CityLanding` (DB-backed) | FAQPage + Breadcrumb + LocalBusiness[] |
-| `TrainersCity` | ItemList + FAQPage + Breadcrumb |
-| `TrainersProvince` | ItemList + Breadcrumb |
-| `Locations` index | ItemList + Breadcrumb |
-| `LocationDetail` | SportsClub + AggregateRating + Breadcrumb |
-| `TrainerProfile` (DB) | Person-ish + Breadcrumb |
+## Data model
 
-Gaps + issues to fix:
+New migration on `public.cycles`:
+- `is_always_open boolean not null default false`
+- Make `start_date` / `end_date` nullable (currently required) OR keep them required and store a sentinel — preferred: make them nullable, since semantically there is no window.
+- No RLS changes needed; existing policies on `cycles` already cover the row.
 
-1. `StrokePage` HowTo emits with **any** non-empty `keyTips` — should require **≥3 steps** per spec; otherwise drop HowTo and keep Article.
-2. `TrainerProfile` (DB-side) Person schema should include `jobTitle: "Padel Coach"` + `knowsAbout: ["Padel", ...specialties]` + skip entirely when bio is empty.
-3. `LocationDetail` uses `SportsClub` — keep (it's a valid subtype of `SportsActivityLocation`); add `sport: "Padel"` for clarity. Omit `geo` when lat/lng missing (already handled in CityLanding, audit Detail).
-4. `TopicsIndex` and `LearnIndex` lack CollectionPage + Breadcrumb — add.
-5. `Coaches` index, `VideoTips` index, `VideoTipPage`, `RacketListing`, `RacketDetail`, `AcademyPublicProfile`, `Trainers` index — verify and add Breadcrumb (+ ItemList for index pages, Person for academy, VideoObject for video tips, Product for rackets).
-6. `render-page` (bot SSR) currently emits **no** structured data for blog/learning/stroke/rules/topic/trainer/location pages. Bots that don't execute JS see naked HTML. Mirror the schema set in the SSR HTML.
-7. `rulesArticle` Sanity docs do **not** have a `faqs` field (verified). Spec assumed they did. Decision: **keep Article schema only** for individual rules pages; the Rules **index** keeps its FAQPage (already wired with i18n FAQ strings). No spam FAQPage on per-rule pages.
-8. Sanity `cityPage` has `faqs` (verified) — already wired in `CityLanding`. Confirm the route is reachable and add Breadcrumb step polish.
+## Backend / lib changes (`src/lib/cycles.ts`)
 
-## Design
+- Extend `Cycle` type with `is_always_open: boolean` and make `start_date`/`end_date` nullable.
+- `createCycle` / `updateCycle`: pass the flag through, allow null dates when `is_always_open`.
+- `getLocationCycles` and any `.order('start_date')`: when `is_always_open`, treat as always-current; sort always-open entries first (or last) by `created_at`.
+- `getActiveCycles`: include always-open rows regardless of date.
+- Deadline helpers (`isDeadlinePassed`) short-circuit to `false` for always-open.
 
-### Centralize via `src/lib/structuredData.ts`
+## Form UI (`src/pages/CycleFormPage.tsx` + cycle form components)
 
-Extend the existing module with one pure builder per schema type. Pages compose builders; the result is a flat array passed to `<SEO structuredData={[...]} />`. No new component — `SEO` already serializes any array of objects. Builders:
+- New checkbox/toggle near the top of the registration form: "Open registration (no fixed dates)".
+- When checked:
+  - Disable + visually grey out `start_date`, `end_date`, `enrollment_deadline` inputs.
+  - Drop their Zod validation (`z.string().optional().nullable()` branch).
+  - Show helper copy: "This form stays open until you close it from the registrations list."
+- Not available for `type=event` (events inherently have a date).
 
-- `buildArticle({ headline, description, image, datePublished, dateModified, authorName, lang, url })`
-- `buildHowTo({ name, description, image, lang, steps })` — returns null if `steps.length < 3`
-- `buildFaqPage(items)` (exists)
-- `buildBreadcrumbList(steps)` (exists) — extend to accept lang for typed Home label
-- `buildPerson({ name, bio, image, jobTitle, knowsAbout, url })` — returns null if no bio
-- `buildCollectionPage({ name, description, url, lang })`
-- `buildSportsActivityLocation({ name, description, address, geo, url, sport })` — omits `geo` when missing
-- `buildOrganization()` / `buildWebSite({ searchUrl? })` — consts for homepage
-- `buildItemList(items)` (already inline in several pages — extract)
-- `buildVideoObject({ name, description, thumbnail, embedUrl, uploadDate })` — for video-tip pages
-- `buildProduct({ name, image, description, brand, offers })` — for rackets
+## Public surfaces
 
-Helper: `portableTextToPlain(blocks)` for converting Sanity Portable Text answers/intros to flat strings used in `description` / `text` fields. Already exists somewhere in the codebase or can wrap `@portabletext/toolkit` `toPlainText`.
+- `LocationOpenCycles`: replace date range chip with an "Open registration" badge when `is_always_open`; hide deadline row.
+- Cycles list/table (`CyclesTable`): show an "Always open" pill instead of date range; sort to top.
+- Branded cycle registration landing (`BrandedCycleRegistration`): hide "starts on / ends on" copy when always-open.
+- SSR (`render-page`) snippets that reference dates need the same conditional.
 
-### Page wiring (refactor + fill gaps)
+## i18n
 
-Touch each page to swap inline schema literals for builder calls. Behavior changes only where flagged below:
-
-| Page | Schemas | Change |
-|---|---|---|
-| `Home` | Organization + WebSite | keep, route through builders |
-| `BlogPost` | Article + Breadcrumb | builders, drop unused inner CollectionPage variant |
-| `Blog` index | Breadcrumb (+ ItemList of recent posts) | route through builders |
-| `LearningArticlePage` | Article + Breadcrumb | builders |
-| `LearnIndex` | CollectionPage + Breadcrumb + ItemList | **add** |
-| `StrokePage` | Article + Breadcrumb + HowTo (≥3 keyTips) | **fix step guard** |
-| `Strokes` index | Breadcrumb + ItemList | builders |
-| `RulesPage` | Article + Breadcrumb | builders (no FAQPage — see decision above) |
-| `Rules` index | FAQPage + Breadcrumb + ItemList | builders |
-| `TopicPage` | CollectionPage + Breadcrumb (+ ItemList of featured guides) | builders |
-| `TopicsIndex` | CollectionPage + Breadcrumb + ItemList | **add** |
-| `CoachPage` (Sanity trainer) | Person + Breadcrumb | builders |
-| `Coaches` index | Breadcrumb + ItemList | **add** |
-| `VideoTipPage` | VideoObject + Breadcrumb | **add** |
-| `VideoTips` index | Breadcrumb + ItemList | **add** |
-| `RacketDetail` | Product + Breadcrumb | **add** |
-| `RacketListing` | Breadcrumb + ItemList | **add** |
-| `CityLanding` | FAQPage + Breadcrumb + LocalBusiness[] | builders (already correct) |
-| `LocationDetail` | SportsActivityLocation (alias of SportsClub) + Breadcrumb | builders + ensure `geo` skipped if missing |
-| `Locations` index | Breadcrumb + ItemList | builders |
-| `TrainerProfile` (DB) | Person (with jobTitle + knowsAbout) + Breadcrumb | **fix Person fields** |
-| `Trainers` index | Breadcrumb + ItemList | builders |
-| `TrainersCity` | ItemList + FAQPage + Breadcrumb | builders |
-| `TrainersProvince` | ItemList + Breadcrumb | builders |
-| `AcademyPublicProfile` | Organization + Breadcrumb | builders |
-
-### Server-side parity (`supabase/functions/render-page/index.ts`)
-
-Currently no structured data is emitted in SSR HTML. Add a small builder set inside `db-facts.ts` (Deno-safe, no React) and inject the result via the existing `page()` helper's `structuredData` parameter. Coverage:
-
-- Topic hubs (already DB-fetched from Sanity in the recent fix): emit CollectionPage + BreadcrumbList.
-- Trainer/club short-link pages: emit Person/SportsActivityLocation + BreadcrumbList using the Sanity/DB facts already fetched.
-- Static `/about`, `/pricing`, etc.: keep WebPage + BreadcrumbList only.
-- Homepage SSR: emit Organization + WebSite (parity with the React Home page).
-
-This guarantees Googlebot's pre-render path and the live React render produce the **same** structured data.
-
-## Validation
-
-For every page type, after deploy, run the Google Rich Results Test against one live URL each:
-
-1. `/en/blog/<latest-slug>` → expect Article + BreadcrumbList
-2. `/en/learn/<slug>` → Article + BreadcrumbList
-3. `/en/strokes/<slug>` → HowTo + Article + BreadcrumbList (HowTo only if ≥3 steps)
-4. `/en/rules/<slug>` → Article + BreadcrumbList (no FAQPage — documented)
-5. `/en/strokes` (topic hub) → CollectionPage + BreadcrumbList
-6. `/nl/padel/amsterdam` (CityLanding) → FAQPage + BreadcrumbList + LocalBusiness
-7. `/en/padel-coaches/<slug>` → Person + BreadcrumbList
-8. `/en/trainers/<slug>` (DB) → Person + BreadcrumbList
-9. `/en/locations/<slug>` → SportsActivityLocation + BreadcrumbList
-10. `/` → Organization + WebSite
-
-Repeat steps 1–9 against `…/functions/v1/render-page?path=<path>` to confirm SSR parity. Report a results table with the schemas detected and any warnings.
-
-## Files touched
-
-- `src/lib/structuredData.ts` — new builders.
-- `src/components/SEO.tsx` — no change (already serializes arrays correctly).
-- ~22 page files — swap inline literals for builders, fill gaps listed above.
-- `supabase/functions/render-page/index.ts` + a new `supabase/functions/render-page/structured-data.ts` — server-side schema emission.
+Add keys in all 6 locales under `cycles.json`:
+- `alwaysOpen.label` — "Open registration (no fixed dates)"
+- `alwaysOpen.help` — explanation copy
+- `alwaysOpen.badge` — "Always open"
 
 ## Out of scope
 
-- Adding new Sanity schema fields (e.g. `stroke.steps` or `rulesArticle.faqs`) — defer to a separate content-modeling pass; today we use what the docs already have.
-- New OG image generation.
-- Auth-required pages (`/app/*`) — bots don't crawl them.
-- Migrating from `react-helmet-async` to a different head manager.
+- Auto-closing logic (capacity-based) — owner closes manually.
+- Changes to event flow.
+- New notification cadence for always-open registrations (can follow later).
 
-## Question before implementation
+## Open questions
 
-The spec asks for FAQPage on `rulesArticle` if `≥2` items, but live Sanity `rulesArticle` docs have no `faqs` array (only `quickAnswer` + `commonMistakes`). I'm proposing to keep per-rule pages on Article schema only and not emit FAQPage there. If you want FAQPage, the cleanest path is to add a `faqs` field to the `rulesArticle` Sanity schema and backfill — out of scope for this pass. Confirm or I'll proceed with Article-only.
+1. Should always-open registrations still allow per-slot scheduling, or be intake-only (no calendar slots)? Recommendation: intake-only at launch, since slots assume a date window.
+2. Should this be allowed for all three owner types (trainer, club, academy) or academies only? Recommendation: all three for parity.

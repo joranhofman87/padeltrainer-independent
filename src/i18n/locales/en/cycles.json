@@ -118,7 +118,11 @@
     "pricesExcludeVatHint": "Players will see: \"All prices exclude VAT\"",
     "availableDays": "Available Days & Times",
     "availableDaysHelp": "Select which days and time frames are available for training. Players will only see these options.",
-    "totalLabel": "Total"
+    "totalLabel": "Total",
+    "alwaysOpen": {
+      "label": "Open registration (no fixed dates)",
+      "help": "This form stays open until you close it from the registrations list. Players can apply at any time."
+    }
   },
   "detail": {
     "pricesIncludeVat": "All prices include VAT",
@@ -504,7 +508,12 @@
   },
   "tierControl": {
     "title": "Visibility & rebooking",
-    "tier": { "priority": "Priority only", "members": "Members only", "public": "Public", "hidden": "Hidden" },
+    "tier": {
+      "priority": "Priority only",
+      "members": "Members only",
+      "public": "Public",
+      "hidden": "Hidden"
+    },
     "priorityEnds": "Priority window ends",
     "memberEnds": "Member window ends",
     "releaseStatus": "Release status",
@@ -532,5 +541,8 @@
     "pending": "Pending",
     "declined": "Declined",
     "booked": "Booked"
+  },
+  "alwaysOpen": {
+    "badge": "Always open"
   }
 }

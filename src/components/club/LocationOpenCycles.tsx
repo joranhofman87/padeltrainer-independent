@@ -90,6 +90,7 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
   }, [locationId, user]);
 
   const isDeadlinePassed = (cycle: Cycle) => {
+    if (cycle.is_always_open) return false;
     return cycle.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
   };
 
@@ -135,15 +136,25 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
                 <div className="flex-1">
                   <h4 className="font-medium">{cycle.name}</h4>
                   <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      {format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}
-                    </span>
-                    {cycle.enrollment_deadline && (
-                      <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
-                        <Clock className="h-4 w-4" />
-                        {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
-                      </span>
+                    {cycle.is_always_open ? (
+                      <Badge variant="secondary" className="text-xs">
+                        {t('alwaysOpen.badge', 'Always open')}
+                      </Badge>
+                    ) : (
+                      <>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          {cycle.start_date && cycle.end_date && (
+                            <>{format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}</>
+                          )}
+                        </span>
+                        {cycle.enrollment_deadline && (
+                          <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+                            <Clock className="h-4 w-4" />
+                            {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

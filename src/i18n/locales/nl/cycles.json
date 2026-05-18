@@ -128,7 +128,11 @@
     "pricesExcludeVatHint": "Spelers zien: \"Alle prijzen zijn exclusief BTW\"",
     "availableDays": "Beschikbare dagen & tijden",
     "availableDaysHelp": "Selecteer op welke dagen en tijden er getraind kan worden. spelers zien alleen deze opties.",
-    "totalLabel": "Totaal"
+    "totalLabel": "Totaal",
+    "alwaysOpen": {
+      "label": "Open inschrijving (geen vaste data)",
+      "help": "Dit formulier blijft open totdat je het sluit. Spelers kunnen op elk moment aanmelden."
+    }
   },
   "detail": {
     "priceTable": "Tarieven",
@@ -657,5 +661,8 @@
     "pending": "Open",
     "declined": "Afgewezen",
     "booked": "Geboekt"
+  },
+  "alwaysOpen": {
+    "badge": "Altijd open"
   }
 }
