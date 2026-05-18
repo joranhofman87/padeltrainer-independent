@@ -235,9 +235,10 @@ export interface CycleInput {
   owner_id: string;
   name: string;
   description?: string;
-  start_date: string;
-  end_date: string;
-  enrollment_deadline?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  enrollment_deadline?: string | null;
+  is_always_open?: boolean;
   settings?: CycleSettings;
   status?: 'draft' | 'open' | 'closed' | 'archived';
   type?: 'registration' | 'cyclus' | 'event';
