@@ -53,6 +53,7 @@ serve(async (req) => {
         error: invoice.status === "paid" ? "already_paid" : "cancelled",
         invoiceNumber: invoice.invoice_number,
         status: invoice.status,
+        invoiceId: invoice.id,
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
