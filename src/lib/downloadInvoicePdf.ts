@@ -10,7 +10,7 @@ export async function downloadInvoicePdf(invoiceId: string, invoiceNumber?: stri
   });
 
   if (error) {
-    console.error('generate-invoice error:', error);
+    console.error('generate-invoice error:', error, 'data:', data);
     return false;
   }
 
