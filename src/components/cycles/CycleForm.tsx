@@ -220,6 +220,8 @@ export default function CycleForm({
       currency: cycle?.currency || 'EUR',
       success_message: (cycle?.settings as any)?.success_message || '',
       confirmation_email_text: (cycle?.settings as any)?.confirmation_email_text || '',
+      notify_admin_on_submission: (cycle?.settings as any)?.notify_admin_on_submission ?? true,
+      notify_admin_emails: (cycle?.settings as any)?.notify_admin_emails || '',
     },
   });
 
