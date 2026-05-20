@@ -671,6 +671,21 @@ const handler = async (req: Request): Promise<Response> => {
         }
       }
 
+      // Guest invoice fallback: if the invoice is tied to a guest_player whose
+      // email matches the authed user's email, treat them as the player. This
+      // covers the case where a guest paid an invoice and then signed up — the
+      // link trigger may not have run, or the player_id has not yet been populated.
+      if (!isPlayer && invoice.guest_player_id && user?.email) {
+        const { data: guest } = await supabase
+          .from('guest_players')
+          .select('email')
+          .eq('id', invoice.guest_player_id)
+          .maybeSingle();
+        if (guest?.email && guest.email.toLowerCase() === user.email.toLowerCase()) {
+          isPlayer = true;
+        }
+      }
+
       // Check if user is an academy manager for this invoice's academy
       if (!isTrainer && !isPlayer && invoice.academy_profile_id) {
         const { data: managerCheck } = await supabase
