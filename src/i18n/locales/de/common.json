@@ -326,7 +326,11 @@
     "questionsContact": "Fragen? Kontaktiere <a>{{email}}</a>",
     "errorNoMollie": "Online-Zahlung ist derzeit nicht verfügbar.",
     "errorMissingProfile": "Die Zahlungsumgebung dieses Anbieters ist noch nicht vollständig eingerichtet.",
-    "errorPaymentFailed": "Zahlung konnte nicht erstellt werden. Bitte versuche es erneut."
+    "errorPaymentFailed": "Zahlung konnte nicht erstellt werden. Bitte versuche es erneut.",
+    "downloadInvoice": "Rechnung herunterladen",
+    "downloadingInvoice": "Rechnung wird vorbereitet...",
+    "invoicePending": "Deine Rechnung wird noch vorbereitet. Bitte versuche es gleich erneut.",
+    "invoiceFailed": "Rechnung konnte nicht heruntergeladen werden. Bitte später erneut versuchen."
   },
   "invoiceEdit": {
     "title": "Rechnung bearbeiten",
