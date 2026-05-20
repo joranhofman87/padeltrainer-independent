@@ -337,7 +337,11 @@
     "questionsContact": "Domande? Contatta <a>{{email}}</a>",
     "errorNoMollie": "Il pagamento online non è attualmente disponibile.",
     "errorMissingProfile": "L'ambiente di pagamento di questo fornitore non è ancora completamente configurato.",
-    "errorPaymentFailed": "Creazione del pagamento non riuscita. Riprova."
+    "errorPaymentFailed": "Creazione del pagamento non riuscita. Riprova.",
+    "downloadInvoice": "Scarica fattura",
+    "downloadingInvoice": "Preparazione della fattura...",
+    "invoicePending": "La tua fattura è ancora in preparazione. Riprova tra poco.",
+    "invoiceFailed": "Impossibile scaricare la fattura. Riprova più tardi."
   },
   "invoiceEdit": {
     "title": "Edit Invoice",
