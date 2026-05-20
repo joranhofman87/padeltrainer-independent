@@ -1272,6 +1272,7 @@ const handler = async (req: Request): Promise<Response> => {
       "partner_inquiry", "location_request",
       "booking_approved_payment", "booking_approved_invoice", "booking_rejected",
       "intake_registration_confirmation", "schedule_notification",
+      "new_intake_registration_admin",
     ];
 
     const prefColumn = TYPE_TO_PREF_COLUMN[type];
