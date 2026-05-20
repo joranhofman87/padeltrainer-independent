@@ -447,6 +447,21 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentReceived")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentReceivedDescription")}</p>
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={handleDownloadPaid}
+                disabled={downloadLoading}
+              >
+                {downloadLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                {downloadLoading ? t("invoice.downloadingInvoice") : t("invoice.downloadInvoice")}
+              </Button>
+            </div>
             <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} playerId={data?.invoice.playerId} />
           </CardContent>
         </Card>
