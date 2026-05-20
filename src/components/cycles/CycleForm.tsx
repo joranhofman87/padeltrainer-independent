@@ -180,6 +180,8 @@ export default function CycleForm({
     currency: z.string().default('EUR'),
     success_message: z.string().optional().default(''),
     confirmation_email_text: z.string().optional().default(''),
+    notify_admin_on_submission: z.boolean().default(true),
+    notify_admin_emails: z.string().optional().default(''),
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
     message: 'Min group size must be ≤ max group size',
     path: ['min_group_size'],
