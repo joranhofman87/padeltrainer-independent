@@ -415,6 +415,91 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Notify admins on new submission (opt-in via cycle settings; non-blocking)
+    try {
+      const settings = (cycleData?.settings || {}) as any;
+      if (settings.notify_admin_on_submission && cycleData) {
+        const recipients = new Set<string>();
+
+        if (cycleData.owner_type === 'trainer') {
+          const { data: trainer } = await adminClient
+            .from('trainer_profiles').select('user_id').eq('id', cycleData.owner_id).single();
+          if (trainer?.user_id) {
+            const { data: prof } = await adminClient
+              .from('profiles').select('email').eq('user_id', trainer.user_id).maybeSingle();
+            if (prof?.email) recipients.add(prof.email.toLowerCase());
+          }
+        } else if (cycleData.owner_type === 'academy') {
+          const { data: mgrs } = await adminClient
+            .from('academy_managers').select('user_id').eq('academy_profile_id', cycleData.owner_id);
+          const userIds = (mgrs || []).map((m: any) => m.user_id);
+          if (userIds.length) {
+            const { data: profs } = await adminClient
+              .from('profiles').select('email').in('user_id', userIds);
+            for (const p of profs || []) if (p.email) recipients.add(p.email.toLowerCase());
+          }
+        } else if (cycleData.owner_type === 'club') {
+          const { data: mgrs } = await adminClient
+            .from('club_managers').select('user_id').eq('club_profile_id', cycleData.owner_id);
+          const userIds = (mgrs || []).map((m: any) => m.user_id);
+          if (userIds.length) {
+            const { data: profs } = await adminClient
+              .from('profiles').select('email').in('user_id', userIds);
+            for (const p of profs || []) if (p.email) recipients.add(p.email.toLowerCase());
+          }
+          if (recipients.size === 0) {
+            const { data: club } = await adminClient
+              .from('club_profiles').select('contact_email').eq('id', cycleData.owner_id).maybeSingle();
+            if (club?.contact_email) recipients.add(club.contact_email.toLowerCase());
+          }
+        }
+
+        const extra = String(settings.notify_admin_emails || '')
+          .split(',').map((s) => s.trim().toLowerCase()).filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
+        for (const e of extra) recipients.add(e);
+
+        const recipientList = Array.from(recipients);
+        if (recipientList.length > 0 && RESEND_API_KEY) {
+          const detailPath = cycleData.owner_type === 'academy'
+            ? `/app/academy/registrations/${cycleId}`
+            : cycleData.owner_type === 'club'
+              ? `/app/club/registrations/${cycleId}`
+              : `/app/trainer/registrations/${cycleId}`;
+
+          await Promise.all(recipientList.map((to) =>
+            fetch(`${supabaseUrl}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseServiceKey}` },
+              body: JSON.stringify({
+                type: 'new_intake_registration_admin',
+                to,
+                language: 'en',
+                data: {
+                  playerName: fullName,
+                  playerEmail: email,
+                  playerPhone: phone || undefined,
+                  playerRating: rating || undefined,
+                  ratingSystem: ratingSystem || undefined,
+                  cycleName: cycleData.name,
+                  lessonTypes: lessonTypes || [],
+                  preferredDays: preferredDays || undefined,
+                  preferredTimeWindows: preferredTimeWindows || undefined,
+                  preferredDurationMinutes: preferredDurationMinutes || undefined,
+                  sessionsPerWeek: sessionsPerWeek || undefined,
+                  notes: notes || undefined,
+                  detailUrl: detailPath,
+                },
+              }),
+            }).catch((e) => console.error('admin notify send failed:', e))
+          ));
+          console.log(`Admin notification email sent to ${recipientList.length} recipient(s)`);
+        }
+      }
+    } catch (notifyErr) {
+      console.error('Admin notification failed (non-blocking):', notifyErr);
+    }
+
+
     // Non-blocking Slack notification
     try {
       await fetch(`${supabaseUrl}/functions/v1/slack-notify`, {
