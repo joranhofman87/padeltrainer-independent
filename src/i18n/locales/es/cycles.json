@@ -101,6 +101,12 @@
     "confirmationEmailText": "Texto del correo de confirmación",
     "confirmationEmailTextPlaceholder": "ej. El entrenamiento comienza el 1 de marzo. Trae tu propia raqueta.",
     "confirmationEmailTextHelp": "Este texto se incluye en el correo de confirmación enviado a los jugadores después de inscribirse. Déjalo vacío para una confirmación estándar.",
+    "notifyAdmin": {
+      "label": "Enviarme un correo en cada nueva inscripción",
+      "help": "Envía una notificación por correo cuando un jugador envíe este formulario.",
+      "extraEmails": "Correos de notificación adicionales",
+      "extraEmailsHelp": "Separados por comas. Déjalo vacío para notificar solo a los propietarios del cuenta."
+    },
     "registrationAssignedTrainerHelp": "El entrenador que dará las clases para esta inscripción",
     "registrationApplicableTrainersHelp": "Qué entrenadores pueden ser asignados a esta inscripción",
     "pricesIncludeVat": "Precios con IVA incluido",
