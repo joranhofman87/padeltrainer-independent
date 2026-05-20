@@ -1148,7 +1148,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { type, to, data, language }: EmailRequest = await req.json();
     
     // Allow partner_inquiry and location_request without auth (public forms)
-    const isPublicForm = type === "partner_inquiry" || type === "location_request";
+    const isPublicForm = type === "partner_inquiry" || type === "location_request" || type === "new_intake_registration_admin";
     
     // Create supabase client for rate limiting (service role needed for rate_limits table)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
