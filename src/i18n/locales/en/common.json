@@ -342,7 +342,11 @@
     "questionsContact": "Questions? Contact <a>{{email}}</a>",
     "errorNoMollie": "Online payment is currently unavailable.",
     "errorMissingProfile": "This provider's payment environment is not fully set up yet.",
-    "errorPaymentFailed": "Failed to create payment. Please try again."
+    "errorPaymentFailed": "Failed to create payment. Please try again.",
+    "downloadInvoice": "Download invoice",
+    "downloadingInvoice": "Preparing invoice...",
+    "invoicePending": "Your invoice is still being prepared. Please try again in a moment.",
+    "invoiceFailed": "Could not download invoice. Please try again later."
   },
   "invoiceEdit": {
     "title": "Edit Invoice",

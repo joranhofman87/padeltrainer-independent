@@ -347,7 +347,11 @@
     "questionsContact": "Vragen? Neem contact op met <a>{{email}}</a>",
     "errorNoMollie": "Online betaling is momenteel niet beschikbaar.",
     "errorMissingProfile": "De betaalomgeving van deze aanbieder is nog niet volledig ingesteld.",
-    "errorPaymentFailed": "Betaling aanmaken mislukt. Probeer het opnieuw."
+    "errorPaymentFailed": "Betaling aanmaken mislukt. Probeer het opnieuw.",
+    "downloadInvoice": "Factuur downloaden",
+    "downloadingInvoice": "Factuur voorbereiden...",
+    "invoicePending": "Je factuur wordt nog voorbereid. Probeer het zo opnieuw.",
+    "invoiceFailed": "Kon factuur niet downloaden. Probeer het later opnieuw."
   },
   "invoiceEdit": {
     "title": "Factuur bewerken",

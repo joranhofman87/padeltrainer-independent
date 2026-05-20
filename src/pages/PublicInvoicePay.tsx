@@ -18,7 +18,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown } from "lucide-react";
+import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown, Download } from "lucide-react";
 import { format } from "date-fns";
 import { nl, enUS, de, fr, es, it } from "date-fns/locale";
 
@@ -316,6 +316,42 @@ export default function PublicInvoicePay() {
   const [error, setError] = useState<string | null>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+
+  const handleDownloadPaid = async () => {
+    if (!token) return;
+    setDownloadLoading(true);
+    try {
+      const { data: result, error: fnError } = await supabase.functions.invoke("get-public-invoice", {
+        body: { publicToken: token, action: "download" },
+      });
+      if (fnError) throw fnError;
+      if (!result?.ready) {
+        toast.message(t("invoice.invoicePending"));
+        return;
+      }
+      if (!result.pdfUrl) {
+        toast.error(t("invoice.invoiceFailed"));
+        return;
+      }
+      const response = await fetch(result.pdfUrl);
+      if (!response.ok) throw new Error("download failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${result.invoiceNumber || "invoice"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Public invoice download failed", err);
+      toast.error(t("invoice.invoiceFailed"));
+    } finally {
+      setDownloadLoading(false);
+    }
+  };
 
   // Pin language to the URL locale segment so the page matches the email link's language
   useEffect(() => {
@@ -411,6 +447,21 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentReceived")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentReceivedDescription")}</p>
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={handleDownloadPaid}
+                disabled={downloadLoading}
+              >
+                {downloadLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                {downloadLoading ? t("invoice.downloadingInvoice") : t("invoice.downloadInvoice")}
+              </Button>
+            </div>
             <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} playerId={data?.invoice.playerId} />
           </CardContent>
         </Card>

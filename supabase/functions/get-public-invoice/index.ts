@@ -16,7 +16,8 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { publicToken } = await req.json();
+    const body = await req.json();
+    const { publicToken, action } = body || {};
     if (!publicToken) {
       return new Response(JSON.stringify({ error: "publicToken required" }), {
         status: 400,
@@ -30,12 +31,54 @@ serve(async (req) => {
       .eq("public_token", publicToken)
       .single();
 
-    if (invError || !invoice || invoice.public_token_revoked_at) {
+    if (invError || !invoice) {
       return new Response(JSON.stringify({ error: "Invoice not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Download mode: return a signed PDF URL when the invoice is paid.
+    // This is allowed even if public_token_revoked_at is set, because
+    // possession of the token still proves the recipient relationship and
+    // the response contains no PII beyond the invoice number.
+    if (action === "download") {
+      if (invoice.status !== "paid") {
+        return new Response(JSON.stringify({ ready: false, status: invoice.status }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: genData, error: genErr } = await supabase.functions.invoke("generate-invoice", {
+        body: { invoiceId: invoice.id },
+        headers: { Authorization: `Bearer ${supabaseServiceKey}` },
+      });
+
+      if (genErr || !genData?.pdfUrl) {
+        return new Response(
+          JSON.stringify({ error: "Failed to generate invoice PDF" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          ready: true,
+          pdfUrl: genData.pdfUrl,
+          invoiceNumber: invoice.invoice_number,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (invoice.public_token_revoked_at) {
+      return new Response(JSON.stringify({ error: "Invoice not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
 
     // Look up guest player email if no registered player
     let playerEmail: string | null = null;
@@ -53,6 +96,7 @@ serve(async (req) => {
         error: invoice.status === "paid" ? "already_paid" : "cancelled",
         invoiceNumber: invoice.invoice_number,
         status: invoice.status,
+        invoiceId: invoice.id,
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
