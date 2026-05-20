@@ -180,6 +180,8 @@ export default function CycleForm({
     currency: z.string().default('EUR'),
     success_message: z.string().optional().default(''),
     confirmation_email_text: z.string().optional().default(''),
+    notify_admin_on_submission: z.boolean().default(true),
+    notify_admin_emails: z.string().optional().default(''),
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
     message: 'Min group size must be ≤ max group size',
     path: ['min_group_size'],
@@ -218,6 +220,8 @@ export default function CycleForm({
       currency: cycle?.currency || 'EUR',
       success_message: (cycle?.settings as any)?.success_message || '',
       confirmation_email_text: (cycle?.settings as any)?.confirmation_email_text || '',
+      notify_admin_on_submission: (cycle?.settings as any)?.notify_admin_on_submission ?? true,
+      notify_admin_emails: (cycle?.settings as any)?.notify_admin_emails || '',
     },
   });
 
@@ -250,6 +254,8 @@ export default function CycleForm({
         currency: cycle?.currency || 'EUR',
         success_message: (cycle?.settings as any)?.success_message || '',
         confirmation_email_text: (cycle?.settings as any)?.confirmation_email_text || '',
+        notify_admin_on_submission: (cycle?.settings as any)?.notify_admin_on_submission ?? true,
+        notify_admin_emails: (cycle?.settings as any)?.notify_admin_emails || '',
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
       setSplitPayment((cycle?.settings as any)?.split_payment ?? false);
@@ -371,6 +377,8 @@ export default function CycleForm({
         max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
         success_message: values.success_message?.trim() || undefined,
         confirmation_email_text: values.confirmation_email_text?.trim() || undefined,
+        notify_admin_on_submission: values.notify_admin_on_submission,
+        notify_admin_emails: values.notify_admin_emails?.trim() || undefined,
         cyclus_options: isRegistration && cyclusOptions.filter(co => co.label && co.number_of_sessions > 0).length > 0
           ? cyclusOptions.filter(co => co.label && co.number_of_sessions > 0)
           : undefined,
@@ -553,6 +561,52 @@ export default function CycleForm({
                 )}
               />
             )}
+
+            {/* Notify admin on new submission */}
+            {(isRegistration || isEvent) && (
+              <div className="rounded-md border p-4 space-y-3">
+                <FormField
+                  control={form.control}
+                  name="notify_admin_on_submission"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start gap-3">
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>{t('form.notifyAdmin.label', 'Email me on new submissions')}</FormLabel>
+                        <FormDescription className="text-xs">
+                          {t('form.notifyAdmin.help', 'Send an email notification when a player submits this form.')}
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+                {form.watch('notify_admin_on_submission') && (
+                  <FormField
+                    control={form.control}
+                    name="notify_admin_emails"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.notifyAdmin.extraEmails', 'Additional notification emails')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="alice@example.com, bob@example.com"
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          {t('form.notifyAdmin.extraEmailsHelp', 'Comma-separated. Leave empty to only notify the default account owners.')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+            )}
+
+
 
             {/* Always-open toggle: registrations only */}
             {isRegistration && (

@@ -103,6 +103,12 @@
     "confirmationEmailText": "Confirmation Email Text",
     "confirmationEmailTextPlaceholder": "e.g. Training starts on March 1st. Please bring your own racket.",
     "confirmationEmailTextHelp": "This text is included in the confirmation email sent to players after they register. Leave empty to send a standard confirmation.",
+    "notifyAdmin": {
+      "label": "Email me on new submissions",
+      "help": "Send an email notification when a player submits this form.",
+      "extraEmails": "Additional notification emails",
+      "extraEmailsHelp": "Comma-separated. Leave empty to only notify the default account owners."
+    },
     "registrationAssignedTrainerHelp": "The trainer who will give the lessons for this registration",
     "registrationApplicableTrainersHelp": "Which trainers can be assigned to this registration",
     "availableDurations": "Lesson Durations",

@@ -103,6 +103,12 @@
     "confirmationEmailText": "Bestätigungsmail-Text",
     "confirmationEmailTextPlaceholder": "z.B. Das Training beginnt am 1. März. Bitte eigenen Schläger mitbringen.",
     "confirmationEmailTextHelp": "Dieser Text wird in die Bestätigungsmail aufgenommen, die Spieler nach der Anmeldung erhalten. Leer lassen für eine Standardbestätigung.",
+    "notifyAdmin": {
+      "label": "Bei neuen Anmeldungen per E-Mail benachrichtigen",
+      "help": "Sende eine Benachrichtigung, wenn ein Spieler dieses Formular ausfüllt.",
+      "extraEmails": "Zusätzliche Benachrichtigungs-E-Mails",
+      "extraEmailsHelp": "Komma-getrennt. Leer lassen, um nur die Standard-Kontoinhaber zu benachrichtigen."
+    },
     "registrationAssignedTrainerHelp": "Der Trainer, der die Stunden für diese Anmeldung gibt",
     "registrationApplicableTrainersHelp": "Welche Trainer dieser Anmeldung zugewiesen werden können",
     "pricesIncludeVat": "Preise verstehen sich inkl. MwSt.",

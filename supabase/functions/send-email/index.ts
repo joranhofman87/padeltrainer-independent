@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation" | "schedule_notification";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation" | "schedule_notification" | "new_intake_registration_admin";
   to: string;
   userId?: string;
   language?: string;
@@ -891,6 +891,49 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
       };
     }
 
+    case "new_intake_registration_admin": {
+      const detailUrl = data.detailUrl?.startsWith('http')
+        ? data.detailUrl
+        : `https://padeltrainer.ai${data.detailUrl || ''}`;
+      const lessonTypes = Array.isArray(data.lessonTypes) ? data.lessonTypes.join(', ') : '';
+      const preferredDays = Array.isArray(data.preferredDays) ? data.preferredDays.join(', ') : '';
+      const timeWindows = Array.isArray(data.preferredTimeWindows)
+        ? data.preferredTimeWindows.map((w: any) => typeof w === 'string' ? w : `${w.start || ''}-${w.end || ''}`).join(', ')
+        : '';
+      const rows: string[] = [];
+      const addRow = (label: string, val?: string) => { if (val) rows.push(`<p style="margin: 4px 0;"><strong>${label}:</strong> ${val}</p>`); };
+      addRow('Name', data.playerName);
+      addRow('Email', data.playerEmail);
+      addRow('Phone', data.playerPhone);
+      addRow('Rating', data.playerRating ? `${data.playerRating}${data.ratingSystem ? ' (' + data.ratingSystem + ')' : ''}` : undefined);
+      addRow('Lesson types', lessonTypes);
+      addRow('Preferred days', preferredDays);
+      addRow('Preferred times', timeWindows);
+      addRow('Duration', data.preferredDurationMinutes ? `${data.preferredDurationMinutes} min` : undefined);
+      addRow('Sessions/week', data.sessionsPerWeek ? String(data.sessionsPerWeek) : undefined);
+      addRow('Notes', data.notes);
+      return {
+        subject: `New registration: ${data.playerName} for ${data.cycleName}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">New registration received</h1>
+            <p>A new player just signed up for <strong>${data.cycleName}</strong>.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              ${rows.join('')}
+            </div>
+            <p style="margin-top: 24px;">
+              <a href="${detailUrl}" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View registration</a>
+            </p>
+            <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">You're receiving this because email notifications are enabled for this registration form. You can disable them on the form's settings.</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+    }
+
+
+
     case "schedule_notification": {
       const scheduleEntries = (data as any).scheduleEntries || [];
       const formatDate = (d: string) => {
@@ -1105,7 +1148,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { type, to, data, language }: EmailRequest = await req.json();
     
     // Allow partner_inquiry and location_request without auth (public forms)
-    const isPublicForm = type === "partner_inquiry" || type === "location_request";
+    const isPublicForm = type === "partner_inquiry" || type === "location_request" || type === "new_intake_registration_admin";
     
     // Create supabase client for rate limiting (service role needed for rate_limits table)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
@@ -1229,6 +1272,7 @@ const handler = async (req: Request): Promise<Response> => {
       "partner_inquiry", "location_request",
       "booking_approved_payment", "booking_approved_invoice", "booking_rejected",
       "intake_registration_confirmation", "schedule_notification",
+      "new_intake_registration_admin",
     ];
 
     const prefColumn = TYPE_TO_PREF_COLUMN[type];
