@@ -316,6 +316,42 @@ export default function PublicInvoicePay() {
   const [error, setError] = useState<string | null>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+
+  const handleDownloadPaid = async () => {
+    if (!token) return;
+    setDownloadLoading(true);
+    try {
+      const { data: result, error: fnError } = await supabase.functions.invoke("get-public-invoice", {
+        body: { publicToken: token, action: "download" },
+      });
+      if (fnError) throw fnError;
+      if (!result?.ready) {
+        toast.message(t("invoice.invoicePending"));
+        return;
+      }
+      if (!result.pdfUrl) {
+        toast.error(t("invoice.invoiceFailed"));
+        return;
+      }
+      const response = await fetch(result.pdfUrl);
+      if (!response.ok) throw new Error("download failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${result.invoiceNumber || "invoice"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Public invoice download failed", err);
+      toast.error(t("invoice.invoiceFailed"));
+    } finally {
+      setDownloadLoading(false);
+    }
+  };
 
   // Pin language to the URL locale segment so the page matches the email link's language
   useEffect(() => {
