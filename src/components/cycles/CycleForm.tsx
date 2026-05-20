@@ -562,6 +562,52 @@ export default function CycleForm({
               />
             )}
 
+            {/* Notify admin on new submission */}
+            {(isRegistration || isEvent) && (
+              <div className="rounded-md border p-4 space-y-3">
+                <FormField
+                  control={form.control}
+                  name="notify_admin_on_submission"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start gap-3">
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>{t('form.notifyAdmin.label', 'Email me on new submissions')}</FormLabel>
+                        <FormDescription className="text-xs">
+                          {t('form.notifyAdmin.help', 'Send an email notification when a player submits this form.')}
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+                {form.watch('notify_admin_on_submission') && (
+                  <FormField
+                    control={form.control}
+                    name="notify_admin_emails"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.notifyAdmin.extraEmails', 'Additional notification emails')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="alice@example.com, bob@example.com"
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          {t('form.notifyAdmin.extraEmailsHelp', 'Comma-separated. Leave empty to only notify the default account owners.')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+            )}
+
+
+
             {/* Always-open toggle: registrations only */}
             {isRegistration && (
               <FormField
