@@ -377,6 +377,8 @@ export default function CycleForm({
         max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
         success_message: values.success_message?.trim() || undefined,
         confirmation_email_text: values.confirmation_email_text?.trim() || undefined,
+        notify_admin_on_submission: values.notify_admin_on_submission,
+        notify_admin_emails: values.notify_admin_emails?.trim() || undefined,
         cyclus_options: isRegistration && cyclusOptions.filter(co => co.label && co.number_of_sessions > 0).length > 0
           ? cyclusOptions.filter(co => co.label && co.number_of_sessions > 0)
           : undefined,
