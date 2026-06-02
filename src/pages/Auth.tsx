@@ -163,7 +163,18 @@ export default function Auth() {
                 localStorage.removeItem('pendingRole');
                 navigate(`/app/onboarding/${pendingRole}`);
               } else {
-                navigate('/app/onboarding/player');
+                toast({
+                  title: t('signIn.error', 'Error'),
+                  description: t(
+                    'signIn.noRoleAssigned',
+                    'Your account has no role yet. Choose how you want to use PadelTrainer.',
+                  ),
+                  variant: 'destructive',
+                });
+                const signupRedirect = redirectUrl
+                  ? `/app/signup?redirect=${encodeURIComponent(redirectUrl)}`
+                  : '/app/signup';
+                navigate(signupRedirect);
               }
             }
           } catch (err) {

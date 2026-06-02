@@ -83,7 +83,7 @@ export default function PlayerSignup() {
     setIsLoading(true);
 
     try {
-      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Player');
+      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'player');
 
       if (error) {
         logger.error('Player signup failed', error, { component: 'PlayerSignup', action: 'signUp' });

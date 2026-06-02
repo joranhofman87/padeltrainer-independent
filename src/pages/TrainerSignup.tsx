@@ -73,7 +73,14 @@ export default function TrainerSignup() {
     setIsLoading(true);
 
     try {
-      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, i18n.language);
+      const { data, error } = await signUpWithEmail(
+        email,
+        password,
+        fullName,
+        undefined,
+        i18n.language,
+        'trainer',
+      );
 
       if (error) {
         logger.error('Trainer signup failed', error, { component: 'TrainerSignup', action: 'signUp' });

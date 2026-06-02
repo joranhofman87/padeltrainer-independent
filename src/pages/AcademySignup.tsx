@@ -73,7 +73,7 @@ export default function AcademySignup() {
     setIsLoading(true);
 
     try {
-      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'Academy');
+      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'academy');
 
       if (error) {
         logger.error('Academy signup failed', error, { component: 'AcademySignup', action: 'signUp' });

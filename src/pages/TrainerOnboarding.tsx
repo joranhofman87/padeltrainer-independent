@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { setUserRole } from '@/lib/auth';
@@ -9,14 +9,20 @@ import { OnboardingStep2Done } from '@/components/trainer/onboarding/OnboardingS
 import { trackOnboardingEvent } from '@/lib/onboardingTracking';
 import { Logo } from '@/components/Logo';
 import { logger } from '@/lib/logger';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 const TOTAL_STEPS = 2;
 
 export default function TrainerOnboarding() {
   const { user, loading, refreshAuth } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { t } = useTranslation('auth');
   const [currentStep, setCurrentStep] = useState(1);
   const [initializing, setInitializing] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -30,51 +36,101 @@ export default function TrainerOnboarding() {
   const initOnboarding = async () => {
     if (!user) return;
 
+    setInitError(null);
+
     try {
-      // Ensure trainer role exists
-      const hasTrainerRole = await supabase
+      const { data: roleRow, error: roleCheckError } = await supabase
         .from('user_roles')
         .select('id')
         .eq('user_id', user.id)
         .eq('role', 'trainer')
         .maybeSingle();
 
-      if (!hasTrainerRole.data) {
-        const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
-        await setUserRole(user.id, 'trainer', detectedTimezone);
-        await refreshAuth();
+      if (roleCheckError) {
+        throw roleCheckError;
       }
 
-      // Check for existing onboarding progress
-      const { data: existing } = await supabase
+      if (!roleRow) {
+        const detectedTimezone =
+          Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
+        try {
+          await setUserRole(user.id, 'trainer', detectedTimezone);
+          await refreshAuth();
+        } catch (roleErr: unknown) {
+          const err =
+            roleErr instanceof Error ? roleErr : new Error(String(roleErr));
+          logger.error('Failed to assign trainer role during onboarding', err, {
+            component: 'TrainerOnboarding',
+            userId: user.id,
+            code: (roleErr as { code?: string })?.code,
+          });
+          const message =
+            err.message ||
+            t(
+              'onboarding.trainerRoleFailed',
+              'Could not assign your trainer account. Please try again or contact support.',
+            );
+          setInitError(message);
+          toast({
+            title: t('signUp.error', 'Error'),
+            description: message,
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+
+      const { data: existing, error: onboardingError } = await supabase
         .from('trainer_onboarding')
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
+
+      if (onboardingError) {
+        throw onboardingError;
+      }
 
       if (existing) {
         if (existing.completed_at) {
           navigate('/app/trainer/get-started');
           return;
         }
-        // Map old steps: anything >= 2 in old flow means profile is done
         const resumeStep = existing.current_step >= 2 ? 2 : 1;
         setCurrentStep(resumeStep);
       } else {
-        await supabase.from('trainer_onboarding').insert({
+        const { error: insertError } = await supabase.from('trainer_onboarding').insert({
           user_id: user.id,
           current_step: 1,
         });
+        if (insertError) {
+          throw insertError;
+        }
         trackOnboardingEvent('onboarding_started');
       }
     } catch (e) {
-      logger.error('Error initializing onboarding', e instanceof Error ? e : new Error(String(e)), { component: 'TrainerOnboarding' });
+      const err = e instanceof Error ? e : new Error(String(e));
+      logger.error('Error initializing trainer onboarding', err, {
+        component: 'TrainerOnboarding',
+        userId: user.id,
+      });
+      const message =
+        err.message ||
+        t(
+          'onboarding.trainerInitFailed',
+          'Could not start trainer onboarding. Please try again.',
+        );
+      setInitError(message);
+      toast({
+        title: t('signUp.error', 'Error'),
+        description: message,
+        variant: 'destructive',
+      });
     } finally {
       setInitializing(false);
     }
   };
 
-  const saveProgress = async (step: number, extraData?: Record<string, any>) => {
+  const saveProgress = async (step: number, extraData?: Record<string, unknown>) => {
     if (!user) return;
     await supabase
       .from('trainer_onboarding')
@@ -114,6 +170,23 @@ export default function TrainerOnboarding() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  if (initError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="container max-w-lg mx-auto text-center space-y-4">
+          <Logo className="h-8 mx-auto" />
+          <p className="text-destructive text-sm">{initError}</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button onClick={() => initOnboarding()}>{t('signIn.button', 'Try again')}</Button>
+            <Button variant="outline" asChild>
+              <Link to="/app/signup">{t('signupPicker.title', 'Choose account type')}</Link>
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
