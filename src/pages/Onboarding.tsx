@@ -82,7 +82,10 @@ export default function Onboarding() {
         // Not logged in - redirect to appropriate signup
         navigate('/app/signup/player');
       } else if (role) {
-        // Already has a role - redirect to dashboard
+        // Server-assigned role before form complete — stay on player onboarding
+        if (pendingRole === 'player' || storedPendingRole === 'player') {
+          return;
+        }
         navigate(role === 'trainer' ? '/app/trainer' : '/app/player');
       }
     }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
-import { setUserRole } from '@/lib/auth';
+import { setUserRole, ensureTrainerProfile } from '@/lib/auth';
 import { OnboardingProgressBar } from '@/components/trainer/onboarding/OnboardingProgressBar';
 import { OnboardingStep1Profile } from '@/components/trainer/onboarding/OnboardingStep1Profile';
 import { OnboardingStep2Done } from '@/components/trainer/onboarding/OnboardingStep2Done';
@@ -50,9 +50,10 @@ export default function TrainerOnboarding() {
         throw roleCheckError;
       }
 
+      const detectedTimezone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
+
       if (!roleRow) {
-        const detectedTimezone =
-          Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
         try {
           await setUserRole(user.id, 'trainer', detectedTimezone);
           await refreshAuth();
@@ -69,6 +70,30 @@ export default function TrainerOnboarding() {
             t(
               'onboarding.trainerRoleFailed',
               'Could not assign your trainer account. Please try again or contact support.',
+            );
+          setInitError(message);
+          toast({
+            title: t('signUp.error', 'Error'),
+            description: message,
+            variant: 'destructive',
+          });
+          return;
+        }
+      } else {
+        try {
+          await ensureTrainerProfile(user.id, detectedTimezone);
+        } catch (profileErr: unknown) {
+          const err =
+            profileErr instanceof Error ? profileErr : new Error(String(profileErr));
+          logger.error('Failed to ensure trainer profile during onboarding', err, {
+            component: 'TrainerOnboarding',
+            userId: user.id,
+          });
+          const message =
+            err.message ||
+            t(
+              'onboarding.trainerInitFailed',
+              'Could not start trainer onboarding. Please try again.',
             );
           setInitError(message);
           toast({

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
+import { signUpWithEmail, signInWithGoogle, isTrainerOnboardingComplete } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { GraduationCap, ArrowLeft } from 'lucide-react';
@@ -38,10 +38,30 @@ export default function TrainerSignup() {
   const { t, i18n } = useTranslation('auth');
   const { honeypotRef, isSuspicious } = useHoneypot();
 
+  // Returning logged-in users only — skip while fresh signup has pendingRole
   useEffect(() => {
-    if (!loading && user && role) {
-      navigate(role === 'trainer' ? '/app/trainer' : '/app/player');
+    if (loading || !user || !role) return;
+    if (localStorage.getItem('pendingRole')) return;
+
+    if (role !== 'trainer') {
+      navigate('/app/player');
+      return;
     }
+
+    let cancelled = false;
+    isTrainerOnboardingComplete(user.id)
+      .then((complete) => {
+        if (!cancelled) {
+          navigate(complete ? '/app/trainer' : '/app/onboarding/trainer');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) navigate('/app/onboarding/trainer');
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, role, loading, navigate]);
 
   const validateForm = () => {

@@ -48,10 +48,11 @@ export default function PlayerSignup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Returning logged-in users only — do not override post-signup onboarding navigation
   useEffect(() => {
-    if (!loading && user && role) {
-      navigate(role === 'trainer' ? '/app/trainer' : '/app/player');
-    }
+    if (loading || !user || !role) return;
+    if (localStorage.getItem('pendingRole')) return;
+    navigate(role === 'trainer' ? '/app/trainer' : '/app/player');
   }, [user, role, loading, navigate]);
 
   const validateForm = () => {
@@ -106,7 +107,7 @@ export default function PlayerSignup() {
           title: t('signUp.success'),
           description: t('signUp.successDescription'),
         });
-        navigate('/onboarding/player');
+        navigate('/app/onboarding/player');
       } else {
         try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch {}
         localStorage.setItem('pendingRole', 'player');

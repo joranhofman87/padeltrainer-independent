@@ -65,13 +65,63 @@ export default function TrainerLayout() {
     : 0;
   const isSubscriptionExpired = subscriptionLoaded && !subscription?.isSubscribed && !subscription?.isInTrial;
   const isOnSubscriptionPage = location.pathname.endsWith('/subscription');
+  const isOnTrainerOnboarding = location.pathname === '/app/onboarding/trainer';
 
-  // Redirect to subscription page when expired
+  const isTrainerUser = roles.includes('trainer') || roles.includes('admin');
+
+  const { data: trainerOnboardingComplete = false, isLoading: onboardingGateLoading } = useQuery({
+    queryKey: ['trainer-onboarding-gate', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('trainer_onboarding')
+        .select('completed_at')
+        .eq('user_id', user!.id)
+        .maybeSingle();
+      if (error) throw error;
+      return !!data?.completed_at;
+    },
+    enabled: !!user && isTrainerUser,
+    staleTime: 60 * 1000,
+  });
+
+  // Onboarding before subscription/paywall
   useEffect(() => {
-    if (!loading && isSubscriptionExpired && !isOnSubscriptionPage && !hasAcademy) {
-      navigate('/app/trainer/subscription', { replace: true });
+    if (loading || onboardingGateLoading || !user || !isTrainerUser) return;
+    if (!trainerOnboardingComplete && !isOnTrainerOnboarding) {
+      navigate('/app/onboarding/trainer', { replace: true });
     }
-  }, [loading, isSubscriptionExpired, isOnSubscriptionPage, hasAcademy, navigate]);
+  }, [
+    loading,
+    onboardingGateLoading,
+    user,
+    isTrainerUser,
+    trainerOnboardingComplete,
+    isOnTrainerOnboarding,
+    navigate,
+  ]);
+
+  // Redirect to subscription page when expired (only after onboarding complete)
+  useEffect(() => {
+    if (
+      loading ||
+      onboardingGateLoading ||
+      !trainerOnboardingComplete ||
+      !isSubscriptionExpired ||
+      isOnSubscriptionPage ||
+      hasAcademy
+    ) {
+      return;
+    }
+    navigate('/app/trainer/subscription', { replace: true });
+  }, [
+    loading,
+    onboardingGateLoading,
+    trainerOnboardingComplete,
+    isSubscriptionExpired,
+    isOnSubscriptionPage,
+    hasAcademy,
+    navigate,
+  ]);
 
   // Redirect academy trainers away from restricted pages
   const RESTRICTED_PATHS_FOR_ACADEMY = [
@@ -97,7 +147,9 @@ export default function TrainerLayout() {
     }
   }, [loading, hasAcademy, location.pathname, navigate]);
 
-  if (loading) {
+  const showLayoutLoading = loading || (isTrainerUser && onboardingGateLoading);
+
+  if (showLayoutLoading) {
     return (
       <div className="min-h-screen bg-background">
         <div className="flex">

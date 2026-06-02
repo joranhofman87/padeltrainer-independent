@@ -223,6 +223,32 @@ const handler = async (req: Request): Promise<Response> => {
       await supabaseAdmin
         .from('user_roles')
         .upsert({ user_id: user.id, role: signupRole }, { onConflict: 'user_id,role' });
+
+      // Trial trainer profile for server-assigned trainer signups (idempotent)
+      if (signupRole === 'trainer') {
+        const { data: existingTrainerProfile } = await supabaseAdmin
+          .from('trainer_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!existingTrainerProfile) {
+          const now = new Date();
+          const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+          const tz = timezone || 'Europe/Amsterdam';
+          const { error: trainerProfileError } = await supabaseAdmin.from('trainer_profiles').insert({
+            user_id: user.id,
+            trial_started_at: now.toISOString(),
+            trial_ends_at: trialEnd.toISOString(),
+            subscription_status: 'trial',
+            is_public: false,
+            timezone: tz,
+          });
+          if (trainerProfileError) {
+            console.error('[SIGNUP] Failed to create trainer profile (non-fatal):', trainerProfileError);
+          }
+        }
+      }
     }
 
     // Generate a welcome link

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { signInWithEmail, signInWithGoogle } from '@/lib/auth';
+import { signInWithEmail, signInWithGoogle, isTrainerOnboardingComplete } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
@@ -114,17 +114,25 @@ export default function Auth() {
           localStorage.removeItem('redirectAfterOnboarding');
           navigate(onboardingRedirect);
         } else {
-        if (isAcademyManager) {
-            navigate('/app/academy');
-          } else if (role === 'admin') {
-            navigate('/app/admin');
-          } else if (role === 'trainer') {
-            navigate('/app/trainer');
-          } else if (role === 'club' || isClubManager) {
-            navigate('/app/club');
-          } else {
-            navigate('/app/player');
-          }
+          const routeByRole = async () => {
+            if (isAcademyManager) {
+              navigate('/app/academy');
+            } else if (role === 'admin') {
+              navigate('/app/admin');
+            } else if (role === 'trainer') {
+              try {
+                const complete = await isTrainerOnboardingComplete(user.id);
+                navigate(complete ? '/app/trainer' : '/app/onboarding/trainer');
+              } catch {
+                navigate('/app/onboarding/trainer');
+              }
+            } else if (role === 'club' || isClubManager) {
+              navigate('/app/club');
+            } else {
+              navigate('/app/player');
+            }
+          };
+          void routeByRole();
         }
       } else if (!hasCheckedRoles.current) {
         // Role is null and fetch didn't fail — check DB once to confirm truly new user
