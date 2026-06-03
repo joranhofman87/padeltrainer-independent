@@ -16,6 +16,7 @@ interface OnboardingStep1ProfileProps {
 export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) {
   const { user } = useAuth();
   const { t } = useTranslation('trainer');
+  const { t: tOnboarding } = useTranslation('onboarding');
   const [fullName, setFullName] = useState('');
   const [bio, setBio] = useState('');
   const [hourlyRate, setHourlyRate] = useState<string>('');
@@ -65,7 +66,7 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
       onNext();
     } catch (error: any) {
       logger.error('Error saving profile', error as Error, { component: 'OnboardingStep1Profile' });
-      toast.error('Failed to save profile. Please try again.');
+      toast.error(tOnboarding('errors.profileSaveFailed'));
     } finally {
       setSaving(false);
     }
