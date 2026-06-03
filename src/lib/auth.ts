@@ -385,18 +385,28 @@ export interface FetchResult<T> {
   failed: boolean;
 }
 
+const CHECKED_USER_ROLES: UserRole[] = ['admin', 'trainer', 'club', 'player'];
+
+/** Read roles via SECURITY DEFINER RPC — direct user_roles SELECT may be blocked by RLS. */
 export async function getUserRoles(userId: string): Promise<FetchResult<UserRole[]>> {
   try {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId);
-    
-    if (error) {
-      logger.error('Error fetching user roles', error as any, { component: 'auth' });
+    const results = await Promise.all(
+      CHECKED_USER_ROLES.map(async (role) => {
+        const { data, error } = await supabase.rpc('has_role', {
+          _user_id: userId,
+          _role: role,
+        });
+        return { role, has: !!data, error };
+      }),
+    );
+
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+      logger.error('Error fetching user roles via has_role', failed.error as any, { component: 'auth' });
       return { data: [], failed: true };
     }
-    return { data: (data || []).map(d => d.role as UserRole), failed: false };
+
+    return { data: results.filter((r) => r.has).map((r) => r.role), failed: false };
   } catch (err) {
     logger.error('Exception fetching user roles', err as Error, { component: 'auth' });
     return { data: [], failed: true };
@@ -440,19 +450,49 @@ export async function isTrainerOnboardingComplete(userId: string): Promise<boole
   return !!data?.completed_at;
 }
 
+/**
+ * Assign role when missing. Skips client INSERT when signup-user (or admin) already assigned it.
+ * Legacy users without a row still attempt INSERT (may fail under RLS — caller should handle).
+ */
 export async function setUserRole(userId: string, role: UserRole, timezone?: string) {
+  const { data: alreadyHas, error: checkError } = await supabase.rpc('has_role', {
+    _user_id: userId,
+    _role: role,
+  });
+
+  if (checkError) {
+    logger.error('Error checking role before assign', checkError as any, { component: 'auth', role });
+    throw checkError;
+  }
+
+  if (alreadyHas) {
+    if (role === 'trainer') {
+      await ensureTrainerProfile(userId, timezone);
+    }
+    return { user_id: userId, role };
+  }
+
   const { data, error } = await supabase
     .from('user_roles')
     .insert({ user_id: userId, role })
     .select()
     .single();
-  
-  if (error) throw error;
-  
+
+  if (error) {
+    const { data: nowHas } = await supabase.rpc('has_role', { _user_id: userId, _role: role });
+    if (nowHas) {
+      if (role === 'trainer') {
+        await ensureTrainerProfile(userId, timezone);
+      }
+      return { user_id: userId, role };
+    }
+    throw error;
+  }
+
   if (role === 'trainer') {
     await ensureTrainerProfile(userId, timezone);
   }
-  
+
   return data;
 }
 

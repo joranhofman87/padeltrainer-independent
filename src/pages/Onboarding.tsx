@@ -150,19 +150,23 @@ export default function Onboarding() {
         }
       }
       
-      // Get the profile ID first
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-      
       if (Object.keys(profileUpdates).length > 0) {
         await updateProfile(user.id, profileUpdates);
       }
-      
-      // Set the user role
-      await setUserRole(user.id, pendingRole);
+
+      // Player role is assigned server-side by signup-user; only insert for legacy accounts missing a row
+      if (pendingRole === 'player') {
+        const { data: hasPlayerRole, error: roleCheckError } = await supabase.rpc('has_role', {
+          _user_id: user.id,
+          _role: 'player',
+        });
+        if (roleCheckError) throw roleCheckError;
+        if (!hasPlayerRole) {
+          await setUserRole(user.id, 'player');
+        }
+      } else if (pendingRole) {
+        await setUserRole(user.id, pendingRole);
+      }
       
       // Clear storage
       sessionStorage.removeItem('pendingRole');

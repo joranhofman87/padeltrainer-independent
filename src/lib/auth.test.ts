@@ -13,6 +13,7 @@ vi.mock('@/lib/supabaseClient', () => ({
       updateUser: vi.fn(),
     },
     from: vi.fn(),
+    rpc: vi.fn(),
     functions: {
       invoke: vi.fn(),
     },
@@ -205,13 +206,12 @@ describe('Auth module', () => {
 
   describe('getUserRole', () => {
     it('returns admin as highest priority role', async () => {
-      const mockSelect = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          data: [{ role: 'player' }, { role: 'admin' }, { role: 'trainer' }],
+      (supabase.rpc as Mock).mockImplementation((_fn: string, args: { _role: UserRole }) =>
+        Promise.resolve({
+          data: ['admin', 'trainer', 'player'].includes(args._role),
           error: null,
         }),
-      });
-      (supabase.from as Mock).mockReturnValue({ select: mockSelect });
+      );
 
       const role = await getUserRole('user-123');
 
@@ -219,13 +219,12 @@ describe('Auth module', () => {
     });
 
     it('returns trainer over club and player', async () => {
-      const mockSelect = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          data: [{ role: 'player' }, { role: 'trainer' }, { role: 'club' }],
+      (supabase.rpc as Mock).mockImplementation((_fn: string, args: { _role: UserRole }) =>
+        Promise.resolve({
+          data: ['trainer', 'club', 'player'].includes(args._role),
           error: null,
         }),
-      });
-      (supabase.from as Mock).mockReturnValue({ select: mockSelect });
+      );
 
       const role = await getUserRole('user-123');
 
@@ -233,13 +232,12 @@ describe('Auth module', () => {
     });
 
     it('returns club over player', async () => {
-      const mockSelect = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          data: [{ role: 'player' }, { role: 'club' }],
+      (supabase.rpc as Mock).mockImplementation((_fn: string, args: { _role: UserRole }) =>
+        Promise.resolve({
+          data: args._role === 'club' || args._role === 'player',
           error: null,
         }),
-      });
-      (supabase.from as Mock).mockReturnValue({ select: mockSelect });
+      );
 
       const role = await getUserRole('user-123');
 
@@ -247,13 +245,7 @@ describe('Auth module', () => {
     });
 
     it('returns null for user with no roles', async () => {
-      const mockSelect = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          data: [],
-          error: null,
-        }),
-      });
-      (supabase.from as Mock).mockReturnValue({ select: mockSelect });
+      (supabase.rpc as Mock).mockResolvedValue({ data: false, error: null });
 
       const role = await getUserRole('user-123');
 
@@ -262,29 +254,30 @@ describe('Auth module', () => {
   });
 
   describe('getUserRoles', () => {
-    it('returns all roles for user', async () => {
-      const mockSelect = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          data: [{ role: 'player' }, { role: 'trainer' }],
+    it('returns roles via has_role RPC without querying user_roles table', async () => {
+      (supabase.rpc as Mock).mockImplementation((_fn: string, args: { _role: UserRole }) =>
+        Promise.resolve({
+          data: args._role === 'player' || args._role === 'trainer',
           error: null,
         }),
-      });
-      (supabase.from as Mock).mockReturnValue({ select: mockSelect });
+      );
 
       const result = await getUserRoles('user-123');
 
-      expect(result.data).toEqual(['player', 'trainer']);
+      expect(result.data).toEqual(['trainer', 'player']);
       expect(result.failed).toBe(false);
+      expect(supabase.from).not.toHaveBeenCalledWith('user_roles');
+      expect(supabase.rpc).toHaveBeenCalledWith('has_role', {
+        _user_id: 'user-123',
+        _role: 'player',
+      });
     });
 
-    it('returns failed on error', async () => {
-      const mockSelect = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          data: null,
-          error: { message: 'Database error' },
-        }),
+    it('returns failed on RPC error', async () => {
+      (supabase.rpc as Mock).mockResolvedValue({
+        data: null,
+        error: { message: 'Database error' },
       });
-      (supabase.from as Mock).mockReturnValue({ select: mockSelect });
 
       const result = await getUserRoles('user-123');
 
@@ -294,14 +287,28 @@ describe('Auth module', () => {
   });
 
   describe('setUserRole', () => {
-    it('inserts role and creates trainer profile for trainer role', async () => {
+    it('skips user_roles insert when has_role is already true', async () => {
+      (supabase.rpc as Mock).mockResolvedValue({ data: true, error: null });
+
+      await setUserRole('user-123', 'player');
+
+      expect(supabase.rpc).toHaveBeenCalledWith('has_role', {
+        _user_id: 'user-123',
+        _role: 'player',
+      });
+      expect(supabase.from).not.toHaveBeenCalledWith('user_roles');
+    });
+
+    it('inserts role and creates trainer profile for trainer role when missing', async () => {
+      (supabase.rpc as Mock).mockResolvedValue({ data: false, error: null });
+
       const mockSingle = vi.fn().mockResolvedValue({
         data: { user_id: 'user-123', role: 'trainer' },
         error: null,
       });
       const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
       const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
-      
+
       const mockTrainerInsert = vi.fn().mockResolvedValue({ error: null });
       const mockTrainerMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
       const mockTrainerEq = vi.fn().mockReturnValue({ maybeSingle: mockTrainerMaybeSingle });
@@ -326,13 +333,15 @@ describe('Auth module', () => {
     });
 
     it('does not create trainer profile for player role', async () => {
+      (supabase.rpc as Mock).mockResolvedValue({ data: false, error: null });
+
       const mockSingle = vi.fn().mockResolvedValue({
         data: { user_id: 'user-123', role: 'player' },
         error: null,
       });
       const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
       const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
-      
+
       (supabase.from as Mock).mockReturnValue({ insert: mockInsert });
 
       await setUserRole('user-123', 'player');
