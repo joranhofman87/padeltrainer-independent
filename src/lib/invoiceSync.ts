@@ -82,6 +82,22 @@ export async function recalculateInvoiceAfterRemoval(
     return b.payment_amount || bSlot.price_per_session || 0;
   };
 
+  /** payment_amount already reflects per-player share after split rebalance. */
+  const paymentAmountsAreSplitShares =
+    splitCount > 1 &&
+    remainingBookings.length > 0 &&
+    (() => {
+      const amounts = remainingBookings
+        .map((b) => b.payment_amount)
+        .filter((a): a is number => a != null && a > 0);
+      if (amounts.length === 0) return false;
+      const first = amounts[0];
+      if (!amounts.every((a) => a === first)) return false;
+      const slotPrice = (remainingBookings[0].availability_slots as any)?.price_per_session;
+      if (!slotPrice || slotPrice <= 0) return true;
+      return Math.abs(first * splitCount - slotPrice) < 0.02;
+    })();
+
   // Build session line items
   let lineItems: {
     description: string;
@@ -101,7 +117,7 @@ export async function recalculateInvoiceAfterRemoval(
 
     if (allSamePrice) {
       let pricePerSession = nonZeroPrices[0];
-      if (splitCount > 1) {
+      if (splitCount > 1 && !paymentAmountsAreSplitShares) {
         pricePerSession = Math.round((pricePerSession / splitCount) * 100) / 100;
       }
       const desc = splitCount > 1
@@ -121,7 +137,7 @@ export async function recalculateInvoiceAfterRemoval(
         const startTime = new Date(bSlot.start_time);
         const locationName = bSlot.locations?.name || "";
         let price = resolveBookingPrice(b);
-        if (splitCount > 1) {
+        if (splitCount > 1 && !paymentAmountsAreSplitShares) {
           price = Math.round((price / splitCount) * 100) / 100;
         }
         const desc = splitCount > 1
@@ -144,7 +160,7 @@ export async function recalculateInvoiceAfterRemoval(
         ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
         : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
       let price = resolveBookingPrice(b);
-      if (splitCount > 1) {
+      if (splitCount > 1 && !paymentAmountsAreSplitShares) {
         price = Math.round((price / splitCount) * 100) / 100;
         desc = `${desc} (1/${splitCount})`;
       }
@@ -298,10 +314,15 @@ export async function recalculateInvoiceAfterRemoval(
  * Recalculate unpaid invoices after slot price changes.
  * Finds invoices with bookings on the given slots and rebuilds totals.
  */
+const DEFAULT_PRICE_SYNC_STATUSES = ["sent", "pending", "draft"];
+
 export async function syncInvoicesAfterPriceChange(
   slotIds: string[],
+  options?: { statuses?: string[] },
 ): Promise<void> {
   if (slotIds.length === 0) return;
+
+  const statuses = options?.statuses ?? DEFAULT_PRICE_SYNC_STATUSES;
 
   // Find bookings on these slots
   const { data: bookings } = await supabase
@@ -314,11 +335,11 @@ export async function syncInvoicesAfterPriceChange(
 
   const bookingIds = bookings.map((b) => b.id);
 
-  // Find unpaid invoices overlapping with these bookings
+  // Find invoices overlapping with these bookings (status filter configurable)
   const { data: invoices } = await supabase
     .from("invoices")
     .select("id, invoice_number, status, booking_ids, total, vat_rate, line_items")
-    .in("status", ["sent", "pending", "draft"])
+    .in("status", statuses)
     .overlaps("booking_ids", bookingIds);
 
   if (!invoices || invoices.length === 0) return;
