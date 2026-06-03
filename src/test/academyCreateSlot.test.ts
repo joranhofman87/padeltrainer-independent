@@ -7,6 +7,9 @@ import {
   getBulkGenerateValidationError,
   shouldInitializeAcademyDefaultBulkSlot,
   resolveAcademyDefaultBulkTrainerId,
+  expectsBulkGuestBookings,
+  getBulkGenerateBookingOutcome,
+  shouldSkipNotifyFollowersInAcademyMode,
 } from "@/lib/academyCreateSlot";
 
 describe("getAcademyCreateSlotPrerequisites", () => {
@@ -171,5 +174,76 @@ describe("academy default bulk slot seed", () => {
     const academyId = "academy-uuid";
     const academyProfileId = academyId || null;
     expect(academyProfileId).toBe("academy-uuid");
+  });
+});
+
+describe("expectsBulkGuestBookings", () => {
+  it("returns true when addPlayers and guest ids are selected", () => {
+    expect(
+      expectsBulkGuestBookings([
+        { addPlayers: true, selectedPlayers: ["guest-1"] },
+      ]),
+    ).toBe(true);
+  });
+
+  it("returns false when addPlayers is off", () => {
+    expect(
+      expectsBulkGuestBookings([
+        { addPlayers: false, selectedPlayers: ["guest-1"] },
+      ]),
+    ).toBe(false);
+  });
+});
+
+describe("getBulkGenerateBookingOutcome", () => {
+  it("returns none when no enrollment expected", () => {
+    expect(
+      getBulkGenerateBookingOutcome({
+        expectedEnrollment: false,
+        totalBookingsCreated: 0,
+        hadBookingInsertError: false,
+      }),
+    ).toBe("none");
+  });
+
+  it("returns success when bookings were created", () => {
+    expect(
+      getBulkGenerateBookingOutcome({
+        expectedEnrollment: true,
+        totalBookingsCreated: 4,
+        hadBookingInsertError: false,
+      }),
+    ).toBe("success");
+  });
+
+  it("returns partial_failure on insert error", () => {
+    expect(
+      getBulkGenerateBookingOutcome({
+        expectedEnrollment: true,
+        totalBookingsCreated: 0,
+        hadBookingInsertError: true,
+      }),
+    ).toBe("partial_failure");
+  });
+
+  it("returns partial_failure when enrollment expected but zero bookings", () => {
+    expect(
+      getBulkGenerateBookingOutcome({
+        expectedEnrollment: true,
+        totalBookingsCreated: 0,
+        hadBookingInsertError: false,
+      }),
+    ).toBe("partial_failure");
+  });
+});
+
+describe("shouldSkipNotifyFollowersInAcademyMode", () => {
+  it("skips notify when academyId is set", () => {
+    expect(shouldSkipNotifyFollowersInAcademyMode("academy-1")).toBe(true);
+  });
+
+  it("does not skip notify for trainer self-service", () => {
+    expect(shouldSkipNotifyFollowersInAcademyMode(undefined)).toBe(false);
+    expect(shouldSkipNotifyFollowersInAcademyMode(null)).toBe(false);
   });
 });

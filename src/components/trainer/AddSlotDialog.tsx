@@ -56,10 +56,14 @@ import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
 import { SlotRatingPicker } from "./SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 import {
+  expectsBulkGuestBookings,
+  getBulkGenerateBookingOutcome,
   getBulkGenerateValidationError,
   resolveAcademyDefaultBulkTrainerId,
   shouldInitializeAcademyDefaultBulkSlot,
+  shouldSkipNotifyFollowersInAcademyMode,
 } from "@/lib/academyCreateSlot";
+import { logSupabaseError } from "@/lib/trainerOnboardingLegacy";
 import {
   getBulkCreateVatSettingsPath,
   priceDisplayModeToIncludesVat,
@@ -1015,6 +1019,8 @@ export function BulkCreateContent({
 
       // Create bookings for selected players using the config-to-cyclus mapping
       let totalBookingsCreated = 0;
+      let hadBookingInsertError = false;
+      const expectedGuestEnrollment = expectsBulkGuestBookings(bulkSlots);
       for (let configIndex = 0; configIndex < bulkSlots.length; configIndex++) {
         const config = bulkSlots[configIndex];
         
@@ -1048,7 +1054,11 @@ export function BulkCreateContent({
                 .from("bookings")
                 .insert(bookingsToInsert);
               if (bookingError) {
-                logger.error("Error creating bookings", bookingError instanceof Error ? bookingError : new Error(String(bookingError)), { component: 'AddSlotDialog' });
+                hadBookingInsertError = true;
+                logSupabaseError("Error creating bookings", bookingError, {
+                  component: "AddSlotDialog",
+                  academyId: academyId ?? null,
+                });
               } else {
                 totalBookingsCreated += bookingsToInsert.length;
                 // Mark guest players as has_trained
@@ -1095,7 +1105,19 @@ export function BulkCreateContent({
         }
       }
 
-      if (totalBookingsCreated > 0) {
+      const bookingOutcome = getBulkGenerateBookingOutcome({
+        expectedEnrollment: expectedGuestEnrollment,
+        totalBookingsCreated,
+        hadBookingInsertError,
+      });
+
+      if (bookingOutcome === "partial_failure") {
+        toast({
+          title: t("calendar.bookingsPartialSuccessTitle"),
+          description: t("calendar.bookingsPartialSuccessDescription"),
+          variant: "destructive",
+        });
+      } else if (totalBookingsCreated > 0) {
         toast({
           title: t("calendar.playersAddedToCyclus", {
             count: bulkSlots.reduce((acc, s) => acc + s.selectedPlayers.filter(Boolean).length, 0),
@@ -1104,9 +1126,9 @@ export function BulkCreateContent({
         });
       }
 
-      // Notify followers with authentication — only if at least one slot is public (not marked private)
+      // notify-followers requires caller's trainer_profiles; academy managers lack one (see shouldSkipNotifyFollowersInAcademyMode).
       const hasPublicSlots = true; // New slots are public by default
-      if (hasPublicSlots) {
+      if (hasPublicSlots && !shouldSkipNotifyFollowersInAcademyMode(academyId)) {
         try {
           const publicSlots = slotsToInsert;
           const earliestStart = new Date(

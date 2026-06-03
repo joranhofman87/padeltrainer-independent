@@ -651,6 +651,8 @@
     "player": "Speler",
     "selectPlayer": "Selecteer speler...",
     "playersAddedToCyclus": "{{count}} speler(s) toegevoegd aan alle {{sessions}} sessies",
+    "bookingsPartialSuccessTitle": "Slots aangemaakt, spelers niet toegevoegd",
+    "bookingsPartialSuccessDescription": "De slots zijn aangemaakt, maar de geselecteerde spelers konden niet worden toegevoegd. Probeer spelers opnieuw toe te voegen of neem contact op met support.",
     "linkLesson": "Koppel aan sessie",
     "noLesson": "Geen sessie gekoppeld",
     "slotCreated": "Slot succesvol aangemaakt",

@@ -112,3 +112,47 @@ export function getBulkGenerateValidationError(params: {
 
   return null;
 }
+
+/** Bulk slot config shape used when deciding booking enrollment. */
+export type BulkSlotBookingConfig = {
+  addPlayers: boolean;
+  selectedPlayers: (string | null | undefined)[];
+};
+
+/** True when generate flow will attempt guest booking inserts. */
+export function expectsBulkGuestBookings(bulkSlots: BulkSlotBookingConfig[]): boolean {
+  return bulkSlots.some(
+    (config) => config.addPlayers && config.selectedPlayers.some((id) => Boolean(id)),
+  );
+}
+
+export type BulkGenerateBookingOutcome = "none" | "success" | "partial_failure";
+
+/**
+ * Classify booking result after slots were created.
+ * partial_failure: enrollment was attempted but zero bookings were created or an insert error occurred.
+ */
+export function getBulkGenerateBookingOutcome(params: {
+  expectedEnrollment: boolean;
+  totalBookingsCreated: number;
+  hadBookingInsertError: boolean;
+}): BulkGenerateBookingOutcome {
+  if (!params.expectedEnrollment) {
+    return "none";
+  }
+  if (
+    params.hadBookingInsertError ||
+    params.totalBookingsCreated === 0
+  ) {
+    return "partial_failure";
+  }
+  return "success";
+}
+
+/**
+ * notify-followers only supports the authenticated user's trainer_profiles row.
+ * Academy managers often lack one; skip until academy-scoped notify exists.
+ */
+export function shouldSkipNotifyFollowersInAcademyMode(academyId?: string | null): boolean {
+  return Boolean(academyId);
+}

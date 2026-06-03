@@ -648,6 +648,8 @@
     "player": "Player",
     "selectPlayer": "Select player...",
     "playersAddedToCyclus": "{{count}} player(s) added to all {{sessions}} sessions",
+    "bookingsPartialSuccessTitle": "Slots created, players not added",
+    "bookingsPartialSuccessDescription": "Slots were created, but selected players could not be added. Please try adding players again or contact support.",
     "linkLesson": "Link to Session",
     "noLesson": "No session linked",
     "slotCreated": "Slot created successfully",
