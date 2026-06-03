@@ -4103,8 +4103,10 @@ export type Database = {
           birth_date: string | null
           created_at: string
           email: string | null
+          first_name: string | null
           full_name: string | null
           id: string
+          last_name: string | null
           location: string | null
           phone: string | null
           preferred_language: string | null
@@ -4124,8 +4126,10 @@ export type Database = {
           birth_date?: string | null
           created_at?: string
           email?: string | null
+          first_name?: string | null
           full_name?: string | null
           id?: string
+          last_name?: string | null
           location?: string | null
           phone?: string | null
           preferred_language?: string | null
@@ -4145,8 +4149,10 @@ export type Database = {
           birth_date?: string | null
           created_at?: string
           email?: string | null
+          first_name?: string | null
           full_name?: string | null
           id?: string
+          last_name?: string | null
           location?: string | null
           phone?: string | null
           preferred_language?: string | null
