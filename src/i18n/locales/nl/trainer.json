@@ -1057,6 +1057,13 @@
       "continue": "Doorgaan",
       "saving": "Opslaan..."
     },
+    "done": {
+      "title": "Je bent klaar — vul nu je agenda in",
+      "subtitle": "De meeste trainers beginnen met hun beschikbaarheid. Je profiel kun je later altijd aanpassen in instellingen.",
+      "addFirstSlot": "Eerste beschikbaarheid toevoegen",
+      "goToDashboard": "Naar dashboard",
+      "hint": "Op je dashboard staat een korte checklist tot je klaar bent om boekingen te ontvangen."
+    },
     "step2": {
       "title": "Bouw je profiel",
       "subtitle": "Spelers zien dit wanneer ze trainers zoeken",

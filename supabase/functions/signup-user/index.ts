@@ -266,28 +266,35 @@ const handler = async (req: Request): Promise<Response> => {
 
     const actionLink = linkData?.properties?.action_link || redirectTo || "https://padeltrainer.ai/app/auth";
 
-    // Send custom branded welcome email via Resend
-    const emailContent = getEmailTemplate(fullName, actionLink);
-    
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
-        to: [email],
-        subject: emailContent.subject,
-        html: emailContent.html,
-      }),
-    });
+    // Trainers receive Day-0 welcome via onboarding_email_queue (trainer_profiles INSERT trigger
+    // + trigger-welcome-emails). Skip the immediate Resend welcome here to avoid duplicates.
+    const skipImmediateWelcome = signupRole === "trainer";
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("Resend API error:", errorText);
+    if (!skipImmediateWelcome) {
+      const emailContent = getEmailTemplate(fullName, actionLink);
+
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
+          to: [email],
+          subject: emailContent.subject,
+          html: emailContent.html,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Resend API error:", errorText);
+      } else {
+        console.log(`Welcome email sent to ${email}`);
+      }
     } else {
-      console.log(`Welcome email sent to ${email}`);
+      console.log(`Skipping immediate welcome email for trainer signup (${email}); onboarding queue will send`);
     }
 
     // Send Slack notification (non-blocking)

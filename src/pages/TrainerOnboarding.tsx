@@ -117,7 +117,7 @@ export default function TrainerOnboarding() {
 
       if (existing) {
         if (existing.completed_at) {
-          navigate('/app/trainer/get-started');
+          navigate('/app/trainer');
           return;
         }
         const resumeStep = existing.current_step >= 2 ? 2 : 1;
@@ -187,7 +187,7 @@ export default function TrainerOnboarding() {
       localStorage.removeItem('redirectAfterOnboarding');
       navigate(redirectUrl);
     } else {
-      navigate('/app/trainer/get-started');
+      navigate('/app/trainer');
     }
   };
 

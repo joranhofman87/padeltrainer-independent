@@ -1054,6 +1054,13 @@
       "continue": "Continue",
       "saving": "Saving..."
     },
+    "done": {
+      "title": "You're set up — add your calendar next",
+      "subtitle": "Most trainers start by adding when they're available. You can refine your profile anytime from settings.",
+      "addFirstSlot": "Add your first availability",
+      "goToDashboard": "Go to dashboard",
+      "hint": "Your dashboard has a short setup checklist until you're ready to take bookings."
+    },
     "step2": {
       "title": "Build your profile",
       "subtitle": "Players will see this when browsing trainers",

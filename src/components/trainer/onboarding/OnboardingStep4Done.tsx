@@ -31,7 +31,7 @@ export function OnboardingStep4Done({ onComplete }: OnboardingStep4DoneProps) {
 
   const handleDashboard = () => {
     onComplete();
-    navigate('/app/trainer/get-started');
+    navigate('/app/trainer');
   };
 
   return (

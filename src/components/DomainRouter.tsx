@@ -98,7 +98,6 @@ const CalendarSettings = lazy(() => import('@/pages/CalendarSettings'));
 
 // Trainer pages
 const TrainerDashboard = lazy(() => import('@/pages/TrainerDashboard'));
-const TrainerGetStarted = lazy(() => import('@/pages/TrainerGetStarted'));
 const TrainerSettings = lazy(() => import('@/pages/TrainerSettings'));
 const TrainerBookingSettings = lazy(() => import('@/pages/TrainerBookingSettings'));
 const TrainerTerms = lazy(() => import('@/pages/TrainerTerms'));
@@ -270,7 +269,7 @@ export function DomainRouter() {
           <Route path="slot/new" element={<TrainerCreateSlot />} />
           <Route path="slot/:slotId" element={<TrainerSlotDetail />} />
           
-          <Route path="get-started" element={<TrainerGetStarted />} />
+          <Route path="get-started" element={<Navigate to="/app/trainer" replace />} />
         </Route>
 
         {/* Booking & standalone routes */}

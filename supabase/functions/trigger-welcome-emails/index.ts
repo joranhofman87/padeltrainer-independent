@@ -142,6 +142,44 @@ const handler = async (req: Request): Promise<Response> => {
         continue;
       }
 
+      // Idempotency: skip if this queue row was already sent (e.g. duplicate SIGNED_IN)
+      const { data: existingLog } = await supabase
+        .from("onboarding_email_logs")
+        .select("id")
+        .eq("queue_id", queueItem.id)
+        .eq("status", "sent")
+        .limit(1)
+        .maybeSingle();
+
+      if (existingLog) {
+        console.log(`Queue item ${queueItem.id} already sent (log ${existingLog.id}), skipping`);
+        await supabase
+          .from("onboarding_email_queue")
+          .update({
+            status: "sent",
+            sent_at: new Date().toISOString(),
+          })
+          .eq("id", queueItem.id)
+          .eq("status", "awaiting_confirmation");
+        continue;
+      }
+
+      // Atomic claim: only one concurrent invocation can move awaiting_confirmation -> sent
+      const { data: claimed } = await supabase
+        .from("onboarding_email_queue")
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+        })
+        .eq("id", queueItem.id)
+        .eq("status", "awaiting_confirmation")
+        .select("id");
+
+      if (!claimed || claimed.length === 0) {
+        console.log(`Queue item ${queueItem.id} already claimed or not awaiting_confirmation, skipping`);
+        continue;
+      }
+
       // Fetch current email from profiles to avoid sending to stale addresses
       const { data: profile } = await supabase
         .from("profiles")
@@ -179,16 +217,7 @@ const handler = async (req: Request): Promise<Response> => {
 
         console.log(`Welcome email sent to ${queueItem.email}:`, emailResult);
 
-        // Update queue status to sent
-        await supabase
-          .from("onboarding_email_queue")
-          .update({
-            status: "sent",
-            sent_at: new Date().toISOString(),
-          })
-          .eq("id", queueItem.id);
-
-        // Log the sent email
+        // Log the sent email (queue row already marked sent by atomic claim)
         await supabase.from("onboarding_email_logs").insert({
           template_id: queueItem.template_id,
           queue_id: queueItem.id,
@@ -209,6 +238,7 @@ const handler = async (req: Request): Promise<Response> => {
           .update({
             status: "failed",
             error_message: errorMessage,
+            sent_at: null,
           })
           .eq("id", queueItem.id);
 
