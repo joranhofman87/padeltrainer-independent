@@ -9,13 +9,12 @@ import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
-import { GraduationCap, Check } from 'lucide-react';
 import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 import { SignupNameFields } from '@/components/auth/SignupNameFields';
-import { SignupPageShell } from '@/components/auth/SignupPageShell';
+import { TrainerSignupLayout } from '@/components/auth/TrainerSignupLayout';
 import { createSignupSchema } from '@/lib/signupSchema';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
@@ -148,40 +147,16 @@ export default function AcademySignup() {
     );
   }
 
-  const features = [
-    t('academySignup.features.manage', 'Manage your academy profile and branding'),
-    t('academySignup.features.trainers', 'Build and manage your trainer team'),
-    t('academySignup.features.locations', 'Partner with clubs at multiple locations'),
-    t('academySignup.features.payments', 'Handle payments and revenue splits'),
-  ];
-
   return (
     <FeatureErrorBoundary featureName="AcademySignup" onRetry={() => window.location.reload()}>
-    <SignupPageShell activeRole="academy" pageTestId="page-signup-academy">
-      <Card className="w-full" data-testid="form-signup-academy">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900">
-            <GraduationCap className="h-8 w-8 text-purple-600 dark:text-purple-400" />
-          </div>
-          <CardTitle className="text-2xl font-bold">{t('academySignup.title', 'Create Your Academy')}</CardTitle>
-          <CardDescription>
-            {t('academySignup.subtitle', 'Build and manage your padel training academy')}
-          </CardDescription>
+    <TrainerSignupLayout activeRole="academy" pageTestId="page-signup-academy">
+      <Card className="w-full shadow-sm" data-testid="form-signup-academy">
+        <CardHeader className="space-y-1 pb-4">
+          <CardTitle className="text-xl font-semibold">{t('academySignup.cardTitle')}</CardTitle>
+          <CardDescription>{t('academySignup.cardSubtitle')}</CardDescription>
+          <p className="text-xs text-muted-foreground pt-1">{t('academySignup.trustLine')}</p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Features list */}
-          <div className="rounded-lg bg-muted/50 p-4 mb-4">
-            <ul className="space-y-2 text-sm">
-              {features.map((feature, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Google OAuth - Prominent */}
           <Button
             variant="outline"
             className="w-full h-12 text-base"
@@ -269,20 +244,20 @@ export default function AcademySignup() {
                 <p className="text-sm text-destructive">{errors.password}</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-signup-submit">
+            <Button type="submit" className="w-full h-11" disabled={isLoading} data-testid="btn-signup-submit">
               {isLoading ? t('signUp.loading') : t('signUp.button')}
             </Button>
           </form>
 
           <p className="text-center text-sm text-muted-foreground">
             {t('academySignup.alreadyHaveAccount', 'Already have an account?')}{' '}
-            <Link to="/app/auth" className="text-primary hover:underline">
+            <Link to="/app/auth" className="font-medium text-primary hover:underline">
               {t('signIn.button')}
             </Link>
           </p>
         </CardContent>
       </Card>
-    </SignupPageShell>
+    </TrainerSignupLayout>
     </FeatureErrorBoundary>
   );
 }

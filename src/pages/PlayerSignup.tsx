@@ -9,13 +9,12 @@ import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
-import { Users } from 'lucide-react';
 import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 import { SignupNameFields } from '@/components/auth/SignupNameFields';
-import { SignupPageShell } from '@/components/auth/SignupPageShell';
+import { TrainerSignupLayout } from '@/components/auth/TrainerSignupLayout';
 import { createSignupSchema, splitPrefillFullName } from '@/lib/signupSchema';
 import { trackEvent } from '@/lib/tracking';
 import { getUtmParams } from '@/lib/utm';
@@ -177,16 +176,12 @@ export default function PlayerSignup() {
 
   return (
     <FeatureErrorBoundary featureName="PlayerSignup" onRetry={() => window.location.reload()}>
-    <SignupPageShell activeRole="player" pageTestId="page-signup-player">
-      <Card className="w-full" data-testid="form-signup-player">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
-            <Users className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-          </div>
-          <CardTitle className="text-2xl font-bold">{t('playerSignup.title', 'Join as a Player')}</CardTitle>
-          <CardDescription>
-            {t('playerSignup.subtitle', 'Find trainers and start improving your game')}
-          </CardDescription>
+    <TrainerSignupLayout activeRole="player" pageTestId="page-signup-player">
+      <Card className="w-full shadow-sm" data-testid="form-signup-player">
+        <CardHeader className="space-y-1 pb-4">
+          <CardTitle className="text-xl font-semibold">{t('playerSignup.cardTitle')}</CardTitle>
+          <CardDescription>{t('playerSignup.cardSubtitle')}</CardDescription>
+          <p className="text-xs text-muted-foreground pt-1">{t('playerSignup.trustLine')}</p>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Google OAuth - Prominent */}
@@ -277,20 +272,20 @@ export default function PlayerSignup() {
                 <p className="text-sm text-destructive">{errors.password}</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-signup-submit">
+            <Button type="submit" className="w-full h-11" disabled={isLoading} data-testid="btn-signup-submit">
               {isLoading ? t('signUp.loading') : t('signUp.button')}
             </Button>
           </form>
 
           <p className="text-center text-sm text-muted-foreground">
             {t('playerSignup.alreadyHaveAccount', 'Already have an account?')}{' '}
-            <Link to="/app/auth" className="text-primary hover:underline">
+            <Link to="/app/auth" className="font-medium text-primary hover:underline">
               {t('signIn.button')}
             </Link>
           </p>
         </CardContent>
       </Card>
-    </SignupPageShell>
+    </TrainerSignupLayout>
     </FeatureErrorBoundary>
   );
 }

@@ -197,7 +197,7 @@ export default function TrainerSignup() {
 
   return (
     <FeatureErrorBoundary featureName="TrainerSignup" onRetry={() => window.location.reload()}>
-      <TrainerSignupLayout>
+      <TrainerSignupLayout activeRole="trainer" pageTestId="page-signup-trainer">
         <Card className="w-full shadow-sm" data-testid="form-signup-trainer">
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-xl font-semibold">{t('trainerSignup.cardTitle')}</CardTitle>

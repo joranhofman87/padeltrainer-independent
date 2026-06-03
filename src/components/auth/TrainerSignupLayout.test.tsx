@@ -17,7 +17,7 @@ describe('TrainerSignupLayout', () => {
   it('renders signup form before value panel in document order', () => {
     render(
       <MemoryRouter>
-        <TrainerSignupLayout>
+        <TrainerSignupLayout activeRole="trainer" pageTestId="page-signup-trainer">
           <div data-testid="signup-form-card">Form</div>
         </TrainerSignupLayout>
       </MemoryRouter>,

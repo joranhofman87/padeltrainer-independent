@@ -9,13 +9,12 @@ import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
-import { Building2, Check } from 'lucide-react';
 import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 import { SignupNameFields } from '@/components/auth/SignupNameFields';
-import { SignupPageShell } from '@/components/auth/SignupPageShell';
+import { TrainerSignupLayout } from '@/components/auth/TrainerSignupLayout';
 import { createSignupSchema } from '@/lib/signupSchema';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
@@ -154,40 +153,16 @@ export default function ClubSignup() {
     );
   }
 
-  const features = [
-    t('clubSignup.features.manage', 'Manage your club profile and branding'),
-    t('clubSignup.features.trainers', 'Connect with and manage trainers'),
-    t('clubSignup.features.calendar', 'View aggregated trainer schedules'),
-    t('clubSignup.features.players', 'Build your player roster'),
-  ];
-
   return (
     <FeatureErrorBoundary featureName="ClubSignup" onRetry={() => window.location.reload()}>
-    <SignupPageShell activeRole="club" pageTestId="page-signup-club">
-      <Card className="w-full" data-testid="form-signup-club">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-            <Building2 className="h-8 w-8 text-green-600 dark:text-green-400" />
-          </div>
-          <CardTitle className="text-2xl font-bold">{t('clubSignup.title', 'Register Your Club')}</CardTitle>
-          <CardDescription>
-            {t('clubSignup.subtitle', 'Manage your venue, trainers, and players')}
-          </CardDescription>
+    <TrainerSignupLayout activeRole="club" pageTestId="page-signup-club">
+      <Card className="w-full shadow-sm" data-testid="form-signup-club">
+        <CardHeader className="space-y-1 pb-4">
+          <CardTitle className="text-xl font-semibold">{t('clubSignup.cardTitle')}</CardTitle>
+          <CardDescription>{t('clubSignup.cardSubtitle')}</CardDescription>
+          <p className="text-xs text-muted-foreground pt-1">{t('clubSignup.trustLine')}</p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Features list */}
-          <div className="rounded-lg bg-muted/50 p-4 mb-4">
-            <ul className="space-y-2 text-sm">
-              {features.map((feature, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Google OAuth - Prominent */}
           <Button
             variant="outline"
             className="w-full h-12 text-base"
@@ -275,20 +250,20 @@ export default function ClubSignup() {
                 <p className="text-sm text-destructive">{errors.password}</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading} data-testid="btn-signup-submit">
+            <Button type="submit" className="w-full h-11" disabled={isLoading} data-testid="btn-signup-submit">
               {isLoading ? t('signUp.loading') : t('signUp.button')}
             </Button>
           </form>
 
           <p className="text-center text-sm text-muted-foreground">
             {t('clubSignup.alreadyHaveAccount', 'Already have an account?')}{' '}
-            <Link to="/app/auth" className="text-primary hover:underline">
+            <Link to="/app/auth" className="font-medium text-primary hover:underline">
               {t('signIn.button')}
             </Link>
           </p>
         </CardContent>
       </Card>
-    </SignupPageShell>
+    </TrainerSignupLayout>
     </FeatureErrorBoundary>
   );
 }
