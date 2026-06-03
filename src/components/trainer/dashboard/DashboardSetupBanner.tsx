@@ -1,0 +1,172 @@
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { Check, Circle, ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
+import { cn } from '@/lib/utils';
+
+export interface DashboardSetupStats {
+  openSlots: number;
+  totalStudents: number;
+}
+
+interface DashboardSetupBannerProps {
+  trainerSlug: string | null;
+  shortUrl: string | null;
+  stats: DashboardSetupStats;
+  upcomingSlotsCount: number;
+  recentBookingsCount: number;
+  hasAcademy: boolean;
+  showPaymentsStep: boolean;
+}
+
+export function DashboardSetupBanner({
+  trainerSlug,
+  shortUrl,
+  stats,
+  upcomingSlotsCount,
+  recentBookingsCount,
+  hasAcademy,
+  showPaymentsStep,
+}: DashboardSetupBannerProps) {
+  const { t } = useTranslation('trainer');
+  const navigate = useNavigate();
+
+  const steps = useMemo(() => {
+    const profileDone = !!trainerSlug;
+    const scheduleDone = stats.openSlots > 0 || upcomingSlotsCount > 0;
+    const playersDone = stats.totalStudents > 0 || recentBookingsCount > 0;
+    const paymentsDone = hasAcademy || !showPaymentsStep;
+
+    return [
+      {
+        id: 'profile',
+        done: profileDone,
+        title: t('dashboard.setup.steps.profile.title'),
+        description: t('dashboard.setup.steps.profile.description'),
+        action: () => navigate('/app/trainer/settings'),
+      },
+      {
+        id: 'schedule',
+        done: scheduleDone,
+        title: t('dashboard.setup.steps.availability.title'),
+        description: t('dashboard.setup.steps.availability.description'),
+        action: () => navigate('/app/trainer/slot/new'),
+      },
+      {
+        id: 'players',
+        done: playersDone,
+        title: t('dashboard.setup.steps.players.title'),
+        description: t('dashboard.setup.steps.players.description'),
+        action: () => navigate('/app/trainer/players'),
+      },
+      ...(showPaymentsStep
+        ? [
+            {
+              id: 'payments',
+              done: paymentsDone,
+              title: t('dashboard.setup.steps.payments.title'),
+              description: t('dashboard.setup.steps.payments.description'),
+              action: () => navigate('/app/trainer/earnings'),
+            },
+          ]
+        : []),
+    ];
+  }, [
+    trainerSlug,
+    stats.openSlots,
+    stats.totalStudents,
+    upcomingSlotsCount,
+    recentBookingsCount,
+    hasAcademy,
+    showPaymentsStep,
+    t,
+    navigate,
+  ]);
+
+  const completed = steps.filter((s) => s.done).length;
+  const total = steps.length;
+  const isEmpty =
+    stats.openSlots === 0 &&
+    upcomingSlotsCount === 0 &&
+    stats.totalStudents === 0 &&
+    recentBookingsCount === 0;
+
+  const showBanner = completed < total && (isEmpty || completed < Math.max(2, total - 1));
+  if (!showBanner) return null;
+
+  const nextStep = steps.find((s) => !s.done);
+
+  return (
+    <section
+      className="rounded-lg border border-[hsl(var(--navy-100))] bg-[hsl(var(--navy-50))]/60 p-4 sm:p-5"
+      aria-label={t('dashboard.setup.title')}
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="font-display text-base font-semibold text-[hsl(var(--navy-900))]">
+            {t('dashboard.setup.title')}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.setup.description')}</p>
+          <p className="mt-2 text-xs font-medium text-[hsl(var(--navy-600))]">
+            {t('dashboard.setup.progress', { completed, total })}
+          </p>
+        </div>
+        {nextStep && (
+          <Button
+            size="sm"
+            className="shrink-0 bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]"
+            onClick={nextStep.action}
+          >
+            {nextStep.title}
+            <ArrowRight className="ml-1.5 h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      <ul className="mt-4 space-y-2">
+        {steps.map((step) => (
+          <li key={step.id}>
+            <button
+              type="button"
+              onClick={step.action}
+              className={cn(
+                'flex w-full items-start gap-3 rounded-md px-2 py-2 text-left transition-colors',
+                !step.done && 'hover:bg-background/80',
+              )}
+            >
+              {step.done ? (
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--brand-600))]" />
+              ) : (
+                <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+              <span className="min-w-0">
+                <span
+                  className={cn(
+                    'block text-sm font-medium',
+                    step.done ? 'text-muted-foreground line-through' : 'text-[hsl(var(--navy-900))]',
+                  )}
+                >
+                  {step.title}
+                </span>
+                {!step.done && (
+                  <span className="block text-xs text-muted-foreground">{step.description}</span>
+                )}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {trainerSlug && (
+        <div className="mt-4 border-t border-[hsl(var(--navy-100))] pt-4">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('dashboard.shareLink')}
+          </p>
+          <ShareableProfileLink handle={trainerSlug} shortUrl={shortUrl ?? undefined} compact />
+        </div>
+      )}
+    </section>
+  );
+}

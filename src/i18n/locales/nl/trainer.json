@@ -127,8 +127,16 @@
     "brandingDescription": "Laat je profiel opvallen"
   },
   "dashboard": {
+    "greeting": "Fijn dat je er bent, {{name}}",
     "welcome": "Welkom terug, coach {{name}}! 💪",
     "subtitle": "Beheer je trainingssessies, bekijk boekingen en laat je padeltraining-bedrijf groeien",
+    "subtitleShort": "Boekingen, planning en inkomsten in één overzicht",
+    "addSlot": "Slot toevoegen",
+    "shareLink": "Deel je boekingspagina",
+    "emptyBookingsHint": "Voeg een slot toe of deel je profiellink om boekingen te ontvangen.",
+    "newRegistrations": "{{count}} nieuwe inschrijving",
+    "newRegistrations_other": "{{count}} nieuwe inschrijvingen",
+    "reviewRegistrations": "Bekijken",
     "recentPlayers": "Recente spelers",
     "recentBookings": "Recente boekingen",
     "registrations": "Inschrijvingen",

@@ -1,27 +1,35 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { 
-  Users, DollarSign, Clock, 
-  Bell, Eye, ArrowRight, CalendarDays, ClipboardList,
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Users,
+  DollarSign,
+  Clock,
+  Eye,
+  CalendarDays,
+  ClipboardList,
+  Plus,
+  UserPlus,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PageHeader } from '@/components/ui/page-header';
 import { supabase } from '@/lib/supabaseClient';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
-import { logger } from '@/lib/logger';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
-import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
 import { getTrainerShortUrl } from '@/lib/domains';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { getTrainerAcademy } from '@/lib/academy';
 import { useQuery } from '@tanstack/react-query';
+import { DashboardStatTile } from '@/components/trainer/dashboard/DashboardStatTile';
+import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
+import { DashboardSetupBanner } from '@/components/trainer/dashboard/DashboardSetupBanner';
+import {
+  DashboardSectionHeader,
+  DashboardActivityRow,
+  DashboardPaymentBadge,
+} from '@/components/trainer/dashboard/DashboardActivityList';
 
 interface DashboardStats {
   totalStudents: number;
@@ -30,8 +38,6 @@ interface DashboardStats {
   followerCount: number;
   profileViews: number;
 }
-
-// --- Query functions ---
 
 async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStats; trainerId: string; slug: string | null } | null> {
   const { data: trainerProfile } = await supabase
@@ -132,7 +138,6 @@ async function fetchTrainerActivity(trainerId: string) {
       .then(r => r.data),
   ]);
 
-  // Process players
   const seenPlayerIds = new Set<string>();
   const regPlayers: any[] = [];
   for (const b of registeredBookings || []) {
@@ -146,7 +151,6 @@ async function fetchTrainerActivity(trainerId: string) {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 10);
 
-  // Group bookings
   const rawBookings = bookings || [];
   const groupedBookings: any[] = [];
   const cyclusPlayerMap = new Map<string, any>();
@@ -167,7 +171,6 @@ async function fetchTrainerActivity(trainerId: string) {
     }
   }
 
-  // Group slots
   const rawSlots = slots || [];
   const grouped: any[] = [];
   const cyclusMap = new Map<string, any>();
@@ -192,24 +195,11 @@ async function fetchTrainerActivity(trainerId: string) {
   };
 }
 
-function DashboardEmptyState({ icon: Icon, message }: { icon: LucideIcon; message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-8 text-center">
-      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-        <Icon className="h-6 w-6 text-muted-foreground" />
-      </div>
-      <p className="text-sm text-muted-foreground">{message}</p>
-    </div>
-  );
-}
-
 function paymentBadgeVariant(status: string): 'success' | 'warning' | 'muted' {
   if (status === 'paid') return 'success';
   if (status === 'pending' || status === 'invoiced') return 'warning';
   return 'muted';
 }
-
-// --- Component ---
 
 export default function TrainerDashboard() {
   const { user, profile, role, loading, subscription } = useAuth();
@@ -244,310 +234,211 @@ export default function TrainerDashboard() {
     staleTime: 60_000,
   });
 
-  const recentPlayers = activityData?.recentPlayers ?? [];
   const recentBookings = activityData?.recentBookings ?? [];
   const recentRegistrations = activityData?.recentRegistrations ?? [];
   const upcomingSlots = activityData?.upcomingSlots ?? [];
 
+  const firstName = profile?.full_name?.split(' ')[0];
+  const dashboardTitle = firstName
+    ? t('dashboard.greeting', { name: firstName })
+    : t('nav.dashboard');
+
+  const pendingRegistrations = recentRegistrations.filter((r) => r.status !== 'confirmed');
+
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-7xl space-y-6 py-2" data-testid="page-trainer-dashboard">
-        <Skeleton className="h-10 w-56" />
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-28 rounded-lg" />
+      <div className="mx-auto w-full max-w-7xl space-y-5 py-2" data-testid="page-trainer-dashboard">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-[72px] rounded-lg" />
           ))}
         </div>
         <Skeleton className="h-40 w-full rounded-lg" />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Skeleton className="h-52 rounded-lg" />
-          <Skeleton className="h-52 rounded-lg" />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-64 rounded-lg" />
+          <Skeleton className="h-64 rounded-lg" />
         </div>
       </div>
     );
   }
 
-  const dashboardTitle = profile?.full_name
-    ? t('dashboard.welcome', { name: profile.full_name.split(' ')[0] })
-    : t('nav.dashboard');
-
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-6 py-2" data-testid="page-trainer-dashboard">
-      <PageHeader
-        title={dashboardTitle}
-        description={t('dashboard.subtitle')}
-      />
+    <main className="mx-auto w-full max-w-7xl space-y-5 py-2" data-testid="page-trainer-dashboard">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[hsl(var(--navy-900))] sm:text-3xl">
+            {dashboardTitle}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.subtitleShort')}</p>
+        </div>
+        <Button
+          className="w-full shrink-0 bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))] sm:w-auto"
+          onClick={() => navigate('/app/trainer/slot/new')}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          {t('dashboard.addSlot')}
+        </Button>
+      </header>
 
-      {/* Trial Banner */}
       {subscription && !subscription.isSubscribed && !hasAcademy && (
-        <TrainerTrialBanner 
+        <TrainerTrialBanner
           trialEndsAt={subscription.trialEndsAt}
           onUpgrade={() => navigate('/app/trainer/subscription')}
         />
       )}
 
-      {/* Pending Attendance Actions */}
       <PendingAttendanceCard mode="trainer" trainerId={trainerId ?? undefined} />
 
-      {/* Shareable profile link */}
-      {trainerSlug && (
-        <Card className="mb-6">
-          <CardContent className="p-4 sm:p-6">
-            <ShareableProfileLink handle={trainerSlug} shortUrl={getTrainerShortUrl(trainerSlug)} />
-          </CardContent>
-        </Card>
-      )}
+      <DashboardSetupBanner
+        trainerSlug={trainerSlug}
+        shortUrl={trainerSlug ? getTrainerShortUrl(trainerSlug) : null}
+        stats={{ openSlots: stats.openSlots, totalStudents: stats.totalStudents }}
+        upcomingSlotsCount={upcomingSlots.length}
+        recentBookingsCount={recentBookings.length}
+        hasAcademy={hasAcademy}
+        showPaymentsStep={!hasAcademy}
+      />
 
-      {/* Stats Cards */}
-      <div className="mb-2 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <Card className="card-elevated cursor-pointer" onClick={() => navigate('/app/trainer/analytics')}>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.profileViews')}</p>
-                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : stats.profileViews}</p>
-              </div>
-              <div className="rounded-xl bg-brand-50 p-2 sm:p-3">
-                <Eye className="h-4 w-4 text-brand-600 sm:h-5 sm:w-5" />
-              </div>
-            </div>
-            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewProfileViews')}</p>
-          </CardContent>
-        </Card>
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={t('nav.dashboard')}>
+        <DashboardStatTile
+          label={t('dashboard.stats.profileViews')}
+          value={String(stats.profileViews)}
+          icon={Eye}
+          loading={statsLoading}
+          onClick={() => navigate('/app/trainer/analytics')}
+        />
+        <DashboardStatTile
+          label={t('dashboard.stats.totalStudents')}
+          value={String(stats.totalStudents)}
+          icon={Users}
+          loading={statsLoading}
+          onClick={() => navigate('/app/trainer/players')}
+        />
+        <DashboardStatTile
+          label={t('dashboard.stats.openSlots')}
+          value={String(stats.openSlots)}
+          icon={Clock}
+          loading={statsLoading}
+          highlight
+          onClick={() => navigate('/app/trainer/open-slots')}
+        />
+        <DashboardStatTile
+          label={t('dashboard.stats.revenue')}
+          value={statsLoading ? '—' : `€${stats.monthlyEarnings.toFixed(0)}`}
+          icon={DollarSign}
+          loading={statsLoading}
+          onClick={() => navigate('/app/trainer/earnings')}
+        />
+      </section>
 
-        <Card className="card-elevated cursor-pointer" onClick={() => navigate('/app/trainer/analytics')}>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.followers')}</p>
-                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : stats.followerCount}</p>
-              </div>
-              <div className="rounded-xl bg-brand-50 p-2 sm:p-3">
-                <Bell className="h-4 w-4 text-brand-600 sm:h-5 sm:w-5" />
-              </div>
-            </div>
-            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewFollowers')}</p>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated cursor-pointer" onClick={() => navigate('/app/trainer/players')}>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.totalStudents')}</p>
-                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : stats.totalStudents}</p>
-              </div>
-              <div className="rounded-xl bg-[hsl(var(--success-soft))] p-2 sm:p-3">
-                <Users className="h-4 w-4 text-[hsl(var(--success))] sm:h-5 sm:w-5" />
-              </div>
-            </div>
-            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewStudents')}</p>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated cursor-pointer" onClick={() => navigate('/app/trainer/open-slots')}>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.openSlots')}</p>
-                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : stats.openSlots}</p>
-              </div>
-              <div className="rounded-xl bg-[hsl(var(--info-soft))] p-2 sm:p-3">
-                <Clock className="h-4 w-4 text-[hsl(var(--info))] sm:h-5 sm:w-5" />
-              </div>
-            </div>
-            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewSlots')}</p>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated col-span-2 cursor-pointer sm:col-span-1" onClick={() => navigate('/app/trainer/earnings')}>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.revenue')}</p>
-                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : `€${stats.monthlyEarnings.toFixed(0)}`}</p>
-              </div>
-              <div className="rounded-xl bg-brand-50 p-2 sm:p-3">
-                <DollarSign className="h-4 w-4 text-brand-600 sm:h-5 sm:w-5" />
-              </div>
-            </div>
-            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewEarnings')}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Unpaid Bookings */}
       <UnpaidBookingsCard trainerId={trainerId} />
 
-      {/* Activity Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-        {/* Recent Players */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('dashboard.recentPlayers', 'Recent Players')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/trainer/players')}>
-                {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
+      {pendingRegistrations.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-lg border border-[hsl(var(--brand-200))] bg-[hsl(var(--brand-50))]/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--brand-100))]">
+              <UserPlus className="h-4 w-4 text-[hsl(var(--brand-600))]" />
             </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {recentPlayers.length === 0 ? (
-              <DashboardEmptyState icon={Users} message={t('players.noPlayers')} />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-sm">{t('players.name')}</TableHead>
-                    <TableHead className="text-sm">{t('players.addedOn')}</TableHead>
-                    <TableHead className="text-sm">{t('players.status')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentPlayers.map(player => (
-                    <TableRow key={player.id}>
-                      <TableCell className="py-3 text-sm">{player.full_name}</TableCell>
-                      <TableCell className="py-3 text-sm text-muted-foreground">{format(new Date(player.created_at), 'dd MMM')}</TableCell>
-                      <TableCell className="py-3">
-                        <Badge variant={player.has_trained ? 'success' : 'muted'} className="text-xs">
-                          {player.has_trained ? t('players.statuses.active') : t('players.statuses.prospect')}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+            <div>
+              <p className="text-sm font-medium text-[hsl(var(--navy-900))]">
+                {t('dashboard.newRegistrations', { count: pendingRegistrations.length })}
+              </p>
+              <p className="text-xs text-muted-foreground">{t('dashboard.registrations')}</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-[hsl(var(--brand-300))] bg-background"
+            onClick={() => navigate('/app/trainer/intake-requests')}
+          >
+            {t('dashboard.reviewRegistrations')}
+          </Button>
+        </div>
+      )}
 
-        {/* Recent Bookings */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('dashboard.recentBookings', 'Recent Bookings')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/trainer/schedule-overview')}>
-                {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <DashboardSectionHeader
+            title={t('dashboard.recentBookings')}
+            viewAllLabel={t('dashboard.viewAll')}
+            onViewAll={() => navigate('/app/trainer/schedule-overview')}
+          />
+          <CardContent className="p-0">
             {recentBookings.length === 0 ? (
-              <DashboardEmptyState icon={ClipboardList} message={t('bookings.empty')} />
+              <DashboardEmptyState
+                icon={ClipboardList}
+                message={t('bookings.empty')}
+                hint={t('dashboard.emptyBookingsHint')}
+              />
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-sm">{t('bookings.player')}</TableHead>
-                    <TableHead className="text-sm">{t('cycles.cyclus', 'Cyclus')}</TableHead>
-                    <TableHead className="text-sm">{t('players.addedOn')}</TableHead>
-                    <TableHead className="text-sm">{t('bookings.payment', 'Payment')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentBookings.map(booking => {
-                    const playerName = (booking.profiles as any)?.full_name || (booking.guest_players as any)?.full_name || '—';
-                    const cyclusName = (booking.availability_slots as any)?.cyclus_name;
-                    return (
-                      <TableRow key={booking.id}>
-                        <TableCell className="py-3 text-sm">{playerName}</TableCell>
-                        <TableCell className="py-3 text-sm text-muted-foreground">
-                          {cyclusName ? (
-                            <span>{cyclusName} <span className="text-xs">({booking.sessionCount} {booking.sessionCount === 1 ? t('dashboard.session', 'session') : t('dashboard.sessions', 'sessions')})</span></span>
-                          ) : '—'}
-                        </TableCell>
-                        <TableCell className="py-3 text-sm text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
-                        <TableCell className="py-3">
-                          <Badge variant={paymentBadgeVariant(booking.payment_status)} className="text-xs">
-                            {booking.payment_status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <div>
+                {recentBookings.map((booking) => {
+                  const playerName =
+                    (booking.profiles as { full_name?: string } | null)?.full_name ||
+                    (booking.guest_players as { full_name?: string } | null)?.full_name ||
+                    '—';
+                  const cyclusName = (booking.availability_slots as { cyclus_name?: string } | null)?.cyclus_name;
+                  const sessionLabel =
+                    booking.sessionCount === 1
+                      ? t('dashboard.session')
+                      : t('dashboard.sessions');
+                  return (
+                    <DashboardActivityRow
+                      key={booking.id}
+                      primary={playerName}
+                      secondary={
+                        cyclusName
+                          ? `${cyclusName} (${booking.sessionCount} ${sessionLabel})`
+                          : undefined
+                      }
+                      meta={format(new Date(booking.created_at), 'dd MMM yyyy')}
+                      trailing={
+                        <DashboardPaymentBadge
+                          status={booking.payment_status}
+                          variant={paymentBadgeVariant(booking.payment_status)}
+                        />
+                      }
+                    />
+                  );
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Registrations */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('dashboard.registrations', 'Registrations')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/trainer/intake-requests')}>
-                {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {recentRegistrations.length === 0 ? (
-              <DashboardEmptyState icon={ClipboardList} message={t('dashboard.noRegistrations', 'No registrations yet')} />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-sm">{t('players.name')}</TableHead>
-                    <TableHead className="text-sm">{t('players.addedOn')}</TableHead>
-                    <TableHead className="text-sm">{t('players.status')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentRegistrations.map(reg => (
-                    <TableRow key={reg.id}>
-                      <TableCell className="py-3 text-sm">{reg.full_name}</TableCell>
-                      <TableCell className="py-3 text-sm text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM')}</TableCell>
-                      <TableCell className="py-3">
-                        <Badge variant={reg.status === 'confirmed' ? 'success' : 'muted'} className="text-xs">
-                          {reg.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Upcoming Open Spots */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('dashboard.upcomingSpots', 'Upcoming Open Spots')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/trainer/open-slots')}>
-                {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <DashboardSectionHeader
+            title={t('dashboard.upcomingSpots')}
+            viewAllLabel={t('dashboard.viewAll')}
+            onViewAll={() => navigate('/app/trainer/open-slots')}
+          />
+          <CardContent className="p-0">
             {upcomingSlots.length === 0 ? (
               <DashboardEmptyState icon={CalendarDays} message={t('availability.noSlots')} />
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-sm">{t('cycles.name', 'Name')}</TableHead>
-                    <TableHead className="text-sm">{t('dashboard.sessions', 'Sessions')}</TableHead>
-                    <TableHead className="text-sm">{t('dashboard.nextSession', 'Next session')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {upcomingSlots.map((slot) => (
-                    <TableRow key={slot.cyclus_id || slot.id}>
-                      <TableCell className="py-3 text-sm">{slot.cyclus_name || '—'}</TableCell>
-                      <TableCell className="py-3 text-sm text-muted-foreground">
-                        {slot.sessionCount} {slot.sessionCount === 1 ? t('dashboard.session', 'session') : t('dashboard.sessions', 'sessions')}
-                      </TableCell>
-                      <TableCell className="py-3 text-sm text-muted-foreground">
-                        <div>{format(new Date(slot.start_time), 'EEE dd MMM')}</div>
-                        <div className="text-xs">{format(new Date(slot.start_time), 'HH:mm')}</div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div>
+                {upcomingSlots.map((slot) => {
+                  const sessionLabel =
+                    slot.sessionCount === 1 ? t('dashboard.session') : t('dashboard.sessions');
+                  const locationName = (slot.locations as { name?: string } | null)?.name;
+                  return (
+                    <DashboardActivityRow
+                      key={slot.cyclus_id || slot.id}
+                      primary={slot.cyclus_name || locationName || '—'}
+                      secondary={`${slot.sessionCount} ${sessionLabel}`}
+                      meta={`${format(new Date(slot.start_time), 'EEE dd MMM')} · ${format(new Date(slot.start_time), 'HH:mm')}`}
+                    />
+                  );
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
