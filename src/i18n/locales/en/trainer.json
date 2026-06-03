@@ -214,16 +214,20 @@
       "progress": "{{completed}} of {{total}} complete",
       "steps": {
         "profile": {
-          "title": "Complete Profile",
-          "description": "Add bio, photo, and hourly rate"
+          "title": "Complete your trainer profile",
+          "description": "Add bio and hourly rate so players know what to expect"
+        },
+        "publish": {
+          "title": "Publish your booking page",
+          "description": "Make your profile visible once your schedule is ready"
         },
         "lessons": {
           "title": "Create Schedule",
           "description": "Add your first training session"
         },
         "availability": {
-          "title": "Create Schedule",
-          "description": "Add training cyclus or individual slots"
+          "title": "Add your first availability",
+          "description": "Add a training slot or cycle so players can book"
         },
         "payments": {
           "title": "Connect Payments",

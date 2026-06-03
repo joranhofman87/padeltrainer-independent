@@ -5,14 +5,26 @@ import { Check, Circle, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
 import { cn } from '@/lib/utils';
+import {
+  computeTrainerProfileSetupComplete,
+  computeTrainerPublishComplete,
+} from '@/lib/trainerSetupPlan';
 
 export interface DashboardSetupStats {
   openSlots: number;
   totalStudents: number;
 }
 
+export interface DashboardSetupProfileFields {
+  fullName: string | null;
+  bio: string | null;
+  hourlyRate: number | null;
+  isPublic: boolean;
+  slug: string | null;
+}
+
 interface DashboardSetupBannerProps {
-  trainerSlug: string | null;
+  setupFields: DashboardSetupProfileFields;
   shortUrl: string | null;
   stats: DashboardSetupStats;
   upcomingSlotsCount: number;
@@ -22,7 +34,7 @@ interface DashboardSetupBannerProps {
 }
 
 export function DashboardSetupBanner({
-  trainerSlug,
+  setupFields,
   shortUrl,
   stats,
   upcomingSlotsCount,
@@ -34,10 +46,18 @@ export function DashboardSetupBanner({
   const navigate = useNavigate();
 
   const steps = useMemo(() => {
-    const profileDone = !!trainerSlug;
+    const profileDone = computeTrainerProfileSetupComplete({
+      fullName: setupFields.fullName,
+      bio: setupFields.bio,
+      hourlyRate: setupFields.hourlyRate,
+    });
     const scheduleDone = stats.openSlots > 0 || upcomingSlotsCount > 0;
     const playersDone = stats.totalStudents > 0 || recentBookingsCount > 0;
     const paymentsDone = hasAcademy || !showPaymentsStep;
+    const publishDone = computeTrainerPublishComplete({
+      isPublic: setupFields.isPublic,
+      slug: setupFields.slug,
+    });
 
     return [
       {
@@ -45,7 +65,7 @@ export function DashboardSetupBanner({
         done: profileDone,
         title: t('dashboard.setup.steps.profile.title'),
         description: t('dashboard.setup.steps.profile.description'),
-        action: () => navigate('/app/trainer/settings'),
+        action: () => navigate('/app/trainer/profile'),
       },
       {
         id: 'schedule',
@@ -72,9 +92,16 @@ export function DashboardSetupBanner({
             },
           ]
         : []),
+      {
+        id: 'publish',
+        done: publishDone,
+        title: t('dashboard.setup.steps.publish.title'),
+        description: t('dashboard.setup.steps.publish.description'),
+        action: () => navigate('/app/trainer/settings'),
+      },
     ];
   }, [
-    trainerSlug,
+    setupFields,
     stats.openSlots,
     stats.totalStudents,
     upcomingSlotsCount,
@@ -97,6 +124,7 @@ export function DashboardSetupBanner({
   if (!showBanner) return null;
 
   const nextStep = steps.find((s) => !s.done);
+  const trainerSlug = setupFields.slug;
 
   return (
     <section

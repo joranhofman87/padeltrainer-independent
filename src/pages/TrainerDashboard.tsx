@@ -39,10 +39,23 @@ interface DashboardStats {
   profileViews: number;
 }
 
-async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStats; trainerId: string; slug: string | null } | null> {
+export interface TrainerDashboardSetupFields {
+  fullName: string | null;
+  bio: string | null;
+  hourlyRate: number | null;
+  isPublic: boolean;
+  slug: string | null;
+}
+
+async function fetchTrainerStats(userId: string): Promise<{
+  stats: DashboardStats;
+  trainerId: string;
+  slug: string | null;
+  setupFields: TrainerDashboardSetupFields;
+} | null> {
   const { data: trainerProfile } = await supabase
     .from('trainer_profiles')
-    .select('id, slug')
+    .select('id, slug, hourly_rate, is_public')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -53,7 +66,9 @@ async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStat
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
 
-  const [guestResult, futureSlots, monthlyBookings, followerResult, viewsResult] = await Promise.all([
+  const [profileResult, guestResult, futureSlots, monthlyBookings, followerResult, viewsResult] =
+    await Promise.all([
+    supabase.from('profiles').select('full_name, bio').eq('user_id', userId).maybeSingle(),
     supabase.from('guest_players').select('id', { count: 'exact', head: true }).eq('trainer_id', currentTrainerId),
     supabase.from('availability_slots')
       .select('id, max_participants, bookings(id, status)')
@@ -77,6 +92,8 @@ async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStat
     })(),
   ]);
 
+  const slug = (trainerProfile as { slug?: string | null }).slug ?? null;
+
   let openSlotsCount = 0;
   futureSlots.data?.forEach(slot => {
     const maxParticipants = slot.max_participants || 4;
@@ -88,7 +105,14 @@ async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStat
 
   return {
     trainerId: currentTrainerId,
-    slug: (trainerProfile as { slug?: string | null }).slug ?? null,
+    slug,
+    setupFields: {
+      fullName: profileResult.data?.full_name ?? null,
+      bio: profileResult.data?.bio ?? null,
+      hourlyRate: trainerProfile.hourly_rate ?? null,
+      isPublic: !!trainerProfile.is_public,
+      slug,
+    },
     stats: {
       totalStudents: guestResult.count || 0,
       openSlots: openSlotsCount,
@@ -297,7 +321,15 @@ export default function TrainerDashboard() {
       <PendingAttendanceCard mode="trainer" trainerId={trainerId ?? undefined} />
 
       <DashboardSetupBanner
-        trainerSlug={trainerSlug}
+        setupFields={
+          statsData?.setupFields ?? {
+            fullName: profile?.full_name ?? null,
+            bio: profile?.bio ?? null,
+            hourlyRate: null,
+            isPublic: false,
+            slug: trainerSlug,
+          }
+        }
         shortUrl={trainerSlug ? getTrainerShortUrl(trainerSlug) : null}
         stats={{ openSlots: stats.openSlots, totalStudents: stats.totalStudents }}
         upcomingSlotsCount={upcomingSlots.length}

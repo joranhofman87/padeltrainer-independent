@@ -215,16 +215,20 @@
       "progress": "{{completed}} van {{total}} voltooid",
       "steps": {
         "profile": {
-          "title": "Profiel voltooien",
-          "description": "Voeg bio, foto en uurtarief toe"
+          "title": "Voltooi je trainerprofiel",
+          "description": "Voeg bio en uurtarief toe zodat spelers weten wat ze kunnen verwachten"
+        },
+        "publish": {
+          "title": "Publiceer je boekingspagina",
+          "description": "Maak je profiel zichtbaar zodra je planning klaar is"
         },
         "lessons": {
           "title": "Rooster aanmaken",
           "description": "Voeg je eerste trainingssessie toe"
         },
         "availability": {
-          "title": "Planning maken",
-          "description": "Voeg trainingscyclus of individuele slots toe"
+          "title": "Voeg je eerste beschikbaarheid toe",
+          "description": "Voeg een slot of cyclus toe zodat spelers kunnen boeken"
         },
         "payments": {
           "title": "Betalingen koppelen",
