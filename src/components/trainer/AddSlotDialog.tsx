@@ -69,6 +69,13 @@ import {
   shouldUseTrainerPricesIncludeVat,
 } from "@/lib/academyPriceDisplay";
 import { loadGuestPlayersForBulkCreate } from "@/lib/guestPlayers";
+import { buildBulkCycleBookings } from "@/lib/bulkCycleBookings";
+import {
+  getSelectedGuestPlayerIds,
+  groupChargeableBookingsByGuest,
+  normalizePayerId,
+  shouldShowPayerSelector,
+} from "@/lib/cyclePayerSelection";
 import {
   buildDefaultBulkSlotOwnership,
   shouldInvokeNotifyFollowersOnBulkGenerate,
@@ -110,6 +117,8 @@ interface BulkSlotConfig {
   extraCosts: ExtraCost[];
   hasExtraCosts: boolean;
   splitPayment: boolean;
+  /** Guest player invoiced for full price when split payment is off. */
+  payerGuestPlayerId: string | null;
 }
 
 interface AddSlotDialogProps {
@@ -623,6 +632,7 @@ export function BulkCreateContent({
       extraCosts: [],
       hasExtraCosts: false,
       splitPayment: false,
+      payerGuestPlayerId: null,
     };
   };
 
@@ -753,6 +763,7 @@ export function BulkCreateContent({
           extraCosts,
           hasExtraCosts: extraCosts.length > 0,
           splitPayment: firstSlot.split_payment ?? false,
+          payerGuestPlayerId: normalizePayerId(Array.from(playerIds), null),
         };
 
         setBulkSlots([prefilled]);
@@ -811,6 +822,7 @@ export function BulkCreateContent({
           extraCosts: lastSlot.extraCosts,
           hasExtraCosts: lastSlot.hasExtraCosts,
           splitPayment: lastSlot.splitPayment,
+          payerGuestPlayerId: null,
         },
       ]);
     } else {
@@ -827,6 +839,12 @@ export function BulkCreateContent({
       prev.map((slot, i) => {
         if (i !== index) return slot;
         const updated = { ...slot, ...updates };
+        if (updates.selectedPlayers !== undefined) {
+          updated.payerGuestPlayerId = normalizePayerId(
+            updated.selectedPlayers,
+            updates.payerGuestPlayerId ?? slot.payerGuestPlayerId,
+          );
+        }
         // Auto-regenerate cyclus name if relevant fields changed
         if (updates.startDate || updates.startTime) {
           const autoName = generateCyclusName(
@@ -1022,20 +1040,14 @@ export function BulkCreateContent({
           ) || [];
 
           if (configSlots.length > 0) {
-            const bookingsToInsert = [];
-            for (const slot of configSlots) {
-              for (const playerId of config.selectedPlayers) {
-                if (playerId) {
-                  bookingsToInsert.push({
-                    slot_id: slot.id,
-                    guest_player_id: playerId,
-                    status: "confirmed",
-                    payment_status: config.markAsPaid ? "paid" : "pending",
-                    ...(config.markAsPaid ? { paid_at: new Date().toISOString(), paid_externally: true } : {}),
-                  });
-                }
-              }
-            }
+            const bookingsToInsert = buildBulkCycleBookings({
+              slotIds: configSlots.map((s) => s.id),
+              selectedPlayers: config.selectedPlayers,
+              payerGuestPlayerId: config.payerGuestPlayerId,
+              sessionPrice: config.pricePerSession,
+              splitPayment: config.splitPayment,
+              markAsPaid: config.markAsPaid,
+            });
 
             if (bookingsToInsert.length > 0) {
               const { error: bookingError } = await supabase
@@ -1056,23 +1068,15 @@ export function BulkCreateContent({
 
                 // Auto-create draft invoices for non-externally-paid bookings
                 if (!config.markAsPaid) {
-                  // Group bookings by guest player for individual invoices
-                  const playerBookingMap = new Map<string, string[]>();
-                  // We need to fetch the inserted booking IDs
                   const { data: insertedBookings } = await supabase
                     .from("bookings")
-                    .select("id, guest_player_id")
-                    .in("slot_id", configSlots.map(s => s.id))
+                    .select("id, guest_player_id, payment_amount")
+                    .in("slot_id", configSlots.map((s) => s.id))
                     .in("guest_player_id", config.selectedPlayers.filter(Boolean))
                     .eq("status", "confirmed");
 
                   if (insertedBookings) {
-                    for (const b of insertedBookings) {
-                      if (!b.guest_player_id) continue;
-                      const existing = playerBookingMap.get(b.guest_player_id) || [];
-                      existing.push(b.id);
-                      playerBookingMap.set(b.guest_player_id, existing);
-                    }
+                    const playerBookingMap = groupChargeableBookingsByGuest(insertedBookings);
 
                     for (const [, bIds] of playerBookingMap) {
                       try {
@@ -1082,7 +1086,10 @@ export function BulkCreateContent({
                         }
                         await supabase.functions.invoke("auto-create-invoice", { body: invoiceBody });
                       } catch (invoiceErr) {
-                        logger.warn("Draft invoice creation failed (non-blocking)", { error: invoiceErr, component: 'AddSlotDialog' });
+                        logger.warn("Draft invoice creation failed (non-blocking)", {
+                          error: invoiceErr,
+                          component: "AddSlotDialog",
+                        });
                       }
                     }
                   }
@@ -1789,6 +1796,45 @@ export function BulkCreateContent({
                             </Button>
                           </div>
                         ))}
+
+                        {shouldShowPayerSelector(
+                          slot.splitPayment,
+                          getSelectedGuestPlayerIds(slot.selectedPlayers),
+                        ) && (
+                          <div className="space-y-1.5 pt-2">
+                            <Label className="text-xs">
+                              {t("calendar.invoicePayerLabel", "Who should receive the invoice?")}
+                            </Label>
+                            <Select
+                              value={slot.payerGuestPlayerId ?? ""}
+                              onValueChange={(value) =>
+                                updateBulkSlot(index, { payerGuestPlayerId: value })
+                              }
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue
+                                  placeholder={t("calendar.selectPlayer", "Select player")}
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getSelectedGuestPlayerIds(slot.selectedPlayers).map((playerId) => {
+                                  const player = players.find((p) => p.id === playerId);
+                                  return (
+                                    <SelectItem key={playerId} value={playerId}>
+                                      {player?.full_name ?? playerId}
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                              {t(
+                                "calendar.invoicePayerHint",
+                                "Because split payment is off, only this player will be invoiced for the full amount.",
+                              )}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

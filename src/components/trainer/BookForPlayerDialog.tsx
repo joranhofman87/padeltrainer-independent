@@ -21,6 +21,11 @@ import {
   buildSingleSlotAddPlayerBookings,
 } from "@/lib/bookForPlayerBooking";
 import {
+  getSelectedGuestPlayerIds,
+  normalizePayerId,
+  shouldShowPayerSelector,
+} from "@/lib/cyclePayerSelection";
+import {
   calculateSlotBookingPricing,
   countActiveBookings,
   resolveSlotSessionPrice,
@@ -119,6 +124,7 @@ export function BookForPlayerDialog({
   const [hourlyRate, setHourlyRate] = useState<number>(50);
   const [slotSplitPayment, setSlotSplitPayment] = useState(false);
   const [slotPricePerSession, setSlotPricePerSession] = useState<number | null>(null);
+  const [invoicePayerGuestPlayerId, setInvoicePayerGuestPlayerId] = useState<string | null>(null);
   
   // Discount state
   const [showDiscount, setShowDiscount] = useState(false);
@@ -168,6 +174,7 @@ export function BookForPlayerDialog({
       setDiscountType("percentage");
       setDiscountValue(0);
       setDiscountReason("");
+      setInvoicePayerGuestPlayerId(null);
     }
   }, [open]);
 
@@ -298,21 +305,27 @@ export function BookForPlayerDialog({
     if (firstEmptyIndex !== -1) {
       const newIds = [...selectedPlayerIds];
       newIds[firstEmptyIndex] = player.id;
-      setSelectedPlayerIds(newIds);
+      syncPayerAfterSelectionChange(newIds);
     }
     setShowAddPlayer(false);
+  };
+
+  const syncPayerAfterSelectionChange = (newIds: string[]) => {
+    setSelectedPlayerIds(newIds);
+    const guestIds = getSelectedGuestPlayerIds(newIds);
+    setInvoicePayerGuestPlayerId((current) => normalizePayerId(guestIds, current));
   };
 
   const handlePlayerSelect = (index: number, playerId: string) => {
     const newIds = [...selectedPlayerIds];
     newIds[index] = playerId;
-    setSelectedPlayerIds(newIds);
+    syncPayerAfterSelectionChange(newIds);
   };
 
   const clearPlayerSlot = (index: number) => {
     const newIds = [...selectedPlayerIds];
     newIds[index] = "";
-    setSelectedPlayerIds(newIds);
+    syncPayerAfterSelectionChange(newIds);
   };
 
   const getAvailablePlayersForSlot = (slotIndex: number) => {
@@ -321,8 +334,10 @@ export function BookForPlayerDialog({
     return players.filter(player => !selectedInOtherSlots.includes(player.id));
   };
 
-  const selectedCount = selectedPlayerIds.filter(id => id).length;
+  const selectedGuestIds = getSelectedGuestPlayerIds(selectedPlayerIds);
+  const selectedCount = selectedGuestIds.length;
   const hasAtLeastOnePlayer = selectedCount > 0;
+  const showInvoicePayerSelector = shouldShowPayerSelector(slotSplitPayment, selectedGuestIds);
 
   // Calculate price based on slot duration and hourly rate
   const slotDurationMinutes = slot 
@@ -461,7 +476,7 @@ export function BookForPlayerDialog({
     setIsLoading(true);
 
     const notesValue = notes.trim() || null;
-    const guestPlayerIds = selectedPlayerIds.filter((id) => id);
+    const guestPlayerIds = getSelectedGuestPlayerIds(selectedPlayerIds);
     let rebalanceFailed = false;
     let deferDialogClose = false;
 
@@ -499,6 +514,7 @@ export function BookForPlayerDialog({
             splitPayment,
             existingActiveBookingCount: existingOnSlot,
             guestPlayerIds,
+            payerGuestPlayerId: invoicePayerGuestPlayerId,
             notes: notesValue,
             firstPlayerDiscount: totalDiscountPerPlayer,
             discountReason: discountReason || null,
@@ -621,6 +637,7 @@ export function BookForPlayerDialog({
           splitPayment,
           existingActiveBookingCount: existingActiveCount,
           guestPlayerIds,
+          payerGuestPlayerId: invoicePayerGuestPlayerId,
           notes: notesValue,
           firstPlayerDiscount: calculatedDiscount,
           discountReason: discountReason || null,
@@ -943,6 +960,38 @@ export function BookForPlayerDialog({
                 </div>
               )}
             </div>
+
+            {showInvoicePayerSelector && (
+              <div className="space-y-1.5">
+                <Label className="text-sm">
+                  {t("calendar.invoicePayerLabel", "Who should receive the invoice?")}
+                </Label>
+                <Select
+                  value={invoicePayerGuestPlayerId ?? ""}
+                  onValueChange={setInvoicePayerGuestPlayerId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("calendar.selectPlayer", "Select player")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedGuestIds.map((playerId) => {
+                      const player = players.find((p) => p.id === playerId);
+                      return (
+                        <SelectItem key={playerId} value={playerId}>
+                          {player?.full_name ?? playerId}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    "calendar.invoicePayerHint",
+                    "Because split payment is off, only this player will be invoiced for the full amount.",
+                  )}
+                </p>
+              </div>
+            )}
 
             {/* Booking Scope - only show if slot is part of a cyclus */}
             {hasCyclus && (

@@ -5,6 +5,21 @@ import {
 } from "@/lib/bookForPlayerBooking";
 
 describe("buildSingleSlotAddPlayerBookings", () => {
+  it("non-split 3 players with chosen payer invoices only payer amount", () => {
+    const rows = buildSingleSlotAddPlayerBookings({
+      slotId: "slot-1",
+      sessionPrice: 100,
+      splitPayment: false,
+      existingActiveBookingCount: 0,
+      guestPlayerIds: ["g1", "g2", "g3"],
+      payerGuestPlayerId: "g3",
+      notes: null,
+    });
+    expect(rows.find((r) => r.guest_player_id === "g3")?.payment_amount).toBe(100);
+    expect(rows.find((r) => r.guest_player_id === "g1")?.payment_amount).toBe(0);
+    expect(rows.find((r) => r.guest_player_id === "g2")?.payment_amount).toBe(0);
+  });
+
   it("non-split with existing payer charges companion €0", () => {
     const rows = buildSingleSlotAddPlayerBookings({
       slotId: "slot-1",
