@@ -38,6 +38,13 @@ serve(async (req) => {
       });
     }
 
+    if (invoice.status === "draft") {
+      return new Response(JSON.stringify({ error: "draft_invoice" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Download mode: return a signed PDF URL when the invoice is paid.
     // This is allowed even if public_token_revoked_at is set, because
     // possession of the token still proves the recipient relationship and

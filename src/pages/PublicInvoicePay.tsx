@@ -25,6 +25,7 @@ import { nl, enUS, de, fr, es, it } from "date-fns/locale";
 const dateLocales: Record<string, any> = { nl, en: enUS, de, fr, es, it };
 const getDateLocale = (lang: string) => dateLocales[lang?.slice(0, 2)] ?? nl;
 import { toast } from "sonner";
+import { resolvePublicInvoiceLoadError } from "@/lib/publicInvoiceFetch";
 
 // Keep the /pay/:token URL out of Referer headers — these tokens grant access
 // to invoice PII until the invoice is paid.
@@ -373,15 +374,18 @@ export default function PublicInvoicePay() {
         body: { publicToken: token },
       });
 
-      if (fnError) throw fnError;
-
-      if (result?.error === "already_paid") {
+      const loadError = resolvePublicInvoiceLoadError(result, fnError);
+      if (loadError === "already_paid") {
         setIsPaid(true);
         return;
       }
+      if (loadError) {
+        setError(loadError);
+        return;
+      }
 
-      if (result?.error) {
-        setError(result.error);
+      if (fnError || !result?.invoice) {
+        setError("not_found");
         return;
       }
 
@@ -486,14 +490,30 @@ export default function PublicInvoicePay() {
   }
 
   if (error || !data) {
+    const errorCopy =
+      error === "unavailable"
+        ? {
+            title: t("invoice.pageUnavailable"),
+            description: t("invoice.pageUnavailableDescription"),
+          }
+        : error === "draft_invoice"
+          ? {
+              title: t("invoice.draftNotSent"),
+              description: t("invoice.draftNotSentDescription"),
+            }
+          : {
+              title: t("invoice.invoiceNotFound"),
+              description: t("invoice.invoiceNotFoundDescription"),
+            };
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-        <SEO title={t("invoice.invoiceNotFound")} description={t("invoice.invoiceNotFoundDescription")} noIndex={true} />
+        <SEO title={errorCopy.title} description={errorCopy.description} noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto" />
-            <h1 className="text-2xl font-bold">{t("invoice.invoiceNotFound")}</h1>
-            <p className="text-muted-foreground">{t("invoice.invoiceNotFoundDescription")}</p>
+            <h1 className="text-2xl font-bold">{errorCopy.title}</h1>
+            <p className="text-muted-foreground">{errorCopy.description}</p>
           </CardContent>
         </Card>
       </div>

@@ -32,6 +32,11 @@ import { format } from "date-fns";
 import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { nl, enUS } from "date-fns/locale";
+import { canSharePublicPaymentLink } from "@/lib/invoiceSettingsComplete";
+import {
+  buildInvoiceSettingsLabels,
+  checkInvoiceSettingsGate,
+} from "@/lib/invoiceShareGuards";
 
 
 interface Invoice {
@@ -158,6 +163,43 @@ export default function AcademyInvoices() {
     },
     enabled: !!activeAcademy?.id,
   });
+
+  const { data: invoiceSettings } = useQuery({
+    queryKey: ["academy-invoice-settings", activeAcademy?.id],
+    queryFn: async () => {
+      if (!activeAcademy?.id) return null;
+      const { data, error } = await supabase
+        .from("academy_profiles")
+        .select("business_name, business_address, kvk_number, iban")
+        .eq("id", activeAcademy.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!activeAcademy?.id,
+  });
+
+  const invoiceSettingsLabels = buildInvoiceSettingsLabels(t, "academy");
+
+  const openInvoiceSettings = () => setSearchParams({ tab: "settings" });
+
+  const ensureInvoiceSettingsComplete = (): boolean => {
+    const gate = checkInvoiceSettingsGate(
+      invoiceSettings,
+      invoiceSettingsLabels,
+      t("invoices.settingsIncompleteWarning", "Complete your invoice settings before sending this invoice. Missing:"),
+    );
+    if (!gate.ok) {
+      toast.error(gate.message, {
+        action: {
+          label: t("invoices.openInvoiceSettings", "Invoice settings"),
+          onClick: openInvoiceSettings,
+        },
+      });
+      return false;
+    }
+    return true;
+  };
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["academy-invoices", activeAcademy?.id],
@@ -324,6 +366,7 @@ export default function AcademyInvoices() {
 
   // Bulk send all drafts
   const handleSendAllDrafts = async () => {
+    if (!ensureInvoiceSettingsComplete()) return;
     setSendingAll(true);
     let sent = 0;
     let noEmail = 0;
@@ -569,34 +612,60 @@ export default function AcademyInvoices() {
   const getPaymentUrl = (inv: Invoice) =>
     `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
 
-  const ShareDropdown = ({ invoice }: { invoice: Invoice }) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="ghost">
-          <Share2 className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => {
-          navigator.clipboard.writeText(getPaymentUrl(invoice));
-          toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
-        }}>
-          <Link2 className="h-4 w-4 mr-2" />
-          {t("invoices.copyLink", "Link kopiëren")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => sendInvoiceMutation.mutate(invoice)}>
-          <Mail className="h-4 w-4 mr-2" />
-          {t("invoices.sendViaEmail", "Verstuur via e-mail")}
-        </DropdownMenuItem>
-        {invoice.status !== "sent" && !invoice.sent_at && (
-          <DropdownMenuItem onClick={() => markAsSentMutation.mutate(invoice.id)}>
-            <CheckCheck className="h-4 w-4 mr-2" />
-            {t("invoices.markAsSent", "Markeer als verstuurd")}
+  const ShareDropdown = ({ invoice }: { invoice: Invoice }) => {
+    const shareable = canSharePublicPaymentLink(invoice);
+    const isDraft = invoice.status === "draft";
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="ghost">
+            <Share2 className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {shareable ? (
+            <DropdownMenuItem
+              onClick={() => {
+                navigator.clipboard.writeText(getPaymentUrl(invoice));
+                toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
+              }}
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              {t("invoices.copyLink", "Link kopiëren")}
+            </DropdownMenuItem>
+          ) : isDraft ? (
+            <DropdownMenuItem disabled className="text-muted-foreground max-w-[240px] whitespace-normal">
+              {t(
+                "invoices.draftShareHint",
+                "Complete invoice settings and send this invoice before sharing a payment link.",
+              )}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            onClick={() => {
+              if (!ensureInvoiceSettingsComplete()) return;
+              sendInvoiceMutation.mutate(invoice);
+            }}
+          >
+            <Mail className="h-4 w-4 mr-2" />
+            {t("invoices.sendViaEmail", "Verstuur via e-mail")}
           </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+          {invoice.status !== "sent" && !invoice.sent_at && (
+            <DropdownMenuItem
+              onClick={() => {
+                if (!ensureInvoiceSettingsComplete()) return;
+                markAsSentMutation.mutate(invoice.id);
+              }}
+            >
+              <CheckCheck className="h-4 w-4 mr-2" />
+              {t("invoices.markAsSent", "Markeer als verstuurd")}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">

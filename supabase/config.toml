@@ -174,3 +174,9 @@ verify_jwt = false
 
 [functions.update-public-invoice-details]
 verify_jwt = false
+
+[functions.get-public-invoice]
+verify_jwt = false
+
+[functions.create-invoice-payment]
+verify_jwt = false

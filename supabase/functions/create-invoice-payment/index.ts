@@ -137,6 +137,13 @@ serve(async (req) => {
       });
     }
 
+    if (invoice.status === "draft") {
+      return new Response(JSON.stringify({ error: "draft_invoice" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       return new Response(JSON.stringify({ error: "invoice_locked" }), {
         status: 409,
