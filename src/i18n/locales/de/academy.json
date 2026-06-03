@@ -16,7 +16,13 @@
     "upcomingSpots": "Nächste offene Plätze",
     "viewAll": "Alle anzeigen",
     "noData": "Noch keine Daten",
-    "public": "Öffentlich"
+    "public": "Öffentlich",
+    "previewAcademyPage": "Preview academy page",
+    "previewAcademyHint": "Only you can see this until your academy is public on a paid plan.",
+    "sharePublicPage": "Share public page",
+    "sharePublicPageLocked": "Share public page",
+    "sharePublicPageLockedHint": "Public academy pages are available after upgrading.",
+    "upgradeToShare": "Upgrade to share publicly"
   },
   "stats": {
     "trainers": "Trainer",

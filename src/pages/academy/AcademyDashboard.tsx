@@ -22,11 +22,11 @@ import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainers, getAcademyLocations, getAcademyViewStats, getAcademyTrainersWithProfiles } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { getMarketingUrl, getAcademyShortUrl } from '@/lib/domains';
+import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
-import { ShareableProfileLink } from '@/components/profile/ShareableProfileLink';
+import { AcademyPublicLinkCard } from '@/components/academy/AcademyPublicLinkCard';
 import { useQuery } from '@tanstack/react-query';
 
 const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
@@ -233,17 +233,8 @@ export default function AcademyDashboard() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* Shareable profile link */}
       {activeAcademy?.slug && (
-        <div className="mb-4 rounded-lg border bg-card px-3 py-2">
-          <ShareableProfileLink
-            handle={activeAcademy.slug}
-            basePath="academies"
-            lang={i18n.language}
-            shortUrl={getAcademyShortUrl(activeAcademy.slug)}
-            compact
-          />
-        </div>
+        <AcademyPublicLinkCard academy={activeAcademy} lang={i18n.language} />
       )}
 
       {/* Trial Banner */}

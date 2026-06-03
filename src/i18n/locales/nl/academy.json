@@ -16,7 +16,13 @@
     "upcomingSpots": "Aankomende open plekken",
     "viewAll": "Bekijk alles",
     "noData": "Nog geen gegevens",
-    "public": "Publiek"
+    "public": "Publiek",
+    "previewAcademyPage": "Bekijk academy-pagina",
+    "previewAcademyHint": "Alleen jij kunt dit zien totdat je academy publiek is op een betaald abonnement.",
+    "sharePublicPage": "Deel publieke pagina",
+    "sharePublicPageLocked": "Deel publieke pagina",
+    "sharePublicPageLockedHint": "Publieke academypagina's zijn beschikbaar na upgraden.",
+    "upgradeToShare": "Upgrade om publiek te delen"
   },
   "stats": {
     "trainers": "Trainers",
