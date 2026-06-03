@@ -76,14 +76,17 @@ const Auth = lazy(() => import('@/pages/Auth'));
 const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 
-// Signup & onboarding
-const PlayerSignup = lazy(() => import('@/pages/PlayerSignup'));
-const TrainerSignup = lazy(() => import('@/pages/TrainerSignup'));
-const ClubSignup = lazy(() => import('@/pages/ClubSignup'));
+// Signup — eager-loaded (not lazy) so production never fetches a missing hashed chunk
+// after deploy; lazy import was returning index.html → undefined .default crash.
+import PlayerSignup from '@/pages/PlayerSignup';
+import TrainerSignup from '@/pages/TrainerSignup';
+import ClubSignup from '@/pages/ClubSignup';
+import AcademySignup from '@/pages/AcademySignup';
+
+// Onboarding & club/academy signup-adjacent routes
 const ClubOnboarding = lazy(() => import('@/pages/ClubOnboarding'));
 const Onboarding = lazy(() => import('@/pages/Onboarding'));
 const TrainerOnboardingFlow = lazy(() => import('@/pages/onboarding/TrainerOnboardingFlow'));
-const AcademySignup = lazy(() => import('@/pages/AcademySignup'));
 const AcademyOnboarding = lazy(() => import('@/pages/AcademyOnboarding'));
 // Player pages
 const PlayerDashboard = lazy(() => import('@/pages/PlayerDashboard'));
