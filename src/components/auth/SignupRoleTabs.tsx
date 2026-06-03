@@ -16,7 +16,8 @@ export function buildSignupRolePath(base: string, redirect: string | null): stri
 }
 
 interface SignupRoleTabsProps {
-  activeRole: SignupRoleKey;
+  /** When omitted (e.g. /app/signup hub), all roles render as links. */
+  activeRole?: SignupRoleKey;
   className?: string;
 }
 
@@ -35,7 +36,7 @@ export function SignupRoleTabs({ activeRole, className }: SignupRoleTabsProps) {
       aria-label={t('signupPicker.subtitle')}
     >
       {ROLES.map(({ key, path, testId }) => {
-        const isActive = key === activeRole;
+        const isActive = activeRole != null && key === activeRole;
         const label = t(`signupPicker.roles.${key}.title`);
         const href = buildSignupRolePath(path, redirect);
 

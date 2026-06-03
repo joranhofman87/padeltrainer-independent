@@ -9,10 +9,12 @@ import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
-import { Building2, ArrowLeft, Check } from 'lucide-react';
+import { Building2, Check } from 'lucide-react';
 import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
+import { PasswordInput } from '@/components/auth/PasswordInput';
+import { SignupPageShell } from '@/components/auth/SignupPageShell';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
@@ -164,16 +166,9 @@ export default function ClubSignup() {
 
   return (
     <FeatureErrorBoundary featureName="ClubSignup" onRetry={() => window.location.reload()}>
-    <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="page-signup-club">
-      <Card className="w-full max-w-md" data-testid="form-signup-club">
+    <SignupPageShell activeRole="club" pageTestId="page-signup-club">
+      <Card className="w-full" data-testid="form-signup-club">
         <CardHeader className="text-center">
-          <Link 
-            to="/" 
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-4 self-start"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('backToHome', 'Back to home')}
-          </Link>
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
             <Building2 className="h-8 w-8 text-green-600 dark:text-green-400" />
           </div>
@@ -271,15 +266,17 @@ export default function ClubSignup() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="signup-password">{t('form.password')}</Label>
-              <Input
+              <PasswordInput
                 id="signup-password"
-                type="password"
+                name="password"
                 placeholder={t('form.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className={errors.password ? 'border-destructive' : ''}
+                aria-invalid={!!errors.password}
                 required
                 minLength={8}
+                disabled={isLoading}
                 data-testid="input-signup-password"
               />
               <PasswordStrengthIndicator password={password} />
@@ -298,16 +295,9 @@ export default function ClubSignup() {
               {t('signIn.button')}
             </Link>
           </p>
-          
-          <p className="text-center text-sm text-muted-foreground">
-            {t('clubSignup.lookingForTraining', 'Looking for training instead?')}{' '}
-            <Link to="/app/signup/player" className="text-primary hover:underline">
-              {t('clubSignup.joinAsPlayer', 'Join as Player')}
-            </Link>
-          </p>
         </CardContent>
       </Card>
-    </div>
+    </SignupPageShell>
     </FeatureErrorBoundary>
   );
 }

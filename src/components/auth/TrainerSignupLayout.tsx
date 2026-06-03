@@ -30,15 +30,14 @@ export function TrainerSignupLayout({ children }: TrainerSignupLayoutProps) {
           <SignupRoleTabs activeRole="trainer" />
         </div>
 
-        <div className="grid flex-1 gap-8 lg:grid-cols-2 lg:gap-12 lg:items-start">
-          <div className="space-y-6 lg:sticky lg:top-10">
-            <TrainerSignupValuePanel />
-            <TrainerSignupSocialProof className="hidden sm:block" />
+        <div className="flex flex-1 flex-col gap-8 lg:grid lg:grid-cols-2 lg:gap-12 lg:items-start">
+          <div className="order-1 flex flex-col gap-6 lg:order-2">
+            {children}
           </div>
 
-          <div className="flex flex-col gap-6">
-            <TrainerSignupSocialProof className="sm:hidden" />
-            {children}
+          <div className="order-2 space-y-6 lg:order-1 lg:sticky lg:top-10">
+            <TrainerSignupValuePanel />
+            <TrainerSignupSocialProof />
           </div>
         </div>
       </div>

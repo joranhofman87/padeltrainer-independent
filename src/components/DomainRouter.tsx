@@ -85,8 +85,6 @@ const Onboarding = lazy(() => import('@/pages/Onboarding'));
 const TrainerOnboardingFlow = lazy(() => import('@/pages/onboarding/TrainerOnboardingFlow'));
 const AcademySignup = lazy(() => import('@/pages/AcademySignup'));
 const AcademyOnboarding = lazy(() => import('@/pages/AcademyOnboarding'));
-const SignupRolePicker = lazy(() => import('@/pages/SignupRolePicker'));
-
 // Player pages
 const PlayerDashboard = lazy(() => import('@/pages/PlayerDashboard'));
 const PlayerBookings = lazy(() => import('@/pages/PlayerBookings'));
@@ -216,7 +214,7 @@ export function DomainRouter() {
         <Route path="/app/auth" element={<Auth />} />
         <Route path="/app/forgot-password" element={<ForgotPassword />} />
         <Route path="/app/reset-password" element={<ResetPassword />} />
-        <Route path="/app/signup" element={<SignupRolePicker />} />
+        <Route path="/app/signup" element={<SignupRootRedirect />} />
         <Route path="/app/signup/player" element={<PlayerSignup />} />
         <Route path="/app/signup/trainer" element={<TrainerSignup />} />
         <Route path="/app/signup/club" element={<ClubSignup />} />
@@ -434,6 +432,11 @@ export function DomainRouter() {
       </Routes>
     </Suspense>
   );
+}
+
+/** /app/signup → trainer signup; preserves ?redirect= and other query params. */
+function SignupRootRedirect() {
+  return <Navigate to={`/app/signup/trainer${window.location.search}`} replace />;
 }
 
 /**

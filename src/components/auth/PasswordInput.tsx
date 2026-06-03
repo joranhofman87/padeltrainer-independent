@@ -15,9 +15,7 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputPro
     const [visible, setVisible] = useState(false);
     const { t } = useTranslation('auth');
 
-    const toggleLabel = visible
-      ? t('trainerSignup.password.hide')
-      : t('trainerSignup.password.show');
+    const toggleLabel = visible ? t('form.passwordHide') : t('form.passwordShow');
 
     return (
       <div className="relative">

@@ -124,10 +124,10 @@ describe('TrainerSignup', () => {
     expect(passwordInput).toHaveAttribute('type', 'password');
 
     fireEvent.change(passwordInput, { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'trainerSignup.password.show' }));
+    fireEvent.click(screen.getByRole('button', { name: 'form.passwordShow' }));
 
     expect(passwordInput).toHaveAttribute('type', 'text');
-    fireEvent.click(screen.getByRole('button', { name: 'trainerSignup.password.hide' }));
+    fireEvent.click(screen.getByRole('button', { name: 'form.passwordHide' }));
     expect(passwordInput).toHaveAttribute('type', 'password');
   });
 
