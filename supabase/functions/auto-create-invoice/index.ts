@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { requireUser, corsHeaders as sharedCors } from "../_shared/auth.ts";
+import {
+  isInvoiceBusinessProfileComplete,
+  resolveAutoCreateBusinessGate,
+} from "../_shared/invoice-business.ts";
 
 const corsHeaders = sharedCors;
 
@@ -130,6 +134,18 @@ serve(async (req) => {
       academyProfileId = academyTrainer.academy_profile_id;
     }
 
+    // Prefer academy on slot when all bookings share one academy (academy cycle slots)
+    const slotAcademyIds = [
+      ...new Set(
+        bookings
+          .map((b) => (b.availability_slots as { academy_profile_id?: string | null })?.academy_profile_id)
+          .filter(Boolean),
+      ),
+    ] as string[];
+    if (slotAcademyIds.length === 1) {
+      academyProfileId = slotAcademyIds[0];
+    }
+
     // Fetch trainer profile with business info
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
@@ -169,26 +185,35 @@ serve(async (req) => {
         .eq("id", academyProfileId)
         .single();
 
-      if (academyProfile?.business_name && academyProfile?.kvk_number && academyProfile?.iban) {
+      if (academyProfile) {
         invoiceProfile = academyProfile;
         invoiceProfileTable = "academy_profiles";
         invoiceProfileId = academyProfileId;
-        logStep("Using academy business info for invoice", { academyProfileId });
+        logStep("Using academy profile for invoice", { academyProfileId });
       }
     }
 
-    // Check if business info is complete enough for invoicing
-    if (!invoiceProfile.business_name || !invoiceProfile.kvk_number || !invoiceProfile.iban) {
-      logStep("Business info incomplete, skipping invoice", {
+    const businessGate = resolveAutoCreateBusinessGate(asDraft, invoiceProfile);
+    if (businessGate.skip) {
+      logStep("Business info incomplete, skipping non-draft invoice", {
         profileTable: invoiceProfileTable,
         profileId: invoiceProfileId,
-        hasBusinessName: !!invoiceProfile.business_name,
-        hasKvk: !!invoiceProfile.kvk_number,
-        hasIban: !!invoiceProfile.iban,
+        asDraft,
+        complete: isInvoiceBusinessProfileComplete(invoiceProfile),
       });
-      return new Response(JSON.stringify({ skipped: true, reason: "incomplete_business_info" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(
+        JSON.stringify({ skipped: true, reason: businessGate.reason ?? "incomplete_business_info" }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    const incompleteBusinessProfile = businessGate.incompleteBusinessProfile;
+    if (incompleteBusinessProfile) {
+      logStep("Creating draft with incomplete business profile", {
+        profileTable: invoiceProfileTable,
+        profileId: invoiceProfileId,
       });
     }
 
@@ -614,10 +639,18 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, invoiceId: invoice.id, invoiceNumber }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        invoiceId: invoice.id,
+        invoiceNumber,
+        ...(incompleteBusinessProfile ? { incompleteBusinessProfile: true } : {}),
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });

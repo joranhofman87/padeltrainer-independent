@@ -54,6 +54,7 @@ type AutoCreateInvoiceResponse = {
   success?: boolean;
   skipped?: boolean;
   deduped?: boolean;
+  incompleteBusinessProfile?: boolean;
   reason?: string;
   error?: string;
 };

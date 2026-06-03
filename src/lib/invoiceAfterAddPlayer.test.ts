@@ -188,6 +188,23 @@ describe("syncInvoicesAfterAddPlayer", () => {
     expect(result.failed).toBe(0);
   });
 
+  it("counts success with incompleteBusinessProfile as created", async () => {
+    invokeMock.mockResolvedValue({
+      data: { success: true, invoiceId: "inv-1", incompleteBusinessProfile: true },
+      error: null,
+    });
+
+    const result = await syncInvoicesAfterAddPlayer({
+      newBookings: [booking({ id: "b1" })],
+      splitPayment: false,
+      slotIds: [],
+    });
+
+    expect(result.created).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.invoiceCreateSkipped).toBe(0);
+  });
+
   it("treats deduped as skipped not failed", async () => {
     invokeMock.mockResolvedValue({
       data: { success: true, deduped: true, invoiceId: "inv-1" },
