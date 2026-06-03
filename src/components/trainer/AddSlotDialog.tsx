@@ -55,7 +55,11 @@ import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
 import { SlotRatingPicker } from "./SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
-import { getBulkGenerateValidationError } from "@/lib/academyCreateSlot";
+import {
+  getBulkGenerateValidationError,
+  resolveAcademyDefaultBulkTrainerId,
+  shouldInitializeAcademyDefaultBulkSlot,
+} from "@/lib/academyCreateSlot";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
@@ -561,18 +565,56 @@ export function BulkCreateContent({
     };
   };
 
-  // Sync first slot when opened/activated with default date/time
+  // Seed first recurring slot config when opened (academy page/calendar) or when date/time query params exist (trainer calendar).
   useEffect(() => {
-    if (isActive && prefillFromCyclusId) {
-      // Prefill mode — handled by separate effect below
+    if (!isActive || prefillFromCyclusId) {
       return;
     }
-    if (isActive && defaultDate) {
-      const newStartDate = getInitialStartDate();
-      const newStartTime = getInitialStartTime();
-      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId, academyId)]);
+
+    const initFromDate = Boolean(defaultDate);
+    const initForAcademy = shouldInitializeAcademyDefaultBulkSlot({
+      academyId,
+      activeTrainerCount: availableTrainers?.length ?? 0,
+      prefillFromCyclusId,
+      existingBulkSlotCount: 0,
+    });
+
+    if (!initFromDate && !initForAcademy) {
+      return;
     }
-  }, [isActive, defaultDate, defaultTime]);
+
+    const newStartDate = getInitialStartDate();
+    const newStartTime = getInitialStartTime();
+    const effectiveTrainerId = academyId
+      ? resolveAcademyDefaultBulkTrainerId(trainerId, availableTrainers)
+      : trainerId;
+
+    setBulkSlots((prev) => {
+      if (prev.length > 0) {
+        return prev;
+      }
+      return [
+        createDefaultSlotConfig(
+          newStartDate,
+          newStartTime,
+          defaultDuration,
+          defaultWeeks,
+          effectiveTrainerId,
+          academyId,
+        ),
+      ];
+    });
+  }, [
+    isActive,
+    defaultDate,
+    defaultTime,
+    academyId,
+    availableTrainers,
+    trainerId,
+    prefillFromCyclusId,
+    defaultDuration,
+    defaultWeeks,
+  ]);
 
   // Prefill from existing cyclus (duplicate mode)
   useEffect(() => {

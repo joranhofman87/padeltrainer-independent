@@ -5,6 +5,8 @@ import {
   mapAcademyLocationToSlotLocation,
   mapAcademyLocationsToSlotLocations,
   getBulkGenerateValidationError,
+  shouldInitializeAcademyDefaultBulkSlot,
+  resolveAcademyDefaultBulkTrainerId,
 } from "@/lib/academyCreateSlot";
 
 describe("getAcademyCreateSlotPrerequisites", () => {
@@ -109,8 +111,63 @@ describe("getBulkGenerateValidationError", () => {
   });
 });
 
-describe("default bulk slot academy profile id", () => {
-  it("uses academyId for academy_profile_id when provided", () => {
+describe("shouldInitializeAcademyDefaultBulkSlot", () => {
+  it("initializes when academyId and trainers exist with no existing slots", () => {
+    expect(
+      shouldInitializeAcademyDefaultBulkSlot({
+        academyId: "academy-1",
+        activeTrainerCount: 2,
+        existingBulkSlotCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not initialize when no trainers", () => {
+    expect(
+      shouldInitializeAcademyDefaultBulkSlot({
+        academyId: "academy-1",
+        activeTrainerCount: 0,
+        existingBulkSlotCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not initialize when slots already exist", () => {
+    expect(
+      shouldInitializeAcademyDefaultBulkSlot({
+        academyId: "academy-1",
+        activeTrainerCount: 1,
+        existingBulkSlotCount: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not initialize when duplicating from cyclus", () => {
+    expect(
+      shouldInitializeAcademyDefaultBulkSlot({
+        academyId: "academy-1",
+        activeTrainerCount: 1,
+        prefillFromCyclusId: "cyclus-1",
+        existingBulkSlotCount: 0,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("resolveAcademyDefaultBulkTrainerId", () => {
+  it("prefers explicit trainerId over first available trainer", () => {
+    expect(
+      resolveAcademyDefaultBulkTrainerId("trainer-a", [{ id: "trainer-b" }]),
+    ).toBe("trainer-a");
+  });
+
+  it("falls back to first available trainer", () => {
+    expect(resolveAcademyDefaultBulkTrainerId(null, [{ id: "trainer-b" }])).toBe("trainer-b");
+  });
+});
+
+describe("academy default bulk slot seed", () => {
+  it("includes academyId as academy_profile_id on default config", () => {
     const academyId = "academy-uuid";
     const academyProfileId = academyId || null;
     expect(academyProfileId).toBe("academy-uuid");

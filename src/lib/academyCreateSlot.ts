@@ -57,6 +57,32 @@ export type BulkGenerateValidationError =
   | "missing_slot_trainer"
   | "no_trainer_id";
 
+/** Whether academy bulk create should seed one default recurring slot on first load. */
+export function shouldInitializeAcademyDefaultBulkSlot(params: {
+  academyId?: string;
+  activeTrainerCount: number;
+  prefillFromCyclusId?: string | null;
+  existingBulkSlotCount: number;
+}): boolean {
+  if (params.existingBulkSlotCount > 0) {
+    return false;
+  }
+  if (params.prefillFromCyclusId) {
+    return false;
+  }
+  return Boolean(params.academyId) && params.activeTrainerCount > 0;
+}
+
+export function resolveAcademyDefaultBulkTrainerId(
+  trainerId: string | null,
+  availableTrainers?: { id: string }[],
+): string | null {
+  if (trainerId) {
+    return trainerId;
+  }
+  return availableTrainers?.[0]?.id ?? null;
+}
+
 export function getBulkGenerateValidationError(params: {
   bulkSlotCount: number;
   academyId?: string;
