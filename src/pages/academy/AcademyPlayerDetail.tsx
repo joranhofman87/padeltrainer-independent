@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { resolveAcademyCyclusPricingRoute } from '@/lib/cyclusPricingRoute';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
