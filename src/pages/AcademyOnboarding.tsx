@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { GraduationCap } from 'lucide-react';
-import { createAcademy } from '@/lib/academy';
+import { createAcademy, getUserAcademyProfiles } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { COUNTRIES, type CountryCode } from '@/lib/countries';
 import { logger } from '@/lib/logger';
@@ -38,26 +38,37 @@ export default function AcademyOnboarding() {
     }
   }, [user, loading, navigate]);
 
-  // Assign academy role immediately when user lands on the page
+  // signup-user assigns academy role server-side; clear pending marker when role exists
   useEffect(() => {
-    const assignAcademyRole = async () => {
-      if (user && localStorage.getItem('pendingRole') === 'academy') {
-        try {
-          const { error } = await supabase
-            .from('user_roles')
-            .insert({ user_id: user.id, role: 'academy' });
-          
-          // Clear pending role if successful or if it's a duplicate
-          if (!error || error.code === '23505') {
-            localStorage.removeItem('pendingRole');
-          }
-        } catch (err) {
-          logger.error('Error assigning academy role', err as Error, { component: 'AcademyOnboarding' });
+    const clearPendingAcademyRole = async () => {
+      if (!user || localStorage.getItem('pendingRole') !== 'academy') return;
+      try {
+        const { data: hasAcademyRole, error } = await supabase.rpc('has_role', {
+          _user_id: user.id,
+          _role: 'academy',
+        });
+        if (!error && hasAcademyRole) {
+          localStorage.removeItem('pendingRole');
         }
+      } catch (err) {
+        logger.error('Error checking academy role', err as Error, { component: 'AcademyOnboarding' });
       }
     };
-    assignAcademyRole();
+    clearPendingAcademyRole();
   }, [user]);
+
+  // Resume if user already has an academy profile
+  useEffect(() => {
+    const resumeExistingAcademy = async () => {
+      if (!user || loading) return;
+      const profiles = await getUserAcademyProfiles(user.id);
+      if (profiles.length > 0) {
+        localStorage.removeItem('pendingRole');
+        navigate('/academy', { replace: true });
+      }
+    };
+    resumeExistingAcademy();
+  }, [user, loading, navigate]);
 
   useEffect(() => {
     // Pre-fill contact email from user profile

@@ -200,7 +200,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           (event === 'SIGNED_IN' || event === 'USER_UPDATED')
         ) {
           sessionStorage.setItem(welcomeEmailsKey, '1');
-          requestIdleCallback(() => {
+          const scheduleIdle =
+            typeof window !== 'undefined' && 'requestIdleCallback' in window
+              ? window.requestIdleCallback.bind(window)
+              : (cb: () => void) => window.setTimeout(cb, 1);
+          scheduleIdle(() => {
             supabase.functions.invoke('trigger-welcome-emails', {
               headers: { Authorization: `Bearer ${nextSession.access_token}` },
             }).then(({ error }) => {

@@ -82,6 +82,9 @@ verify_jwt = false
 [functions.create-academy-trainer]
 verify_jwt = false
 
+[functions.create-academy-profile]
+verify_jwt = false
+
 [functions.create-admin-trainer]
 verify_jwt = false
 

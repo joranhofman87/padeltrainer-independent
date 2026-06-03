@@ -60,46 +60,10 @@ export interface AcademyLocation {
   created_at: string;
 }
 
-// Generate a URL-friendly slug from academy name
-function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-    .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Remove consecutive hyphens
-    .trim();
-}
-
-// Check if a slug is already taken
-async function isSlugTaken(slug: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('academy_profiles')
-    .select('id')
-    .eq('slug', slug)
-    .maybeSingle();
-  return !!data;
-}
-
-// Generate a unique slug
-async function generateUniqueSlug(name: string): Promise<string> {
-  let baseSlug = generateSlug(name);
-  let slug = baseSlug;
-  let counter = 1;
-  
-  while (await isSlugTaken(slug)) {
-    slug = `${baseSlug}-${counter}`;
-    counter++;
-  }
-  
-  return slug;
-}
-
-// Create a new academy
+// Create a new academy (service-role edge function — client INSERT blocked by RLS)
 export async function createAcademy(
   name: string,
-  userId: string,
+  _userId: string,
   contactEmail?: string,
   description?: string,
   country: string = 'NL',
@@ -107,65 +71,36 @@ export async function createAcademy(
 ): Promise<{ success: boolean; academyId?: string; error: Error | null }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
-    return { 
-      success: false, 
-      error: new Error('Not authenticated. Please log in and try again.') 
+    return {
+      success: false,
+      error: new Error('Not authenticated. Please log in and try again.'),
     };
   }
 
   try {
-    const slug = await generateUniqueSlug(name);
-
-    // Create the academy profile
     const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
-    const { data: academy, error: profileError } = await supabase
-      .from('academy_profiles')
-      .insert({
+    const { data, error: invokeError } = await supabase.functions.invoke('create-academy-profile', {
+      body: {
         name,
-        slug,
-        description: description || null,
-        contact_email: contactEmail || null,
-        is_verified: true,
-        is_public: false,
-        created_by: session.user.id,
+        contactEmail,
+        description,
         country,
         timezone: tz,
-      })
-      .select('id')
-      .single();
+      },
+    });
 
-    if (profileError) {
-      logger.error('Error creating academy profile', undefined, { error: profileError });
-      return { success: false, error: new Error(profileError.message) };
+    if (invokeError) {
+      logger.error('Error invoking create-academy-profile', invokeError as Error);
+      return { success: false, error: new Error(invokeError.message) };
     }
 
-    // Add the user as the owner
-    const { error: managerError } = await supabase
-      .from('academy_managers')
-      .insert({
-        academy_profile_id: academy.id,
-        user_id: session.user.id,
-        role: 'owner',
-      });
-
-    if (managerError) {
-      logger.error('Error creating academy manager', undefined, { error: managerError });
-      // Clean up the academy profile if manager creation fails
-      await supabase.from('academy_profiles').delete().eq('id', academy.id);
-      return { success: false, error: new Error(managerError.message) };
+    const payload = data as { success?: boolean; academyId?: string; error?: string } | null;
+    if (!payload?.success || !payload.academyId) {
+      const message = payload?.error || 'Failed to create academy';
+      return { success: false, error: new Error(message) };
     }
 
-    // Assign the 'academy' role to the user if they don't already have it
-    const { error: roleError } = await supabase
-      .from('user_roles')
-      .insert({ user_id: session.user.id, role: 'academy' });
-
-    // Ignore duplicate key error
-    if (roleError && roleError.code !== '23505') {
-      logger.warn('Error setting academy role', { error: roleError });
-    }
-
-    return { success: true, academyId: academy.id, error: null };
+    return { success: true, academyId: payload.academyId, error: null };
   } catch (err) {
     logger.error('Error creating academy', err as Error);
     return { success: false, error: err as Error };
