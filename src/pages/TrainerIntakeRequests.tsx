@@ -6,13 +6,15 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { List, CalendarDays, AlertCircle, Download, UserPlus } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { PageHeader } from '@/components/ui/page-header';
+import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
+import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { 
   generateProposals,
@@ -266,35 +268,47 @@ export default function TrainerIntakeRequests() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 py-2">
-      {/* Header */}
-      <PageHeader
+      <TrainerPageHeader
         title={t('intakeRequests.title')}
-        description={t('intakeRequests.noRequestsDescription')}
-        actions={
-          <>
-            <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
-              <UserPlus className="h-4 w-4 mr-2" />
-              {t('intakeRequests.addManual', { defaultValue: 'Add registration' })}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                const cycleName = selectedCycle?.name ?? 'all';
-                const date = format(new Date(), 'yyyy-MM-dd');
-                const locMap: Record<string, string> = {};
-                for (const c of cycles) {
-                  if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
-                }
-                exportIntakeRequestsToCsv(filteredRequests, `registrations-${cycleName}-${date}.csv`, undefined, playerLinksData, locMap);
-              }}
-              disabled={filteredRequests.length === 0}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              CSV
-            </Button>
-          </>
+        description={t('intakeRequests.subtitleShort', 'Review registrations and build proposals')}
+        primaryAction={
+          selectedCycleId !== 'all'
+            ? {
+                label: t('proposals.generate', { defaultValue: 'Generate proposals' }),
+                onClick: () => setShowWizard(true),
+              }
+            : {
+                label: t('intakeRequests.addManual', { defaultValue: 'Add registration' }),
+                onClick: () => setShowAddDialog(true),
+                icon: UserPlus,
+              }
         }
+        moreMenuItems={[
+          {
+            label: t('intakeRequests.addManual', { defaultValue: 'Add registration' }),
+            onClick: () => setShowAddDialog(true),
+            icon: UserPlus,
+          },
+          {
+            label: t('intakeRequests.exportCsv', { defaultValue: 'Export CSV' }),
+            onClick: () => {
+              const cycleName = selectedCycle?.name ?? 'all';
+              const date = format(new Date(), 'yyyy-MM-dd');
+              const locMap: Record<string, string> = {};
+              for (const c of cycles) {
+                if (c.location_id && c.location?.name) locMap[c.location_id] = c.location.name;
+              }
+              exportIntakeRequestsToCsv(
+                filteredRequests,
+                `registrations-${cycleName}-${date}.csv`,
+                undefined,
+                playerLinksData,
+                locMap,
+              );
+            },
+            icon: Download,
+          },
+        ]}
       />
 
       {/* Workflow Steps */}
@@ -356,8 +370,8 @@ export default function TrainerIntakeRequests() {
 
       {/* Skipped reasons summary */}
       {statusFilter === 'skipped' && Object.keys(skippedReasonCounts).length > 0 && (
-        <Alert variant="default" className="bg-yellow-500/5 border-yellow-500/30">
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
+        <Alert variant="default" className="border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]/40">
+          <AlertCircle className="h-4 w-4 text-[hsl(var(--warning))]" />
           <AlertDescription>
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
@@ -404,13 +418,23 @@ export default function TrainerIntakeRequests() {
 
       {/* Requests Table or Schedule Grid */}
       {viewMode === 'list' ? (
-        <IntakeRequestsTable
-          requests={filteredRequests}
-          onRowClick={setSelectedRequest}
-          emptyMessage={t('intakeRequests.noRequests')}
-          emptyDescription={t('intakeRequests.noRequestsDescription')}
-          playerLinks={playerLinksData}
-        />
+        filteredRequests.length === 0 ? (
+          <Card className="overflow-hidden border-border/80 shadow-sm">
+            <DashboardEmptyState
+              icon={List}
+              message={t('intakeRequests.noRequests')}
+              hint={t('intakeRequests.noRequestsDescription')}
+            />
+          </Card>
+        ) : (
+          <IntakeRequestsTable
+            requests={filteredRequests}
+            onRowClick={setSelectedRequest}
+            emptyMessage={t('intakeRequests.noRequests')}
+            emptyDescription={t('intakeRequests.noRequestsDescription')}
+            playerLinks={playerLinksData}
+          />
+        )
       ) : (
         <ProposalScheduleGrid
           slots={scheduleSlots}

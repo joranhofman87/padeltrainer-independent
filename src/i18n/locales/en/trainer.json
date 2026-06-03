@@ -541,6 +541,7 @@
   "settings": {
     "title": "Settings",
     "subtitle": "Manage your account preferences",
+    "editProfile": "Edit profile",
     "subscription": "Subscription",
     "subscriptionDescription": "Manage your plan and billing",
     "profile": "Profile Settings",
@@ -597,6 +598,7 @@
   },
   "calendar": {
     "title": "Calendar",
+    "subtitleShort": "View and manage your schedule",
     "dayView": "Day",
     "weekView": "Week",
     "monthView": "Month",
@@ -983,6 +985,9 @@
     "totalEarned": "Total Earned",
     "thisMonth": "This Month",
     "lastMonth": "Last Month",
+    "pending": "Pending",
+    "invoicesTab": "Invoices",
+    "activeStatus": "Active",
     "payments": "Payments",
     "history": "History",
     "allCaughtUp": "All caught up!",

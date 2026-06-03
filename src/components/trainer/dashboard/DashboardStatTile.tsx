@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +9,8 @@ interface DashboardStatTileProps {
   onClick?: () => void;
   highlight?: boolean;
   loading?: boolean;
+  subtext?: string;
+  endSlot?: ReactNode;
 }
 
 export function DashboardStatTile({
@@ -17,6 +20,8 @@ export function DashboardStatTile({
   onClick,
   highlight = false,
   loading = false,
+  subtext,
+  endSlot,
 }: DashboardStatTileProps) {
   const Component = onClick ? 'button' : 'div';
 
@@ -36,20 +41,23 @@ export function DashboardStatTile({
           <p className="mt-1 font-display text-2xl font-semibold tabular-nums text-[hsl(var(--navy-900))]">
             {loading ? '—' : value}
           </p>
+          {subtext && <p className="mt-0.5 text-[11px] text-muted-foreground">{subtext}</p>}
         </div>
-        <div
-          className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-            highlight ? 'bg-[hsl(var(--brand-50))]' : 'bg-[hsl(var(--navy-50))]',
-          )}
-        >
-          <Icon
+        {endSlot ?? (
+          <div
             className={cn(
-              'h-4 w-4',
-              highlight ? 'text-[hsl(var(--brand-600))]' : 'text-[hsl(var(--navy-600))]',
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+              highlight ? 'bg-[hsl(var(--brand-50))]' : 'bg-[hsl(var(--navy-50))]',
             )}
-          />
-        </div>
+          >
+            <Icon
+              className={cn(
+                'h-4 w-4',
+                highlight ? 'text-[hsl(var(--brand-600))]' : 'text-[hsl(var(--navy-600))]',
+              )}
+            />
+          </div>
+        )}
       </div>
     </Component>
   );

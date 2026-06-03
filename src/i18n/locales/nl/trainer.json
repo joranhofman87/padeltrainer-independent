@@ -544,6 +544,7 @@
   "settings": {
     "title": "Instellingen",
     "subtitle": "Beheer je accountvoorkeuren",
+    "editProfile": "Profiel bewerken",
     "subscription": "Abonnement",
     "subscriptionDescription": "Beheer je plan en facturatie",
     "profile": "Profielinstellingen",
@@ -600,6 +601,7 @@
   },
   "calendar": {
     "title": "Agenda",
+    "subtitleShort": "Bekijk en beheer je planning",
     "dayView": "Dag",
     "weekView": "Week",
     "monthView": "Maand",
@@ -986,6 +988,9 @@
     "totalEarned": "Totaal verdiend",
     "thisMonth": "Deze maand",
     "lastMonth": "Vorige maand",
+    "pending": "Openstaand",
+    "invoicesTab": "Facturen",
+    "activeStatus": "Actief",
     "payments": "Betalingen",
     "history": "Geschiedenis",
     "allCaughtUp": "Helemaal bij!",

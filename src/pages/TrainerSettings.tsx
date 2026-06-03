@@ -3,7 +3,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2, Globe, GraduationCap, ExternalLink, Clock } from 'lucide-react';
+import { Crown, User, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2, Globe, GraduationCap, ExternalLink, Clock, Pencil } from 'lucide-react';
+import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
+import { TrainerIconWell } from '@/components/trainer/shell/TrainerIconWell';
 import { COMMON_TIMEZONES } from '@/lib/timezones';
 import { useTranslation } from 'react-i18next';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -219,72 +221,51 @@ export default function TrainerSettings() {
       description: t('settings.subscriptionDescription'),
       icon: Crown,
       route: '/trainer/subscription',
-      iconBg: 'bg-brand-50',
-      iconColor: 'text-brand-600',
     }] : []),
     {
       title: t('settings.profile'),
       description: t('settings.profileDescription'),
       icon: User,
       route: '/trainer/profile',
-      iconBg: 'bg-navy-50',
-      iconColor: 'text-navy-700',
     },
     {
       title: t('bookingSettings.title'),
       description: t('bookingSettings.settingsDescription'),
       icon: ClipboardCheck,
       route: '/trainer/settings/bookings',
-      iconBg: 'bg-[hsl(var(--success-soft))]',
-      iconColor: 'text-[hsl(var(--success))]',
     },
     {
       title: t('settings.notifications'),
       description: t('settings.notificationsDescription'),
       icon: Bell,
       route: '/trainer/settings/notifications',
-      iconBg: 'bg-brand-50',
-      iconColor: 'text-brand-600',
     },
     {
       title: t('terms.title', 'General Terms'),
       description: t('terms.settingsDescription', 'Manage your general terms and conditions'),
       icon: FileText,
       route: '/app/trainer/terms',
-      iconBg: 'bg-[hsl(var(--warning-soft))]',
-      iconColor: 'text-[hsl(var(--warning))]',
     },
   ];
 
   return (
     <>
-      {/* Sub-page Header */}
-      <div className="border-b bg-background/60">
-        <div className="mx-auto flex w-full max-w-7xl items-center gap-4 py-2">
-          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/trainer')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold">{t('settings.title')}</h1>
-            <p className="text-sm text-muted-foreground">{t('settings.subtitle')}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <main className="mx-auto w-full max-w-7xl py-4" data-testid="page-trainer-settings">
+      <main className="mx-auto w-full max-w-7xl space-y-5 py-2" data-testid="page-trainer-settings">
+        <TrainerPageHeader
+          title={t('settings.title')}
+          description={t('settings.subtitle')}
+          primaryAction={{
+            label: t('settings.editProfile', 'Edit profile'),
+            onClick: () => navigate('/trainer/profile'),
+            icon: Pencil,
+          }}
+        />
         {/* Profile Visibility Section */}
-        <div className="max-w-4xl mb-8">
-          <Card>
+        <div className="max-w-4xl">
+          <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className={`rounded-xl p-2 ${isPublic ? 'bg-[hsl(var(--success-soft))]' : 'bg-muted'}`}>
-                  {isPublic ? (
-                    <Eye className="h-5 w-5 text-[hsl(var(--success))]" />
-                  ) : (
-                    <EyeOff className="h-5 w-5 text-muted-foreground" />
-                  )}
-                </div>
+                <TrainerIconWell icon={isPublic ? Eye : EyeOff} />
                 <div className="flex-1">
                   <CardTitle className="text-lg">{t('settings.marketplaceVisibility', 'Marketplace visibility')}</CardTitle>
                   <CardDescription>
@@ -350,8 +331,8 @@ export default function TrainerSettings() {
 
         {/* Academy Info */}
         {hasAcademy && (
-          <div className="max-w-4xl mb-8">
-            <Alert>
+          <div className="max-w-4xl">
+            <Alert className="border-border/80">
               <Building2 className="h-4 w-4" />
               <AlertDescription>
                 {t('settings.managedByAcademy', 'Your subscription and payments are managed by your academy.')}
@@ -361,13 +342,11 @@ export default function TrainerSettings() {
         )}
 
         {/* Player Mode Section */}
-        <div className="max-w-4xl mb-8">
-          <Card>
+        <div className="max-w-4xl">
+          <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className={`rounded-xl p-2 ${playerModeEnabled ? 'bg-[hsl(var(--info-soft))]' : 'bg-muted'}`}>
-                  <Gamepad2 className={`h-5 w-5 ${playerModeEnabled ? 'text-[hsl(var(--info))]' : 'text-muted-foreground'}`} />
-                </div>
+                <TrainerIconWell icon={Gamepad2} />
                 <div className="flex-1">
                   <CardTitle className="text-lg">{t('settings.playerMode', 'Player mode')}</CardTitle>
                   <CardDescription>
@@ -386,16 +365,14 @@ export default function TrainerSettings() {
 
         {/* Start an Academy */}
         {!hasAcademy && (
-          <div className="max-w-4xl mb-8">
+          <div className="max-w-4xl">
             <Card
-              className="cursor-pointer hover:shadow-lg transition-shadow hover:border-emerald-500/50"
+              className="cursor-pointer border-border/80 shadow-sm transition-colors hover:border-[hsl(var(--navy-200))]"
               onClick={() => navigate('/app/academy/onboarding')}
             >
               <CardHeader>
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-emerald-500/10">
-                    <GraduationCap className="h-5 w-5 text-emerald-600" />
-                  </div>
+                  <TrainerIconWell icon={GraduationCap} />
                   <div className="flex-1">
                     <CardTitle className="text-lg">{t('settings.startAcademy')}</CardTitle>
                     <CardDescription>{t('settings.startAcademyDescription')}</CardDescription>
@@ -406,18 +383,16 @@ export default function TrainerSettings() {
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-4 max-w-4xl">
+        <div className="grid max-w-4xl gap-4 md:grid-cols-2">
           {settingsItems.map((item) => (
             <Card
               key={item.route}
-              className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+              className="cursor-pointer border-border/80 shadow-sm transition-colors hover:border-[hsl(var(--navy-200))]"
               onClick={() => navigate(item.route)}
             >
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${item.iconBg}`}>
-                    <item.icon className={`h-5 w-5 ${item.iconColor}`} />
-                  </div>
+                  <TrainerIconWell icon={item.icon} />
                   <CardTitle className="text-lg">{item.title}</CardTitle>
                 </div>
               </CardHeader>
@@ -429,13 +404,11 @@ export default function TrainerSettings() {
         </div>
 
         {/* Language Setting */}
-        <div className="max-w-4xl mt-8">
-          <Card>
+        <div className="max-w-4xl">
+          <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-indigo-500/10">
-                  <Globe className="h-5 w-5 text-indigo-600" />
-                </div>
+                <TrainerIconWell icon={Globe} />
                 <div className="flex-1">
                   <CardTitle className="text-lg">{t('settings.language', 'Language')}</CardTitle>
                   <CardDescription>{t('settings.languageDescription', 'Choose your preferred language for the app')}</CardDescription>
@@ -453,11 +426,11 @@ export default function TrainerSettings() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="nl">🇳🇱 Nederlands</SelectItem>
-                    <SelectItem value="en">🇬🇧 English</SelectItem>
-                    <SelectItem value="es">🇪🇸 Español</SelectItem>
-                    <SelectItem value="de">🇩🇪 Deutsch</SelectItem>
-                    <SelectItem value="fr">🇫🇷 Français</SelectItem>
+                    <SelectItem value="nl">Nederlands</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="es">Español</SelectItem>
+                    <SelectItem value="de">Deutsch</SelectItem>
+                    <SelectItem value="fr">Français</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -466,13 +439,11 @@ export default function TrainerSettings() {
         </div>
 
         {/* Timezone Setting */}
-        <div className="max-w-4xl mt-4">
-          <Card>
+        <div className="max-w-4xl">
+          <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-brand-50 p-2">
-                  <Clock className="h-5 w-5 text-brand-600" />
-                </div>
+                <TrainerIconWell icon={Clock} />
                 <div className="flex-1">
                   <CardTitle className="text-lg">{t('settings.timezone', 'Timezone')}</CardTitle>
                   <CardDescription>{t('settings.timezoneDescription', 'Set the timezone used for scheduling and displaying lesson times')}</CardDescription>

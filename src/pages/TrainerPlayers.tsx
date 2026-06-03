@@ -29,7 +29,8 @@ import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDial
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
-import { PageHeader } from '@/components/ui/page-header';
+import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
+import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { EmailCampaignTab } from '@/components/players/EmailCampaignTab';
 import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
@@ -479,27 +480,27 @@ export default function TrainerPlayers() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 py-2">
-      <PageHeader
+      <TrainerPageHeader
         title={t('players.title')}
-        countText={`${players.length} ${players.length === 1 ? 'player' : 'players'}`}
-        actions={
-          <>
-            <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)}>
-              <Tags className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">{t('players.tags.manageButton', 'Tags')}</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)}>
-              <Upload className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">{t('players.import.button')}</span>
-              <span className="sm:hidden">Import</span>
-            </Button>
-            <Button size="sm" onClick={() => setShowAddPlayer(true)}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">{t('players.addPlayer')}</span>
-              <span className="sm:hidden">Add</span>
-            </Button>
-          </>
-        }
+        description={t('players.subtitleShort', 'Manage your players and contacts')}
+        countText={`${players.length} ${players.length === 1 ? t('players.playerSingular', 'player') : t('players.playerPlural', 'players')}`}
+        primaryAction={{
+          label: t('players.addPlayer'),
+          onClick: () => setShowAddPlayer(true),
+          icon: UserPlus,
+        }}
+        moreMenuItems={[
+          {
+            label: t('players.import.button'),
+            onClick: () => setShowImportPlayers(true),
+            icon: Upload,
+          },
+          {
+            label: t('players.tags.manageButton', 'Manage tags'),
+            onClick: () => setShowManageTags(true),
+            icon: Tags,
+          },
+        ]}
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -627,22 +628,23 @@ export default function TrainerPlayers() {
           </TableToolbar>
 
           {filteredPlayers.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">
-                  {searchQuery ? t('players.noPlayersFound') : t('players.empty', 'No players yet')}
-                </h3>
-                <p className="text-muted-foreground">
-                  {searchQuery ? t('players.tryDifferentSearch') : t('players.emptyDescription', 'Players will appear here once they book with you.')}
-                </p>
-                {!searchQuery && (
-                  <Button className="mt-4" onClick={() => setShowAddPlayer(true)}>
+            <Card className="overflow-hidden border-border/80 shadow-sm">
+              <DashboardEmptyState
+                icon={Users}
+                message={searchQuery ? t('players.noPlayersFound') : t('players.empty', 'No players yet')}
+                hint={searchQuery ? t('players.tryDifferentSearch') : t('players.emptyDescription', 'Players will appear here once they book with you.')}
+              />
+              {!searchQuery && (
+                <div className="flex justify-center border-t border-border/60 px-4 pb-8 pt-2">
+                  <Button
+                    className="bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]"
+                    onClick={() => setShowAddPlayer(true)}
+                  >
                     <UserPlus className="mr-2 h-4 w-4" />
                     {t('players.addPlayer')}
                   </Button>
-                )}
-              </CardContent>
+                </div>
+              )}
             </Card>
           ) : (
             <Card>

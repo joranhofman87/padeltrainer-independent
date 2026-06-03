@@ -10,9 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
-import { 
-  ArrowLeft, 
-  TrendingUp, 
+import {
   Euro,
   CreditCard,
   Clock,
@@ -25,8 +23,13 @@ import {
   FileText,
   Settings,
   Building2,
-  Info
 } from 'lucide-react';
+import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
+import { TrainerIconWell } from '@/components/trainer/shell/TrainerIconWell';
+import { DashboardStatTile } from '@/components/trainer/dashboard/DashboardStatTile';
+import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
+import { EarningsBookingRow } from '@/components/trainer/earnings/EarningsBookingRow';
+import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 // CreateInvoiceDialog removed — now using /app/trainer/invoices/new page
@@ -35,7 +38,6 @@ import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { logger } from '@/lib/logger';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PageHeader } from '@/components/ui/page-header';
 
 interface EarningsBooking {
   id: string;
@@ -329,6 +331,44 @@ export default function TrainerEarnings() {
   const useManualInvoicing = trainerInfo?.use_manual_invoicing ?? false;
   const isBusinessInfoComplete = trainerInfo?.business_name && trainerInfo?.business_address && trainerInfo?.kvk_number && trainerInfo?.iban;
 
+  const needsMollieConnect =
+    !academyPaymentInfo?.isAcademyTrainer &&
+    !useManualInvoicing &&
+    !connectStatusLoading &&
+    !!connectStatus &&
+    !connectStatus.chargesEnabled;
+
+  const earningsPrimaryAction = needsMollieConnect
+    ? {
+        label: t('earningsPage.connectMollie'),
+        onClick: handleConnectMollie,
+        icon: ExternalLink,
+        loading: connectLoading,
+      }
+    : !academyPaymentInfo?.isAcademyTrainer && useManualInvoicing && !isBusinessInfoComplete
+      ? {
+          label: t('earningsPage.addDetails'),
+          onClick: () => setShowSettings(true),
+        }
+      : !academyPaymentInfo?.isAcademyTrainer && useManualInvoicing
+        ? {
+            label: t('earningsPage.createInvoice'),
+            onClick: handleCreateInvoice,
+            icon: FileText,
+          }
+        : undefined;
+
+  const earningsMoreMenu =
+    !academyPaymentInfo?.isAcademyTrainer
+      ? [
+          {
+            label: showSettings ? t('earningsPage.hideSettings') : t('earningsPage.invoiceSettings'),
+            onClick: () => setShowSettings(!showSettings),
+            icon: Settings,
+          },
+        ]
+      : undefined;
+
   if (loading || loadingData) {
     return (
       <div className="mx-auto w-full max-w-7xl space-y-4 py-2">
@@ -346,47 +386,23 @@ export default function TrainerEarnings() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-4 py-2">
-        <PageHeader
+    <div className="mx-auto w-full max-w-7xl space-y-5 py-2">
+        <TrainerPageHeader
           title={t('earningsPage.title')}
           description={t('earningsPage.subtitle')}
-          actions={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowSettings(!showSettings)}
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              {showSettings ? t('earningsPage.hideSettings') : t('earningsPage.invoiceSettings')}
-            </Button>
-          }
+          primaryAction={earningsPrimaryAction}
+          moreMenuItems={earningsMoreMenu}
         />
-        {/* Club Payment Info Card - Show for club trainers */}
         {academyPaymentInfo?.isAcademyTrainer && (
           <Card
-            className={
-              academyPaymentInfo.academyChargesEnabled
-                ? 'mb-6 border-[hsl(var(--info))]/25 bg-[hsl(var(--info-soft))]'
-                : 'mb-6 border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]'
-            }
+            className={cn(
+              'border-border/80 shadow-sm',
+              !academyPaymentInfo.academyChargesEnabled && 'border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]/30',
+            )}
           >
-            <CardContent className="p-4">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-start gap-4">
-                <div
-                  className={`rounded-xl p-2 ${
-                    academyPaymentInfo.academyChargesEnabled
-                      ? 'bg-[hsl(var(--info-soft))]'
-                      : 'bg-[hsl(var(--warning-soft))]'
-                  }`}
-                >
-                  <Building2
-                    className={`h-5 w-5 ${
-                      academyPaymentInfo.academyChargesEnabled
-                        ? 'text-[hsl(var(--info))]'
-                        : 'text-[hsl(var(--warning))]'
-                    }`}
-                  />
-                </div>
+                <TrainerIconWell icon={Building2} />
                 <div className="flex-1">
                   {academyPaymentInfo.academyChargesEnabled ? (
                     <>
@@ -409,9 +425,9 @@ export default function TrainerEarnings() {
                   )}
                 </div>
                 {academyPaymentInfo.academyChargesEnabled && (
-                  <Badge variant="info">
-                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                    Active
+                  <Badge variant="secondary">
+                    <CheckCircle2 className="mr-1 h-3 w-3" />
+                    {t('earningsPage.activeStatus')}
                   </Badge>
                 )}
               </div>
@@ -421,13 +437,11 @@ export default function TrainerEarnings() {
 
         {/* Payment Mode Toggle - Only show if NOT an academy trainer (academy trainers don't choose payment method) */}
         {!academyPaymentInfo?.isAcademyTrainer && (
-          <Card className="mb-6">
-            <CardContent className="p-4">
+          <Card className="border-border/80 shadow-sm">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-primary/10">
-                    <FileText className="h-5 w-5 text-primary" />
-                  </div>
+                  <TrainerIconWell icon={FileText} />
                   <div>
                     <p className="font-medium">{t('earningsPage.manualPayments')}</p>
                     <p className="text-sm text-muted-foreground max-w-md">
@@ -465,9 +479,9 @@ export default function TrainerEarnings() {
 
         {/* Manual invoicing: Business info warning - Only for non-academy trainers */}
         {!academyPaymentInfo?.isAcademyTrainer && !isBusinessInfoComplete && (
-          <Card className="mb-6 border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]">
-            <CardContent className="flex items-center gap-4 p-4">
-              <AlertCircle className="h-5 w-5 shrink-0 text-[hsl(var(--warning))]" />
+          <Card className="border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]/40 shadow-sm">
+            <CardContent className="flex items-center gap-4 p-4 sm:p-5">
+              <TrainerIconWell icon={AlertCircle} />
               <div className="flex-1">
                 <p className="font-medium text-foreground">{t('earningsPage.completeBusinessDetails')}</p>
                 <p className="text-sm text-muted-foreground">{t('earningsPage.addBusinessDetails')}</p>
@@ -506,12 +520,10 @@ export default function TrainerEarnings() {
 
         {/* Mollie Connect Card - only show when NOT using manual invoicing and NOT an academy trainer */}
         {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && !connectStatusLoading && connectStatus && !connectStatus.chargesEnabled && (
-          <Card className="mb-8 border-primary/50">
+          <Card className="border-[hsl(var(--brand-200))] shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-primary/10">
-                  <Wallet className="h-6 w-6 text-primary" />
-                </div>
+                <TrainerIconWell icon={Wallet} />
                 <div>
                   <CardTitle className="text-lg">{t('earningsPage.connectBank')}</CardTitle>
                   <CardDescription>
@@ -524,15 +536,15 @@ export default function TrainerEarnings() {
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <CheckCircle2 className="h-4 w-4 text-[hsl(var(--brand-600))]" />
                     {t('earningsPage.autoPayout')}
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <CheckCircle2 className="h-4 w-4 text-[hsl(var(--brand-600))]" />
                     {t('earningsPage.acceptMethods')}
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <CheckCircle2 className="h-4 w-4 text-[hsl(var(--brand-600))]" />
                     {t('earningsPage.platformFee')}
                   </div>
                 </div>
@@ -551,17 +563,15 @@ export default function TrainerEarnings() {
 
         {/* Mollie Balance Card - only show when NOT using manual invoicing and NOT an academy trainer */}
         {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && connectStatus?.chargesEnabled && connectStatus.balance && (
-          <Card className="mb-8 border-[hsl(var(--success))]/25 bg-[hsl(var(--success-soft))]">
-            <CardContent className="p-6">
+          <Card className="border-border/80 shadow-sm">
+            <CardContent className="p-5 sm:p-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="rounded-xl bg-[hsl(var(--success-soft))] p-3">
-                    <Wallet className="h-6 w-6 text-[hsl(var(--success))]" />
-                  </div>
+                  <TrainerIconWell icon={Wallet} />
                   <div>
                      <p className="text-sm text-muted-foreground">{t('earningsPage.mollieBalance')}</p>
                      <div className="flex flex-wrap items-baseline gap-3">
-                       <span className="text-2xl font-bold text-[hsl(var(--success))]">
+                       <span className="font-display text-2xl font-semibold tabular-nums text-[hsl(var(--navy-900))]">
                          €{connectStatus.balance.available.toFixed(2)}
                        </span>
                        <span className="text-sm text-muted-foreground">{t('earningsPage.available')}</span>
@@ -573,8 +583,8 @@ export default function TrainerEarnings() {
                     </div>
                   </div>
                 </div>
-                <Badge variant="success">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                <Badge variant="secondary">
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
                   {t('earningsPage.mollieConnected')}
                 </Badge>
               </div>
@@ -582,35 +592,31 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Mollie Connected (no balance data) */}
-        {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && 
+        {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing &&
           connectStatus?.chargesEnabled && !connectStatus.balance && (
-          <Card className="mb-8 border-[hsl(var(--success))]/25">
-            <CardContent className="p-6">
+          <Card className="border-border/80 shadow-sm">
+            <CardContent className="p-5 sm:p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="rounded-xl bg-[hsl(var(--success-soft))] p-3">
-                    <Wallet className="h-6 w-6 text-[hsl(var(--success))]" />
-                  </div>
+                  <TrainerIconWell icon={Wallet} />
                   <div>
-                    <p className="font-medium">{t('earningsPage.mollieConnected')}</p>
+                    <p className="font-medium text-[hsl(var(--navy-900))]">{t('earningsPage.mollieConnected')}</p>
                     <p className="text-sm text-muted-foreground">
                       {t('earningsPage.accountSetUp')}
                     </p>
                   </div>
                 </div>
-                <Badge variant="success">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Active
+                <Badge variant="secondary">
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  {t('earningsPage.activeStatus')}
                 </Badge>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Pending onboarding warning - only show when NOT using manual invoicing */}
         {!useManualInvoicing && connectStatus?.connected && !connectStatus.onboardingComplete && (
-          <Card className="mb-8 border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]">
+          <Card className="border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]/40 shadow-sm">
             <CardContent className="flex items-center gap-4 p-4">
               <AlertCircle className="h-5 w-5 shrink-0 text-[hsl(var(--warning))]" />
               <div className="flex-1">
@@ -624,67 +630,34 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Stats Cards */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <Card className="card-elevated border-[hsl(var(--success))]/20 bg-[hsl(var(--success-soft))]">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t('earningsPage.totalEarned')}</p>
-                  <p className="text-3xl font-bold text-foreground">€{totalEarnings.toFixed(0)}</p>
-                </div>
-                <Euro className="h-10 w-10 text-[hsl(var(--success))]" />
-              </div>
-            </CardContent>
-          </Card>
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <DashboardStatTile
+            label={t('earningsPage.totalEarned')}
+            value={`€${totalEarnings.toFixed(0)}`}
+            icon={Euro}
+          />
+          <DashboardStatTile
+            label={t('earningsPage.thisMonth')}
+            value={`€${thisMonthEarnings.toFixed(0)}`}
+            icon={Calendar}
+            subtext={`${Number(monthlyGrowth) >= 0 ? '+' : ''}${monthlyGrowth}%`}
+          />
+          <DashboardStatTile
+            label={t('earningsPage.lastMonth')}
+            value={`€${lastMonthEarnings.toFixed(0)}`}
+            icon={Clock}
+          />
+          <DashboardStatTile
+            label={t('earningsPage.pending')}
+            value={`€${pendingAmount.toFixed(0)}`}
+            icon={CreditCard}
+            subtext={`${pendingPayments.length} payments`}
+            highlight={pendingAmount > 0}
+          />
+        </section>
 
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm">{t('earningsPage.thisMonth')}</p>
-                  <p className="text-2xl font-bold">€{thisMonthEarnings.toFixed(0)}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    <TrendingUp className={`h-4 w-4 ${Number(monthlyGrowth) >= 0 ? 'text-green-500' : 'text-red-500'}`} />
-                    <span className={`text-sm ${Number(monthlyGrowth) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {monthlyGrowth}%
-                    </span>
-                  </div>
-                </div>
-                <Calendar className="h-8 w-8 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm">{t('earningsPage.lastMonth')}</p>
-                  <p className="text-2xl font-bold">€{lastMonthEarnings.toFixed(0)}</p>
-                </div>
-                <Clock className="h-8 w-8 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className={pendingAmount > 0 ? 'border-[hsl(var(--warning))]/30' : ''}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm">Pending</p>
-                  <p className="text-2xl font-bold text-[hsl(var(--warning))]">€{pendingAmount.toFixed(0)}</p>
-                  <p className="text-xs text-muted-foreground">{pendingPayments.length} payments</p>
-                </div>
-                <CreditCard className="h-8 w-8 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Payments Section */}
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">{t('earningsPage.payments')}</h2>
+          <h2 className="font-display text-lg font-semibold text-[hsl(var(--navy-900))]">{t('earningsPage.payments')}</h2>
           <Tabs defaultValue="pending" className="space-y-4">
             <TabsList className="w-full sm:w-auto">
               <TabsTrigger value="pending" className="gap-1 flex-1 sm:flex-none">
@@ -695,112 +668,120 @@ export default function TrainerEarnings() {
               </TabsTrigger>
               <TabsTrigger value="history" className="flex-1 sm:flex-none">{t('earningsPage.history')}</TabsTrigger>
               <TabsTrigger value="invoices" className="flex-1 sm:flex-none">
-                Invoices
+                {t('earningsPage.invoicesTab')}
               </TabsTrigger>
             </TabsList>
 
-          <TabsContent value="pending" className="space-y-4">
+          <TabsContent value="pending" className="space-y-3">
             {pendingPayments.length === 0 ? (
-              <Card className="p-8 text-center">
-                <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">{t('earningsPage.allCaughtUp')}</h3>
-                <p className="text-muted-foreground">{t('earningsPage.noPendingPayments')}</p>
+              <Card className="overflow-hidden border-border/80 shadow-sm">
+                <DashboardEmptyState
+                  icon={CheckCircle2}
+                  message={t('earningsPage.allCaughtUp')}
+                  hint={t('earningsPage.noPendingPayments')}
+                />
               </Card>
             ) : (
-              pendingPayments.map(booking => (
-                <Card key={booking.id}>
-                  <CardContent className="p-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-semibold">{booking.availability_slots.cyclus_name || t('earningsPage.trainingSession')}</p>
-                          {booking.payment_status === 'invoiced' && (
-                            <Badge variant="secondary">Invoiced</Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{booking.player?.full_name || 'Player'}</p>
-                        <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4" />
-                            {format(parseISO(booking.availability_slots.start_time), 'MMM d, yyyy')}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            {format(parseISO(booking.availability_slots.start_time), 'HH:mm')}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <p className="text-2xl font-bold">€{getAmount(booking)}</p>
-                        {useManualInvoicing ? (
-                          <div className="flex gap-2">
-                            {booking.payment_status !== 'invoiced' && (
-                              <Button 
-                                variant="outline"
-                                onClick={() => handleCreateInvoice()}
-                                disabled={!isBusinessInfoComplete}
-                              >
-                                <FileText className="h-4 w-4 mr-2" />
-                                {t('earningsPage.createInvoice')}
-                              </Button>
-                            )}
-                            <Button onClick={() => handleMarkPaid(booking.id, getAmount(booking))}>
-                              <CheckCircle2 className="h-4 w-4 mr-2" />
-                              {t('earningsPage.markPaid')}
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button onClick={() => handleMarkPaid(booking.id, getAmount(booking))}>
-                            <CheckCircle2 className="h-4 w-4 mr-2" />
-                            {t('earningsPage.markPaid')}
+              pendingPayments.map((booking) => (
+                <EarningsBookingRow
+                  key={booking.id}
+                  title={booking.availability_slots.cyclus_name || t('earningsPage.trainingSession')}
+                  subtitle={booking.player?.full_name || 'Player'}
+                  meta={
+                    <div className="flex flex-wrap items-center gap-4">
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        {format(parseISO(booking.availability_slots.start_time), 'MMM d, yyyy')}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {format(parseISO(booking.availability_slots.start_time), 'HH:mm')}
+                      </span>
+                    </div>
+                  }
+                  badges={
+                    booking.payment_status === 'invoiced' ? (
+                      <Badge variant="secondary">Invoiced</Badge>
+                    ) : undefined
+                  }
+                  amount={`€${getAmount(booking)}`}
+                  actions={
+                    useManualInvoicing ? (
+                      <div className="flex flex-wrap gap-2">
+                        {booking.payment_status !== 'invoiced' && (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleCreateInvoice()}
+                            disabled={!isBusinessInfoComplete}
+                          >
+                            <FileText className="mr-2 h-4 w-4" />
+                            {t('earningsPage.createInvoice')}
                           </Button>
                         )}
+                        <Button
+                          className="bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]"
+                          onClick={() => handleMarkPaid(booking.id, getAmount(booking))}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          {t('earningsPage.markPaid')}
+                        </Button>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    ) : (
+                      <Button
+                        className="bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]"
+                        onClick={() => handleMarkPaid(booking.id, getAmount(booking))}
+                      >
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        {t('earningsPage.markPaid')}
+                      </Button>
+                    )
+                  }
+                />
               ))
             )}
           </TabsContent>
 
-          <TabsContent value="history" className="space-y-4">
+          <TabsContent value="history" className="space-y-3">
             {completedBookings.filter(b => b.payment_status === 'paid').length === 0 ? (
-              <Card className="p-8 text-center">
-                <Euro className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">{t('earningsPage.noPaymentHistory')}</h3>
-                <p className="text-muted-foreground">{t('earningsPage.completedPaymentsAppear')}</p>
+              <Card className="overflow-hidden border-border/80 shadow-sm">
+                <DashboardEmptyState
+                  icon={Euro}
+                  message={t('earningsPage.noPaymentHistory')}
+                  hint={t('earningsPage.completedPaymentsAppear')}
+                />
               </Card>
             ) : (
               completedBookings
                 .filter(b => b.payment_status === 'paid')
-                .map(booking => (
-                  <Card key={booking.id} className="opacity-85">
-                    <CardContent className="p-6">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold">{booking.availability_slots.cyclus_name || t('earningsPage.trainingSession')}</p>
-                            <Badge variant="outline" className="border-green-300 text-green-600">
-                              {(booking as any).paid_externally ? t('bookings.paidExternally', 'Paid (external)') : 'Paid'}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">{booking.player?.full_name || 'Player'}</p>
-                          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              {format(parseISO(booking.availability_slots.start_time), 'MMM d, yyyy')}
-                            </span>
-                            {booking.paid_at && (
-                              <span className="text-xs">
-                                {t('earningsPage.paidOn', { date: format(parseISO(booking.paid_at), 'MMM d') })}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <p className="text-xl font-bold text-green-600">+€{getAmount(booking)}</p>
+                .map((booking) => (
+                  <EarningsBookingRow
+                    key={booking.id}
+                    className="opacity-90"
+                    title={booking.availability_slots.cyclus_name || t('earningsPage.trainingSession')}
+                    subtitle={booking.player?.full_name || 'Player'}
+                    meta={
+                      <div className="flex flex-wrap items-center gap-4">
+                        <span className="inline-flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          {format(parseISO(booking.availability_slots.start_time), 'MMM d, yyyy')}
+                        </span>
+                        {booking.paid_at && (
+                          <span>
+                            {t('earningsPage.paidOn', { date: format(parseISO(booking.paid_at), 'MMM d') })}
+                          </span>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
+                    }
+                    badges={
+                      <Badge variant="secondary">
+                        {(booking as { paid_externally?: boolean }).paid_externally
+                          ? t('bookings.paidExternally', 'Paid (external)')
+                          : 'Paid'}
+                      </Badge>
+                    }
+                    amount={`+€${getAmount(booking)}`}
+                    amountClassName="text-[hsl(var(--brand-600))]"
+                  />
                 ))
             )}
           </TabsContent>

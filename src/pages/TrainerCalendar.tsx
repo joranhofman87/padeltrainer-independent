@@ -22,9 +22,12 @@ import {
   Calendar as CalendarIcon,
   CalendarDays,
   CalendarRange,
-  ArrowLeft,
   Plus,
+  MapPin,
+  Clock,
 } from "lucide-react";
+import { TrainerPageHeader } from "@/components/trainer/shell/TrainerPageHeader";
+import { DashboardStatTile } from "@/components/trainer/dashboard/DashboardStatTile";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -335,75 +338,64 @@ export default function TrainerCalendar() {
 
   return (
     <>
-      {/* Sub-page Header */}
-      <div className="border-b bg-background">
-        <div className="container mx-auto px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate("/trainer")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-xl font-display font-semibold">{t("calendar.title")}</h1>
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" className="h-9 gap-1.5" onClick={() => navigate("/app/trainer/slot/new")}>
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
-            </Button>
-          </div>
-        </div>
-      </div>
+      <main className="mx-auto w-full max-w-7xl space-y-5 py-2 sm:py-4">
+        <TrainerPageHeader
+          title={t("calendar.title")}
+          description={t("calendar.subtitleShort", "View and manage your schedule")}
+          primaryAction={{
+            label: t("calendar.addSlot"),
+            onClick: () => navigate("/app/trainer/slot/new"),
+            icon: Plus,
+          }}
+        />
 
-      <main className="mx-auto w-full max-w-7xl space-y-4 py-2 sm:py-4">
         <Tabs value={view} onValueChange={(v) => setView(v as View)}>
-          {/* Summary tiles */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
-            <div className="rounded-lg border border-border/80 bg-card px-3 py-2.5 shadow-sm">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                {t("calendar.summary.locationsInUse", "Locations in use")}
-              </div>
-              <div className="flex items-center justify-between gap-2 mt-1">
-                <span className="text-2xl font-display font-semibold tabular-nums">
-                  {summaryStats.activeLocations.length}
-                </span>
+          <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+            <DashboardStatTile
+              label={t("calendar.summary.locationsInUse", "Locations in use")}
+              value={String(summaryStats.activeLocations.length)}
+              icon={MapPin}
+              endSlot={
                 <div className="flex -space-x-2">
-                  {summaryStats.activeLocations.slice(0, 4).map((loc, i) => (
+                  {summaryStats.activeLocations.slice(0, 4).map((loc, i) =>
                     loc.logo ? (
-                      <img key={loc.id + i} src={loc.logo} alt={loc.name}
-                        className="h-6 w-6 rounded-full bg-muted object-contain ring-2 ring-card" loading="lazy" />
+                      <img
+                        key={loc.id + i}
+                        src={loc.logo}
+                        alt={loc.name}
+                        className="h-7 w-7 rounded-full bg-muted object-contain ring-2 ring-card"
+                        loading="lazy"
+                      />
                     ) : (
-                      <span key={loc.id + i} className="h-6 w-6 rounded-full bg-muted ring-2 ring-card flex items-center justify-center text-[9px] font-medium text-muted-foreground">
-                        {loc.name.slice(0, 1).toUpperCase() || '?'}
+                      <span
+                        key={loc.id + i}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-[hsl(var(--navy-50))] text-[9px] font-medium text-[hsl(var(--navy-600))] ring-2 ring-card"
+                      >
+                        {loc.name.slice(0, 1).toUpperCase() || "?"}
                       </span>
-                    )
-                  ))}
+                    ),
+                  )}
                   {summaryStats.activeLocations.length > 4 && (
-                    <span className="h-6 w-6 rounded-full bg-muted ring-2 ring-card flex items-center justify-center text-[9px] tabular-nums text-muted-foreground">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[hsl(var(--navy-50))] text-[9px] tabular-nums text-muted-foreground ring-2 ring-card">
                       +{summaryStats.activeLocations.length - 4}
                     </span>
                   )}
                 </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/80 bg-card px-3 py-2.5 shadow-sm">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                {t("calendar.summary.bookedHours", "Booked hours")}
-              </div>
-              <div className="mt-1">
-                <span className="text-2xl font-display font-semibold tabular-nums text-foreground">{fmtHours(summaryStats.bookedHours)}</span>
-                <span className="ml-1.5 text-[11px] text-muted-foreground">{t("calendar.summary.training", "training")}</span>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/80 bg-card px-3 py-2.5 shadow-sm">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                {t("calendar.summary.freeHours", "Free hours")}
-              </div>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className={cn("text-2xl font-display font-semibold tabular-nums", summaryStats.freeHours > 0 ? "text-foreground" : "text-muted-foreground")}>
-                  {fmtHours(summaryStats.freeHours)}
-                </span>
-                <span className="text-[11px] text-muted-foreground">{t("calendar.summary.openCapacity", "open")}</span>
-              </div>
-            </div>
+              }
+            />
+            <DashboardStatTile
+              label={t("calendar.summary.bookedHours", "Booked hours")}
+              value={fmtHours(summaryStats.bookedHours)}
+              icon={CalendarDays}
+              subtext={t("calendar.summary.training", "training")}
+            />
+            <DashboardStatTile
+              label={t("calendar.summary.freeHours", "Free hours")}
+              value={fmtHours(summaryStats.freeHours)}
+              icon={Clock}
+              subtext={t("calendar.summary.openCapacity", "open")}
+              highlight={summaryStats.freeHours > 0}
+            />
           </div>
 
           {/* View switcher + date nav */}
