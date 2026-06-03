@@ -7,10 +7,11 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
-import { PageHeader } from '@/components/ui/page-header';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import CycleCard from '@/components/cycles/CycleCard';
 import { logger } from '@/lib/logger';
+import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
+import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
 
 export default function TrainerCycles() {
   const { t } = useTranslation('cycles');
@@ -53,10 +54,12 @@ export default function TrainerCycles() {
     if (trainerId) fetchCycles();
   }, [trainerId]);
 
+  const goCreateRegistration = () => navigate('/app/trainer/cycles/new?type=registration');
+
   if (loading || isLoading) {
     return (
-      <div className="mx-auto w-full max-w-7xl py-2">
-        <Skeleton className="h-8 w-48 mb-6" />
+      <div className="mx-auto w-full max-w-7xl space-y-5 py-2">
+        <Skeleton className="h-10 w-48" />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Skeleton className="h-48" />
           <Skeleton className="h-48" />
@@ -67,41 +70,45 @@ export default function TrainerCycles() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 py-2">
-      <PageHeader
+    <div className="mx-auto w-full max-w-7xl space-y-5 py-2">
+      <TrainerPageHeader
         title={t('registration.openCycles', 'Registrations')}
         description={t('noRegistrationsDescription', 'Create registrations to collect player interest')}
-        actions={
-          <>
-            <Button size="sm" onClick={() => navigate('/app/trainer/cycles/new?type=registration')}>
-              <Plus className="mr-2 h-4 w-4" />
-              {t('createRegistration', 'Create Registration')}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => navigate('/app/trainer/cycles/new?type=event')}>
-              <PartyPopper className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">{t('createEvent', 'Create Event')}</span>
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => navigate('/app/trainer/cycles/bulk-copy')}>
-              <Copy className="mr-2 h-4 w-4" />
-              <span className="hidden md:inline">{t('bulkCopy.cta', 'Copy slots to next cycle')}</span>
-            </Button>
-          </>
-        }
+        primaryAction={{
+          label: t('createRegistration', 'Create Registration'),
+          onClick: goCreateRegistration,
+          icon: Plus,
+        }}
+        moreMenuItems={[
+          {
+            label: t('createEvent', 'Create Event'),
+            onClick: () => navigate('/app/trainer/cycles/new?type=event'),
+            icon: PartyPopper,
+          },
+          {
+            label: t('bulkCopy.cta', 'Copy slots to next cycle'),
+            onClick: () => navigate('/app/trainer/cycles/bulk-copy'),
+            icon: Copy,
+          },
+        ]}
       />
 
       {cycles.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="mx-auto h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-            <CalendarDays className="h-8 w-8 text-muted-foreground" />
+        <div className="rounded-lg border border-border/80 bg-card shadow-sm">
+          <DashboardEmptyState
+            icon={CalendarDays}
+            message={t('noRegistrations', 'No registrations yet')}
+            hint={t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
+          />
+          <div className="flex justify-center border-t border-border/60 px-4 pb-8 pt-2">
+            <Button
+              className="bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]"
+              onClick={goCreateRegistration}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              {t('createRegistration', 'Create Registration')}
+            </Button>
           </div>
-          <h3 className="font-semibold mb-1 text-lg">{t('noRegistrations', 'No registrations yet')}</h3>
-          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            {t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
-          </p>
-          <Button onClick={() => navigate('/app/trainer/cycles/new?type=registration')}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('createRegistration', 'Create Registration')}
-          </Button>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

@@ -492,6 +492,49 @@
       "viewDashboard": "Bekijk Mollie dashboard"
     }
   },
+  "shell": {
+    "more": "Meer"
+  },
+  "subscriptionPage": {
+    "title": "Abonnement",
+    "subtitle": "Kies een plan dat bij je coaching past",
+    "currentPlan": "Huidig plan",
+    "upgradeHint": "Upgrade voor meer functies en lagere kosten",
+    "activeHint": "Je abonnement is actief",
+    "nextBilling": "Volgende factuurdatum: {{date}}",
+    "manageSubscription": "Abonnement beheren",
+    "monthly": "Maandelijks",
+    "yearly": "Jaarlijks",
+    "yearlySave": "Bespaar 20%",
+    "yourPlan": "Jouw plan",
+    "perYear": "jaar",
+    "perMonth": "maand",
+    "savePerYear": "Bespaar €{{amount}}/jaar",
+    "whyUpgrade": "Waarom upgraden?",
+    "processing": "Bezig…",
+    "currentPlanButton": "Huidig plan",
+    "freePlan": "Gratis plan",
+    "switchPlan": "Plan wisselen",
+    "upgrade": "Upgraden",
+    "toastActivatedTitle": "Abonnement geactiveerd",
+    "toastActivatedDescription": "Je abonnement is nu actief.",
+    "toastCanceledTitle": "Afrekenen geannuleerd",
+    "toastCanceledDescription": "Je abonnement is niet gewijzigd.",
+    "toastDowngradeTitle": "Gebruik abonnement beheren",
+    "toastDowngradeDescription": "Om te downgraden, gebruik de knop abonnement beheren.",
+    "toastSamePlanTitle": "Zelfde plan",
+    "toastErrorTitle": "Er ging iets mis",
+    "toastCheckoutError": "Afrekenen starten mislukt. Probeer het opnieuw.",
+    "toastPortalError": "Abonnementsbeheer openen mislukt. Probeer het opnieuw.",
+    "features": {
+      "lowerFees": { "title": "Lagere kosten", "description": "Houd meer over met lagere platformkosten" },
+      "visibility": { "title": "Meer zichtbaarheid", "description": "Prioriteit in zoekresultaten" },
+      "analytics": { "title": "Geavanceerde analytics", "description": "Volg je prestaties met gedetailleerde inzichten" },
+      "scheduling": { "title": "Flexibele planning", "description": "Geavanceerde beschikbaarheid en boekingen" },
+      "support": { "title": "Prioriteitssupport", "description": "Sneller geholpen wanneer je het nodig hebt" },
+      "verified": { "title": "Geverifieerd badge", "description": "Meer vertrouwen met een geverifieerd trainer-badge" }
+    }
+  },
   "subscription": {
     "title": "Abonnement",
     "currentPlan": "Huidig plan",

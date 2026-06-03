@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -6,9 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  ArrowLeft, 
-  Check, 
+import {
+  Check,
   Crown,
   Zap,
   Users,
@@ -16,21 +15,31 @@ import {
   BarChart3,
   MessageSquare,
   Shield,
-  Star,
-  Sparkles,
   Loader2,
-  ExternalLink
+  ExternalLink,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { useTrainerPlans, SubscriptionPlan } from '@/hooks/usePricingPlans';
-import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { logger } from '@/lib/logger';
 import { trackEvent } from '@/lib/tracking';
 import { useTranslation } from 'react-i18next';
+import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
+import { cn } from '@/lib/utils';
+
+const UPGRADE_FEATURE_KEYS = [
+  'lowerFees',
+  'visibility',
+  'analytics',
+  'scheduling',
+  'support',
+  'verified',
+] as const;
+
+const UPGRADE_FEATURE_ICONS = [Zap, Users, BarChart3, Calendar, MessageSquare, Shield];
 
 export default function TrainerSubscription() {
-  const { t } = useTranslation('marketing');
+  const { t } = useTranslation(['trainer', 'marketing']);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, role, loading, subscription, refreshSubscription, session } = useAuth();
@@ -38,10 +47,9 @@ export default function TrainerSubscription() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
-  
+
   const { data: plans, isLoading: loadingPlans } = useTrainerPlans();
 
-  // Handle success/cancel from Stripe checkout
   useEffect(() => {
     const success = searchParams.get('success');
     const canceled = searchParams.get('canceled');
@@ -49,20 +57,20 @@ export default function TrainerSubscription() {
     if (success === 'true') {
       trackEvent('subscription_activated', { plan: subscription?.tier || 'unknown' });
       toast({
-        title: 'Subscription Activated! 🎉',
-        description: 'Your subscription is now active. Enjoy your new features!',
+        title: t('subscriptionPage.toastActivatedTitle'),
+        description: t('subscriptionPage.toastActivatedDescription'),
       });
       refreshSubscription();
       window.history.replaceState({}, '', '/subscription');
     } else if (canceled === 'true') {
       toast({
-        title: 'Checkout Canceled',
-        description: 'Your subscription was not changed.',
+        title: t('subscriptionPage.toastCanceledTitle'),
+        description: t('subscriptionPage.toastCanceledDescription'),
         variant: 'destructive',
       });
       window.history.replaceState({}, '', '/subscription');
     }
-  }, [searchParams, toast, refreshSubscription]);
+  }, [searchParams, toast, refreshSubscription, subscription?.tier, t]);
 
   useEffect(() => {
     if (!loading) {
@@ -76,46 +84,34 @@ export default function TrainerSubscription() {
 
   const currentPlan = subscription?.tier || 'starter';
 
-  // Track page view with current plan context
   useEffect(() => {
     if (!loading && !loadingPlans) {
       trackEvent('subscription_page_viewed', { current_plan: currentPlan });
     }
   }, [currentPlan, loading, loadingPlans]);
 
-  if (loading || loadingPlans) {
-    return (
-      <div className="mx-auto w-full max-w-5xl space-y-6 py-2">
-        <Skeleton className="h-10 w-56" />
-        <Skeleton className="h-24 w-full rounded-lg" />
-        <div className="grid gap-6 md:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[380px] rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const highlightedPlan = useMemo(
+    () => plans?.find((p) => p.is_highlighted) ?? plans?.find((p) => p.tier !== 'starter' && p.monthly_price > 0),
+    [plans],
+  );
 
   const handleSelectPlan = async (plan: SubscriptionPlan) => {
     if (plan.tier === 'starter') {
       toast({
-        title: 'Use Manage Subscription',
-        description: 'To downgrade, please use the Manage Subscription button.',
+        title: t('subscriptionPage.toastDowngradeTitle'),
+        description: t('subscriptionPage.toastDowngradeDescription'),
       });
       return;
     }
-
-    // planId no longer needed - Stripe checkout uses tier + billingCycle
 
     trackEvent('subscription_checkout_started', { plan: plan.tier, billing_cycle: billingCycle });
     setProcessingPlan(plan.id);
 
     try {
-      logger.info('Starting Stripe checkout for subscription', { 
-        component: 'TrainerSubscription', 
-        planId: plan.tier, 
-        billingCycle 
+      logger.info('Starting Stripe checkout for subscription', {
+        component: 'TrainerSubscription',
+        planId: plan.tier,
+        billingCycle,
       });
 
       const { data, error } = await supabase.functions.invoke('create-stripe-checkout', {
@@ -129,7 +125,7 @@ export default function TrainerSubscription() {
 
       if (data?.hasActiveSubscription) {
         toast({
-          title: 'Same Plan',
+          title: t('subscriptionPage.toastSamePlanTitle'),
           description: data.message,
         });
         setProcessingPlan(null);
@@ -139,17 +135,16 @@ export default function TrainerSubscription() {
       if (data?.checkoutUrl) {
         window.location.href = data.checkoutUrl;
         return;
-      } else {
-        throw new Error('No checkout URL returned');
       }
+      throw new Error('No checkout URL returned');
     } catch (err) {
-      logger.error('Subscription checkout failed', err as Error, { 
-        component: 'TrainerSubscription', 
-        plan: plan.tier 
+      logger.error('Subscription checkout failed', err as Error, {
+        component: 'TrainerSubscription',
+        plan: plan.tier,
       });
       toast({
-        title: 'Error',
-        description: 'Failed to start checkout. Please try again.',
+        title: t('subscriptionPage.toastErrorTitle'),
+        description: t('subscriptionPage.toastCheckoutError'),
         variant: 'destructive',
       });
       setProcessingPlan(null);
@@ -175,12 +170,12 @@ export default function TrainerSubscription() {
         throw new Error('No portal URL returned');
       }
     } catch (err) {
-      logger.error('Customer portal failed', err as Error, { 
-        component: 'TrainerSubscription' 
+      logger.error('Customer portal failed', err as Error, {
+        component: 'TrainerSubscription',
       });
       toast({
-        title: 'Error',
-        description: 'Failed to open subscription management. Please try again.',
+        title: t('subscriptionPage.toastErrorTitle'),
+        description: t('subscriptionPage.toastPortalError'),
         variant: 'destructive',
       });
     } finally {
@@ -190,206 +185,230 @@ export default function TrainerSubscription() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return null;
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString(undefined, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
   };
 
-  return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 py-2">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/trainer')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-brand-50 p-2">
-            <Crown className="h-5 w-5 text-brand-600" />
-          </div>
-          <h1 className="text-2xl font-display font-bold tracking-tight">Subscription Plans</h1>
-        </div>
-      </div>
+  const planStatusHint =
+    currentPlan === 'starter'
+      ? t('subscriptionPage.upgradeHint')
+      : subscription?.subscriptionEnd
+        ? t('subscriptionPage.nextBilling', { date: formatDate(subscription.subscriptionEnd) })
+        : t('subscriptionPage.activeHint');
 
-      <div className="space-y-8">
-        {/* Current Plan Banner */}
-        <Card className="mb-8 border-primary/20">
-          <CardContent className="p-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-primary/10">
-                  <Crown className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-lg">Current Plan:</h3>
-                    <Badge variant="secondary" className="capitalize">{currentPlan}</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {currentPlan === 'starter' 
-                      ? 'Upgrade to unlock more features and lower fees'
-                      : subscription?.subscriptionEnd
-                        ? `Next billing date: ${formatDate(subscription.subscriptionEnd)}`
-                        : 'Your subscription is active'
-                    }
-                  </p>
-                </div>
-              </div>
-              {currentPlan !== 'starter' && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleManageSubscription}
-                  disabled={loadingPortal}
-                >
-                  {loadingPortal ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                  )}
-                  Manage Subscription
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+  const primaryHeaderAction =
+    currentPlan !== 'starter'
+      ? {
+          label: t('subscriptionPage.manageSubscription'),
+          onClick: handleManageSubscription,
+          icon: ExternalLink,
+          disabled: loadingPortal,
+          loading: loadingPortal,
+        }
+      : highlightedPlan
+        ? {
+            label: t('subscriptionPage.upgrade'),
+            onClick: () => handleSelectPlan(highlightedPlan),
+            icon: Crown,
+            disabled: processingPlan !== null,
+            loading: processingPlan === highlightedPlan.id,
+          }
+        : undefined;
 
-        {/* Billing Toggle */}
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex items-center gap-1 p-1 bg-muted rounded-lg">
-            <Button
-              variant={billingCycle === 'monthly' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setBillingCycle('monthly')}
-            >
-              Monthly
-            </Button>
-            <Button
-              variant={billingCycle === 'yearly' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setBillingCycle('yearly')}
-              className="gap-2"
-            >
-              Yearly
-              <Badge variant="success" className="text-xs">
-                Save 20%
-              </Badge>
-            </Button>
-          </div>
-        </div>
+  const getPlanButtonLabel = (plan: SubscriptionPlan) => {
+    if (processingPlan === plan.id) return t('subscriptionPage.processing');
+    if (currentPlan === plan.tier) return t('subscriptionPage.currentPlanButton');
+    if (plan.monthly_price === 0) return t('subscriptionPage.freePlan');
+    if (subscription?.isSubscribed && currentPlan !== 'starter') return t('subscriptionPage.switchPlan');
+    return t('subscriptionPage.upgrade');
+  };
 
-        {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-12">
-          {plans?.map((plan) => (
-            <Card 
-              key={plan.id}
-              className={`relative ${plan.is_highlighted ? 'border-primary shadow-md md:scale-[1.02]' : ''} ${currentPlan === plan.tier ? 'ring-2 ring-primary' : ''}`}
-            >
-              {plan.badge && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className={plan.is_highlighted ? 'bg-primary' : 'bg-brand-500'}>
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    {plan.badge}
-                  </Badge>
-                </div>
-              )}
-              {currentPlan === plan.tier && (
-                <div className="absolute -top-3 right-4">
-                  <Badge variant="outline" className="bg-background border-primary text-primary">
-                    Your Plan
-                  </Badge>
-                </div>
-              )}
-              <CardHeader className="text-center pt-8">
-                <CardTitle className="text-2xl">{plan.name}</CardTitle>
-                <CardDescription>{plan.description}</CardDescription>
-                <div className="pt-4">
-                  <span className="text-4xl font-bold">
-                    €{billingCycle === 'yearly' ? plan.yearly_price : plan.monthly_price}
-                  </span>
-                  <span className="text-muted-foreground">
-                    /{billingCycle === 'yearly' ? 'year' : 'month'}
-                  </span>
-                  {billingCycle === 'yearly' && plan.monthly_price > 0 && (
-                    <p className="mt-1 text-sm font-medium text-[hsl(var(--success))]">
-                      Save €{Math.round(plan.monthly_price * 12 - plan.yearly_price)}/year
-                    </p>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Separator />
-                <ul className="space-y-4">
-                  {(t(`pricing.trainers.plans.${plan.tier}.featureList`, { returnObjects: true, ns: 'marketing' }) as { title: string; description: string }[])?.map?.((feature, index) => (
-                    <li key={index} className="flex items-start gap-3">
-                      <Check className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-semibold text-sm block">{feature.title}</span>
-                        <span className="text-xs text-muted-foreground">{feature.description}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-              <CardFooter>
-                <Button 
-                  className="w-full" 
-                  variant={plan.is_highlighted ? 'default' : 'outline'}
-                  disabled={currentPlan === plan.tier || processingPlan !== null}
-                  onClick={() => handleSelectPlan(plan)}
-                >
-                  {processingPlan === plan.id ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Processing...
-                    </>
-                  ) : currentPlan === plan.tier ? (
-                    'Current Plan'
-                  ) : plan.monthly_price === 0 ? (
-                    'Free Plan'
-                  ) : subscription?.isSubscribed && currentPlan !== 'starter' ? (
-                    'Switch Plan'
-                  ) : (
-                    'Upgrade'
-                  )}
-                </Button>
-              </CardFooter>
-            </Card>
+  if (loading || loadingPlans) {
+    return (
+      <div className="mx-auto w-full max-w-5xl space-y-5 py-2">
+        <Skeleton className="h-10 w-56" />
+        <Skeleton className="h-24 w-full rounded-lg" />
+        <div className="grid gap-6 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-[380px] rounded-lg" />
           ))}
         </div>
+      </div>
+    );
+  }
 
-        {/* Features Comparison */}
-        <Card className="max-w-4xl mx-auto">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Star className="h-5 w-5 text-yellow-500" />
-              Why Upgrade?
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {[
-                { icon: Zap, title: 'Lower Fees', description: 'Keep more of what you earn with reduced platform fees' },
-                { icon: Users, title: 'More Visibility', description: 'Get priority placement in search results' },
-                { icon: BarChart3, title: 'Advanced Analytics', description: 'Track your performance with detailed insights' },
-                { icon: Calendar, title: 'Flexible Scheduling', description: 'Advanced availability and booking controls' },
-                { icon: MessageSquare, title: 'Priority Support', description: 'Get help faster when you need it' },
-                { icon: Shield, title: 'Verified Badge', description: 'Build trust with a verified trainer badge' },
-              ].map(({ icon: Icon, title, description }) => (
-                <div key={title} className="flex items-start gap-3">
-                  <div className="rounded-xl bg-brand-50 p-2">
-                    <Icon className="h-5 w-5 text-brand-600" />
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-5 py-2">
+      <TrainerPageHeader
+        title={t('subscriptionPage.title')}
+        description={t('subscriptionPage.subtitle')}
+        primaryAction={primaryHeaderAction}
+      />
+
+      <Card className="border-border/80 shadow-sm">
+        <CardContent className="p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--navy-50))]">
+                <Crown className="h-5 w-5 text-[hsl(var(--navy-600))]" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-display text-base font-semibold text-[hsl(var(--navy-900))]">
+                    {t('subscriptionPage.currentPlan')}
+                  </h2>
+                  <Badge variant="secondary" className="capitalize">
+                    {currentPlan}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">{planStatusHint}</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-center">
+        <div className="inline-flex items-center gap-1 rounded-lg border border-border/80 bg-muted/40 p-0.5">
+          <Button
+            variant={billingCycle === 'monthly' ? 'default' : 'ghost'}
+            size="sm"
+            className={cn(
+              billingCycle === 'monthly' && 'bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]',
+            )}
+            onClick={() => setBillingCycle('monthly')}
+          >
+            {t('subscriptionPage.monthly')}
+          </Button>
+          <Button
+            variant={billingCycle === 'yearly' ? 'default' : 'ghost'}
+            size="sm"
+            className={cn(
+              'gap-2',
+              billingCycle === 'yearly' && 'bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]',
+            )}
+            onClick={() => setBillingCycle('yearly')}
+          >
+            {t('subscriptionPage.yearly')}
+            <Badge variant="outline" className="border-[hsl(var(--brand-200))] bg-[hsl(var(--brand-50))] text-xs text-[hsl(var(--brand-700))]">
+              {t('subscriptionPage.yearlySave')}
+            </Badge>
+          </Button>
+        </div>
+      </div>
+
+      <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-3">
+        {plans?.map((plan) => (
+          <Card
+            key={plan.id}
+            className={cn(
+              'relative border-border/80 shadow-sm',
+              plan.is_highlighted && 'border-[hsl(var(--brand-300))] ring-1 ring-[hsl(var(--brand-200))]',
+              currentPlan === plan.tier && 'ring-2 ring-[hsl(var(--navy-300))]',
+            )}
+          >
+            {plan.badge && (
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                <Badge className="bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-500))]">
+                  {plan.badge}
+                </Badge>
+              </div>
+            )}
+            {currentPlan === plan.tier && (
+              <div className="absolute -top-3 right-4">
+                <Badge variant="outline" className="border-[hsl(var(--navy-200))] bg-background text-[hsl(var(--navy-700))]">
+                  {t('subscriptionPage.yourPlan')}
+                </Badge>
+              </div>
+            )}
+            <CardHeader className="pt-8 text-center">
+              <CardTitle className="font-display text-2xl">{plan.name}</CardTitle>
+              <CardDescription>{plan.description}</CardDescription>
+              <div className="pt-4">
+                <span className="font-display text-4xl font-semibold tabular-nums text-[hsl(var(--navy-900))]">
+                  €{billingCycle === 'yearly' ? plan.yearly_price : plan.monthly_price}
+                </span>
+                <span className="text-muted-foreground">
+                  /{billingCycle === 'yearly' ? t('subscriptionPage.perYear') : t('subscriptionPage.perMonth')}
+                </span>
+                {billingCycle === 'yearly' && plan.monthly_price > 0 && (
+                  <p className="mt-1 text-sm font-medium text-[hsl(var(--brand-600))]">
+                    {t('subscriptionPage.savePerYear', {
+                      amount: Math.round(plan.monthly_price * 12 - plan.yearly_price),
+                    })}
+                  </p>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Separator />
+              <ul className="space-y-4">
+                {(
+                  t(`pricing.trainers.plans.${plan.tier}.featureList`, {
+                    returnObjects: true,
+                    ns: 'marketing',
+                  }) as { title: string; description: string }[]
+                )?.map?.((feature, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <Check className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--brand-600))]" />
+                    <div>
+                      <span className="block text-sm font-semibold">{feature.title}</span>
+                      <span className="text-xs text-muted-foreground">{feature.description}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+            <CardFooter>
+              <Button
+                className={cn(
+                  'w-full',
+                  plan.is_highlighted && currentPlan !== plan.tier && 'bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]',
+                )}
+                variant={plan.is_highlighted ? 'default' : 'outline'}
+                disabled={currentPlan === plan.tier || processingPlan !== null}
+                onClick={() => handleSelectPlan(plan)}
+              >
+                {processingPlan === plan.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {getPlanButtonLabel(plan)}
+              </Button>
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="mx-auto max-w-4xl border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="font-display text-lg text-[hsl(var(--navy-900))]">
+            {t('subscriptionPage.whyUpgrade')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {UPGRADE_FEATURE_KEYS.map((key, index) => {
+              const Icon = UPGRADE_FEATURE_ICONS[index];
+              return (
+                <div key={key} className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--navy-50))]">
+                    <Icon className="h-4 w-4 text-[hsl(var(--navy-600))]" />
                   </div>
                   <div>
-                    <h4 className="font-medium">{title}</h4>
-                    <p className="text-sm text-muted-foreground">{description}</p>
+                    <h4 className="text-sm font-medium text-[hsl(var(--navy-900))]">
+                      {t(`subscriptionPage.features.${key}.title`)}
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      {t(`subscriptionPage.features.${key}.description`)}
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

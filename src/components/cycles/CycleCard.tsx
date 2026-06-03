@@ -114,7 +114,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
   };
 
   return (
-    <Card className="hover:border-primary/30 transition-colors">
+    <Card className="border-border/80 shadow-sm transition-colors hover:border-[hsl(var(--navy-200))]">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
@@ -129,7 +129,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
           
           <div className="flex items-center gap-2 flex-wrap">
             {cycle.type === 'event' && (
-              <Badge variant="outline" className="text-xs gap-1 bg-purple-500/10 text-purple-600 border-purple-500/20">
+              <Badge variant="outline" className="gap-1 border-[hsl(var(--brand-200))] bg-[hsl(var(--brand-50))] text-xs text-[hsl(var(--brand-700))]">
                 <PartyPopper className="h-3 w-3" />
                 {t('type.event', 'Event')}
               </Badge>
