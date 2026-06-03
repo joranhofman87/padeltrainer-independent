@@ -50,6 +50,7 @@ import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
 import { useSearchParams, Link } from 'react-router-dom';
 import { EmailCampaignTab } from '@/components/players/EmailCampaignTab';
 import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
+import { upsertMetadataTagIds } from '@/lib/playerTags';
 import { PlayerNotesCell } from '@/components/players/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDialog';
 import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/players/playerTagColors';
@@ -223,6 +224,13 @@ export default function AcademyPlayers() {
     ]);
     setTags((tagsRes.data || []) as PlayerTag[]);
     setMetadata((metaRes.data || []) as PlayerMetadata[]);
+  };
+
+  const handlePlayerTagIdsChange = (
+    playerKey: { guest_player_id: string | null; profile_id: string | null },
+    tagIds: string[],
+  ) => {
+    setMetadata((prev) => upsertMetadataTagIds(prev, playerKey, tagIds));
   };
 
   const fetchOverduePayments = async () => {
@@ -1097,7 +1105,16 @@ export default function AcademyPlayers() {
                                       playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
                                       tags={tags}
                                       selectedTagIds={player.tag_ids || []}
-                                      onChanged={fetchTagsAndMetadata}
+                                      onTagsChange={setTags}
+                                      onSelectedTagIdsChange={(tagIds) =>
+                                        handlePlayerTagIdsChange(
+                                          {
+                                            guest_player_id: player.guest_player_id || null,
+                                            profile_id: player.profile_id || null,
+                                          },
+                                          tagIds,
+                                        )
+                                      }
                                     />
                                   )}
                                 </TableCell>

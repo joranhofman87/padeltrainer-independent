@@ -31,7 +31,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { getTagColorClass, PlayerTag } from '@/components/players/playerTagColors';
+import { PlayerTag } from '@/components/players/playerTagColors';
+import { TagPicker } from '@/components/players/TagPicker';
 import { cn } from '@/lib/utils';
 import {
   LineChart,
@@ -356,35 +357,6 @@ export default function AcademyPlayerDetail() {
     }
   }
 
-  async function toggleTag(tagId: string) {
-    const next = tagIds.includes(tagId) ? tagIds.filter(id => id !== tagId) : [...tagIds, tagId];
-    setTagIds(next);
-    if (!activeAcademy || !player) return;
-    try {
-      const baseQuery = supabase
-        .from('academy_player_metadata')
-        .select('id')
-        .eq('academy_profile_id', activeAcademy.id);
-      const { data: existing } = await (player.guest_player_id
-        ? baseQuery.eq('guest_player_id', player.guest_player_id)
-        : baseQuery.eq('profile_id', player.profile_id!)
-      ).maybeSingle();
-
-      if (existing) {
-        await supabase.from('academy_player_metadata').update({ tag_ids: next }).eq('id', existing.id);
-      } else {
-        await supabase.from('academy_player_metadata').insert({
-          academy_profile_id: activeAcademy.id,
-          guest_player_id: player.guest_player_id,
-          profile_id: player.profile_id,
-          tag_ids: next,
-        } as any);
-      }
-    } catch (err: any) {
-      logger.error('Error toggling tag', err);
-    }
-  }
-
   if (loading) {
     return (
       <div className="p-6 space-y-4">
@@ -413,8 +385,6 @@ export default function AcademyPlayerDetail() {
     .slice(0, 2)
     .join('')
     .toUpperCase();
-
-  const selectedTags = tags.filter(tg => tagIds.includes(tg.id));
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-6xl mx-auto">
@@ -487,31 +457,22 @@ export default function AcademyPlayerDetail() {
                 {t('players.detail.addedOn', 'Added')} {format(new Date(player.created_at), 'dd-MM-yyyy')}
               </span>
             </div>
-            {/* Tags */}
-            <div className="flex flex-wrap gap-1.5 pt-2">
-              {tags.length === 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {t('players.tags.noneCreated', 'No tags created yet')}
-                </span>
-              )}
-              {tags.map(tag => {
-                const isSelected = tagIds.includes(tag.id);
-                return (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() => toggleTag(tag.id)}
-                    className={cn(
-                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition',
-                      getTagColorClass(tag.color),
-                      !isSelected && 'opacity-40 hover:opacity-90',
-                    )}
-                  >
-                    {tag.name}
-                  </button>
-                );
-              })}
-            </div>
+            {activeAcademy && player && (
+              <div className="pt-2">
+                <TagPicker
+                  academyId={activeAcademy.id}
+                  playerKey={{
+                    guest_player_id: player.guest_player_id,
+                    profile_id: player.profile_id,
+                  }}
+                  tags={tags}
+                  selectedTagIds={tagIds}
+                  onTagsChange={setTags}
+                  onSelectedTagIdsChange={setTagIds}
+                  variant="detail"
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
