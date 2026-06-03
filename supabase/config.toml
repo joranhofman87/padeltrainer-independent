@@ -37,9 +37,6 @@ verify_jwt = false
 [functions.scrape-academies]
 verify_jwt = false
 
-[functions.bootstrap-admin-password]
-verify_jwt = false
-
 [functions.bulk-cleanup-users]
 verify_jwt = false
 
@@ -80,24 +77,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.get-booking-invoice]
-verify_jwt = false
-
-[functions.create-mollie-subscription]
-verify_jwt = false
-
-[functions.create-academy-mollie-subscription]
-verify_jwt = false
-
-[functions.mollie-subscription-webhook]
-verify_jwt = false
-
-[functions.check-mollie-subscription]
-verify_jwt = false
-
-[functions.cancel-mollie-subscription]
-verify_jwt = false
-
-[functions.create-club-mollie-subscription]
 verify_jwt = false
 
 [functions.create-academy-trainer]
@@ -163,16 +142,10 @@ verify_jwt = false
 [functions.generate-blog-cover]
 verify_jwt = false
 
-[functions.reconcile-subscriptions]
-verify_jwt = false
-
 [functions.reditus-referral-token]
 verify_jwt = false
 
 [functions.reditus-referral-webhook]
-verify_jwt = false
-
-[functions.track-banner-event]
 verify_jwt = false
 
 [functions.submit-guest-intake]
