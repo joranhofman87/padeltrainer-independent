@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { sendEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { sortBookingsBySlotStartTime } from "@/lib/unpaidBookings";
 
 interface UnpaidBooking {
   id: string;
@@ -46,7 +47,8 @@ async function fetchUnpaidBookingsData(trainerId?: string | null, academyId?: st
     trainerIds = [trainerId];
   }
 
-  if (trainerIds.length === 0) return [];
+  const normalizedTrainerIds = trainerIds.filter((id): id is string => !!id?.trim());
+  if (normalizedTrainerIds.length === 0) return [];
 
   const { data, error } = await supabase
     .from("bookings")
@@ -72,15 +74,16 @@ async function fetchUnpaidBookingsData(trainerId?: string | null, academyId?: st
         )
       )
     `)
-    .in("availability_slots.trainer_id", trainerIds)
+    .in("availability_slots.trainer_id", normalizedTrainerIds)
     .eq("payment_status", "pending")
     .in("status", ["confirmed", "pending"])
-    .gte("availability_slots.start_time", new Date().toISOString())
-    .order("availability_slots(start_time)", { ascending: true });
+    .gte("availability_slots.start_time", new Date().toISOString());
 
   if (error) throw error;
 
-  return (data || []).map((b: any) => {
+  const sorted = sortBookingsBySlotStartTime(data || []);
+
+  return sorted.map((b: any) => {
     const slot = b.availability_slots;
     const profile = b.profiles as { full_name: string | null; email: string | null } | null;
     const guest = b.guest_players as { full_name: string | null; email: string | null } | null;
