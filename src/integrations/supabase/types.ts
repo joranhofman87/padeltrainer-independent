@@ -2636,7 +2636,9 @@ export type Database = {
           birth_date: string | null
           created_at: string
           email: string | null
+          first_name: string | null
           full_name: string
+          last_name: string | null
           has_trained: boolean
           id: string
           linked_profile_id: string | null
@@ -2657,7 +2659,9 @@ export type Database = {
           birth_date?: string | null
           created_at?: string
           email?: string | null
+          first_name?: string | null
           full_name: string
+          last_name?: string | null
           has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
@@ -2678,7 +2682,9 @@ export type Database = {
           birth_date?: string | null
           created_at?: string
           email?: string | null
+          first_name?: string | null
           full_name?: string
+          last_name?: string | null
           has_trained?: boolean
           id?: string
           linked_profile_id?: string | null

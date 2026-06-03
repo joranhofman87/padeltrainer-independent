@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { TFunction } from 'i18next';
+import { buildFullName, splitFullName } from '@/lib/profileName';
 
 export function createSignupSchema(t: TFunction) {
   return z.object({
@@ -10,20 +11,13 @@ export function createSignupSchema(t: TFunction) {
   });
 }
 
-/** Build full_name for APIs that still expect a single name field. */
+/** @deprecated Use buildFullName from profileName — kept for existing imports. */
 export function combineRegistrationFullName(firstName: string, lastName: string): string {
-  return `${firstName.trim()} ${lastName.trim()}`.trim();
+  return buildFullName(firstName, lastName);
 }
 
-/** Split a prefill full name into first / last (conservative: first token + remainder). */
+/** Split prefill full name (camelCase for signup forms). */
 export function splitPrefillFullName(name: string): { firstName: string; lastName: string } {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return { firstName: '', lastName: '' };
-  }
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) {
-    return { firstName: parts[0], lastName: '' };
-  }
-  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+  const { first_name, last_name } = splitFullName(name);
+  return { firstName: first_name, lastName: last_name };
 }

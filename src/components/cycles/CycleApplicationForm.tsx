@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote, Calculator, Info } from 'lucide-react';
 import { formatPrice } from '@/lib/pricing';
 import { createOptionalPhoneSchema } from '@/lib/validation';
-import { combineRegistrationFullName, splitPrefillFullName } from '@/lib/signupSchema';
+import { buildFullName, buildGuestPlayerDbFields, prefillProfileNameFields } from '@/lib/profileName';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import { logger } from '@/lib/logger';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
@@ -54,6 +54,8 @@ interface CycleApplicationFormProps {
   playerId: string;
   playerUserId: string;
   playerName: string;
+  playerFirstName?: string | null;
+  playerLastName?: string | null;
   playerEmail: string;
   playerPhone?: string;
   playerRating?: number;
@@ -76,6 +78,8 @@ export default function CycleApplicationForm({
   playerId,
   playerUserId,
   playerName,
+  playerFirstName,
+  playerLastName,
   playerEmail,
   playerPhone,
   playerRating,
@@ -152,7 +156,11 @@ export default function CycleApplicationForm({
         message: t('application.form.noAvailability'),
       });
 
-  const prefilledName = splitPrefillFullName(playerName || '');
+  const prefilledName = prefillProfileNameFields({
+    first_name: playerFirstName,
+    last_name: playerLastName,
+    full_name: playerName,
+  });
 
   const formSchema = z.object({
     first_name: z.string().trim().min(2, t('application.form.firstNameMin')),
@@ -181,8 +189,8 @@ export default function CycleApplicationForm({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      first_name: prefilledName.firstName,
-      last_name: prefilledName.lastName,
+      first_name: prefilledName.first_name,
+      last_name: prefilledName.last_name,
       email: playerEmail || '',
       phone: playerPhone || '',
       birth_date: playerBirthDate || '',
@@ -204,7 +212,8 @@ export default function CycleApplicationForm({
   const onSubmit = async (values: FormValues) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    const fullName = combineRegistrationFullName(values.first_name, values.last_name);
+    const nameFields = buildGuestPlayerDbFields(values.first_name, values.last_name);
+    const fullName = nameFields.full_name;
     try {
       // Convert availability to TimeWindow[] format
       const timeWindows: TimeWindow[] = [];
@@ -230,6 +239,8 @@ export default function CycleApplicationForm({
         const { data: result, error: fnError } = await supabase.functions.invoke('submit-guest-intake', {
           body: {
             email: values.email,
+            firstName: values.first_name,
+            lastName: values.last_name,
             fullName,
             phone: values.phone,
             birthDate: values.birth_date || null,
@@ -386,6 +397,9 @@ export default function CycleApplicationForm({
         if (values.birth_date && values.birth_date !== playerBirthDate) {
           profileUpdates.birth_date = values.birth_date;
         }
+        profileUpdates.first_name = nameFields.first_name;
+        profileUpdates.last_name = nameFields.last_name;
+        profileUpdates.full_name = nameFields.full_name;
         if (Object.keys(profileUpdates).length > 0) {
           await supabase
             .from('profiles')

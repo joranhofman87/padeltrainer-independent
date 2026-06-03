@@ -57,6 +57,8 @@ export function getOnboardingRouteForSignupRole(role: SignupRole): string {
 export interface UserProfile {
   id: string;
   user_id: string;
+  first_name: string | null;
+  last_name: string | null;
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;

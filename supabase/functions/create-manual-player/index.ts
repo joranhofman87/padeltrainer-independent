@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,11 +52,24 @@ serve(async (req) => {
       );
     }
 
-    const { email, fullName, phone, ratingSystem, rating, cycleName, academyProfileId, trainerProfileId } = await req.json();
+    const {
+      email,
+      firstName,
+      lastName,
+      fullName,
+      phone,
+      ratingSystem,
+      rating,
+      cycleName,
+      academyProfileId,
+      trainerProfileId,
+    } = await req.json();
 
-    if (!email || !fullName) {
+    const nameFields = resolveRegistrationNameFields({ firstName, lastName, fullName });
+
+    if (!email || !nameFields.full_name) {
       return new Response(
-        JSON.stringify({ error: "Email and full name are required" }),
+        JSON.stringify({ error: "Email and name are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -81,7 +95,9 @@ serve(async (req) => {
       isNewUser = true;
 
       const guestData: Record<string, unknown> = {
-        full_name: fullName,
+        first_name: nameFields.first_name,
+        last_name: nameFields.last_name,
+        full_name: nameFields.full_name,
         email: email.toLowerCase(),
         phone: phone || null,
         skill_rating: rating || null,
@@ -122,7 +138,9 @@ serve(async (req) => {
         await supabaseAdmin
           .from("guest_players")
           .update({
-            full_name: fullName,
+            first_name: nameFields.first_name,
+            last_name: nameFields.last_name,
+            full_name: nameFields.full_name,
             phone: phone || null,
             skill_rating: rating || null,
             rating_system: ratingSystem || "knltb",

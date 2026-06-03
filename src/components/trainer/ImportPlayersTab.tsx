@@ -27,6 +27,7 @@ import {
   Link2,
 } from "lucide-react";
 import { GuestPlayer } from "./AddPlayerDialog";
+import { csvHasGuestNameColumn, guestNameFieldsFromCsvRow } from "@/lib/guestPlayerCsvName";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ImportPlayersTabProps {
@@ -37,6 +38,8 @@ interface ImportPlayersTabProps {
 
 interface ParsedPlayer {
   full_name: string;
+  first_name: string | null;
+  last_name: string | null;
   email: string;
   phone: string;
   skill_rating: number | null;
@@ -114,13 +117,12 @@ export function ImportPlayersTab({
       return [];
     }
     const headers = parseCSVLine(lines[0].toLowerCase());
-    const nameIndex = headers.findIndex(h => h.includes("name") || h.includes("naam"));
     const emailIndex = headers.findIndex(h => h.includes("email") || h.includes("e-mail"));
     const phoneIndex = headers.findIndex(h => h.includes("phone") || h.includes("telefoon") || h.includes("tel"));
     const skillIndex = headers.findIndex(h => h.includes("skill") || h.includes("rating") || h.includes("niveau"));
     const notesIndex = headers.findIndex(h => h.includes("note") || h.includes("opmerking") || h.includes("notitie"));
 
-    if (nameIndex === -1 || emailIndex === -1) {
+    if (!csvHasGuestNameColumn(headers) || emailIndex === -1) {
       toast({ title: t("players.import.invalidFile"), description: t("players.import.missingColumns"), variant: "destructive" });
       return [];
     }
@@ -129,13 +131,13 @@ export function ImportPlayersTab({
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
       const errors: string[] = [];
-      const fullName = values[nameIndex]?.trim() || "";
+      const { fields: nameFields, missingName } = guestNameFieldsFromCsvRow(headers, values);
       const email = values[emailIndex]?.trim() || "";
       const phone = phoneIndex !== -1 ? values[phoneIndex]?.trim() || "" : "";
       const skillRaw = skillIndex !== -1 ? values[skillIndex]?.trim() : null;
       const notes = notesIndex !== -1 ? values[notesIndex]?.trim() || null : null;
 
-      if (!fullName) errors.push(t("players.import.errors.nameMissing"));
+      if (missingName) errors.push(t("players.import.errors.nameMissing"));
       if (!email) errors.push(t("players.import.errors.emailMissing"));
       else if (!validateEmail(email)) errors.push(t("players.import.errors.emailInvalid"));
 
@@ -146,7 +148,17 @@ export function ImportPlayersTab({
         else if (!isNaN(parsed)) errors.push(t("players.import.errors.skillOutOfRange"));
       }
 
-      players.push({ full_name: fullName, email, phone, skill_rating: skillRating, notes, isValid: errors.length === 0, errors });
+      players.push({
+        full_name: nameFields.full_name,
+        first_name: nameFields.first_name,
+        last_name: nameFields.last_name,
+        email,
+        phone,
+        skill_rating: skillRating,
+        notes,
+        isValid: errors.length === 0,
+        errors,
+      });
     }
     return players;
   };
@@ -206,6 +218,8 @@ export function ImportPlayersTab({
           .insert({
             trainer_id: trainerId || null,
             academy_profile_id: academyId || null,
+            first_name: player.first_name,
+            last_name: player.last_name,
             full_name: player.full_name,
             email: player.email.toLowerCase(),
             phone: player.phone,
@@ -231,7 +245,7 @@ export function ImportPlayersTab({
   };
 
   const downloadTemplate = () => {
-    const template = `full_name,email,phone,skill_rating,notes\nJan Jansen,jan@example.com,+31612345678,7.5,Beginner player\nMaria de Vries,maria@example.com,+31687654321,5.0,\nPiet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
+    const template = `first_name,last_name,email,phone,skill_rating,notes\nJan,Jansen,jan@example.com,+31612345678,7.5,Beginner player\nMaria,de Vries,maria@example.com,+31687654321,5.0,\nPiet,Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
     const blob = new Blob([template], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -277,7 +291,9 @@ export function ImportPlayersTab({
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
               <p className="font-medium">{t("players.import.requiredColumns")}:</p>
-              <ul className="list-disc list-inside ml-2"><li>full_name / name / naam</li><li>email / e-mail</li></ul>
+              <ul className="list-disc list-inside ml-2"><li>{t("players.import.preferredColumns")}</li></ul>
+              <p className="font-medium mt-2">{t("players.import.legacyColumns")}:</p>
+              <ul className="list-disc list-inside ml-2"><li>{t("players.import.legacyNameColumn")}</li></ul>
               <p className="font-medium mt-2">{t("players.import.optionalColumns")}:</p>
               <ul className="list-disc list-inside ml-2"><li>phone / telefoon</li><li>skill_rating / rating / niveau (1-10)</li><li>notes / notitie / opmerking</li></ul>
             </div>
@@ -293,14 +309,21 @@ export function ImportPlayersTab({
             <ScrollArea className="max-h-[400px] border rounded-lg">
               <TooltipProvider>
                 <Table>
-                  <TableHeader><TableRow><TableHead className="w-[40px]"></TableHead><TableHead>{t("players.name")}</TableHead><TableHead>{t("players.email")}</TableHead><TableHead>{t("players.phone")}</TableHead><TableHead>{t("players.skillRating")}</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead className="w-[40px]"></TableHead><TableHead>{t("players.firstName")}</TableHead><TableHead>{t("players.lastName")}</TableHead><TableHead>{t("players.email")}</TableHead><TableHead>{t("players.phone")}</TableHead><TableHead>{t("players.skillRating")}</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {parsedPlayers.map((player, index) => (
                       <TableRow key={index} className={!player.isValid ? "bg-destructive/5" : ""}>
                         <TableCell>{player.isValid ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertTriangle className="h-4 w-4 text-destructive" />}</TableCell>
                         <TableCell>
-                          <div><span className="font-medium">{player.full_name || "—"}</span>
-                          {player.errors.length > 0 && <div className="text-xs text-destructive">{player.errors.join(", ")}</div>}</div>
+                          <div>
+                            <span className="font-medium">{player.first_name || "—"}</span>
+                            {player.errors.length > 0 && (
+                              <div className="text-xs text-destructive">{player.errors.join(", ")}</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium">{player.last_name || "—"}</span>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">

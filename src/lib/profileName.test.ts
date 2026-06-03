@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { buildFullName, getDisplayName, getFirstName } from './profileName';
+import {
+  buildFullName,
+  buildGuestPlayerDbFields,
+  getDisplayName,
+  getFirstName,
+  prefillGuestNameFields,
+  resolveGuestNameForInvoice,
+  resolveRegistrationNameFields,
+  prefillProfileNameFields,
+  splitFullName,
+} from './profileName';
 
 describe('buildFullName', () => {
   it('joins first and last with trimming', () => {
@@ -50,6 +60,72 @@ describe('getDisplayName', () => {
 
   it('trims whitespace on structured fields', () => {
     expect(getDisplayName({ first_name: '  Tom  ', last_name: '  Lee  ' })).toBe('Tom Lee');
+  });
+});
+
+describe('splitFullName', () => {
+  it('splits multi-word names', () => {
+    expect(splitFullName('Jan van der Meer')).toEqual({
+      first_name: 'Jan',
+      last_name: 'van der Meer',
+    });
+  });
+
+  it('returns single token as first_name only', () => {
+    expect(splitFullName('Madonna')).toEqual({ first_name: 'Madonna', last_name: '' });
+  });
+});
+
+describe('buildGuestPlayerDbFields', () => {
+  it('writes all three fields on submit', () => {
+    expect(buildGuestPlayerDbFields('Jan', 'Jansen')).toEqual({
+      first_name: 'Jan',
+      last_name: 'Jansen',
+      full_name: 'Jan Jansen',
+    });
+  });
+
+  it('allows last name only via full_name', () => {
+    expect(buildGuestPlayerDbFields('', 'Jansen')).toEqual({
+      first_name: null,
+      last_name: 'Jansen',
+      full_name: 'Jansen',
+    });
+  });
+});
+
+describe('prefillGuestNameFields', () => {
+  it('uses structured fields when present', () => {
+    expect(
+      prefillGuestNameFields({
+        first_name: 'Jan',
+        last_name: 'Meer',
+        full_name: 'Legacy',
+      }),
+    ).toEqual({ first_name: 'Jan', last_name: 'Meer' });
+  });
+
+  it('splits full_name when structured fields missing', () => {
+    expect(prefillGuestNameFields({ full_name: 'Jane Player' })).toEqual({
+      first_name: 'Jane',
+      last_name: 'Player',
+    });
+  });
+});
+
+describe('resolveGuestNameForInvoice', () => {
+  it('prefers structured guest names', () => {
+    expect(
+      resolveGuestNameForInvoice({
+        first_name: 'Jan',
+        last_name: 'Jansen',
+        full_name: 'Wrong Legacy',
+      }),
+    ).toBe('Jan Jansen');
+  });
+
+  it('falls back to full_name for legacy guests', () => {
+    expect(resolveGuestNameForInvoice({ full_name: 'Legacy Guest' })).toBe('Legacy Guest');
   });
 });
 

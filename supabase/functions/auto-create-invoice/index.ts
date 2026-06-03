@@ -4,6 +4,7 @@ import {
   isInvoiceBusinessProfileComplete,
   resolveAutoCreateBusinessGate,
 } from "../_shared/invoice-business.ts";
+import { resolveGuestNameForInvoice } from "../_shared/profileName.ts";
 
 const corsHeaders = sharedCors;
 
@@ -240,11 +241,12 @@ serve(async (req) => {
     } else if (guestPlayerId) {
       const { data: guestPlayer } = await supabase
         .from("guest_players")
-        .select("full_name, email, billing_business_name, billing_address, billing_btw_number")
+        .select("first_name, last_name, full_name, email, billing_business_name, billing_address, billing_btw_number")
         .eq("id", guestPlayerId)
         .single();
-      if (guestPlayer?.full_name) {
-        playerName = guestPlayer.full_name;
+      const resolved = guestPlayer ? resolveGuestNameForInvoice(guestPlayer) : "";
+      if (resolved) {
+        playerName = resolved;
       }
       playerBusinessName = (guestPlayer as any)?.billing_business_name || null;
       playerAddress = (guestPlayer as any)?.billing_address || null;

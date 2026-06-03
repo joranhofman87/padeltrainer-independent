@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from '@/lib/logger';
+import { buildGuestPlayerDbFields } from "@/lib/profileName";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,7 +40,8 @@ export function AddPlayerForm({
   const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
@@ -73,7 +75,8 @@ export function AddPlayerForm({
   const currentRatingSystem = ratingSystems.find(s => s.code === ratingSystem);
 
   const resetForm = () => {
-    setFullName("");
+    setFirstName("");
+    setLastName("");
     setEmail("");
     setPhone("");
     setRatingSystem("knltb");
@@ -127,6 +130,16 @@ export function AddPlayerForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const nameFields = buildGuestPlayerDbFields(firstName, lastName);
+    if (!nameFields.full_name) {
+      toast({
+        title: t("common:error"),
+        description: t("players.firstName") + " *",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -135,7 +148,7 @@ export function AddPlayerForm({
         .insert({
           trainer_id: trainerId || null,
           academy_profile_id: academyId || null,
-          full_name: fullName.trim(),
+          ...nameFields,
           email: email.trim().toLowerCase() || null,
           phone: phone.trim() || null,
           skill_rating: skillRating ? parseFloat(skillRating) : null,
@@ -158,7 +171,7 @@ export function AddPlayerForm({
         throw error;
       }
 
-      setLastCreatedName(fullName.trim());
+      setLastCreatedName(nameFields.full_name);
       setShowSuccess(true);
       resetForm();
       onPlayerCreated?.(data as GuestPlayer);
@@ -200,15 +213,30 @@ export function AddPlayerForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="fullName">{t("players.fullName")} *</Label>
-        <Input
-          id="fullName"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          placeholder={t("players.fullNamePlaceholder")}
-          required
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="guest-firstName">{t("players.firstName")} *</Label>
+          <Input
+            id="guest-firstName"
+            name="firstName"
+            autoComplete="given-name"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder={t("players.firstNamePlaceholder")}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="guest-lastName">{t("players.lastName")}</Label>
+          <Input
+            id="guest-lastName"
+            name="lastName"
+            autoComplete="family-name"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder={t("players.lastNamePlaceholder")}
+          />
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -326,4 +354,31 @@ export function AddPlayerForm({
       </div>
     </form>
   );
+}
+
+/** Build guest_players insert payload (exported for tests). */
+export function buildAddPlayerInsertPayload(args: {
+  firstName: string;
+  lastName: string;
+  trainerId?: string;
+  academyId?: string;
+  email?: string;
+  phone?: string;
+  skillRating?: string;
+  ratingSystem?: string;
+  notes?: string;
+  linkedProfileId?: string | null;
+}) {
+  const nameFields = buildGuestPlayerDbFields(args.firstName, args.lastName);
+  return {
+    trainer_id: args.trainerId || null,
+    academy_profile_id: args.academyId || null,
+    ...nameFields,
+    email: args.email?.trim().toLowerCase() || null,
+    phone: args.phone?.trim() || null,
+    skill_rating: args.skillRating ? parseFloat(args.skillRating) : null,
+    rating_system: args.ratingSystem ?? "knltb",
+    notes: args.notes?.trim() || null,
+    linked_profile_id: args.linkedProfileId || null,
+  };
 }

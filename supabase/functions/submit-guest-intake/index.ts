@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,8 +18,11 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+    const body = await req.json();
     const {
       email,
+      firstName,
+      lastName,
       fullName,
       phone,
       birthDate,
@@ -36,9 +40,15 @@ Deno.serve(async (req) => {
       consentGiven,
       language,
       metadata,
-    } = await req.json();
+    } = body;
 
-    if (!email || !fullName || !cycleId) {
+    const nameFields = resolveRegistrationNameFields({
+      firstName,
+      lastName,
+      fullName,
+    });
+
+    if (!email || !cycleId || !nameFields.full_name) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -104,7 +114,9 @@ Deno.serve(async (req) => {
         .single();
 
       const guestData: Record<string, unknown> = {
-        full_name: fullName,
+        first_name: nameFields.first_name,
+        last_name: nameFields.last_name,
+        full_name: nameFields.full_name,
         email: email.toLowerCase(),
         phone: phone || null,
         skill_rating: rating || null,
@@ -156,7 +168,9 @@ Deno.serve(async (req) => {
         await adminClient
           .from("guest_players")
           .update({
-            full_name: fullName,
+            first_name: nameFields.first_name,
+            last_name: nameFields.last_name,
+            full_name: nameFields.full_name,
             phone: phone || null,
             skill_rating: rating || null,
             rating_system: ratingSystem || "knltb",
@@ -214,7 +228,7 @@ Deno.serve(async (req) => {
         cycle_id: cycleId,
         player_id: playerId,
         guest_player_id: guestPlayerId,
-        full_name: fullName,
+        full_name: nameFields.full_name,
         email,
         phone: phone || null,
         birth_date: birthDate || null,
@@ -381,7 +395,7 @@ Deno.serve(async (req) => {
             to: email,
             language: language || 'en',
             data: {
-              playerName: fullName,
+              playerName: nameFields.full_name,
               cycleName: cycleData.name,
               ownerName,
               confirmationText,
@@ -475,7 +489,7 @@ Deno.serve(async (req) => {
                 to,
                 language: 'en',
                 data: {
-                  playerName: fullName,
+                  playerName: nameFields.full_name,
                   playerEmail: email,
                   playerPhone: phone || undefined,
                   playerRating: rating || undefined,
@@ -511,7 +525,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           event: "new_registration",
           data: {
-            name: fullName,
+            name: nameFields.full_name,
             email,
             cycle: cycleData?.name || cycleId,
             flow: "guest",

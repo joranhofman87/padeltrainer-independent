@@ -379,6 +379,8 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
                   playerId={profile.id}
                   playerUserId={user.id}
                   playerName={profile.full_name || ''}
+                  playerFirstName={profile.first_name}
+                  playerLastName={profile.last_name}
                   playerEmail={user.email || ''}
                   playerPhone={profile.phone || ''}
                   playerRating={profile.skill_rating ?? undefined}

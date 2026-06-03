@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { GuestPlayer } from "./AddPlayerDialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { csvHasGuestNameColumn, guestNameFieldsFromCsvRow } from "@/lib/guestPlayerCsvName";
 
 interface ImportPlayersDialogProps {
   open: boolean;
@@ -45,6 +46,8 @@ interface ImportPlayersDialogProps {
 
 interface ParsedPlayer {
   full_name: string;
+  first_name: string | null;
+  last_name: string | null;
   email: string;
   phone: string;
   skill_rating: number | null;
@@ -121,9 +124,6 @@ export function ImportPlayersDialog({
     const headerLine = lines[0].toLowerCase();
     const headers = parseCSVLine(headerLine);
     
-    const nameIndex = headers.findIndex(h => 
-      h.includes("name") || h.includes("naam")
-    );
     const emailIndex = headers.findIndex(h => 
       h.includes("email") || h.includes("e-mail")
     );
@@ -137,7 +137,7 @@ export function ImportPlayersDialog({
       h.includes("note") || h.includes("opmerking") || h.includes("notitie")
     );
 
-    if (nameIndex === -1 || emailIndex === -1) {
+    if (!csvHasGuestNameColumn(headers) || emailIndex === -1) {
       toast({
         title: t("players.import.invalidFile"),
         description: t("players.import.missingColumns"),
@@ -152,14 +152,14 @@ export function ImportPlayersDialog({
       const values = parseCSVLine(lines[i]);
       const errors: string[] = [];
 
-      const fullName = values[nameIndex]?.trim() || "";
+      const { fields: nameFields, missingName } = guestNameFieldsFromCsvRow(headers, values);
       const email = values[emailIndex]?.trim() || "";
       const phone = phoneIndex !== -1 ? values[phoneIndex]?.trim() || "" : "";
       const skillRaw = skillIndex !== -1 ? values[skillIndex]?.trim() : null;
       const notes = notesIndex !== -1 ? values[notesIndex]?.trim() || null : null;
 
       // Validation
-      if (!fullName) {
+      if (missingName) {
         errors.push(t("players.import.errors.nameMissing"));
       }
       if (!email) {
@@ -179,7 +179,9 @@ export function ImportPlayersDialog({
       }
 
       players.push({
-        full_name: fullName,
+        full_name: nameFields.full_name,
+        first_name: nameFields.first_name,
+        last_name: nameFields.last_name,
         email,
         phone,
         skill_rating: skillRating,
@@ -297,6 +299,8 @@ export function ImportPlayersDialog({
           .insert({
             trainer_id: trainerId || null,
             academy_profile_id: academyId || null,
+            first_name: player.first_name,
+            last_name: player.last_name,
             full_name: player.full_name,
             email: player.email.toLowerCase(),
             phone: player.phone,
@@ -333,8 +337,8 @@ export function ImportPlayersDialog({
   };
 
   const downloadTemplate = () => {
-    const template = `full_name,email,phone,skill_rating,notes
-Jan Jansen,jan@example.com,+31612345678,7.5,Beginner player
+    const template = `first_name,last_name,email,phone,skill_rating,notes
+Jan,Jansen,jan@example.com,+31612345678,7.5,Beginner player
 Maria de Vries,maria@example.com,+31687654321,5.0,
 Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
     
@@ -419,8 +423,11 @@ Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
             <div className="text-xs text-muted-foreground space-y-1">
               <p className="font-medium">{t("players.import.requiredColumns")}:</p>
               <ul className="list-disc list-inside ml-2">
-                <li>full_name / name / naam</li>
-                <li>email / e-mail</li>
+                <li>{t("players.import.preferredColumns")}</li>
+              </ul>
+              <p className="font-medium mt-2">{t("players.import.legacyColumns")}:</p>
+              <ul className="list-disc list-inside ml-2">
+                <li>{t("players.import.legacyNameColumn")}</li>
               </ul>
               <p className="font-medium mt-2">{t("players.import.optionalColumns")}:</p>
               <ul className="list-disc list-inside ml-2">
@@ -455,7 +462,8 @@ Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[40px]"></TableHead>
-                      <TableHead>{t("players.name")}</TableHead>
+                      <TableHead>{t("players.firstName")}</TableHead>
+                      <TableHead>{t("players.lastName")}</TableHead>
                       <TableHead>{t("players.email")}</TableHead>
                       <TableHead>{t("players.phone")}</TableHead>
                       <TableHead>{t("players.skillRating")}</TableHead>
@@ -472,8 +480,13 @@ Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
                           )}
                         </TableCell>
                         <TableCell>
+                          <span className="font-medium">{player.first_name || "—"}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium">{player.last_name || "—"}</span>
+                        </TableCell>
+                        <TableCell>
                           <div>
-                            <span className="font-medium">{player.full_name || "—"}</span>
                             {player.errors.length > 0 && (
                               <div className="text-xs text-destructive">
                                 {player.errors.join(", ")}

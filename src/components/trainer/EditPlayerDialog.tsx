@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
+import { buildGuestPlayerDbFields, prefillGuestNameFields } from "@/lib/profileName";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +37,8 @@ export function EditPlayerDialog({
   const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [fullName, setFullName] = useState(player.full_name);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState(player.email || "");
   const [phone, setPhone] = useState(player.phone || "");
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
@@ -47,7 +49,6 @@ export function EditPlayerDialog({
   const [notes, setNotes] = useState(player.notes || "");
   const [loadingRatingSystems, setLoadingRatingSystems] = useState(true);
 
-  // Fetch rating systems on mount
   useEffect(() => {
     async function fetchRatingSystems() {
       setLoadingRatingSystems(true);
@@ -63,9 +64,10 @@ export function EditPlayerDialog({
     fetchRatingSystems();
   }, []);
 
-  // Reset form when player changes
   useEffect(() => {
-    setFullName(player.full_name);
+    const prefilled = prefillGuestNameFields(player);
+    setFirstName(prefilled.first_name);
+    setLastName(prefilled.last_name);
     setEmail(player.email || "");
     setPhone(player.phone || "");
     setRatingSystem(player.rating_system || "knltb");
@@ -77,13 +79,23 @@ export function EditPlayerDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const nameFields = buildGuestPlayerDbFields(firstName, lastName);
+    if (!nameFields.full_name) {
+      toast({
+        title: t("common:error"),
+        description: t("players.firstName") + " *",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const { data, error } = await supabase
         .from("guest_players")
         .update({
-          full_name: fullName.trim(),
+          ...nameFields,
           email: email.trim().toLowerCase() || null,
           phone: phone.trim() || null,
           skill_rating: skillRating ? parseFloat(skillRating) : null,
@@ -115,7 +127,6 @@ export function EditPlayerDialog({
     }
   };
 
-  // Group rating systems by country
   const groupedSystems = ratingSystems.reduce((acc, system) => {
     const country = system.country;
     if (!acc[country]) acc[country] = [];
@@ -134,15 +145,30 @@ export function EditPlayerDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-fullName">{t("players.fullName")} *</Label>
-            <Input
-              id="edit-fullName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder={t("players.fullNamePlaceholder")}
-              required
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-firstName">{t("players.firstName")} *</Label>
+              <Input
+                id="edit-firstName"
+                name="firstName"
+                autoComplete="given-name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder={t("players.firstNamePlaceholder")}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-lastName">{t("players.lastName")}</Label>
+              <Input
+                id="edit-lastName"
+                name="lastName"
+                autoComplete="family-name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder={t("players.lastNamePlaceholder")}
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -247,4 +273,9 @@ export function EditPlayerDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Build guest_players update payload (exported for tests). */
+export function buildEditPlayerUpdatePayload(firstName: string, lastName: string) {
+  return buildGuestPlayerDbFields(firstName, lastName);
 }

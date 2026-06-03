@@ -20,6 +20,8 @@ export interface GuestPlayer {
   id: string;
   trainer_id: string | null;
   academy_profile_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
   full_name: string;
   email: string;
   phone: string;

@@ -3,12 +3,14 @@ import { logger } from "@/lib/logger";
 
 /** Columns for calendar/agenda guest player lists (must match DB schema). */
 export const GUEST_PLAYER_CALENDAR_SELECT =
-  "id, full_name, skill_rating, rating_system, linked_profile_id";
+  "id, first_name, last_name, full_name, skill_rating, rating_system, linked_profile_id";
 
 export interface GuestPlayerRow {
   id: string;
   trainer_id: string | null;
   academy_profile_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
   full_name: string;
   email: string | null;
   phone: string | null;

@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { buildGuestPlayerDbFields } from '@/lib/profileName';
 import {
   Dialog,
   DialogContent,
@@ -47,7 +48,8 @@ interface AddIntakeRequestDialogProps {
 
 const formSchema = z.object({
   cycle_id: z.string().min(1, 'Please select a cycle'),
-  full_name: z.string().trim().min(1, 'Name is required').max(100),
+  first_name: z.string().trim().min(1, 'First name is required').max(50),
+  last_name: z.string().trim().max(50).optional().default(''),
   email: z.string().trim().email('Invalid email').max(255),
   phone: z.string().optional(),
   rating_system: z.string().default('knltb'),
@@ -95,7 +97,8 @@ export default function AddIntakeRequestDialog({
     resolver: zodResolver(formSchema),
     defaultValues: {
       cycle_id: cycleId || '',
-      full_name: '',
+      first_name: '',
+      last_name: '',
       email: '',
       phone: '',
       rating_system: 'knltb',
@@ -240,7 +243,9 @@ export default function AddIntakeRequestDialog({
         {
           body: {
             email: data.email,
-            fullName: data.full_name,
+            firstName: data.first_name,
+            lastName: data.last_name,
+            fullName: buildGuestPlayerDbFields(data.first_name, data.last_name).full_name,
             phone: data.phone,
             ratingSystem: data.rating_system,
             rating: data.rating,
@@ -264,7 +269,7 @@ export default function AddIntakeRequestDialog({
         cycle_id: data.cycle_id,
         player_id: playerData.profileId || null,
         guest_player_id: playerData.guestPlayerId || null,
-        full_name: data.full_name,
+        full_name: buildGuestPlayerDbFields(data.first_name, data.last_name).full_name,
         email: data.email,
         phone: data.phone || undefined,
         rating_system: data.rating_system,
@@ -351,18 +356,33 @@ export default function AddIntakeRequestDialog({
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="full_name"
+                  name="first_name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('application.form.name')}</FormLabel>
+                      <FormLabel>{t('application.form.firstName')}</FormLabel>
                       <FormControl>
-                        <Input {...field} />
+                        <Input {...field} autoComplete="given-name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="last_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('application.form.lastName')}</FormLabel>
+                      <FormControl>
+                        <Input {...field} autoComplete="family-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
+              <div className="grid gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="email"

@@ -156,6 +156,23 @@ describe('CycleApplicationForm', () => {
     expect(screen.getByDisplayValue('Player')).toBeInTheDocument();
   });
 
+  it('prefills structured profile names over legacy full_name', () => {
+    render(
+      <CycleApplicationForm
+        cycle={baseCycle as any}
+        playerId="player-1"
+        playerUserId="user-1"
+        playerName="Wrong Legacy"
+        playerFirstName="Alex"
+        playerLastName="Morgan"
+        playerEmail="alex@test.com"
+      />
+    );
+    expect(screen.getByDisplayValue('Alex')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Morgan')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Wrong Legacy')).not.toBeInTheDocument();
+  });
+
   it('renders first and last name fields side by side on larger viewports', () => {
     renderForm();
     const firstInput = screen.getByDisplayValue('Jane');
