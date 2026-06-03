@@ -31,6 +31,7 @@ import {
 import {
   LayoutDashboard,
   Calendar,
+  FileText,
   Users,
   User,
   Bell,
@@ -176,6 +177,21 @@ export function PlayerSidebar() {
                   >
                     <Calendar className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.bookings")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Invoices */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.invoices", "Invoices")}>
+                  <NavLink
+                    to="/app/player/invoices"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    data-testid="nav-player-invoices"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.invoices", "Invoices")}</span>}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

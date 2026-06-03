@@ -8,7 +8,13 @@
     "editProfile": "Profiel bewerken",
     "notifications": "Meldingen",
     "calendarSync": "Kalender sync",
-    "playground": "Speeltuin"
+    "playground": "Speeltuin",
+    "profile": "Mijn profiel",
+    "invoices": "Facturen"
+  },
+  "invoices": {
+    "title": "Facturen",
+    "description": "Bekijk en download facturen voor je trainingen."
   },
   "settings": {
     "title": "Instellingen",

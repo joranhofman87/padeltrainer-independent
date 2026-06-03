@@ -9,7 +9,12 @@
     "notifications": "Notifications",
     "calendarSync": "Calendar Sync",
     "playground": "Playground",
-    "profile": "My Profile"
+    "profile": "My Profile",
+    "invoices": "Invoices"
+  },
+  "invoices": {
+    "title": "Invoices",
+    "description": "View and download invoices for your training sessions."
   },
   "settings": {
     "title": "Settings",
