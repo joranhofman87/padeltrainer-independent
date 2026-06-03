@@ -14,24 +14,21 @@ import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
 import { PasswordInput } from '@/components/auth/PasswordInput';
+import { SignupNameFields } from '@/components/auth/SignupNameFields';
 import { SignupPageShell } from '@/components/auth/SignupPageShell';
+import { createSignupSchema, splitPrefillFullName } from '@/lib/signupSchema';
 import { trackEvent } from '@/lib/tracking';
 import { getUtmParams } from '@/lib/utm';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 
-const signupSchema = z.object({
-  fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
-  email: z.string().trim().email('Please enter a valid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-});
-
 export default function PlayerSignup() {
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [showVerification, setShowVerification] = useState(false);
   const { toast } = useToast();
@@ -46,7 +43,11 @@ export default function PlayerSignup() {
     const prefillEmail = searchParams.get('email');
     const prefillName = searchParams.get('name');
     if (prefillEmail && !email) setEmail(prefillEmail);
-    if (prefillName && !fullName) setFullName(prefillName);
+    if (prefillName && !firstName && !lastName) {
+      const split = splitPrefillFullName(prefillName);
+      setFirstName(split.firstName);
+      setLastName(split.lastName);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -59,7 +60,7 @@ export default function PlayerSignup() {
 
   const validateForm = () => {
     try {
-      signupSchema.parse({ fullName, email, password });
+      createSignupSchema(t).parse({ firstName, lastName, email, password });
       setErrors({});
       return true;
     } catch (error) {
@@ -86,7 +87,7 @@ export default function PlayerSignup() {
     setIsLoading(true);
 
     try {
-      const { data, error } = await signUpWithEmail(email, password, fullName, undefined, undefined, 'player');
+      const { data, error } = await signUpWithEmail(email, password, firstName, lastName, undefined, undefined, 'player');
 
       if (error) {
         logger.error('Player signup failed', error, { component: 'PlayerSignup', action: 'signUp' });
@@ -230,22 +231,16 @@ export default function PlayerSignup() {
             <div style={{ position: 'absolute', left: '-9999px' }} aria-hidden="true">
               <input type="text" name="website" tabIndex={-1} autoComplete="off" ref={honeypotRef} />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="signup-name">{t('form.fullName')}</Label>
-              <Input
-                id="signup-name"
-                type="text"
-                placeholder={t('form.fullNamePlaceholder')}
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className={errors.fullName ? 'border-destructive' : ''}
-                required
-                data-testid="input-signup-name"
-              />
-              {errors.fullName && (
-                <p className="text-sm text-destructive">{errors.fullName}</p>
-              )}
-            </div>
+            <SignupNameFields
+              firstName={firstName}
+              lastName={lastName}
+              onFirstNameChange={setFirstName}
+              onLastNameChange={setLastName}
+              errors={{
+                firstName: errors.firstName,
+                lastName: errors.lastName,
+              }}
+            />
             <div className="space-y-2">
               <Label htmlFor="signup-email">{t('form.email')}</Label>
               <Input

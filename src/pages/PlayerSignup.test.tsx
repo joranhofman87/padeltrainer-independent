@@ -48,6 +48,13 @@ describe('PlayerSignup', () => {
     vi.clearAllMocks();
   });
 
+  it('renders first and last name fields', () => {
+    renderPage();
+    expect(screen.getByTestId('input-signup-firstName')).toBeInTheDocument();
+    expect(screen.getByTestId('input-signup-lastName')).toBeInTheDocument();
+    expect(screen.getByTestId('form-signup-player')).toBeInTheDocument();
+  });
+
   it('renders role tabs with player active', () => {
     renderPage();
     expect(screen.getByTestId('signup-tab-player')).toHaveAttribute('aria-selected', 'true');

@@ -39,6 +39,7 @@ vi.mock('@/lib/logger', () => ({
 import TrainerSignup from './TrainerSignup';
 import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { buildSignupRolePath } from '@/components/auth/SignupRoleTabs';
+import { createSignupSchema } from '@/lib/signupSchema';
 
 const renderPage = (initialEntry = '/app/signup/trainer') =>
   render(
@@ -74,7 +75,8 @@ describe('TrainerSignup', () => {
   it('renders the signup form with all fields', () => {
     renderPage();
     expect(screen.getByTestId('form-signup-trainer')).toBeInTheDocument();
-    expect(screen.getByTestId('input-signup-fullName')).toBeInTheDocument();
+    expect(screen.getByTestId('input-signup-firstName')).toBeInTheDocument();
+    expect(screen.getByTestId('input-signup-lastName')).toBeInTheDocument();
     expect(screen.getByTestId('input-signup-email')).toBeInTheDocument();
     expect(screen.getByTestId('input-signup-password')).toBeInTheDocument();
     expect(screen.getByTestId('btn-signup-submit')).toBeInTheDocument();
@@ -131,26 +133,42 @@ describe('TrainerSignup', () => {
     expect(passwordInput).toHaveAttribute('type', 'password');
   });
 
-  it('validates name - too short', async () => {
+  it('validates first name - too short', async () => {
     renderPage();
-    fireEvent.change(screen.getByTestId('input-signup-fullName'), { target: { value: 'A' } });
+    fireEvent.change(screen.getByTestId('input-signup-firstName'), { target: { value: 'A' } });
+    fireEvent.change(screen.getByTestId('input-signup-lastName'), { target: { value: 'Doe' } });
     fireEvent.change(screen.getByTestId('input-signup-email'), { target: { value: 'test@test.com' } });
     fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: 'password123' } });
     fireEvent.click(screen.getByTestId('btn-signup-submit'));
 
     await waitFor(() => {
-      expect(screen.getByText('Name must be at least 2 characters')).toBeInTheDocument();
+      expect(screen.getByText('validation.firstNameRequired')).toBeInTheDocument();
+    });
+    expect(signUpWithEmail).not.toHaveBeenCalled();
+  });
+
+  it('validates last name - too short', async () => {
+    renderPage();
+    fireEvent.change(screen.getByTestId('input-signup-firstName'), { target: { value: 'John' } });
+    fireEvent.change(screen.getByTestId('input-signup-lastName'), { target: { value: 'D' } });
+    fireEvent.change(screen.getByTestId('input-signup-email'), { target: { value: 'test@test.com' } });
+    fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByTestId('btn-signup-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByText('validation.lastNameRequired')).toBeInTheDocument();
     });
     expect(signUpWithEmail).not.toHaveBeenCalled();
   });
 
   it('validates email format via zod schema', () => {
-    const schema = z.object({
-      fullName: z.string().trim().min(2),
-      email: z.string().trim().email('Please enter a valid email address'),
-      password: z.string().min(8),
+    const schema = createSignupSchema((key: string) => key);
+    const result = schema.safeParse({
+      firstName: 'John',
+      lastName: 'Doe',
+      email: 'not-an-email',
+      password: 'password123',
     });
-    const result = schema.safeParse({ fullName: 'John', email: 'not-an-email', password: 'password123' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.errors[0].message).toBe('Please enter a valid email address');
@@ -159,7 +177,8 @@ describe('TrainerSignup', () => {
 
   it('validates password length', async () => {
     renderPage();
-    fireEvent.change(screen.getByTestId('input-signup-fullName'), { target: { value: 'John Doe' } });
+    fireEvent.change(screen.getByTestId('input-signup-firstName'), { target: { value: 'John' } });
+    fireEvent.change(screen.getByTestId('input-signup-lastName'), { target: { value: 'Doe' } });
     fireEvent.change(screen.getByTestId('input-signup-email'), { target: { value: 'john@test.com' } });
     fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: '123' } });
     fireEvent.click(screen.getByTestId('btn-signup-submit'));
@@ -177,7 +196,8 @@ describe('TrainerSignup', () => {
     });
 
     renderPage();
-    fireEvent.change(screen.getByTestId('input-signup-fullName'), { target: { value: 'John Doe' } });
+    fireEvent.change(screen.getByTestId('input-signup-firstName'), { target: { value: 'John' } });
+    fireEvent.change(screen.getByTestId('input-signup-lastName'), { target: { value: 'Doe' } });
     fireEvent.change(screen.getByTestId('input-signup-email'), { target: { value: 'john@test.com' } });
     fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: 'password123' } });
     fireEvent.click(screen.getByTestId('btn-signup-submit'));
@@ -186,7 +206,8 @@ describe('TrainerSignup', () => {
       expect(signUpWithEmail).toHaveBeenCalledWith(
         'john@test.com',
         'password123',
-        'John Doe',
+        'John',
+        'Doe',
         undefined,
         'en',
         'trainer',

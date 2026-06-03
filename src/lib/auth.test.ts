@@ -67,12 +67,18 @@ describe('Auth module', () => {
       const result = await signUpWithEmail(
         'test@example.com',
         'password123',
-        'John Doe',
-        '+31612345678'
+        'John',
+        'Doe',
+        '+31612345678',
       );
 
       expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
-        body: expect.objectContaining({ email: 'test@example.com' }),
+        body: expect.objectContaining({
+          email: 'test@example.com',
+          firstName: 'John',
+          lastName: 'Doe',
+          fullName: 'John Doe',
+        }),
       }));
       expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
         email: 'test@example.com',
@@ -89,9 +95,32 @@ describe('Auth module', () => {
         error: { message: 'Signup failed' },
       });
 
-      const result = await signUpWithEmail('test@example.com', 'password123', 'John Doe');
+      const result = await signUpWithEmail('test@example.com', 'password123', 'John', 'Doe');
 
       expect(result.error).toBeTruthy();
+    });
+
+    it('supports legacy fullName-only callers', async () => {
+      const mockUser = { id: 'user-123', email: 'test@example.com' };
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: { user: mockUser },
+        error: null,
+      });
+      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
+        data: { user: mockUser, session: { access_token: 'tok' } },
+        error: null,
+      });
+
+      await signUpWithEmail('test@example.com', 'password123', 'John Doe', undefined, undefined, 'player');
+
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
+        body: expect.objectContaining({
+          firstName: 'John',
+          lastName: 'Doe',
+          fullName: 'John Doe',
+          role: 'player',
+        }),
+      }));
     });
 
     it('does not fail if no phone provided', async () => {
@@ -105,7 +134,7 @@ describe('Auth module', () => {
         error: null,
       });
 
-      const result = await signUpWithEmail('test@example.com', 'password123', 'John Doe');
+      const result = await signUpWithEmail('test@example.com', 'password123', 'John', 'Doe');
 
       expect(supabase.functions.invoke).toHaveBeenCalled();
       expect(result.data.user).toEqual(mockUser);
@@ -138,7 +167,10 @@ describe('Auth module', () => {
 
       const result = await signInWithEmail('test@example.com', 'wrongpass');
 
-      expect(result.error).toEqual(mockError);
+      expect(result.error).toMatchObject({
+        message: mockError.message,
+        name: 'AuthError',
+      });
     });
   });
 
@@ -271,14 +303,16 @@ describe('Auth module', () => {
       const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
       
       const mockTrainerInsert = vi.fn().mockResolvedValue({ error: null });
-      
-      let callCount = 0;
+      const mockTrainerMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+      const mockTrainerEq = vi.fn().mockReturnValue({ maybeSingle: mockTrainerMaybeSingle });
+      const mockTrainerSelect = vi.fn().mockReturnValue({ eq: mockTrainerEq });
+
       (supabase.from as Mock).mockImplementation((table: string) => {
         if (table === 'user_roles') {
           return { insert: mockInsert };
         }
         if (table === 'trainer_profiles') {
-          return { insert: mockTrainerInsert };
+          return { select: mockTrainerSelect, insert: mockTrainerInsert };
         }
         return {};
       });
@@ -327,7 +361,7 @@ describe('Auth module', () => {
 
       const result = await getProfile('user-123');
 
-      expect(supabase.from).toHaveBeenCalledWith('profiles');
+      expect(supabase.from).toHaveBeenCalledWith('profiles_owner');
       expect(result?.data?.full_name).toBe('John Doe');
       expect(result?.failed).toBe(false);
     });

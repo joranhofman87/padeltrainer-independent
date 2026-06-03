@@ -15,9 +15,43 @@ const corsHeaders = {
 interface SignupRequest {
   email: string;
   password: string;
-  fullName: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
   phone?: string;
   redirectTo?: string;
+}
+
+function buildFullName(first?: string, last?: string): string {
+  return [first?.trim(), last?.trim()].filter(Boolean).join(" ");
+}
+
+function resolveProfileNames(input: {
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+}): { firstName: string; lastName: string | null; fullName: string } {
+  let firstName = input.firstName?.trim() ?? "";
+  let lastName = input.lastName?.trim() ?? "";
+  let fullName = input.fullName?.trim() ?? "";
+
+  if (firstName && lastName) {
+    fullName = fullName || buildFullName(firstName, lastName);
+  } else if (fullName) {
+    const parts = fullName.split(/\s+/).filter(Boolean);
+    if (!firstName && parts[0]) firstName = parts[0];
+    if (!lastName && parts.length > 1) lastName = parts.slice(1).join(" ");
+  }
+
+  if (!fullName || !firstName) {
+    throw new Error("Missing required fields: email, password, and name (firstName/lastName or fullName)");
+  }
+
+  return {
+    firstName,
+    lastName: lastName || null,
+    fullName,
+  };
 }
 
 const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
@@ -156,11 +190,29 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const { email, password, fullName, phone, redirectTo, language, role: signupRole, timezone }: SignupRequest & { language?: string; role?: string; timezone?: string } = await req.json();
+    const {
+      email,
+      password,
+      fullName: fullNameInput,
+      firstName: firstNameInput,
+      lastName: lastNameInput,
+      phone,
+      redirectTo,
+      language,
+      role: signupRole,
+      timezone,
+    }: SignupRequest & { language?: string; role?: string; timezone?: string } = await req.json();
 
-    if (!email || !password || !fullName) {
-      throw new Error("Missing required fields: email, password, fullName");
+    if (!email || !password) {
+      throw new Error("Missing required fields: email, password");
     }
+
+    const profileNames = resolveProfileNames({
+      firstName: firstNameInput,
+      lastName: lastNameInput,
+      fullName: fullNameInput,
+    });
+    const { firstName, lastName, fullName } = profileNames;
 
     // Allowlist signup roles — never accept 'admin' or arbitrary enum values from the client
     const ALLOWED_SIGNUP_ROLES = ['player', 'trainer', 'club', 'academy'] as const;
@@ -188,6 +240,8 @@ const handler = async (req: Request): Promise<Response> => {
       password,
       email_confirm: true,
       user_metadata: {
+        first_name: firstName,
+        last_name: lastName,
         full_name: fullName,
         phone: phone,
       },
@@ -204,19 +258,18 @@ const handler = async (req: Request): Promise<Response> => {
     // Create Stripe customer and store ID
     const stripeCustomerId = await createStripeCustomer(email, fullName, user.id);
 
-    // Update profile with phone, language, timezone, and Stripe customer ID
-    const updates: Record<string, string> = {};
-    if (phone) updates.phone = phone;
-    if (language) updates.preferred_language = language;
-    if (timezone) updates.timezone = timezone;
-    if (stripeCustomerId) updates.stripe_customer_id = stripeCustomerId;
-    
-    if (Object.keys(updates).length > 0) {
-      await supabaseAdmin
-        .from('profiles')
-        .update(updates)
-        .eq('user_id', user.id);
-    }
+    // Ensure profiles has structured names + legacy full_name (trigger may only set full_name from metadata)
+    const profileUpdates: Record<string, string | null> = {
+      first_name: firstName,
+      last_name: lastName,
+      full_name: fullName,
+    };
+    if (phone) profileUpdates.phone = phone;
+    if (language) profileUpdates.preferred_language = language;
+    if (timezone) profileUpdates.timezone = timezone;
+    if (stripeCustomerId) profileUpdates.stripe_customer_id = stripeCustomerId;
+
+    await supabaseAdmin.from('profiles').update(profileUpdates).eq('user_id', user.id);
 
     // Assign role server-side if provided (closes the gap when frontend onboarding is skipped)
     if (signupRole) {
@@ -271,7 +324,7 @@ const handler = async (req: Request): Promise<Response> => {
     const skipImmediateWelcome = signupRole === "trainer";
 
     if (!skipImmediateWelcome) {
-      const emailContent = getEmailTemplate(fullName, actionLink);
+      const emailContent = getEmailTemplate(firstName, actionLink);
 
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",

@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthRedirectUrl } from "@/lib/domains";
 import { logger } from '@/lib/logger';
+import { buildFullName } from '@/lib/profileName';
 
 function normalizeAuthError(error: any, fallbackMessage: string) {
   const message = typeof error?.message === 'string' ? error.message.trim() : '';
@@ -55,19 +56,134 @@ export interface TrainerProfile {
   updated_at: string;
 }
 
-export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string, language?: string, role?: string, timezone?: string) {
+const SIGNUP_ROLES = new Set(['player', 'trainer', 'club', 'academy', 'Club']);
+
+function isSignupRole(value?: string): boolean {
+  return value !== undefined && SIGNUP_ROLES.has(value);
+}
+
+function looksLikePhone(value: string): boolean {
+  return /^\+?[\d\s()-]{8,}$/.test(value.trim());
+}
+
+/** True for signUpWithEmail(email, password, fullName, phone?, language?, role?, timezone?). */
+function isLegacySignUpArgs(lastNameOrPhone?: string, phoneOrLanguage?: string): boolean {
+  if (lastNameOrPhone === undefined) return true;
+  if (looksLikePhone(lastNameOrPhone)) return true;
+  if (isSignupRole(lastNameOrPhone)) return true;
+  if (isSignupRole(phoneOrLanguage)) return true;
+  return false;
+}
+
+function resolveSignUpNameArgs(
+  firstNameOrFullName: string,
+  lastNameOrPhone?: string,
+  phoneOrLanguage?: string,
+  languageOrRole?: string,
+  roleOrTimezone?: string,
+  timezone?: string,
+): {
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  phone?: string;
+  language?: string;
+  role?: string;
+  timezone?: string;
+} {
+  if (isLegacySignUpArgs(lastNameOrPhone, phoneOrLanguage)) {
+    const trimmed = firstNameOrFullName.trim();
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    const firstName = parts[0] ?? trimmed;
+    const lastName = parts.length > 1 ? parts.slice(1).join(' ') : firstName;
+
+    let phone: string | undefined;
+    let language: string | undefined;
+    let role: string | undefined;
+    let tz: string | undefined;
+
+    if (lastNameOrPhone === undefined) {
+      // (email, password, fullName, undefined, language?, role?, timezone?)
+      language = phoneOrLanguage;
+      role = languageOrRole;
+      tz = roleOrTimezone ?? timezone;
+    } else if (looksLikePhone(lastNameOrPhone)) {
+      phone = lastNameOrPhone;
+      language = phoneOrLanguage;
+      role = languageOrRole;
+      tz = roleOrTimezone ?? timezone;
+    } else if (isSignupRole(lastNameOrPhone)) {
+      role = lastNameOrPhone;
+      language = phoneOrLanguage;
+      tz = languageOrRole ?? timezone;
+    } else if (isSignupRole(phoneOrLanguage)) {
+      role = phoneOrLanguage;
+      language = lastNameOrPhone;
+      tz = languageOrRole ?? timezone;
+    } else {
+      language = lastNameOrPhone;
+      role = phoneOrLanguage;
+      tz = languageOrRole ?? timezone;
+    }
+
+    return {
+      firstName,
+      lastName,
+      fullName: trimmed,
+      phone,
+      language,
+      role,
+      timezone: tz ?? timezone,
+    };
+  }
+
+  const firstName = firstNameOrFullName.trim();
+  const lastName = (lastNameOrPhone ?? '').trim();
+  return {
+    firstName,
+    lastName,
+    fullName: buildFullName(firstName, lastName),
+    phone: phoneOrLanguage,
+    language: languageOrRole,
+    role: roleOrTimezone,
+    timezone,
+  };
+}
+
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  firstNameOrFullName: string,
+  lastNameOrPhone?: string,
+  phoneOrLanguage?: string,
+  languageOrRole?: string,
+  roleOrTimezone?: string,
+  timezone?: string,
+) {
+  const resolved = resolveSignUpNameArgs(
+    firstNameOrFullName,
+    lastNameOrPhone,
+    phoneOrLanguage,
+    languageOrRole,
+    roleOrTimezone,
+    timezone,
+  );
+
   // Use custom edge function to create user with Admin API
   // This bypasses Supabase's automatic email and sends our branded email instead
   try {
-    const detectedTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
+    const detectedTimezone =
+      resolved.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
     const { data: response, error: invokeError } = await supabase.functions.invoke('signup-user', {
       body: {
         email,
         password,
-        fullName,
-        phone,
-        language,
-        role,
+        firstName: resolved.firstName,
+        lastName: resolved.lastName,
+        fullName: resolved.fullName,
+        phone: resolved.phone,
+        language: resolved.language,
+        role: resolved.role,
         timezone: detectedTimezone,
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },
