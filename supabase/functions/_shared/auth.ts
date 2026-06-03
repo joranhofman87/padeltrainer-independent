@@ -89,3 +89,17 @@ export async function requireAdmin(req: Request): Promise<AuthedUser | Response>
   }
   return result;
 }
+
+/**
+ * Require service-role bearer (cron / server-to-server) or an admin JWT.
+ */
+export async function requireServiceRoleOrAdmin(req: Request): Promise<AuthedUser | Response> {
+  if (requireServiceRole(req) === null) {
+    return {
+      user: { id: "service-role" },
+      supabase: getServiceClient(),
+      isServiceRole: true,
+    };
+  }
+  return await requireAdmin(req);
+}

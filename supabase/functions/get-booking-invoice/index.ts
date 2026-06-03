@@ -1,13 +1,64 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { corsHeaders, requireUser } from "../_shared/auth.ts";
 
 const log = (step: string, details?: Record<string, unknown>) =>
   console.log(`[GET-BOOKING-INVOICE] ${step}`, details ? JSON.stringify(details) : "");
+
+type BookingRow = {
+  id: string;
+  payment_status: string;
+  player_id: string | null;
+  availability_slots: { trainer_id: string; academy_profile_id: string | null } | null;
+};
+
+async function canAccessBooking(
+  supabase: SupabaseClient,
+  userId: string,
+  booking: BookingRow,
+): Promise<boolean> {
+  const slot = booking.availability_slots;
+  if (!slot) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (profile?.id && booking.player_id === profile.id) {
+    return true;
+  }
+
+  const { data: trainerProfile } = await supabase
+    .from("trainer_profiles")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (trainerProfile?.id === slot.trainer_id) {
+    return true;
+  }
+
+  if (slot.academy_profile_id) {
+    const { data: manager } = await supabase
+      .from("academy_managers")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("academy_profile_id", slot.academy_profile_id)
+      .maybeSingle();
+    if (manager) return true;
+  }
+
+  const { data: adminRole } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .maybeSingle();
+
+  return !!adminRole;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -15,9 +66,10 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceKey);
+    const authResult = await requireUser(req);
+    if (authResult instanceof Response) return authResult;
+
+    const { supabase, user, isServiceRole } = authResult;
 
     const { bookingId } = await req.json();
     if (!bookingId || typeof bookingId !== "string") {
@@ -27,10 +79,9 @@ serve(async (req) => {
       });
     }
 
-    // Verify booking is paid
     const { data: booking, error: bookingErr } = await supabase
       .from("bookings")
-      .select("id, payment_status")
+      .select("id, payment_status, player_id, availability_slots(trainer_id, academy_profile_id)")
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -42,6 +93,16 @@ serve(async (req) => {
       });
     }
 
+    if (!isServiceRole) {
+      const allowed = await canAccessBooking(supabase, user.id, booking as BookingRow);
+      if (!allowed) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (booking.payment_status !== "paid") {
       return new Response(JSON.stringify({ error: "Booking not paid", ready: false }), {
         status: 403,
@@ -49,7 +110,6 @@ serve(async (req) => {
       });
     }
 
-    // Find the invoice linked to this booking (booking_ids is uuid[])
     const { data: invoices, error: invErr } = await supabase
       .from("invoices")
       .select("id, invoice_number, pdf_url, status")
@@ -74,7 +134,7 @@ serve(async (req) => {
       });
     }
 
-    // Always regenerate to get a fresh signed URL (existing pdf_url may be expired)
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const { data: genData, error: genErr } = await supabase.functions.invoke("generate-invoice", {
       body: { invoiceId: invoice.id },
       headers: { Authorization: `Bearer ${serviceKey}` },
@@ -82,7 +142,6 @@ serve(async (req) => {
 
     if (genErr || !genData?.pdfUrl) {
       log("generate-invoice failed", { err: genErr?.message, hasPdf: !!genData?.pdfUrl });
-      // Fallback: return stored pdf_url if any
       if (invoice.pdf_url) {
         return new Response(
           JSON.stringify({
@@ -90,7 +149,7 @@ serve(async (req) => {
             pdfUrl: invoice.pdf_url,
             invoiceNumber: invoice.invoice_number,
           }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify({ error: "Failed to generate invoice PDF" }), {
@@ -105,7 +164,7 @@ serve(async (req) => {
         pdfUrl: genData.pdfUrl,
         invoiceNumber: invoice.invoice_number,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

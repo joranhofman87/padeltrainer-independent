@@ -1,10 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, requireServiceRoleOrAdmin } from "../_shared/auth.ts";
 
 const TABLES_TO_BACKUP = [
   "profiles",
@@ -30,46 +25,12 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const authResult = await requireServiceRoleOrAdmin(req);
+    if (authResult instanceof Response) return authResult;
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-    // Auth: accept either admin JWT or cron call with anon key
-    const authHeader = req.headers.get("Authorization");
-    let isAuthorized = false;
-
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.replace("Bearer ", "");
-      // If it's the anon key, it's a cron call — allow
-      if (token === anonKey) {
-        isAuthorized = true;
-      } else {
-        // Validate as user JWT and check admin role
-        const userClient = createClient(supabaseUrl, anonKey, {
-          global: { headers: { Authorization: authHeader } },
-        });
-        const { data, error } = await userClient.auth.getClaims(token);
-        if (!error && data?.claims?.sub) {
-          const adminClient = createClient(supabaseUrl, serviceRoleKey);
-          const { data: roleData } = await adminClient
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", data.claims.sub)
-            .eq("role", "admin")
-            .maybeSingle();
-          if (roleData) isAuthorized = true;
-        }
-      }
-    }
-
-    if (!isAuthorized) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = authResult.supabase;
     const timestamp = new Date()
       .toISOString()
       .replace(/[:.]/g, "-")

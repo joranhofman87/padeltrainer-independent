@@ -104,28 +104,47 @@ serve(async (req) => {
     const mollieApiKey = Deno.env.get("MOLLIE_API_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { invoiceId } = await req.json();
-    if (!invoiceId) {
-      return new Response(JSON.stringify({ error: "invoiceId required" }), {
+    const body = await req.json();
+    const publicToken = typeof body?.publicToken === "string" ? body.publicToken.trim() : "";
+    const invoiceId = typeof body?.invoiceId === "string" ? body.invoiceId : "";
+
+    if (!publicToken) {
+      return new Response(JSON.stringify({ error: "publicToken required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Fetch invoice
+    // Fetch invoice by public payment link token (no login required)
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
       .select("id, invoice_number, total, player_name, player_id, trainer_id, academy_profile_id, status, mollie_payment_id, mollie_payment_url, public_token, public_token_revoked_at")
-      .eq("id", invoiceId)
+      .eq("public_token", publicToken)
       .single();
 
-    if (invError || !invoice || invoice.public_token_revoked_at) {
-      logStep("Invoice not found or revoked", { invoiceId });
+    if (!invError && invoice && invoiceId && invoice.id !== invoiceId) {
       return new Response(JSON.stringify({ error: "Invoice not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    if (invError || !invoice || invoice.public_token_revoked_at) {
+      logStep("Invoice not found or revoked", { publicToken: publicToken.slice(0, 8) });
+      return new Response(JSON.stringify({ error: "Invoice not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (invoice.status === "paid" || invoice.status === "cancelled") {
+      return new Response(JSON.stringify({ error: "invoice_locked" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const resolvedInvoiceId = invoice.id;
 
     // Note: existing payment URL check moved to after token resolution
 
@@ -165,11 +184,11 @@ serve(async (req) => {
     }
 
     if (!accessToken) {
-      logStep("No connected Mollie account found", { invoiceId });
+      logStep("No connected Mollie account found", { invoiceId: resolvedInvoiceId });
 
       await writeAuditLog(supabase, {
         function_name: "create-invoice-payment",
-        invoice_id: invoiceId,
+        invoice_id: resolvedInvoiceId,
         amount: invoice.total,
         status: "blocked_no_account",
         error_message: "No connected Mollie account",
@@ -233,11 +252,11 @@ serve(async (req) => {
     }
 
     if (!mollieProfileId) {
-      logStep("No Mollie profile found", { invoiceId });
+      logStep("No Mollie profile found", { invoiceId: resolvedInvoiceId });
 
       await writeAuditLog(supabase, {
         function_name: "create-invoice-payment",
-        invoice_id: invoiceId,
+        invoice_id: resolvedInvoiceId,
         recipient_type: recipientType,
         mollie_org_id: mollieOrgId,
         amount: invoice.total,
@@ -309,7 +328,7 @@ serve(async (req) => {
 
       await writeAuditLog(supabase, {
         function_name: "create-invoice-payment",
-        invoice_id: invoiceId,
+        invoice_id: resolvedInvoiceId,
         recipient_type: recipientType,
         mollie_org_id: mollieOrgId,
         amount: invoice.total,
@@ -343,7 +362,7 @@ serve(async (req) => {
     // Write success audit log
     await writeAuditLog(supabase, {
       function_name: "create-invoice-payment",
-      invoice_id: invoiceId,
+      invoice_id: resolvedInvoiceId,
       recipient_type: recipientType,
       mollie_org_id: mollieOrgId,
       amount: invoice.total,

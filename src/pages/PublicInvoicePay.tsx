@@ -398,7 +398,7 @@ export default function PublicInvoicePay() {
     setPayLoading(true);
     try {
       const { data: result, error: fnError } = await supabase.functions.invoke("create-invoice-payment", {
-        body: { invoiceId: data.invoice.id },
+        body: { invoiceId: data.invoice.id, publicToken: token },
       });
 
       if (fnError) throw fnError;
