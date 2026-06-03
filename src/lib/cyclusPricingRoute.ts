@@ -8,7 +8,7 @@ export function buildAcademyCycleDetailPath(cyclusId: string): string {
 }
 
 export function buildAcademyCalendarCyclesFallbackPath(cyclusId: string): string {
-  const params = new URLSearchParams({ tab: "cycles", cyclusId });
+  const params = new URLSearchParams({ tab: "list", cyclusId });
   return `${ACADEMY_CYCLES_TAB_PATH}?${params.toString()}`;
 }
 

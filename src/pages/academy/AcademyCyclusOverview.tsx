@@ -23,6 +23,13 @@ import { SortableTableHead } from '@/components/admin/SortableTableHead';
 import { formatPrice } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
+import {
+  computeCyclusGroupPaymentStatus,
+  matchesPaidFilter,
+  paymentStatusBadgeVariant,
+  type CyclusGroupPaymentStatus,
+  type PaidFilterValue,
+} from '@/lib/cyclusGroupPayment';
 
 interface CyclusGroup {
   group_key: string; // composite: cyclus_id + trainer_id
@@ -44,6 +51,7 @@ interface CyclusGroup {
   status: string;
   type: string;
   has_slots: boolean;
+  payment_status_summary: CyclusGroupPaymentStatus;
 }
 
 type TimeFilter = 'current' | 'future' | 'past' | 'all';
@@ -66,6 +74,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [search, setSearch] = useState('');
   const [filterTrainer, setFilterTrainer] = useState('all');
   const [filterLocation, setFilterLocation] = useState('all');
+  const [filterPaid, setFilterPaid] = useState<PaidFilterValue>('all');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('current');
 
   // Bulk actions
@@ -189,17 +198,23 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         slotsByCyclus.get(cid)!.push(slot);
       });
 
-      // 3. Fetch booking data for player names
+      // 3. Fetch booking data for player names and payment status
       const slotIds = allSlots.map(s => s.id);
       let playerNamesMap: Record<string, string[]> = {};
       let bookingCountMap: Record<string, number> = {};
+      const bookingsBySlot: Record<string, { status: string; payment_status: string | null; paid_externally: boolean | null }[]> = {};
+
+      const paymentSummaryForSlots = (ids: string[]): CyclusGroupPaymentStatus => {
+        const allBookings = ids.flatMap((id) => bookingsBySlot[id] || []);
+        return computeCyclusGroupPaymentStatus(allBookings);
+      };
 
       if (slotIds.length > 0) {
         for (let i = 0; i < slotIds.length; i += 500) {
           const chunk = slotIds.slice(i, i + 500);
           const { data: bookings } = await supabase
             .from('bookings')
-            .select('slot_id, player_id, guest_player_id')
+            .select('slot_id, player_id, guest_player_id, status, payment_status, paid_externally')
             .in('slot_id', chunk)
             .in('status', ['confirmed', 'pending']);
 
@@ -229,6 +244,12 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
 
           bookings?.forEach(b => {
             bookingCountMap[b.slot_id] = (bookingCountMap[b.slot_id] || 0) + 1;
+            if (!bookingsBySlot[b.slot_id]) bookingsBySlot[b.slot_id] = [];
+            bookingsBySlot[b.slot_id].push({
+              status: b.status,
+              payment_status: b.payment_status ?? null,
+              paid_externally: b.paid_externally ?? null,
+            });
             const name = (b.player_id && playerNameLookup[b.player_id]) || (b.guest_player_id && guestNameLookup[b.guest_player_id]) || null;
             if (name) {
               if (!playerNamesMap[b.slot_id]) playerNamesMap[b.slot_id] = [];
@@ -339,6 +360,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             status: cycle.status || 'draft',
             type: cycle.type || 'cyclus',
             has_slots: false,
+            payment_status_summary: 'no_players',
           });
         } else {
           const isRegistration = cycle.type === 'registration';
@@ -431,6 +453,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               status: cycle.status || 'draft',
               type: isRegistration ? 'cyclus' : (cycle.type || 'cyclus'),
               has_slots: true,
+              payment_status_summary: paymentSummaryForSlots(seriesSlots.map((s: { id: string }) => s.id)),
             });
           });
         }
@@ -488,6 +511,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             status: 'active',
             type: 'cyclus',
             has_slots: true,
+            payment_status_summary: paymentSummaryForSlots(trainerSlots.map((s: { id: string }) => s.id)),
           });
         });
       });
@@ -526,6 +550,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     return timeFiltered.filter(g => {
       if (filterTrainer !== 'all' && g.trainer_id !== filterTrainer) return false;
       if (filterLocation !== 'all' && g.location_name !== filterLocation) return false;
+      if (!matchesPaidFilter(g.payment_status_summary, filterPaid)) return false;
       if (search) {
         const q = search.toLowerCase();
         const match = g.cyclus_name.toLowerCase().includes(q)
@@ -536,7 +561,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       }
       return true;
     });
-  }, [timeFiltered, filterTrainer, filterLocation, search]);
+  }, [timeFiltered, filterTrainer, filterLocation, filterPaid, search]);
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
@@ -675,6 +700,20 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     );
   };
 
+  const getPaymentBadge = (group: CyclusGroup) => {
+    const key =
+      group.payment_status_summary === 'all_paid'
+        ? 'cyclesTab.paymentAllPaid'
+        : group.payment_status_summary === 'has_unpaid'
+          ? 'cyclesTab.paymentOpen'
+          : 'cyclesTab.paymentNoPlayers';
+    return (
+      <Badge variant={paymentStatusBadgeVariant(group.payment_status_summary)} className="text-xs whitespace-nowrap">
+        {t(key)}
+      </Badge>
+    );
+  };
+
   const getTypeBadge = (type: string) => {
     switch (type) {
       case 'registration': return <Badge variant="outline" className="text-xs">{t('cyclesTab.registration')}</Badge>;
@@ -742,6 +781,18 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 </SelectContent>
               </Select>
             )}
+
+            <Select value={filterPaid} onValueChange={v => setFilterPaid(v as PaidFilterValue)}>
+              <SelectTrigger className="w-full sm:w-[180px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('cyclesTab.paidFilterAll')}</SelectItem>
+                <SelectItem value="paid">{t('cyclesTab.paidFilterPaid')}</SelectItem>
+                <SelectItem value="unpaid">{t('cyclesTab.paidFilterUnpaid')}</SelectItem>
+                <SelectItem value="no_players">{t('cyclesTab.paidFilterNoPlayers')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -804,6 +855,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 <SortableTableHead sortKey="period_start" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.period')}</SortableTableHead>
                 <SortableTableHead sortKey="sessions" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.sessions')}</SortableTableHead>
                 <SortableTableHead sortKey="player_count" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.players')}</SortableTableHead>
+                <SortableTableHead sortKey="payment_status_summary" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.paymentStatus')}</SortableTableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.price')}</TableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.occupancy')}</TableHead>
               </TableRow>
@@ -811,7 +863,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-12">
                     {t('cyclesTab.noCyclesFound')}
                   </TableCell>
                 </TableRow>
@@ -854,6 +906,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
+                    <TableCell className="whitespace-nowrap">{getPaymentBadge(group)}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {group.price_per_session != null ? formatPrice(group.price_per_session) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
@@ -891,7 +944,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                     <p className="font-medium text-sm truncate">{group.cyclus_name}</p>
                     <p className="text-xs text-muted-foreground">{group.trainer_name}</p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                    {getPaymentBadge(group)}
                     {getStatusBadge(group)}
                     {getTypeBadge(group.type)}
                   </div>

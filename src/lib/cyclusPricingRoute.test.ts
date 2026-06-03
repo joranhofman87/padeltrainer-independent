@@ -30,9 +30,9 @@ describe("buildAcademyCyclusPricingPaths", () => {
     expect(buildAcademyCycleDetailPath("abc-123")).toBe("/app/academy/cycles/abc-123");
   });
 
-  it("builds calendar cycles tab fallback with cyclusId", () => {
+  it("builds calendar list tab fallback with cyclusId", () => {
     expect(buildAcademyCalendarCyclesFallbackPath("abc-123")).toBe(
-      "/app/academy/calendar?tab=cycles&cyclusId=abc-123",
+      "/app/academy/calendar?tab=list&cyclusId=abc-123",
     );
   });
 });
@@ -73,10 +73,10 @@ describe("resolveAcademyCyclusPricingRoute", () => {
     );
   });
 
-  it("routes to calendar cycles tab when row is missing", async () => {
+  it("routes to calendar list tab when row is missing", async () => {
     maybeSingleMock.mockResolvedValue({ data: null, error: null });
     await expect(resolveAcademyCyclusPricingRoute("bulk-cyclus")).resolves.toBe(
-      "/app/academy/calendar?tab=cycles&cyclusId=bulk-cyclus",
+      "/app/academy/calendar?tab=list&cyclusId=bulk-cyclus",
     );
   });
 
@@ -86,7 +86,7 @@ describe("resolveAcademyCyclusPricingRoute", () => {
       error: { message: "network" },
     });
     await expect(resolveAcademyCyclusPricingRoute("any-id")).resolves.toBe(
-      "/app/academy/calendar?tab=cycles&cyclusId=any-id",
+      "/app/academy/calendar?tab=list&cyclusId=any-id",
     );
   });
 });

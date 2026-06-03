@@ -10,7 +10,7 @@ describe("academy slot detail cycle pricing navigation", () => {
     const bulkCyclusId = "6d1a50b3-5df8-4934-895f-efbd908fe07d";
     const fallback = buildAcademyCalendarCyclesFallbackPath(bulkCyclusId);
     expect(fallback).not.toBe(buildAcademyCycleDetailPath(bulkCyclusId));
-    expect(fallback).toContain("tab=cycles");
+    expect(fallback).toContain("tab=list");
     expect(fallback).toContain(`cyclusId=${bulkCyclusId}`);
   });
 });

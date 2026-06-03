@@ -1,24 +1,36 @@
 import { describe, it, expect } from "vitest";
-
-type TabValue = "week" | "day" | "month" | "cycles" | "create" | "hours" | "reports";
-
-/** Mirrors AcademyCalendar tab parsing from URL search params. */
-export function parseAcademyCalendarTab(rawTab: string | null): TabValue {
-  const tab = rawTab || "week";
-  if (tab === "overview") return "week";
-  if (tab === "manage") return "day";
-  if (["week", "day", "month", "cycles", "create", "hours", "reports"].includes(tab)) {
-    return tab as TabValue;
-  }
-  return "week";
-}
+import {
+  parseAcademyCalendarTab,
+  isAcademyCalendarListTab,
+} from "@/lib/academyCalendarTab";
 
 describe("parseAcademyCalendarTab", () => {
-  it("opens cycles tab when tab=cycles", () => {
-    expect(parseAcademyCalendarTab("cycles")).toBe("cycles");
+  it("opens list view when tab=list", () => {
+    expect(parseAcademyCalendarTab("list")).toBe("list");
+  });
+
+  it("maps tab=cycles to list alias", () => {
+    expect(parseAcademyCalendarTab("cycles")).toBe("list");
+  });
+
+  it("opens month view when tab=month", () => {
+    expect(parseAcademyCalendarTab("month")).toBe("month");
   });
 
   it("defaults to week when tab is missing", () => {
     expect(parseAcademyCalendarTab(null)).toBe("week");
+  });
+
+  it("maps legacy overview and manage tabs", () => {
+    expect(parseAcademyCalendarTab("overview")).toBe("week");
+    expect(parseAcademyCalendarTab("manage")).toBe("day");
+  });
+});
+
+describe("isAcademyCalendarListTab", () => {
+  it("returns true for list and cycles", () => {
+    expect(isAcademyCalendarListTab("list")).toBe(true);
+    expect(isAcademyCalendarListTab("cycles")).toBe(true);
+    expect(isAcademyCalendarListTab("month")).toBe(false);
   });
 });

@@ -16,7 +16,7 @@ import {
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, LayoutGrid, ArrowLeft, Plus, Clock, BarChart3, Repeat, SlidersHorizontal, X, User, MapPin, Filter } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, LayoutGrid, ArrowLeft, Plus, Clock, BarChart3, List, SlidersHorizontal, X, User, MapPin, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,6 +42,12 @@ import {
 } from "@/lib/guestPlayers";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
+import {
+  parseAcademyCalendarTab,
+  ACADEMY_CALENDAR_PRIMARY_TABS,
+  isAcademyCalendarScheduleTab,
+  type AcademyCalendarTabValue,
+} from "@/lib/academyCalendarTab";
 import { useToast } from "@/hooks/use-toast";
 import { BulkCreateContent } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
@@ -105,9 +111,7 @@ const dateFnsLocales: Record<string, typeof enUS> = {
   fr,
 };
 
-type TabValue = "week" | "day" | "month" | "cycles" | "create" | "hours" | "reports";
-
-const PRIMARY_VIEWS: TabValue[] = ["week", "day", "month"];
+type TabValue = AcademyCalendarTabValue;
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
@@ -118,26 +122,21 @@ export default function AcademyCalendar() {
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
 
-  // Tab state from URL — supports legacy values for back-compat
-  const rawTab = (searchParams.get("tab") || "week") as string;
-  const activeTab: TabValue = ((): TabValue => {
-    if (rawTab === "overview") return "week";
-    if (rawTab === "manage") return "day";
-    if (["week", "day", "month", "cycles", "create", "hours", "reports"].includes(rawTab)) return rawTab as TabValue;
-    return "week";
-  })();
+  const rawTab = searchParams.get("tab");
+  const activeTab = parseAcademyCalendarTab(rawTab);
   const highlightCyclusId = searchParams.get("cyclusId");
 
   const setActiveTab = (tab: TabValue) => {
     const params = new URLSearchParams(searchParams);
     params.set("tab", tab);
-    if (tab !== "cycles") {
+    if (tab !== "list") {
       params.delete("cyclusId");
     }
     setSearchParams(params, { replace: true });
   };
 
-  const isPrimaryView = PRIMARY_VIEWS.includes(activeTab);
+  const isPrimaryView = ACADEMY_CALENDAR_PRIMARY_TABS.includes(activeTab);
+  const isScheduleView = isAcademyCalendarScheduleTab(activeTab);
   const isMonth = activeTab === "month";
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -814,7 +813,7 @@ export default function AcademyCalendar() {
     week:    { label: t("calendar.viewWeek", "Week"),     icon: CalendarDays },
     day:     { label: t("calendar.viewDay", "Day"),       icon: CalendarIcon },
     month:   { label: t("calendar.viewMonth", "Month"),   icon: CalendarRange },
-    cycles:  { label: t("calendar.tabs.cycles", "Cycles"), icon: Repeat },
+    list:    { label: t("calendar.viewList", "List"),      icon: List },
     create:  { label: t("calendar.tabs.create", "Create"), icon: Plus },
     hours:   { label: t("calendar.tabs.hours", "Hours"),   icon: Clock },
     reports: { label: t("calendar.tabs.reports", "Reports"), icon: BarChart3 },
@@ -846,9 +845,9 @@ export default function AcademyCalendar() {
           {/* ── Primary view switcher + date nav (only for week/day/month) ── */}
           {isPrimaryView && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {/* Segmented control: Week / Day / Month */}
+              {/* Segmented control: Week / Day / Month / List */}
               <div className="inline-flex rounded-lg border bg-muted/40 p-0.5 self-start">
-                {PRIMARY_VIEWS.map((v) => {
+                {ACADEMY_CALENDAR_PRIMARY_TABS.map((v) => {
                   const Icon = viewLabel[v].icon;
                   const active = activeTab === v;
                   return (
@@ -870,7 +869,8 @@ export default function AcademyCalendar() {
                 })}
               </div>
 
-              {/* Date nav + filters */}
+              {/* Date nav + filters (week / day / month only) */}
+              {isScheduleView && (
               <div className="flex items-center gap-2 flex-wrap">
                 <Button variant="outline" size="icon" className="h-9 w-9" onClick={navigatePrevious} aria-label={t("calendar.previous", "Previous")}>
                   <ChevronLeft className="h-4 w-4" />
@@ -940,11 +940,12 @@ export default function AcademyCalendar() {
                   </PopoverContent>
                 </Popover>
               </div>
+              )}
             </div>
           )}
 
           {/* Active filter chips */}
-          {isPrimaryView && filtersActive && (() => {
+          {isScheduleView && filtersActive && (() => {
             const trainerName = selectedTrainerId !== "all" ? trainers.find((tr) => tr.id === selectedTrainerId)?.name : null;
             const locationName = selectedLocationId !== "all" ? locations.find((l) => l.id === selectedLocationId)?.name : null;
             const scopeLabel = trainerName && locationName
@@ -1007,12 +1008,12 @@ export default function AcademyCalendar() {
           })()}
 
           {/* Secondary navigation: less-used sections (above agenda so it stays visible) */}
-          {isPrimaryView && (
+          {isScheduleView && (
             <nav className="mt-3 flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] uppercase tracking-wide text-muted-foreground mr-1">
                 {t("calendar.moreSections", "More")}
               </span>
-              {(["cycles", "hours", "reports"] as TabValue[]).map((v) => {
+              {(["hours", "reports"] as TabValue[]).map((v) => {
                 const Icon = viewLabel[v].icon;
                 return (
                   <Button
@@ -1082,8 +1083,8 @@ export default function AcademyCalendar() {
             />
           </TabsContent>
 
-          {/* ── Tab: Cycles ── */}
-          <TabsContent value="cycles" className="mt-4">
+          {/* ── View: List (recurring cycle groups) ── */}
+          <TabsContent value="list" className="mt-4">
             <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
               <AcademyCyclusOverviewContent highlightCyclusId={highlightCyclusId} />
             </Suspense>

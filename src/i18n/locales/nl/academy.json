@@ -33,7 +33,8 @@
     "last30Days": "Laatste 30 dagen"
   },
   "calendar": {
-    "created": "Aangemaakt"
+    "created": "Aangemaakt",
+    "viewList": "Lijst"
   },
   "onboarding": {
     "title": "Maak je Academy",
