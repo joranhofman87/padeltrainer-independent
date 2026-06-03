@@ -11,12 +11,21 @@ import enMarketing from './locales/en/marketing.json';
 import enNotifications from './locales/en/notifications.json';
 
 const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr', 'it'] as const;
-const NAMESPACES = ['common', 'marketing', 'auth', 'player', 'trainer', 'club', 'cycles', 'admin', 'academy', 'waitingList'] as const;
+const NAMESPACES = ['common', 'marketing', 'auth', 'player', 'trainer', 'club', 'cycles', 'admin', 'academy', 'waitingList', 'onboarding'] as const;
+
+async function loadOnboardingBundle(lang: string) {
+  try {
+    return (await import(`./locales/${lang}/onboarding.json`)).default;
+  } catch {
+    return (await import('./locales/en/onboarding.json')).default;
+  }
+}
 
 // Full lazy loader for all namespaces of a language
 function createLazyLoader(lang: string) {
   return async () => {
-    const [common, marketing, auth, player, trainer, club, cycles, admin, academy, waitingList, notifications] = await Promise.all([
+    const [common, marketing, auth, player, trainer, club, cycles, admin, academy, waitingList, notifications, onboarding] =
+      await Promise.all([
       import(`./locales/${lang}/common.json`),
       import(`./locales/${lang}/marketing.json`),
       import(`./locales/${lang}/auth.json`),
@@ -28,6 +37,7 @@ function createLazyLoader(lang: string) {
       import(`./locales/${lang}/academy.json`),
       import(`./locales/${lang}/waitingList.json`),
       import(`./locales/${lang}/notifications.json`),
+      loadOnboardingBundle(lang),
     ]);
     return {
       common: { ...common.default, ...notifications.default },
@@ -40,13 +50,14 @@ function createLazyLoader(lang: string) {
       admin: admin.default,
       academy: academy.default,
       waitingList: waitingList.default,
+      onboarding,
     };
   };
 }
 
 // Lazy loader for NL non-critical namespaces only
 async function loadNlExtended() {
-  const [auth, player, trainer, club, cycles, admin, academy, waitingList] = await Promise.all([
+  const [auth, player, trainer, club, cycles, admin, academy, waitingList, onboarding] = await Promise.all([
     import('./locales/nl/auth.json'),
     import('./locales/nl/player.json'),
     import('./locales/nl/trainer.json'),
@@ -55,6 +66,7 @@ async function loadNlExtended() {
     import('./locales/nl/admin.json'),
     import('./locales/nl/academy.json'),
     import('./locales/nl/waitingList.json'),
+    loadOnboardingBundle('nl'),
   ]);
   i18n.addResourceBundle('nl', 'auth', auth.default, true, true);
   i18n.addResourceBundle('nl', 'player', player.default, true, true);
@@ -64,6 +76,7 @@ async function loadNlExtended() {
   i18n.addResourceBundle('nl', 'admin', admin.default, true, true);
   i18n.addResourceBundle('nl', 'academy', academy.default, true, true);
   i18n.addResourceBundle('nl', 'waitingList', waitingList.default, true, true);
+  i18n.addResourceBundle('nl', 'onboarding', onboarding, true, true);
 }
 
 // Lazy loaders for non-default languages

@@ -1,0 +1,107 @@
+{
+  "errors": {
+    "trainerProfileNotFound": "Trainerprofiel niet gevonden. Probeer opnieuw te registreren of neem contact op.",
+    "trainerProfileMissing": "Je trainerprofiel is nog niet klaar. Vernieuw de pagina en probeer het opnieuw.",
+    "profileSaveFailed": "Profiel opslaan mislukt. Probeer het opnieuw.",
+    "loadFailed": "Opgeslagen antwoorden laden mislukt. Probeer het opnieuw.",
+    "retry": "Opnieuw proberen"
+  },
+  "spiced": {
+    "progress": {
+      "stepOf": "Stap {{current}} van {{total}}"
+    },
+    "common": {
+      "continue": "Doorgaan",
+      "saving": "Opslaan…",
+      "back": "Terug",
+      "saveError": "Je antwoorden konden niet worden opgeslagen. Probeer het opnieuw.",
+      "completionError": "Onboarding afronden mislukt. Probeer het opnieuw.",
+      "legacyProgressError": "Voortgang opslaan mislukt. Probeer het opnieuw."
+    },
+    "situation": {
+      "title": "Vertel over je coaching vandaag",
+      "subtitle": "Zo kunnen we je setup en aanbevelingen afstemmen.",
+      "trainerTypeLabel": "Wat beschrijft jou het beste?",
+      "trainerTypes": {
+        "independent": "Zelfstandige trainer",
+        "club_trainer": "Clubtrainer",
+        "academy_owner": "Academie-eigenaar"
+      },
+      "lessonsPerWeekLabel": "Hoeveel lessen geef je nu per week?",
+      "lessonsPerWeek": {
+        "none": "Nog geen",
+        "1-5": "1–5",
+        "6-15": "6–15",
+        "16-30": "16–30",
+        "30+": "30+"
+      },
+      "playerCountLabel": "Hoeveel actieve spelers coach je?",
+      "playerCount": {
+        "0": "0",
+        "1-10": "1–10",
+        "11-30": "11–30",
+        "30+": "30+"
+      },
+      "primaryCityLabel": "Waar coach je vooral?",
+      "primaryCityPlaceholder": "bijv. Amsterdam"
+    },
+    "painImpact": {
+      "title": "Waar verlies je de meeste tijd?",
+      "subtitle": "Kies de één of twee ergernissen die nu het meest spelen.",
+      "painsLabel": "Grootste ergernissen",
+      "painsHint": "Kies maximaal 2",
+      "adminHoursLabel": "Hoeveel tijd per week besteed je nu aan admin?",
+      "adminHours": {
+        "<1": "Minder dan 1 uur",
+        "1-3": "1–3 uur",
+        "3-6": "3–6 uur",
+        "6+": "6+ uur"
+      },
+      "annualHoursEstimate": "Dat is ongeveer {{hours}} uur per jaar aan admin.",
+      "pains": {
+        "chasing_payments": {
+          "label": "Betalingen achterhalen",
+          "description": "Facturen, herinneringen en openstaande lessen"
+        },
+        "scheduling_chaos": {
+          "label": "Chaos in de planning",
+          "description": "WhatsApp, spreadsheets en dubbele boekingen"
+        },
+        "no_shows": {
+          "label": "No-shows",
+          "description": "Last-minute afzeggingen en lege banen"
+        },
+        "empty_slots": {
+          "label": "Lege slots",
+          "description": "Moeilijk om beschikbaarheid op tijd te vullen"
+        },
+        "grow_player_base": {
+          "label": "Spelersbestand laten groeien",
+          "description": "Nieuwe spelers vinden en behouden"
+        },
+        "cycle_admin": {
+          "label": "Cyclus- en groepsadmin",
+          "description": "Inschrijvingen, groepen en seizoensplanning"
+        },
+        "look_professional": {
+          "label": "Professioneler overkomen",
+          "description": "Een duidelijke merk- en boekingservaring"
+        }
+      }
+    },
+    "criticalEvent": {
+      "title": "Wanneer wil je live gaan?",
+      "subtitle": "We prioriteren de juiste setup-stappen voor jouw planning.",
+      "liveWindowLabel": "Ik wil boekingen ontvangen…",
+      "liveWindow": {
+        "this_week": "Binnen een week",
+        "two_weeks": "Binnen twee weken",
+        "one_month": "Binnen een maand",
+        "exploring": "Ik oriënteer me nog"
+      },
+      "noteLabel": "Iets specifieks op komst?",
+      "notePlaceholder": "bijv. Nieuw seizoen start in april, proefperiode stopt volgende week",
+      "noteHint": "Optioneel"
+    }
+  }
+}

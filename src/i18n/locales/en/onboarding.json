@@ -1,0 +1,107 @@
+{
+  "errors": {
+    "trainerProfileNotFound": "Trainer profile not found. Please try signing up again or contact support.",
+    "trainerProfileMissing": "Your trainer profile is not ready yet. Please refresh the page and try again.",
+    "profileSaveFailed": "Failed to save profile. Please try again.",
+    "loadFailed": "Could not load your saved answers. Please try again.",
+    "retry": "Try again"
+  },
+  "spiced": {
+    "progress": {
+      "stepOf": "Step {{current}} of {{total}}"
+    },
+    "common": {
+      "continue": "Continue",
+      "saving": "Saving…",
+      "back": "Back",
+      "saveError": "Could not save your answers. Please try again.",
+      "completionError": "Could not finish onboarding. Please try again.",
+      "legacyProgressError": "Could not save your progress. Please try again."
+    },
+    "situation": {
+      "title": "Tell us about your coaching today",
+      "subtitle": "This helps us tailor your setup and recommendations.",
+      "trainerTypeLabel": "What best describes you?",
+      "trainerTypes": {
+        "independent": "Independent trainer",
+        "club_trainer": "Club trainer",
+        "academy_owner": "Academy owner"
+      },
+      "lessonsPerWeekLabel": "How many lessons do you coach per week right now?",
+      "lessonsPerWeek": {
+        "none": "None yet",
+        "1-5": "1–5",
+        "6-15": "6–15",
+        "16-30": "16–30",
+        "30+": "30+"
+      },
+      "playerCountLabel": "How many active players do you coach?",
+      "playerCount": {
+        "0": "0",
+        "1-10": "1–10",
+        "11-30": "11–30",
+        "30+": "30+"
+      },
+      "primaryCityLabel": "Where do you mostly coach?",
+      "primaryCityPlaceholder": "e.g. Amsterdam"
+    },
+    "painImpact": {
+      "title": "What is costing you the most time?",
+      "subtitle": "Pick the one or two frustrations that matter most right now.",
+      "painsLabel": "Biggest frustrations",
+      "painsHint": "Choose up to 2",
+      "adminHoursLabel": "How much time per week do you spend on admin today?",
+      "adminHours": {
+        "<1": "Less than 1 hour",
+        "1-3": "1–3 hours",
+        "3-6": "3–6 hours",
+        "6+": "6+ hours"
+      },
+      "annualHoursEstimate": "That is roughly {{hours}} hours per year on admin.",
+      "pains": {
+        "chasing_payments": {
+          "label": "Chasing payments",
+          "description": "Invoices, reminders, and unpaid lessons"
+        },
+        "scheduling_chaos": {
+          "label": "Scheduling chaos",
+          "description": "WhatsApp, spreadsheets, and double bookings"
+        },
+        "no_shows": {
+          "label": "No-shows",
+          "description": "Last-minute cancellations and empty courts"
+        },
+        "empty_slots": {
+          "label": "Empty slots",
+          "description": "Hard to fill availability in time"
+        },
+        "grow_player_base": {
+          "label": "Growing my player base",
+          "description": "Finding and keeping new players"
+        },
+        "cycle_admin": {
+          "label": "Cycle and group admin",
+          "description": "Registrations, groups, and season planning"
+        },
+        "look_professional": {
+          "label": "Looking more professional",
+          "description": "A clear brand and booking experience"
+        }
+      }
+    },
+    "criticalEvent": {
+      "title": "When do you want to be live?",
+      "subtitle": "We will prioritize the right setup steps for your timeline.",
+      "liveWindowLabel": "I want to be taking bookings…",
+      "liveWindow": {
+        "this_week": "Within a week",
+        "two_weeks": "Within two weeks",
+        "one_month": "Within a month",
+        "exploring": "Just exploring for now"
+      },
+      "noteLabel": "Anything specific coming up?",
+      "notePlaceholder": "e.g. New season starts in April, trial ends next week",
+      "noteHint": "Optional"
+    }
+  }
+}

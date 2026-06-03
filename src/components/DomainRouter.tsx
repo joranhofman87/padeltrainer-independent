@@ -82,7 +82,7 @@ const TrainerSignup = lazy(() => import('@/pages/TrainerSignup'));
 const ClubSignup = lazy(() => import('@/pages/ClubSignup'));
 const ClubOnboarding = lazy(() => import('@/pages/ClubOnboarding'));
 const Onboarding = lazy(() => import('@/pages/Onboarding'));
-const TrainerOnboarding = lazy(() => import('@/pages/TrainerOnboarding'));
+const TrainerOnboardingFlow = lazy(() => import('@/pages/onboarding/TrainerOnboardingFlow'));
 const AcademySignup = lazy(() => import('@/pages/AcademySignup'));
 const AcademyOnboarding = lazy(() => import('@/pages/AcademyOnboarding'));
 const SignupRolePicker = lazy(() => import('@/pages/SignupRolePicker'));
@@ -222,7 +222,7 @@ export function DomainRouter() {
         <Route path="/app/signup/club" element={<ClubSignup />} />
         <Route path="/app/signup/academy" element={<AcademySignup />} />
         <Route path="/app/onboarding/club" element={<ClubOnboarding />} />
-        <Route path="/app/onboarding/trainer" element={<TrainerOnboarding />} />
+        <Route path="/app/onboarding/trainer" element={<TrainerOnboardingFlow />} />
         <Route path="/app/onboarding/:role" element={<Onboarding />} />
         <Route path="/app/academy/onboarding" element={<AcademyOnboarding />} />
         
