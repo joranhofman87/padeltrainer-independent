@@ -70,74 +70,48 @@ export async function getClubProfileByLocation(locationId: string): Promise<Club
   return data;
 }
 
-// Create a club claim (creates club_profile and club_manager)
-// Returns success boolean - the profile is pending verification and cannot be read back
+// Create a club claim via service-role edge function (client INSERT blocked by RLS)
 export async function claimClub(
   locationId: string,
-  userId: string,
+  _userId: string,
   contactEmail: string,
   phone?: string,
   description?: string
-): Promise<{ success: boolean; error: Error | null }> {
-  // Verify session is active to prevent RLS errors
+): Promise<{ success: boolean; clubProfileId?: string; error: Error | null }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
-    return { 
-      success: false, 
-      error: new Error('Not authenticated. Please log in and try again.') 
+    return {
+      success: false,
+      error: new Error('Not authenticated. Please log in and try again.'),
     };
   }
 
-  // Create the club profile with created_by to allow the user to see their pending claim
-  const { data: insertResult, error: profileError } = await supabase
-    .from('club_profiles')
-    .insert({
-      location_id: locationId,
-      contact_email: contactEmail,
-      phone: phone || null,
-      description: description || null,
-      is_verified: false,
-      created_by: session.user.id, // Use session user ID for RLS
-    })
-    .select('id')
-    .single();
-
-  if (profileError) {
-    logger.error('Error creating club profile', undefined, { error: profileError });
-    const errorMessage = profileError.code === '23505' 
-      ? 'This location has already been claimed'
-      : `Failed to create club claim: ${profileError.message}`;
-    return { success: false, error: new Error(errorMessage) };
-  }
-
-  // Add the user as the owner
-  const { error: managerError } = await supabase
-    .from('club_managers')
-    .insert({
-      club_profile_id: insertResult.id,
-      user_id: session.user.id, // Use session user ID for consistency
-      role: 'owner',
+  try {
+    const { data, error: invokeError } = await supabase.functions.invoke('claim-club-profile', {
+      body: {
+        locationId,
+        contactEmail,
+        phone,
+        description,
+      },
     });
 
-  if (managerError) {
-    logger.error('Error creating club manager', undefined, { error: managerError });
-    // Clean up the club profile if manager creation fails
-    await supabase.from('club_profiles').delete().eq('id', insertResult.id);
-    const errorMessage = `Failed to assign ownership: ${managerError.message}. Please try again or contact support.`;
-    return { success: false, error: new Error(errorMessage) };
+    if (invokeError) {
+      logger.error('Error invoking claim-club-profile', invokeError as Error);
+      return { success: false, error: new Error(invokeError.message) };
+    }
+
+    const payload = data as { success?: boolean; clubProfileId?: string; error?: string } | null;
+    if (!payload?.success || !payload.clubProfileId) {
+      const message = payload?.error || 'Failed to submit claim';
+      return { success: false, error: new Error(message) };
+    }
+
+    return { success: true, clubProfileId: payload.clubProfileId, error: null };
+  } catch (err) {
+    logger.error('Error claiming club', err as Error);
+    return { success: false, error: err as Error };
   }
-
-  // Also assign the 'club' role to the user if they don't already have it
-  const { error: roleError } = await supabase
-    .from('user_roles')
-    .insert({ user_id: session.user.id, role: 'club' });
-
-  // Ignore duplicate key error (user might already have this role)
-  if (roleError && roleError.code !== '23505') {
-    logger.warn('Error setting club role', { error: roleError });
-  }
-
-  return { success: true, error: null };
 }
 
 // Get user's club profiles (clubs they manage)

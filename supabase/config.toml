@@ -91,6 +91,9 @@ verify_jwt = false
 [functions.create-club-trainer]
 verify_jwt = false
 
+[functions.claim-club-profile]
+verify_jwt = false
+
 [functions.create-manual-player]
 verify_jwt = false
 

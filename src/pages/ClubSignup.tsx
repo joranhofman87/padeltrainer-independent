@@ -77,7 +77,7 @@ export default function ClubSignup() {
     setIsLoading(true);
 
     try {
-      const { data, error } = await signUpWithEmail(email, password, firstName, lastName, undefined, undefined, 'Club');
+      const { data, error } = await signUpWithEmail(email, password, firstName, lastName, undefined, undefined, 'club');
 
       if (error) {
         logger.error('Club signup failed', error, { component: 'ClubSignup', action: 'signUp' });

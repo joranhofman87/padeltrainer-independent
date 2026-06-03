@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { Building2, Search, MapPin, Check } from 'lucide-react';
 import { getActiveLocations, Location } from '@/lib/locations';
-import { claimClub, isLocationClaimed } from '@/lib/club';
+import { claimClub, getUserClubProfiles, isLocationClaimed } from '@/lib/club';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -39,26 +39,42 @@ export default function ClubOnboarding() {
     }
   }, [user, loading, navigate]);
 
-  // Assign club role immediately when user lands on the page
+  // signup-user assigns club role server-side; clear pending marker when role exists
   useEffect(() => {
-    const assignClubRole = async () => {
-      if (user && sessionStorage.getItem('pendingRole') === 'club') {
-        try {
-          const { error } = await supabase
-            .from('user_roles')
-            .insert({ user_id: user.id, role: 'club' });
-          
-          // Clear pending role if successful or if it's a duplicate (23505 = unique violation)
-          if (!error || error.code === '23505') {
-            sessionStorage.removeItem('pendingRole');
-          }
-        } catch (err) {
-          logger.error('Error assigning club role', err as Error, { component: 'ClubOnboarding' });
+    const clearPendingClubRole = async () => {
+      const pending =
+        localStorage.getItem('pendingRole') === 'club' ||
+        sessionStorage.getItem('pendingRole') === 'club';
+      if (!user || !pending) return;
+      try {
+        const { data: hasClubRole, error } = await supabase.rpc('has_role', {
+          _user_id: user.id,
+          _role: 'club',
+        });
+        if (!error && hasClubRole) {
+          localStorage.removeItem('pendingRole');
+          sessionStorage.removeItem('pendingRole');
         }
+      } catch (err) {
+        logger.error('Error checking club role', err as Error, { component: 'ClubOnboarding' });
       }
     };
-    assignClubRole();
+    clearPendingClubRole();
   }, [user]);
+
+  // Resume if user already manages a club
+  useEffect(() => {
+    const resumeExistingClub = async () => {
+      if (!user || loading) return;
+      const profiles = await getUserClubProfiles(user.id);
+      if (profiles.length > 0) {
+        localStorage.removeItem('pendingRole');
+        sessionStorage.removeItem('pendingRole');
+        navigate('/app/club', { replace: true });
+      }
+    };
+    resumeExistingClub();
+  }, [user, loading, navigate]);
 
   useEffect(() => {
     const fetchLocations = async () => {
@@ -130,7 +146,7 @@ export default function ClubOnboarding() {
         throw error || new Error('Failed to submit claim');
       }
       
-      // Clear the pending role since they've completed the club flow
+      localStorage.removeItem('pendingRole');
       sessionStorage.removeItem('pendingRole');
       
       toast({
