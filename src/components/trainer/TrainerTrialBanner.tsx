@@ -15,7 +15,7 @@ export function TrainerTrialBanner({ trialEndsAt, onUpgrade }: TrainerTrialBanne
   const isExpired = daysRemaining === 0;
   
   return (
-    <Alert variant={isExpired ? 'destructive' : 'default'} className="mb-6">
+    <Alert variant={isExpired ? 'destructive' : 'default'} className="mb-6 border-border/80">
       <AlertTriangle className="h-4 w-4" />
       <AlertDescription className="flex items-center justify-between">
         <span>

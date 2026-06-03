@@ -85,23 +85,14 @@ export default function TrainerSubscription() {
 
   if (loading || loadingPlans) {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-10 w-10" />
-              <Skeleton className="h-8 w-48" />
-            </div>
-          </div>
-        </header>
-        <main className="container mx-auto px-4 py-8">
-          <Skeleton className="h-24 mb-8" />
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-[400px]" />
-            ))}
-          </div>
-        </main>
+      <div className="mx-auto w-full max-w-5xl space-y-6 py-2">
+        <Skeleton className="h-10 w-56" />
+        <Skeleton className="h-24 w-full rounded-lg" />
+        <div className="grid gap-6 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-[380px] rounded-lg" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -207,23 +198,20 @@ export default function TrainerSubscription() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/trainer')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">👑</span>
-              <span className="font-bold text-xl">Subscription Plans</span>
-            </div>
+    <div className="mx-auto w-full max-w-5xl space-y-6 py-2">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/trainer')}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-brand-50 p-2">
+            <Crown className="h-5 w-5 text-brand-600" />
           </div>
+          <h1 className="text-2xl font-display font-bold tracking-tight">Subscription Plans</h1>
         </div>
-      </header>
+      </div>
 
-      <main className="container mx-auto px-4 py-8">
+      <div className="space-y-8">
         {/* Current Plan Banner */}
         <Card className="mb-8 border-primary/20">
           <CardContent className="p-6">
@@ -283,7 +271,7 @@ export default function TrainerSubscription() {
               className="gap-2"
             >
               Yearly
-              <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">
+              <Badge variant="success" className="text-xs">
                 Save 20%
               </Badge>
             </Button>
@@ -295,11 +283,11 @@ export default function TrainerSubscription() {
           {plans?.map((plan) => (
             <Card 
               key={plan.id}
-              className={`relative ${plan.is_highlighted ? 'border-primary shadow-lg scale-105' : ''} ${currentPlan === plan.tier ? 'ring-2 ring-primary' : ''}`}
+              className={`relative ${plan.is_highlighted ? 'border-primary shadow-md md:scale-[1.02]' : ''} ${currentPlan === plan.tier ? 'ring-2 ring-primary' : ''}`}
             >
               {plan.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className={plan.is_highlighted ? 'bg-primary' : 'bg-orange-500'}>
+                  <Badge className={plan.is_highlighted ? 'bg-primary' : 'bg-brand-500'}>
                     <Sparkles className="h-3 w-3 mr-1" />
                     {plan.badge}
                   </Badge>
@@ -323,7 +311,7 @@ export default function TrainerSubscription() {
                     /{billingCycle === 'yearly' ? 'year' : 'month'}
                   </span>
                   {billingCycle === 'yearly' && plan.monthly_price > 0 && (
-                    <p className="text-sm text-green-600 dark:text-green-400 font-medium mt-1">
+                    <p className="mt-1 text-sm font-medium text-[hsl(var(--success))]">
                       Save €{Math.round(plan.monthly_price * 12 - plan.yearly_price)}/year
                     </p>
                   )}
@@ -379,65 +367,29 @@ export default function TrainerSubscription() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
-                  <Zap className="h-5 w-5 text-blue-600" />
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                { icon: Zap, title: 'Lower Fees', description: 'Keep more of what you earn with reduced platform fees' },
+                { icon: Users, title: 'More Visibility', description: 'Get priority placement in search results' },
+                { icon: BarChart3, title: 'Advanced Analytics', description: 'Track your performance with detailed insights' },
+                { icon: Calendar, title: 'Flexible Scheduling', description: 'Advanced availability and booking controls' },
+                { icon: MessageSquare, title: 'Priority Support', description: 'Get help faster when you need it' },
+                { icon: Shield, title: 'Verified Badge', description: 'Build trust with a verified trainer badge' },
+              ].map(({ icon: Icon, title, description }) => (
+                <div key={title} className="flex items-start gap-3">
+                  <div className="rounded-xl bg-brand-50 p-2">
+                    <Icon className="h-5 w-5 text-brand-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium">{title}</h4>
+                    <p className="text-sm text-muted-foreground">{description}</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-medium">Lower Fees</h4>
-                  <p className="text-sm text-muted-foreground">Keep more of what you earn with reduced platform fees</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900">
-                  <Users className="h-5 w-5 text-green-600" />
-                </div>
-                <div>
-                  <h4 className="font-medium">More Visibility</h4>
-                  <p className="text-sm text-muted-foreground">Get priority placement in search results</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900">
-                  <BarChart3 className="h-5 w-5 text-purple-600" />
-                </div>
-                <div>
-                  <h4 className="font-medium">Advanced Analytics</h4>
-                  <p className="text-sm text-muted-foreground">Track your performance with detailed insights</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900">
-                  <Calendar className="h-5 w-5 text-orange-600" />
-                </div>
-                <div>
-                  <h4 className="font-medium">Flexible Scheduling</h4>
-                  <p className="text-sm text-muted-foreground">Advanced availability and booking controls</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-pink-100 dark:bg-pink-900">
-                  <MessageSquare className="h-5 w-5 text-pink-600" />
-                </div>
-                <div>
-                  <h4 className="font-medium">Priority Support</h4>
-                  <p className="text-sm text-muted-foreground">Get help faster when you need it</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900">
-                  <Shield className="h-5 w-5 text-cyan-600" />
-                </div>
-                <div>
-                  <h4 className="font-medium">Verified Badge</h4>
-                  <p className="text-sm text-muted-foreground">Build trust with a verified trainer badge</p>
-                </div>
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>
-      </main>
+      </div>
     </div>
   );
 }

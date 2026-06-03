@@ -257,7 +257,7 @@ export default function TrainerIntakeRequests() {
 
   if (isFirstLoad) {
     return (
-      <div className="container mx-auto px-4 py-6">
+      <div className="mx-auto w-full max-w-7xl py-2">
         <Skeleton className="h-8 w-48 mb-6" />
         <Skeleton className="h-[400px] w-full" />
       </div>
@@ -265,11 +265,11 @@ export default function TrainerIntakeRequests() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-4">
+    <div className="mx-auto w-full max-w-7xl space-y-4 py-2">
       {/* Header */}
       <PageHeader
         title={t('intakeRequests.title')}
-        countText={t('intakeRequests.noRequestsDescription')}
+        description={t('intakeRequests.noRequestsDescription')}
         actions={
           <>
             <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>

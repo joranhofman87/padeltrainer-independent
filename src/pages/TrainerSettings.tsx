@@ -219,40 +219,40 @@ export default function TrainerSettings() {
       description: t('settings.subscriptionDescription'),
       icon: Crown,
       route: '/trainer/subscription',
-      iconBg: 'bg-purple-500/10',
-      iconColor: 'text-purple-600',
+      iconBg: 'bg-brand-50',
+      iconColor: 'text-brand-600',
     }] : []),
     {
       title: t('settings.profile'),
       description: t('settings.profileDescription'),
       icon: User,
       route: '/trainer/profile',
-      iconBg: 'bg-gray-500/10',
-      iconColor: 'text-gray-600',
+      iconBg: 'bg-navy-50',
+      iconColor: 'text-navy-700',
     },
     {
       title: t('bookingSettings.title'),
       description: t('bookingSettings.settingsDescription'),
       icon: ClipboardCheck,
       route: '/trainer/settings/bookings',
-      iconBg: 'bg-green-500/10',
-      iconColor: 'text-green-600',
+      iconBg: 'bg-[hsl(var(--success-soft))]',
+      iconColor: 'text-[hsl(var(--success))]',
     },
     {
       title: t('settings.notifications'),
       description: t('settings.notificationsDescription'),
       icon: Bell,
       route: '/trainer/settings/notifications',
-      iconBg: 'bg-orange-500/10',
-      iconColor: 'text-orange-600',
+      iconBg: 'bg-brand-50',
+      iconColor: 'text-brand-600',
     },
     {
       title: t('terms.title', 'General Terms'),
       description: t('terms.settingsDescription', 'Manage your general terms and conditions'),
       icon: FileText,
       route: '/app/trainer/terms',
-      iconBg: 'bg-amber-500/10',
-      iconColor: 'text-amber-600',
+      iconBg: 'bg-[hsl(var(--warning-soft))]',
+      iconColor: 'text-[hsl(var(--warning))]',
     },
   ];
 
@@ -260,7 +260,7 @@ export default function TrainerSettings() {
     <>
       {/* Sub-page Header */}
       <div className="border-b bg-background/60">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+        <div className="mx-auto flex w-full max-w-7xl items-center gap-4 py-2">
           <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/trainer')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -272,15 +272,15 @@ export default function TrainerSettings() {
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8" data-testid="page-trainer-settings">
+      <main className="mx-auto w-full max-w-7xl py-4" data-testid="page-trainer-settings">
         {/* Profile Visibility Section */}
         <div className="max-w-4xl mb-8">
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${isPublic ? 'bg-green-500/10' : 'bg-muted'}`}>
+                <div className={`rounded-xl p-2 ${isPublic ? 'bg-[hsl(var(--success-soft))]' : 'bg-muted'}`}>
                   {isPublic ? (
-                    <Eye className={`h-5 w-5 text-green-600`} />
+                    <Eye className="h-5 w-5 text-[hsl(var(--success))]" />
                   ) : (
                     <EyeOff className="h-5 w-5 text-muted-foreground" />
                   )}
@@ -365,8 +365,8 @@ export default function TrainerSettings() {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${playerModeEnabled ? 'bg-blue-500/10' : 'bg-muted'}`}>
-                  <Gamepad2 className={`h-5 w-5 ${playerModeEnabled ? 'text-blue-600' : 'text-muted-foreground'}`} />
+                <div className={`rounded-xl p-2 ${playerModeEnabled ? 'bg-[hsl(var(--info-soft))]' : 'bg-muted'}`}>
+                  <Gamepad2 className={`h-5 w-5 ${playerModeEnabled ? 'text-[hsl(var(--info))]' : 'text-muted-foreground'}`} />
                 </div>
                 <div className="flex-1">
                   <CardTitle className="text-lg">{t('settings.playerMode', 'Player mode')}</CardTitle>
@@ -470,8 +470,8 @@ export default function TrainerSettings() {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-sky-500/10">
-                  <Clock className="h-5 w-5 text-sky-600" />
+                <div className="rounded-xl bg-brand-50 p-2">
+                  <Clock className="h-5 w-5 text-brand-600" />
                 </div>
                 <div className="flex-1">
                   <CardTitle className="text-lg">{t('settings.timezone', 'Timezone')}</CardTitle>

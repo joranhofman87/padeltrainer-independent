@@ -5,8 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { 
   Users, DollarSign, Clock, 
-  Bell, Eye, ArrowRight,
+  Bell, Eye, ArrowRight, CalendarDays, ClipboardList,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
 import { supabase } from '@/lib/supabaseClient';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -189,6 +192,23 @@ async function fetchTrainerActivity(trainerId: string) {
   };
 }
 
+function DashboardEmptyState({ icon: Icon, message }: { icon: LucideIcon; message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-8 text-center">
+      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+        <Icon className="h-6 w-6 text-muted-foreground" />
+      </div>
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
+}
+
+function paymentBadgeVariant(status: string): 'success' | 'warning' | 'muted' {
+  if (status === 'paid') return 'success';
+  if (status === 'pending' || status === 'invoiced') return 'warning';
+  return 'muted';
+}
+
 // --- Component ---
 
 export default function TrainerDashboard() {
@@ -231,14 +251,33 @@ export default function TrainerDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="mx-auto w-full max-w-7xl space-y-6 py-2" data-testid="page-trainer-dashboard">
+        <Skeleton className="h-10 w-56" />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-28 rounded-lg" />
+          ))}
+        </div>
+        <Skeleton className="h-40 w-full rounded-lg" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Skeleton className="h-52 rounded-lg" />
+          <Skeleton className="h-52 rounded-lg" />
+        </div>
       </div>
     );
   }
 
+  const dashboardTitle = profile?.full_name
+    ? t('dashboard.welcome', { name: profile.full_name.split(' ')[0] })
+    : t('nav.dashboard');
+
   return (
-    <main className="container mx-auto px-4 py-8" data-testid="page-trainer-dashboard">
+    <main className="mx-auto w-full max-w-7xl space-y-6 py-2" data-testid="page-trainer-dashboard">
+      <PageHeader
+        title={dashboardTitle}
+        description={t('dashboard.subtitle')}
+      />
+
       {/* Trial Banner */}
       {subscription && !subscription.isSubscribed && !hasAcademy && (
         <TrainerTrialBanner 
@@ -260,79 +299,79 @@ export default function TrainerDashboard() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/app/trainer/analytics')}>
+      <div className="mb-2 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <Card className="card-elevated cursor-pointer" onClick={() => navigate('/app/trainer/analytics')}>
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.profileViews')}</p>
-                <p className="text-2xl sm:text-3xl font-bold">{statsLoading ? '...' : stats.profileViews}</p>
+                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : stats.profileViews}</p>
               </div>
-              <div className="p-2 sm:p-3 rounded-full bg-sky-100 dark:bg-sky-900">
-                <Eye className="h-4 w-4 sm:h-5 sm:w-5 text-sky-600 dark:text-sky-400" />
+              <div className="rounded-xl bg-brand-50 p-2 sm:p-3">
+                <Eye className="h-4 w-4 text-brand-600 sm:h-5 sm:w-5" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewProfileViews')}</p>
+            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewProfileViews')}</p>
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/app/trainer/analytics')}>
+        <Card className="card-elevated cursor-pointer" onClick={() => navigate('/app/trainer/analytics')}>
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.followers')}</p>
-                <p className="text-2xl sm:text-3xl font-bold">{statsLoading ? '...' : stats.followerCount}</p>
+                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : stats.followerCount}</p>
               </div>
-              <div className="p-2 sm:p-3 rounded-full bg-purple-100 dark:bg-purple-900">
-                <Bell className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
+              <div className="rounded-xl bg-brand-50 p-2 sm:p-3">
+                <Bell className="h-4 w-4 text-brand-600 sm:h-5 sm:w-5" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewFollowers')}</p>
+            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewFollowers')}</p>
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/app/trainer/players')}>
+        <Card className="card-elevated cursor-pointer" onClick={() => navigate('/app/trainer/players')}>
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.totalStudents')}</p>
-                <p className="text-2xl sm:text-3xl font-bold">{statsLoading ? '...' : stats.totalStudents}</p>
+                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : stats.totalStudents}</p>
               </div>
-              <div className="p-2 sm:p-3 rounded-full bg-green-100 dark:bg-green-900">
-                <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400" />
+              <div className="rounded-xl bg-[hsl(var(--success-soft))] p-2 sm:p-3">
+                <Users className="h-4 w-4 text-[hsl(var(--success))] sm:h-5 sm:w-5" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewStudents')}</p>
+            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewStudents')}</p>
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/app/trainer/open-slots')}>
+        <Card className="card-elevated cursor-pointer" onClick={() => navigate('/app/trainer/open-slots')}>
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.openSlots')}</p>
-                <p className="text-2xl sm:text-3xl font-bold">{statsLoading ? '...' : stats.openSlots}</p>
+                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : stats.openSlots}</p>
               </div>
-              <div className="p-2 sm:p-3 rounded-full bg-blue-100 dark:bg-blue-900">
-                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
+              <div className="rounded-xl bg-[hsl(var(--info-soft))] p-2 sm:p-3">
+                <Clock className="h-4 w-4 text-[hsl(var(--info))] sm:h-5 sm:w-5" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewSlots')}</p>
+            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewSlots')}</p>
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow col-span-2 sm:col-span-1" onClick={() => navigate('/app/trainer/earnings')}>
+        <Card className="card-elevated col-span-2 cursor-pointer sm:col-span-1" onClick={() => navigate('/app/trainer/earnings')}>
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.revenue')}</p>
-                <p className="text-2xl sm:text-3xl font-bold">{statsLoading ? '...' : `€${stats.monthlyEarnings.toFixed(0)}`}</p>
+                <p className="text-2xl font-bold sm:text-3xl">{statsLoading ? '...' : `€${stats.monthlyEarnings.toFixed(0)}`}</p>
               </div>
-              <div className="p-2 sm:p-3 rounded-full bg-orange-100 dark:bg-orange-900">
-                <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
+              <div className="rounded-xl bg-brand-50 p-2 sm:p-3">
+                <DollarSign className="h-4 w-4 text-brand-600 sm:h-5 sm:w-5" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewEarnings')}</p>
+            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">{t('dashboard.stats.viewEarnings')}</p>
           </CardContent>
         </Card>
       </div>
@@ -354,22 +393,22 @@ export default function TrainerDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             {recentPlayers.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t('players.noPlayers')}</p>
+              <DashboardEmptyState icon={Users} message={t('players.noPlayers')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">{t('players.name')}</TableHead>
-                    <TableHead className="text-xs">{t('players.addedOn')}</TableHead>
-                    <TableHead className="text-xs">{t('players.status')}</TableHead>
+                    <TableHead className="text-sm">{t('players.name')}</TableHead>
+                    <TableHead className="text-sm">{t('players.addedOn')}</TableHead>
+                    <TableHead className="text-sm">{t('players.status')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {recentPlayers.map(player => (
                     <TableRow key={player.id}>
-                      <TableCell className="text-sm py-2">{player.full_name}</TableCell>
-                      <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(player.created_at), 'dd MMM')}</TableCell>
-                      <TableCell className="py-2">
+                      <TableCell className="py-3 text-sm">{player.full_name}</TableCell>
+                      <TableCell className="py-3 text-sm text-muted-foreground">{format(new Date(player.created_at), 'dd MMM')}</TableCell>
+                      <TableCell className="py-3">
                         <Badge variant={player.has_trained ? 'success' : 'muted'} className="text-xs">
                           {player.has_trained ? t('players.statuses.active') : t('players.statuses.prospect')}
                         </Badge>
@@ -394,15 +433,15 @@ export default function TrainerDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             {recentBookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t('bookings.empty')}</p>
+              <DashboardEmptyState icon={ClipboardList} message={t('bookings.empty')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">{t('bookings.player')}</TableHead>
-                    <TableHead className="text-xs">{t('cycles.cyclus', 'Cyclus')}</TableHead>
-                    <TableHead className="text-xs">{t('players.addedOn')}</TableHead>
-                    <TableHead className="text-xs">{t('bookings.payment', 'Payment')}</TableHead>
+                    <TableHead className="text-sm">{t('bookings.player')}</TableHead>
+                    <TableHead className="text-sm">{t('cycles.cyclus', 'Cyclus')}</TableHead>
+                    <TableHead className="text-sm">{t('players.addedOn')}</TableHead>
+                    <TableHead className="text-sm">{t('bookings.payment', 'Payment')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -411,15 +450,15 @@ export default function TrainerDashboard() {
                     const cyclusName = (booking.availability_slots as any)?.cyclus_name;
                     return (
                       <TableRow key={booking.id}>
-                        <TableCell className="text-sm py-2">{playerName}</TableCell>
-                        <TableCell className="text-sm py-2 text-muted-foreground">
+                        <TableCell className="py-3 text-sm">{playerName}</TableCell>
+                        <TableCell className="py-3 text-sm text-muted-foreground">
                           {cyclusName ? (
                             <span>{cyclusName} <span className="text-xs">({booking.sessionCount} {booking.sessionCount === 1 ? t('dashboard.session', 'session') : t('dashboard.sessions', 'sessions')})</span></span>
                           ) : '—'}
                         </TableCell>
-                        <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
-                        <TableCell className="py-2">
-                          <Badge variant={booking.payment_status === 'paid' ? 'success' : 'warning'} className="text-xs">
+                        <TableCell className="py-3 text-sm text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
+                        <TableCell className="py-3">
+                          <Badge variant={paymentBadgeVariant(booking.payment_status)} className="text-xs">
                             {booking.payment_status}
                           </Badge>
                         </TableCell>
@@ -444,23 +483,23 @@ export default function TrainerDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             {recentRegistrations.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t('dashboard.noRegistrations', 'No registrations yet')}</p>
+              <DashboardEmptyState icon={ClipboardList} message={t('dashboard.noRegistrations', 'No registrations yet')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">{t('players.name')}</TableHead>
-                    <TableHead className="text-xs">{t('players.addedOn')}</TableHead>
-                    <TableHead className="text-xs">{t('players.status')}</TableHead>
+                    <TableHead className="text-sm">{t('players.name')}</TableHead>
+                    <TableHead className="text-sm">{t('players.addedOn')}</TableHead>
+                    <TableHead className="text-sm">{t('players.status')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {recentRegistrations.map(reg => (
                     <TableRow key={reg.id}>
-                      <TableCell className="text-sm py-2">{reg.full_name}</TableCell>
-                      <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM')}</TableCell>
-                      <TableCell className="py-2">
-                        <Badge variant={reg.status === 'confirmed' ? 'default' : 'secondary'} className="text-xs">
+                      <TableCell className="py-3 text-sm">{reg.full_name}</TableCell>
+                      <TableCell className="py-3 text-sm text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM')}</TableCell>
+                      <TableCell className="py-3">
+                        <Badge variant={reg.status === 'confirmed' ? 'success' : 'muted'} className="text-xs">
                           {reg.status}
                         </Badge>
                       </TableCell>
@@ -484,24 +523,24 @@ export default function TrainerDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             {upcomingSlots.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t('availability.noSlots')}</p>
+              <DashboardEmptyState icon={CalendarDays} message={t('availability.noSlots')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">{t('cycles.name', 'Name')}</TableHead>
-                    <TableHead className="text-xs">{t('dashboard.sessions', 'Sessions')}</TableHead>
-                    <TableHead className="text-xs">{t('dashboard.nextSession', 'Next session')}</TableHead>
+                    <TableHead className="text-sm">{t('cycles.name', 'Name')}</TableHead>
+                    <TableHead className="text-sm">{t('dashboard.sessions', 'Sessions')}</TableHead>
+                    <TableHead className="text-sm">{t('dashboard.nextSession', 'Next session')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {upcomingSlots.map((slot) => (
                     <TableRow key={slot.cyclus_id || slot.id}>
-                      <TableCell className="text-sm py-2">{slot.cyclus_name || '—'}</TableCell>
-                      <TableCell className="text-sm py-2 text-muted-foreground">
+                      <TableCell className="py-3 text-sm">{slot.cyclus_name || '—'}</TableCell>
+                      <TableCell className="py-3 text-sm text-muted-foreground">
                         {slot.sessionCount} {slot.sessionCount === 1 ? t('dashboard.session', 'session') : t('dashboard.sessions', 'sessions')}
                       </TableCell>
-                      <TableCell className="text-sm py-2 text-muted-foreground">
+                      <TableCell className="py-3 text-sm text-muted-foreground">
                         <div>{format(new Date(slot.start_time), 'EEE dd MMM')}</div>
                         <div className="text-xs">{format(new Date(slot.start_time), 'HH:mm')}</div>
                       </TableCell>

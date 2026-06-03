@@ -331,15 +331,22 @@ export default function TrainerEarnings() {
 
   if (loading || loadingData) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="mx-auto w-full max-w-7xl space-y-4 py-2">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+        <Skeleton className="h-28 w-full rounded-lg" />
+        <div className="grid gap-4 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-28 rounded-lg" />
+          ))}
+        </div>
+        <Skeleton className="h-48 w-full rounded-lg" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 space-y-4">
+    <div className="mx-auto w-full max-w-7xl space-y-4 py-2">
         <PageHeader
           title={t('earningsPage.title')}
           description={t('earningsPage.subtitle')}
@@ -356,37 +363,53 @@ export default function TrainerEarnings() {
         />
         {/* Club Payment Info Card - Show for club trainers */}
         {academyPaymentInfo?.isAcademyTrainer && (
-          <Card className={`mb-6 ${academyPaymentInfo.academyChargesEnabled 
-            ? 'border-blue-200 bg-gradient-to-r from-blue-50 to-sky-50 dark:from-blue-950/20 dark:to-sky-950/20' 
-            : 'border-orange-300 bg-orange-50 dark:bg-orange-950/20'}`}>
+          <Card
+            className={
+              academyPaymentInfo.academyChargesEnabled
+                ? 'mb-6 border-[hsl(var(--info))]/25 bg-[hsl(var(--info-soft))]'
+                : 'mb-6 border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]'
+            }
+          >
             <CardContent className="p-4">
               <div className="flex items-start gap-4">
-                <div className={`p-2 rounded-full ${academyPaymentInfo.academyChargesEnabled ? 'bg-blue-100 dark:bg-blue-900' : 'bg-orange-100 dark:bg-orange-900'}`}>
-                  <Building2 className={`h-5 w-5 ${academyPaymentInfo.academyChargesEnabled ? 'text-blue-600' : 'text-orange-600'}`} />
+                <div
+                  className={`rounded-xl p-2 ${
+                    academyPaymentInfo.academyChargesEnabled
+                      ? 'bg-[hsl(var(--info-soft))]'
+                      : 'bg-[hsl(var(--warning-soft))]'
+                  }`}
+                >
+                  <Building2
+                    className={`h-5 w-5 ${
+                      academyPaymentInfo.academyChargesEnabled
+                        ? 'text-[hsl(var(--info))]'
+                        : 'text-[hsl(var(--warning))]'
+                    }`}
+                  />
                 </div>
                 <div className="flex-1">
                   {academyPaymentInfo.academyChargesEnabled ? (
                     <>
-                      <p className="font-medium text-blue-800 dark:text-blue-200">
+                      <p className="font-medium text-foreground">
                         {t('academyPayments.handledByAcademy', { academyName: academyPaymentInfo.academyName || 'Your academy' })}
                       </p>
-                      <p className="text-sm text-blue-600 dark:text-blue-300">
+                      <p className="text-sm text-muted-foreground">
                         {t('academyPayments.academyCollectsPayments')}
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="font-medium text-orange-800 dark:text-orange-200">
+                      <p className="font-medium text-foreground">
                         {t('academyPayments.academyNeedsSetup', { academyName: academyPaymentInfo.academyName || 'Your academy' })}
                       </p>
-                      <p className="text-sm text-orange-600 dark:text-orange-300">
+                      <p className="text-sm text-muted-foreground">
                         {t('academyPayments.contactAcademyOwner')}
                       </p>
                     </>
                   )}
                 </div>
                 {academyPaymentInfo.academyChargesEnabled && (
-                  <Badge variant="outline" className="border-blue-300 text-blue-600">
+                  <Badge variant="info">
                     <CheckCircle2 className="h-3 w-3 mr-1" />
                     Active
                   </Badge>
@@ -442,12 +465,12 @@ export default function TrainerEarnings() {
 
         {/* Manual invoicing: Business info warning - Only for non-academy trainers */}
         {!academyPaymentInfo?.isAcademyTrainer && !isBusinessInfoComplete && (
-          <Card className="mb-6 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
-            <CardContent className="p-4 flex items-center gap-4">
-              <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
+          <Card className="mb-6 border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]">
+            <CardContent className="flex items-center gap-4 p-4">
+              <AlertCircle className="h-5 w-5 shrink-0 text-[hsl(var(--warning))]" />
               <div className="flex-1">
-                <p className="font-medium text-orange-800 dark:text-orange-200">{t('earningsPage.completeBusinessDetails')}</p>
-                <p className="text-sm text-orange-600 dark:text-orange-300">{t('earningsPage.addBusinessDetails')}</p>
+                <p className="font-medium text-foreground">{t('earningsPage.completeBusinessDetails')}</p>
+                <p className="text-sm text-muted-foreground">{t('earningsPage.addBusinessDetails')}</p>
               </div>
               <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
                 {t('earningsPage.addDetails')}
@@ -528,29 +551,29 @@ export default function TrainerEarnings() {
 
         {/* Mollie Balance Card - only show when NOT using manual invoicing and NOT an academy trainer */}
         {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && connectStatus?.chargesEnabled && connectStatus.balance && (
-          <Card className="mb-8 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
+          <Card className="mb-8 border-[hsl(var(--success))]/25 bg-[hsl(var(--success-soft))]">
             <CardContent className="p-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
-                    <Wallet className="h-6 w-6 text-green-600" />
+                  <div className="rounded-xl bg-[hsl(var(--success-soft))] p-3">
+                    <Wallet className="h-6 w-6 text-[hsl(var(--success))]" />
                   </div>
                   <div>
                      <p className="text-sm text-muted-foreground">{t('earningsPage.mollieBalance')}</p>
-                     <div className="flex items-baseline gap-3">
-                       <span className="text-2xl font-bold text-green-600">
+                     <div className="flex flex-wrap items-baseline gap-3">
+                       <span className="text-2xl font-bold text-[hsl(var(--success))]">
                          €{connectStatus.balance.available.toFixed(2)}
                        </span>
                        <span className="text-sm text-muted-foreground">{t('earningsPage.available')}</span>
                       {connectStatus.balance.pending > 0 && (
-                        <span className="text-sm text-orange-600">
+                        <span className="text-sm text-[hsl(var(--warning))]">
                           +€{connectStatus.balance.pending.toFixed(2)} pending
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
-                <Badge variant="outline" className="border-green-300 text-green-600">
+                <Badge variant="success">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   {t('earningsPage.mollieConnected')}
                 </Badge>
@@ -562,12 +585,12 @@ export default function TrainerEarnings() {
         {/* Mollie Connected (no balance data) */}
         {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && 
           connectStatus?.chargesEnabled && !connectStatus.balance && (
-          <Card className="mb-8 border-green-200">
+          <Card className="mb-8 border-[hsl(var(--success))]/25">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
-                    <Wallet className="h-6 w-6 text-green-600" />
+                  <div className="rounded-xl bg-[hsl(var(--success-soft))] p-3">
+                    <Wallet className="h-6 w-6 text-[hsl(var(--success))]" />
                   </div>
                   <div>
                     <p className="font-medium">{t('earningsPage.mollieConnected')}</p>
@@ -576,7 +599,7 @@ export default function TrainerEarnings() {
                     </p>
                   </div>
                 </div>
-                <Badge variant="outline" className="border-green-300 text-green-600">
+                <Badge variant="success">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   Active
                 </Badge>
@@ -587,12 +610,12 @@ export default function TrainerEarnings() {
 
         {/* Pending onboarding warning - only show when NOT using manual invoicing */}
         {!useManualInvoicing && connectStatus?.connected && !connectStatus.onboardingComplete && (
-          <Card className="mb-8 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
-            <CardContent className="p-4 flex items-center gap-4">
-              <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
+          <Card className="mb-8 border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]">
+            <CardContent className="flex items-center gap-4 p-4">
+              <AlertCircle className="h-5 w-5 shrink-0 text-[hsl(var(--warning))]" />
               <div className="flex-1">
-                <p className="font-medium text-orange-800 dark:text-orange-200">{t('earningsPage.completeMollieSetup')}</p>
-                <p className="text-sm text-orange-600 dark:text-orange-300">{t('earningsPage.finishOnboarding')}</p>
+                <p className="font-medium text-foreground">{t('earningsPage.completeMollieSetup')}</p>
+                <p className="text-sm text-muted-foreground">{t('earningsPage.finishOnboarding')}</p>
               </div>
               <Button variant="outline" onClick={handleConnectMollie} disabled={connectLoading}>
                 {t('earningsPage.continueSetup')}
@@ -603,14 +626,14 @@ export default function TrainerEarnings() {
 
         {/* Stats Cards */}
         <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0">
+          <Card className="card-elevated border-[hsl(var(--success))]/20 bg-[hsl(var(--success-soft))]">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-green-100 text-sm">{t('earningsPage.totalEarned')}</p>
-                  <p className="text-3xl font-bold">€{totalEarnings.toFixed(0)}</p>
+                  <p className="text-sm text-muted-foreground">{t('earningsPage.totalEarned')}</p>
+                  <p className="text-3xl font-bold text-foreground">€{totalEarnings.toFixed(0)}</p>
                 </div>
-                <Euro className="h-10 w-10 text-green-200" />
+                <Euro className="h-10 w-10 text-[hsl(var(--success))]" />
               </div>
             </CardContent>
           </Card>
@@ -645,12 +668,12 @@ export default function TrainerEarnings() {
             </CardContent>
           </Card>
 
-          <Card className={pendingAmount > 0 ? 'border-orange-300' : ''}>
+          <Card className={pendingAmount > 0 ? 'border-[hsl(var(--warning))]/30' : ''}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-muted-foreground text-sm">Pending</p>
-                  <p className="text-2xl font-bold text-orange-600">€{pendingAmount.toFixed(0)}</p>
+                  <p className="text-2xl font-bold text-[hsl(var(--warning))]">€{pendingAmount.toFixed(0)}</p>
                   <p className="text-xs text-muted-foreground">{pendingPayments.length} payments</p>
                 </div>
                 <CreditCard className="h-8 w-8 text-orange-500" />
@@ -794,7 +817,6 @@ export default function TrainerEarnings() {
           )}
           </Tabs>
         </div>
-      </main>
 
       {/* CreateInvoiceDialog removed — using /app/trainer/invoices/new page */}
     </div>

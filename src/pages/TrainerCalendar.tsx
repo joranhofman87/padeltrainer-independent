@@ -351,11 +351,11 @@ export default function TrainerCalendar() {
         </div>
       </div>
 
-      <main className="container mx-auto px-4 py-5 sm:py-6 space-y-4">
+      <main className="mx-auto w-full max-w-7xl space-y-4 py-2 sm:py-4">
         <Tabs value={view} onValueChange={(v) => setView(v as View)}>
           {/* Summary tiles */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
-            <div className="rounded-lg border bg-card px-3 py-2.5">
+            <div className="rounded-lg border border-border/80 bg-card px-3 py-2.5 shadow-sm">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
                 {t("calendar.summary.locationsInUse", "Locations in use")}
               </div>
@@ -383,7 +383,7 @@ export default function TrainerCalendar() {
               </div>
             </div>
 
-            <div className="rounded-lg border bg-card px-3 py-2.5">
+            <div className="rounded-lg border border-border/80 bg-card px-3 py-2.5 shadow-sm">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
                 {t("calendar.summary.bookedHours", "Booked hours")}
               </div>
@@ -393,7 +393,7 @@ export default function TrainerCalendar() {
               </div>
             </div>
 
-            <div className="rounded-lg border bg-card px-3 py-2.5">
+            <div className="rounded-lg border border-border/80 bg-card px-3 py-2.5 shadow-sm">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
                 {t("calendar.summary.freeHours", "Free hours")}
               </div>

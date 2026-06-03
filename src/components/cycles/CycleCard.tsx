@@ -67,12 +67,16 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
     loadCounts();
   }, [cycle.id]);
 
-  const getStatusColor = (status: string) => {
+  const getStatusVariant = (status: string): 'success' | 'warning' | 'muted' | 'secondary' => {
     switch (status) {
-      case 'open': return 'bg-green-500/10 text-green-600 border-green-500/20';
-      case 'closed': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
-      case 'archived': return 'bg-muted text-muted-foreground';
-      default: return 'bg-muted text-muted-foreground';
+      case 'open':
+        return 'success';
+      case 'closed':
+        return 'warning';
+      case 'archived':
+        return 'muted';
+      default:
+        return 'secondary';
     }
   };
 
@@ -130,7 +134,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                 {t('type.event', 'Event')}
               </Badge>
             )}
-            <Badge variant="outline" className={getStatusColor(cycle.status)}>
+            <Badge variant={getStatusVariant(cycle.status)} className="text-xs">
               {t(`status.${cycle.status}`)}
             </Badge>
             

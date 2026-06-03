@@ -6,7 +6,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
+import { Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import CycleCard from '@/components/cycles/CycleCard';
 import { logger } from '@/lib/logger';
@@ -54,7 +55,7 @@ export default function TrainerCycles() {
 
   if (loading || isLoading) {
     return (
-      <div className="container mx-auto px-4 py-6">
+      <div className="mx-auto w-full max-w-7xl py-2">
         <Skeleton className="h-8 w-48 mb-6" />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Skeleton className="h-48" />
@@ -66,34 +67,27 @@ export default function TrainerCycles() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/trainer')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">{t('registration.openCycles', 'Registrations')}</h1>
-            <p className="text-muted-foreground hidden sm:block">
-              {t('noRegistrationsDescription', 'Create registrations to collect player interest')}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button onClick={() => navigate('/app/trainer/cycles/new?type=registration')}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('createRegistration', 'Create Registration')}
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/app/trainer/cycles/new?type=event')}>
-            <PartyPopper className="mr-2 h-4 w-4" />
-            {t('createEvent', 'Create Event')}
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/app/trainer/cycles/bulk-copy')}>
-            <Copy className="mr-2 h-4 w-4" />
-            {t('bulkCopy.cta', 'Copy slots to next cycle')}
-          </Button>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-7xl space-y-6 py-2">
+      <PageHeader
+        title={t('registration.openCycles', 'Registrations')}
+        description={t('noRegistrationsDescription', 'Create registrations to collect player interest')}
+        actions={
+          <>
+            <Button size="sm" onClick={() => navigate('/app/trainer/cycles/new?type=registration')}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t('createRegistration', 'Create Registration')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate('/app/trainer/cycles/new?type=event')}>
+              <PartyPopper className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">{t('createEvent', 'Create Event')}</span>
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate('/app/trainer/cycles/bulk-copy')}>
+              <Copy className="mr-2 h-4 w-4" />
+              <span className="hidden md:inline">{t('bulkCopy.cta', 'Copy slots to next cycle')}</span>
+            </Button>
+          </>
+        }
+      />
 
       {cycles.length === 0 ? (
         <div className="text-center py-16">
