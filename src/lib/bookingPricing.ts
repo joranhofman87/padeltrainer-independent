@@ -1,4 +1,5 @@
 import { round2 } from "@/lib/invoiceCalc";
+import { calculateSlotPrice } from "@/lib/pricing";
 
 export type SlotBookingPricingInput = {
   sessionPrice: number | null | undefined;
@@ -149,6 +150,33 @@ export type GuestBookingInsertRow = {
   discount_reason: string | null;
   notes: string | null;
 };
+
+/** Session price from slot config, or hourly rate × duration when unset. */
+export function resolveSlotSessionPrice(
+  pricePerSession: number | null | undefined,
+  hourlyRate: number,
+  durationMinutes: number,
+): number {
+  const configured = normalizeSessionPrice(pricePerSession);
+  if (configured > 0) {
+    return configured;
+  }
+  return calculateSlotPrice(hourlyRate, durationMinutes);
+}
+
+export type ApplyFirstPayerDiscountInput = {
+  playerIndex: number;
+  paymentAmount: number;
+  /** Discount applied only to the first selected player (index 0). */
+  discountAmount: number;
+};
+
+export function applyFirstPayerDiscount(input: ApplyFirstPayerDiscountInput): number {
+  if (input.playerIndex !== 0 || input.discountAmount <= 0) {
+    return input.paymentAmount;
+  }
+  return Math.max(0, round2(input.paymentAmount - input.discountAmount));
+}
 
 export function buildGuestBookingInsertRow(params: {
   slotId: string;

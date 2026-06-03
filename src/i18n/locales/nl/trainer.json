@@ -360,6 +360,8 @@
       "cancelAndReopenDescription": "Houd slot beschikbaar en informeer volgers",
       "keepBooking": "Boeking behouden"
     },
+    "invoiceNotCreatedTitle": "Speler toegevoegd, maar factuur is niet aangemaakt.",
+    "invoiceNotCreatedDescription": "Controleer je factuurgegevens of maak de factuur handmatig aan.",
     "editBooking": "Boeking bewerken",
     "bookingUpdated": "Boeking bijgewerkt",
     "bookingUpdatedDescription": "De boeking is succesvol bijgewerkt",
@@ -825,7 +827,18 @@
     "bulkSent": "{{count}} verzonden",
     "bulkNoEmail": "{{count}} zonder e-mail",
     "bulkFailed": "{{count}} mislukt",
-    "bulkProcessed": "{{total}} facturen verwerkt: {{parts}}"
+    "bulkProcessed": "{{total}} facturen verwerkt: {{parts}}",
+    "updateAffectedTitle": "Betrokken facturen bijwerken?",
+    "updateAffectedBody": "Deze wijziging raakt facturen die al zijn verstuurd. Conceptfacturen kunnen automatisch worden bijgewerkt. Verstuurde facturen wijzig je alleen als je ze opnieuw wilt versturen.",
+    "updateAffectedDraftCount": "{{count}} conceptfactuur/facturen worden bijgewerkt",
+    "updateAffectedSentCount": "{{count}} verstuurde/openstaande factuur/facturen kunnen worden bijgewerkt",
+    "updateAffectedPaidCount": "{{count}} betaalde factuur/facturen worden niet gewijzigd",
+    "updateDraftAndSent": "Concept + verstuurde facturen bijwerken",
+    "updateDraftOnly": "Alleen conceptfacturen bijwerken",
+    "skipInvoiceUpdates": "Facturen niet bijwerken",
+    "paidUnchanged": "Betaalde facturen zijn niet gewijzigd.",
+    "sentUnchanged": "Verstuurde facturen zijn niet bijgewerkt.",
+    "sentUpdated": "Verstuurde facturen zijn bijgewerkt."
   },
   "profileVisibility": {
     "title": "Zichtbaarheid marktplaats",

@@ -1162,6 +1162,8 @@ export default function AcademyCalendar() {
                 end_time: selectedSlot.end_time,
                 cyclus_id: selectedSlot.cyclus_id,
                 cyclus_name: selectedSlot.cyclus_name,
+                price_per_session: selectedSlot.price_per_session,
+                split_payment: selectedSlot.split_payment,
                 booked_players: selectedSlot.booked_players,
               }}
               onBookingCreated={handleSlotsCreated}

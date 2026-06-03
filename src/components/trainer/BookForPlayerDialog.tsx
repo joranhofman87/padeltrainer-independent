@@ -1,9 +1,30 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { format, differenceInMinutes } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
-import { syncSplitCountForCycle } from "@/lib/invoiceSync";
+import {
+  syncInvoicesAfterAddPlayer,
+  applyAddPlayerInvoiceChoice,
+  getInvoiceFollowUpMessages,
+  type InvoiceAfterAddPlayerResult,
+} from "@/lib/invoiceAfterAddPlayer";
+import { buildAffectedInvoicesSummary, type AffectedInvoicesSummary } from "@/lib/affectedInvoices";
+import type { InvoiceUpdateChoice } from "@/lib/invoiceUpdateChoice";
+import { UpdateAffectedInvoicesDialog } from "@/components/invoices/UpdateAffectedInvoicesDialog";
+import {
+  shouldDeferAddPlayerClose,
+  shouldWarnInvoiceCreateFailure,
+} from "@/lib/addPlayerInvoiceFlow";
+import {
+  buildCyclusSlotAddPlayerBookings,
+  buildSingleSlotAddPlayerBookings,
+} from "@/lib/bookForPlayerBooking";
+import {
+  calculateSlotBookingPricing,
+  countActiveBookings,
+  resolveSlotSessionPrice,
+} from "@/lib/bookingPricing";
 import {
   Dialog,
   DialogContent,
@@ -44,8 +65,24 @@ interface Slot {
   end_time: string;
   cyclus_id?: string | null;
   cyclus_name?: string | null;
+  price_per_session?: number | null;
+  split_payment?: boolean;
   booked_players?: BookedPlayer[];
 }
+
+type CyclusSlotRow = {
+  id: string;
+  start_time: string;
+  end_time: string;
+  price_per_session?: number | null;
+};
+
+type ExistingBookingRow = {
+  id: string;
+  slot_id: string;
+  payment_status: string | null;
+  paid_externally: boolean | null;
+};
 
 interface BookForPlayerDialogProps {
   open: boolean;
@@ -56,6 +93,9 @@ interface BookForPlayerDialogProps {
 }
 
 const EMPTY_PLAYER_SLOTS = ["", "", "", ""];
+
+const INSERTED_BOOKING_SELECT =
+  "id, slot_id, guest_player_id, player_id, payment_amount, payment_status, paid_externally";
 
 export function BookForPlayerDialog({
   open,
@@ -75,24 +115,46 @@ export function BookForPlayerDialog({
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [bookingScope, setBookingScope] = useState<"single" | "cyclus">("single");
   const [cyclusSlotsCount, setCyclusSlotsCount] = useState(0);
-  const [cyclusSlots, setCyclusSlots] = useState<{ id: string; start_time: string; end_time: string }[]>([]);
+  const [cyclusSlots, setCyclusSlots] = useState<CyclusSlotRow[]>([]);
   const [hourlyRate, setHourlyRate] = useState<number>(50);
+  const [slotSplitPayment, setSlotSplitPayment] = useState(false);
+  const [slotPricePerSession, setSlotPricePerSession] = useState<number | null>(null);
   
   // Discount state
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [discountReason, setDiscountReason] = useState("");
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoiceDialogSummary, setInvoiceDialogSummary] = useState<AffectedInvoicesSummary | null>(null);
+  const [pendingInvoiceSlotIds, setPendingInvoiceSlotIds] = useState<string[]>([]);
+  const [pendingInvoiceResult, setPendingInvoiceResult] = useState<
+    Awaited<ReturnType<typeof syncInvoicesAfterAddPlayer>> | null
+  >(null);
+  const [invoiceConfirmLoading, setInvoiceConfirmLoading] = useState(false);
+  const closingInvoiceDialogFromChoiceRef = useRef(false);
 
   useEffect(() => {
     if (open && trainerId) {
       fetchPlayers();
       fetchHourlyRate();
+      if (slot?.id) {
+        fetchSlotPricingMeta(slot.id);
+      }
       if (slot?.cyclus_id) {
         fetchCyclusSlots(slot.cyclus_id);
       }
     }
-  }, [open, trainerId, slot?.cyclus_id]);
+  }, [open, trainerId, slot?.id, slot?.cyclus_id]);
+
+  useEffect(() => {
+    if (slot?.split_payment != null) {
+      setSlotSplitPayment(Boolean(slot.split_payment));
+    }
+    if (slot?.price_per_session != null) {
+      setSlotPricePerSession(slot.price_per_session);
+    }
+  }, [slot?.split_payment, slot?.price_per_session]);
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -144,11 +206,29 @@ export function BookForPlayerDialog({
     }
   };
 
+  const fetchSlotPricingMeta = async (slotId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("availability_slots")
+        .select("split_payment, price_per_session")
+        .eq("id", slotId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setSlotSplitPayment(Boolean(data.split_payment));
+        setSlotPricePerSession(data.price_per_session);
+      }
+    } catch (error) {
+      logger.error("Error fetching slot pricing", error as Error, { component: "BookForPlayerDialog" });
+    }
+  };
+
   const fetchCyclusSlots = async (cyclusId: string) => {
     try {
       const { data, error } = await supabase
         .from("availability_slots")
-        .select("id, start_time, end_time")
+        .select("id, start_time, end_time, price_per_session")
         .eq("cyclus_id", cyclusId)
         .gte("start_time", new Date().toISOString())
         .order("start_time");
@@ -158,6 +238,54 @@ export function BookForPlayerDialog({
       setCyclusSlotsCount(data?.length || 0);
     } catch (error) {
       logger.error("Error fetching cyclus slots", error as Error, { component: "BookForPlayerDialog" });
+    }
+  };
+
+  const fetchExistingBookingsBySlot = async (
+    slotIds: string[],
+  ): Promise<Map<string, ExistingBookingRow[]>> => {
+    const { data, error } = await supabase
+      .from("bookings")
+      .select("id, slot_id, payment_status, paid_externally")
+      .in("slot_id", slotIds)
+      .in("status", ["confirmed", "pending"]);
+
+    if (error) throw error;
+
+    const bySlot = new Map<string, ExistingBookingRow[]>();
+    for (const row of data || []) {
+      const list = bySlot.get(row.slot_id) || [];
+      list.push(row);
+      bySlot.set(row.slot_id, list);
+    }
+    return bySlot;
+  };
+
+  const rebalanceExistingOnSlot = async (
+    slotId: string,
+    rebalanceIds: string[],
+    amount: number,
+    sessionPriceForOriginal: number,
+  ): Promise<void> => {
+    if (rebalanceIds.length === 0) return;
+
+    const { error } = await supabase
+      .from("bookings")
+      .update({
+        payment_amount: amount,
+        original_amount: sessionPriceForOriginal,
+        discount_amount: 0,
+      })
+      .in("id", rebalanceIds);
+
+    if (error) {
+      logger.error("Failed to rebalance booking amounts", error, {
+        component: "BookForPlayerDialog",
+        slotId,
+        rebalanceIds,
+        amount,
+      });
+      throw error;
     }
   };
 
@@ -217,60 +345,230 @@ export function BookForPlayerDialog({
   const totalDiscountPerPlayer = selectedCount > 0 ? calculatedDiscount / selectedCount : 0;
   const finalPricePerPlayer = selectedCount > 0 ? finalAmount / selectedCount : 0;
 
+  const showInvoiceFollowUpToasts = (
+    invoiceResult: Awaited<ReturnType<typeof syncInvoicesAfterAddPlayer>>,
+    sentWasUpdated: boolean,
+  ) => {
+    const followUp = getInvoiceFollowUpMessages(invoiceResult, { sentWasUpdated });
+    if (followUp.paidUnchanged) {
+      toast({ title: t("invoices.paidUnchanged", followUp.paidUnchanged) });
+    }
+    if (followUp.sentUpdated) {
+      toast({ title: t("invoices.sentUpdated", followUp.sentUpdated) });
+    }
+    if (followUp.sentNotUpdated) {
+      toast({ title: t("invoices.sentUnchanged", followUp.sentNotUpdated) });
+    }
+  };
+
+  const runInvoicesAfterAddPlayer = async (
+    insertedBookings: {
+      id: string;
+      slot_id: string;
+      guest_player_id: string | null;
+      player_id: string | null;
+      payment_amount: number | null;
+      payment_status: string;
+      paid_externally: boolean | null;
+    }[],
+    affectedSlotIds: string[],
+    splitPayment: boolean,
+  ): Promise<InvoiceAfterAddPlayerResult> => {
+    const invoiceResult = await syncInvoicesAfterAddPlayer({
+      newBookings: insertedBookings,
+      splitPayment,
+      slotIds: affectedSlotIds,
+      cyclusId: slot?.cyclus_id,
+    });
+
+    if (shouldWarnInvoiceCreateFailure(invoiceResult)) {
+      toast({
+        title: t("bookings.invoiceNotCreatedTitle", "Player added, but invoice was not created."),
+        description: t(
+          "bookings.invoiceNotCreatedDescription",
+          "Check invoice business settings or try creating the invoice manually.",
+        ),
+        variant: "destructive",
+      });
+    }
+
+    if (invoiceResult.needsConfirmation) {
+      setPendingInvoiceSlotIds(affectedSlotIds);
+      setPendingInvoiceResult(invoiceResult);
+      setInvoiceDialogSummary(buildAffectedInvoicesSummary(invoiceResult.classification));
+      setInvoiceDialogOpen(true);
+      return invoiceResult;
+    }
+
+    showInvoiceFollowUpToasts(invoiceResult, false);
+    return invoiceResult;
+  };
+
+  const finishDialogAfterBooking = () => {
+    setSelectedPlayerIds(EMPTY_PLAYER_SLOTS);
+    setNotes("");
+    setBookingScope("single");
+    onOpenChange(false);
+    onBookingCreated?.();
+  };
+
+  const handleInvoiceUpdateChoice = async (choice: InvoiceUpdateChoice) => {
+    closingInvoiceDialogFromChoiceRef.current = true;
+    setInvoiceConfirmLoading(true);
+    try {
+      if (choice !== "skip" && pendingInvoiceSlotIds.length > 0) {
+        await applyAddPlayerInvoiceChoice(pendingInvoiceSlotIds, choice);
+      }
+      if (pendingInvoiceResult) {
+        showInvoiceFollowUpToasts(
+          pendingInvoiceResult,
+          choice === "update_drafts_and_sent",
+        );
+      }
+    } catch (err) {
+      logger.warn("Invoice update choice failed", {
+        component: "BookForPlayerDialog",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setInvoiceConfirmLoading(false);
+      setInvoiceDialogOpen(false);
+      setPendingInvoiceSlotIds([]);
+      setPendingInvoiceResult(null);
+      setInvoiceDialogSummary(null);
+      finishDialogAfterBooking();
+      closingInvoiceDialogFromChoiceRef.current = false;
+    }
+  };
+
+  const handleInvoiceDialogOpenChange = (open: boolean) => {
+    if (
+      !open &&
+      invoiceDialogOpen &&
+      !invoiceConfirmLoading &&
+      !closingInvoiceDialogFromChoiceRef.current
+    ) {
+      void handleInvoiceUpdateChoice("skip");
+      return;
+    }
+    setInvoiceDialogOpen(open);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!slot || !hasAtLeastOnePlayer) return;
 
     setIsLoading(true);
 
+    const notesValue = notes.trim() || null;
+    const guestPlayerIds = selectedPlayerIds.filter((id) => id);
+    let rebalanceFailed = false;
+    let deferDialogClose = false;
+
     try {
-      const selectedPlayers = selectedPlayerIds
-        .filter(id => id)
-        .map(id => players.find(p => p.id === id)!)
+      const selectedPlayers = guestPlayerIds
+        .map((id) => players.find((p) => p.id === id)!)
         .filter(Boolean);
 
+      const splitPayment = slotSplitPayment;
+
       if (bookingScope === "cyclus" && slot.cyclus_id && cyclusSlots.length > 0) {
-        // Use already fetched cyclus slots
         const slotsToBook = cyclusSlots;
 
         if (slotsToBook.length === 0) {
           throw new Error("No future slots found in this cyclus");
         }
 
-        // Calculate price per session for each slot
-        const bookingsToInsert = slotsToBook.flatMap((s, slotIndex) => {
-          const slotDuration = differenceInMinutes(new Date(s.end_time), new Date(s.start_time));
-          const slotPrice = calculateSlotPrice(hourlyRate, slotDuration);
-          
-          return selectedPlayers.map((player, playerIndex) => {
-            // Apply discount proportionally across all bookings (to first booking per player)
-            const isFirstSlotForPlayer = slotIndex === 0;
-            const playerDiscountAmount = isFirstSlotForPlayer ? totalDiscountPerPlayer : 0;
-            
-            return {
-              slot_id: s.id,
-              guest_player_id: player.id,
-              status: "confirmed",
-              payment_status: "pending",
-              original_amount: slotPrice,
-              discount_amount: playerDiscountAmount,
-              discount_reason: isFirstSlotForPlayer && discountReason ? discountReason : null,
-              payment_amount: slotPrice - (isFirstSlotForPlayer ? playerDiscountAmount / slotsToBook.length : 0),
-              notes: notes.trim() || null,
-            };
+        const bySlot = await fetchExistingBookingsBySlot(slotsToBook.map((s) => s.id));
+
+        const bookingsToInsert = slotsToBook.flatMap((cyclusSlot, slotIndex) => {
+          const slotDuration = differenceInMinutes(
+            new Date(cyclusSlot.end_time),
+            new Date(cyclusSlot.start_time),
+          );
+          const sessionPrice = resolveSlotSessionPrice(
+            cyclusSlot.price_per_session ?? slotPricePerSession,
+            hourlyRate,
+            slotDuration,
+          );
+          const existingOnSlot = (bySlot.get(cyclusSlot.id) || []).length;
+
+          return buildCyclusSlotAddPlayerBookings({
+            slotId: cyclusSlot.id,
+            sessionPrice,
+            splitPayment,
+            existingActiveBookingCount: existingOnSlot,
+            guestPlayerIds,
+            notes: notesValue,
+            firstPlayerDiscount: totalDiscountPerPlayer,
+            discountReason: discountReason || null,
+            isFirstCyclusSlot: slotIndex === 0,
           });
         });
 
-        const { error: bookingError } = await supabase
+        const { data: insertedRows, error: bookingError } = await supabase
           .from("bookings")
-          .insert(bookingsToInsert);
+          .insert(bookingsToInsert)
+          .select(INSERTED_BOOKING_SELECT);
 
         if (bookingError) throw bookingError;
 
-        // Mark guest players as has_trained
-        const guestIds = selectedPlayers.map(p => p.id);
+        for (const cyclusSlot of slotsToBook) {
+          const slotDuration = differenceInMinutes(
+            new Date(cyclusSlot.end_time),
+            new Date(cyclusSlot.start_time),
+          );
+          const sessionPrice = resolveSlotSessionPrice(
+            cyclusSlot.price_per_session ?? slotPricePerSession,
+            hourlyRate,
+            slotDuration,
+          );
+          const existingOnSlot = (bySlot.get(cyclusSlot.id) || []).length;
+          const pricing = calculateSlotBookingPricing({
+            sessionPrice,
+            splitPayment,
+            existingActiveBookingCount: existingOnSlot,
+            newPlayerCount: selectedPlayers.length,
+          });
+
+          if (!pricing.shouldRebalanceExisting || pricing.existingBookingsNewAmount == null) {
+            continue;
+          }
+
+          const rebalanceIds = (bySlot.get(cyclusSlot.id) || [])
+            .filter((b) => b.payment_status !== "paid" && !b.paid_externally)
+            .map((b) => b.id);
+
+          try {
+            await rebalanceExistingOnSlot(
+              cyclusSlot.id,
+              rebalanceIds,
+              pricing.existingBookingsNewAmount,
+              pricing.sessionPrice,
+            );
+          } catch (rebalanceError) {
+            rebalanceFailed = true;
+            logger.error(
+              "Cyclus slot rebalance failed after insert",
+              rebalanceError instanceof Error ? rebalanceError : new Error(String(rebalanceError)),
+              { component: "BookForPlayerDialog", slotId: cyclusSlot.id },
+            );
+          }
+        }
+
+        const guestIds = selectedPlayers.map((p) => p.id);
         if (guestIds.length > 0) {
           await supabase.from("guest_players").update({ has_trained: true }).in("id", guestIds);
+        }
+
+        let invoiceResult: InvoiceAfterAddPlayerResult | null = null;
+        if (insertedRows?.length) {
+          invoiceResult = await runInvoicesAfterAddPlayer(
+            insertedRows,
+            slotsToBook.map((s) => s.id),
+            splitPayment,
+          );
+          deferDialogClose = invoiceResult != null && shouldDeferAddPlayerClose(invoiceResult);
         }
 
         // Send email notifications
@@ -310,33 +608,69 @@ export function BookForPlayerDialog({
           }),
         });
       } else {
-        // Single slot booking for all selected players
-        const bookingsToInsert = selectedPlayers.map((player, index) => {
-          const playerDiscountAmount = index === 0 ? calculatedDiscount : 0;
-          
-          return {
-            slot_id: slot.id,
-            guest_player_id: player.id,
-            status: "confirmed",
-            payment_status: "pending",
-            original_amount: pricePerSession,
-            discount_amount: playerDiscountAmount,
-            discount_reason: index === 0 && discountReason ? discountReason : null,
-            payment_amount: pricePerSession - (playerDiscountAmount / selectedPlayers.length),
-            notes: notes.trim() || null,
-          };
+        const sessionPrice = resolveSlotSessionPrice(
+          slotPricePerSession,
+          hourlyRate,
+          slotDurationMinutes,
+        );
+        const existingActiveCount = countActiveBookings(slot.booked_players);
+
+        const bookingsToInsert = buildSingleSlotAddPlayerBookings({
+          slotId: slot.id,
+          sessionPrice,
+          splitPayment,
+          existingActiveBookingCount: existingActiveCount,
+          guestPlayerIds,
+          notes: notesValue,
+          firstPlayerDiscount: calculatedDiscount,
+          discountReason: discountReason || null,
         });
 
-        const { error: bookingError } = await supabase
+        const { data: insertedRows, error: bookingError } = await supabase
           .from("bookings")
-          .insert(bookingsToInsert);
+          .insert(bookingsToInsert)
+          .select(INSERTED_BOOKING_SELECT);
 
         if (bookingError) throw bookingError;
 
-        // Mark guest players as has_trained
-        const singleGuestIds = selectedPlayers.map(p => p.id);
+        const pricing = calculateSlotBookingPricing({
+          sessionPrice,
+          splitPayment,
+          existingActiveBookingCount: existingActiveCount,
+          newPlayerCount: selectedPlayers.length,
+        });
+
+        if (pricing.shouldRebalanceExisting && pricing.existingBookingsNewAmount != null) {
+          const rebalanceIds = (slot.booked_players || [])
+            .filter((p) => p.paymentStatus !== "paid" && !p.paidExternally)
+            .map((p) => p.bookingId);
+
+          try {
+            await rebalanceExistingOnSlot(
+              slot.id,
+              rebalanceIds,
+              pricing.existingBookingsNewAmount,
+              pricing.sessionPrice,
+            );
+          } catch (rebalanceError) {
+            rebalanceFailed = true;
+            logger.error(
+              "Slot rebalance failed after insert",
+              rebalanceError instanceof Error ? rebalanceError : new Error(String(rebalanceError)),
+              { component: "BookForPlayerDialog", slotId: slot.id },
+            );
+          }
+        }
+
+        const singleGuestIds = selectedPlayers.map((p) => p.id);
         if (singleGuestIds.length > 0) {
           await supabase.from("guest_players").update({ has_trained: true }).in("id", singleGuestIds);
+        }
+
+        let invoiceResult: InvoiceAfterAddPlayerResult | null = null;
+        if (insertedRows?.length) {
+          invoiceResult = await runInvoicesAfterAddPlayer(insertedRows, [slot.id], splitPayment);
+          deferDialogClose = invoiceResult != null && shouldDeferAddPlayerClose(invoiceResult);
         }
 
         // Send email notifications
@@ -371,20 +705,20 @@ export function BookForPlayerDialog({
         });
       }
 
-      // Recalculate split invoices if this is a split-payment cycle
-      if (slot.cyclus_id) {
-        try {
-          await syncSplitCountForCycle(slot.cyclus_id);
-        } catch (err) {
-          logger.warn("Split count sync failed after adding player", { error: (err as Error)?.message });
-        }
+      if (rebalanceFailed) {
+        toast({
+          title: t("bookings.rebalanceFailedTitle", "Player added, pricing incomplete"),
+          description: t(
+            "bookings.rebalanceFailedDescription",
+            "The player was booked, but existing booking amounts could not be updated. Please check amounts or contact support.",
+          ),
+          variant: "destructive",
+        });
       }
 
-      setSelectedPlayerIds(EMPTY_PLAYER_SLOTS);
-      setNotes("");
-      setBookingScope("single");
-      onOpenChange(false);
-      onBookingCreated?.();
+      if (!deferDialogClose) {
+        finishDialogAfterBooking();
+      }
     } catch (error: any) {
       logger.error("Error creating booking", error as Error, { component: "BookForPlayerDialog" });
       toast({
@@ -747,6 +1081,16 @@ export function BookForPlayerDialog({
         trainerId={trainerId}
         onPlayerCreated={handlePlayerCreated}
       />
+
+      {invoiceDialogSummary && (
+        <UpdateAffectedInvoicesDialog
+          open={invoiceDialogOpen}
+          onOpenChange={handleInvoiceDialogOpenChange}
+          summary={invoiceDialogSummary}
+          onConfirm={handleInvoiceUpdateChoice}
+          loading={invoiceConfirmLoading}
+        />
+      )}
     </>
   );
 }

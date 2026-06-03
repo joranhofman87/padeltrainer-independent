@@ -1,10 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, UserPlus, X, Users, Repeat } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
-import { syncSplitCountForCycle } from "@/lib/invoiceSync";
+import {
+  syncInvoicesAfterAddPlayer,
+  applyAddPlayerInvoiceChoice,
+  getInvoiceFollowUpMessages,
+} from "@/lib/invoiceAfterAddPlayer";
+import { buildAffectedInvoicesSummary, type AffectedInvoicesSummary } from "@/lib/affectedInvoices";
+import type { InvoiceUpdateChoice } from "@/lib/invoiceUpdateChoice";
+import { UpdateAffectedInvoicesDialog } from "@/components/invoices/UpdateAffectedInvoicesDialog";
+import {
+  shouldDeferAddPlayerClose,
+  shouldWarnInvoiceCreateFailure,
+} from "@/lib/addPlayerInvoiceFlow";
+import type { InvoiceAfterAddPlayerResult } from "@/lib/invoiceAfterAddPlayer";
 import { formatPrice } from "@/lib/pricing";
 import {
   buildGuestBookingInsertRow,
@@ -52,6 +64,9 @@ type ExistingBookingRow = {
   paid_externally: boolean | null;
 };
 
+const INSERTED_BOOKING_SELECT =
+  "id, slot_id, guest_player_id, player_id, payment_amount, payment_status, paid_externally";
+
 export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }: InlineBookPlayerProps) {
   const { t } = useTranslation("trainer");
   const { t: tCommon } = useTranslation("common");
@@ -66,6 +81,14 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
   const [bookingScope, setBookingScope] = useState<"single" | "cyclus">("single");
   const [cyclusSlotsCount, setCyclusSlotsCount] = useState(0);
   const [cyclusSlots, setCyclusSlots] = useState<{ id: string; start_time: string; end_time: string }[]>([]);
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoiceDialogSummary, setInvoiceDialogSummary] = useState<AffectedInvoicesSummary | null>(null);
+  const [pendingInvoiceSlotIds, setPendingInvoiceSlotIds] = useState<string[]>([]);
+  const [pendingInvoiceResult, setPendingInvoiceResult] = useState<
+    Awaited<ReturnType<typeof syncInvoicesAfterAddPlayer>> | null
+  >(null);
+  const [invoiceConfirmLoading, setInvoiceConfirmLoading] = useState(false);
+  const closingInvoiceDialogFromChoiceRef = useRef(false);
 
   const sessionPrice = normalizeSessionPrice(slot.price_per_session);
   const splitPayment = Boolean(slot.split_payment);
@@ -189,6 +212,115 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
     return bySlot;
   };
 
+  const showInvoiceFollowUpToasts = (
+    invoiceResult: Awaited<ReturnType<typeof syncInvoicesAfterAddPlayer>>,
+    sentWasUpdated: boolean,
+  ) => {
+    const followUp = getInvoiceFollowUpMessages(invoiceResult, { sentWasUpdated });
+    if (followUp.paidUnchanged) {
+      toast({
+        title: t("invoices.paidUnchanged", followUp.paidUnchanged),
+      });
+    }
+    if (followUp.sentUpdated) {
+      toast({ title: t("invoices.sentUpdated", followUp.sentUpdated) });
+    }
+    if (followUp.sentNotUpdated) {
+      toast({
+        title: t("invoices.sentUnchanged", followUp.sentNotUpdated),
+      });
+    }
+  };
+
+  const runInvoicesAfterAddPlayer = async (
+    insertedBookings: {
+      id: string;
+      slot_id: string;
+      guest_player_id: string | null;
+      player_id: string | null;
+      payment_amount: number | null;
+      payment_status: string;
+      paid_externally: boolean | null;
+    }[],
+    affectedSlotIds: string[],
+  ): Promise<InvoiceAfterAddPlayerResult> => {
+    const invoiceResult = await syncInvoicesAfterAddPlayer({
+      newBookings: insertedBookings,
+      splitPayment,
+      slotIds: affectedSlotIds,
+      cyclusId: slot.cyclus_id,
+    });
+
+    if (shouldWarnInvoiceCreateFailure(invoiceResult)) {
+      toast({
+        title: t("bookings.invoiceNotCreatedTitle", "Player added, but invoice was not created."),
+        description: t(
+          "bookings.invoiceNotCreatedDescription",
+          "Check invoice business settings or try creating the invoice manually.",
+        ),
+        variant: "destructive",
+      });
+    }
+
+    if (invoiceResult.needsConfirmation) {
+      setPendingInvoiceSlotIds(affectedSlotIds);
+      setPendingInvoiceResult(invoiceResult);
+      setInvoiceDialogSummary(buildAffectedInvoicesSummary(invoiceResult.classification));
+      setInvoiceDialogOpen(true);
+      return invoiceResult;
+    }
+
+    showInvoiceFollowUpToasts(invoiceResult, false);
+    return invoiceResult;
+  };
+
+  const completeAddPlayerSuccess = () => {
+    onBookingCreated();
+    onClose();
+  };
+
+  const handleInvoiceUpdateChoice = async (choice: InvoiceUpdateChoice) => {
+    closingInvoiceDialogFromChoiceRef.current = true;
+    setInvoiceConfirmLoading(true);
+    try {
+      if (choice !== "skip" && pendingInvoiceSlotIds.length > 0) {
+        await applyAddPlayerInvoiceChoice(pendingInvoiceSlotIds, choice);
+      }
+      if (pendingInvoiceResult) {
+        showInvoiceFollowUpToasts(
+          pendingInvoiceResult,
+          choice === "update_drafts_and_sent",
+        );
+      }
+    } catch (err) {
+      logger.warn("Invoice update choice failed", {
+        component: "InlineBookPlayer",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setInvoiceConfirmLoading(false);
+      setInvoiceDialogOpen(false);
+      setPendingInvoiceSlotIds([]);
+      setPendingInvoiceResult(null);
+      setInvoiceDialogSummary(null);
+      completeAddPlayerSuccess();
+      closingInvoiceDialogFromChoiceRef.current = false;
+    }
+  };
+
+  const handleInvoiceDialogOpenChange = (open: boolean) => {
+    if (
+      !open &&
+      invoiceDialogOpen &&
+      !invoiceConfirmLoading &&
+      !closingInvoiceDialogFromChoiceRef.current
+    ) {
+      void handleInvoiceUpdateChoice("skip");
+      return;
+    }
+    setInvoiceDialogOpen(open);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hasAtLeastOnePlayer) return;
@@ -226,7 +358,10 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
           );
         });
 
-        const { error } = await supabase.from("bookings").insert(bookingsToInsert);
+        const { data: insertedRows, error } = await supabase
+          .from("bookings")
+          .insert(bookingsToInsert)
+          .select(INSERTED_BOOKING_SELECT);
         if (error) throw error;
         insertSucceeded = true;
 
@@ -279,6 +414,18 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
             }),
           });
         }
+
+        let invoiceResult: InvoiceAfterAddPlayerResult | null = null;
+        if (insertedRows?.length) {
+          invoiceResult = await runInvoicesAfterAddPlayer(
+            insertedRows,
+            cyclusSlots.map((s) => s.id),
+          );
+        }
+
+        if (insertSucceeded && (!invoiceResult || !shouldDeferAddPlayerClose(invoiceResult))) {
+          completeAddPlayerSuccess();
+        }
       } else {
         const pricing = calculateSlotBookingPricing({
           sessionPrice,
@@ -297,7 +444,10 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
           }),
         );
 
-        const { error } = await supabase.from("bookings").insert(bookingsToInsert);
+        const { data: insertedRows, error } = await supabase
+          .from("bookings")
+          .insert(bookingsToInsert)
+          .select(INSERTED_BOOKING_SELECT);
         if (error) throw error;
         insertSucceeded = true;
 
@@ -341,6 +491,15 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
                 : t("bookings.bookingCreatedDescription"),
           });
         }
+
+        let invoiceResult: InvoiceAfterAddPlayerResult | null = null;
+        if (insertedRows?.length) {
+          invoiceResult = await runInvoicesAfterAddPlayer(insertedRows, [slot.id]);
+        }
+
+        if (insertSucceeded && (!invoiceResult || !shouldDeferAddPlayerClose(invoiceResult))) {
+          completeAddPlayerSuccess();
+        }
       }
 
       if (rebalanceFailed) {
@@ -354,18 +513,6 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
         });
       }
 
-      if (slot.cyclus_id) {
-        try {
-          await syncSplitCountForCycle(slot.cyclus_id);
-        } catch (err) {
-          logger.warn("Split count sync failed", { error: (err as Error)?.message, component: "InlineBookPlayer" });
-        }
-      }
-
-      if (insertSucceeded) {
-        onBookingCreated();
-        onClose();
-      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error("Error creating booking", error instanceof Error ? error : new Error(message), {
@@ -510,6 +657,16 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
       </form>
 
       <AddPlayerDialog open={showAddPlayer} onOpenChange={setShowAddPlayer} trainerId={trainerId} onPlayerCreated={handlePlayerCreated} />
+
+      {invoiceDialogSummary && (
+        <UpdateAffectedInvoicesDialog
+          open={invoiceDialogOpen}
+          onOpenChange={handleInvoiceDialogOpenChange}
+          summary={invoiceDialogSummary}
+          onConfirm={handleInvoiceUpdateChoice}
+          loading={invoiceConfirmLoading}
+        />
+      )}
     </>
   );
 }

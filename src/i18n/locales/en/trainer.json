@@ -359,6 +359,8 @@
       "cancelAndReopenDescription": "Keep slot available and notify followers",
       "keepBooking": "Keep Booking"
     },
+    "invoiceNotCreatedTitle": "Player added, but invoice was not created.",
+    "invoiceNotCreatedDescription": "Check invoice business settings or try creating the invoice manually.",
     "editBooking": "Edit Booking",
     "bookingUpdated": "Booking updated",
     "bookingUpdatedDescription": "The booking has been updated successfully",
@@ -822,7 +824,18 @@
     "bulkSent": "{{count}} sent",
     "bulkNoEmail": "{{count}} without email",
     "bulkFailed": "{{count}} failed",
-    "bulkProcessed": "{{total}} invoices processed: {{parts}}"
+    "bulkProcessed": "{{total}} invoices processed: {{parts}}",
+    "updateAffectedTitle": "Update affected invoices?",
+    "updateAffectedBody": "This change affects invoices that were already sent. Draft invoices can be updated automatically. Sent invoices should only be changed if you want to resend them.",
+    "updateAffectedDraftCount": "{{count}} draft invoice(s) will be updated",
+    "updateAffectedSentCount": "{{count}} sent/pending invoice(s) can be updated",
+    "updateAffectedPaidCount": "{{count}} paid invoice(s) will not be changed",
+    "updateDraftAndSent": "Update draft + sent invoices",
+    "updateDraftOnly": "Update draft invoices only",
+    "skipInvoiceUpdates": "Do not update invoices",
+    "paidUnchanged": "Paid invoices were not changed.",
+    "sentUnchanged": "Sent invoices were not updated.",
+    "sentUpdated": "Sent invoices were updated."
   },
   "profileVisibility": {
     "title": "Marketplace visibility",
