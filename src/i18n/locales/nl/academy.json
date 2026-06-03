@@ -482,6 +482,15 @@
     "years": "jr",
     "guest": "Gast"
   },
+  "createSlot": {
+    "noTrainerTitle": "Voeg eerst een trainer toe",
+    "noTrainerDescription": "Voeg een trainer toe voordat je een cyclus aanmaakt.",
+    "addTrainerCta": "Naar trainers",
+    "noLocationTitle": "Voeg een locatie toe",
+    "noLocationDescription": "Voeg een locatie toe voordat je sessies plant.",
+    "addLocationCta": "Naar locaties",
+    "trainerRequiredToast": "Voeg een trainer toe voordat je een cyclus aanmaakt."
+  },
   "attendance": {
     "title": "Aanwezigheid",
     "noReports": "Nog geen aanwezigheidsrapporten ingediend",

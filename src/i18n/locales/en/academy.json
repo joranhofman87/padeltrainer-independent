@@ -482,6 +482,15 @@
     "years": "yr",
     "guest": "Guest"
   },
+  "createSlot": {
+    "noTrainerTitle": "Add a trainer first",
+    "noTrainerDescription": "Add a trainer before creating a cycle.",
+    "addTrainerCta": "Go to trainers",
+    "noLocationTitle": "Add a location",
+    "noLocationDescription": "Add a location before scheduling sessions.",
+    "addLocationCta": "Go to locations",
+    "trainerRequiredToast": "Add a trainer before creating a cycle."
+  },
   "attendance": {
     "title": "Attendance",
     "noReports": "No attendance reports submitted yet",

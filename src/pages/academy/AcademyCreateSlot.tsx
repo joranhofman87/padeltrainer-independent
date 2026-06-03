@@ -4,8 +4,14 @@ import { ArrowLeft, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BulkCreateContent } from "@/components/trainer/AddSlotDialog";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
+import { AcademyCreateSlotPrerequisites } from "@/components/academy/AcademyCreateSlotPrerequisites";
 import { useEffect, useState } from "react";
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
+import {
+  hasBlockingAcademyCreateSlotPrerequisite,
+  getAcademyCreateSlotPrerequisites,
+  mapAcademyLocationsToSlotLocations,
+} from "@/lib/academyCreateSlot";
 import type { SlotLocation } from "@/components/trainer/SlotLocationPicker";
 
 export default function AcademyCreateSlot() {
@@ -36,10 +42,13 @@ export default function AcademyCreateSlot() {
       if (!selectedTrainerId && list.length > 0) setSelectedTrainerId(list[0].id);
 
       const locs = await getAcademyLocations(activeAcademy.id);
-      setLocations(locs.map((l: any) => ({ id: l.id, name: l.name, city: l.city, country: l.country })));
+      setLocations(mapAcademyLocationsToSlotLocations(locs));
     };
     load();
   }, [activeAcademy]);
+
+  const prerequisites = getAcademyCreateSlotPrerequisites(trainers.length, locations.length);
+  const blockedByTrainer = hasBlockingAcademyCreateSlotPrerequisite(prerequisites);
 
   return (
     <>
@@ -55,23 +64,25 @@ export default function AcademyCreateSlot() {
         </div>
       </div>
 
-      <main className="container mx-auto px-4 py-6">
-        <div className="max-w-lg">
-          {activeAcademy && (
-            <BulkCreateContent
-              trainerId={selectedTrainerId}
-              defaultDate={defaultDate}
-              defaultTime={defaultTime}
-              defaultDuration={60}
-              defaultWeeks={8}
-              onSlotsCreated={() => navigate("/app/academy/calendar")}
-              availableLocations={locations}
-              availableTrainers={trainers}
-              academyId={activeAcademy.id}
-              prefillFromCyclusId={cyclusParam}
-            />
-          )}
-        </div>
+      <main className="container mx-auto px-4 py-6 max-w-6xl w-full">
+        <AcademyCreateSlotPrerequisites
+          activeTrainerCount={trainers.length}
+          locationCount={locations.length}
+        />
+        {activeAcademy && !blockedByTrainer && (
+          <BulkCreateContent
+            trainerId={selectedTrainerId}
+            defaultDate={defaultDate}
+            defaultTime={defaultTime}
+            defaultDuration={60}
+            defaultWeeks={8}
+            onSlotsCreated={() => navigate("/app/academy/calendar")}
+            availableLocations={locations}
+            availableTrainers={trainers}
+            academyId={activeAcademy.id}
+            prefillFromCyclusId={cyclusParam}
+          />
+        )}
       </main>
     </>
   );

@@ -55,6 +55,7 @@ import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
 import { SlotRatingPicker } from "./SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
+import { getBulkGenerateValidationError } from "@/lib/academyCreateSlot";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
@@ -427,6 +428,7 @@ export function BulkCreateContent({
   isActive = true,
 }: BulkCreateContentProps & { isActive?: boolean }) {
   const { t } = useTranslation("trainer");
+  const { t: tAcademy } = useTranslation("academy");
   const { toast } = useToast();
   const { trainerRatingSystem } = useTrainerRatingSystem(trainerId || undefined);
 
@@ -711,7 +713,9 @@ export function BulkCreateContent({
     } else {
       const newStartDate = getInitialStartDate();
       const newStartTime2 = getInitialStartTime();
-      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime2, defaultDuration, defaultWeeks, trainerId)]);
+      setBulkSlots([
+        createDefaultSlotConfig(newStartDate, newStartTime2, defaultDuration, defaultWeeks, trainerId, academyId),
+      ]);
     }
   };
 
@@ -745,24 +749,42 @@ export function BulkCreateContent({
     setBulkSlots((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const generateBulkSlots = async () => {
-    if (bulkSlots.length === 0) return;
-    
-    // When availableTrainers is provided (academy mode), each slot must have a trainer
-    if (availableTrainers && availableTrainers.length > 0) {
-      const missingTrainer = bulkSlots.some(s => !s.trainerId);
-      if (missingTrainer) {
-        toast({
-          title: t("calendar.trainerRequired", "Trainer required"),
-          description: t("calendar.trainerRequiredDescription", "Please select a trainer for each slot."),
-          variant: "destructive",
-        });
-        return;
-      }
-    } else if (!trainerId) {
+  const academyTrainerBlocked =
+    Boolean(academyId) && (!availableTrainers || availableTrainers.length === 0);
+
+  const showBulkGenerateValidationError = (error: ReturnType<typeof getBulkGenerateValidationError>) => {
+    if (!error || error === "empty_slots") return;
+
+    if (error === "no_academy_trainers") {
+      toast({
+        title: tAcademy("createSlot.trainerRequiredToast", "Add a trainer before creating a cycle."),
+        variant: "destructive",
+      });
       return;
     }
-    
+
+    if (error === "missing_slot_trainer" || error === "no_trainer_id") {
+      toast({
+        title: t("calendar.trainerRequired", "Trainer required"),
+        description: t("calendar.trainerRequiredDescription", "Please select a trainer for each slot."),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const generateBulkSlots = async () => {
+    const validationError = getBulkGenerateValidationError({
+      bulkSlotCount: bulkSlots.length,
+      academyId,
+      availableTrainers,
+      bulkSlots,
+      trainerId,
+    });
+    if (validationError) {
+      showBulkGenerateValidationError(validationError);
+      return;
+    }
+
     setIsGenerating(true);
 
     try {
@@ -1729,7 +1751,7 @@ export function BulkCreateContent({
               </div>
               <Button
                 onClick={generateBulkSlots}
-                disabled={isGenerating}
+                disabled={isGenerating || academyTrainerBlocked}
                 className="w-full gap-2"
               >
                 <Repeat className={cn("h-4 w-4", isGenerating && "animate-spin")} />

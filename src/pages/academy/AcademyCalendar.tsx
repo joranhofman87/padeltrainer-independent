@@ -1074,7 +1074,7 @@ export default function AcademyCalendar() {
 
           {/* ── Tab: Create Cyclus ── */}
           <TabsContent value="create" className="mt-4">
-            <div className="max-w-lg">
+            <div className="max-w-6xl w-full">
               {activeAcademy && (
                 <BulkCreateContent
                   trainerId={selectedSlotTrainerId}
