@@ -23,10 +23,22 @@ dist-ssr
 *.sln
 *.sw?
 
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # Local test credentials - never commit
 test-accounts.json
+migration_exports/.auth_import_credentials.json
+supabase/.temp/
 
 # Environment files - never commit (may contain secrets)
 .env
 .env.local
 .env.*.local
+.vercel
+
+# Local migration exports - do not commit
+migration_exports/
