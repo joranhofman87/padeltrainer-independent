@@ -29,8 +29,8 @@ interface DashboardSetupBannerProps {
   stats: DashboardSetupStats;
   upcomingSlotsCount: number;
   recentBookingsCount: number;
-  hasAcademy: boolean;
   showPaymentsStep: boolean;
+  paymentsComplete: boolean;
 }
 
 export function DashboardSetupBanner({
@@ -39,8 +39,8 @@ export function DashboardSetupBanner({
   stats,
   upcomingSlotsCount,
   recentBookingsCount,
-  hasAcademy,
   showPaymentsStep,
+  paymentsComplete,
 }: DashboardSetupBannerProps) {
   const { t } = useTranslation('trainer');
   const navigate = useNavigate();
@@ -53,7 +53,7 @@ export function DashboardSetupBanner({
     });
     const scheduleDone = stats.openSlots > 0 || upcomingSlotsCount > 0;
     const playersDone = stats.totalStudents > 0 || recentBookingsCount > 0;
-    const paymentsDone = hasAcademy || !showPaymentsStep;
+    const paymentsDone = paymentsComplete;
     const publishDone = computeTrainerPublishComplete({
       isPublic: setupFields.isPublic,
       slug: setupFields.slug,
@@ -106,8 +106,8 @@ export function DashboardSetupBanner({
     stats.totalStudents,
     upcomingSlotsCount,
     recentBookingsCount,
-    hasAcademy,
     showPaymentsStep,
+    paymentsComplete,
     t,
     navigate,
   ]);

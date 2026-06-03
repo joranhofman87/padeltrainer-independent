@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { computeTrainerProfileSetupComplete } from '@/lib/trainerSetupPlan';
 
 interface OnboardingStep1ProfileProps {
   onNext: () => void;
@@ -19,7 +20,7 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
   const { t: tOnboarding } = useTranslation('onboarding');
   const [fullName, setFullName] = useState('');
   const [bio, setBio] = useState('');
-  const [hourlyRate, setHourlyRate] = useState<string>('');
+  const [hourlyRate, setHourlyRate] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -29,17 +30,19 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
 
   const loadExistingData = async () => {
     try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, bio')
-        .eq('user_id', user!.id)
-        .maybeSingle();
+      const [{ data: profile }, { data: trainerProfile }] = await Promise.all([
+        supabase.from('profiles').select('full_name, bio').eq('user_id', user!.id).maybeSingle(),
+        supabase.from('trainer_profiles').select('hourly_rate').eq('user_id', user!.id).maybeSingle(),
+      ]);
 
       if (profile) {
         setFullName(profile.full_name || '');
         setBio(profile.bio || '');
       }
 
+      if (trainerProfile?.hourly_rate != null && trainerProfile.hourly_rate > 0) {
+        setHourlyRate(String(trainerProfile.hourly_rate));
+      }
     } catch (e) {
       logger.error('Failed to load profile data', e as Error, { component: 'OnboardingStep1Profile' });
     } finally {
@@ -47,12 +50,21 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
     }
   };
 
+  const parsedHourlyRate = hourlyRate.trim() ? parseFloat(hourlyRate) : NaN;
+
+  const canProceed = computeTrainerProfileSetupComplete({
+    fullName,
+    bio,
+    hourlyRate: Number.isFinite(parsedHourlyRate) ? parsedHourlyRate : null,
+  });
+
   const handleSave = async () => {
-    if (!user || !fullName.trim() || !bio.trim()) return;
+    if (!user || !canProceed) return;
 
     setSaving(true);
     try {
-      // Update profiles table
+      const rate = parseFloat(hourlyRate);
+
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
@@ -63,16 +75,21 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
 
       if (profileError) throw profileError;
 
+      const { error: trainerError } = await supabase
+        .from('trainer_profiles')
+        .update({ hourly_rate: rate })
+        .eq('user_id', user.id);
+
+      if (trainerError) throw trainerError;
+
       onNext();
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Error saving profile', error as Error, { component: 'OnboardingStep1Profile' });
       toast.error(tOnboarding('errors.profileSaveFailed'));
     } finally {
       setSaving(false);
     }
   };
-
-  const canProceed = fullName.trim().length > 0 && bio.trim().length > 0;
 
   if (loading) {
     return (
@@ -90,7 +107,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
       </div>
 
       <div className="space-y-5">
-        {/* Name */}
         <div className="space-y-2">
           <Label htmlFor="fullName">{t('onboarding.step1.nameLabel')} *</Label>
           <Input
@@ -101,7 +117,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
           />
         </div>
 
-        {/* One-liner bio */}
         <div className="space-y-2">
           <Label htmlFor="bio">{t('onboarding.step1.bioLabel')} *</Label>
           <Textarea
@@ -114,14 +129,22 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
           <p className="text-xs text-muted-foreground">{t('onboarding.step1.bioHint')}</p>
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="hourlyRate">{t('onboarding.step1.hourlyRateLabel')} *</Label>
+          <Input
+            id="hourlyRate"
+            type="number"
+            min={1}
+            step={1}
+            inputMode="decimal"
+            value={hourlyRate}
+            onChange={(e) => setHourlyRate(e.target.value)}
+            placeholder={t('onboarding.step1.hourlyRatePlaceholder')}
+          />
+        </div>
       </div>
 
-      <Button
-        size="lg"
-        className="w-full"
-        disabled={!canProceed || saving}
-        onClick={handleSave}
-      >
+      <Button size="lg" className="w-full" disabled={!canProceed || saving} onClick={handleSave}>
         {saving ? t('onboarding.step1.saving') : t('onboarding.step1.continue')}
       </Button>
     </div>

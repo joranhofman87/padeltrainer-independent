@@ -29,3 +29,19 @@ export function computeTrainerProfileSetupComplete(input: TrainerProfileSetupInp
 export function computeTrainerPublishComplete(input: TrainerPublishSetupInput): boolean {
   return !!input.isPublic && !!(input.slug?.trim());
 }
+
+export interface TrainerPaymentsSetupInput {
+  useManualInvoicing: boolean;
+  mollieOnboardingComplete: boolean;
+  mollieChargesEnabled: boolean;
+  academyChargesEnabled: boolean;
+}
+
+/** Matches TrainerGetStarted / earnings: Mollie ready, manual invoicing, or academy payouts. */
+export function computeTrainerPaymentsSetupComplete(input: TrainerPaymentsSetupInput): boolean {
+  return (
+    input.useManualInvoicing ||
+    (input.mollieOnboardingComplete && input.mollieChargesEnabled) ||
+    input.academyChargesEnabled
+  );
+}

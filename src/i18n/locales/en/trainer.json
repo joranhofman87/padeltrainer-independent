@@ -1054,7 +1054,9 @@
       "nameLabel": "Your name",
       "bioLabel": "One-liner about you",
       "bioPlaceholder": "e.g. Padel trainer in Amsterdam with 5 years of experience",
-      "bioHint": "1–2 sentences is plenty. You can update this anytime.",
+      "bioHint": "At least 10 characters (1–2 sentences is plenty). You can update this anytime.",
+      "hourlyRateLabel": "Hourly rate (€)",
+      "hourlyRatePlaceholder": "e.g. 45",
       "continue": "Continue",
       "saving": "Saving..."
     },

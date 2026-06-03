@@ -25,6 +25,8 @@ import { useQuery } from '@tanstack/react-query';
 import { DashboardStatTile } from '@/components/trainer/dashboard/DashboardStatTile';
 import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
 import { DashboardSetupBanner } from '@/components/trainer/dashboard/DashboardSetupBanner';
+import { computeTrainerPaymentsSetupComplete } from '@/lib/trainerSetupPlan';
+import { getAcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import {
   DashboardSectionHeader,
   DashboardActivityRow,
@@ -52,10 +54,11 @@ async function fetchTrainerStats(userId: string): Promise<{
   trainerId: string;
   slug: string | null;
   setupFields: TrainerDashboardSetupFields;
+  paymentsComplete: boolean;
 } | null> {
   const { data: trainerProfile } = await supabase
     .from('trainer_profiles')
-    .select('id, slug, hourly_rate, is_public')
+    .select('id, slug, hourly_rate, is_public, use_manual_invoicing')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -66,8 +69,16 @@ async function fetchTrainerStats(userId: string): Promise<{
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
 
-  const [profileResult, guestResult, futureSlots, monthlyBookings, followerResult, viewsResult] =
-    await Promise.all([
+  const [
+    profileResult,
+    guestResult,
+    futureSlots,
+    monthlyBookings,
+    followerResult,
+    viewsResult,
+    mollieResult,
+    academyPaymentInfo,
+  ] = await Promise.all([
     supabase.from('profiles').select('full_name, bio').eq('user_id', userId).maybeSingle(),
     supabase.from('guest_players').select('id', { count: 'exact', head: true }).eq('trainer_id', currentTrainerId),
     supabase.from('availability_slots')
@@ -90,7 +101,20 @@ async function fetchTrainerStats(userId: string): Promise<{
         .eq('trainer_id', currentTrainerId)
         .gte('viewed_at', thirtyDaysAgo.toISOString());
     })(),
+    supabase
+      .from('trainer_mollie_accounts')
+      .select('onboarding_complete, charges_enabled')
+      .eq('trainer_id', currentTrainerId)
+      .maybeSingle(),
+    getAcademyPaymentInfo(currentTrainerId),
   ]);
+
+  const paymentsComplete = computeTrainerPaymentsSetupComplete({
+    useManualInvoicing: !!trainerProfile.use_manual_invoicing,
+    mollieOnboardingComplete: !!mollieResult.data?.onboarding_complete,
+    mollieChargesEnabled: !!mollieResult.data?.charges_enabled,
+    academyChargesEnabled: !!academyPaymentInfo.academyChargesEnabled,
+  });
 
   const slug = (trainerProfile as { slug?: string | null }).slug ?? null;
 
@@ -120,6 +144,7 @@ async function fetchTrainerStats(userId: string): Promise<{
       followerCount: followerResult.count || 0,
       profileViews: viewsResult.count || 0,
     },
+    paymentsComplete,
   };
 }
 
@@ -334,8 +359,8 @@ export default function TrainerDashboard() {
         stats={{ openSlots: stats.openSlots, totalStudents: stats.totalStudents }}
         upcomingSlotsCount={upcomingSlots.length}
         recentBookingsCount={recentBookings.length}
-        hasAcademy={hasAcademy}
         showPaymentsStep={!hasAcademy}
+        paymentsComplete={statsData?.paymentsComplete ?? false}
       />
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={t('nav.dashboard')}>

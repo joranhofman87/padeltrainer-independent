@@ -1057,7 +1057,9 @@
       "nameLabel": "Je naam",
       "bioLabel": "Korte beschrijving over jezelf",
       "bioPlaceholder": "bijv. Padeltrainer in Amsterdam met 5 jaar ervaring",
-      "bioHint": "1–2 zinnen is voldoende. Je kunt dit altijd aanpassen.",
+      "bioHint": "Minimaal 10 tekens (1–2 zinnen is voldoende). Je kunt dit altijd aanpassen.",
+      "hourlyRateLabel": "Uurtarief (€)",
+      "hourlyRatePlaceholder": "bijv. 45",
       "continue": "Doorgaan",
       "saving": "Opslaan..."
     },

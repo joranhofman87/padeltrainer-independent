@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computeTrainerProfileSetupComplete,
   computeTrainerPublishComplete,
+  computeTrainerPaymentsSetupComplete,
 } from './trainerSetupPlan';
 
 describe('computeTrainerProfileSetupComplete', () => {
@@ -50,6 +51,41 @@ describe('computeTrainerProfileSetupComplete', () => {
         hourlyRate: 45,
       }),
     ).toBe(true);
+  });
+});
+
+describe('computeTrainerPaymentsSetupComplete', () => {
+  it('returns true when manual invoicing is enabled', () => {
+    expect(
+      computeTrainerPaymentsSetupComplete({
+        useManualInvoicing: true,
+        mollieOnboardingComplete: false,
+        mollieChargesEnabled: false,
+        academyChargesEnabled: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('returns true when Mollie onboarding and charges are enabled', () => {
+    expect(
+      computeTrainerPaymentsSetupComplete({
+        useManualInvoicing: false,
+        mollieOnboardingComplete: true,
+        mollieChargesEnabled: true,
+        academyChargesEnabled: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for solo trainer without Mollie or manual invoicing', () => {
+    expect(
+      computeTrainerPaymentsSetupComplete({
+        useManualInvoicing: false,
+        mollieOnboardingComplete: false,
+        mollieChargesEnabled: false,
+        academyChargesEnabled: false,
+      }),
+    ).toBe(false);
   });
 });
 

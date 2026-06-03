@@ -25,6 +25,7 @@ import {
   isPostgrestError,
   logSupabaseError,
 } from '@/lib/trainerOnboardingLegacy';
+import { computeTrainerProfileSetupComplete } from '@/lib/trainerSetupPlan';
 import { Logo } from '@/components/Logo';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
@@ -32,10 +33,6 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 const TOTAL_STEPS = 4;
-
-function isProfileBasicsComplete(fullName: string | null | undefined, bio: string | null | undefined) {
-  return !!(fullName?.trim() && bio?.trim());
-}
 
 function isSituationComplete(row: OnboardingResponsesRow | null) {
   return !!(
@@ -165,13 +162,20 @@ export default function TrainerOnboardingFlow() {
         }
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, bio')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const [{ data: profile }, { data: trainerRow, error: trainerRowError }] = await Promise.all([
+        supabase.from('profiles').select('full_name, bio').eq('user_id', user.id).maybeSingle(),
+        supabase.from('trainer_profiles').select('hourly_rate').eq('user_id', user.id).maybeSingle(),
+      ]);
 
-      const profileComplete = isProfileBasicsComplete(profile?.full_name, profile?.bio);
+      if (trainerRowError) {
+        throw trainerRowError;
+      }
+
+      const profileComplete = computeTrainerProfileSetupComplete({
+        fullName: profile?.full_name,
+        bio: profile?.bio,
+        hourlyRate: trainerRow?.hourly_rate,
+      });
       const spicedRow = await supabase
         .from('trainer_onboarding_responses')
         .select('*')
@@ -183,13 +187,21 @@ export default function TrainerOnboardingFlow() {
       }
 
       if (spicedRow.data?.completed_at) {
-        await supabase
+        const { error: legacySyncError } = await supabase
           .from('trainer_onboarding')
           .update({
             completed_at: spicedRow.data.completed_at,
             current_step: TOTAL_STEPS,
           })
           .eq('user_id', user.id);
+
+        if (legacySyncError) {
+          logSupabaseError('trainer_onboarding legacy sync failed', legacySyncError, {
+            userId: user.id,
+          });
+          throw legacySyncError;
+        }
+
         navigate('/app/trainer', { replace: true });
         return;
       }
