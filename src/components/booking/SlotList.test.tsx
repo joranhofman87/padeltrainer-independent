@@ -1,6 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { screen, fireEvent } from '@testing-library/react';
+import { renderWithI18n } from '@/test/renderWithI18n';
 import { SlotList } from './SlotList';
+
+beforeAll(() => {
+  process.env.TZ = 'UTC';
+});
 
 const baseSlot = {
   id: 'slot-1',
@@ -19,18 +24,18 @@ const baseSlot = {
   max_rating: null,
 };
 
-const getSlotPrice = (slot: any) => slot.price_per_session || 0;
+const getSlotPrice = (slot: { price_per_session?: number | null }) => slot.price_per_session || 0;
 
 describe('SlotList', () => {
   it('renders slot date, time, and location', () => {
-    render(
+    renderWithI18n(
       <SlotList
         slots={[baseSlot]}
         selectedSlotId={null}
         hasCycles={false}
         getSlotPrice={getSlotPrice}
         onSelect={() => {}}
-      />
+      />,
     );
 
     expect(screen.getByText(/Fri, Apr 10/)).toBeInTheDocument();
@@ -40,86 +45,89 @@ describe('SlotList', () => {
   });
 
   it('shows "Available Time Slots" heading when no cycles', () => {
-    render(
-      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    renderWithI18n(
+      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
     expect(screen.getByText('Available Time Slots')).toBeInTheDocument();
   });
 
   it('shows "Individual Sessions" heading when cycles exist', () => {
-    render(
-      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={true} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    renderWithI18n(
+      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={true} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
     expect(screen.getByText('Individual Sessions')).toBeInTheDocument();
   });
 
   it('shows empty state when no slots and no cycles', () => {
-    render(
-      <SlotList slots={[]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    renderWithI18n(
+      <SlotList slots={[]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
     expect(screen.getByText('No available slots at the moment')).toBeInTheDocument();
   });
 
   it('shows alternative empty text when no slots but cycles exist', () => {
-    render(
-      <SlotList slots={[]} selectedSlotId={null} hasCycles={true} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    renderWithI18n(
+      <SlotList slots={[]} selectedSlotId={null} hasCycles={true} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
     expect(screen.getByText('No individual sessions available')).toBeInTheDocument();
   });
 
   it('calls onSelect when a slot is clicked', () => {
     const onSelect = vi.fn();
-    render(
-      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={onSelect} />
+    renderWithI18n(
+      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={onSelect} />,
     );
     fireEvent.click(screen.getByText(/Fri, Apr 10/));
     expect(onSelect).toHaveBeenCalledWith(baseSlot);
   });
 
   it('highlights selected slot with check icon', () => {
-    const { container } = render(
-      <SlotList slots={[baseSlot]} selectedSlotId="slot-1" hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    const { container } = renderWithI18n(
+      <SlotList slots={[baseSlot]} selectedSlotId="slot-1" hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
-    // The card should have ring-2 ring-primary classes
     const card = container.querySelector('.ring-2');
     expect(card).toBeTruthy();
   });
 
   it('displays price per spot for group bookings', () => {
-    render(
-      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    renderWithI18n(
+      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
-    // 40 / 4 participants = €10.00/spot
     expect(screen.getByText('€10.00/spot')).toBeInTheDocument();
   });
 
   it('displays spots left', () => {
-    render(
-      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    renderWithI18n(
+      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
     expect(screen.getByText('3/4 spots left')).toBeInTheDocument();
   });
 
   it('shows court type indicator', () => {
-    render(
-      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    renderWithI18n(
+      <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
     expect(screen.getByText(/Indoor/)).toBeInTheDocument();
   });
 
   it('shows rating system badge when min/max rating set', () => {
     const ratedSlot = { ...baseSlot, rating_system: 'knltb', min_rating: 3, max_rating: 7 };
-    render(
-      <SlotList slots={[ratedSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    renderWithI18n(
+      <SlotList slots={[ratedSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
     expect(screen.getByText(/KNLTB/)).toBeInTheDocument();
     expect(screen.getByText(/3–7/)).toBeInTheDocument();
   });
 
   it('renders multiple slots', () => {
-    const slot2 = { ...baseSlot, id: 'slot-2', start_time: '2026-04-11T14:00:00Z', end_time: '2026-04-11T15:00:00Z' };
-    render(
-      <SlotList slots={[baseSlot, slot2]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />
+    const slot2 = {
+      ...baseSlot,
+      id: 'slot-2',
+      start_time: '2026-04-11T14:00:00Z',
+      end_time: '2026-04-11T15:00:00Z',
+    };
+    renderWithI18n(
+      <SlotList slots={[baseSlot, slot2]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
     expect(screen.getByText(/Fri, Apr 10/)).toBeInTheDocument();
     expect(screen.getByText(/Sat, Apr 11/)).toBeInTheDocument();

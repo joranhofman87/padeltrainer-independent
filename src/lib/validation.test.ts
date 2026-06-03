@@ -67,15 +67,15 @@ describe('calculatePasswordStrength', () => {
     expect(result.checks.minLength).toBe(false);
   });
 
-  it('returns fair for 6+ lowercase only', () => {
-    const result = calculatePasswordStrength('abcdef');
+  it('meets min length at 8+ characters (lowercase only)', () => {
+    const result = calculatePasswordStrength('abcdefgh');
     expect(result.checks.minLength).toBe(true);
     expect(result.checks.hasLowercase).toBe(true);
     expect(result.checks.hasUppercase).toBe(false);
   });
 
-  it('returns good for mixed case + number', () => {
-    const result = calculatePasswordStrength('Abcdef1');
+  it('returns good for mixed case + number at 8+ characters', () => {
+    const result = calculatePasswordStrength('Abcdef12');
     expect(result.score).toBeGreaterThanOrEqual(3);
     expect(result.level).toBe('good');
   });
