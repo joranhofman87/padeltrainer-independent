@@ -367,14 +367,8 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             </div>
           </div>
 
-          <div className="border-t border-border mt-8 pt-8 text-center text-sm text-muted-foreground space-y-2">
+          <div className="border-t border-border mt-8 pt-8 text-center text-sm text-muted-foreground">
             <p>{t('footer.copyright', { year: new Date().getFullYear() })}</p>
-            <p
-              className="inline-block rounded border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-amber-900 dark:text-amber-100"
-              aria-label="Migration environment marker"
-            >
-              MIGRATION TEST - FICWB
-            </p>
           </div>
         </div>
       </footer>
