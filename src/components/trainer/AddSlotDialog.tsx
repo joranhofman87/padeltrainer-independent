@@ -61,7 +61,6 @@ import {
   getBulkGenerateValidationError,
   resolveAcademyDefaultBulkTrainerId,
   shouldInitializeAcademyDefaultBulkSlot,
-  shouldSkipNotifyFollowersInAcademyMode,
 } from "@/lib/academyCreateSlot";
 import { logSupabaseError } from "@/lib/trainerOnboardingLegacy";
 import {
@@ -69,10 +68,13 @@ import {
   priceDisplayModeToIncludesVat,
   shouldUseTrainerPricesIncludeVat,
 } from "@/lib/academyPriceDisplay";
+import { loadGuestPlayersForBulkCreate } from "@/lib/guestPlayers";
 import {
-  loadGuestPlayersForAcademy,
-  loadGuestPlayersForTrainer,
-} from "@/lib/guestPlayers";
+  buildDefaultBulkSlotOwnership,
+  shouldInvokeNotifyFollowersOnBulkGenerate,
+  shouldShowBulkBookingPartialFailureToast,
+  shouldShowBulkPlayersAddedToast,
+} from "@/lib/bulkCreateSlot";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
@@ -541,27 +543,12 @@ export function BulkCreateContent({
 
   const fetchPlayers = async () => {
     try {
-      if (academyId) {
-        const { data, error } = await loadGuestPlayersForAcademy(academyId);
-        if (error) {
-          toast({
-            title: t("calendar.guestPlayersLoadError", "Could not load players"),
-            description: error.message,
-            variant: "destructive",
-          });
-          setPlayers([]);
-          return;
-        }
-        setPlayers((data as GuestPlayer[]) || []);
-        return;
-      }
-
-      if (!trainerId) {
+      if (!academyId && !trainerId) {
         setPlayers([]);
         return;
       }
 
-      const { data, error } = await loadGuestPlayersForTrainer(trainerId);
+      const { data, error } = await loadGuestPlayersForBulkCreate(academyId, trainerId);
       if (error) {
         toast({
           title: t("calendar.guestPlayersLoadError", "Could not load players"),
@@ -609,6 +596,7 @@ export function BulkCreateContent({
 
   const createDefaultSlotConfig = (startDate: Date, startTime: string, duration: number, weeks: number, tId: string | null, aId?: string | null): BulkSlotConfig => {
     const pricing = autoCalcPricing(tId, duration, weeks);
+    const { academyProfileId, trainerId: slotTrainerId } = buildDefaultBulkSlotOwnership(tId, aId);
     return {
       startDate,
       startTime,
@@ -620,8 +608,8 @@ export function BulkCreateContent({
       courtType: null,
       locationId: null,
       isMarkedFull: false,
-      academyProfileId: aId || null,
-      trainerId: tId,
+      academyProfileId,
+      trainerId: slotTrainerId,
       ratingSystem: null,
       minRating: null,
       maxRating: null,
@@ -1111,13 +1099,13 @@ export function BulkCreateContent({
         hadBookingInsertError,
       });
 
-      if (bookingOutcome === "partial_failure") {
+      if (shouldShowBulkBookingPartialFailureToast(bookingOutcome)) {
         toast({
           title: t("calendar.bookingsPartialSuccessTitle"),
           description: t("calendar.bookingsPartialSuccessDescription"),
           variant: "destructive",
         });
-      } else if (totalBookingsCreated > 0) {
+      } else if (shouldShowBulkPlayersAddedToast(bookingOutcome, totalBookingsCreated)) {
         toast({
           title: t("calendar.playersAddedToCyclus", {
             count: bulkSlots.reduce((acc, s) => acc + s.selectedPlayers.filter(Boolean).length, 0),
@@ -1126,9 +1114,9 @@ export function BulkCreateContent({
         });
       }
 
-      // notify-followers requires caller's trainer_profiles; academy managers lack one (see shouldSkipNotifyFollowersInAcademyMode).
+      // notify-followers requires caller's trainer_profiles; academy managers lack one (see shouldInvokeNotifyFollowersOnBulkGenerate).
       const hasPublicSlots = true; // New slots are public by default
-      if (hasPublicSlots && !shouldSkipNotifyFollowersInAcademyMode(academyId)) {
+      if (shouldInvokeNotifyFollowersOnBulkGenerate({ hasPublicSlots, academyId })) {
         try {
           const publicSlots = slotsToInsert;
           const earliestStart = new Date(

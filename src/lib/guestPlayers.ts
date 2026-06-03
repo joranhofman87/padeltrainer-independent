@@ -23,6 +23,25 @@ export interface GuestPlayerRow {
 
 export type GuestPlayerLoadStrategy = "academy" | "trainer" | "none";
 
+/** PostgREST column for academy-scoped guest lists (no trainer_id IS NULL filter). */
+export const GUEST_PLAYER_ACADEMY_FILTER_COLUMN = "academy_profile_id";
+
+/** PostgREST column for trainer-scoped guest lists. */
+export const GUEST_PLAYER_TRAINER_FILTER_COLUMN = "trainer_id";
+
+export function getGuestPlayerQueryFilter(
+  strategy: GuestPlayerLoadStrategy,
+  id: string,
+): { column: string; value: string } | null {
+  if (strategy === "academy") {
+    return { column: GUEST_PLAYER_ACADEMY_FILTER_COLUMN, value: id };
+  }
+  if (strategy === "trainer") {
+    return { column: GUEST_PLAYER_TRAINER_FILTER_COLUMN, value: id };
+  }
+  return null;
+}
+
 export function getGuestPlayerLoadStrategy(
   academyId?: string | null,
   trainerId?: string | null,
@@ -46,13 +65,28 @@ function toError(err: { message: string } | null): Error | null {
   return new Error(err.message);
 }
 
+export async function loadGuestPlayersForBulkCreate(
+  academyId?: string | null,
+  trainerId?: string | null,
+): Promise<{ data: GuestPlayerRow[]; error: Error | null }> {
+  const strategy = getGuestPlayerLoadStrategy(academyId, trainerId);
+  if (strategy === "academy" && academyId) {
+    return loadGuestPlayersForAcademy(academyId);
+  }
+  if (strategy === "trainer" && trainerId) {
+    return loadGuestPlayersForTrainer(trainerId);
+  }
+  return { data: [], error: null };
+}
+
 export async function loadGuestPlayersForTrainer(
   trainerId: string,
 ): Promise<{ data: GuestPlayerRow[]; error: Error | null }> {
+  const filter = getGuestPlayerQueryFilter("trainer", trainerId)!;
   const { data, error } = await supabase
     .from("guest_players")
     .select("*")
-    .eq("trainer_id", trainerId)
+    .eq(filter.column, filter.value)
     .order("full_name");
 
   if (error) {
@@ -69,10 +103,11 @@ export async function loadGuestPlayersForTrainer(
 export async function loadGuestPlayersForAcademy(
   academyId: string,
 ): Promise<{ data: GuestPlayerRow[]; error: Error | null }> {
+  const filter = getGuestPlayerQueryFilter("academy", academyId)!;
   const { data, error } = await supabase
     .from("guest_players")
     .select("*")
-    .eq("academy_profile_id", academyId)
+    .eq(filter.column, filter.value)
     .order("full_name");
 
   if (error) {

@@ -11,6 +11,7 @@ import {
   getBulkGenerateBookingOutcome,
   shouldSkipNotifyFollowersInAcademyMode,
 } from "@/lib/academyCreateSlot";
+import { buildDefaultBulkSlotOwnership } from "@/lib/bulkCreateSlot";
 
 describe("getAcademyCreateSlotPrerequisites", () => {
   it("returns blocking trainer prerequisite when no trainers", () => {
@@ -135,6 +136,15 @@ describe("shouldInitializeAcademyDefaultBulkSlot", () => {
     ).toBe(false);
   });
 
+  it("does not initialize without academyId even when trainers exist", () => {
+    expect(
+      shouldInitializeAcademyDefaultBulkSlot({
+        activeTrainerCount: 2,
+        existingBulkSlotCount: 0,
+      }),
+    ).toBe(false);
+  });
+
   it("does not initialize when slots already exist", () => {
     expect(
       shouldInitializeAcademyDefaultBulkSlot({
@@ -169,11 +179,12 @@ describe("resolveAcademyDefaultBulkTrainerId", () => {
   });
 });
 
-describe("academy default bulk slot seed", () => {
+describe("academy default bulk slot ownership", () => {
   it("includes academyId as academy_profile_id on default config", () => {
-    const academyId = "academy-uuid";
-    const academyProfileId = academyId || null;
-    expect(academyProfileId).toBe("academy-uuid");
+    expect(buildDefaultBulkSlotOwnership("trainer-1", "academy-uuid")).toEqual({
+      academyProfileId: "academy-uuid",
+      trainerId: "trainer-1",
+    });
   });
 });
 
@@ -190,6 +201,15 @@ describe("expectsBulkGuestBookings", () => {
     expect(
       expectsBulkGuestBookings([
         { addPlayers: false, selectedPlayers: ["guest-1"] },
+      ]),
+    ).toBe(false);
+  });
+
+  it("returns false when no guest ids are selected", () => {
+    expect(
+      expectsBulkGuestBookings([
+        { addPlayers: true, selectedPlayers: [] },
+        { addPlayers: true, selectedPlayers: [null, "", undefined] },
       ]),
     ).toBe(false);
   });
