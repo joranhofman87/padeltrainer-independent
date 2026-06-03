@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -956,6 +956,7 @@ export type Database = {
           id: string
           is_public: boolean
           is_recurring: boolean
+          lesson_id: string | null
           location_id: string | null
           max_participants: number | null
           max_rating: number | null
@@ -990,6 +991,7 @@ export type Database = {
           id?: string
           is_public?: boolean
           is_recurring?: boolean
+          lesson_id?: string | null
           location_id?: string | null
           max_participants?: number | null
           max_rating?: number | null
@@ -1024,6 +1026,7 @@ export type Database = {
           id?: string
           is_public?: boolean
           is_recurring?: boolean
+          lesson_id?: string | null
           location_id?: string | null
           max_participants?: number | null
           max_rating?: number | null
@@ -1073,6 +1076,13 @@ export type Database = {
             columns: ["academy_profile_id"]
             isOneToOne: false
             referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_slots_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
             referencedColumns: ["id"]
           },
           {
@@ -1255,6 +1265,7 @@ export type Database = {
           discount_reason: string | null
           guest_player_id: string | null
           id: string
+          lesson_id: string | null
           mollie_payment_id: string | null
           mollie_transaction_id: string | null
           notes: string | null
@@ -1276,6 +1287,7 @@ export type Database = {
           discount_reason?: string | null
           guest_player_id?: string | null
           id?: string
+          lesson_id?: string | null
           mollie_payment_id?: string | null
           mollie_transaction_id?: string | null
           notes?: string | null
@@ -1297,6 +1309,7 @@ export type Database = {
           discount_reason?: string | null
           guest_player_id?: string | null
           id?: string
+          lesson_id?: string | null
           mollie_payment_id?: string | null
           mollie_transaction_id?: string | null
           notes?: string | null
@@ -1317,6 +1330,13 @@ export type Database = {
             columns: ["guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
             referencedColumns: ["id"]
           },
           {
@@ -3100,6 +3120,103 @@ export type Database = {
           },
         ]
       }
+      lessons: {
+        Row: {
+          booking_mode: string
+          created_at: string
+          description: string | null
+          duration_minutes: number
+          id: string
+          is_active: boolean
+          is_recurring: boolean
+          location: string | null
+          max_participants: number
+          max_skill_rating: number | null
+          min_skill_rating: number | null
+          payment_timing: string
+          price: number
+          recurrence_count: number | null
+          recurrence_day: number | null
+          recurrence_end_date: string | null
+          recurrence_time: string | null
+          recurrence_type: string | null
+          start_date: string | null
+          title: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          booking_mode?: string
+          created_at?: string
+          description?: string | null
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean
+          is_recurring?: boolean
+          location?: string | null
+          max_participants?: number
+          max_skill_rating?: number | null
+          min_skill_rating?: number | null
+          payment_timing?: string
+          price: number
+          recurrence_count?: number | null
+          recurrence_day?: number | null
+          recurrence_end_date?: string | null
+          recurrence_time?: string | null
+          recurrence_type?: string | null
+          start_date?: string | null
+          title: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          booking_mode?: string
+          created_at?: string
+          description?: string | null
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean
+          is_recurring?: boolean
+          location?: string | null
+          max_participants?: number
+          max_skill_rating?: number | null
+          min_skill_rating?: number | null
+          payment_timing?: string
+          price?: number
+          recurrence_count?: number | null
+          recurrence_day?: number | null
+          recurrence_end_date?: string | null
+          recurrence_time?: string | null
+          recurrence_type?: string | null
+          start_date?: string | null
+          title?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lessons_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       location_requests: {
         Row: {
           city: string
@@ -4640,10 +4757,6 @@ export type Database = {
           id: string
           is_active: boolean
           is_highlighted: boolean
-          mollie_plan_id_monthly: string | null
-          mollie_plan_id_yearly: string | null
-          mollie_product_id_monthly: string | null
-          mollie_product_id_yearly: string | null
           monthly_price: number
           name: string
           plan_type: string
@@ -4651,6 +4764,8 @@ export type Database = {
           platform_fee_percent: number
           stripe_price_id_monthly: string | null
           stripe_price_id_yearly: string | null
+          stripe_product_id_monthly: string | null
+          stripe_product_id_yearly: string | null
           tier: string
           updated_at: string
           yearly_price: number
@@ -4664,10 +4779,6 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_highlighted?: boolean
-          mollie_plan_id_monthly?: string | null
-          mollie_plan_id_yearly?: string | null
-          mollie_product_id_monthly?: string | null
-          mollie_product_id_yearly?: string | null
           monthly_price?: number
           name: string
           plan_type?: string
@@ -4675,6 +4786,8 @@ export type Database = {
           platform_fee_percent?: number
           stripe_price_id_monthly?: string | null
           stripe_price_id_yearly?: string | null
+          stripe_product_id_monthly?: string | null
+          stripe_product_id_yearly?: string | null
           tier: string
           updated_at?: string
           yearly_price?: number
@@ -4688,10 +4801,6 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_highlighted?: boolean
-          mollie_plan_id_monthly?: string | null
-          mollie_plan_id_yearly?: string | null
-          mollie_product_id_monthly?: string | null
-          mollie_product_id_yearly?: string | null
           monthly_price?: number
           name?: string
           plan_type?: string
@@ -4699,6 +4808,8 @@ export type Database = {
           platform_fee_percent?: number
           stripe_price_id_monthly?: string | null
           stripe_price_id_yearly?: string | null
+          stripe_product_id_monthly?: string | null
+          stripe_product_id_yearly?: string | null
           tier?: string
           updated_at?: string
           yearly_price?: number
@@ -4944,6 +5055,85 @@ export type Database = {
         }
         Relationships: []
       }
+      trainer_onboarding_responses: {
+        Row: {
+          admin_hours_per_week: string | null
+          completed_at: string | null
+          created_at: string
+          critical_event_note: string | null
+          decision_criteria: string[] | null
+          decision_makers: string[] | null
+          lessons_per_week_range: string | null
+          player_count_range: string | null
+          previous_tools: string[] | null
+          primary_city: string | null
+          primary_pains: string[] | null
+          target_live_date: string | null
+          target_live_window: string | null
+          trainer_profile_id: string
+          trainer_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          admin_hours_per_week?: string | null
+          completed_at?: string | null
+          created_at?: string
+          critical_event_note?: string | null
+          decision_criteria?: string[] | null
+          decision_makers?: string[] | null
+          lessons_per_week_range?: string | null
+          player_count_range?: string | null
+          previous_tools?: string[] | null
+          primary_city?: string | null
+          primary_pains?: string[] | null
+          target_live_date?: string | null
+          target_live_window?: string | null
+          trainer_profile_id: string
+          trainer_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          admin_hours_per_week?: string | null
+          completed_at?: string | null
+          created_at?: string
+          critical_event_note?: string | null
+          decision_criteria?: string[] | null
+          decision_makers?: string[] | null
+          lessons_per_week_range?: string | null
+          player_count_range?: string | null
+          previous_tools?: string[] | null
+          primary_city?: string | null
+          primary_pains?: string[] | null
+          target_live_date?: string | null
+          target_live_window?: string | null
+          trainer_profile_id?: string
+          trainer_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_onboarding_responses_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_onboarding_responses_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_onboarding_responses_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainer_profile_views: {
         Row: {
           id: string
@@ -5034,6 +5224,7 @@ export type Database = {
           social_tiktok: string | null
           social_youtube: string | null
           specializations: string[] | null
+          stripe_account_id: string | null
           stripe_customer_id: string | null
           subscription_ends_at: string | null
           subscription_id: string | null
@@ -5097,6 +5288,7 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
+          stripe_account_id?: string | null
           stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
@@ -5160,6 +5352,7 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
+          stripe_account_id?: string | null
           stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
@@ -6304,6 +6497,7 @@ export type Database = {
           social_tiktok: string | null
           social_youtube: string | null
           specializations: string[] | null
+          stripe_account_id: string | null
           stripe_customer_id: string | null
           subscription_ends_at: string | null
           subscription_id: string | null
@@ -6367,6 +6561,7 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
+          stripe_account_id?: string | null
           stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
@@ -6430,6 +6625,7 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
+          stripe_account_id?: string | null
           stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
@@ -6566,6 +6762,7 @@ export type Database = {
         Args: { _club_profile_id: string }
         Returns: boolean
       }
+      gen_random_bytes: { Args: { len: number }; Returns: string }
       generate_location_slug: {
         Args: { city: string; name: string }
         Returns: string
