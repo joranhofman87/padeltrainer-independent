@@ -163,7 +163,7 @@ export default function TrainerOnboardingFlow() {
       }
 
       const [{ data: profile }, { data: trainerRow, error: trainerRowError }] = await Promise.all([
-        supabase.from('profiles').select('full_name, bio').eq('user_id', user.id).maybeSingle(),
+        supabase.from('profiles').select('bio').eq('user_id', user.id).maybeSingle(),
         supabase.from('trainer_profiles').select('hourly_rate').eq('user_id', user.id).maybeSingle(),
       ]);
 
@@ -172,7 +172,6 @@ export default function TrainerOnboardingFlow() {
       }
 
       const profileComplete = computeTrainerProfileSetupComplete({
-        fullName: profile?.full_name,
         bio: profile?.bio,
         hourlyRate: trainerRow?.hourly_rate,
       });

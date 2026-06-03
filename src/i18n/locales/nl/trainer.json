@@ -1053,8 +1053,9 @@
   "onboarding": {
     "step1": {
       "title": "Laten we je live krijgen 🚀",
-      "subtitle": "Slechts 3 velden — je kunt alles later aanpassen",
-      "nameLabel": "Je naam",
+      "greeting": "Hoi {{name}}, laten we je trainerprofiel instellen.",
+      "greetingNoName": "Laten we je trainerprofiel instellen.",
+      "subtitle": "Slechts 2 velden — je kunt alles later aanpassen",
       "bioLabel": "Korte beschrijving over jezelf",
       "bioPlaceholder": "bijv. Padeltrainer in Amsterdam met 5 jaar ervaring",
       "bioHint": "Minimaal 10 tekens (1–2 zinnen is voldoende). Je kunt dit altijd aanpassen.",

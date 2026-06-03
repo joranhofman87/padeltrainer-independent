@@ -1050,8 +1050,9 @@
   "onboarding": {
     "step1": {
       "title": "Let's get you live 🚀",
-      "subtitle": "Just 3 quick fields — you can refine everything later",
-      "nameLabel": "Your name",
+      "greeting": "Hi {{name}}, let's set up your trainer profile.",
+      "greetingNoName": "Let's set up your trainer profile.",
+      "subtitle": "Just 2 quick fields — you can refine everything later",
       "bioLabel": "One-liner about you",
       "bioPlaceholder": "e.g. Padel trainer in Amsterdam with 5 years of experience",
       "bioHint": "At least 10 characters (1–2 sentences is plenty). You can update this anytime.",

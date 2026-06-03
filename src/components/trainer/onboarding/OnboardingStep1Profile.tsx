@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { computeTrainerProfileSetupComplete } from '@/lib/trainerSetupPlan';
+import { getFirstName } from '@/lib/profileName';
 
 interface OnboardingStep1ProfileProps {
   onNext: () => void;
@@ -18,7 +19,7 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
   const { user } = useAuth();
   const { t } = useTranslation('trainer');
   const { t: tOnboarding } = useTranslation('onboarding');
-  const [fullName, setFullName] = useState('');
+  const [greetingName, setGreetingName] = useState('');
   const [bio, setBio] = useState('');
   const [hourlyRate, setHourlyRate] = useState('');
   const [saving, setSaving] = useState(false);
@@ -31,12 +32,16 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
   const loadExistingData = async () => {
     try {
       const [{ data: profile }, { data: trainerProfile }] = await Promise.all([
-        supabase.from('profiles').select('full_name, bio').eq('user_id', user!.id).maybeSingle(),
+        supabase
+          .from('profiles')
+          .select('first_name, last_name, full_name, bio')
+          .eq('user_id', user!.id)
+          .maybeSingle(),
         supabase.from('trainer_profiles').select('hourly_rate').eq('user_id', user!.id).maybeSingle(),
       ]);
 
       if (profile) {
-        setFullName(profile.full_name || '');
+        setGreetingName(getFirstName(profile));
         setBio(profile.bio || '');
       }
 
@@ -53,7 +58,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
   const parsedHourlyRate = hourlyRate.trim() ? parseFloat(hourlyRate) : NaN;
 
   const canProceed = computeTrainerProfileSetupComplete({
-    fullName,
     bio,
     hourlyRate: Number.isFinite(parsedHourlyRate) ? parsedHourlyRate : null,
   });
@@ -68,7 +72,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
-          full_name: fullName.trim(),
           bio: bio.trim(),
         })
         .eq('user_id', user.id);
@@ -99,24 +102,19 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
     );
   }
 
+  const greeting = greetingName
+    ? t('onboarding.step1.greeting', { name: greetingName })
+    : t('onboarding.step1.greetingNoName');
+
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-bold">{t('onboarding.step1.title')}</h1>
-        <p className="text-muted-foreground">{t('onboarding.step1.subtitle')}</p>
+        <p className="text-muted-foreground">{greeting}</p>
+        <p className="text-sm text-muted-foreground">{t('onboarding.step1.subtitle')}</p>
       </div>
 
       <div className="space-y-5">
-        <div className="space-y-2">
-          <Label htmlFor="fullName">{t('onboarding.step1.nameLabel')} *</Label>
-          <Input
-            id="fullName"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder={t('players.fullNamePlaceholder')}
-          />
-        </div>
-
         <div className="space-y-2">
           <Label htmlFor="bio">{t('onboarding.step1.bioLabel')} *</Label>
           <Textarea

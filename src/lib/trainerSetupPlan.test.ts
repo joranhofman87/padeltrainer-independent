@@ -6,10 +6,9 @@ import {
 } from './trainerSetupPlan';
 
 describe('computeTrainerProfileSetupComplete', () => {
-  it('returns false when slug would exist but bio is empty', () => {
+  it('returns false when bio is empty', () => {
     expect(
       computeTrainerProfileSetupComplete({
-        fullName: 'Jane Coach',
         bio: '',
         hourlyRate: 50,
       }),
@@ -19,7 +18,6 @@ describe('computeTrainerProfileSetupComplete', () => {
   it('returns false when bio is too short', () => {
     expect(
       computeTrainerProfileSetupComplete({
-        fullName: 'Jane Coach',
         bio: 'Short',
         hourlyRate: 50,
       }),
@@ -29,24 +27,21 @@ describe('computeTrainerProfileSetupComplete', () => {
   it('returns false when hourly rate is missing or zero', () => {
     expect(
       computeTrainerProfileSetupComplete({
-        fullName: 'Jane Coach',
         bio: 'Padel trainer in Amsterdam with five years of experience.',
         hourlyRate: null,
       }),
     ).toBe(false);
     expect(
       computeTrainerProfileSetupComplete({
-        fullName: 'Jane Coach',
         bio: 'Padel trainer in Amsterdam with five years of experience.',
         hourlyRate: 0,
       }),
     ).toBe(false);
   });
 
-  it('returns true when full_name, bio (≥10), and hourly_rate > 0', () => {
+  it('returns true when bio (≥10) and hourly_rate > 0 regardless of name', () => {
     expect(
       computeTrainerProfileSetupComplete({
-        fullName: 'Jane Coach',
         bio: 'Padel trainer in Amsterdam with five years of experience.',
         hourlyRate: 45,
       }),

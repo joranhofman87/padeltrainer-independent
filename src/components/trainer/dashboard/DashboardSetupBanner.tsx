@@ -47,7 +47,6 @@ export function DashboardSetupBanner({
 
   const steps = useMemo(() => {
     const profileDone = computeTrainerProfileSetupComplete({
-      fullName: setupFields.fullName,
       bio: setupFields.bio,
       hourlyRate: setupFields.hourlyRate,
     });
