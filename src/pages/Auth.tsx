@@ -5,7 +5,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { signInWithEmail, signInWithGoogle, isTrainerOnboardingComplete } from '@/lib/auth';
+import {
+  signInWithEmail,
+  signInWithGoogle,
+  isTrainerOnboardingComplete,
+  completeOAuthSignup,
+  getOnboardingRouteForSignupRole,
+  isSignupRole,
+} from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
@@ -128,6 +135,8 @@ export default function Auth() {
               }
             } else if (role === 'club' || isClubManager) {
               navigate('/app/club');
+            } else if (role === 'academy') {
+              navigate('/app/academy/onboarding');
             } else {
               navigate('/app/player');
             }
@@ -161,15 +170,49 @@ export default function Auth() {
               localStorage.removeItem('pendingRole');
               await refreshAuth();
             } else {
-              // Positively confirmed: no roles in DB — this is a new user
+              // Positively confirmed: no roles in DB — complete OAuth signup if pendingRole set
               if (redirectUrl) {
                 sessionStorage.removeItem('redirectAfterLogin');
                 localStorage.setItem('redirectAfterOnboarding', redirectUrl);
               }
               const pendingRole = localStorage.getItem('pendingRole');
-              if (pendingRole) {
+              if (pendingRole && isSignupRole(pendingRole)) {
+                const { success, error: completeError } = await completeOAuthSignup(pendingRole);
+                if (!success || completeError) {
+                  logger.error('OAuth signup completion failed', completeError ?? new Error('Unknown'), {
+                    component: 'Auth',
+                    pendingRole,
+                  });
+                  toast({
+                    title: t('signIn.error', 'Error'),
+                    description:
+                      completeError?.message ||
+                      t(
+                        'signIn.oauthSignupFailed',
+                        'Could not finish setting up your account. Please try again or use email signup.',
+                      ),
+                    variant: 'destructive',
+                  });
+                  hasCheckedRoles.current = false;
+                  return;
+                }
                 localStorage.removeItem('pendingRole');
-                navigate(`/app/onboarding/${pendingRole}`);
+                sessionStorage.removeItem('pendingRole');
+                await refreshAuth();
+                navigate(getOnboardingRouteForSignupRole(pendingRole));
+              } else if (pendingRole) {
+                localStorage.removeItem('pendingRole');
+                sessionStorage.removeItem('pendingRole');
+                logger.warn('Invalid pendingRole after OAuth', { component: 'Auth', pendingRole });
+                toast({
+                  title: t('signIn.error', 'Error'),
+                  description: t(
+                    'signIn.oauthSignupFailed',
+                    'Could not finish setting up your account. Please try again or use email signup.',
+                  ),
+                  variant: 'destructive',
+                });
+                hasCheckedRoles.current = false;
               } else {
                 toast({
                   title: t('signIn.error', 'Error'),

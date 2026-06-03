@@ -69,10 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Check if any critical fetch failed
       const anyFailed = rolesResult.failed || profileResult.failed || clubResult.failed || academyResult.failed;
       
-      // Determine primary role based on priority: admin > trainer > club > player
+      // Determine primary role based on priority: admin > trainer > academy > club > player
       const userRoles = rolesResult.data;
       const primaryRole = userRoles.includes('admin') ? 'admin'
         : userRoles.includes('trainer') ? 'trainer'
+        : userRoles.includes('academy') ? 'academy'
         : userRoles.includes('club') ? 'club'
         : userRoles.includes('player') ? 'player'
         : null;

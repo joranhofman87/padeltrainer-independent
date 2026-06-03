@@ -23,7 +23,32 @@ function normalizeAuthError(error: any, fallbackMessage: string) {
       : message || fallbackMessage,
   };
 }
-export type UserRole = 'player' | 'trainer' | 'admin' | 'club';
+export type UserRole = 'player' | 'trainer' | 'admin' | 'club' | 'academy';
+
+/** Roles assignable during signup / OAuth completion (not admin). */
+export type SignupRole = 'player' | 'trainer' | 'club' | 'academy';
+
+export const SIGNUP_ROLE_ALLOWLIST: SignupRole[] = ['player', 'trainer', 'club', 'academy'];
+
+export function isSignupRole(value: string | null | undefined): value is SignupRole {
+  return !!value && (SIGNUP_ROLE_ALLOWLIST as string[]).includes(value);
+}
+
+/** Post-OAuth / post-signup onboarding entry routes by role. */
+export function getOnboardingRouteForSignupRole(role: SignupRole): string {
+  switch (role) {
+    case 'academy':
+      return '/app/academy/onboarding';
+    case 'club':
+      return '/app/onboarding/club';
+    case 'trainer':
+      return '/app/onboarding/trainer';
+    case 'player':
+      return '/app/onboarding/player';
+    default:
+      return '/app/onboarding/player';
+  }
+}
 
 export interface UserProfile {
   id: string;
@@ -58,7 +83,7 @@ export interface TrainerProfile {
 
 const SIGNUP_ROLES = new Set(['player', 'trainer', 'club', 'academy', 'Club']);
 
-function isSignupRole(value?: string): boolean {
+function matchesSignupRoleArg(value?: string): boolean {
   return value !== undefined && SIGNUP_ROLES.has(value);
 }
 
@@ -70,8 +95,8 @@ function looksLikePhone(value: string): boolean {
 function isLegacySignUpArgs(lastNameOrPhone?: string, phoneOrLanguage?: string): boolean {
   if (lastNameOrPhone === undefined) return true;
   if (looksLikePhone(lastNameOrPhone)) return true;
-  if (isSignupRole(lastNameOrPhone)) return true;
-  if (isSignupRole(phoneOrLanguage)) return true;
+  if (matchesSignupRoleArg(lastNameOrPhone)) return true;
+  if (matchesSignupRoleArg(phoneOrLanguage)) return true;
   return false;
 }
 
@@ -112,11 +137,11 @@ function resolveSignUpNameArgs(
       language = phoneOrLanguage;
       role = languageOrRole;
       tz = roleOrTimezone ?? timezone;
-    } else if (isSignupRole(lastNameOrPhone)) {
+    } else if (matchesSignupRoleArg(lastNameOrPhone)) {
       role = lastNameOrPhone;
       language = phoneOrLanguage;
       tz = languageOrRole ?? timezone;
-    } else if (isSignupRole(phoneOrLanguage)) {
+    } else if (matchesSignupRoleArg(phoneOrLanguage)) {
       role = phoneOrLanguage;
       language = lastNameOrPhone;
       tz = languageOrRole ?? timezone;
@@ -363,6 +388,37 @@ export async function signInWithGoogle() {
   }
 }
 
+/** Complete Google OAuth signup server-side (roles, profile names, trainer trial). */
+export async function completeOAuthSignup(
+  role: SignupRole,
+  timezone?: string,
+): Promise<{ success: boolean; error: Error | null }> {
+  const detectedTimezone =
+    timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
+
+  try {
+    const { data, error: invokeError } = await supabase.functions.invoke('complete-oauth-signup', {
+      body: { role, timezone: detectedTimezone },
+    });
+
+    if (invokeError) {
+      logger.error('complete-oauth-signup invoke failed', invokeError as Error, { component: 'auth', role });
+      return { success: false, error: new Error(invokeError.message) };
+    }
+
+    const payload = data as { success?: boolean; error?: string } | null;
+    if (!payload?.success) {
+      const message = payload?.error || 'Failed to complete signup';
+      return { success: false, error: new Error(message) };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    logger.error('completeOAuthSignup failed', err as Error, { component: 'auth', role });
+    return { success: false, error: err as Error };
+  }
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   return { error };
@@ -372,9 +428,10 @@ export async function getUserRole(userId: string): Promise<UserRole | null> {
   const { data: roles } = await getUserRoles(userId);
   if (roles.length === 0) return null;
   
-  // Return primary role based on priority: admin > trainer > club > player
+  // Return primary role based on priority: admin > trainer > academy > club > player
   if (roles.includes('admin')) return 'admin';
   if (roles.includes('trainer')) return 'trainer';
+  if (roles.includes('academy')) return 'academy';
   if (roles.includes('club')) return 'club';
   if (roles.includes('player')) return 'player';
   return null;
@@ -385,7 +442,7 @@ export interface FetchResult<T> {
   failed: boolean;
 }
 
-const CHECKED_USER_ROLES: UserRole[] = ['admin', 'trainer', 'club', 'player'];
+const CHECKED_USER_ROLES: UserRole[] = ['admin', 'trainer', 'academy', 'club', 'player'];
 
 /** Read roles via SECURITY DEFINER RPC — direct user_roles SELECT may be blocked by RLS. */
 export async function getUserRoles(userId: string): Promise<FetchResult<UserRole[]>> {

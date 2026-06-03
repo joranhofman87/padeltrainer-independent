@@ -94,6 +94,9 @@ verify_jwt = false
 [functions.claim-club-profile]
 verify_jwt = false
 
+[functions.complete-oauth-signup]
+verify_jwt = false
+
 [functions.create-manual-player]
 verify_jwt = false
 

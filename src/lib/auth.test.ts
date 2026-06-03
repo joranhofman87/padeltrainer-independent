@@ -46,6 +46,9 @@ import {
   getTrainerProfile,
   sendPasswordResetEmail,
   updatePassword,
+  completeOAuthSignup,
+  getOnboardingRouteForSignupRole,
+  isSignupRole,
 } from './auth';
 
 describe('Auth module', () => {
@@ -257,20 +260,33 @@ describe('Auth module', () => {
     it('returns roles via has_role RPC without querying user_roles table', async () => {
       (supabase.rpc as Mock).mockImplementation((_fn: string, args: { _role: UserRole }) =>
         Promise.resolve({
-          data: args._role === 'player' || args._role === 'trainer',
+          data: args._role === 'player' || args._role === 'trainer' || args._role === 'academy',
           error: null,
         }),
       );
 
       const result = await getUserRoles('user-123');
 
-      expect(result.data).toEqual(['trainer', 'player']);
+      expect(result.data).toEqual(expect.arrayContaining(['trainer', 'player', 'academy']));
+      expect(result.data).toHaveLength(3);
       expect(result.failed).toBe(false);
       expect(supabase.from).not.toHaveBeenCalledWith('user_roles');
       expect(supabase.rpc).toHaveBeenCalledWith('has_role', {
         _user_id: 'user-123',
-        _role: 'player',
+        _role: 'academy',
       });
+    });
+
+    it('getUserRole prioritizes academy over club and player', async () => {
+      (supabase.rpc as Mock).mockImplementation((_fn: string, args: { _role: UserRole }) =>
+        Promise.resolve({
+          data: args._role === 'academy' || args._role === 'player',
+          error: null,
+        }),
+      );
+
+      const role = await getUserRole('user-123');
+      expect(role).toBe('academy');
     });
 
     it('returns failed on RPC error', async () => {
@@ -425,11 +441,54 @@ describe('Auth module', () => {
       expect(result.error).toBeNull();
     });
   });
+
+  describe('completeOAuthSignup', () => {
+    it('invokes complete-oauth-signup edge function', async () => {
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: { success: true, role: 'trainer' },
+        error: null,
+      });
+
+      const result = await completeOAuthSignup('trainer', 'Europe/Amsterdam');
+
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('complete-oauth-signup', {
+        body: expect.objectContaining({ role: 'trainer', timezone: 'Europe/Amsterdam' }),
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('surfaces edge function errors', async () => {
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: { error: 'Invalid role' },
+        error: null,
+      });
+
+      const result = await completeOAuthSignup('player');
+      expect(result.success).toBe(false);
+      expect(result.error?.message).toBe('Invalid role');
+    });
+  });
+
+  describe('getOnboardingRouteForSignupRole', () => {
+    it('maps academy to dedicated onboarding route', () => {
+      expect(getOnboardingRouteForSignupRole('academy')).toBe('/app/academy/onboarding');
+    });
+    it('maps club to club onboarding', () => {
+      expect(getOnboardingRouteForSignupRole('club')).toBe('/app/onboarding/club');
+    });
+  });
+
+  describe('isSignupRole', () => {
+    it('accepts lowercase signup roles only', () => {
+      expect(isSignupRole('academy')).toBe(true);
+      expect(isSignupRole('Club')).toBe(false);
+    });
+  });
 });
 
 describe('UserRole type', () => {
   it('includes all expected roles', () => {
-    const roles: UserRole[] = ['player', 'trainer', 'admin', 'club'];
-    expect(roles.length).toBe(4);
+    const roles: UserRole[] = ['player', 'trainer', 'admin', 'club', 'academy'];
+    expect(roles.length).toBe(5);
   });
 });
