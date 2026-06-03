@@ -40,13 +40,13 @@
     "createAcademy": "Akademie erstellen",
     "creating": "Wird erstellt...",
     "success": "Akademie erstellt!",
-    "successDescription": "Deine Akademie wird geprüft. Wir melden uns in Kürze.",
+    "successDescription": "Deine Akademie ist bereit. Du kannst jetzt Trainer hinzufügen und alles einrichten.",
     "error": "Fehler",
     "errorDescription": "Akademie konnte nicht erstellt werden",
     "nameRequired": "Bitte gib den Namen deiner Akademie ein",
     "emailRequired": "Kontakt-E-Mail ist erforderlich",
     "sessionExpired": "Deine Sitzung ist abgelaufen. Bitte aktualisiere und versuche es erneut.",
-    "verificationNote": "Deine Akademie wird von unserem Team geprüft und verifiziert. Du kannst dein Profil konfigurieren, während du auf die Verifizierung wartest."
+    "verificationNote": "Du kannst sofort Trainer hinzufügen und deine Akademie einrichten."
   },
   "trainers": {
     "title": "Akademie-Trainer",

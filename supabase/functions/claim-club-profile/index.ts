@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
         contact_email: contactEmail,
         phone: body.phone?.trim() || null,
         description: body.description?.trim() || null,
-        is_verified: false,
+        is_verified: true,
         created_by: user.id,
       })
       .select("id")

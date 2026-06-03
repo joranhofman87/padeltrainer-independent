@@ -39,14 +39,14 @@
     "descriptionPlaceholder": "Tell us about your academy, your teaching philosophy, and what makes you unique...",
     "createAcademy": "Create Academy",
     "creating": "Creating...",
-    "success": "Academy Created!",
-    "successDescription": "Your academy is pending verification. We will review it shortly.",
+    "success": "Academy ready!",
+    "successDescription": "Your academy is ready. You can now add trainers and configure your setup.",
     "error": "Error",
     "errorDescription": "Failed to create academy",
     "nameRequired": "Please enter your academy name",
     "emailRequired": "Contact email is required",
     "sessionExpired": "Your session has expired. Please refresh and try again.",
-    "verificationNote": "Your academy will be reviewed and verified by our team. You can start configuring your profile while waiting for verification."
+    "verificationNote": "You can start adding trainers and configuring your academy right away."
   },
   "trainers": {
     "title": "Academy Trainers",

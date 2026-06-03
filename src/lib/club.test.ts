@@ -14,6 +14,11 @@ vi.mock('@/lib/logger', () => ({
 import { supabase } from '@/lib/supabaseClient';
 import { claimClub } from './club';
 
+/**
+ * claim-club-profile creates club_profiles with is_verified=true (see edge function).
+ * Existing unverified clubs with managers are backfilled via migration
+ * 20260530150000_backfill_club_profiles_verified_with_managers.sql.
+ */
 describe('claimClub', () => {
   beforeEach(() => {
     vi.clearAllMocks();

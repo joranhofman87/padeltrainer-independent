@@ -40,13 +40,13 @@
     "createAcademy": "Crear academia",
     "creating": "Creando...",
     "success": "¡Academia creada!",
-    "successDescription": "Tu academia está pendiente de verificación. La revisaremos en breve.",
+    "successDescription": "Tu academia está lista. Ya puedes añadir entrenadores y configurar tu academia.",
     "error": "Error",
     "errorDescription": "No se pudo crear la academia",
     "nameRequired": "Por favor, introduce el nombre de tu academia",
     "emailRequired": "El email de contacto es obligatorio",
     "sessionExpired": "Tu sesión ha expirado. Por favor, actualiza e inténtalo de nuevo.",
-    "verificationNote": "Tu academia será revisada y verificada por nuestro equipo. Puedes empezar a configurar tu perfil mientras esperas la verificación."
+    "verificationNote": "Puedes empezar a añadir entrenadores y configurar tu academia de inmediato."
   },
   "trainers": {
     "title": "Entrenadores de la academia",

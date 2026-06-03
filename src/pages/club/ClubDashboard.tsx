@@ -5,7 +5,6 @@ import {
   Building2, 
   Users, 
   Calendar, 
-  AlertCircle, 
   ArrowRight,
   Eye,
   Clock,
@@ -92,13 +91,13 @@ export default function ClubDashboard() {
         </Alert>
       )}
 
-      {/* Verification Alert */}
-      {activeClub && !activeClub.is_verified && (
-        <Alert className="mb-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>{t('dashboard.pendingVerification')}</AlertTitle>
+      {/* Getting started */}
+      {activeClub && (
+        <Alert className="mb-6 border-primary/20 bg-primary/5">
+          <Building2 className="h-4 w-4" />
+          <AlertTitle>{t('dashboard.getStartedTitle')}</AlertTitle>
           <AlertDescription>
-            {t('dashboard.pendingVerificationDescription')}
+            {t('dashboard.getStartedDescription')}
           </AlertDescription>
         </Alert>
       )}

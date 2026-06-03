@@ -40,13 +40,13 @@
     "createAcademy": "Créer l'académie",
     "creating": "Création en cours...",
     "success": "Académie créée !",
-    "successDescription": "Votre académie est en attente de vérification. Nous l'examinerons prochainement.",
+    "successDescription": "Votre académie est prête. Vous pouvez ajouter des entraîneurs et configurer votre académie.",
     "error": "Erreur",
     "errorDescription": "Échec de la création de l'académie",
     "nameRequired": "Veuillez entrer le nom de votre académie",
     "emailRequired": "L'e-mail de contact est requis",
     "sessionExpired": "Votre session a expiré. Veuillez actualiser et réessayer.",
-    "verificationNote": "Votre académie sera examinée et vérifiée par notre équipe. Vous pouvez commencer à configurer votre profil en attendant la vérification."
+    "verificationNote": "Vous pouvez commencer à ajouter des entraîneurs et configurer votre académie tout de suite."
   },
   "trainers": {
     "title": "Entraîneurs de l'académie",

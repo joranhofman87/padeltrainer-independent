@@ -42,14 +42,14 @@
     "descriptionPlaceholder": "Vertel ons over je academy, je trainingsfilosofie en wat jullie uniek maakt...",
     "createAcademy": "Academy aanmaken",
     "creating": "Aanmaken...",
-    "success": "Academy aangemaakt!",
-    "successDescription": "Je academy wacht op verificatie. we bekijken het zo snel mogelijk.",
+    "success": "Academy is klaar!",
+    "successDescription": "Je academy is klaar. je kunt nu trainers toevoegen en je setup configureren.",
     "error": "Fout",
     "errorDescription": "Academy aanmaken mislukt",
     "nameRequired": "Voer de naam van je academy in",
     "emailRequired": "Contact e-mail is verplicht",
     "sessionExpired": "Je sessie is verlopen. vernieuw de pagina en probeer opnieuw.",
-    "verificationNote": "Je academy wordt beoordeeld en geverifieerd door ons team. je kunt alvast beginnen met het configureren van je profiel."
+    "verificationNote": "Je kunt meteen trainers toevoegen en je academy configureren."
   },
   "trainers": {
     "title": "Academy trainers",

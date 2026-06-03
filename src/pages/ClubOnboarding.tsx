@@ -150,8 +150,11 @@ export default function ClubOnboarding() {
       sessionStorage.removeItem('pendingRole');
       
       toast({
-        title: t('claim.success', 'Claim Submitted!'),
-        description: t('claim.successDescription', 'Your claim is pending verification. We will review it shortly.'),
+        title: t('claim.success', 'Club ready!'),
+        description: t(
+          'claim.successDescription',
+          'Your club is ready. You can now manage trainers, availability, and bookings.',
+        ),
       });
       
       navigate('/app/club');
@@ -316,7 +319,7 @@ export default function ClubOnboarding() {
                     rows={3}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {t('claim.descriptionHelp', 'This helps us verify your claim faster')}
+                    {t('claim.descriptionHelp', 'Optional — helps other managers understand your role at this club.')}
                   </p>
                 </div>
 

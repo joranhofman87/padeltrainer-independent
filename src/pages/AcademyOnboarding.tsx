@@ -130,8 +130,11 @@ export default function AcademyOnboarding() {
       localStorage.removeItem('pendingRole');
       
       toast({
-        title: t('onboarding.success', 'Academy Created!'),
-        description: t('onboarding.successDescription', 'Your academy is pending verification. We will review it shortly.'),
+        title: t('onboarding.success', 'Academy ready!'),
+        description: t(
+          'onboarding.successDescription',
+          'Your academy is ready. You can now add trainers and configure your setup.',
+        ),
       });
       
       navigate('/academy');

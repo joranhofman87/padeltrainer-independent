@@ -2,7 +2,7 @@ import { useState, useEffect, createContext, useContext } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Building2, Menu, Clock } from 'lucide-react';
+import { Building2, Menu } from 'lucide-react';
 // SubscriptionOverlay removed - now using redirect approach
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -182,31 +182,6 @@ export default function ClubLayout() {
       </div>
     );
   }
-
-  if (activeClub && !activeClub.is_verified) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-16 text-center max-w-lg">
-          <Clock className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-          <h1 className="text-2xl font-bold mb-2">{t('dashboard.pendingTitle')}</h1>
-          <p className="text-muted-foreground mb-2">
-            {t('dashboard.pendingDescription', { clubName: activeClub.location?.name })}
-          </p>
-          <p className="text-sm text-muted-foreground mb-6">
-            {t('dashboard.pendingNote')}
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button variant="outline" onClick={() => navigate(localizePath('/locations'))}>
-              {t('dashboard.browseLocations', 'Browse Locations')}
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-
-
 
   return (
     <ClubContext.Provider value={{ 
