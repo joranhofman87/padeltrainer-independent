@@ -81,23 +81,30 @@ export interface TrainerProfile {
   updated_at: string;
 }
 
-const SIGNUP_ROLES = new Set(['player', 'trainer', 'club', 'academy', 'Club']);
-
 function matchesSignupRoleArg(value?: string): boolean {
-  return value !== undefined && SIGNUP_ROLES.has(value);
+  return isSignupRole(value?.toLowerCase());
 }
 
 function looksLikePhone(value: string): boolean {
   return /^\+?[\d\s()-]{8,}$/.test(value.trim());
 }
 
-/** True for signUpWithEmail(email, password, fullName, phone?, language?, role?, timezone?). */
-function isLegacySignUpArgs(lastNameOrPhone?: string, phoneOrLanguage?: string): boolean {
+/**
+ * Legacy: signUpWithEmail(email, password, fullName, phone?, language?, role?, timezone?)
+ * Structured: signUpWithEmail(email, password, firstName, lastName, phone?, language?, role?, timezone?)
+ *
+ * A separate lastName must not be treated as legacy (e.g. surname "Club" → invalid role "Club").
+ */
+function isLegacySignUpArgs(lastNameOrPhone?: string): boolean {
   if (lastNameOrPhone === undefined) return true;
-  if (looksLikePhone(lastNameOrPhone)) return true;
-  if (matchesSignupRoleArg(lastNameOrPhone)) return true;
-  if (matchesSignupRoleArg(phoneOrLanguage)) return true;
-  return false;
+  return looksLikePhone(lastNameOrPhone);
+}
+
+/** Normalize client role before signup-user (allowlist is lowercase only). */
+function normalizeSignupRole(role?: string): SignupRole | undefined {
+  if (!role) return undefined;
+  const lower = role.toLowerCase();
+  return isSignupRole(lower) ? lower : undefined;
 }
 
 function resolveSignUpNameArgs(
@@ -116,7 +123,7 @@ function resolveSignUpNameArgs(
   role?: string;
   timezone?: string;
 } {
-  if (isLegacySignUpArgs(lastNameOrPhone, phoneOrLanguage)) {
+  if (isLegacySignUpArgs(lastNameOrPhone)) {
     const trimmed = firstNameOrFullName.trim();
     const parts = trimmed.split(/\s+/).filter(Boolean);
     const firstName = parts[0] ?? trimmed;
@@ -199,6 +206,7 @@ export async function signUpWithEmail(
   try {
     const detectedTimezone =
       resolved.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
+    const signupRole = normalizeSignupRole(resolved.role);
     const { data: response, error: invokeError } = await supabase.functions.invoke('signup-user', {
       body: {
         email,
@@ -208,7 +216,7 @@ export async function signUpWithEmail(
         fullName: resolved.fullName,
         phone: resolved.phone,
         language: resolved.language,
-        role: resolved.role,
+        role: signupRole,
         timezone: detectedTimezone,
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },

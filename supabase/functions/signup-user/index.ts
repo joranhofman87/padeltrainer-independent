@@ -189,12 +189,27 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Allowlist signup roles — never accept 'admin' or arbitrary enum values from the client
     const ALLOWED_SIGNUP_ROLES = ['player', 'trainer', 'club', 'academy'] as const;
-    if (signupRole !== undefined && signupRole !== null && !ALLOWED_SIGNUP_ROLES.includes(signupRole as typeof ALLOWED_SIGNUP_ROLES[number])) {
+    const normalizedSignupRole =
+      typeof signupRole === 'string' ? signupRole.trim().toLowerCase() : signupRole;
+    if (
+      normalizedSignupRole !== undefined &&
+      normalizedSignupRole !== null &&
+      normalizedSignupRole !== '' &&
+      !ALLOWED_SIGNUP_ROLES.includes(normalizedSignupRole as typeof ALLOWED_SIGNUP_ROLES[number])
+    ) {
       return new Response(
-        JSON.stringify({ error: "Invalid role" }),
+        JSON.stringify({
+          error: "Invalid role",
+          receivedRole: signupRole,
+          allowedRoles: ALLOWED_SIGNUP_ROLES,
+        }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
+    const roleToAssign =
+      normalizedSignupRole && ALLOWED_SIGNUP_ROLES.includes(normalizedSignupRole as typeof ALLOWED_SIGNUP_ROLES[number])
+        ? normalizedSignupRole
+        : undefined;
 
     // Check if user already exists
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
@@ -244,13 +259,13 @@ const handler = async (req: Request): Promise<Response> => {
     await syncProfileNamesAfterSignup(supabaseAdmin, user.id, email, profilePatch);
 
     // Assign role server-side if provided (closes the gap when frontend onboarding is skipped)
-    if (signupRole) {
+    if (roleToAssign) {
       await supabaseAdmin
         .from('user_roles')
-        .upsert({ user_id: user.id, role: signupRole }, { onConflict: 'user_id,role' });
+        .upsert({ user_id: user.id, role: roleToAssign }, { onConflict: 'user_id,role' });
 
       // Trial trainer profile for server-assigned trainer signups (idempotent)
-      if (signupRole === 'trainer') {
+      if (roleToAssign === 'trainer') {
         const { data: existingTrainerProfile } = await supabaseAdmin
           .from('trainer_profiles')
           .select('id')
@@ -293,7 +308,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Trainers receive Day-0 welcome via onboarding_email_queue (trainer_profiles INSERT trigger
     // + trigger-welcome-emails). Skip the immediate Resend welcome here to avoid duplicates.
-    const skipImmediateWelcome = signupRole === "trainer";
+    const skipImmediateWelcome = roleToAssign === "trainer";
 
     if (!skipImmediateWelcome) {
       const emailContent = getEmailTemplate(firstName, actionLink);
@@ -327,7 +342,7 @@ const handler = async (req: Request): Promise<Response> => {
       await supabaseAdmin.functions.invoke('slack-notify', {
         body: {
           event: 'new_signup',
-          data: { name: fullName, email, role: signupRole || 'Unknown' },
+          data: { name: fullName, email, role: roleToAssign || 'Unknown' },
         },
       });
     } catch (slackErr) {

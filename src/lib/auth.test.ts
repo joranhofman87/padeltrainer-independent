@@ -127,6 +127,67 @@ describe('Auth module', () => {
       }));
     });
 
+    it('sends lowercase club role when last name is Club (structured signup)', async () => {
+      const mockUser = { id: 'user-club', email: 'club@test.com' };
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: { user: mockUser },
+        error: null,
+      });
+      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
+        data: { user: mockUser, session: { access_token: 'tok' } },
+        error: null,
+      });
+
+      await signUpWithEmail(
+        'club@test.com',
+        'password123',
+        'Jane',
+        'Club',
+        undefined,
+        undefined,
+        'club',
+      );
+
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
+        body: expect.objectContaining({
+          firstName: 'Jane',
+          lastName: 'Club',
+          fullName: 'Jane Club',
+          role: 'club',
+        }),
+      }));
+    });
+
+    it('sends academy role for structured academy signup', async () => {
+      const mockUser = { id: 'user-academy', email: 'academy@test.com' };
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: { user: mockUser },
+        error: null,
+      });
+      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
+        data: { user: mockUser, session: { access_token: 'tok' } },
+        error: null,
+      });
+
+      await signUpWithEmail(
+        'academy@test.com',
+        'password123',
+        'Alex',
+        'Academy',
+        undefined,
+        undefined,
+        'academy',
+      );
+
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
+        body: expect.objectContaining({
+          firstName: 'Alex',
+          lastName: 'Academy',
+          role: 'academy',
+        }),
+      }));
+    });
+
     it('does not fail if no phone provided', async () => {
       const mockUser = { id: 'user-123', email: 'test@example.com' };
       (supabase.functions.invoke as Mock).mockResolvedValue({
