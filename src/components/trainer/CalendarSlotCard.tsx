@@ -29,6 +29,7 @@ export interface BookedPlayer {
   skillRating?: number | null;
   ratingSystem?: string;
   paymentStatus?: string;
+  paidExternally?: boolean;
   birthDate?: string | null;
 }
 

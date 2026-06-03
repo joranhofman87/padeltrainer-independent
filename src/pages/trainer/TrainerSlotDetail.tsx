@@ -127,6 +127,8 @@ export default function TrainerSlotDetail() {
           ratingSystem: prof?.rating_system || guest?.rating_system || 'knltb',
           avatarUrl: prof?.avatar_url || null,
           birthDate: prof?.birth_date || guest?.birth_date || null,
+          paymentStatus: b.payment_status as string | undefined,
+          paidExternally: Boolean(b.paid_externally),
         };
       });
 
@@ -537,6 +539,8 @@ export default function TrainerSlotDetail() {
                     end_time: detail.end_time,
                     cyclus_id: detail.cyclus_id,
                     cyclus_name: detail.cyclus_name,
+                    price_per_session: detail.price_per_session,
+                    split_payment: detail.split_payment,
                     booked_players: detail.booked_players,
                   }}
                   onBookingCreated={() => { setShowBookPlayer(false); fetchSlotDetail(); }}
