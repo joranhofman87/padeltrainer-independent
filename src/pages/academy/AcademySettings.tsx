@@ -35,6 +35,7 @@ import {
   type AcademyConnectStatus 
 } from '@/lib/academyPayments';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
+import { AcademyPriceDisplayCard } from '@/components/academy/AcademyPriceDisplayCard';
 
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
@@ -413,6 +414,7 @@ export default function AcademySettings() {
           </CardContent>
         </Card>
 
+        <AcademyPriceDisplayCard academyId={activeAcademy.id} />
 
         {/* Warnings */}
         <Card>

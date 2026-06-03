@@ -526,6 +526,7 @@ export type Database = {
           payment_terms_days: number | null
           phone: string | null
           platform_fee_override: number | null
+          price_display_mode: string
           slug: string
           social_facebook: string | null
           social_instagram: string | null
@@ -579,6 +580,7 @@ export type Database = {
           payment_terms_days?: number | null
           phone?: string | null
           platform_fee_override?: number | null
+          price_display_mode?: string
           slug: string
           social_facebook?: string | null
           social_instagram?: string | null
@@ -632,6 +634,7 @@ export type Database = {
           payment_terms_days?: number | null
           phone?: string | null
           platform_fee_override?: number | null
+          price_display_mode?: string
           slug?: string
           social_facebook?: string | null
           social_instagram?: string | null

@@ -246,7 +246,16 @@
     "mollieConnectSuccess": "Betaalaccount gekoppeld",
     "mollieConnectSuccessDescription": "Je betaalaccount is succesvol gekoppeld.",
     "mollieConnectRefresh": "Installatie voltooien",
-    "mollieConnectRefreshDescription": "Voltooi de installatie van je betaalaccount."
+    "mollieConnectRefreshDescription": "Voltooi de installatie van je betaalaccount.",
+    "priceDisplay": {
+      "title": "Prijzen weergave",
+      "description": "Kies hoe prijzen worden gelabeld in je academy-roosters en boekingsflows.",
+      "includingVat": "Toon prijzen inclusief BTW",
+      "excludingVat": "Toon prijzen exclusief BTW",
+      "help": "Dit bepaalt hoe prijzen worden getoond aan spelers in academy-roosters en boekingspagina's. Dit verandert niet je uitbetaling of belastingverplichtingen.",
+      "saveSuccess": "Prijzenweergave opgeslagen",
+      "saveError": "Prijzenweergave kon niet worden opgeslagen"
+    }
   },
   "terms": {
     "title": "Algemene voorwaarden",

@@ -60,6 +60,11 @@ import {
   resolveAcademyDefaultBulkTrainerId,
   shouldInitializeAcademyDefaultBulkSlot,
 } from "@/lib/academyCreateSlot";
+import {
+  getBulkCreateVatSettingsPath,
+  priceDisplayModeToIncludesVat,
+  shouldUseTrainerPricesIncludeVat,
+} from "@/lib/academyPriceDisplay";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
@@ -454,7 +459,22 @@ export function BulkCreateContent({
     if (isActive && availableTrainers) {
       fetchAllTrainerRates();
     }
-  }, [isActive, trainerId]);
+  }, [isActive, trainerId, academyId]);
+
+  useEffect(() => {
+    if (!isActive || !academyId) return;
+
+    const loadAcademyPriceDisplay = async () => {
+      const { data } = await supabase
+        .from("academy_profiles")
+        .select("price_display_mode")
+        .eq("id", academyId)
+        .maybeSingle();
+      setPricesIncludeVat(priceDisplayModeToIncludesVat(data?.price_display_mode));
+    };
+
+    loadAcademyPriceDisplay();
+  }, [isActive, academyId]);
 
   const fetchAcademy = async () => {
     if (!trainerId) return;
@@ -471,7 +491,11 @@ export function BulkCreateContent({
     if (data?.hourly_rate) {
       setTrainerHourlyRates(prev => new Map(prev).set(tId, data.hourly_rate));
     }
-    if (data?.prices_include_vat !== undefined && data.prices_include_vat !== null) {
+    if (
+      shouldUseTrainerPricesIncludeVat(academyId) &&
+      data?.prices_include_vat !== undefined &&
+      data.prices_include_vat !== null
+    ) {
       setPricesIncludeVat(data.prices_include_vat);
     }
   };
@@ -1251,7 +1275,7 @@ export function BulkCreateContent({
                           : t("cycles:detail.pricesExcludeVat", "Prices exclude VAT")}
                         {" · "}
                         <Link
-                          to="/app/trainer/settings/bookings"
+                          to={getBulkCreateVatSettingsPath(academyId)}
                           className="text-primary underline hover:text-primary/80"
                         >
                           {t("calendar.changeInSettings", "Change in settings")}

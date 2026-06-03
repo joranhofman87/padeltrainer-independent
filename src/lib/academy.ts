@@ -25,6 +25,7 @@ export interface AcademyProfile {
   created_at: string;
   updated_at: string;
   country: string;
+  price_display_mode?: 'including_vat' | 'excluding_vat';
 }
 
 export interface AcademyManager {

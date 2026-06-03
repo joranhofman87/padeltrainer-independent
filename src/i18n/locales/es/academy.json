@@ -246,7 +246,16 @@
     "mollieConnectSuccess": "Cuenta de pago conectada",
     "mollieConnectSuccessDescription": "Tu cuenta de pago ha sido conectada correctamente.",
     "mollieConnectRefresh": "Completar configuración",
-    "mollieConnectRefreshDescription": "Por favor, completa la configuración de tu cuenta de pago."
+    "mollieConnectRefreshDescription": "Por favor, completa la configuración de tu cuenta de pago.",
+    "priceDisplay": {
+      "title": "Price display",
+      "description": "Choose how prices are labeled for your academy schedules and booking flows.",
+      "includingVat": "Show prices including VAT",
+      "excludingVat": "Show prices excluding VAT",
+      "help": "This controls how prices are shown to players in academy schedules and booking pages. It does not change your payout or tax obligations.",
+      "saveSuccess": "Price display setting saved",
+      "saveError": "Could not save price display setting"
+    }
   },
   "terms": {
     "title": "Términos generales",
