@@ -14,7 +14,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('TrainerSignupLayout', () => {
-  it('renders signup form before value panel in document order on mobile', () => {
+  it('renders signup form before value panel in document order', () => {
     render(
       <MemoryRouter>
         <TrainerSignupLayout>
