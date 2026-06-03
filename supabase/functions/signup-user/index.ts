@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "https://esm.sh/stripe@18.5.0";
+import {
+  buildProfileNamePatch,
+  resolveProfileNames,
+  syncProfileNamesAfterSignup,
+} from "../_shared/signupProfileSync.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -20,38 +25,6 @@ interface SignupRequest {
   lastName?: string;
   phone?: string;
   redirectTo?: string;
-}
-
-function buildFullName(first?: string, last?: string): string {
-  return [first?.trim(), last?.trim()].filter(Boolean).join(" ");
-}
-
-function resolveProfileNames(input: {
-  firstName?: string;
-  lastName?: string;
-  fullName?: string;
-}): { firstName: string; lastName: string | null; fullName: string } {
-  let firstName = input.firstName?.trim() ?? "";
-  let lastName = input.lastName?.trim() ?? "";
-  let fullName = input.fullName?.trim() ?? "";
-
-  if (firstName && lastName) {
-    fullName = fullName || buildFullName(firstName, lastName);
-  } else if (fullName) {
-    const parts = fullName.split(/\s+/).filter(Boolean);
-    if (!firstName && parts[0]) firstName = parts[0];
-    if (!lastName && parts.length > 1) lastName = parts.slice(1).join(" ");
-  }
-
-  if (!fullName || !firstName) {
-    throw new Error("Missing required fields: email, password, and name (firstName/lastName or fullName)");
-  }
-
-  return {
-    firstName,
-    lastName: lastName || null,
-    fullName,
-  };
 }
 
 const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
@@ -258,18 +231,17 @@ const handler = async (req: Request): Promise<Response> => {
     // Create Stripe customer and store ID
     const stripeCustomerId = await createStripeCustomer(email, fullName, user.id);
 
-    // Ensure profiles has structured names + legacy full_name (trigger may only set full_name from metadata)
-    const profileUpdates: Record<string, string | null> = {
-      first_name: firstName,
-      last_name: lastName,
-      full_name: fullName,
-    };
-    if (phone) profileUpdates.phone = phone;
-    if (language) profileUpdates.preferred_language = language;
-    if (timezone) profileUpdates.timezone = timezone;
-    if (stripeCustomerId) profileUpdates.stripe_customer_id = stripeCustomerId;
+    // Sync structured names onto profiles (service role). Do not set timezone here — not on profiles.
+    const profilePatch = buildProfileNamePatch({
+      firstName,
+      lastName,
+      fullName,
+      phone,
+      language,
+      stripeCustomerId,
+    });
 
-    await supabaseAdmin.from('profiles').update(profileUpdates).eq('user_id', user.id);
+    await syncProfileNamesAfterSignup(supabaseAdmin, user.id, email, profilePatch);
 
     // Assign role server-side if provided (closes the gap when frontend onboarding is skipped)
     if (signupRole) {
