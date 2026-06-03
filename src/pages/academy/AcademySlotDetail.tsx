@@ -41,6 +41,7 @@ import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
 import PriorityClaimsSection from '@/components/cycles/PriorityClaimsSection';
 import SlotTierControlCard from '@/components/cycles/SlotTierControlCard';
+import { resolveAcademyCyclusPricingRoute } from '@/lib/cyclusPricingRoute';
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
@@ -130,6 +131,7 @@ export default function AcademySlotDetail() {
   const [deleting, setDeleting] = useState(false);
   const [deleteCyclus, setDeleteCyclus] = useState(false);
   const [showBookPlayer, setShowBookPlayer] = useState(false);
+  const [pricingLinkLoading, setPricingLinkLoading] = useState(false);
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [editingBookingData, setEditingBookingData] = useState<any>(null);
 
@@ -432,6 +434,28 @@ export default function AcademySlotDetail() {
       toast({ title: tCommon('error'), description: error.message, variant: 'destructive' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleEditCyclePricing = async () => {
+    if (!detail?.cyclus_id) return;
+    setPricingLinkLoading(true);
+    try {
+      const path = await resolveAcademyCyclusPricingRoute(detail.cyclus_id);
+      navigate(path);
+    } catch (error) {
+      logger.error(
+        "Failed to resolve cycle pricing route",
+        error instanceof Error ? error : new Error(String(error)),
+        { slotId: detail.id, cyclusId: detail.cyclus_id },
+      );
+      toast({
+        title: tCommon('error', 'Error'),
+        description: tTrainer('calendar.editCyclePricingError', 'Could not open cycle pricing. Try the Calendar → Cycles tab.'),
+        variant: 'destructive',
+      });
+    } finally {
+      setPricingLinkLoading(false);
     }
   };
 
@@ -784,9 +808,14 @@ export default function AcademySlotDetail() {
                               variant="link"
                               size="sm"
                               className="h-auto p-0 text-xs ml-auto"
-                              onClick={() => navigate(`/app/academy/cycles/${detail.cyclus_id}`)}
+                              disabled={pricingLinkLoading}
+                              onClick={() => void handleEditCyclePricing()}
                             >
-                              {t('calendar.editCyclePricing', 'Edit cycle pricing →')}
+                              {pricingLinkLoading ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                t('calendar.editCyclePricing', 'Edit cycle pricing →')
+                              )}
                             </Button>
                           </div>
                         )}

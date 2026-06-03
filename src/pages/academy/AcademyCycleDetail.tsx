@@ -611,8 +611,14 @@ export default function AcademyCycleDetail() {
 
   if (!cycle) {
     return (
-      <div className="container mx-auto px-4 py-6">
-        <p className="text-muted-foreground">{t('common:notFound', 'Not found')}</p>
+      <div className="container mx-auto px-4 py-6 space-y-4">
+        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/academy/cycles')}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold">{tCommon('notFound.title', 'Page Not Found')}</h1>
+          <p className="text-muted-foreground">{tCommon('notFound.description', "The page you're looking for doesn't exist or has been moved.")}</p>
+        </div>
       </div>
     );
   }

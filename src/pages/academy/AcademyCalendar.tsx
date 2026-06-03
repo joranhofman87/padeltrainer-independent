@@ -126,8 +126,15 @@ export default function AcademyCalendar() {
     if (["week", "day", "month", "cycles", "create", "hours", "reports"].includes(rawTab)) return rawTab as TabValue;
     return "week";
   })();
+  const highlightCyclusId = searchParams.get("cyclusId");
+
   const setActiveTab = (tab: TabValue) => {
-    setSearchParams({ tab }, { replace: true });
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", tab);
+    if (tab !== "cycles") {
+      params.delete("cyclusId");
+    }
+    setSearchParams(params, { replace: true });
   };
 
   const isPrimaryView = PRIMARY_VIEWS.includes(activeTab);
@@ -1078,7 +1085,7 @@ export default function AcademyCalendar() {
           {/* ── Tab: Cycles ── */}
           <TabsContent value="cycles" className="mt-4">
             <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
-              <AcademyCyclusOverviewContent />
+              <AcademyCyclusOverviewContent highlightCyclusId={highlightCyclusId} />
             </Suspense>
           </TabsContent>
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { resolveAcademyCyclusPricingRoute } from '@/lib/cyclusPricingRoute';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import {
@@ -95,9 +96,12 @@ interface EmailItem {
 
 export default function AcademyPlayerDetail() {
   const { t } = useTranslation('trainer');
+  const { t: tCommon } = useTranslation('common');
   const { playerId } = useParams<{ playerId: string }>();
+  const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
+  const [cyclusLinkLoadingId, setCyclusLinkLoadingId] = useState<string | null>(null);
 
   const parsed = useMemo(() => {
     if (!playerId) return { kind: null as null | 'guest' | 'profile', id: '' };
@@ -611,10 +615,30 @@ export default function AcademyPlayerDetail() {
                         {c.session_count} {t('players.detail.sessions', 'sessions')}
                       </p>
                     </div>
-                    <Button asChild variant="ghost" size="sm">
-                      <Link to={`/app/academy/cycles/${c.cyclus_id}`}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={cyclusLinkLoadingId === c.cyclus_id}
+                      onClick={async () => {
+                        setCyclusLinkLoadingId(c.cyclus_id);
+                        try {
+                          navigate(await resolveAcademyCyclusPricingRoute(c.cyclus_id));
+                        } catch {
+                          toast({
+                            title: tCommon('error', 'Error'),
+                            description: t('calendar.editCyclePricingError', 'Could not open cycle pricing.'),
+                            variant: 'destructive',
+                          });
+                        } finally {
+                          setCyclusLinkLoadingId(null);
+                        }
+                      }}
+                    >
+                      {cyclusLinkLoadingId === c.cyclus_id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
                         <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
+                      )}
                     </Button>
                   </div>
                 ))

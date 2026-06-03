@@ -21,6 +21,7 @@ import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useTableSort } from '@/hooks/useTableSort';
 import { SortableTableHead } from '@/components/admin/SortableTableHead';
 import { formatPrice } from '@/lib/pricing';
+import { cn } from '@/lib/utils';
 import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 
 interface CyclusGroup {
@@ -47,7 +48,12 @@ interface CyclusGroup {
 
 type TimeFilter = 'current' | 'future' | 'past' | 'all';
 
-export default function AcademyCyclusOverview() {
+interface AcademyCyclusOverviewProps {
+  /** Deep link from slot detail when cyclus_id has no cycles row (bulk recurring group). */
+  highlightCyclusId?: string | null;
+}
+
+export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCyclusOverviewProps = {}) {
   const { t, i18n } = useTranslation('trainer');
   const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
@@ -534,6 +540,19 @@ export default function AcademyCyclusOverview() {
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
+  // Deep link: focus matching bulk/recurring group (orphan cyclus_id)
+  useEffect(() => {
+    if (!highlightCyclusId || groups.length === 0) return;
+    const match = groups.find((g) => g.cyclus_id === highlightCyclusId);
+    if (!match) return;
+    setSearch(match.cyclus_name);
+    setTimeFilter("all");
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-cyclus-id="${highlightCyclusId}"]`);
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }, [highlightCyclusId, groups]);
+
   // Bulk selection helpers
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -798,7 +817,15 @@ export default function AcademyCyclusOverview() {
                 </TableRow>
               ) : (
                 sortedData.map((group) => (
-                  <TableRow key={group.group_key} className="h-8 cursor-pointer hover:bg-muted/50" onClick={() => handleRowClick(group)}>
+                  <TableRow
+                    key={group.group_key}
+                    data-cyclus-id={group.cyclus_id}
+                    className={cn(
+                      "h-8 cursor-pointer hover:bg-muted/50",
+                      highlightCyclusId === group.cyclus_id && "bg-primary/10 ring-1 ring-primary/30",
+                    )}
+                    onClick={() => handleRowClick(group)}
+                  >
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selectedIds.has(group.group_key)} onCheckedChange={() => toggleSelect(group.group_key)} />
                     </TableCell>
@@ -849,7 +876,15 @@ export default function AcademyCyclusOverview() {
           </Card>
         ) : (
           sortedData.map((group) => (
-            <Card key={group.group_key} className="cursor-pointer hover:bg-muted/50" onClick={() => handleRowClick(group)}>
+            <Card
+              key={group.group_key}
+              data-cyclus-id={group.cyclus_id}
+              className={cn(
+                "cursor-pointer hover:bg-muted/50",
+                highlightCyclusId === group.cyclus_id && "ring-2 ring-primary/40 bg-primary/5",
+              )}
+              onClick={() => handleRowClick(group)}
+            >
               <CardContent className="p-4 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
