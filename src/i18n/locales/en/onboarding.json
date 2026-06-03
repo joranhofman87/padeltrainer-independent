@@ -4,6 +4,7 @@
     "trainerProfileMissing": "Your trainer profile is not ready yet. Please refresh the page and try again.",
     "profileSaveFailed": "Failed to save profile. Please try again.",
     "loadFailed": "Could not load your saved answers. Please try again.",
+    "initFailed": "Could not start trainer onboarding. Please try again.",
     "retry": "Try again"
   },
   "spiced": {

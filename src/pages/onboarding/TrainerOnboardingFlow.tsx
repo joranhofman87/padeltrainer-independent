@@ -20,6 +20,11 @@ import {
 } from '@/components/trainer/onboarding/OnboardingStepCriticalEvent';
 import type { AdminHoursRange, PainTag } from '@/lib/onboardingResponses';
 import { trackOnboardingEvent } from '@/lib/onboardingTracking';
+import {
+  ensureTrainerOnboardingRow,
+  isPostgrestError,
+  logSupabaseError,
+} from '@/lib/trainerOnboardingLegacy';
 import { Logo } from '@/components/Logo';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
@@ -142,6 +147,9 @@ export default function TrainerOnboardingFlow() {
         .maybeSingle();
 
       if (legacyError) {
+        logSupabaseError('trainer_onboarding load failed during init', legacyError, {
+          userId: user.id,
+        });
         throw legacyError;
       }
 
@@ -151,14 +159,10 @@ export default function TrainerOnboardingFlow() {
       }
 
       if (!legacyOnboarding) {
-        const { error: insertError } = await supabase.from('trainer_onboarding').insert({
-          user_id: user.id,
-          current_step: 1,
-        });
-        if (insertError) {
-          throw insertError;
+        const { created } = await ensureTrainerOnboardingRow(user.id);
+        if (created) {
+          trackOnboardingEvent('onboarding_started');
         }
-        trackOnboardingEvent('onboarding_started');
       }
 
       const { data: profile } = await supabase
@@ -197,17 +201,14 @@ export default function TrainerOnboardingFlow() {
       }
       setCurrentStep(step);
     } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      logger.error('Error initializing SPICED trainer onboarding', err, {
+      logSupabaseError('Error initializing SPICED trainer onboarding', e, {
         component: 'TrainerOnboardingFlow',
         userId: user.id,
       });
       const message =
-        err.message ||
-        t(
-          'onboarding.trainerInitFailed',
-          'Could not start trainer onboarding. Please try again.',
-        );
+        e instanceof Error && !isPostgrestError(e)
+          ? e.message
+          : tOnboarding('errors.initFailed');
       setInitError(message);
       toastUi({
         title: t('signUp.error', 'Error'),

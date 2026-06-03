@@ -4,6 +4,7 @@
     "trainerProfileMissing": "Je trainerprofiel is nog niet klaar. Vernieuw de pagina en probeer het opnieuw.",
     "profileSaveFailed": "Profiel opslaan mislukt. Probeer het opnieuw.",
     "loadFailed": "Opgeslagen antwoorden laden mislukt. Probeer het opnieuw.",
+    "initFailed": "Trainer-onboarding starten mislukt. Probeer het opnieuw.",
     "retry": "Opnieuw proberen"
   },
   "spiced": {
