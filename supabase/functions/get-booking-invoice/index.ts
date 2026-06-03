@@ -1,64 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { corsHeaders, requireUser } from "../_shared/auth.ts";
+import { canAccessBooking, type BookingAccessRow } from "../_shared/booking-access.ts";
 
 const log = (step: string, details?: Record<string, unknown>) =>
   console.log(`[GET-BOOKING-INVOICE] ${step}`, details ? JSON.stringify(details) : "");
-
-type BookingRow = {
-  id: string;
-  payment_status: string;
-  player_id: string | null;
-  availability_slots: { trainer_id: string; academy_profile_id: string | null } | null;
-};
-
-async function canAccessBooking(
-  supabase: SupabaseClient,
-  userId: string,
-  booking: BookingRow,
-): Promise<boolean> {
-  const slot = booking.availability_slots;
-  if (!slot) return false;
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (profile?.id && booking.player_id === profile.id) {
-    return true;
-  }
-
-  const { data: trainerProfile } = await supabase
-    .from("trainer_profiles")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (trainerProfile?.id === slot.trainer_id) {
-    return true;
-  }
-
-  if (slot.academy_profile_id) {
-    const { data: manager } = await supabase
-      .from("academy_managers")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("academy_profile_id", slot.academy_profile_id)
-      .maybeSingle();
-    if (manager) return true;
-  }
-
-  const { data: adminRole } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .maybeSingle();
-
-  return !!adminRole;
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -94,7 +39,7 @@ serve(async (req) => {
     }
 
     if (!isServiceRole) {
-      const allowed = await canAccessBooking(supabase, user.id, booking as BookingRow);
+      const allowed = await canAccessBooking(supabase, user.id, booking as BookingAccessRow);
       if (!allowed) {
         return new Response(JSON.stringify({ error: "Forbidden" }), {
           status: 403,

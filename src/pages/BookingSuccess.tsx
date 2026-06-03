@@ -117,8 +117,13 @@ export default function BookingSuccess() {
 
     const callVerifyFallback = async (): Promise<boolean> => {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers = session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : undefined;
         const { data, error: fnError } = await supabase.functions.invoke('verify-mollie-payment', {
           body: { bookingId },
+          headers,
         });
         if (fnError) throw fnError;
         return !!data?.paid;

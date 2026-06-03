@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { amountsMatch, parseMollieAmountValue } from "../_shared/booking-pricing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -356,7 +357,30 @@ serve(async (req) => {
 
     logStep("Updating bookings", { bookingIds, paymentStatus, bookingStatus });
 
-    // Update all bookings
+    if (payment.status === "paid") {
+      const { data: amountRows } = await supabase
+        .from("bookings")
+        .select("id, payment_amount")
+        .in("id", bookingIds);
+
+      const expectedSum = (amountRows || []).reduce(
+        (sum, b) => sum + (Number(b.payment_amount) || 0),
+        0,
+      );
+      const paidValue = parseMollieAmountValue(payment.amount?.value);
+
+      if (expectedSum > 0 && !amountsMatch(expectedSum, paidValue)) {
+        logStep("BLOCKED: Payment amount mismatch", { bookingIds, expectedSum, paidValue });
+        await notifySlackError("mollie-webhook", "Payment amount mismatch — bookings not marked paid", {
+          bookingIds,
+          expectedSum,
+          paidValue,
+          paymentId: payment.id,
+        });
+        return new Response("OK", { status: 200 });
+      }
+    }
+
     const updateData: Record<string, unknown> = {
       payment_status: paymentStatus,
       status: bookingStatus,

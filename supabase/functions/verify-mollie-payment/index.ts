@@ -1,10 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, requireUser } from "../_shared/auth.ts";
+import {
+  canPlayerVerifyMolliePayment,
+  metadataReferencesBooking,
+} from "../_shared/booking-access.ts";
+import { amountsMatch, parseMollieAmountValue } from "../_shared/booking-pricing.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[VERIFY-MOLLIE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
@@ -104,7 +105,6 @@ async function resolveAccessToken(
   supabase: any,
   trainerId: string
 ): Promise<string | null> {
-  // First check if trainer is part of an active academy
   const { data: academyTrainer } = await supabase
     .from("academy_trainers")
     .select("academy_profile_id, status")
@@ -129,7 +129,6 @@ async function resolveAccessToken(
     }
   }
 
-  // Check trainer's own Mollie account
   const { data: trainerMollie } = await supabase
     .from("trainer_mollie_accounts")
     .select("access_token, refresh_token, token_expires_at")
@@ -157,74 +156,93 @@ serve(async (req) => {
     const mollieApiKey = Deno.env.get("MOLLIE_API_KEY");
     if (!mollieApiKey) throw new Error("MOLLIE_API_KEY is not set");
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { bookingId, paymentId } = await req.json();
-    logStep("Verifying payment", { bookingId, paymentId });
-
-    if (!bookingId && !paymentId) {
-      throw new Error("Either bookingId or paymentId is required");
+    const authResult = await requireUser(req);
+    if (authResult instanceof Response) return authResult;
+    if (authResult.isServiceRole) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    let molliePaymentId = paymentId;
-    let trainerId: string | null = null;
+    const { supabase, user } = authResult;
+    const { bookingId } = await req.json();
 
-    // If we have a booking ID, fetch booking details including trainer
-    if (bookingId) {
-      const { data: booking, error: bookingError } = await supabase
-        .from("bookings")
-        .select("mollie_payment_id, payment_status, slot_id, availability_slots!inner(trainer_id)")
-        .eq("id", bookingId)
-        .single();
-
-      if (bookingError) {
-        throw new Error(`Booking not found: ${bookingError.message}`);
-      }
-
-      // If already paid, return success immediately
-      if (booking.payment_status === "paid") {
-        logStep("Booking already marked as paid");
-        return new Response(
-          JSON.stringify({ paid: true, status: "paid" }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      if (!paymentId) {
-        molliePaymentId = booking.mollie_payment_id;
-      }
-      const slotsData = booking.availability_slots as unknown as { trainer_id: string } | null;
-      trainerId = slotsData?.trainer_id ?? null;
+    if (!bookingId || typeof bookingId !== "string") {
+      return new Response(JSON.stringify({ error: "bookingId is required", paid: false }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
+    logStep("Verifying payment", { bookingId, userId: user.id });
+
+    const { data: booking, error: bookingError } = await supabase
+      .from("bookings")
+      .select("id, mollie_payment_id, payment_status, payment_amount, player_id, slot_id, availability_slots!inner(trainer_id)")
+      .eq("id", bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      return new Response(JSON.stringify({ error: "Booking not found", paid: false }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const allowed = await canPlayerVerifyMolliePayment(supabase, user.id, booking);
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: "Forbidden", paid: false }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (booking.payment_status === "paid") {
+      logStep("Booking already marked as paid");
+      return new Response(
+        JSON.stringify({ paid: true, status: "paid" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const molliePaymentId = booking.mollie_payment_id;
     if (!molliePaymentId) {
-      throw new Error("No payment ID found for booking");
+      return new Response(JSON.stringify({ error: "No payment ID found for booking", paid: false }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Resolve the correct access token for this trainer
-    let recipientAccessToken: string | null = null;
-    if (trainerId) {
-      recipientAccessToken = await resolveAccessToken(supabase, trainerId);
+    const slotsData = booking.availability_slots as unknown as { trainer_id: string } | null;
+    const trainerId = slotsData?.trainer_id ?? null;
+    if (!trainerId) {
+      return new Response(JSON.stringify({ error: "Trainer not found for booking", paid: false }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const recipientAccessToken = await resolveAccessToken(supabase, trainerId);
+    if (!recipientAccessToken) {
+      logStep("No connected account token for verification", { trainerId, molliePaymentId });
+      return new Response(JSON.stringify({ error: "Payment account unavailable", paid: false }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const isTestMode = mollieApiKey.startsWith("test_");
-    const authToken = recipientAccessToken || mollieApiKey;
-    if (!recipientAccessToken) {
-      logStep("⚠️ WARNING: Falling back to platform API key for payment verification", { molliePaymentId, trainerId });
-    }
     let fetchUrl = `https://api.mollie.com/v2/payments/${molliePaymentId}`;
-    if (isTestMode && recipientAccessToken) {
+    if (isTestMode) {
       fetchUrl += "?testmode=true";
     }
 
-    logStep("Fetching payment from Mollie", { useConnectedToken: !!recipientAccessToken, isTestMode });
+    logStep("Fetching payment from Mollie", { isTestMode });
 
-    // Fetch payment status from Mollie
     const mollieResponse = await fetch(fetchUrl, {
       headers: {
-        "Authorization": `Bearer ${authToken}`,
+        "Authorization": `Bearer ${recipientAccessToken}`,
       },
     });
 
@@ -234,15 +252,53 @@ serve(async (req) => {
     }
 
     const payment = await mollieResponse.json();
-    logStep("Mollie payment status", { 
-      paymentId: molliePaymentId, 
-      status: payment.status 
+    logStep("Mollie payment status", {
+      paymentId: molliePaymentId,
+      status: payment.status,
     });
+
+    if (!metadataReferencesBooking(payment.metadata, bookingId)) {
+      logStep("Metadata does not reference booking", { metadata: payment.metadata });
+      return new Response(JSON.stringify({ error: "Payment does not match booking", paid: false }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const metadataIds: string[] = payment.metadata?.booking_ids?.length
+      ? payment.metadata.booking_ids
+      : payment.metadata?.booking_id
+        ? [payment.metadata.booking_id]
+        : [bookingId];
+
+    const { data: relatedBookings } = await supabase
+      .from("bookings")
+      .select("id, payment_amount")
+      .in("id", metadataIds);
+
+    const expectedSum = (relatedBookings || []).reduce(
+      (sum, b) => sum + (Number(b.payment_amount) || 0),
+      0,
+    );
+    const paidValue = parseMollieAmountValue(payment.amount?.value);
 
     const isPaid = payment.status === "paid";
 
-    // Update booking if paid and we have a booking ID
-    if (isPaid && bookingId) {
+    if (isPaid && !amountsMatch(expectedSum, paidValue)) {
+      logStep("Amount mismatch — refusing to mark paid", { expectedSum, paidValue, metadataIds });
+      await notifySlackError("verify-mollie-payment", "Payment amount mismatch", {
+        bookingId,
+        expectedSum,
+        paidValue,
+      });
+      return new Response(
+        JSON.stringify({ error: "Payment amount mismatch", paid: false, status: payment.status }),
+        { status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (isPaid) {
       const { error: updateError } = await supabase
         .from("bookings")
         .update({
@@ -267,7 +323,7 @@ serve(async (req) => {
         amount: payment.amount,
         paidAt: payment.paidAt,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -275,7 +331,7 @@ serve(async (req) => {
     await notifySlackError("verify-mollie-payment", message);
     return new Response(
       JSON.stringify({ error: message, paid: false }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

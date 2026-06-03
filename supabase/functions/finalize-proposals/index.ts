@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { canManageCycle, isAdminUser } from "../_shared/cycle-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,6 +47,39 @@ serve(async (req: Request) => {
         status: 400,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
+    }
+
+    const { data: cycleRow, error: cycleError } = await supabaseAdmin
+      .from("cycles")
+      .select("id, owner_type, owner_id")
+      .eq("id", cycle_id)
+      .single();
+
+    if (cycleError || !cycleRow) {
+      return new Response(JSON.stringify({ error: "Cycle not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    if (!isServiceRole) {
+      const { data: { user: caller } } = await supabaseAdmin.auth.getUser(token);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+
+      const isAdmin = await isAdminUser(supabaseAdmin, caller.id);
+      const canManage = isAdmin || await canManageCycle(supabaseAdmin, caller.id, cycleRow);
+
+      if (!canManage) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
     }
 
     console.log(`Finalizing proposals for cycle: ${cycle_id}`);

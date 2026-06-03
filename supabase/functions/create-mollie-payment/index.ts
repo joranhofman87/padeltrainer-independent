@@ -1,5 +1,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import {
+  applySplitPayment,
+  amountsMatch,
+  computeCyclusTotalFromSlots,
+  computeSingleSlotPaymentAmount,
+  type SlotPricingInput,
+} from "../_shared/booking-pricing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -149,22 +156,166 @@ serve(async (req) => {
     }
     logStep("Player profile found", { profileId: playerProfile.id });
 
-    const { slotId, amount, description, trainerId, redirectUrl, bookingIds } = await req.json();
-    logStep("Request payload", { slotId, amount, trainerId, bookingIds });
+    const { slotId, amount: clientAmount, description, trainerId, redirectUrl, bookingIds } = await req.json();
+    logStep("Request payload", { slotId, trainerId, bookingIds, clientAmountIgnored: clientAmount });
 
-    if (!slotId || !amount || !trainerId) {
-      throw new Error("Missing required fields: slotId, amount, trainerId");
+    if (!slotId || !trainerId) {
+      throw new Error("Missing required fields: slotId, trainerId");
     }
 
-    // Get trainer profile ID from user ID
     const { data: trainerProfile } = await supabase
       .from("trainer_profiles")
-      .select("id")
+      .select("id, hourly_rate")
       .eq("id", trainerId)
       .single();
 
-    const trainerProfileId = trainerProfile?.id;
+    if (!trainerProfile?.id) {
+      return new Response(
+        JSON.stringify({ error: "Trainer not found" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const trainerProfileId = trainerProfile.id;
+    const hourlyRate = trainerProfile.hourly_rate != null ? Number(trainerProfile.hourly_rate) : null;
     logStep("Trainer profile lookup", { trainerId, trainerProfileId });
+
+    const requestedBookingIds: string[] = Array.isArray(bookingIds)
+      ? bookingIds.filter((id: unknown) => typeof id === "string")
+      : [];
+
+    let expectedAmount: number;
+    let preExistingBookingIds: string[] = [];
+
+    if (requestedBookingIds.length > 0) {
+      const { data: existingBookings, error: bookingsError } = await supabase
+        .from("bookings")
+        .select(`
+          id, player_id, payment_status, status, slot_id,
+          availability_slots!inner(
+            id, trainer_id, cyclus_id, price_per_session, start_time, end_time,
+            max_participants, allow_single_booking
+          )
+        `)
+        .in("id", requestedBookingIds);
+
+      if (bookingsError || !existingBookings?.length) {
+        return new Response(
+          JSON.stringify({ error: "Bookings not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      if (existingBookings.length !== requestedBookingIds.length) {
+        return new Response(
+          JSON.stringify({ error: "Invalid booking IDs" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      for (const b of existingBookings) {
+        if (b.player_id !== playerProfile.id) {
+          return new Response(
+            JSON.stringify({ error: "Forbidden: booking does not belong to player" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        if (!["pending"].includes(b.payment_status)) {
+          return new Response(
+            JSON.stringify({ error: "Booking is not pending payment" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        if (!["pending", "confirmed"].includes(b.status)) {
+          return new Response(
+            JSON.stringify({ error: "Booking is not eligible for payment" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const slot = b.availability_slots as SlotPricingInput & {
+          id: string;
+          trainer_id: string;
+          cyclus_id: string | null;
+        };
+        if (slot.trainer_id !== trainerId) {
+          return new Response(
+            JSON.stringify({ error: "Trainer does not match booking slot" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+
+      if (!existingBookings.some((row) => row.slot_id === slotId)) {
+        return new Response(
+          JSON.stringify({ error: "slotId must match a booking in bookingIds" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const slots = existingBookings.map((b) => b.availability_slots as SlotPricingInput & { cyclus_id: string | null });
+      const cyclusIds = [...new Set(slots.map((s) => s.cyclus_id).filter(Boolean))];
+      let splitPayment = false;
+
+      if (cyclusIds.length === 1 && cyclusIds[0]) {
+        const { data: cycle } = await supabase
+          .from("cycles")
+          .select("settings")
+          .eq("id", cyclusIds[0])
+          .maybeSingle();
+        const settings = (cycle?.settings as Record<string, unknown>) || {};
+        splitPayment = settings.split_payment === true;
+      }
+
+      const total = computeCyclusTotalFromSlots(slots, hourlyRate);
+      if (splitPayment) {
+        const slotIds = [...new Set(existingBookings.map((b) => b.slot_id))];
+        const { count: existingPlayers } = await supabase
+          .from("bookings")
+          .select("player_id", { count: "exact", head: true })
+          .in("slot_id", slotIds)
+          .in("status", ["pending", "confirmed"]);
+        expectedAmount = applySplitPayment(total, existingPlayers || 1);
+      } else {
+        expectedAmount = total;
+      }
+
+      preExistingBookingIds = requestedBookingIds;
+      logStep("Server-computed cyclus amount", { expectedAmount, splitPayment, total });
+    } else {
+      const { data: slot, error: slotError } = await supabase
+        .from("availability_slots")
+        .select("id, trainer_id, price_per_session, start_time, end_time, max_participants, allow_single_booking")
+        .eq("id", slotId)
+        .single();
+
+      if (slotError || !slot) {
+        return new Response(
+          JSON.stringify({ error: "Slot not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      if (slot.trainer_id !== trainerId) {
+        return new Response(
+          JSON.stringify({ error: "Trainer does not match slot" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      expectedAmount = computeSingleSlotPaymentAmount(slot, hourlyRate, 1);
+      logStep("Server-computed single-slot amount", { expectedAmount });
+    }
+
+    if (expectedAmount <= 0) {
+      return new Response(
+        JSON.stringify({ error: "Invalid payment amount" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (clientAmount != null && !amountsMatch(expectedAmount, Number(clientAmount))) {
+      logStep("Client amount ignored (mismatch)", { clientAmount, expectedAmount });
+    }
 
     // Check if trainer is part of an active academy
     let recipientAccessToken: string | null = null;
@@ -282,7 +433,7 @@ serve(async (req) => {
       await writeAuditLog(supabase, {
         function_name: "create-mollie-payment",
         recipient_type: null,
-        amount,
+        amount: expectedAmount,
         status: "blocked_no_account",
         error_message: errorMsg,
         metadata: { trainerId, trainerProfileId, slotId },
@@ -300,16 +451,24 @@ serve(async (req) => {
       );
     }
 
-    // Use existing booking IDs (cyclus flow) or create a new booking
     let bookingId: string;
-    const allBookingIds: string[] = bookingIds || [];
+    const allBookingIds: string[] = [...preExistingBookingIds];
 
     if (allBookingIds.length > 0) {
-      // Cyclus flow: bookings already created by frontend
       bookingId = allBookingIds[0];
       logStep("Using existing bookings", { bookingIds: allBookingIds });
+
+      const perBookingAmount = Math.round((expectedAmount / allBookingIds.length) * 100) / 100;
+      const { error: amountUpdateError } = await supabase
+        .from("bookings")
+        .update({ payment_amount: perBookingAmount })
+        .in("id", allBookingIds);
+
+      if (amountUpdateError) {
+        throw new Error(`Failed to set payment amount: ${amountUpdateError.message}`);
+      }
+      logStep("Payment amounts set on cyclus bookings", { perBookingAmount, count: allBookingIds.length });
     } else {
-      // Single slot flow: create booking record
       const { data: booking, error: bookingError } = await supabase
         .from("bookings")
         .insert({
@@ -317,7 +476,7 @@ serve(async (req) => {
           player_id: playerProfile.id,
           payment_status: "pending",
           status: "pending",
-          payment_amount: amount,
+          payment_amount: expectedAmount,
         })
         .select()
         .single();
@@ -325,7 +484,7 @@ serve(async (req) => {
       if (bookingError) throw new Error(`Failed to create booking: ${bookingError.message}`);
       bookingId = booking.id;
       allBookingIds.push(bookingId);
-      logStep("Booking created", { bookingId });
+      logStep("Booking created", { bookingId, payment_amount: expectedAmount });
     }
 
     const origin = redirectUrl || req.headers.get("origin") || "https://padeltrainer.ai";
@@ -334,7 +493,7 @@ serve(async (req) => {
     const paymentData: Record<string, unknown> = {
       amount: {
         currency: "EUR",
-        value: amount.toFixed(2),
+        value: expectedAmount.toFixed(2),
       },
       description: description || `Padel lesson booking`,
       redirectUrl: `${origin}/app/booking-success?booking_id=${bookingId}`,
@@ -378,7 +537,7 @@ serve(async (req) => {
         booking_id: bookingId,
         recipient_type: recipientType,
         mollie_org_id: mollieOrgId,
-        amount,
+        amount: expectedAmount,
         status: "blocked_no_profile",
         error_message: errorMsg,
       });
@@ -390,7 +549,7 @@ serve(async (req) => {
     }
 
     // Cap fee: must be strictly less than amount minus Mollie's transaction costs
-    const maxFee = Math.max(0, amount - 0.30);
+    const maxFee = Math.max(0, expectedAmount - 0.30);
     const effectiveFee = Math.min(platformFee, maxFee);
 
     paymentData.profileId = mollieProfileId;
@@ -430,7 +589,7 @@ serve(async (req) => {
         booking_id: bookingId,
         recipient_type: recipientType,
         mollie_org_id: mollieOrgId,
-        amount,
+        amount: expectedAmount,
         status: "error",
         error_message: errorText.slice(0, 500),
       });
@@ -453,7 +612,7 @@ serve(async (req) => {
       booking_id: bookingId,
       recipient_type: recipientType,
       mollie_org_id: mollieOrgId,
-      amount,
+      amount: expectedAmount,
       status: "success",
       mollie_payment_id: payment.id,
       metadata: { bookingIds: allBookingIds, profileId: mollieProfileId, fee: effectiveFee },
@@ -464,7 +623,7 @@ serve(async (req) => {
       type: "booking",
       recipientType,
       mollieOrgId,
-      amount: `€${amount.toFixed(2)}`,
+      amount: `€${expectedAmount.toFixed(2)}`,
       fee: `€${effectiveFee.toFixed(2)}`,
       bookings: allBookingIds.length,
       paymentId: payment.id,
