@@ -36,6 +36,10 @@ import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/agenda/Agenda
 import AgendaMonth from "@/components/agenda/AgendaMonth";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
+import {
+  GUEST_PLAYER_CALENDAR_SELECT,
+  loadGuestPlayersForAcademy,
+} from "@/lib/guestPlayers";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
@@ -399,23 +403,29 @@ export default function AcademyCalendar() {
       if (trainerIds.length > 0) {
         const { data: trainerGuests } = await supabase
           .from('guest_players')
-          .select('id, full_name, skill_rating, rating_system, linked_player_id')
+          .select(GUEST_PLAYER_CALENDAR_SELECT)
           .in('trainer_id', trainerIds);
         if (trainerGuests) guestRows.push(...trainerGuests);
       }
-      const { data: academyGuests } = await supabase
-        .from('guest_players')
-        .select('id, full_name, skill_rating, rating_system, linked_player_id')
-        .eq('academy_profile_id', activeAcademy.id)
-        .is('trainer_id', null);
-      if (academyGuests) guestRows.push(...academyGuests);
+
+      const { data: academyGuests, error: academyGuestsError } =
+        await loadGuestPlayersForAcademy(activeAcademy.id);
+      if (academyGuestsError) {
+        logger.error(
+          "Failed to load academy guest players for calendar",
+          academyGuestsError,
+          { component: "AcademyCalendar", academyId: activeAcademy.id },
+        );
+      } else if (academyGuests) {
+        guestRows.push(...academyGuests);
+      }
 
       const linkedProfileIds = new Set<string>();
       const seenGuestIds = new Set<string>();
       guestRows.forEach((g) => {
         if (seenGuestIds.has(g.id)) return;
         seenGuestIds.add(g.id);
-        if (g.linked_player_id) linkedProfileIds.add(g.linked_player_id);
+        if (g.linked_profile_id) linkedProfileIds.add(g.linked_profile_id);
         playerMap.set(`guest-${g.id}`, {
           id: g.id,
           full_name: g.full_name || 'Guest',

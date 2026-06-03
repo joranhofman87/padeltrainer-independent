@@ -36,6 +36,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
+import { loadGuestPlayersForAcademy } from '@/lib/guestPlayers';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
@@ -385,12 +386,11 @@ export default function AcademyPlayers() {
         if (trainerPlayers) allGuestPlayers.push(...trainerPlayers);
       }
 
-      const { data: academyPlayers } = await supabase
-        .from('guest_players')
-        .select('*')
-        .eq('academy_profile_id', activeAcademy.id)
-        .is('trainer_id', null)
-        .order('full_name');
+      const { data: academyPlayers, error: academyPlayersError } =
+        await loadGuestPlayersForAcademy(activeAcademy.id);
+      if (academyPlayersError) {
+        throw academyPlayersError;
+      }
       if (academyPlayers) allGuestPlayers.push(...academyPlayers);
 
       // Deduplicate by id

@@ -65,6 +65,10 @@ import {
   priceDisplayModeToIncludesVat,
   shouldUseTrainerPricesIncludeVat,
 } from "@/lib/academyPriceDisplay";
+import {
+  loadGuestPlayersForAcademy,
+  loadGuestPlayersForTrainer,
+} from "@/lib/guestPlayers";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
@@ -451,8 +455,10 @@ export function BulkCreateContent({
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
 
   useEffect(() => {
-    if (isActive && trainerId) {
+    if (isActive && (academyId || trainerId)) {
       fetchPlayers();
+    }
+    if (isActive && trainerId) {
       fetchAcademy();
       fetchTrainerHourlyRate(trainerId);
     }
@@ -530,13 +536,52 @@ export function BulkCreateContent({
   };
 
   const fetchPlayers = async () => {
-    if (!trainerId) return;
-    const { data } = await supabase
-      .from("guest_players")
-      .select("*")
-      .eq("trainer_id", trainerId)
-      .order("full_name");
-    setPlayers(data || []);
+    try {
+      if (academyId) {
+        const { data, error } = await loadGuestPlayersForAcademy(academyId);
+        if (error) {
+          toast({
+            title: t("calendar.guestPlayersLoadError", "Could not load players"),
+            description: error.message,
+            variant: "destructive",
+          });
+          setPlayers([]);
+          return;
+        }
+        setPlayers((data as GuestPlayer[]) || []);
+        return;
+      }
+
+      if (!trainerId) {
+        setPlayers([]);
+        return;
+      }
+
+      const { data, error } = await loadGuestPlayersForTrainer(trainerId);
+      if (error) {
+        toast({
+          title: t("calendar.guestPlayersLoadError", "Could not load players"),
+          description: error.message,
+          variant: "destructive",
+        });
+        setPlayers([]);
+        return;
+      }
+      setPlayers((data as GuestPlayer[]) || []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(
+        "Unexpected error loading guest players",
+        err instanceof Error ? err : new Error(message),
+        { component: "BulkCreateContent", academyId, trainerId },
+      );
+      toast({
+        title: t("calendar.guestPlayersLoadError", "Could not load players"),
+        description: message,
+        variant: "destructive",
+      });
+      setPlayers([]);
+    }
   };
 
   const getInitialStartDate = () => {
@@ -1836,9 +1881,15 @@ export function BulkCreateContent({
           trainerId={trainerId || undefined}
           academyId={academyId}
           onPlayerCreated={(player) => {
-            setPlayers((prev) => [...prev, player].sort((a, b) => 
-              a.full_name.localeCompare(b.full_name)
-            ));
+            setPlayers((prev) => {
+              if (prev.some((p) => p.id === player.id)) {
+                return prev;
+              }
+              return [...prev, player].sort((a, b) => a.full_name.localeCompare(b.full_name));
+            });
+            if (academyId) {
+              void fetchPlayers();
+            }
             // Auto-fill the player in the slot that triggered the dialog
             if (addPlayerContext) {
               const { slotIndex, playerIndex } = addPlayerContext;
