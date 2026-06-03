@@ -291,13 +291,22 @@ export default function AdminUsers() {
     for (let i = 0; i < userIdsArray.length; i++) {
       const userId = userIdsArray[i];
       try {
-        const { error } = await supabase.functions.invoke("delete-user", {
+        const { data, error } = await supabase.functions.invoke("delete-user", {
           body: { target_user_id: userId },
         });
         if (error) throw error;
+        const payload = data as { success?: boolean; error?: string } | null;
+        if (payload?.error || payload?.success === false) {
+          throw new Error(payload?.error || "Failed to delete user");
+        }
         successCount++;
       } catch (error) {
-        logger.error("Failed to delete user in bulk", error as Error, { component: "AdminUsers", userId });
+        const message = error instanceof Error ? error.message : "Failed to delete user";
+        logger.error("Failed to delete user in bulk", error as Error, {
+          component: "AdminUsers",
+          userId,
+          message,
+        });
         failCount++;
       }
       setBulkDeleteProgress({ current: i + 1, total: userIdsArray.length });
@@ -906,6 +915,73 @@ export default function AdminUsers() {
             <Button onClick={handleImpersonate} disabled={actionLoading}>
               {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Generate Link
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Dialog */}
+      <AlertDialog
+        open={bulkDeleteDialogOpen}
+        onOpenChange={(open) => {
+          if (actionLoading && bulkDeleteProgress) return;
+          setBulkDeleteDialogOpen(open);
+          if (!open) {
+            setBulkDeleteConfirmText("");
+            setBulkDeleteProgress(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {selectedUserIds.size} selected user{selectedUserIds.size === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the selected users and their associated account data.
+              This action cannot be undone. Type DELETE to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <Input
+              placeholder="Type DELETE to confirm"
+              value={bulkDeleteConfirmText}
+              onChange={(e) => setBulkDeleteConfirmText(e.target.value)}
+              disabled={actionLoading && !!bulkDeleteProgress}
+            />
+            {bulkDeleteProgress && (
+              <p className="text-sm text-muted-foreground">
+                Deleting {bulkDeleteProgress.current} of {bulkDeleteProgress.total}…
+              </p>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBulkDeleteDialogOpen(false);
+                setBulkDeleteConfirmText("");
+                setBulkDeleteProgress(null);
+              }}
+              disabled={actionLoading && !!bulkDeleteProgress}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={
+                actionLoading ||
+                bulkDeleteConfirmText !== "DELETE" ||
+                selectedUserIds.size === 0
+              }
+            >
+              {actionLoading && bulkDeleteProgress && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {bulkDeleteProgress
+                ? `Deleting… (${bulkDeleteProgress.current}/${bulkDeleteProgress.total})`
+                : `Delete ${selectedUserIds.size} user${selectedUserIds.size === 1 ? "" : "s"}`}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
