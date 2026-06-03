@@ -5,7 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote, Calculator, Info } from 'lucide-react';
 import { formatPrice } from '@/lib/pricing';
-import { phoneSchemaRequired } from '@/lib/validation';
+import { createOptionalPhoneSchema } from '@/lib/validation';
+import { combineRegistrationFullName, splitPrefillFullName } from '@/lib/signupSchema';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import { logger } from '@/lib/logger';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
@@ -151,10 +152,13 @@ export default function CycleApplicationForm({
         message: t('application.form.noAvailability'),
       });
 
+  const prefilledName = splitPrefillFullName(playerName || '');
+
   const formSchema = z.object({
-    full_name: z.string().min(2, t('application.form.nameMin')),
+    first_name: z.string().trim().min(2, t('application.form.firstNameMin')),
+    last_name: z.string().trim().min(2, t('application.form.lastNameMin')),
     email: z.string().email(t('application.form.emailInvalid')),
-    phone: phoneSchemaRequired,
+    phone: createOptionalPhoneSchema(t('application.form.validation.phoneInvalid')),
     password: z.string().optional(),
     birth_date: z.string().min(1, t('application.form.birthDateRequired')),
     rating: z.coerce.number().optional(),
@@ -177,7 +181,8 @@ export default function CycleApplicationForm({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      full_name: playerName || '',
+      first_name: prefilledName.firstName,
+      last_name: prefilledName.lastName,
       email: playerEmail || '',
       phone: playerPhone || '',
       birth_date: playerBirthDate || '',
@@ -199,6 +204,7 @@ export default function CycleApplicationForm({
   const onSubmit = async (values: FormValues) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
+    const fullName = combineRegistrationFullName(values.first_name, values.last_name);
     try {
       // Convert availability to TimeWindow[] format
       const timeWindows: TimeWindow[] = [];
@@ -224,7 +230,7 @@ export default function CycleApplicationForm({
         const { data: result, error: fnError } = await supabase.functions.invoke('submit-guest-intake', {
           body: {
             email: values.email,
-            fullName: values.full_name,
+            fullName,
             phone: values.phone,
             birthDate: values.birth_date || null,
             rating: values.rating,
@@ -254,7 +260,7 @@ export default function CycleApplicationForm({
         await submitIntakeRequest({
           cycle_id: cycle.id,
           player_id: playerId,
-          full_name: values.full_name,
+          full_name: fullName,
           email: values.email,
           phone: values.phone,
           birth_date: values.birth_date || undefined,
@@ -344,7 +350,7 @@ export default function CycleApplicationForm({
         }
 
         sendEmail('intake_registration_confirmation', values.email, {
-          playerName: values.full_name,
+          playerName: fullName,
           cycleName: cycle.name,
           ownerName,
           confirmationText: (cycle.settings as any)?.confirmation_email_text || undefined,
@@ -397,7 +403,7 @@ export default function CycleApplicationForm({
         body: {
           event: 'new_registration',
           data: {
-            name: values.full_name,
+            name: fullName,
             email: values.email,
             cycle: cycle.name,
             lesson_types: values.lesson_types.join(', '),
@@ -503,19 +509,34 @@ export default function CycleApplicationForm({
             <CardTitle className="text-lg">{t('application.form.personalInfo')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="full_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('application.form.name')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="first_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('application.form.firstName')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} autoComplete="given-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="last_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('application.form.lastName')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} autoComplete="family-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}
@@ -536,7 +557,12 @@ export default function CycleApplicationForm({
               name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('application.form.phone')}</FormLabel>
+                  <FormLabel>
+                    {t('application.form.phone')}
+                    <span className="text-muted-foreground font-normal ml-1">
+                      ({t('application.form.phoneOptional')})
+                    </span>
+                  </FormLabel>
                   <FormControl>
                     <Input {...field} type="tel" />
                   </FormControl>
@@ -1070,7 +1096,8 @@ export default function CycleApplicationForm({
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive space-y-1">
             <p className="font-medium">{t('application.form.validationSummary', 'Please fix the following:')}</p>
             <ul className="list-disc pl-4 space-y-0.5">
-              {form.formState.errors.full_name && <li>{t('application.form.name')}</li>}
+              {form.formState.errors.first_name && <li>{t('application.form.firstName')}</li>}
+              {form.formState.errors.last_name && <li>{t('application.form.lastName')}</li>}
               {form.formState.errors.email && <li>{t('application.form.email')}</li>}
               {form.formState.errors.birth_date && <li>{t('application.form.birthDate')}</li>}
               {form.formState.errors.notes && <li>{t('application.form.notes')}</li>}

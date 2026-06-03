@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { validatePhone, formatPhoneNumber, calculatePasswordStrength } from './validation';
+import {
+  validatePhone,
+  formatPhoneNumber,
+  calculatePasswordStrength,
+  createOptionalPhoneSchema,
+} from './validation';
 
 describe('validatePhone', () => {
   // Valid Dutch numbers
@@ -34,6 +39,27 @@ describe('validatePhone', () => {
   it('returns error for empty string when required', () => {
     expect(validatePhone('', true)).toBe('validation.phoneRequired');
     expect(validatePhone('  ', true)).toBe('validation.phoneRequired');
+  });
+});
+
+describe('createOptionalPhoneSchema', () => {
+  const schema = createOptionalPhoneSchema('Invalid phone');
+
+  it('accepts empty phone', () => {
+    expect(schema.safeParse('').success).toBe(true);
+    expect(schema.safeParse('   ').success).toBe(true);
+  });
+
+  it('accepts valid Dutch phone', () => {
+    expect(schema.safeParse('+31612345678').success).toBe(true);
+  });
+
+  it('rejects invalid phone when provided', () => {
+    const result = schema.safeParse('not-a-phone');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.errors[0].message).toBe('Invalid phone');
+    }
   });
 });
 

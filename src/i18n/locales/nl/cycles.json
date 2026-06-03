@@ -193,8 +193,17 @@
     "form": {
       "personalInfo": "Persoonlijke informatie",
       "name": "Volledige naam",
+      "firstName": "Voornaam",
+      "lastName": "Achternaam",
+      "firstNameMin": "Voornaam moet minimaal 2 tekens zijn",
+      "lastNameMin": "Achternaam moet minimaal 2 tekens zijn",
       "email": "E-mail",
       "phone": "Telefoon",
+      "phoneOptional": "optioneel",
+      "validation": {
+        "phoneInvalid": "Voer een geldig Nederlands telefoonnummer in (bijv. +31 6 12345678)",
+        "phoneRequired": "Telefoonnummer is verplicht"
+      },
       "rating": "Actuele rating",
       "ratingLabel": "Actuele rating",
       "ratingSystem": "Ratingsysteem",

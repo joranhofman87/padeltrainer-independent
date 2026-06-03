@@ -14,6 +14,16 @@ export const phoneSchema = z.string()
     message: 'validation.phoneInvalid',
   });
 
+/** Optional phone schema with a caller-supplied (already translated) invalid message. */
+export function createOptionalPhoneSchema(invalidMessage: string) {
+  return z
+    .string()
+    .transform((val) => val.trim())
+    .refine((val) => val === '' || dutchPhoneRegex.test(val.replace(/[\s.-]/g, '')), {
+      message: invalidMessage,
+    });
+}
+
 /**
  * Phone validation schema - required
  * Must be a valid Dutch phone number

@@ -173,8 +173,17 @@
     "form": {
       "personalInfo": "Personal Information",
       "name": "Full Name",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "firstNameMin": "First name must be at least 2 characters",
+      "lastNameMin": "Last name must be at least 2 characters",
       "email": "Email",
       "phone": "Phone",
+      "phoneOptional": "optional",
+      "validation": {
+        "phoneInvalid": "Please enter a valid Dutch phone number (e.g., +31 6 12345678)",
+        "phoneRequired": "Phone number is required"
+      },
       "rating": "Current Rating",
       "ratingLabel": "Current Rating",
       "ratingSystem": "Rating System",

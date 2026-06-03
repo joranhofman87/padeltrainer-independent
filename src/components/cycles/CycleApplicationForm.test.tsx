@@ -15,12 +15,10 @@ vi.mock('react-i18next', () => ({
     t: (key: string, fallbackOrParams?: string | Record<string, unknown>) => {
       if (typeof fallbackOrParams === 'string') return fallbackOrParams;
       const map: Record<string, string> = {
-        'intake.fullName': 'Full Name',
-        'intake.email': 'Email',
-        'intake.phone': 'Phone',
-        'intake.submit': 'Submit Application',
-        'intake.preferredDays': 'Preferred Days',
-        'intake.notes': 'Notes',
+        'application.form.firstName': 'First name',
+        'application.form.lastName': 'Last name',
+        'application.form.firstNameMin': 'First name required',
+        'application.form.lastNameMin': 'Last name required',
         'application.form.nameMin': 'Name required',
         'application.form.emailInvalid': 'Invalid email',
         'application.form.birthDateRequired': 'Birth date required',
@@ -28,6 +26,49 @@ vi.mock('react-i18next', () => ({
         'application.form.experienceRequired': 'Experience required',
         'application.form.consentRequired': 'Consent required',
         'application.form.noAvailability': 'Select availability',
+        'application.form.phoneOptional': 'optional',
+        'application.form.validation.phoneInvalid': 'Please enter a valid Dutch phone number',
+        'application.form.personalInfo': 'Personal Information',
+        'application.form.email': 'Email',
+        'application.form.phone': 'Phone',
+        'application.form.birthDate': 'Date of birth',
+        'application.form.rating': 'Current Rating',
+        'application.form.lessonType': 'Lesson Type',
+        'application.form.availabilityLabel': 'Availability',
+        'application.form.consent': 'Consent',
+        'application.form.notes': 'Experience',
+        'application.form.submit': 'Submit Application',
+        'application.form.lessonTypes.group4': 'Group (4 players)',
+        'application.form.preferredDuration': 'Preferred Duration',
+        'application.form.sessionsPerWeek': 'Sessions per week',
+        'application.form.timesPerWeek': 'per week',
+        'application.form.preferredTrainer': 'Preferred Trainer (optional)',
+        'application.form.noPreference': 'No preference',
+        'application.form.location': 'Preferred Location',
+        'application.form.availability': 'Your Availability',
+        'application.form.availabilityHelp': 'Select availability',
+        'application.form.additional': 'More information',
+        'application.form.notesPlaceholder': 'Experience placeholder',
+        'application.form.ratingLabel': 'Current Rating',
+        'application.form.ratingSystem': 'Rating System',
+        'application.form.preferences': 'Training Preferences',
+        'application.form.days.monday': 'Monday',
+        'application.form.days.tuesday': 'Tuesday',
+        'application.form.days.wednesday': 'Wednesday',
+        'application.form.days.thursday': 'Thursday',
+        'application.form.days.friday': 'Friday',
+        'application.form.days.saturday': 'Saturday',
+        'application.form.days.sunday': 'Sunday',
+        'application.form.startTime': 'From',
+        'application.form.endTime': 'To',
+        'application.form.addTimeBlock': 'Add another time',
+        'application.form.availableRange': 'Available',
+        'application.form.sessionsPerWeekHelp': 'Sessions help',
+        'application.form.groupNotes': 'Group notes',
+        'application.form.groupNotesPlaceholder': 'Group notes placeholder',
+        'application.title': 'Apply for Training',
+        'application.subtitle': 'Submit your application',
+        'common:cancel': 'Cancel',
       };
       return map[key] || key;
     },
@@ -109,9 +150,17 @@ const renderForm = (props = {}) =>
   );
 
 describe('CycleApplicationForm', () => {
-  it('renders player name pre-filled', () => {
+  it('renders first and last name pre-filled from player name', () => {
     renderForm();
-    expect(screen.getByDisplayValue('Jane Player')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Jane')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Player')).toBeInTheDocument();
+  });
+
+  it('renders first and last name fields side by side on larger viewports', () => {
+    renderForm();
+    const firstInput = screen.getByDisplayValue('Jane');
+    const grid = firstInput.closest('.grid');
+    expect(grid).toHaveClass('sm:grid-cols-2');
   });
 
   it('renders player email pre-filled', () => {
@@ -122,6 +171,11 @@ describe('CycleApplicationForm', () => {
   it('renders player phone pre-filled', () => {
     renderForm();
     expect(screen.getByDisplayValue('+31612345678')).toBeInTheDocument();
+  });
+
+  it('shows phone as optional in the label', () => {
+    renderForm();
+    expect(screen.getByText(/optional/i)).toBeInTheDocument();
   });
 
   it('renders a submit button', () => {

@@ -10,6 +10,11 @@ export function createSignupSchema(t: TFunction) {
   });
 }
 
+/** Build full_name for APIs that still expect a single name field. */
+export function combineRegistrationFullName(firstName: string, lastName: string): string {
+  return `${firstName.trim()} ${lastName.trim()}`.trim();
+}
+
 /** Split a prefill full name into first / last (conservative: first token + remainder). */
 export function splitPrefillFullName(name: string): { firstName: string; lastName: string } {
   const trimmed = name.trim();

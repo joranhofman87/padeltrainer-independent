@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSignupSchema, splitPrefillFullName } from './signupSchema';
+import { combineRegistrationFullName, createSignupSchema, splitPrefillFullName } from './signupSchema';
 
 const t = (key: string) => key;
 
@@ -27,6 +27,17 @@ describe('createSignupSchema', () => {
     if (!result.success) {
       expect(result.error.errors[0].message).toBe('validation.firstNameRequired');
     }
+  });
+});
+
+describe('combineRegistrationFullName', () => {
+  it('joins first and last name with a space', () => {
+    expect(combineRegistrationFullName('Jan', 'Jansen')).toBe('Jan Jansen');
+  });
+
+  it('trims parts and collapses extra whitespace', () => {
+    expect(combineRegistrationFullName('  Jan  ', '  ')).toBe('Jan');
+    expect(combineRegistrationFullName('  ', 'Jansen  ')).toBe('Jansen');
   });
 });
 
