@@ -1,20 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { getOnboardingRouteForSignupRole, type SignupRole } from '@/lib/auth';
 
 const mockCompleteOAuthSignup = vi.fn();
 const mockRefreshAuth = vi.fn();
 const mockNavigate = vi.fn();
 
-vi.mock('@/lib/auth', () => ({
-  signInWithEmail: vi.fn(),
-  signInWithGoogle: vi.fn(),
-  isTrainerOnboardingComplete: vi.fn(),
-  completeOAuthSignup: (...args: unknown[]) => mockCompleteOAuthSignup(...args),
-  getOnboardingRouteForSignupRole: (role: string) =>
-    role === 'academy' ? '/app/academy/onboarding' : `/app/onboarding/${role}`,
-  isSignupRole: (value: string) => ['player', 'trainer', 'club', 'academy'].includes(value),
-}));
+vi.mock('@/lib/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth')>();
+  return {
+    ...actual,
+    signInWithEmail: vi.fn(),
+    signInWithGoogle: vi.fn(),
+    isTrainerOnboardingComplete: vi.fn(),
+    completeOAuthSignup: (...args: unknown[]) => mockCompleteOAuthSignup(...args),
+  };
+});
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -55,7 +57,13 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     auth: { setSession: vi.fn().mockResolvedValue({ error: null }) },
-    from: () => ({ select: () => ({ eq: () => ({ limit: () => ({ data: [], error: null }) }) }) }),
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          limit: () => Promise.resolve({ data: [], error: null }),
+        }),
+      }),
+    }),
   },
 }));
 
@@ -71,10 +79,25 @@ const renderPage = () =>
   render(
     <MemoryRouter>
       <Auth />
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 
 const storage: Record<string, string> = {};
+
+function setupOAuthNewUser(pendingRole: SignupRole) {
+  localStorage.setItem('pendingRole', pendingRole);
+  mockAuthState = {
+    user: { id: 'oauth-user' },
+    role: null,
+    loading: false,
+    profileReady: true,
+    profileFetchFailed: false,
+    isAcademyManager: false,
+    isClubManager: false,
+  };
+  mockCompleteOAuthSignup.mockResolvedValue({ success: true, error: null });
+  mockRefreshAuth.mockResolvedValue(undefined);
+}
 
 describe('Auth (Login Page)', () => {
   beforeEach(() => {
@@ -132,7 +155,7 @@ describe('Auth (Login Page)', () => {
   });
 
   it('calls signInWithEmail on form submission', async () => {
-    (signInWithEmail as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
+    (signInWithEmail as Mock).mockResolvedValue({ error: null });
 
     renderPage();
     fireEvent.change(screen.getByTestId('auth-email-input'), { target: { value: 'user@test.com' } });
@@ -145,7 +168,7 @@ describe('Auth (Login Page)', () => {
   });
 
   it('calls signInWithGoogle when Google button clicked', async () => {
-    (signInWithGoogle as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
+    (signInWithGoogle as Mock).mockResolvedValue({ error: null });
 
     renderPage();
     fireEvent.click(screen.getByTestId('auth-google-button'));
@@ -155,33 +178,22 @@ describe('Auth (Login Page)', () => {
     });
   });
 
-  it('completes OAuth signup and routes academy to academy onboarding', async () => {
-    localStorage.setItem('pendingRole', 'academy');
-    mockAuthState = {
-      user: { id: 'oauth-user' },
-      role: null,
-      loading: false,
-      profileReady: true,
-      profileFetchFailed: false,
-      isAcademyManager: false,
-      isClubManager: false,
-    };
-    mockCompleteOAuthSignup.mockResolvedValue({ success: true, error: null });
-    mockRefreshAuth.mockResolvedValue(undefined);
+  it.each(['player', 'trainer', 'club', 'academy'] as const)(
+    'completes OAuth signup for pendingRole=%s and routes to onboarding',
+    async (pendingRole) => {
+      setupOAuthNewUser(pendingRole);
+      renderPage();
 
-    renderPage();
-
-    await waitFor(() => {
-      expect(mockCompleteOAuthSignup).toHaveBeenCalledWith('academy');
-      expect(mockNavigate).toHaveBeenCalledWith('/app/academy/onboarding');
-    });
-    expect(localStorage.getItem('pendingRole')).toBeNull();
-  });
+      await waitFor(() => {
+        expect(mockCompleteOAuthSignup).toHaveBeenCalledWith(pendingRole);
+        expect(mockNavigate).toHaveBeenCalledWith(getOnboardingRouteForSignupRole(pendingRole));
+      });
+      expect(localStorage.getItem('pendingRole')).toBeNull();
+    },
+  );
 
   it('disables login button while loading', async () => {
-    (signInWithEmail as ReturnType<typeof vi.fn>).mockImplementation(
-      () => new Promise(() => {}) // never resolves
-    );
+    (signInWithEmail as Mock).mockImplementation(() => new Promise(() => {}));
 
     renderPage();
     fireEvent.change(screen.getByTestId('auth-email-input'), { target: { value: 'user@test.com' } });

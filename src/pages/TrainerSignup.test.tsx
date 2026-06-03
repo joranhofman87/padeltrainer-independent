@@ -1,7 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { z } from 'zod';
+import {
+  assertPasswordVisibilityToggle,
+  assertSignupPageStructure,
+  clickGoogleSignup,
+  SIGNUP_ROUTES,
+} from '@/test/signupPageFreeze';
+import { createSignupFailure, SIGNUP_ERROR_CODE, isSignupEmailAlreadyRegistered } from '@/lib/signupErrors';
+
+const mockToast = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   signUpWithEmail: vi.fn(),
@@ -9,12 +18,16 @@ vi.mock('@/lib/auth', () => ({
   isTrainerOnboardingComplete: vi.fn(),
 }));
 
+vi.mock('@/lib/signupToast', () => ({
+  showSignupErrorToast: vi.fn(),
+}));
+
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: null, role: null, loading: false }),
 }));
 
 vi.mock('@/hooks/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
+  useToast: () => ({ toast: mockToast }),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -38,10 +51,11 @@ vi.mock('@/lib/logger', () => ({
 
 import TrainerSignup from './TrainerSignup';
 import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
+import { showSignupErrorToast } from '@/lib/signupToast';
 import { buildSignupRolePath } from '@/components/auth/SignupRoleTabs';
 import { createSignupSchema } from '@/lib/signupSchema';
 
-const renderPage = (initialEntry = '/app/signup/trainer') =>
+const renderPage = (initialEntry = SIGNUP_ROUTES.trainer) =>
   render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <TrainerSignup />
@@ -72,14 +86,9 @@ describe('TrainerSignup', () => {
     mockLocalStorage();
   });
 
-  it('renders the signup form with all fields', () => {
-    renderPage();
-    expect(screen.getByTestId('form-signup-trainer')).toBeInTheDocument();
-    expect(screen.getByTestId('input-signup-firstName')).toBeInTheDocument();
-    expect(screen.getByTestId('input-signup-lastName')).toBeInTheDocument();
-    expect(screen.getByTestId('input-signup-email')).toBeInTheDocument();
-    expect(screen.getByTestId('input-signup-password')).toBeInTheDocument();
-    expect(screen.getByTestId('btn-signup-submit')).toBeInTheDocument();
+  it('renders structured signup form without legacy fullName field', () => {
+    const result = renderPage();
+    assertSignupPageStructure('trainer', result);
   });
 
   it('shows outcome-focused headline copy', () => {
@@ -122,13 +131,8 @@ describe('TrainerSignup', () => {
 
   it('toggles password visibility', () => {
     renderPage();
+    assertPasswordVisibilityToggle();
     const passwordInput = screen.getByTestId('input-signup-password');
-    expect(passwordInput).toHaveAttribute('type', 'password');
-
-    fireEvent.change(passwordInput, { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'form.passwordShow' }));
-
-    expect(passwordInput).toHaveAttribute('type', 'text');
     fireEvent.click(screen.getByRole('button', { name: 'form.passwordHide' }));
     expect(passwordInput).toHaveAttribute('type', 'password');
   });
@@ -216,15 +220,37 @@ describe('TrainerSignup', () => {
   });
 
   it('calls signInWithGoogle when Google button is clicked', async () => {
-    (signInWithGoogle as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
+    (signInWithGoogle as Mock).mockResolvedValue({ error: null });
+    renderPage();
+    clickGoogleSignup();
+    await waitFor(() => expect(signInWithGoogle).toHaveBeenCalled());
+  });
+
+  it('shows duplicate-email handling instead of generic signup error', async () => {
+    (signUpWithEmail as Mock).mockResolvedValue({
+      data: { user: null, session: null },
+      error: createSignupFailure(
+        SIGNUP_ERROR_CODE.EMAIL_ALREADY_REGISTERED,
+        'User already registered',
+      ),
+    });
 
     renderPage();
-    const googleButtons = screen.getAllByRole('button', { name: /social\.google/i });
-    fireEvent.click(googleButtons[0]);
+    fireEvent.change(screen.getByTestId('input-signup-firstName'), { target: { value: 'John' } });
+    fireEvent.change(screen.getByTestId('input-signup-lastName'), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByTestId('input-signup-email'), { target: { value: 'existing@test.com' } });
+    fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByTestId('btn-signup-submit'));
 
     await waitFor(() => {
-      expect(signInWithGoogle).toHaveBeenCalled();
+      expect(showSignupErrorToast).toHaveBeenCalled();
+      expect(isSignupEmailAlreadyRegistered((showSignupErrorToast as Mock).mock.calls[0][2])).toBe(
+        true,
+      );
     });
+    expect(mockToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'form.signupGenericError' }),
+    );
   });
 
   it('shows password strength indicator', () => {

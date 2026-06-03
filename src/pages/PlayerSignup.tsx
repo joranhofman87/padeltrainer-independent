@@ -6,6 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
+import { showSignupErrorToast } from '@/lib/signupToast';
+import type { SignupFailure } from '@/lib/signupErrors';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
@@ -89,11 +91,9 @@ export default function PlayerSignup() {
       const { data, error } = await signUpWithEmail(email, password, firstName, lastName, undefined, undefined, 'player');
 
       if (error) {
-        logger.error('Player signup failed', error, { component: 'PlayerSignup', action: 'signUp' });
-        toast({
-          title: t('signUp.error', 'Error'),
-          description: error.message,
-          variant: 'destructive',
+        showSignupErrorToast(toast, t, error as SignupFailure, {
+          component: 'PlayerSignup',
+          action: 'signUp',
         });
       } else if (data?.session) {
         try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch {}

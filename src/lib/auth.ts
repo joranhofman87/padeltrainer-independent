@@ -2,6 +2,10 @@ import { supabase } from "@/lib/supabaseClient";
 import { getAuthRedirectUrl } from "@/lib/domains";
 import { logger } from '@/lib/logger';
 import { buildFullName } from '@/lib/profileName';
+import { createSignupFailure, extractSignupResponseError, normalizeSignupFailure, SIGNUP_ERROR_CODE } from '@/lib/signupErrors';
+
+export type { SignupFailure, SignupErrorCode } from '@/lib/signupErrors';
+export { SIGNUP_ERROR_CODE, isSignupEmailAlreadyRegistered, normalizeSignupFailure } from '@/lib/signupErrors';
 
 function normalizeAuthError(error: any, fallbackMessage: string) {
   const message = typeof error?.message === 'string' ? error.message.trim() : '';
@@ -222,18 +226,17 @@ export async function signUpWithEmail(
       },
     });
 
-    if (invokeError) {
-      logger.error('Signup function error', invokeError as Error, { component: 'auth' });
-      return { 
-        data: { user: null, session: null }, 
-        error: { message: invokeError.message || 'Failed to create account', name: 'SignupError' } as any 
-      };
-    }
-
-    if (response?.error) {
-      return { 
-        data: { user: null, session: null }, 
-        error: { message: response.error, name: 'SignupError' } as any 
+    const responseError = extractSignupResponseError(response);
+    if (invokeError || responseError) {
+      const failure = normalizeSignupFailure(invokeError, response);
+      logger.error(
+        'Signup function error',
+        (invokeError as Error) ?? new Error(responseError ?? 'signup-user failed'),
+        { component: 'auth', code: failure.code, responseError },
+      );
+      return {
+        data: { user: null, session: null },
+        error: failure,
       };
     }
 
@@ -268,11 +271,14 @@ export async function signUpWithEmail(
       }, 
       error: null 
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error('Signup error', err as Error, { component: 'auth' });
-    return { 
-      data: { user: null, session: null }, 
-      error: { message: err.message || 'Failed to create account', name: 'SignupError' } as any 
+    return {
+      data: { user: null, session: null },
+      error: createSignupFailure(
+        SIGNUP_ERROR_CODE.GENERIC,
+        err instanceof Error ? err.message : 'Failed to create account',
+      ),
     };
   }
 }

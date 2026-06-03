@@ -49,7 +49,9 @@ import {
   completeOAuthSignup,
   getOnboardingRouteForSignupRole,
   isSignupRole,
+  SIGNUP_ERROR_CODE,
 } from './auth';
+import { isSignupEmailAlreadyRegistered } from './signupErrors';
 
 describe('Auth module', () => {
   beforeEach(() => {
@@ -102,6 +104,40 @@ describe('Auth module', () => {
       const result = await signUpWithEmail('test@example.com', 'password123', 'John', 'Doe');
 
       expect(result.error).toBeTruthy();
+      expect(result.error?.code).toBe(SIGNUP_ERROR_CODE.GENERIC);
+    });
+
+    it('returns EMAIL_ALREADY_REGISTERED when signup-user reports duplicate user', async () => {
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: { error: 'User already registered' },
+        error: { message: 'Edge Function returned a non-2xx status code' },
+      });
+
+      const result = await signUpWithEmail(
+        'existing@example.com',
+        'password123',
+        'Jane',
+        'Doe',
+        undefined,
+        undefined,
+        'academy',
+      );
+
+      expect(result.error).toBeTruthy();
+      expect(isSignupEmailAlreadyRegistered(result.error)).toBe(true);
+      expect(result.error?.code).toBe(SIGNUP_ERROR_CODE.EMAIL_ALREADY_REGISTERED);
+      expect(result.error?.message).toContain('already registered');
+    });
+
+    it('returns EMAIL_ALREADY_REGISTERED from response body without relying on invoke message', async () => {
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: { error: 'User already registered' },
+        error: null,
+      });
+
+      const result = await signUpWithEmail('existing@example.com', 'password123', 'John', 'Doe');
+
+      expect(isSignupEmailAlreadyRegistered(result.error)).toBe(true);
     });
 
     it('supports legacy fullName-only callers', async () => {
@@ -127,66 +163,73 @@ describe('Auth module', () => {
       }));
     });
 
-    it('sends lowercase club role when last name is Club (structured signup)', async () => {
-      const mockUser = { id: 'user-club', email: 'club@test.com' };
-      (supabase.functions.invoke as Mock).mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
-      });
-      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
-        data: { user: mockUser, session: { access_token: 'tok' } },
-        error: null,
-      });
+    const signupPayloadCases = [
+      {
+        role: 'player' as const,
+        email: 'player-freeze@test.com',
+        firstName: 'Pat',
+        lastName: 'Jones',
+        fullName: 'Pat Jones',
+      },
+      {
+        role: 'trainer' as const,
+        email: 'trainer-freeze@test.com',
+        firstName: 'Terry',
+        lastName: 'Nguyen',
+        fullName: 'Terry Nguyen',
+      },
+      {
+        role: 'club' as const,
+        email: 'club-freeze@test.com',
+        firstName: 'Casey',
+        lastName: 'Rivera',
+        fullName: 'Casey Rivera',
+      },
+      {
+        role: 'academy' as const,
+        email: 'academy-freeze@test.com',
+        firstName: 'Sam',
+        lastName: 'Brooks',
+        fullName: 'Sam Brooks',
+      },
+    ] as const;
 
-      await signUpWithEmail(
-        'club@test.com',
-        'password123',
-        'Jane',
-        'Club',
-        undefined,
-        undefined,
-        'club',
-      );
+    it.each(signupPayloadCases)(
+      'sends $role signup payload from explicit role parameter',
+      async ({ role, email, firstName, lastName, fullName }) => {
+        const mockUser = { id: `user-${role}`, email };
+        (supabase.functions.invoke as Mock).mockResolvedValue({
+          data: { user: mockUser },
+          error: null,
+        });
+        (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
+          data: { user: mockUser, session: { access_token: 'tok' } },
+          error: null,
+        });
 
-      expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
-        body: expect.objectContaining({
-          firstName: 'Jane',
-          lastName: 'Club',
-          fullName: 'Jane Club',
-          role: 'club',
-        }),
-      }));
-    });
+        await signUpWithEmail(
+          email,
+          'password123',
+          firstName,
+          lastName,
+          undefined,
+          undefined,
+          role,
+        );
 
-    it('sends academy role for structured academy signup', async () => {
-      const mockUser = { id: 'user-academy', email: 'academy@test.com' };
-      (supabase.functions.invoke as Mock).mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
-      });
-      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
-        data: { user: mockUser, session: { access_token: 'tok' } },
-        error: null,
-      });
-
-      await signUpWithEmail(
-        'academy@test.com',
-        'password123',
-        'Alex',
-        'Academy',
-        undefined,
-        undefined,
-        'academy',
-      );
-
-      expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
-        body: expect.objectContaining({
-          firstName: 'Alex',
-          lastName: 'Academy',
-          role: 'academy',
-        }),
-      }));
-    });
+        expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
+          body: expect.objectContaining({
+            role,
+            firstName,
+            lastName,
+            fullName,
+          }),
+        }));
+        const invokeBody = (supabase.functions.invoke as Mock).mock.calls.at(-1)?.[1]?.body;
+        expect(invokeBody.role).toBe(role);
+        expect(invokeBody.role).toBe(invokeBody.role.toLowerCase());
+      },
+    );
 
     it('does not fail if no phone provided', async () => {
       const mockUser = { id: 'user-123', email: 'test@example.com' };
@@ -531,18 +574,23 @@ describe('Auth module', () => {
   });
 
   describe('getOnboardingRouteForSignupRole', () => {
-    it('maps academy to dedicated onboarding route', () => {
-      expect(getOnboardingRouteForSignupRole('academy')).toBe('/app/academy/onboarding');
-    });
-    it('maps club to club onboarding', () => {
-      expect(getOnboardingRouteForSignupRole('club')).toBe('/app/onboarding/club');
+    it.each([
+      ['player', '/app/onboarding/player'],
+      ['trainer', '/app/onboarding/trainer'],
+      ['club', '/app/onboarding/club'],
+      ['academy', '/app/academy/onboarding'],
+    ] as const)('maps %s to %s', (role, expectedRoute) => {
+      expect(getOnboardingRouteForSignupRole(role)).toBe(expectedRoute);
     });
   });
 
   describe('isSignupRole', () => {
-    it('accepts lowercase signup roles only', () => {
-      expect(isSignupRole('academy')).toBe(true);
-      expect(isSignupRole('Club')).toBe(false);
+    it.each(['player', 'trainer', 'club', 'academy'] as const)('accepts %s', (role) => {
+      expect(isSignupRole(role)).toBe(true);
+    });
+
+    it.each(['Club', 'PLAYER', ''] as const)('rejects %s', (value) => {
+      expect(isSignupRole(value)).toBe(false);
     });
   });
 });

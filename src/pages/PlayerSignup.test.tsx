@@ -1,10 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import {
+  assertPasswordVisibilityToggle,
+  assertSignupPageStructure,
+  clickGoogleSignup,
+  fillValidSignupForm,
+  mockSignupLocalStorage,
+  SIGNUP_ROUTES,
+} from '@/test/signupPageFreeze';
+import { createSignupFailure, SIGNUP_ERROR_CODE, isSignupEmailAlreadyRegistered } from '@/lib/signupErrors';
+
+const mockToast = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   signUpWithEmail: vi.fn(),
   signInWithGoogle: vi.fn(),
+}));
+
+vi.mock('@/lib/signupToast', () => ({
+  showSignupErrorToast: vi.fn(),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -12,7 +27,7 @@ vi.mock('@/hooks/useAuth', () => ({
 }));
 
 vi.mock('@/hooks/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
+  useToast: () => ({ toast: mockToast }),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -35,8 +50,10 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import PlayerSignup from './PlayerSignup';
+import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
+import { showSignupErrorToast } from '@/lib/signupToast';
 
-const renderPage = (initialEntry = '/app/signup/player') =>
+const renderPage = (initialEntry = SIGNUP_ROUTES.player) =>
   render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PlayerSignup />
@@ -46,23 +63,19 @@ const renderPage = (initialEntry = '/app/signup/player') =>
 describe('PlayerSignup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSignupLocalStorage();
   });
 
-  it('renders first and last name fields', () => {
-    renderPage();
-    expect(screen.getByTestId('input-signup-firstName')).toBeInTheDocument();
-    expect(screen.getByTestId('input-signup-lastName')).toBeInTheDocument();
-    expect(screen.getByTestId('form-signup-player')).toBeInTheDocument();
-  });
-
-  it('renders role tabs with player active', () => {
-    renderPage();
+  it('renders structured signup form without legacy fullName field', () => {
+    const result = renderPage();
+    assertSignupPageStructure('player', result);
     expect(screen.getByTestId('signup-tab-player')).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByTestId('signup-tab-trainer')).toHaveAttribute('href', '/app/signup/trainer');
+    expect(screen.getByText('social.google')).toBeInTheDocument();
   });
 
-  it('preserves redirect on role tab links', () => {
+  it('renders role tabs with correct links', () => {
     renderPage('/app/signup/player?redirect=%2Ffoo');
+    expect(screen.getByTestId('signup-tab-trainer')).toHaveAttribute('href', '/app/signup/trainer?redirect=%2Ffoo');
     expect(screen.getByTestId('signup-tab-club')).toHaveAttribute(
       'href',
       '/app/signup/club?redirect=%2Ffoo',
@@ -71,11 +84,37 @@ describe('PlayerSignup', () => {
 
   it('toggles password visibility', () => {
     renderPage();
-    const passwordInput = screen.getByTestId('input-signup-password');
-    expect(passwordInput).toHaveAttribute('type', 'password');
+    assertPasswordVisibilityToggle();
+  });
 
-    fireEvent.change(passwordInput, { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'form.passwordShow' }));
-    expect(passwordInput).toHaveAttribute('type', 'text');
+  it('calls signInWithGoogle when Google button is clicked', async () => {
+    (signInWithGoogle as Mock).mockResolvedValue({ error: null });
+    renderPage();
+    clickGoogleSignup();
+    await waitFor(() => expect(signInWithGoogle).toHaveBeenCalled());
+  });
+
+  it('shows duplicate-email handling instead of generic signup error', async () => {
+    const duplicateError = createSignupFailure(
+      SIGNUP_ERROR_CODE.EMAIL_ALREADY_REGISTERED,
+      'User already registered',
+    );
+    (signUpWithEmail as Mock).mockResolvedValue({
+      data: { user: null, session: null },
+      error: duplicateError,
+    });
+
+    renderPage();
+    fillValidSignupForm('existing-player@test.com');
+    fireEvent.click(screen.getByTestId('btn-signup-submit'));
+
+    await waitFor(() => {
+      expect(showSignupErrorToast).toHaveBeenCalled();
+      const failure = (showSignupErrorToast as Mock).mock.calls[0][2];
+      expect(isSignupEmailAlreadyRegistered(failure)).toBe(true);
+    });
+    expect(mockToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'form.signupGenericError' }),
+    );
   });
 });

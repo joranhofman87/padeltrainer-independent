@@ -6,6 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { signUpWithEmail, signInWithGoogle, isTrainerOnboardingComplete } from '@/lib/auth';
+import { showSignupErrorToast } from '@/lib/signupToast';
+import type { SignupFailure } from '@/lib/signupErrors';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
@@ -106,11 +108,9 @@ export default function TrainerSignup() {
       );
 
       if (error) {
-        logger.error('Trainer signup failed', error, { component: 'TrainerSignup', action: 'signUp' });
-        toast({
-          title: t('signUp.error', 'Error'),
-          description: error.message,
-          variant: 'destructive',
+        showSignupErrorToast(toast, t, error as SignupFailure, {
+          component: 'TrainerSignup',
+          action: 'signUp',
         });
       } else if (data?.session) {
         try {
