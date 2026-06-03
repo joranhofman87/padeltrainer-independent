@@ -388,7 +388,29 @@
     "streetPlaceholder": "Street + house number",
     "zipCodePlaceholder": "Postal code",
     "cityPlaceholder": "City",
-    "btwPlaceholder": "VAT number (optional)"
+    "btwPlaceholder": "VAT number (optional)",
+    "recipient": {
+      "title": "Recipient",
+      "name": "Name",
+      "email": "Email",
+      "type": "Type",
+      "registered": "Registered Player",
+      "guest": "Guest Player",
+      "manual": "Manual Recipient",
+      "openProfile": "Open Player Profile",
+      "openPlayersList": "Open players list"
+    },
+    "source": {
+      "title": "Source",
+      "type": "Type",
+      "label": "Label",
+      "cycle": "Cycle",
+      "session": "Session",
+      "multipleSessions": "Multiple sessions",
+      "sessionCount": "{{count}} sessions",
+      "viewCycle": "View Cycle",
+      "viewSession": "View Session"
+    }
   },
   "mollieCallback": {
     "connecting": "Connecting your Mollie account...",

@@ -393,7 +393,29 @@
     "streetPlaceholder": "Straat + huisnummer",
     "zipCodePlaceholder": "Postcode",
     "cityPlaceholder": "Plaats",
-    "btwPlaceholder": "BTW-nummer (optioneel)"
+    "btwPlaceholder": "BTW-nummer (optioneel)",
+    "recipient": {
+      "title": "Ontvanger",
+      "name": "Naam",
+      "email": "E-mail",
+      "type": "Type",
+      "registered": "Geregistreerde speler",
+      "guest": "Gastspeler",
+      "manual": "Handmatige ontvanger",
+      "openProfile": "Spelersprofiel openen",
+      "openPlayersList": "Spelerslijst openen"
+    },
+    "source": {
+      "title": "Bron",
+      "type": "Type",
+      "label": "Omschrijving",
+      "cycle": "Cyclus",
+      "session": "Sessie",
+      "multipleSessions": "Meerdere sessies",
+      "sessionCount": "{{count}} sessies",
+      "viewCycle": "Cyclus bekijken",
+      "viewSession": "Sessie bekijken"
+    }
   },
   "mollieCallback": {
     "connecting": "Mollie-account verbinden...",

@@ -20,6 +20,8 @@ import { nl, enUS } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
+import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard';
+import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -241,7 +243,15 @@ export default function TrainerEditInvoice() {
           </div>
         </div>
 
-        {/* Receiver */}
+        <InvoiceRecipientCard
+          owner="trainer"
+          playerName={invoice.player_name}
+          playerId={invoice.player_id}
+          guestPlayerId={invoice.guest_player_id}
+        />
+        <InvoiceSourceCard owner="trainer" bookingIds={invoice.booking_ids as string[] | null} />
+
+        {/* Receiver (editable billing) */}
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-base">{t('invoiceEdit.receiver')}</CardTitle></CardHeader>
           <CardContent>
