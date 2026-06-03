@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { buildTrainerInvoiceGuestInsert } from '@/lib/invoiceGuestPlayerInsert';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 interface LineItem {
   description: string;
@@ -139,7 +140,7 @@ export default function TrainerCreateInvoice() {
       if (playerEmail.trim()) {
         const { data: guestPlayer } = await supabase
           .from('guest_players')
-          .insert({ full_name: playerName.trim(), email: playerEmail.trim(), trainer_id: trainerId })
+          .insert(buildTrainerInvoiceGuestInsert(playerName, playerEmail, trainerId))
           .select('id')
           .single();
         if (guestPlayer) guestPlayerId = guestPlayer.id;

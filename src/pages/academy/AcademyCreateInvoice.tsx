@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { buildAcademyInvoiceGuestInsert } from '@/lib/invoiceGuestPlayerInsert';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useQueryClient } from '@tanstack/react-query';
@@ -155,11 +156,7 @@ export default function AcademyCreateInvoice() {
       if (playerEmail.trim()) {
         const { data: guestPlayer, error: guestError } = await supabase
           .from('guest_players')
-          .insert({
-            full_name: playerName.trim(),
-            email: playerEmail.trim(),
-            academy_profile_id: academyProfileId,
-          })
+          .insert(buildAcademyInvoiceGuestInsert(playerName, playerEmail, academyProfileId))
           .select('id')
           .single();
 
