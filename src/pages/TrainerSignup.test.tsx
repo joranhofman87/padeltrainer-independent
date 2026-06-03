@@ -3,10 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { z } from 'zod';
 
-// Mock dependencies before importing component
 vi.mock('@/lib/auth', () => ({
   signUpWithEmail: vi.fn(),
   signInWithGoogle: vi.fn(),
+  isTrainerOnboardingComplete: vi.fn(),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -38,31 +38,74 @@ vi.mock('@/lib/logger', () => ({
 
 import TrainerSignup from './TrainerSignup';
 import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
+import { buildSignupRolePath } from '@/components/auth/SignupRoleTabs';
 
-const renderPage = () =>
+const renderPage = (initialEntry = '/app/signup/trainer') =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <TrainerSignup />
-    </MemoryRouter>
+    </MemoryRouter>,
   );
+
+function mockLocalStorage() {
+  const store: Record<string, string> = {};
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      Object.keys(store).forEach((key) => delete store[key]);
+    },
+    key: () => null,
+    length: 0,
+  });
+}
 
 describe('TrainerSignup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLocalStorage();
   });
 
   it('renders the signup form with all fields', () => {
     renderPage();
     expect(screen.getByTestId('form-signup-trainer')).toBeInTheDocument();
-    expect(screen.getByTestId('input-signup-name')).toBeInTheDocument();
+    expect(screen.getByTestId('input-signup-fullName')).toBeInTheDocument();
     expect(screen.getByTestId('input-signup-email')).toBeInTheDocument();
     expect(screen.getByTestId('input-signup-password')).toBeInTheDocument();
     expect(screen.getByTestId('btn-signup-submit')).toBeInTheDocument();
   });
 
-  it('shows the page title', () => {
+  it('shows outcome-focused headline copy', () => {
     renderPage();
-    expect(screen.getByText('Join as a Trainer')).toBeInTheDocument();
+    expect(screen.getByText('trainerSignup.headline')).toBeInTheDocument();
+  });
+
+  it('renders role tabs with trainer active and linked alternatives', () => {
+    renderPage();
+    expect(screen.getByTestId('signup-tab-trainer')).toBeInTheDocument();
+    expect(screen.getByTestId('signup-tab-player')).toHaveAttribute('href', '/app/signup/player');
+    expect(screen.getByTestId('signup-tab-club')).toHaveAttribute('href', '/app/signup/club');
+    expect(screen.getByTestId('signup-tab-academy')).toHaveAttribute('href', '/app/signup/academy');
+  });
+
+  it('preserves redirect query on role tab links', () => {
+    renderPage('/app/signup/trainer?redirect=%2Finvite%2Fabc');
+    expect(screen.getByTestId('signup-tab-player')).toHaveAttribute(
+      'href',
+      '/app/signup/player?redirect=%2Finvite%2Fabc',
+    );
+  });
+
+  it('buildSignupRolePath encodes redirect param', () => {
+    expect(buildSignupRolePath('/app/signup/player', '/invite/abc')).toBe(
+      '/app/signup/player?redirect=%2Finvite%2Fabc',
+    );
+    expect(buildSignupRolePath('/app/signup/player', null)).toBe('/app/signup/player');
   });
 
   it('has a Google OAuth button', () => {
@@ -72,17 +115,25 @@ describe('TrainerSignup', () => {
 
   it('has a link to sign in', () => {
     renderPage();
-    expect(screen.getByText('Already have an account?')).toBeInTheDocument();
+    expect(screen.getByText('trainerSignup.alreadyHaveAccount')).toBeInTheDocument();
   });
 
-  it('has a link to join as player', () => {
+  it('toggles password visibility', () => {
     renderPage();
-    expect(screen.getByText('Join as Player')).toBeInTheDocument();
+    const passwordInput = screen.getByTestId('input-signup-password');
+    expect(passwordInput).toHaveAttribute('type', 'password');
+
+    fireEvent.change(passwordInput, { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'trainerSignup.password.show' }));
+
+    expect(passwordInput).toHaveAttribute('type', 'text');
+    fireEvent.click(screen.getByRole('button', { name: 'trainerSignup.password.hide' }));
+    expect(passwordInput).toHaveAttribute('type', 'password');
   });
 
   it('validates name - too short', async () => {
     renderPage();
-    fireEvent.change(screen.getByTestId('input-signup-name'), { target: { value: 'A' } });
+    fireEvent.change(screen.getByTestId('input-signup-fullName'), { target: { value: 'A' } });
     fireEvent.change(screen.getByTestId('input-signup-email'), { target: { value: 'test@test.com' } });
     fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: 'password123' } });
     fireEvent.click(screen.getByTestId('btn-signup-submit'));
@@ -94,8 +145,6 @@ describe('TrainerSignup', () => {
   });
 
   it('validates email format via zod schema', () => {
-    // The browser's native email validation interferes with fireEvent submit,
-    // so we test the zod schema directly which the form uses
     const schema = z.object({
       fullName: z.string().trim().min(2),
       email: z.string().trim().email('Please enter a valid email address'),
@@ -110,13 +159,13 @@ describe('TrainerSignup', () => {
 
   it('validates password length', async () => {
     renderPage();
-    fireEvent.change(screen.getByTestId('input-signup-name'), { target: { value: 'John Doe' } });
+    fireEvent.change(screen.getByTestId('input-signup-fullName'), { target: { value: 'John Doe' } });
     fireEvent.change(screen.getByTestId('input-signup-email'), { target: { value: 'john@test.com' } });
     fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: '123' } });
     fireEvent.click(screen.getByTestId('btn-signup-submit'));
 
     await waitFor(() => {
-      expect(screen.getByText('Password must be at least 6 characters')).toBeInTheDocument();
+      expect(screen.getByText('Password must be at least 8 characters')).toBeInTheDocument();
     });
     expect(signUpWithEmail).not.toHaveBeenCalled();
   });
@@ -128,13 +177,20 @@ describe('TrainerSignup', () => {
     });
 
     renderPage();
-    fireEvent.change(screen.getByTestId('input-signup-name'), { target: { value: 'John Doe' } });
+    fireEvent.change(screen.getByTestId('input-signup-fullName'), { target: { value: 'John Doe' } });
     fireEvent.change(screen.getByTestId('input-signup-email'), { target: { value: 'john@test.com' } });
     fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: 'password123' } });
     fireEvent.click(screen.getByTestId('btn-signup-submit'));
 
     await waitFor(() => {
-      expect(signUpWithEmail).toHaveBeenCalledWith('john@test.com', 'password123', 'John Doe', undefined, 'en');
+      expect(signUpWithEmail).toHaveBeenCalledWith(
+        'john@test.com',
+        'password123',
+        'John Doe',
+        undefined,
+        'en',
+        'trainer',
+      );
     });
   });
 
@@ -142,7 +198,8 @@ describe('TrainerSignup', () => {
     (signInWithGoogle as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
 
     renderPage();
-    fireEvent.click(screen.getByText('social.google'));
+    const googleButtons = screen.getAllByRole('button', { name: /social\.google/i });
+    fireEvent.click(googleButtons[0]);
 
     await waitFor(() => {
       expect(signInWithGoogle).toHaveBeenCalled();
@@ -152,8 +209,6 @@ describe('TrainerSignup', () => {
   it('shows password strength indicator', () => {
     renderPage();
     fireEvent.change(screen.getByTestId('input-signup-password'), { target: { value: 'StrongP@ss1' } });
-    // PasswordStrengthIndicator should render - it exists in the DOM
-    const passwordField = screen.getByTestId('input-signup-password');
-    expect(passwordField).toBeInTheDocument();
+    expect(screen.getByTestId('input-signup-password')).toBeInTheDocument();
   });
 });
