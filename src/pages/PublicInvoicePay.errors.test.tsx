@@ -30,8 +30,11 @@ vi.mock('react-i18next', () => ({
         'invoice.paymentReceivedDescription': 'Thank you. This invoice has been paid successfully.',
         'invoice.paidPrivacyMessage': 'Privacy message',
         'invoice.publicPayLogIn': 'Log in',
-        'invoice.publicPayForgotPassword': 'Reset password',
-        'invoice.publicPayForgotPasswordHint': 'Forgot password hint',
+        'invoice.publicPayCreateAccount': 'Create account',
+        'invoice.publicPaySignupHelper':
+          'If this is your first time using PadelTrainer, create an account with the email address used for your booking or invoice. We will link your invoices after signup when the email matches.',
+        'invoice.publicPayForgotPasswordNote':
+          'Already have an account but forgot your password? Use the password reset option on the login page.',
         'invoice.invoiceCancelledTitle': 'Invoice cancelled',
         'invoice.invoiceCancelledDescription': 'Cancelled description',
         'invoice.seoTitle': 'Invoice',
@@ -126,8 +129,11 @@ describe('PublicInvoicePay error UI', () => {
     expect(await screen.findByRole('heading', { name: 'Payment received' })).toBeInTheDocument();
     expect(screen.getByText('Thank you. This invoice has been paid successfully.')).toBeInTheDocument();
     expect(screen.getByText('Privacy message')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Create account' })).toHaveAttribute('href', '/app/signup/player');
     expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/app/auth');
-    expect(screen.getByRole('link', { name: 'Reset password' })).toHaveAttribute('href', '/app/forgot-password');
+    expect(screen.getByText(/first time using PadelTrainer/i)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Reset password' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /forgot-password/i })).not.toBeInTheDocument();
     expect(screen.queryByText('INV-')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Download/i })).not.toBeInTheDocument();
   });

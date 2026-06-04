@@ -18,7 +18,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown, KeyRound } from "lucide-react";
+import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown } from "lucide-react";
 import { format } from "date-fns";
 import { nl, enUS, de, fr, es, it } from "date-fns/locale";
 
@@ -107,23 +107,28 @@ function PublicPayAccountActions() {
   const { t } = useTranslation("common");
 
   return (
-    <div className="pt-4 space-y-3 text-left">
+    <div className="pt-4 space-y-3 text-left" data-testid="public-pay-account-actions">
       <p className="text-sm text-muted-foreground">{t("invoice.paidPrivacyMessage")}</p>
       <div className="flex flex-col sm:flex-row gap-2 justify-center">
+        <Link to="/app/signup/player">
+          <Button
+            variant="default"
+            className="gap-2 w-full sm:w-auto"
+            data-testid="public-pay-create-account"
+          >
+            <UserPlus className="h-4 w-4" />
+            {t("invoice.publicPayCreateAccount")}
+          </Button>
+        </Link>
         <Link to="/app/auth">
-          <Button variant="default" className="gap-2 w-full sm:w-auto">
+          <Button variant="outline" className="gap-2 w-full sm:w-auto" data-testid="public-pay-log-in">
             <LogIn className="h-4 w-4" />
             {t("invoice.publicPayLogIn")}
           </Button>
         </Link>
-        <Link to="/app/forgot-password">
-          <Button variant="outline" className="gap-2 w-full sm:w-auto">
-            <KeyRound className="h-4 w-4" />
-            {t("invoice.publicPayForgotPassword")}
-          </Button>
-        </Link>
       </div>
-      <p className="text-xs text-muted-foreground">{t("invoice.publicPayForgotPasswordHint")}</p>
+      <p className="text-xs text-muted-foreground">{t("invoice.publicPaySignupHelper")}</p>
+      <p className="text-xs text-muted-foreground">{t("invoice.publicPayForgotPasswordNote")}</p>
     </div>
   );
 }
