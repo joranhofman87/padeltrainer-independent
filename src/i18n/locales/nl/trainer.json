@@ -876,7 +876,8 @@
     "reminderSent": "Herinnering verstuurd",
     "lastReminder": "Laatste herinnering",
     "reminderSentSuccess": "Betalingsherinnering succesvol verstuurd",
-    "bulkReminderSentSuccess": "Betalingsherinneringen verstuurd naar {{count}} spelers"
+    "bulkReminderSentSuccess": "Betalingsherinneringen verstuurd naar {{count}} spelers",
+    "sessionCount": "{{count}} sessies"
   },
   "waitingList": {
     "settingsTitle": "Wachtlijst",

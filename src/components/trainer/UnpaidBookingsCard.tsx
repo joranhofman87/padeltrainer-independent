@@ -1,25 +1,35 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Euro, Send, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabaseClient";
 import { sendEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchUnpaidBookingsData,
   unpaidBookingsQueryOptions,
+  buildUnpaidReminderSessionsHtml,
+  markUnpaidBookingsPaid,
+  setUnpaidBookingsReminderSent,
   type UnpaidBooking,
 } from "@/lib/unpaidBookings";
 
 interface UnpaidBookingsCardProps {
   trainerId?: string | null;
   academyId?: string | null;
+}
+
+function obligationSubtitle(booking: UnpaidBooking, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (booking.isCycleGroup) {
+    const sessionsLabel = t("unpaidBookings.sessionCount", { count: booking.sessionCount });
+    return `${sessionsLabel} · ${booking.sessionDate}`;
+  }
+  return `${booking.sessionDate} · ${booking.sessionTime}`;
 }
 
 export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardProps) {
@@ -39,23 +49,22 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
     ...unpaidBookingsQueryOptions,
   });
 
-  const handleMarkPaid = async (bookingId: string) => {
-    setMarkingIds((prev) => new Set(prev).add(bookingId));
-    try {
-      const { error } = await supabase
-        .from("bookings")
-        .update({ payment_status: "paid", paid_at: new Date().toISOString() })
-        .eq("id", bookingId);
+  const removeObligationsFromCache = (groupKeys: Set<string>) => {
+    queryClient.setQueryData<UnpaidBooking[]>(queryKey, (old) =>
+      old?.filter((b) => !groupKeys.has(b.id)) || [],
+    );
+  };
 
+  const handleMarkPaid = async (booking: UnpaidBooking) => {
+    setMarkingIds((prev) => new Set(prev).add(booking.id));
+    try {
+      const { error } = await markUnpaidBookingsPaid(booking.bookingIds);
       if (error) throw error;
 
-      // Optimistically remove from cache
-      queryClient.setQueryData<UnpaidBooking[]>(queryKey, (old) =>
-        old?.filter((b) => b.id !== bookingId) || []
-      );
+      removeObligationsFromCache(new Set([booking.id]));
       setSelected((prev) => {
         const next = new Set(prev);
-        next.delete(bookingId);
+        next.delete(booking.id);
         return next;
       });
 
@@ -65,7 +74,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
     } finally {
       setMarkingIds((prev) => {
         const next = new Set(prev);
-        next.delete(bookingId);
+        next.delete(booking.id);
         return next;
       });
     }
@@ -79,20 +88,18 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
       await sendEmail("payment_reminder", booking.playerEmail, {
         playerName: booking.playerName,
         trainerName: booking.trainerName,
-        totalAmount: booking.amount || 0,
-        unpaidSessions: `<p><strong>${booking.sessionDate}</strong> ${booking.sessionTime}${booking.cyclusName ? ` (${booking.cyclusName})` : ""} — €${(booking.amount || 0).toFixed(2)}</p>`,
+        totalAmount: booking.amount,
+        unpaidSessions: buildUnpaidReminderSessionsHtml(booking),
       });
 
-      await supabase
-        .from("bookings")
-        .update({ reminder_sent_at: new Date().toISOString() })
-        .eq("id", booking.id);
+      const { error } = await setUnpaidBookingsReminderSent(booking.bookingIds);
+      if (error) throw error;
 
-      // Optimistically update cache
+      const sentAt = new Date().toISOString();
       queryClient.setQueryData<UnpaidBooking[]>(queryKey, (old) =>
         old?.map((b) =>
-          b.id === booking.id ? { ...b, reminderSentAt: new Date().toISOString() } : b
-        ) || []
+          b.id === booking.id ? { ...b, reminderSentAt: sentAt } : b,
+        ) || [],
       );
 
       toast({ title: t("unpaidBookings.reminderSentSuccess") });
@@ -108,43 +115,21 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
   };
 
   const handleBulkReminder = async () => {
-    const selectedBookings = bookings.filter((b) => selected.has(b.id) && b.playerEmail);
-
-    // Group by player email
-    const grouped = new Map<string, UnpaidBooking[]>();
-    selectedBookings.forEach((b) => {
-      const existing = grouped.get(b.playerEmail) || [];
-      existing.push(b);
-      grouped.set(b.playerEmail, existing);
-    });
-
-    const allIds = selectedBookings.map((b) => b.id);
-    setSendingIds(new Set(allIds));
+    const selectedObligations = bookings.filter((b) => selected.has(b.id) && b.playerEmail);
+    const allGroupKeys = new Set(selectedObligations.map((b) => b.id));
+    setSendingIds(allGroupKeys);
 
     let sentCount = 0;
-    for (const [email, playerBookings] of grouped) {
-      const totalAmount = playerBookings.reduce((sum, b) => sum + (b.amount || 0), 0);
-      const sessionsHtml = playerBookings
-        .map(
-          (b) =>
-            `<p><strong>${b.sessionDate}</strong> ${b.sessionTime}${b.cyclusName ? ` (${b.cyclusName})` : ""} — €${(b.amount || 0).toFixed(2)}</p>`
-        )
-        .join("");
-
+    for (const booking of selectedObligations) {
       try {
-        await sendEmail("payment_reminder", email, {
-          playerName: playerBookings[0].playerName,
-          trainerName: playerBookings[0].trainerName,
-          totalAmount,
-          unpaidSessions: sessionsHtml,
+        await sendEmail("payment_reminder", booking.playerEmail, {
+          playerName: booking.playerName,
+          trainerName: booking.trainerName,
+          totalAmount: booking.amount,
+          unpaidSessions: buildUnpaidReminderSessionsHtml(booking),
         });
 
-        const bookingIds = playerBookings.map((b) => b.id);
-        await supabase
-          .from("bookings")
-          .update({ reminder_sent_at: new Date().toISOString() })
-          .in("id", bookingIds);
-
+        await setUnpaidBookingsReminderSent(booking.bookingIds);
         sentCount++;
       } catch (error) {
         logger.error("Error in bulk reminder", error as Error, { component: "UnpaidBookingsCard" });
@@ -177,7 +162,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
     }
   };
 
-  const totalOutstanding = bookings.reduce((sum, b) => sum + (b.amount || 0), 0);
+  const totalOutstanding = bookings.reduce((sum, b) => sum + b.amount, 0);
 
   if (isLoading || isError) return null;
   if (bookings.length === 0) return null;
@@ -199,7 +184,6 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {/* Bulk actions */}
         <div className="flex items-center justify-between pb-2 border-b">
           <div className="flex items-center gap-2">
             <Checkbox
@@ -227,7 +211,6 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
           )}
         </div>
 
-        {/* Booking rows */}
         {bookings.map((booking) => (
           <div
             key={booking.id}
@@ -242,19 +225,17 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
                 <span className="font-medium text-sm truncate">
                   {booking.playerName}
                 </span>
-                {booking.cyclusName && (
+                {booking.isCycleGroup && booking.cyclusName && (
                   <Badge variant="secondary" className="text-xs">
                     {booking.cyclusName}
                   </Badge>
                 )}
               </div>
               <div className="text-xs text-muted-foreground">
-                {booking.sessionDate} · {booking.sessionTime}
-                {booking.amount != null && (
-                  <span className="ml-2 font-medium text-foreground">
-                    €{booking.amount.toFixed(2)}
-                  </span>
-                )}
+                {obligationSubtitle(booking, t)}
+                <span className="ml-2 font-medium text-foreground">
+                  €{booking.amount.toFixed(2)}
+                </span>
               </div>
               {booking.reminderSentAt && (
                 <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -283,7 +264,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => handleMarkPaid(booking.id)}
+                onClick={() => handleMarkPaid(booking)}
                 disabled={markingIds.has(booking.id)}
                 title={t("unpaidBookings.markPaid")}
                 className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20"

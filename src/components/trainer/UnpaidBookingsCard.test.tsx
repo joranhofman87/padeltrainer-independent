@@ -79,7 +79,8 @@ describe('UnpaidBookingsCard', () => {
   it('renders unpaid bookings when data is returned', async () => {
     fetchUnpaidBookingsDataMock.mockResolvedValue([
       {
-        id: 'b1',
+        id: 'player:p1:slot:s1',
+        bookingIds: ['b1'],
         slotId: 's1',
         playerName: 'Alex',
         playerEmail: 'alex@example.com',
@@ -89,6 +90,9 @@ describe('UnpaidBookingsCard', () => {
         sessionTime: '10:00 - 11:00',
         amount: 25,
         cyclusName: null,
+        cyclusId: null,
+        sessionCount: 1,
+        isCycleGroup: false,
         reminderSentAt: null,
         trainerName: 'Coach Sam',
       },
