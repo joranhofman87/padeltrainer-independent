@@ -1,8 +1,60 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
+  buildAcademyMollieConnectStatus,
   evaluateAcademyMollieReadiness,
   evaluateTrainerMollieReadiness,
 } from "./mollie-payment-ready.ts";
+
+Deno.test("connect status: org exists but access_token null → connected, not paymentReady", () => {
+  const status = buildAcademyMollieConnectStatus({
+    mollie_organization_id: "org_19475084",
+    access_token: null,
+    refresh_token: null,
+    charges_enabled: true,
+    payouts_enabled: true,
+    onboarding_complete: true,
+  });
+  assertEquals(status.connected, true);
+  assertEquals(status.paymentReady, false);
+  assertEquals(status.paymentUnavailableReason, "missing_access_token");
+  assertEquals(status.hasAccessToken, false);
+});
+
+Deno.test("connect status: charges disabled → paymentReady false", () => {
+  const status = buildAcademyMollieConnectStatus({
+    mollie_organization_id: "org_1",
+    access_token: "tok",
+    charges_enabled: false,
+    onboarding_complete: true,
+  });
+  assertEquals(status.paymentReady, false);
+  assertEquals(status.paymentUnavailableReason, "charges_disabled");
+});
+
+Deno.test("connect status: onboarding incomplete → paymentReady false", () => {
+  const status = buildAcademyMollieConnectStatus({
+    mollie_organization_id: "org_1",
+    access_token: "tok",
+    charges_enabled: true,
+    onboarding_complete: false,
+  });
+  assertEquals(status.paymentReady, false);
+  assertEquals(status.paymentUnavailableReason, "onboarding_incomplete");
+});
+
+Deno.test("connect status: ready account → paymentReady true", () => {
+  const status = buildAcademyMollieConnectStatus({
+    mollie_organization_id: "org_1",
+    access_token: "tok",
+    refresh_token: "ref",
+    charges_enabled: true,
+    onboarding_complete: true,
+  });
+  assertEquals(status.paymentReady, true);
+  assertEquals(status.paymentUnavailableReason, null);
+  assertEquals(status.hasAccessToken, true);
+  assertEquals(status.hasRefreshToken, true);
+});
 
 Deno.test("academy: flags true but no access_token is not ready", () => {
   const result = evaluateAcademyMollieReadiness({

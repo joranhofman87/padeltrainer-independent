@@ -61,6 +61,9 @@ verify_jwt = false
 [functions.mollie-connect-academy]
 verify_jwt = false
 
+[functions.mollie-disconnect-academy]
+verify_jwt = false
+
 [functions.mollie-callback]
 verify_jwt = false
 

@@ -3,6 +3,10 @@ import { logger } from '@/lib/logger';
 
 export interface AcademyConnectStatus {
   connected: boolean;
+  paymentReady: boolean;
+  paymentUnavailableReason?: string | null;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   onboardingComplete: boolean;
@@ -42,7 +46,26 @@ export async function checkAcademyConnectStatus(academyProfileId: string): Promi
     throw new Error(data.error);
   }
 
-  return data as AcademyConnectStatus;
+  return {
+    paymentReady: false,
+    hasAccessToken: false,
+    hasRefreshToken: false,
+    ...data,
+  } as AcademyConnectStatus;
+}
+
+export async function disconnectAcademyMollie(academyProfileId: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('mollie-disconnect-academy', {
+    body: { academyProfileId },
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Failed to disconnect payment account');
+  }
+
+  if (data?.error) {
+    throw new Error(data.error);
+  }
 }
 
 export async function getAcademyMollieAccount(academyProfileId: string) {

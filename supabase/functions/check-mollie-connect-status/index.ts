@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import {
+  buildAcademyMollieConnectStatus,
+  buildTrainerMollieConnectStatus,
+  MOLLIE_CONNECT_STATUS_DISCONNECTED,
+} from "../_shared/mollie-payment-ready.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -166,14 +171,15 @@ serve(async (req) => {
       throw new Error("Invalid entity type");
     }
 
-    if (!accountData || !accountData.mollie_organization_id || 
-        accountData.mollie_organization_id.startsWith('pending_')) {
+    const statusFields = entityType === "academy"
+      ? buildAcademyMollieConnectStatus(accountData)
+      : buildTrainerMollieConnectStatus(accountData);
+
+    if (!statusFields.connected) {
       logStep("No Mollie account found");
       return new Response(JSON.stringify({
-        connected: false,
-        chargesEnabled: false,
-        payoutsEnabled: false,
-        onboardingComplete: false,
+        ...MOLLIE_CONNECT_STATUS_DISCONNECTED,
+        balance: null,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -183,13 +189,13 @@ serve(async (req) => {
     // Try to refresh token if needed and get balance
     let balance: MollieBalance | null = null;
     const accessToken = await refreshTokenIfNeeded(
-      supabaseClient, 
-      accountData, 
-      entityType, 
-      entityId
+      supabaseClient,
+      accountData,
+      entityType,
+      entityId,
     );
 
-    if (accessToken && accountData.charges_enabled) {
+    if (accessToken && statusFields.chargesEnabled) {
       try {
         // Get balance from Mollie API
         const balanceResponse = await fetch('https://api.mollie.com/v2/balances', {
@@ -215,19 +221,15 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      connected: true,
-      chargesEnabled: accountData.charges_enabled,
-      payoutsEnabled: accountData.payouts_enabled,
-      onboardingComplete: accountData.onboarding_complete,
-      mollieOrganizationId: accountData.mollie_organization_id,
+      ...statusFields,
       balance: balance ? {
-        available: [{ 
-          amount: parseFloat(balance.available.value), 
-          currency: balance.available.currency 
+        available: [{
+          amount: parseFloat(balance.available.value),
+          currency: balance.available.currency,
         }],
-        pending: [{ 
-          amount: parseFloat(balance.pending.value), 
-          currency: balance.pending.currency 
+        pending: [{
+          amount: parseFloat(balance.pending.value),
+          currency: balance.pending.currency,
         }],
       } : null,
     }), {

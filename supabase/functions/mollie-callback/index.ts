@@ -194,9 +194,10 @@ serve(async (req) => {
       }
       logStep("Trainer account updated successfully");
     } else if (entityType === 'academy') {
-      const { error: updateError } = await supabaseClient
+      const { error: upsertError } = await supabaseClient
         .from('academy_mollie_accounts')
-        .update({
+        .upsert({
+          academy_profile_id: entityId,
           mollie_organization_id: organization.id,
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
@@ -205,14 +206,13 @@ serve(async (req) => {
           charges_enabled: true,
           payouts_enabled: true,
           updated_at: new Date().toISOString(),
-        })
-        .eq('academy_profile_id', entityId);
+        }, { onConflict: 'academy_profile_id' });
 
-      if (updateError) {
-        logStep("Error updating academy account", { error: updateError });
+      if (upsertError) {
+        logStep("Error saving academy account", { error: upsertError });
         return redirectToFrontend('error', { message: 'Failed to save Mollie connection' });
       }
-      logStep("Academy account updated successfully");
+      logStep("Academy account saved successfully");
     } else {
       return redirectToFrontend('error', { message: 'Invalid entity type' });
     }

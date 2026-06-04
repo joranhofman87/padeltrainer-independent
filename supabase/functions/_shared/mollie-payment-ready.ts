@@ -11,6 +11,7 @@ export type AcademyMollieAccountRow = {
   refresh_token?: string | null;
   token_expires_at?: string | null;
   charges_enabled: boolean;
+  payouts_enabled?: boolean;
   onboarding_complete: boolean;
   mollie_organization_id?: string | null;
 };
@@ -19,6 +20,8 @@ export type TrainerMollieAccountRow = {
   access_token: string | null;
   refresh_token?: string | null;
   token_expires_at?: string | null;
+  charges_enabled?: boolean;
+  payouts_enabled?: boolean;
   onboarding_complete: boolean;
   mollie_organization_id?: string | null;
 };
@@ -94,6 +97,60 @@ export async function getTrainerMolliePaymentReadiness(
 
   return evaluateTrainerMollieReadiness(data);
 }
+
+export function isMollieOrganizationConnected(
+  mollieOrganizationId: string | null | undefined,
+): boolean {
+  return !!mollieOrganizationId && !mollieOrganizationId.startsWith("pending_");
+}
+
+/** Status fields returned by check-mollie-connect-status (no raw tokens). */
+export function buildAcademyMollieConnectStatus(
+  account: AcademyMollieAccountRow | null | undefined,
+) {
+  const connected = isMollieOrganizationConnected(account?.mollie_organization_id);
+  const readiness = evaluateAcademyMollieReadiness(account);
+  return {
+    connected,
+    paymentReady: connected && readiness.ready,
+    paymentUnavailableReason: connected && !readiness.ready ? (readiness.reason ?? null) : null,
+    hasAccessToken: !!account?.access_token,
+    hasRefreshToken: !!account?.refresh_token,
+    chargesEnabled: account?.charges_enabled ?? false,
+    payoutsEnabled: account?.payouts_enabled ?? false,
+    onboardingComplete: account?.onboarding_complete ?? false,
+    mollieOrganizationId: account?.mollie_organization_id ?? undefined,
+  };
+}
+
+export function buildTrainerMollieConnectStatus(
+  account: TrainerMollieAccountRow | null | undefined,
+) {
+  const connected = isMollieOrganizationConnected(account?.mollie_organization_id);
+  const readiness = evaluateTrainerMollieReadiness(account);
+  return {
+    connected,
+    paymentReady: connected && readiness.ready,
+    paymentUnavailableReason: connected && !readiness.ready ? (readiness.reason ?? null) : null,
+    hasAccessToken: !!account?.access_token,
+    hasRefreshToken: !!account?.refresh_token,
+    chargesEnabled: account?.charges_enabled ?? false,
+    payoutsEnabled: account?.payouts_enabled ?? false,
+    onboardingComplete: account?.onboarding_complete ?? false,
+    mollieOrganizationId: account?.mollie_organization_id ?? undefined,
+  };
+}
+
+export const MOLLIE_CONNECT_STATUS_DISCONNECTED = {
+  connected: false,
+  paymentReady: false,
+  paymentUnavailableReason: null as MolliePaymentUnavailableReason | null,
+  hasAccessToken: false,
+  hasRefreshToken: false,
+  chargesEnabled: false,
+  payoutsEnabled: false,
+  onboardingComplete: false,
+};
 
 export async function getPublicInvoiceMollieReadiness(
   supabase: SupabaseClient,
