@@ -28,6 +28,24 @@ vi.mock('react-i18next', () => ({
         'invoice.invoiceNotFoundDescription': 'Not found description',
         'invoice.seoTitle': 'Invoice',
         'invoice.seoDescription': 'Pay invoice',
+        'invoice.onlinePaymentUnavailableAcademy':
+          'Online payment is not available for this invoice. Please contact the academy.',
+        'invoice.onlinePaymentUnavailableTrainer':
+          'Online payment is not available for this invoice. Please contact the trainer.',
+        'invoice.payAmount': 'Pay €{{amount}}',
+        'invoice.transferInstruction': 'Please transfer',
+        'invoice.from': 'From',
+        'invoice.open': 'Open',
+        'invoice.stepReviewDetails': 'Review',
+        'invoice.stepPay': 'Pay',
+        'invoice.invoiceDate': 'Date',
+        'invoice.dueDate': 'Due',
+        'invoice.description': 'Description',
+        'invoice.qty': 'Qty',
+        'invoice.price': 'Price',
+        'invoice.amount': 'Amount',
+        'invoice.subtotal': 'Subtotal',
+        'invoice.total': 'Total',
       };
       return map[key] ?? fallback ?? key;
     },
@@ -98,5 +116,60 @@ describe('PublicInvoicePay error UI', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Invoice not found' })).toBeInTheDocument();
+  });
+
+  it('hides Pay button when hasMollieAccount is false', async () => {
+    invokeMock.mockResolvedValue({
+      data: {
+        invoice: {
+          id: 'inv-1',
+          invoiceNumber: 'INV-001',
+          invoiceDate: '2025-01-15',
+          dueDate: '2025-01-29',
+          playerName: 'Test Player',
+          playerId: null,
+          playerEmail: 'test@example.com',
+          total: 1,
+          subtotal: 1,
+          vatAmount: 0,
+          vatRate: 0,
+          lineItems: [{ description: 'Lesson', quantity: 1, unit_price: 1, total: 1 }],
+          status: 'sent',
+          hasMolliePayment: false,
+          hasMollieAccount: false,
+          paymentRecipient: 'academy',
+          paymentUnavailableReason: 'missing_access_token',
+        },
+        academy: {
+          name: 'RL Padel',
+          slug: 'rl-padel-performance',
+          logoUrl: null,
+          bannerColor: null,
+          contactEmail: 'pay@example.com',
+          businessName: 'RL B.V.',
+          businessAddress: 'Street 1',
+          kvkNumber: '123',
+          btwNumber: null,
+          iban: 'NL00TEST0000000000',
+          bic: null,
+        },
+      },
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/academy-token']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(
+        'Online payment is not available for this invoice. Please contact the academy.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pay €/i })).not.toBeInTheDocument();
   });
 });

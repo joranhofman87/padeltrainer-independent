@@ -325,6 +325,8 @@
     "reference": "Verwendungszweck:",
     "questionsContact": "Fragen? Kontaktiere <a>{{email}}</a>",
     "errorNoMollie": "Online-Zahlung ist derzeit nicht verfügbar.",
+    "onlinePaymentUnavailableAcademy": "Online-Zahlung ist für diese Rechnung nicht verfügbar. Bitte kontaktieren Sie die Akademie.",
+    "onlinePaymentUnavailableTrainer": "Online-Zahlung ist für diese Rechnung nicht verfügbar. Bitte kontaktieren Sie den Trainer.",
     "errorMissingProfile": "Die Zahlungsumgebung dieses Anbieters ist noch nicht vollständig eingerichtet.",
     "errorPaymentFailed": "Zahlung konnte nicht erstellt werden. Bitte versuche es erneut.",
     "downloadInvoice": "Rechnung herunterladen",

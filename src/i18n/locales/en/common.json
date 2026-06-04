@@ -345,6 +345,8 @@
     "reference": "Reference:",
     "questionsContact": "Questions? Contact <a>{{email}}</a>",
     "errorNoMollie": "Online payment is currently unavailable.",
+    "onlinePaymentUnavailableAcademy": "Online payment is not available for this invoice. Please contact the academy.",
+    "onlinePaymentUnavailableTrainer": "Online payment is not available for this invoice. Please contact the trainer.",
     "errorMissingProfile": "This provider's payment environment is not fully set up yet.",
     "errorPaymentFailed": "Failed to create payment. Please try again.",
     "downloadInvoice": "Download invoice",

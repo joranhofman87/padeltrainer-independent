@@ -325,6 +325,8 @@
     "reference": "Referencia:",
     "questionsContact": "¿Preguntas? Contacta con <a>{{email}}</a>",
     "errorNoMollie": "El pago en línea no está disponible actualmente.",
+    "onlinePaymentUnavailableAcademy": "El pago en línea no está disponible para esta factura. Póngase en contacto con la academia.",
+    "onlinePaymentUnavailableTrainer": "El pago en línea no está disponible para esta factura. Póngase en contacto con el entrenador.",
     "errorMissingProfile": "El entorno de pago de este proveedor aún no está completamente configurado.",
     "errorPaymentFailed": "No se pudo crear el pago. Inténtalo de nuevo.",
     "downloadInvoice": "Descargar factura",

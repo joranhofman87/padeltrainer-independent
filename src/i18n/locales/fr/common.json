@@ -325,6 +325,8 @@
     "reference": "Référence :",
     "questionsContact": "Des questions ? Contactez <a>{{email}}</a>",
     "errorNoMollie": "Le paiement en ligne est actuellement indisponible.",
+    "onlinePaymentUnavailableAcademy": "Le paiement en ligne n'est pas disponible pour cette facture. Veuillez contacter l'académie.",
+    "onlinePaymentUnavailableTrainer": "Le paiement en ligne n'est pas disponible pour cette facture. Veuillez contacter le formateur.",
     "errorMissingProfile": "L'environnement de paiement de ce prestataire n'est pas encore entièrement configuré.",
     "errorPaymentFailed": "Échec de la création du paiement. Veuillez réessayer.",
     "downloadInvoice": "Télécharger la facture",

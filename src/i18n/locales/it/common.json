@@ -336,6 +336,8 @@
     "reference": "Causale:",
     "questionsContact": "Domande? Contatta <a>{{email}}</a>",
     "errorNoMollie": "Il pagamento online non è attualmente disponibile.",
+    "onlinePaymentUnavailableAcademy": "Il pagamento online non è disponibile per questa fattura. Contatta l'accademia.",
+    "onlinePaymentUnavailableTrainer": "Il pagamento online non è disponibile per questa fattura. Contatta il trainer.",
     "errorMissingProfile": "L'ambiente di pagamento di questo fornitore non è ancora completamente configurato.",
     "errorPaymentFailed": "Creazione del pagamento non riuscita. Riprova.",
     "downloadInvoice": "Scarica fattura",

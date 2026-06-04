@@ -26,6 +26,10 @@ const dateLocales: Record<string, any> = { nl, en: enUS, de, fr, es, it };
 const getDateLocale = (lang: string) => dateLocales[lang?.slice(0, 2)] ?? nl;
 import { toast } from "sonner";
 import { resolvePublicInvoiceLoadError } from "@/lib/publicInvoiceFetch";
+import {
+  getOnlinePaymentUnavailableMessageKey,
+  type PublicInvoicePaymentRecipient,
+} from "@/lib/publicInvoiceMollieMessage";
 
 // Keep the /pay/:token URL out of Referer headers — these tokens grant access
 // to invoice PII until the invoice is paid.
@@ -78,6 +82,8 @@ interface PublicInvoiceData {
     status: string;
     hasMolliePayment: boolean;
     hasMollieAccount: boolean;
+    paymentUnavailableReason?: string | null;
+    paymentRecipient?: PublicInvoicePaymentRecipient;
   };
   academy: {
     name: string;
@@ -397,8 +403,19 @@ export default function PublicInvoicePay() {
     }
   };
 
+  const paymentRecipient: PublicInvoicePaymentRecipient =
+    data?.invoice.paymentRecipient ??
+    (data?.academy ? "academy" : data?.invoice ? "trainer" : null);
+
+  const onlinePaymentUnavailableMessage = t(
+    getOnlinePaymentUnavailableMessageKey(paymentRecipient),
+  );
+
+  const showOnlinePaymentUnavailable =
+    !!data && !data.invoice.hasMollieAccount && data.invoice.status !== "paid";
+
   const handlePay = async () => {
-    if (!data) return;
+    if (!data || !data.invoice.hasMollieAccount) return;
     setPayLoading(true);
     try {
       const { data: result, error: fnError } = await supabase.functions.invoke("create-invoice-payment", {
@@ -417,12 +434,11 @@ export default function PublicInvoicePay() {
         const parsed = typeof err?.message === "string" ? JSON.parse(err.message) : null;
         errorCode = parsed?.error ?? null;
       } catch {
-        // message is not JSON, check if result had error
         errorCode = err?.error ?? null;
       }
 
       if (errorCode === "no_mollie_account") {
-        toast.error(t("invoice.errorNoMollie"));
+        toast.error(onlinePaymentUnavailableMessage);
       } else if (errorCode === "missing_mollie_profile") {
         toast.error(t("invoice.errorMissingProfile"));
       } else {
@@ -637,7 +653,16 @@ export default function PublicInvoicePay() {
             </div>
           </div>
 
-          {/* Pay button — only when academy has Mollie connected */}
+          {showOnlinePaymentUnavailable && (
+            <div
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-foreground"
+              role="status"
+            >
+              {onlinePaymentUnavailableMessage}
+            </div>
+          )}
+
+          {/* Pay button — only when payment creation can succeed */}
           {invoice.hasMollieAccount ? (
             <div className="space-y-2">
               <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1">

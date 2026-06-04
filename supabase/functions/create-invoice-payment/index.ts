@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import {
+  getAcademyMolliePaymentReadiness,
+  getTrainerMolliePaymentReadiness,
+  type MolliePaymentUnavailableReason,
+} from "../_shared/mollie-payment-ready.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -155,57 +160,78 @@ serve(async (req) => {
 
     // Note: existing payment URL check moved to after token resolution
 
-    // Resolve Mollie access token — prefer academy, fall back to trainer
+    // Resolve Mollie access token — academy invoices use academy Mollie only (no trainer fallback)
     let accessToken: string | null = null;
     let recipientType: string | null = null;
     let mollieOrgId: string | null = null;
+    let paymentUnavailableReason: MolliePaymentUnavailableReason | undefined;
 
     if (invoice.academy_profile_id) {
-      const { data: academyMollie } = await supabase
-        .from("academy_mollie_accounts")
-        .select("access_token, refresh_token, token_expires_at, charges_enabled, mollie_organization_id")
-        .eq("academy_profile_id", invoice.academy_profile_id)
-        .eq("onboarding_complete", true)
-        .single();
-
-      if (academyMollie?.access_token && academyMollie?.charges_enabled) {
-        accessToken = await refreshTokenIfNeeded(supabase, academyMollie, "academy", invoice.academy_profile_id);
+      const academyReadiness = await getAcademyMolliePaymentReadiness(
+        supabase,
+        invoice.academy_profile_id,
+      );
+      paymentUnavailableReason = academyReadiness.reason;
+      if (academyReadiness.ready && academyReadiness.account) {
+        accessToken = await refreshTokenIfNeeded(
+          supabase,
+          academyReadiness.account,
+          "academy",
+          invoice.academy_profile_id,
+        );
         recipientType = "academy";
-        mollieOrgId = academyMollie.mollie_organization_id;
+        mollieOrgId = academyReadiness.account.mollie_organization_id ?? null;
       }
-    }
-
-    if (!accessToken && invoice.trainer_id) {
-      const { data: trainerMollie } = await supabase
-        .from("trainer_mollie_accounts")
-        .select("access_token, refresh_token, token_expires_at, mollie_organization_id")
-        .eq("trainer_id", invoice.trainer_id)
-        .eq("onboarding_complete", true)
-        .single();
-
-      if (trainerMollie?.access_token) {
-        accessToken = await refreshTokenIfNeeded(supabase, trainerMollie, "trainer", invoice.trainer_id);
+    } else if (invoice.trainer_id) {
+      const trainerReadiness = await getTrainerMolliePaymentReadiness(supabase, invoice.trainer_id);
+      paymentUnavailableReason = trainerReadiness.reason;
+      if (trainerReadiness.ready && trainerReadiness.account) {
+        accessToken = await refreshTokenIfNeeded(
+          supabase,
+          trainerReadiness.account,
+          "trainer",
+          invoice.trainer_id,
+        );
         recipientType = "trainer";
-        mollieOrgId = trainerMollie.mollie_organization_id;
+        mollieOrgId = trainerReadiness.account.mollie_organization_id ?? null;
       }
+    } else {
+      paymentUnavailableReason = "no_row";
     }
 
     if (!accessToken) {
-      logStep("No connected Mollie account found", { invoiceId: resolvedInvoiceId });
+      logStep("No connected Mollie account found", {
+        invoiceId: resolvedInvoiceId,
+        reason: paymentUnavailableReason,
+        academyProfileId: invoice.academy_profile_id,
+        trainerId: invoice.trainer_id,
+      });
 
       await writeAuditLog(supabase, {
         function_name: "create-invoice-payment",
         invoice_id: resolvedInvoiceId,
         amount: invoice.total,
         status: "blocked_no_account",
-        error_message: "No connected Mollie account",
-        metadata: { invoiceNumber: invoice.invoice_number },
+        error_message: paymentUnavailableReason
+          ? `No connected Mollie account (${paymentUnavailableReason})`
+          : "No connected Mollie account",
+        metadata: {
+          invoiceNumber: invoice.invoice_number,
+          reason: paymentUnavailableReason,
+        },
       });
 
-      return new Response(JSON.stringify({ error: "no_mollie_account", message: "Payment account not connected." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error: "no_mollie_account",
+          message: "Payment account not connected.",
+          reason: paymentUnavailableReason ?? "no_row",
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const isTestMode = mollieApiKey.startsWith("test_");

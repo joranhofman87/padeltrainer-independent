@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { getPublicInvoiceMollieReadiness } from "../_shared/mollie-payment-ready.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -111,7 +112,6 @@ serve(async (req) => {
     }
 
     let academy = null;
-    let hasMollieAccount = false;
     if (invoice.academy_profile_id) {
       const { data: academyData } = await supabase
         .from("academy_profiles")
@@ -119,28 +119,9 @@ serve(async (req) => {
         .eq("id", invoice.academy_profile_id)
         .single();
       academy = academyData;
-
-      // Check if academy has a connected Mollie account
-      const { data: mollieAccount } = await supabase
-        .from("academy_mollie_accounts")
-        .select("charges_enabled, onboarding_complete")
-        .eq("academy_profile_id", invoice.academy_profile_id)
-        .maybeSingle();
-
-      hasMollieAccount = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete);
     }
 
-    // If no academy Mollie, check trainer
-    if (!hasMollieAccount && invoice.trainer_id) {
-      const { data: trainerMollie } = await supabase
-        .from("trainer_mollie_accounts")
-        .select("onboarding_complete")
-        .eq("trainer_id", invoice.trainer_id)
-        .eq("onboarding_complete", true)
-        .maybeSingle();
-
-      hasMollieAccount = !!trainerMollie;
-    }
+    const mollieReadiness = await getPublicInvoiceMollieReadiness(supabase, invoice);
 
     // invoice_logo_url stores a full public URL from the avatars bucket — use directly
     const logoUrl = academy?.invoice_logo_url || null;
@@ -164,7 +145,9 @@ serve(async (req) => {
         lineItems: invoice.line_items,
         status: invoice.status,
         hasMolliePayment: !!invoice.mollie_payment_url,
-        hasMollieAccount,
+        hasMollieAccount: mollieReadiness.hasMollieAccount,
+        paymentUnavailableReason: mollieReadiness.paymentUnavailableReason ?? null,
+        paymentRecipient: mollieReadiness.paymentRecipient,
       },
       academy: academy ? {
         name: academy.name,
