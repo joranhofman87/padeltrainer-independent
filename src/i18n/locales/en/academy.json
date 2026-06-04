@@ -260,6 +260,8 @@
     "disconnectMollieDescription": "This removes your Mollie connection. Public invoice online payment will be unavailable until you reconnect. Past invoices and payments are not changed.",
     "disconnectSuccess": "Payment account disconnected",
     "disconnectSuccessDescription": "You can connect Mollie again when you are ready.",
+    "sessionRequiredTitle": "Sign in required",
+    "sessionRequiredDescription": "Please log in again to manage payment settings.",
     "priceDisplay": {
       "title": "Price display",
       "description": "Choose how prices are labeled for your academy schedules and booking flows.",

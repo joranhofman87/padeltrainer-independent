@@ -1,15 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import {
   buildAcademyMollieConnectStatus,
   buildTrainerMollieConnectStatus,
   MOLLIE_CONNECT_STATUS_DISCONNECTED,
 } from "../_shared/mollie-payment-ready.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, jsonForbidden, requireUser } from "../_shared/auth.ts";
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
@@ -104,19 +99,9 @@ serve(async (req) => {
   try {
     logStep("Function started");
 
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header provided");
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    const user = userData.user;
-    if (!user) throw new Error("User not authenticated");
+    const authResult = await requireUser(req);
+    if (authResult instanceof Response) return authResult;
+    const { user, supabase: supabaseClient } = authResult;
     logStep("User authenticated", { userId: user.id });
 
     const { entityType, entityId } = await req.json();
@@ -137,7 +122,7 @@ serve(async (req) => {
         .single();
 
       if (!trainerProfile) {
-        throw new Error("Trainer profile not found or access denied");
+        return jsonForbidden("Trainer profile not found or access denied");
       }
 
       const { data } = await supabaseClient
@@ -157,7 +142,7 @@ serve(async (req) => {
         .single();
 
       if (!academyManager) {
-        throw new Error("You are not a manager of this academy");
+        return jsonForbidden("You are not a manager of this academy");
       }
 
       const { data } = await supabaseClient

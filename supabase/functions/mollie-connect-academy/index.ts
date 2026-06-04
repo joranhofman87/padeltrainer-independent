@@ -1,10 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, jsonForbidden, jsonUnauthorized, requireUser } from "../_shared/auth.ts";
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
@@ -29,19 +24,12 @@ serve(async (req) => {
     const mollieClientId = Deno.env.get("MOLLIE_CLIENT_ID");
     if (!mollieClientId) throw new Error("MOLLIE_CLIENT_ID is not set");
 
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header provided");
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    const user = userData.user;
-    if (!user?.email) throw new Error("User not authenticated or email not available");
+    const authResult = await requireUser(req);
+    if (authResult instanceof Response) return authResult;
+    const { user, supabase: supabaseClient } = authResult;
+    if (!user.email) {
+      return jsonUnauthorized();
+    }
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     const { academyProfileId } = await req.json();
@@ -57,7 +45,7 @@ serve(async (req) => {
       .single();
 
     if (!academyManager) {
-      throw new Error("You are not a manager of this academy");
+      return jsonForbidden("You are not a manager of this academy");
     }
     logStep("Academy manager verified", { role: academyManager.role });
 

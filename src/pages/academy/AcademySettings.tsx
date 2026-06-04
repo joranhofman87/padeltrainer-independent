@@ -45,7 +45,8 @@ export default function AcademySettings() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { activeAcademy } = useAcademyContext();
-  const { user } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
+  const accessToken = session?.access_token ?? null;
   const [managers, setManagers] = useState<any[]>([]);
   const [availableTrainers, setAvailableTrainers] = useState<{ userId: string; fullName: string; email: string; avatarUrl: string | null }[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>('');
@@ -103,13 +104,18 @@ export default function AcademySettings() {
   useEffect(() => {
     async function fetchData() {
       if (!activeAcademy) return;
-      
+
       await fetchManagersAndTrainers();
-      
-      // Check Mollie connect status
+
+      if (authLoading || !accessToken) {
+        setConnectStatus(null);
+        setCheckingStatus(false);
+        return;
+      }
+
       setCheckingStatus(true);
       try {
-        const status = await checkAcademyConnectStatus(activeAcademy.id);
+        const status = await checkAcademyConnectStatus(activeAcademy.id, accessToken);
         setConnectStatus(status);
       } catch (e) {
         logger.error("Error checking connect status", e as Error, { component: "AcademySettings", academyId: activeAcademy?.id });
@@ -118,7 +124,7 @@ export default function AcademySettings() {
       }
     }
     fetchData();
-  }, [activeAcademy]);
+  }, [activeAcademy, authLoading, accessToken]);
 
   // Load terms into editor when academy changes
   useEffect(() => {
@@ -187,12 +193,12 @@ export default function AcademySettings() {
 
   // Handle Mollie redirect callbacks
   useEffect(() => {
-    if (searchParams.get("mollie_success") === "true" && activeAcademy) {
+    if (searchParams.get("mollie_success") === "true" && activeAcademy && accessToken) {
       toast({
         title: t("settings.mollieConnectSuccess", "Payment Account Connected"),
         description: t("settings.mollieConnectSuccessDescription", "Your payment account has been connected successfully."),
       });
-      checkAcademyConnectStatus(activeAcademy.id).then(setConnectStatus).catch((e) => logger.error("Error refreshing connect status", e as Error, { component: "AcademySettings" }));
+      checkAcademyConnectStatus(activeAcademy.id, accessToken).then(setConnectStatus).catch((e) => logger.error("Error refreshing connect status", e as Error, { component: "AcademySettings" }));
     } else if (searchParams.get("mollie_refresh") === "true") {
       toast({
         title: t("settings.mollieConnectRefresh", "Complete Setup"),
@@ -200,14 +206,14 @@ export default function AcademySettings() {
         variant: "destructive",
       });
     }
-  }, [searchParams, activeAcademy, toast, t]);
+  }, [searchParams, activeAcademy, accessToken, toast, t]);
 
   const handleConnectMollie = async () => {
-    if (!activeAcademy) return;
-    
+    if (!activeAcademy || !accessToken) return;
+
     setConnectLoading(true);
     try {
-      const url = await connectAcademyMollie(activeAcademy.id);
+      const url = await connectAcademyMollie(activeAcademy.id, accessToken);
       window.open(url, "_blank");
     } catch (error: any) {
       toast({
@@ -221,11 +227,11 @@ export default function AcademySettings() {
   };
 
   const handleRefreshStatus = async () => {
-    if (!activeAcademy) return;
-    
+    if (!activeAcademy || !accessToken) return;
+
     setCheckingStatus(true);
     try {
-      const status = await checkAcademyConnectStatus(activeAcademy.id);
+      const status = await checkAcademyConnectStatus(activeAcademy.id, accessToken);
       setConnectStatus(status);
       toast({
         title: t("settings.statusRefreshed", "Status Refreshed"),
@@ -243,9 +249,9 @@ export default function AcademySettings() {
   };
 
   const handleDisconnectMollie = async () => {
-    if (!activeAcademy) return;
+    if (!activeAcademy || !accessToken) return;
     try {
-      await disconnectAcademyMollie(activeAcademy.id);
+      await disconnectAcademyMollie(activeAcademy.id, accessToken);
       setConnectStatus({
         connected: false,
         paymentReady: false,
@@ -313,8 +319,9 @@ export default function AcademySettings() {
       <div className="space-y-6">
         <AcademyMolliePaymentCard
           connectStatus={connectStatus}
-          checkingStatus={checkingStatus}
+          checkingStatus={checkingStatus || authLoading}
           connectLoading={connectLoading}
+          sessionMissing={!authLoading && !accessToken}
           onConnect={handleConnectMollie}
           onRefresh={handleRefreshStatus}
           onDisconnect={handleDisconnectMollie}

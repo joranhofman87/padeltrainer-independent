@@ -34,6 +34,8 @@ export interface AcademyMolliePaymentCardProps {
   connectStatus: AcademyConnectStatus | null;
   checkingStatus: boolean;
   connectLoading: boolean;
+  /** When true, user session is missing — do not call Mollie edge functions. */
+  sessionMissing?: boolean;
   onConnect: () => void;
   onRefresh: () => void;
   onDisconnect: () => Promise<void>;
@@ -43,6 +45,7 @@ export function AcademyMolliePaymentCard({
   connectStatus,
   checkingStatus,
   connectLoading,
+  sessionMissing = false,
   onConnect,
   onRefresh,
   onDisconnect,
@@ -76,7 +79,18 @@ export function AcademyMolliePaymentCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {checkingStatus ? (
+        {sessionMissing ? (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>{t('settings.sessionRequiredTitle', 'Sign in required')}</AlertTitle>
+            <AlertDescription>
+              {t(
+                'settings.sessionRequiredDescription',
+                'Please log in again to manage payment settings.',
+              )}
+            </AlertDescription>
+          </Alert>
+        ) : checkingStatus ? (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             {t('settings.checkingStatus', 'Checking status...')}
@@ -93,7 +107,7 @@ export function AcademyMolliePaymentCard({
                 )}
               </AlertDescription>
             </Alert>
-            <Button onClick={onConnect} disabled={connectLoading}>
+            <Button onClick={onConnect} disabled={connectLoading || sessionMissing}>
               {connectLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               <CreditCard className="h-4 w-4 mr-2" />
               {t('settings.connectMollie', 'Connect Payment Account')}
@@ -119,17 +133,18 @@ export function AcademyMolliePaymentCard({
               </AlertDescription>
             </Alert>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={onConnect} disabled={connectLoading}>
+              <Button onClick={onConnect} disabled={connectLoading || sessionMissing}>
                 {connectLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 <RefreshCw className="h-4 w-4 mr-2" />
                 {t('settings.reconnectMollie', 'Reconnect Mollie')}
               </Button>
-              <Button variant="outline" onClick={onRefresh} disabled={checkingStatus}>
+              <Button variant="outline" onClick={onRefresh} disabled={checkingStatus || sessionMissing}>
                 {checkingStatus && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {t('settings.refreshStatus', 'Refresh Status')}
               </Button>
               <DisconnectButton
                 disconnecting={disconnecting}
+                disabled={sessionMissing}
                 onConfirm={handleDisconnect}
                 label={t('settings.disconnectMollie', 'Disconnect')}
                 title={t('settings.disconnectMollieTitle', 'Disconnect Mollie?')}
@@ -206,12 +221,13 @@ export function AcademyMolliePaymentCard({
             )}
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={onRefresh} disabled={checkingStatus}>
+              <Button variant="outline" onClick={onRefresh} disabled={checkingStatus || sessionMissing}>
                 {checkingStatus && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {t('settings.refreshStatus', 'Refresh Status')}
               </Button>
               <Button
                 variant="outline"
+                disabled={sessionMissing}
                 onClick={() => window.open('https://my.mollie.com/dashboard', '_blank')}
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
@@ -219,6 +235,7 @@ export function AcademyMolliePaymentCard({
               </Button>
               <DisconnectButton
                 disconnecting={disconnecting}
+                disabled={sessionMissing}
                 onConfirm={handleDisconnect}
                 label={t('settings.disconnectMollie', 'Disconnect')}
                 title={t('settings.disconnectMollieTitle', 'Disconnect Mollie?')}
@@ -238,6 +255,7 @@ export function AcademyMolliePaymentCard({
 
 function DisconnectButton({
   disconnecting,
+  disabled,
   onConfirm,
   label,
   title,
@@ -245,6 +263,7 @@ function DisconnectButton({
   cancelLabel,
 }: {
   disconnecting: boolean;
+  disabled?: boolean;
   onConfirm: () => void;
   label: string;
   title: string;
@@ -254,7 +273,11 @@ function DisconnectButton({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="outline" className="text-destructive hover:text-destructive">
+        <Button
+          variant="outline"
+          className="text-destructive hover:text-destructive"
+          disabled={disabled}
+        >
           <Unplug className="h-4 w-4 mr-2" />
           {label}
         </Button>

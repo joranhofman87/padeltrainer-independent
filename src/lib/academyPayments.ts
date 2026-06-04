@@ -17,9 +17,24 @@ export interface AcademyConnectStatus {
   mollieOrganizationId?: string;
 }
 
-export async function connectAcademyMollie(academyProfileId: string): Promise<string> {
+function assertAccessToken(accessToken: string | undefined | null): asserts accessToken is string {
+  if (!accessToken) {
+    throw new Error('Not authenticated');
+  }
+}
+
+function mollieAuthHeaders(accessToken: string) {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+export async function connectAcademyMollie(
+  academyProfileId: string,
+  accessToken: string,
+): Promise<string> {
+  assertAccessToken(accessToken);
   const { data, error } = await supabase.functions.invoke('mollie-connect-academy', {
     body: { academyProfileId },
+    headers: mollieAuthHeaders(accessToken),
   });
 
   if (error) {
@@ -33,9 +48,14 @@ export async function connectAcademyMollie(academyProfileId: string): Promise<st
   return data.url;
 }
 
-export async function checkAcademyConnectStatus(academyProfileId: string): Promise<AcademyConnectStatus> {
+export async function checkAcademyConnectStatus(
+  academyProfileId: string,
+  accessToken: string,
+): Promise<AcademyConnectStatus> {
+  assertAccessToken(accessToken);
   const { data, error } = await supabase.functions.invoke('check-mollie-connect-status', {
     body: { entityType: 'academy', entityId: academyProfileId },
+    headers: mollieAuthHeaders(accessToken),
   });
 
   if (error) {
@@ -54,9 +74,14 @@ export async function checkAcademyConnectStatus(academyProfileId: string): Promi
   } as AcademyConnectStatus;
 }
 
-export async function disconnectAcademyMollie(academyProfileId: string): Promise<void> {
+export async function disconnectAcademyMollie(
+  academyProfileId: string,
+  accessToken: string,
+): Promise<void> {
+  assertAccessToken(accessToken);
   const { data, error } = await supabase.functions.invoke('mollie-disconnect-academy', {
     body: { academyProfileId },
+    headers: mollieAuthHeaders(accessToken),
   });
 
   if (error) {

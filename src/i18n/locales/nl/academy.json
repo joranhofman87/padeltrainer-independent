@@ -261,6 +261,8 @@
     "disconnectMollieDescription": "Dit verwijdert je Mollie-koppeling. Online betalen op openbare facturen is niet beschikbaar tot je opnieuw koppelt. Bestaande facturen en betalingen blijven ongewijzigd.",
     "disconnectSuccess": "Betaalaccount ontkoppeld",
     "disconnectSuccessDescription": "Je kunt Mollie opnieuw koppelen wanneer je wilt.",
+    "sessionRequiredTitle": "Opnieuw inloggen vereist",
+    "sessionRequiredDescription": "Log opnieuw in om je betaalinstellingen te beheren.",
     "priceDisplay": {
       "title": "Prijzen weergave",
       "description": "Kies hoe prijzen worden gelabeld in je academy-roosters en boekingsflows.",

@@ -17,6 +17,21 @@ function jsonError(status: number, error: string): Response {
   });
 }
 
+/** 401 for missing/invalid user session (not service-role). */
+export function jsonUnauthorized(message = "Please log in again."): Response {
+  return new Response(JSON.stringify({ error: "unauthorized", message }), {
+    status: 401,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export function jsonForbidden(message: string): Response {
+  return new Response(JSON.stringify({ error: "forbidden", message }), {
+    status: 403,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 function getServiceClient(): SupabaseClient {
   return createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -51,7 +66,7 @@ export interface AuthedUser {
 export async function requireUser(req: Request): Promise<AuthedUser | Response> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
-    return jsonError(401, "Unauthorized");
+    return jsonUnauthorized();
   }
   const token = authHeader.replace("Bearer ", "");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -64,7 +79,7 @@ export async function requireUser(req: Request): Promise<AuthedUser | Response> 
 
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data?.user) {
-    return jsonError(401, "Unauthorized");
+    return jsonUnauthorized();
   }
   return { user: { id: data.user.id, email: data.user.email }, supabase, isServiceRole: false };
 }

@@ -22,6 +22,9 @@ vi.mock('react-i18next', () => ({
         'settings.paymentsEnabled': 'Payments Enabled',
         'settings.payoutsEnabled': 'Payouts Enabled',
         'settings.mollieDashboard': 'Payment Dashboard',
+        'settings.sessionRequiredTitle': 'Sign in required',
+        'settings.sessionRequiredDescription':
+          'Please log in again to manage payment settings.',
         'common.cancel': 'Cancel',
       };
       return map[key] ?? fallback ?? key;
@@ -111,6 +114,24 @@ describe('AcademyMolliePaymentCard', () => {
     expect(screen.getByRole('button', { name: /Payment Dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Disconnect$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Reconnect Mollie/i })).not.toBeInTheDocument();
+  });
+
+  it('shows session required message and disables actions when sessionMissing', () => {
+    render(
+      <AcademyMolliePaymentCard
+        connectStatus={null}
+        checkingStatus={false}
+        connectLoading={false}
+        sessionMissing
+        onConnect={vi.fn()}
+        onRefresh={vi.fn()}
+        onDisconnect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText('Please log in again to manage payment settings.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Connect Payment Account/i })).not.toBeInTheDocument();
   });
 
   it('calls onConnect when Reconnect is clicked', () => {
