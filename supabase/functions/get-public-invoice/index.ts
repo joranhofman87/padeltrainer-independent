@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { decidePublicInvoiceAccess } from "../_shared/publicInvoiceAccess.ts";
 import { getPublicInvoiceMollieReadiness } from "../_shared/mollie-payment-ready.ts";
 
 const corsHeaders = {
@@ -46,11 +47,32 @@ serve(async (req) => {
       });
     }
 
-    // Download mode: return a signed PDF URL when the invoice is paid.
-    // This is allowed even if public_token_revoked_at is set, because
-    // possession of the token still proves the recipient relationship and
-    // the response contains no PII beyond the invoice number.
-    if (action === "download") {
+    const access = decidePublicInvoiceAccess(invoice, { action });
+
+    if (access === "paid") {
+      return new Response(JSON.stringify({ status: "paid" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (access === "cancelled") {
+      return new Response(JSON.stringify({ status: "cancelled" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (access === "not_found") {
+      return new Response(JSON.stringify({ error: "Invoice not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Download mode (unchanged): paid invoices may still receive a PDF via revoked token.
+    // Response includes pdfUrl and invoiceNumber — see product report before changing.
+    if (access === "download") {
       if (invoice.status !== "paid") {
         return new Response(JSON.stringify({ ready: false, status: invoice.status }), {
           status: 200,
@@ -80,14 +102,6 @@ serve(async (req) => {
       );
     }
 
-    if (invoice.public_token_revoked_at) {
-      return new Response(JSON.stringify({ error: "Invoice not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-
     // Look up guest player email if no registered player
     let playerEmail: string | null = null;
     if (!invoice.player_id && invoice.guest_player_id) {
@@ -97,18 +111,6 @@ serve(async (req) => {
         .eq("id", invoice.guest_player_id)
         .maybeSingle();
       playerEmail = guestData?.email || null;
-    }
-
-    if (invoice.status === "paid" || invoice.status === "cancelled") {
-      return new Response(JSON.stringify({
-        error: invoice.status === "paid" ? "already_paid" : "cancelled",
-        invoiceNumber: invoice.invoice_number,
-        status: invoice.status,
-        invoiceId: invoice.id,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
     let academy = null;

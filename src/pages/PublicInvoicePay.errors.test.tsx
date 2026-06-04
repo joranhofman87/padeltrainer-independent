@@ -26,6 +26,14 @@ vi.mock('react-i18next', () => ({
         'invoice.draftNotSentDescription': 'Draft description',
         'invoice.invoiceNotFound': 'Invoice not found',
         'invoice.invoiceNotFoundDescription': 'Not found description',
+        'invoice.paymentReceived': 'Payment received',
+        'invoice.paymentReceivedDescription': 'Thank you. This invoice has been paid successfully.',
+        'invoice.paidPrivacyMessage': 'Privacy message',
+        'invoice.publicPayLogIn': 'Log in',
+        'invoice.publicPayForgotPassword': 'Reset password',
+        'invoice.publicPayForgotPasswordHint': 'Forgot password hint',
+        'invoice.invoiceCancelledTitle': 'Invoice cancelled',
+        'invoice.invoiceCancelledDescription': 'Cancelled description',
         'invoice.seoTitle': 'Invoice',
         'invoice.seoDescription': 'Pay invoice',
         'invoice.onlinePaymentUnavailableAcademy':
@@ -99,6 +107,48 @@ describe('PublicInvoicePay error UI', () => {
 
     expect(await screen.findByRole('heading', { name: 'Invoice not sent yet' })).toBeInTheDocument();
     expect(screen.getByText('Draft description')).toBeInTheDocument();
+  });
+
+  it('shows paid state with no invoice details when status is paid', async () => {
+    invokeMock.mockResolvedValue({
+      data: { status: 'paid' },
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/paid-token']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Payment received' })).toBeInTheDocument();
+    expect(screen.getByText('Thank you. This invoice has been paid successfully.')).toBeInTheDocument();
+    expect(screen.getByText('Privacy message')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/app/auth');
+    expect(screen.getByRole('link', { name: 'Reset password' })).toHaveAttribute('href', '/app/forgot-password');
+    expect(screen.queryByText('INV-')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Download/i })).not.toBeInTheDocument();
+  });
+
+  it('shows cancelled state with no invoice details', async () => {
+    invokeMock.mockResolvedValue({
+      data: { status: 'cancelled' },
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/cancelled-token']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Invoice cancelled' })).toBeInTheDocument();
+    expect(screen.getByText('Cancelled description')).toBeInTheDocument();
+    expect(screen.queryByText('INV-')).not.toBeInTheDocument();
   });
 
   it('shows not found for 404-style errors', async () => {

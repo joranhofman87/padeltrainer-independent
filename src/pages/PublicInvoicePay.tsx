@@ -18,14 +18,17 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown, Download } from "lucide-react";
+import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus, Pencil, LogIn, ArrowDown, KeyRound } from "lucide-react";
 import { format } from "date-fns";
 import { nl, enUS, de, fr, es, it } from "date-fns/locale";
 
 const dateLocales: Record<string, any> = { nl, en: enUS, de, fr, es, it };
 const getDateLocale = (lang: string) => dateLocales[lang?.slice(0, 2)] ?? nl;
 import { toast } from "sonner";
-import { resolvePublicInvoiceLoadError } from "@/lib/publicInvoiceFetch";
+import {
+  isPublicInvoiceDetailPayload,
+  resolvePublicInvoiceLoadError,
+} from "@/lib/publicInvoiceFetch";
 import {
   getOnlinePaymentUnavailableMessageKey,
   type PublicInvoicePaymentRecipient,
@@ -98,6 +101,31 @@ interface PublicInvoiceData {
     iban: string | null;
     bic: string | null;
   } | null;
+}
+
+function PublicPayAccountActions() {
+  const { t } = useTranslation("common");
+
+  return (
+    <div className="pt-4 space-y-3 text-left">
+      <p className="text-sm text-muted-foreground">{t("invoice.paidPrivacyMessage")}</p>
+      <div className="flex flex-col sm:flex-row gap-2 justify-center">
+        <Link to="/app/auth">
+          <Button variant="default" className="gap-2 w-full sm:w-auto">
+            <LogIn className="h-4 w-4" />
+            {t("invoice.publicPayLogIn")}
+          </Button>
+        </Link>
+        <Link to="/app/forgot-password">
+          <Button variant="outline" className="gap-2 w-full sm:w-auto">
+            <KeyRound className="h-4 w-4" />
+            {t("invoice.publicPayForgotPassword")}
+          </Button>
+        </Link>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("invoice.publicPayForgotPasswordHint")}</p>
+    </div>
+  );
 }
 
 function PostPaymentCTA({ playerName, playerEmail, playerId }: { playerName?: string; playerEmail?: string | null; playerId?: string | null }) {
@@ -322,43 +350,8 @@ export default function PublicInvoicePay() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPaid, setIsPaid] = useState(false);
+  const [isCancelled, setIsCancelled] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
-  const [downloadLoading, setDownloadLoading] = useState(false);
-
-  const handleDownloadPaid = async () => {
-    if (!token) return;
-    setDownloadLoading(true);
-    try {
-      const { data: result, error: fnError } = await supabase.functions.invoke("get-public-invoice", {
-        body: { publicToken: token, action: "download" },
-      });
-      if (fnError) throw fnError;
-      if (!result?.ready) {
-        toast.message(t("invoice.invoicePending"));
-        return;
-      }
-      if (!result.pdfUrl) {
-        toast.error(t("invoice.invoiceFailed"));
-        return;
-      }
-      const response = await fetch(result.pdfUrl);
-      if (!response.ok) throw new Error("download failed");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${result.invoiceNumber || "invoice"}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Public invoice download failed", err);
-      toast.error(t("invoice.invoiceFailed"));
-    } finally {
-      setDownloadLoading(false);
-    }
-  };
 
   // Pin language to the URL locale segment so the page matches the email link's language
   useEffect(() => {
@@ -385,17 +378,21 @@ export default function PublicInvoicePay() {
         setIsPaid(true);
         return;
       }
+      if (loadError === "cancelled") {
+        setIsCancelled(true);
+        return;
+      }
       if (loadError) {
         setError(loadError);
         return;
       }
 
-      if (fnError || !result?.invoice) {
+      if (fnError || !isPublicInvoiceDetailPayload(result)) {
         setError("not_found");
         return;
       }
 
-      setData(result);
+      setData(result as PublicInvoiceData);
     } catch {
       setError("not_found");
     } finally {
@@ -467,22 +464,22 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentReceived")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentReceivedDescription")}</p>
-            <div className="pt-2">
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={handleDownloadPaid}
-                disabled={downloadLoading}
-              >
-                {downloadLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {downloadLoading ? t("invoice.downloadingInvoice") : t("invoice.downloadInvoice")}
-              </Button>
-            </div>
-            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} playerId={data?.invoice.playerId} />
+            <PublicPayAccountActions />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isCancelled) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <SEO title={t("invoice.invoiceCancelledTitle")} description={t("invoice.invoiceCancelledDescription")} noIndex={true} />
+        <Card className="max-w-md w-full">
+          <CardContent className="py-12 text-center space-y-4">
+            <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto" />
+            <h1 className="text-2xl font-bold">{t("invoice.invoiceCancelledTitle")}</h1>
+            <p className="text-muted-foreground">{t("invoice.invoiceCancelledDescription")}</p>
           </CardContent>
         </Card>
       </div>
@@ -517,10 +514,15 @@ export default function PublicInvoicePay() {
               title: t("invoice.draftNotSent"),
               description: t("invoice.draftNotSentDescription"),
             }
-          : {
-              title: t("invoice.invoiceNotFound"),
-              description: t("invoice.invoiceNotFoundDescription"),
-            };
+          : error === "cancelled"
+            ? {
+                title: t("invoice.invoiceCancelledTitle"),
+                description: t("invoice.invoiceCancelledDescription"),
+              }
+            : {
+                title: t("invoice.invoiceNotFound"),
+                description: t("invoice.invoiceNotFoundDescription"),
+              };
 
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">

@@ -1,4 +1,11 @@
 /** Maps get-public-invoice invoke results to UI error codes. */
+
+export type PublicInvoiceLoadResult = {
+  status?: string;
+  error?: string;
+  invoice?: unknown;
+} | null;
+
 export type PublicInvoiceErrorCode =
   | 'not_found'
   | 'unavailable'
@@ -12,9 +19,11 @@ function getFnErrorStatus(fnError: unknown): number | undefined {
 }
 
 export function resolvePublicInvoiceLoadError(
-  result: { error?: string; invoice?: unknown } | null,
+  result: PublicInvoiceLoadResult,
   fnError: unknown,
 ): PublicInvoiceErrorCode | null {
+  if (result?.status === 'paid') return 'already_paid';
+  if (result?.status === 'cancelled') return 'cancelled';
   if (result?.error === 'already_paid') return 'already_paid';
   if (result?.error === 'cancelled') return 'cancelled';
   if (result?.error === 'draft_invoice') return 'draft_invoice';
@@ -24,4 +33,11 @@ export function resolvePublicInvoiceLoadError(
     return 'not_found';
   }
   return null;
+}
+
+/** True when the API returned a full unpaid invoice payload. */
+export function isPublicInvoiceDetailPayload(
+  result: PublicInvoiceLoadResult,
+): result is { invoice: unknown } {
+  return !!result && typeof result === 'object' && 'invoice' in result && result.invoice != null;
 }
