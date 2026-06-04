@@ -111,6 +111,7 @@ describe('PlayerBookings smoke', () => {
     );
 
     await waitFor(() => {
+      expect(screen.getByTestId('page-player-bookings')).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'My Bookings' })).toBeInTheDocument();
     });
     expect(screen.getByRole('tab', { name: /Invoices/i })).toBeInTheDocument();

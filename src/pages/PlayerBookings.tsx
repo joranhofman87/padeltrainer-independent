@@ -18,6 +18,10 @@ import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
 import { downloadIcsFile } from '@/lib/icsGenerator';
 import { PlayerAttendanceForm } from '@/components/attendance/PlayerAttendanceForm';
+import { AppPage } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
+import { surfaceCardClass } from '@/components/ui/app-page';
+import { cn } from '@/lib/utils';
 
 interface BookingWithDetails {
   id: string;
@@ -233,34 +237,35 @@ export default function PlayerBookings() {
 
   if (loading || loadingBookings) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }
 
+  const calendarAction =
+    upcomingBookings.length > 0 ? (
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-2"
+        onClick={() => handleDownloadCalendar(upcomingBookings)}
+      >
+        <CalendarPlus className="h-4 w-4" />
+        {t('bookings.addToCalendar', 'Add to Calendar')}
+      </Button>
+    ) : undefined;
+
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t('bookings.title')}</h1>
-          <p className="text-muted-foreground">{t('bookings.subtitle')}</p>
-        </div>
-        {upcomingBookings.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => handleDownloadCalendar(upcomingBookings)}
-          >
-            <CalendarPlus className="h-4 w-4" />
-            {t('bookings.addToCalendar', 'Add to Calendar')}
-          </Button>
-        )}
-      </div>
-      
+    <AppPage as="main" data-testid="page-player-bookings">
+      <PageHeader
+        title={t('bookings.title')}
+        description={t('bookings.subtitle')}
+        actions={calendarAction}
+      />
+
       <Tabs defaultValue="upcoming">
-        <TabsList className="mb-6">
+        <TabsList className="mb-4 flex w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="upcoming">
             {t('bookings.tabs.upcoming')} ({upcomingBookings.length})
           </TabsTrigger>
@@ -275,7 +280,7 @@ export default function PlayerBookings() {
 
           <TabsContent value="upcoming">
             {upcomingBookings.length === 0 ? (
-              <Card className="p-12 text-center">
+              <Card className={cn(surfaceCardClass(), 'p-12 text-center')}>
                 <div className="text-6xl mb-4">📅</div>
                 <h3 className="text-xl font-semibold mb-2">{t('bookings.noUpcoming')}</h3>
                 <p className="text-muted-foreground mb-6">
@@ -288,8 +293,8 @@ export default function PlayerBookings() {
             ) : (
               <div className="space-y-4">
                 {upcomingBookings.map((booking) => (
-                  <Card key={booking.id}>
-                    <CardContent className="p-6">
+                  <Card key={booking.id} className={surfaceCardClass()}>
+                    <CardContent className="p-5 sm:p-6">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="space-y-2">
                           <div className="flex items-center gap-3">
@@ -347,7 +352,7 @@ export default function PlayerBookings() {
 
           <TabsContent value="past">
             {pastBookings.length === 0 ? (
-              <Card className="p-8 text-center">
+              <Card className={cn(surfaceCardClass(), 'p-10 text-center')}>
                 <p className="text-muted-foreground">{t('bookings.noPast')}</p>
               </Card>
             ) : (
@@ -356,7 +361,7 @@ export default function PlayerBookings() {
                   const canReview = booking.status === 'completed' && !booking.hasReview;
                   
                   return (
-                    <Card key={booking.id} className="opacity-90">
+                    <Card key={booking.id} className={cn(surfaceCardClass(), 'opacity-95')}>
                       <CardContent className="p-6">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div className="space-y-2">
@@ -437,6 +442,6 @@ export default function PlayerBookings() {
             {profile?.id && <PlayerInvoicesTab profileId={profile.id} />}
           </TabsContent>
       </Tabs>
-    </main>
+    </AppPage>
   );
 }

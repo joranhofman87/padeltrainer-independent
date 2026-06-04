@@ -12,6 +12,9 @@ import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Users, Bell, BellOff, UserMinus, MapPin } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
+import { AppPage, surfaceCardClass } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
+import { cn } from '@/lib/utils';
 
 interface FollowedTrainer {
   id: string;
@@ -172,23 +175,21 @@ export default function FollowingList() {
 
   if (loading || dataLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-2xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">{t('followingList.title')}</h1>
-        <p className="text-muted-foreground">
-          {t('followingList.subtitle')}
-        </p>
-      </div>
+    <AppPage width="narrow" as="main" data-testid="page-player-following">
+      <PageHeader
+        title={t('followingList.title')}
+        description={t('followingList.subtitle')}
+      />
 
         {following.length === 0 ? (
-          <Card className="p-8 text-center">
+          <Card className={cn(surfaceCardClass(), 'p-10 text-center')}>
             <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
             <h3 className="font-semibold mb-2">{t('followingList.notFollowingYet')}</h3>
             <p className="text-muted-foreground mb-4">
@@ -199,8 +200,8 @@ export default function FollowingList() {
         ) : (
           <div className="space-y-4">
             {following.map((trainer) => (
-              <Card key={trainer.id}>
-                <CardContent className="p-4">
+              <Card key={trainer.id} className={surfaceCardClass()}>
+                <CardContent className="p-5">
                   <div className="flex items-center gap-4">
                     <Avatar
                       className="h-14 w-14 cursor-pointer"
@@ -264,6 +265,6 @@ export default function FollowingList() {
           {t('followingList.findMore')}
         </Button>
       </div>
-    </main>
+    </AppPage>
   );
 }

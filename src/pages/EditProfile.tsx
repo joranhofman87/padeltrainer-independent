@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { AppPage } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
@@ -50,6 +52,8 @@ interface TrainerProfileData {
 export default function EditProfile() {
   const { user, profile, role, loading, refreshAuth, subscription } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isPlayerProfileRoute = location.pathname.startsWith('/app/player/profile');
   const { toast } = useToast();
   const { t } = useTranslation('player');
   const { t: tTrainer } = useTranslation('trainer');
@@ -478,25 +482,14 @@ export default function EditProfile() {
     return acc;
   }, {} as Record<string, RatingSystemConfig[]>);
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <span className="font-bold text-xl">{t('editProfile.title')}</span>
-          </div>
-          <Button onClick={handleSubmit} disabled={saving}>
-            <Save className="h-4 w-4 mr-2" />
-            {saving ? t('editProfile.saving') : t('editProfile.save')}
-          </Button>
-        </div>
-      </header>
+  const saveButton = (
+    <Button onClick={handleSubmit} disabled={saving}>
+      <Save className="h-4 w-4 mr-2" />
+      {saving ? t('editProfile.saving') : t('editProfile.save')}
+    </Button>
+  );
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
+  const profileForm = (
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Visibility Toggle (trainers only) */}
           {role === 'trainer' && (
@@ -1076,9 +1069,9 @@ export default function EditProfile() {
             {saving ? t('editProfile.saving') : t('editProfile.saveChanges')}
           </Button>
         </form>
-      </main>
+  );
 
-      {/* Upgrade Dialog */}
+  const upgradeDialog = (
       <Dialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
         <DialogContent>
           <DialogHeader>
@@ -1100,6 +1093,47 @@ export default function EditProfile() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+  );
+
+  if (isPlayerProfileRoute) {
+    return (
+      <AppPage width="form" as="main" data-testid="page-player-edit-profile" className="space-y-6">
+        <PageHeader
+          title={t('editProfile.title')}
+          actions={
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              {saveButton}
+            </div>
+          }
+        />
+        {profileForm}
+        {upgradeDialog}
+      </AppPage>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+        <div className="container mx-auto flex items-center justify-between px-4 py-4">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <span className="text-xl font-bold">{t('editProfile.title')}</span>
+          </div>
+          {saveButton}
+        </div>
+      </header>
+
+      <main className="container mx-auto max-w-2xl px-4 py-8">
+        {profileForm}
+      </main>
+
+      {upgradeDialog}
     </div>
   );
 }

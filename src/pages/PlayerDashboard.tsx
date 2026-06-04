@@ -5,7 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Search, Calendar, User, ChevronRight, Clock, Users, ArrowRight, Building2 } from 'lucide-react';
+import { Search, Calendar, User, ChevronRight, Clock, Users, ArrowRight, Building2, FileText } from 'lucide-react';
+import { AppPage, surfaceCardClass } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
+import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
@@ -273,8 +276,8 @@ export default function PlayerDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }
@@ -292,23 +295,22 @@ export default function PlayerDashboard() {
     }
   };
 
-  return (
-    <main className="mx-auto w-full max-w-7xl space-y-6" data-testid="page-player-dashboard">
-      <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          {t('dashboard.welcome', { name: profile?.full_name?.split(' ')[0] || 'Player' })}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('dashboard.subtitle')}
-        </p>
-      </div>
+  const quickActionCardClass = cn(
+    surfaceCardClass(),
+    'cursor-pointer transition-colors hover:bg-muted/30',
+  );
 
-      {/* Pending Attendance Actions */}
+  return (
+    <AppPage as="main" data-testid="page-player-dashboard">
+      <PageHeader
+        title={t('dashboard.welcome', { name: profile?.full_name?.split(' ')[0] || 'Player' })}
+        description={t('dashboard.subtitle')}
+      />
+
       <PendingAttendanceCard mode="player" profileId={profileId ?? undefined} />
 
-      {/* Rating History Chart */}
       {profile?.id && (
-      <RatingHistoryChart
+        <RatingHistoryChart
           profileId={profile.id}
           currentRating={profile.skill_rating ?? null}
           ratingSystem={(profile as any)?.rating_system || 'knltb'}
@@ -316,67 +318,86 @@ export default function PlayerDashboard() {
         />
       )}
 
-      {/* Quick Action Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Primary shortcuts: bookings + invoices */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Card
-          className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-          onClick={() => navigate(getMarketingPath('trainers'))}
-        >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Search className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="font-semibold">{t('dashboard.quickActions.findTrainers.title')}</p>
-                <p className="text-sm text-muted-foreground">{t('dashboard.browseAvailableTrainers')}</p>
-              </div>
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          </CardContent>
-        </Card>
-
-        <Card
-          className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+          className={quickActionCardClass}
+          data-testid="dashboard-shortcut-bookings"
           onClick={() => navigate('/app/player/bookings')}
         >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/10">
+          <CardContent className="flex items-center justify-between p-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-green-500/10 p-2.5">
                 <Calendar className="h-5 w-5 text-green-600" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="font-semibold">{t('dashboard.quickActions.myBookings.title')}</p>
                 <p className="text-sm text-muted-foreground">{t('dashboard.viewSchedule')}</p>
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </CardContent>
         </Card>
 
         <Card
-          className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-          onClick={() => navigate('/app/player/profile')}
+          className={quickActionCardClass}
+          data-testid="dashboard-shortcut-invoices"
+          onClick={() => navigate('/app/player/invoices')}
         >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-500/10">
-                <User className="h-5 w-5 text-orange-600" />
+          <CardContent className="flex items-center justify-between p-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-blue-500/10 p-2.5">
+                <FileText className="h-5 w-5 text-blue-600" />
               </div>
-              <div>
-                <p className="font-semibold">{t('dashboard.myProfile.title')}</p>
-                <p className="text-sm text-muted-foreground">{t('dashboard.myProfile.description')}</p>
+              <div className="min-w-0">
+                <p className="font-semibold">{t('nav.invoices', 'Invoices')}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t('invoices.description', 'View and download invoices for your training sessions.')}
+                </p>
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </CardContent>
         </Card>
       </div>
 
-      {/* Activity Tables Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Upcoming Bookings */}
-        <Card>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Card
+          className={quickActionCardClass}
+          onClick={() => navigate(getMarketingPath('trainers'))}
+        >
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-primary/10 p-2">
+                <Search className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold">{t('dashboard.quickActions.findTrainers.title')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard.browseAvailableTrainers')}</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </CardContent>
+        </Card>
+
+        <Card className={quickActionCardClass} onClick={() => navigate('/app/player/profile')}>
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-orange-500/10 p-2">
+                <User className="h-5 w-5 text-orange-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold">{t('dashboard.myProfile.title')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard.myProfile.description')}</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <Card className={surfaceCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -388,14 +409,15 @@ export default function PlayerDashboard() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4 pt-0">
             {statsLoading ? (
-              <div className="flex justify-center py-6">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+              <div className="flex justify-center py-8">
+                <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-primary" />
               </div>
             ) : upcomingBookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.noUpcomingBookings')}</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">{t('dashboard.noUpcomingBookings')}</p>
             ) : (
+              <div className="overflow-x-auto -mx-1">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -424,12 +446,12 @@ export default function PlayerDashboard() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Followed Trainers */}
-        <Card>
+        <Card className={surfaceCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -441,14 +463,15 @@ export default function PlayerDashboard() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4 pt-0">
             {followingLoading ? (
-              <div className="flex justify-center py-6">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+              <div className="flex justify-center py-8">
+                <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-primary" />
               </div>
             ) : followedTrainers.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.notFollowingYet')}</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">{t('dashboard.notFollowingYet')}</p>
             ) : (
+              <div className="overflow-x-auto -mx-1">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -481,12 +504,12 @@ export default function PlayerDashboard() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Open Slots from Followed Trainers */}
-        <Card>
+        <Card className={surfaceCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -546,8 +569,7 @@ export default function PlayerDashboard() {
           </CardContent>
         </Card>
 
-        {/* My Clubs */}
-        <Card>
+        <Card className={surfaceCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -603,14 +625,13 @@ export default function PlayerDashboard() {
           </CardContent>
         </Card>
 
-        {/* Waiting List */}
-        <Card>
+        <Card className={surfaceCardClass()}>
           <CardContent className="p-0">
             <MyWaitingListEntries />
           </CardContent>
         </Card>
 
       </div>
-    </main>
+    </AppPage>
   );
 }

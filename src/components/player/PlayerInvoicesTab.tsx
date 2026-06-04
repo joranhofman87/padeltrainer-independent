@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import { clearSignupClaimSource, isPaidInvoiceClaimFlow } from '@/lib/signupClaimFlow';
+import { surfaceCardClass } from '@/components/ui/app-page';
+import { cn } from '@/lib/utils';
 import { trackInvoiceClaimOutcome } from '@/lib/invoiceClaimTracking';
 import { nl, enUS, es, de, fr, it } from 'date-fns/locale';
 
@@ -193,7 +195,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
   if (invoices.length === 0) {
     const claimEmpty = isPaidInvoiceClaimFlow();
     return (
-      <Card className="p-12 text-center" data-testid="player-invoices-empty">
+      <Card className={cn(surfaceCardClass(), 'p-12 text-center')} data-testid="player-invoices-empty">
         <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-xl font-semibold mb-2">{t('playerInvoices.empty.title')}</h3>
         <p className="text-muted-foreground" data-testid={claimEmpty ? 'player-invoices-empty-claim' : undefined}>
@@ -209,8 +211,8 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
     <>
       <div className="space-y-4">
         {invoices.map((invoice) => (
-          <Card key={invoice.id}>
-            <CardContent className="p-4 sm:p-6">
+          <Card key={invoice.id} className={surfaceCardClass()}>
+            <CardContent className="p-5 sm:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">

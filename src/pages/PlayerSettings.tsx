@@ -7,6 +7,9 @@ import { useTranslation } from 'react-i18next';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { supabase } from '@/lib/supabaseClient';
+import { AppPage, surfaceCardClass } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
+import { cn } from '@/lib/utils';
 
 export default function PlayerSettings() {
   const { loading, user } = useAuth();
@@ -15,8 +18,8 @@ export default function PlayerSettings() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }
@@ -41,27 +44,22 @@ export default function PlayerSettings() {
   ];
 
   return (
-    <>
-      {/* Sub-page Header */}
-      <div className="border-b bg-background/60">
-        <div className="mx-auto flex w-full max-w-7xl items-center gap-4 py-3">
+    <AppPage width="form" as="main" data-testid="page-player-settings">
+      <PageHeader
+        title={t('settings.title', 'Settings')}
+        description={t('settings.subtitle', 'Manage your account settings')}
+        actions={
           <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/player')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight">{t('settings.title', 'Settings')}</h1>
-            <p className="text-sm text-muted-foreground">{t('settings.subtitle', 'Manage your account settings')}</p>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Main Content */}
-      <main className="mx-auto w-full max-w-4xl py-6">
-        <div className="grid gap-4 md:grid-cols-2" data-testid="page-player-settings">
+      <div className="grid gap-4 md:grid-cols-2">
           {settingsItems.map((item) => (
             <Card
               key={item.route}
-              className="cursor-pointer transition-colors hover:bg-muted/30"
+              className={cn(surfaceCardClass(), 'cursor-pointer transition-colors hover:bg-muted/30')}
               onClick={() => navigate(item.route)}
             >
               <CardHeader className="pb-2">
@@ -79,9 +77,8 @@ export default function PlayerSettings() {
           ))}
         </div>
 
-        {/* Language Setting */}
-        <div className="max-w-4xl mt-6">
-          <Card>
+        <div className="mt-6">
+          <Card className={surfaceCardClass()}>
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-indigo-500/10">
@@ -116,12 +113,10 @@ export default function PlayerSettings() {
           </Card>
         </div>
 
-        {/* Danger Zone */}
-        <div className="max-w-4xl mt-8 pt-6 border-t border-destructive/20">
+        <div className="mt-8 border-t border-destructive/20 pt-6">
           <h3 className="text-lg font-semibold text-destructive mb-4">{t('settings.dangerZone', 'Danger Zone')}</h3>
           <DeleteAccountDialog />
         </div>
-      </main>
-    </>
+    </AppPage>
   );
 }

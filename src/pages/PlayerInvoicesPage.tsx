@@ -3,6 +3,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
+import { AppPage } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   markPaidInvoiceClaimToastShown,
   shouldShowPaidInvoiceClaimToast,
@@ -41,19 +43,17 @@ export default function PlayerInvoicesPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-6" data-testid="page-player-invoices">
-      <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">{t('invoices.title', 'Invoices')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('invoices.description', 'View and download invoices for your training sessions.')}
-        </p>
-      </div>
+    <AppPage as="main" data-testid="page-player-invoices">
+      <PageHeader
+        title={t('invoices.title', 'Invoices')}
+        description={t('invoices.description', 'View and download invoices for your training sessions.')}
+      />
 
       {profile?.id ? (
         <PlayerInvoicesTab profileId={profile.id} />
       ) : (
-        <p className="text-muted-foreground text-sm">{t('playerInvoices.loadError')}</p>
+        <p className="text-sm text-muted-foreground">{t('playerInvoices.loadError')}</p>
       )}
-    </main>
+    </AppPage>
   );
 }

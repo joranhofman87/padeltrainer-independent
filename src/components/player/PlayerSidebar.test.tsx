@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { PlayerSidebar } from './PlayerSidebar';
+import { isPlayerNavItemActive, PLAYER_PRIMARY_NAV } from '@/components/player/playerSidebarNav';
 
 vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
@@ -45,9 +46,9 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-function renderSidebar() {
+function renderSidebar(path: string) {
   return render(
-    <MemoryRouter initialEntries={['/app/player']}>
+    <MemoryRouter initialEntries={[path]}>
       <SidebarProvider>
         <PlayerSidebar />
       </SidebarProvider>
@@ -56,19 +57,31 @@ function renderSidebar() {
 }
 
 describe('PlayerSidebar', () => {
-  it('includes invoices nav link to /app/player/invoices', () => {
-    renderSidebar();
+  it('includes invoices and bookings nav links', () => {
+    renderSidebar('/app/player');
 
-    const link = screen.getByTestId('nav-player-invoices');
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute('href', '/app/player/invoices');
-    expect(link.textContent).toMatch(/invoices/i);
+    expect(screen.getByTestId('nav-player-invoices')).toHaveAttribute('href', '/app/player/invoices');
+    expect(screen.getByTestId('nav-player-bookings')).toHaveAttribute('href', '/app/player/bookings');
   });
 
-  it('keeps bookings nav link', () => {
-    renderSidebar();
+  it('marks invoices link active on invoices route', () => {
+    renderSidebar('/app/player/invoices');
 
-    const bookings = screen.getByTestId('nav-player-bookings');
-    expect(bookings).toHaveAttribute('href', '/app/player/bookings');
+    const link = screen.getByTestId('nav-player-invoices');
+    expect(link).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('marks dashboard active only on exact dashboard path', () => {
+    renderSidebar('/app/player/bookings');
+    expect(screen.getByTestId('nav-player-dashboard')).not.toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('nav-player-bookings')).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+describe('isPlayerNavItemActive', () => {
+  it('uses end match for dashboard', () => {
+    const dashboard = PLAYER_PRIMARY_NAV.find((i) => i.id === 'dashboard')!;
+    expect(isPlayerNavItemActive('/app/player', dashboard)).toBe(true);
+    expect(isPlayerNavItemActive('/app/player/bookings', dashboard)).toBe(false);
   });
 });

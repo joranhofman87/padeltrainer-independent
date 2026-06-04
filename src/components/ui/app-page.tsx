@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export type AppPageWidth = 'default' | 'narrow' | 'form' | 'wide';
@@ -14,19 +14,22 @@ const widthClass: Record<AppPageWidth, string> = {
  * Standard app page shell: max width, vertical rhythm, no extra horizontal padding
  * (role layouts provide p-4 md:p-6).
  */
+type AppPageProps = {
+  children: ReactNode;
+  className?: string;
+  width?: AppPageWidth;
+  as?: 'div' | 'main';
+} & Omit<ComponentPropsWithoutRef<'div'>, 'className' | 'children'>;
+
 export function AppPage({
   children,
   className,
   width = 'default',
   as: Component = 'div',
-}: {
-  children: ReactNode;
-  className?: string;
-  width?: AppPageWidth;
-  as?: 'div' | 'main';
-}) {
+  ...rest
+}: AppPageProps) {
   return (
-    <Component className={cn('mx-auto w-full space-y-6', widthClass[width], className)}>
+    <Component className={cn('mx-auto w-full space-y-6', widthClass[width], className)} {...rest}>
       {children}
     </Component>
   );
