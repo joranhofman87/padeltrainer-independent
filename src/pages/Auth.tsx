@@ -20,6 +20,10 @@ import { supabase } from '@/lib/supabaseClient';
 import { trackEvent } from '@/lib/tracking';
 import { logger } from '@/lib/logger';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
+import {
+  sanitizeAppRedirect,
+  SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY,
+} from '@/lib/signupClaimFlow';
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
@@ -112,13 +116,15 @@ export default function Auth() {
         // Existing user with role - clear any stale pendingRole and redirect
         localStorage.removeItem('pendingRole');
         
-        const onboardingRedirect = localStorage.getItem('redirectAfterOnboarding');
-        
+        const onboardingRedirect = sanitizeAppRedirect(
+          localStorage.getItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY),
+        );
+
         if (redirectUrl) {
           sessionStorage.removeItem('redirectAfterLogin');
           navigate(redirectUrl);
         } else if (onboardingRedirect) {
-          localStorage.removeItem('redirectAfterOnboarding');
+          localStorage.removeItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY);
           navigate(onboardingRedirect);
         } else {
           const routeByRole = async () => {
@@ -173,7 +179,8 @@ export default function Auth() {
               // Positively confirmed: no roles in DB — complete OAuth signup if pendingRole set
               if (redirectUrl) {
                 sessionStorage.removeItem('redirectAfterLogin');
-                localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+                const safe = sanitizeAppRedirect(redirectUrl);
+                if (safe) localStorage.setItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY, safe);
               }
               const pendingRole = localStorage.getItem('pendingRole');
               if (pendingRole && isSignupRole(pendingRole)) {

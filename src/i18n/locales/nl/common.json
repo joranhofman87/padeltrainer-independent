@@ -314,6 +314,7 @@
     "invoiceCancelledDescription": "Deze factuur is geannuleerd. Factuurgegevens zijn niet meer beschikbaar via deze openbare link.",
     "publicPayLogIn": "Inloggen",
     "publicPayCreateAccount": "Account aanmaken",
+    "publicPayClaimAccount": "Account claimen",
     "publicPaySignupHelper": "Als je PadelTrainer voor het eerst gebruikt, maak een account aan met het e-mailadres van je boeking of factuur. We koppelen je facturen na registratie wanneer het e-mailadres overeenkomt.",
     "publicPayForgotPasswordNote": "Heb je al een account maar ben je je wachtwoord vergeten? Gebruik de optie wachtwoord resetten op de inlogpagina.",
     "invoiceNotFound": "Factuur niet gevonden",

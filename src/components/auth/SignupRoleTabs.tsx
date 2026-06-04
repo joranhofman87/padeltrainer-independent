@@ -1,6 +1,9 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { buildSignupRolePath } from '@/lib/signupClaimFlow';
+
+export { buildSignupRolePath };
 
 const ROLES = [
   { key: 'trainer', path: '/app/signup/trainer', testId: 'signup-tab-trainer' },
@@ -10,10 +13,6 @@ const ROLES = [
 ] as const;
 
 export type SignupRoleKey = (typeof ROLES)[number]['key'];
-
-export function buildSignupRolePath(base: string, redirect: string | null): string {
-  return redirect ? `${base}?redirect=${encodeURIComponent(redirect)}` : base;
-}
 
 interface SignupRoleTabsProps {
   /** When omitted (e.g. /app/signup hub), all roles render as links. */
@@ -25,6 +24,8 @@ export function SignupRoleTabs({ activeRole, className }: SignupRoleTabsProps) {
   const { t } = useTranslation('auth');
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect');
+  const source = searchParams.get('source');
+  const tabQuery = { redirect, source };
 
   return (
     <div
@@ -38,7 +39,7 @@ export function SignupRoleTabs({ activeRole, className }: SignupRoleTabsProps) {
       {ROLES.map(({ key, path, testId }) => {
         const isActive = activeRole != null && key === activeRole;
         const label = t(`signupPicker.roles.${key}.title`);
-        const href = buildSignupRolePath(path, redirect);
+        const href = buildSignupRolePath(path, tabQuery);
 
         if (isActive) {
           return (

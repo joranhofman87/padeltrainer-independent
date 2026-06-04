@@ -105,18 +105,24 @@ describe('TrainerSignup', () => {
   });
 
   it('preserves redirect query on role tab links', () => {
-    renderPage('/app/signup/trainer?redirect=%2Finvite%2Fabc');
+    renderPage('/app/signup/trainer?redirect=%2Fapp%2Finvite%2Fabc');
     expect(screen.getByTestId('signup-tab-player')).toHaveAttribute(
       'href',
-      '/app/signup/player?redirect=%2Finvite%2Fabc',
+      '/app/signup/player?redirect=%2Fapp%2Finvite%2Fabc',
     );
   });
 
-  it('buildSignupRolePath encodes redirect param', () => {
-    expect(buildSignupRolePath('/app/signup/player', '/invite/abc')).toBe(
-      '/app/signup/player?redirect=%2Finvite%2Fabc',
+  it('buildSignupRolePath encodes redirect and source params', () => {
+    expect(buildSignupRolePath('/app/signup/player', { redirect: '/app/invite/abc' })).toBe(
+      '/app/signup/player?redirect=%2Fapp%2Finvite%2Fabc',
     );
-    expect(buildSignupRolePath('/app/signup/player', null)).toBe('/app/signup/player');
+    expect(
+      buildSignupRolePath('/app/signup/trainer', {
+        source: 'paid_invoice',
+        redirect: '/app/player/invoices',
+      }),
+    ).toBe('/app/signup/trainer?source=paid_invoice&redirect=%2Fapp%2Fplayer%2Finvoices');
+    expect(buildSignupRolePath('/app/signup/player', {})).toBe('/app/signup/player');
   });
 
   it('has a Google OAuth button', () => {

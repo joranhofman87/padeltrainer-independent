@@ -364,7 +364,12 @@
     "loadError": "Could not load invoices",
     "empty": {
       "title": "No invoices",
-      "description": "You haven't received any invoices from trainers yet."
+      "description": "You haven't received any invoices from trainers yet.",
+      "claimDescription": "No invoices found yet. Make sure you signed up with the same email address used on your invoice."
+    },
+    "claimToast": {
+      "title": "Your invoices",
+      "description": "If you used the same email address as your invoice, your invoices should appear here."
     },
     "status": {
       "draft": "Draft",

@@ -22,6 +22,30 @@ export function mockSignupLocalStorage() {
   return store;
 }
 
+/** Vitest/jsdom may lack sessionStorage; claim-flow toasts use it once per session. */
+export function mockSessionStorage() {
+  const store: Record<string, string> = {};
+  vi.stubGlobal('sessionStorage', {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      Object.keys(store).forEach((k) => delete store[k]);
+    },
+    key: () => null,
+    length: 0,
+  });
+  return store;
+}
+
+export function mockBrowserStorage() {
+  return { local: mockSignupLocalStorage(), session: mockSessionStorage() };
+}
+
 export type SignupPageRole = SignupRole;
 
 export const SIGNUP_ROUTES: Record<SignupPageRole, string> = {

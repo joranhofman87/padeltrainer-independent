@@ -298,6 +298,7 @@
     "invoiceCancelledDescription": "Cette facture a été annulée. Les détails ne sont plus disponibles via ce lien public.",
     "publicPayLogIn": "Se connecter",
     "publicPayCreateAccount": "Créer un compte",
+    "publicPayClaimAccount": "Récupérer votre compte",
     "publicPaySignupHelper": "Si c'est votre première visite sur PadelTrainer, créez un compte avec l'e-mail utilisé pour votre réservation ou facture. Nous lierons vos factures après l'inscription si l'e-mail correspond.",
     "publicPayForgotPasswordNote": "Vous avez déjà un compte mais avez oublié votre mot de passe ? Utilisez l'option de réinitialisation sur la page de connexion.",
     "invoiceNotFound": "Facture introuvable",
