@@ -523,6 +523,15 @@
       "deleteInvoice": "Verwijderen",
       "cancelInvoice": "Annuleren"
     },
+    "customer": {
+      "title": "Klant",
+      "searchPlayer": "Speler zoeken…",
+      "loadingPlayers": "Spelers laden…",
+      "noPlayersFound": "Geen speler gevonden.",
+      "linkedToPlayer": "Gekoppeld aan {{name}}",
+      "useOneTimeCustomer": "Eenmalige klant gebruiken",
+      "linkExistingPlayer": "Koppelen aan bestaande speler"
+    },
     "receiver": {
       "title": "Ontvanger",
       "name": "Naam",

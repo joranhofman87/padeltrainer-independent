@@ -238,18 +238,18 @@
       "id": "TEST-009",
       "category": "functional",
       "feature": "Signup page",
-      "title": "Signup role picker renders all roles",
-      "description": "Verify the signup role selection page shows all role options",
+      "title": "/app/signup redirects to trainer signup",
+      "description": "Verify /app/signup redirects to trainer signup with role tabs",
       "preconditions": [
         "Not logged in"
       ],
       "steps": [
         "Step 1: Navigate to /app/signup",
         "Step 2: Wait for page to load",
-        "Step 3: Check for role cards"
+        "Step 3: Confirm URL is /app/signup/trainer"
       ],
-      "expected_result": "All role options are visible",
-      "pass_criteria": "Elements with data-testid='page-signup-role-picker', 'signup-role-player', 'signup-role-trainer' are visible",
+      "expected_result": "Trainer signup page is shown with role tabs",
+      "pass_criteria": "URL contains /app/signup/trainer and elements with data-testid='page-signup-trainer', 'signup-tab-trainer' are visible",
       "status": "passed",
       "passed": true,
       "fix_attempts": 0,

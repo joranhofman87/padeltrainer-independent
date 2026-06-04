@@ -20,6 +20,7 @@ import {
   Download,
 } from 'lucide-react';
 import { downloadInvoicePdf } from '@/lib/downloadInvoicePdf';
+import { getAcademyCreateInvoiceUrl } from '@/lib/invoiceCustomer';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
@@ -398,10 +399,10 @@ export default function AcademyPlayerDetail() {
       {/* Header */}
       <Card>
         <CardContent className="p-6 flex flex-col md:flex-row gap-6 md:items-center">
-          <Avatar className="h-20 w-20">
+          <Avatar className="h-20 w-20 shrink-0">
             <AvatarFallback className="text-xl">{initials || '?'}</AvatarFallback>
           </Avatar>
-          <div className="flex-1 space-y-2">
+          <div className="flex-1 space-y-2 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold">{player.full_name}</h1>
               <Badge variant="outline">
@@ -474,6 +475,16 @@ export default function AcademyPlayerDetail() {
               </div>
             )}
           </div>
+          {playerId && (
+            <div className="shrink-0 md:self-start">
+              <Button asChild data-testid="academy-player-create-invoice">
+                <Link to={getAcademyCreateInvoiceUrl(playerId)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  {t('players.detail.createInvoice', 'Create invoice')}
+                </Link>
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -1,0 +1,68 @@
+---
+description: Academy-first scheduling UX; extract shared business logic to src/lib for later trainer parity
+alwaysApply: true
+---
+
+# Academy scheduling first (reference UX)
+
+Finish the **academy scheduling experience** first and treat it as the reference UX. Do **not** immediately force trainer parity for every academy UI change.
+
+After academy scheduling is stable, run a **trainer parity audit** and copy/adapt the academy reference experience.
+
+## Before each academy scheduling change
+
+1. Classify the work: **UX** vs **business logic**.
+2. Implement accordingly (see below).
+3. Do not refactor trainer pages to match academy layout unless explicitly requested.
+
+## Academy-only for now (UX / layout)
+
+May stay under academy routes and academy-specific components until the parity audit:
+
+- Dashboard layout
+- Onboarding
+- Academy calendar layout (tabs, list view, filters, deep links)
+- Academy list/table UX
+- Academy settings UI
+- Academy public profile logic
+
+Paths/examples: `src/pages/academy/**`, academy-specific layout in `src/components/academy/**` when purely presentational.
+
+## Shared business logic (extract now)
+
+Must live in **`src/lib/`**, shared hooks, or shared components used by both surfaces when the rule is domain logic—not academy chrome.
+
+Includes:
+
+- Pricing calculation (`bookingPricing`, `pricing`, VAT display mapping)
+- Split payment calculation and rebalance rules
+- Booking insert rules and validation helpers
+- Guest player loading patterns (when not layout-specific)
+- Invoice creation/update logic (`invoiceAfterAddPlayer`, `affectedInvoices`, `invoiceUpdateChoice`, `applyAffectedInvoiceUpdates`, `invoiceSync` recalc policy)
+- Paid status aggregation (`cyclusGroupPayment`, calendar paid filters)
+- Cycle/group filtering helpers
+- RLS-sensitive query builders
+
+Trainer UI may keep its own layout but should **import** these helpers later—not duplicate formulas or invoice policy.
+
+## Shared trainer components (reuse, not parity)
+
+Components under `src/components/trainer/` that implement **domain flows** (e.g. `InlineBookPlayer`, `BookForPlayerDialog`) are acceptable shared surfaces when they encode business rules via `src/lib`. Academy may import them or wrap them; do not block academy work to restyle trainer first.
+
+## Invoice / booking policy (unchanged)
+
+- Draft invoices: auto-update.
+- Sent/pending/overdue: explicit admin confirmation before update.
+- Paid: never auto-update.
+- Cancelled: ignore.
+- €0 bookings: no invoice creation.
+
+## Anti-patterns
+
+- Copying academy calendar JSX into trainer pages “for parity” during an academy fix.
+- Duplicating pricing or invoice logic inside `src/pages/academy/**` handlers.
+- Changing trainer-only layout to match academy in the same PR as an academy UX tweak.
+
+## Trainer parity audit (later)
+
+When scheduled: compare academy reference flows to trainer calendar/slot detail; migrate UI using existing `src/lib` helpers; document gaps in a short audit note.

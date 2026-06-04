@@ -1,4 +1,5 @@
 -- P0 PR-1..PR-4 manual verification (run against staging / ficwb with appropriate role)
+-- Deploy notes + known edge case: docs/P0_PR1_PR4_NOTES.md
 -- Replace placeholders before running destructive checks.
 
 -- =============================================================================

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getAcademyPlayerProfilePath,
   getInvoiceRecipientKind,
+  getTrainerPlayerProfilePath,
   getTrainerPlayersListPath,
 } from './invoiceRecipient';
 
@@ -25,8 +26,9 @@ describe('invoiceRecipient helpers', () => {
   });
 
   it('builds trainer players list path when any player id exists', () => {
-    expect(getTrainerPlayersListPath('p1', null)).toBe('/app/trainer/players');
-    expect(getTrainerPlayersListPath(null, 'g1')).toBe('/app/trainer/players');
-    expect(getTrainerPlayersListPath(null, null)).toBeNull();
+    expect(getTrainerPlayerProfilePath('p1', null)).toBe('/app/trainer/players/p_p1');
+    expect(getTrainerPlayerProfilePath(null, 'g1')).toBe('/app/trainer/players/g_g1');
+    expect(getTrainerPlayerProfilePath(null, null)).toBeNull();
+    expect(getTrainerPlayersListPath('p1', null)).toBe('/app/trainer/players/p_p1');
   });
 });

@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -20,8 +20,22 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
-import { buildTrainerInvoiceGuestInsert } from '@/lib/invoiceGuestPlayerInsert';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
+import { InvoiceCustomerSection } from '@/components/invoices/InvoiceCustomerSection';
+import {
+  billingToReceiverFields,
+  parseInvoicePlayerIdParam,
+  type InvoicePlayerLink,
+  type InvoiceReceiverFormFields,
+} from '@/lib/invoiceCustomer';
+import {
+  buildInvoicePlayerAddress,
+  resolveInvoiceGuestPlayerId,
+} from '@/lib/invoiceCustomerInsert';
+import {
+  fetchInvoicePlayerForPrefill,
+  fetchTrainerInvoiceSelectablePlayers,
+} from '@/lib/invoiceSelectablePlayers';
 interface LineItem {
   description: string;
   quantity: number;
@@ -30,20 +44,32 @@ interface LineItem {
   vat_rate: number;
 }
 
+const emptyReceiver = (): InvoiceReceiverFormFields => ({
+  playerName: '',
+  playerBusinessName: '',
+  playerStreet: '',
+  playerZipCode: '',
+  playerCity: '',
+  playerBtwNumber: '',
+  playerEmail: '',
+});
+
 export default function TrainerCreateInvoice() {
   const { t, i18n } = useTranslation('common');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const dateFnsLocale = getDateFnsLocale(i18n.language);
 
-  const [playerName, setPlayerName] = useState('');
-  const [playerBusinessName, setPlayerBusinessName] = useState('');
-  const [playerStreet, setPlayerStreet] = useState('');
-  const [playerZipCode, setPlayerZipCode] = useState('');
-  const [playerCity, setPlayerCity] = useState('');
-  const [playerBtwNumber, setPlayerBtwNumber] = useState('');
-  const [playerEmail, setPlayerEmail] = useState('');
+  const [receiver, setReceiver] = useState<InvoiceReceiverFormFields>(emptyReceiver);
+  const [playerLink, setPlayerLink] = useState<InvoicePlayerLink>({
+    profileId: null,
+    guestPlayerId: null,
+    linkedDisplayName: null,
+  });
+  const [oneTimeMode, setOneTimeMode] = useState(false);
+  const [prefilledFromProfile, setPrefilledFromProfile] = useState(false);
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: 21 },
   ]);
@@ -68,6 +94,42 @@ export default function TrainerCreateInvoice() {
   });
 
   const trainerId = trainerProfile?.id;
+
+  const { data: selectablePlayers = [], isLoading: playersLoading } = useQuery({
+    queryKey: ['trainer-invoice-selectable-players', trainerId],
+    queryFn: () => fetchTrainerInvoiceSelectablePlayers(trainerId!),
+    enabled: !!trainerId,
+  });
+
+  useEffect(() => {
+    const parsed = parseInvoicePlayerIdParam(searchParams.get('playerId'));
+    if (!parsed || !trainerId) return;
+
+    let cancelled = false;
+    void (async () => {
+      const player = await fetchInvoicePlayerForPrefill(parsed, {
+        kind: 'trainer',
+        trainerId,
+      });
+      if (cancelled || !player) return;
+      setPlayerLink({
+        profileId: player.profileId,
+        guestPlayerId: player.guestPlayerId,
+        linkedDisplayName: player.full_name,
+      });
+      setReceiver(billingToReceiverFields(player));
+      setOneTimeMode(false);
+      setPrefilledFromProfile(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, trainerId]);
+
+  const patchReceiver = (patch: Partial<InvoiceReceiverFormFields>) => {
+    setReceiver((prev) => ({ ...prev, ...patch }));
+  };
 
   const updateLineItem = (index: number, field: keyof LineItem, value: string | number) => {
     setLineItems(prev => {
@@ -126,7 +188,7 @@ export default function TrainerCreateInvoice() {
 
   const handleSave = async () => {
     if (!trainerId) return;
-    if (!playerName.trim()) { toast.error(t('invoiceForm.receiver.nameRequiredError')); return; }
+    if (!receiver.playerName.trim()) { toast.error(t('invoiceForm.receiver.nameRequiredError')); return; }
     if (lineItems.length === 0 || lineItems.every(li => !li.description.trim())) { toast.error(t('invoiceForm.lineItems.minimumOneItemError')); return; }
 
     setSaving(true);
@@ -136,15 +198,17 @@ export default function TrainerCreateInvoice() {
       const includeYear = (trainerProfile as any)?.invoice_include_year ?? true;
       const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber, includeYear);
 
-      let guestPlayerId: string | null = null;
-      if (playerEmail.trim()) {
-        const { data: guestPlayer } = await supabase
-          .from('guest_players')
-          .insert(buildTrainerInvoiceGuestInsert(playerName, playerEmail, trainerId))
-          .select('id')
-          .single();
-        if (guestPlayer) guestPlayerId = guestPlayer.id;
-      }
+      const effectiveLink = oneTimeMode
+        ? { profileId: null, guestPlayerId: null, linkedDisplayName: null }
+        : playerLink;
+
+      const guestPlayerId = await resolveInvoiceGuestPlayerId({
+        playerLink: effectiveLink,
+        oneTimeMode,
+        receiver,
+        scope: 'trainer',
+        trainerId,
+      });
 
       const primaryVatRate = lineItems[0]?.vat_rate ?? 21;
       const updatedItems = lineItems.map(li => ({ ...li, amount: Math.round(li.quantity * li.unit_price * 100) / 100 }));
@@ -153,10 +217,11 @@ export default function TrainerCreateInvoice() {
         invoice_number: invoiceNumber,
         invoice_date: format(new Date(), 'yyyy-MM-dd'),
         due_date: format(dueDate, 'yyyy-MM-dd'),
-        player_name: playerName.trim(),
-        player_business_name: playerBusinessName.trim() || null,
-        player_address: [playerStreet.trim(), playerZipCode.trim(), playerCity.trim()].filter(Boolean).join('\n') || null,
-        player_btw_number: playerBtwNumber.trim() || null,
+        player_name: receiver.playerName.trim(),
+        player_business_name: receiver.playerBusinessName.trim() || null,
+        player_address: buildInvoicePlayerAddress(receiver),
+        player_btw_number: receiver.playerBtwNumber.trim() || null,
+        player_id: oneTimeMode ? null : playerLink.profileId,
         guest_player_id: guestPlayerId,
         trainer_id: trainerId,
         academy_profile_id: null,
@@ -200,21 +265,17 @@ export default function TrainerCreateInvoice() {
         </div>
       </div>
 
-      {/* Receiver */}
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">{t('invoiceForm.receiver.title')}</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div><Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.nameRequired')}</Label><Input value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder={t('invoiceForm.receiver.namePlaceholder')} /></div>
-            <div><Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.businessName')}</Label><Input value={playerBusinessName} onChange={(e) => setPlayerBusinessName(e.target.value)} placeholder={t('invoiceForm.receiver.businessNamePlaceholder')} /></div>
-            <div><Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.btwNumber')}</Label><Input value={playerBtwNumber} onChange={(e) => setPlayerBtwNumber(e.target.value)} placeholder={t('invoiceForm.receiver.btwNumberPlaceholder')} /></div>
-            <div className="sm:col-span-2"><Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.street')}</Label><Input value={playerStreet} onChange={(e) => setPlayerStreet(e.target.value)} placeholder={t('invoiceForm.receiver.streetPlaceholder')} /></div>
-            <div><Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.zipCode')}</Label><Input value={playerZipCode} onChange={(e) => setPlayerZipCode(e.target.value)} placeholder={t('invoiceForm.receiver.zipCodePlaceholder')} /></div>
-            <div><Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.city')}</Label><Input value={playerCity} onChange={(e) => setPlayerCity(e.target.value)} placeholder={t('invoiceForm.receiver.cityPlaceholder')} /></div>
-            <div className="sm:col-span-2"><Label className="text-xs text-muted-foreground">{t('invoiceForm.receiver.email')}</Label><Input type="email" value={playerEmail} onChange={(e) => setPlayerEmail(e.target.value)} placeholder={t('invoiceForm.receiver.emailPlaceholder')} /></div>
-          </div>
-        </CardContent>
-      </Card>
+      <InvoiceCustomerSection
+        players={selectablePlayers}
+        playersLoading={playersLoading}
+        playerLink={playerLink}
+        onPlayerLinkChange={setPlayerLink}
+        receiver={receiver}
+        onReceiverChange={patchReceiver}
+        hidePlayerSearch={prefilledFromProfile}
+        oneTimeMode={oneTimeMode}
+        onOneTimeModeChange={setOneTimeMode}
+      />
 
       {/* Line items */}
       <Card>
@@ -326,7 +387,7 @@ export default function TrainerCreateInvoice() {
 
       <div className="flex justify-end gap-3">
         <Button variant="outline" onClick={() => navigate('/app/trainer/invoices')} disabled={saving}>{t('invoiceForm.actions.cancel')}</Button>
-        <Button onClick={handleSave} disabled={saving || !playerName.trim()}>
+        <Button onClick={handleSave} disabled={saving || !receiver.playerName.trim()}>
           {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           {t('invoiceForm.create.createButton')}
         </Button>

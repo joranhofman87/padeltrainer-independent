@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   getAcademyPlayerProfilePath,
   getInvoiceRecipientKind,
-  getTrainerPlayersListPath,
+  getTrainerPlayerProfilePath,
   type InvoiceDetailOwner,
 } from '@/lib/invoiceRecipient';
 
@@ -62,7 +62,7 @@ export function InvoiceRecipientCard({
   const profilePath =
     owner === 'academy'
       ? getAcademyPlayerProfilePath(playerId, guestPlayerId)
-      : getTrainerPlayersListPath(playerId, guestPlayerId);
+      : getTrainerPlayerProfilePath(playerId, guestPlayerId);
 
   const typeLabel =
     kind === 'registered'
@@ -74,7 +74,7 @@ export function InvoiceRecipientCard({
   const profileButtonLabel =
     owner === 'academy'
       ? t('invoiceEdit.recipient.openProfile', 'Open Player Profile')
-      : t('invoiceEdit.recipient.openPlayersList', 'Open players list');
+      : t('invoiceEdit.recipient.openProfile', 'Open Player Profile');
 
   return (
     <Card>

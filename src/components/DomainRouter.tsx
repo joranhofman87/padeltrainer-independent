@@ -109,6 +109,7 @@ const TrainerSubscription = lazy(() => import('@/pages/TrainerSubscription'));
 const TrainerAnalytics = lazy(() => import('@/pages/TrainerAnalytics'));
 const TrainerCalendar = lazy(() => import('@/pages/TrainerCalendar'));
 const TrainerPlayers = lazy(() => import('@/pages/TrainerPlayers'));
+const TrainerPlayerDetail = lazy(() => import('@/pages/trainer/TrainerPlayerDetail'));
 const TrainerCyclus = lazy(() => import('@/pages/TrainerCyclus'));
 const TrainerCycles = lazy(() => import('@/pages/TrainerCycles'));
 const TrainerIntakeRequests = lazy(() => import('@/pages/TrainerIntakeRequests'));
@@ -250,6 +251,7 @@ export function DomainRouter() {
           <Route path="terms" element={<TrainerTerms />} />
           <Route path="calendar" element={<TrainerCalendar />} />
           <Route path="players" element={<TrainerPlayers />} />
+          <Route path="players/:playerId" element={<TrainerPlayerDetail />} />
           <Route path="cyclus" element={<TrainerCyclus />} />
           <Route path="cycles" element={<TrainerCycles />} />
           <Route path="cycles/bulk-copy" element={<TrainerBulkCopySlots />} />

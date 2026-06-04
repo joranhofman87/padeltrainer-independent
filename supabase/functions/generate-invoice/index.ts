@@ -4,8 +4,22 @@ import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-migration-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+/** Temporary migration-only bypass; remove after invoice PDF migration. */
+function migrationSecretMatches(req: Request): boolean {
+  const header = req.headers.get("X-Migration-Secret");
+  const expected = Deno.env.get("MIGRATION_INVOICE_SECRET");
+  if (!header) return false;
+  if (!expected) return false;
+  if (header.length !== expected.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < header.length; i++) {
+    mismatch |= header.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
 
 interface LineItem {
   description: string;
@@ -574,31 +588,54 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+
+    const migrationHeader = req.headers.get("X-Migration-Secret");
+    const isMigrationBypass = migrationSecretMatches(req);
+
+    if (migrationHeader && !Deno.env.get("MIGRATION_INVOICE_SECRET")) {
       return new Response(
-        JSON.stringify({ error: "Authentication required" }),
+        JSON.stringify({ error: "Migration path not configured" }),
+        { status: 503, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    if (migrationHeader && !isMigrationBypass) {
+      return new Response(
+        JSON.stringify({ error: "Invalid migration secret" }),
         { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const token = authHeader.replace("Bearer ", "");
-    
-    // Allow service-role calls (from auto-create-invoice) to skip user auth check
-    const isServiceRole = token === supabaseServiceKey;
-    let user: any = null;
+    if (isMigrationBypass) {
+      console.log("Migration invoice bypass used");
+    }
 
-    if (!isServiceRole) {
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !authUser) {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const authHeader = req.headers.get("Authorization");
+    let user: any = null;
+    let isServiceRole = false;
+
+    if (!isMigrationBypass) {
+      if (!authHeader) {
         return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
+          JSON.stringify({ error: "Authentication required" }),
           { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
-      user = authUser;
+
+      const token = authHeader.replace("Bearer ", "");
+      isServiceRole = token === supabaseServiceKey;
+
+      if (!isServiceRole) {
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+        if (authError || !authUser) {
+          return new Response(
+            JSON.stringify({ error: "Unauthorized" }),
+            { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+        user = authUser;
+      }
     }
 
     const { invoiceId } = await req.json();
@@ -653,8 +690,8 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Allow the trainer, the player, AND academy managers to access the invoice
-    // Service role calls (from auto-create-invoice) skip authorization
-    if (!isServiceRole) {
+    // Service role calls (from auto-create-invoice) and migration bypass skip authorization
+    if (!isServiceRole && !isMigrationBypass) {
       const isTrainer = trainerProfile?.user_id === user?.id;
       let isPlayer = invoice.player_id === user?.id;
       let isAcademyManager = false;

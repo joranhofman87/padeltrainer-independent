@@ -521,6 +521,15 @@
       "deleteInvoice": "Delete",
       "cancelInvoice": "Cancel"
     },
+    "customer": {
+      "title": "Customer",
+      "searchPlayer": "Search player…",
+      "loadingPlayers": "Loading players…",
+      "noPlayersFound": "No player found.",
+      "linkedToPlayer": "Linked to {{name}}",
+      "useOneTimeCustomer": "Use one-time customer",
+      "linkExistingPlayer": "Link to existing player"
+    },
     "receiver": {
       "title": "Recipient",
       "name": "Name",

@@ -32,7 +32,7 @@
 | Trainer Signup | Page, form, name/email/password inputs, submit | `page-signup-trainer`, `form-signup-trainer`, `input-signup-name`, `input-signup-email`, `input-signup-password`, `btn-signup-submit` |
 | Academy Signup | Page, form, name/email/password inputs, submit | `page-signup-academy`, `form-signup-academy`, `input-signup-name`, `input-signup-email`, `input-signup-password`, `btn-signup-submit` |
 | Club Signup | Page, form, name/email/password inputs, submit | `page-signup-club`, `form-signup-club`, `input-signup-name`, `input-signup-email`, `input-signup-password`, `btn-signup-submit` |
-| Signup Role Picker | Page container, each role card | `page-signup-role-picker`, `signup-role-player`, `signup-role-trainer`, `signup-role-academy`, `signup-role-club` |
+| Signup root (`/app/signup`) | Redirects to trainer signup | Lands on `page-signup-trainer`, `signup-tab-*` on role pages |
 | Forgot Password | Page, form, email input, submit | `page-forgot-password`, `form-forgot-password`, `input-forgot-email`, `btn-forgot-submit` |
 | Reset Password | Page, form, password/confirm inputs, submit | `page-reset-password`, `form-reset-password`, `input-reset-password`, `input-reset-confirm-password`, `btn-reset-submit` |
 | Player Dashboard | Page container | `page-player-dashboard` |

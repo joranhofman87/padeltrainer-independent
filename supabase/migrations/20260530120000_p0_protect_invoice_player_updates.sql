@@ -1,5 +1,9 @@
 -- PR-2: Players may only update billing fields on their own invoices (RLS policy unchanged;
 -- this trigger blocks mutations to financial / workflow columns when the caller is the invoice player).
+--
+-- Known edge case (acceptable for this PR; see docs/P0_PR1_PR4_NOTES.md, GitHub issue #1):
+-- If the logged-in trainer/academy user is also invoice.player_id, financial edits from staff
+-- UIs may be blocked. Follow-up: exempt invoice owner roles before applying the player guard.
 
 CREATE OR REPLACE FUNCTION public.protect_invoice_financial_columns_for_players()
 RETURNS TRIGGER

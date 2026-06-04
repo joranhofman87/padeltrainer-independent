@@ -82,6 +82,7 @@ vi.mock('react-i18next', () => ({
         'players.notes.placeholder': 'Notes',
         'players.detail.ratingTrend': 'Rating trend',
         'players.detail.noRatingHistory': 'No rating history',
+        'players.detail.createInvoice': 'Create invoice',
       };
       return map[key] ?? fallback ?? key;
     },
@@ -113,5 +114,11 @@ describe('AcademyPlayerDetail', () => {
     const backLink = screen.getByRole('link', { name: /Back to players/i });
     expect(backLink).toBeInTheDocument();
     expect(backLink).toHaveAttribute('href', '/app/academy/players');
+
+    const createInvoice = screen.getByTestId('academy-player-create-invoice');
+    expect(createInvoice).toHaveAttribute(
+      'href',
+      `/app/academy/invoices/new?playerId=${encodeURIComponent(`g_${GUEST_ID}`)}`,
+    );
   });
 });

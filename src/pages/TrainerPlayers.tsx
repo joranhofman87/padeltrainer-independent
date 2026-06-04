@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Users, UserPlus, Upload, MoreVertical, Pencil, Trash2, Mail, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ import { PlayerNotesCell } from '@/components/players/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDialog';
 import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
+import { toTrainerPlayerRouteId } from '@/lib/invoiceCustomer';
 
 type UnifiedPlayer = {
   id: string;
@@ -699,7 +700,12 @@ export default function TrainerPlayers() {
                         <TableRow key={player.id} className="h-8">
                           <TableCell className="font-medium whitespace-nowrap max-w-[260px] truncate" title={player.full_name}>
                             <div className="flex items-center gap-1.5">
-                              <span className="truncate">{player.full_name}</span>
+                              <Link
+                                to={`/app/trainer/players/${toTrainerPlayerRouteId(player)}`}
+                                className="truncate hover:underline"
+                              >
+                                {player.full_name}
+                              </Link>
                               {player.has_overdue_payment && (
                                 <Badge variant="destructive" className="h-5 px-1.5 text-[11px] shrink-0">
                                   {t('players.payment.overdue', 'Overdue')}

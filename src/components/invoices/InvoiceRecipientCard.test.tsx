@@ -118,7 +118,7 @@ describe('InvoiceRecipientCard', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
-  it('trainer links to players list instead of profile detail', async () => {
+  it('trainer links to player profile detail', async () => {
     fromMock.mockReturnValue({
       select: () => ({
         eq: () => ({
@@ -135,11 +135,10 @@ describe('InvoiceRecipientCard', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: 'Open players list' })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: 'Open Player Profile' })).toHaveAttribute(
         'href',
-        '/app/trainer/players',
+        '/app/trainer/players/p_profile-uuid',
       );
     });
-    expect(screen.queryByRole('link', { name: 'Open Player Profile' })).not.toBeInTheDocument();
   });
 });
