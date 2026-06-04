@@ -1,8 +1,8 @@
 {
   "nav": {
     "dashboard": "Dashboard",
-    "bookings": "Bookings",
-    "following": "Following",
+    "bookings": "My trainings",
+    "following": "Trainers I follow",
     "account": "Account",
     "settings": "Settings",
     "editProfile": "Edit Profile",
@@ -20,7 +20,7 @@
     "title": "Settings",
     "subtitle": "Manage your account settings",
     "profileDescription": "Update your profile information and preferences",
-    "calendarSyncDescription": "Sync your bookings with external calendars",
+    "calendarSyncDescription": "Sync your trainings with external calendars",
     "notificationsDescription": "Manage your notification preferences",
     "dangerZone": "Danger Zone",
     "emailChangeVerification": "A verification email will be sent to your new address.",
@@ -92,11 +92,11 @@
     "stats": {
       "upcoming": "Upcoming",
       "completed": "Completed",
-      "totalBookings": "Total Bookings",
+      "totalBookings": "Total trainings",
       "following": "Following"
     },
     "nextUp": "Next Up",
-    "allBookings": "All Bookings",
+    "allBookings": "All trainings",
     "with": "with",
     "following": "Following",
     "manage": "Manage",
@@ -106,8 +106,8 @@
         "description": "Browse all available trainers and find the perfect match for your skill level"
       },
       "myBookings": {
-        "title": "My Bookings",
-        "description": "View and manage your upcoming and past training sessions"
+        "title": "My trainings",
+        "description": "View and manage your upcoming and past trainings"
       },
       "editProfile": {
         "title": "Edit Profile",
@@ -123,11 +123,11 @@
       "title": "My Profile",
       "description": "Update your details"
     },
-    "viewSchedule": "View your schedule",
+    "viewSchedule": "Upcoming and past trainings",
     "browseAvailableTrainers": "Browse available trainers",
-    "upcomingBookings": "Upcoming Bookings",
+    "upcomingBookings": "Upcoming trainings",
     "viewAll": "View all",
-    "noUpcomingBookings": "No upcoming bookings",
+    "noUpcomingBookings": "No upcoming trainings",
     "followedTrainers": "Followed Trainers",
     "allTrainers": "All trainers",
     "notFollowingYet": "Not following any trainers yet",
@@ -245,20 +245,22 @@
     "trainingCyclesHeading": "Training Cycles"
   },
   "bookings": {
-    "title": "My Bookings",
-    "subtitle": "View and manage your lesson bookings",
-    "empty": "No bookings yet",
-    "emptyDescription": "Book your first session to get started!",
+    "title": "My trainings",
+    "subtitle": "View your upcoming and past trainings",
+    "pageGuide": "Use the Upcoming and Past tabs to find trainings before and after the session date.",
+    "empty": "No trainings yet",
+    "emptyDescription": "Book your first training to get started!",
     "findTrainer": "Find a Trainer",
     "tabs": {
       "upcoming": "Upcoming",
       "past": "Past"
     },
     "invoices": "Invoices",
-    "noUpcoming": "No upcoming bookings",
-    "findTrainerDescription": "Find a trainer and book your first lesson!",
+    "noUpcoming": "No upcoming trainings",
+    "findTrainerDescription": "Find a trainer and book your first training!",
     "browseTrainers": "Browse Trainers",
-    "noPast": "No past bookings",
+    "noPast": "No past trainings",
+    "noPastDescription": "Completed trainings will appear here after the training date.",
     "trainingSession": "Training Session",
     "coach": "Coach",
     "reviewed": "Reviewed",
@@ -266,7 +268,7 @@
     "confirmCancel": "Are you sure you want to cancel this booking?",
     "cancelSuccess": "Booking cancelled",
     "cancelError": "Failed to cancel booking",
-    "loadError": "Failed to load bookings",
+    "loadError": "Failed to load trainings",
     "status": {
       "confirmed": "Confirmed",
       "pending": "Pending",
@@ -293,7 +295,7 @@
     "whatsNext": "What's next?",
     "confirmationSent": "Confirmation email sent",
     "addToCalendar": "Add to your calendar",
-    "viewBookings": "View My Bookings",
+    "viewBookings": "View my trainings",
     "bookAnother": "Book Another Lesson",
     "noBookingId": "No booking ID provided.",
     "paymentNotCompleted": "Payment was not completed. Please try again or contact support.",
@@ -308,7 +310,7 @@
     "title": "Payment not completed",
     "description": "The payment was cancelled or not completed. No amount was charged.",
     "tryAgain": "Try again",
-    "viewBookings": "View my bookings"
+    "viewBookings": "View my trainings"
   },
   "bookLesson": {
     "title": "Book a Lesson",
@@ -365,7 +367,9 @@
     "empty": {
       "title": "No invoices",
       "description": "You haven't received any invoices from trainers yet.",
-      "claimDescription": "No invoices found yet. Make sure you signed up with the same email address used on your invoice."
+      "claimLead": "No invoices found yet.",
+      "claimStep1": "Make sure you created your account using the same email address that was used on your invoice.",
+      "claimStep2": "If you used another email address, log out and create an account using the invoice email address, or contact your trainer or academy."
     },
     "claimToast": {
       "title": "Your invoices",
@@ -409,7 +413,7 @@
     "bookedTitle": "Booking Confirmed!",
     "bookedBody": "Your lesson with {{trainer}} has been booked. You'll receive a confirmation soon.",
     "invoiceNotice": "You'll receive an invoice from the trainer for payment.",
-    "viewMyBookings": "View My Bookings",
+    "viewMyBookings": "View my trainings",
     "browseOtherTrainers": "Browse Other Trainers"
   },
   "ratingShare": {

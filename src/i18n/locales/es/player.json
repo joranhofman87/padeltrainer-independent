@@ -1,8 +1,8 @@
 {
   "nav": {
     "dashboard": "Panel",
-    "bookings": "Reservas",
-    "following": "Siguiendo",
+    "bookings": "Mis entrenamientos",
+    "following": "Entrenadores que sigo",
     "account": "Cuenta",
     "settings": "Configuración",
     "editProfile": "Editar perfil",
@@ -14,7 +14,7 @@
     "title": "Configuración",
     "subtitle": "Gestiona la configuración de tu cuenta",
     "profileDescription": "Actualiza tu perfil y preferencias",
-    "calendarSyncDescription": "Sincroniza tus reservas con calendarios externos",
+    "calendarSyncDescription": "Sincroniza tus entrenamientos con calendarios externos",
     "notificationsDescription": "Gestiona tus preferencias de notificación",
     "dangerZone": "Zona de peligro",
     "emailChangeVerification": "Se enviará un email de verificación a tu nueva dirección.",
@@ -55,11 +55,11 @@
     "stats": {
       "upcoming": "Próximas",
       "completed": "Completadas",
-      "totalBookings": "Total de reservas",
+      "totalBookings": "Total de entrenamientos",
       "following": "Siguiendo"
     },
     "nextUp": "Siguiente",
-    "allBookings": "Todas las reservas",
+    "allBookings": "Todos los entrenamientos",
     "with": "con",
     "following": "Siguiendo",
     "manage": "Gestionar",
@@ -69,8 +69,8 @@
         "description": "Explora todos los entrenadores disponibles y encuentra el ideal para tu nivel"
       },
       "myBookings": {
-        "title": "Mis reservas",
-        "description": "Ver y gestionar tus sesiones de entrenamiento pasadas y futuras"
+        "title": "Mis entrenamientos",
+        "description": "Ver y gestionar tus entrenamientos pasados y futuros"
       },
       "editProfile": {
         "title": "Editar perfil",
@@ -86,11 +86,11 @@
       "title": "Mi Perfil",
       "description": "Actualiza tus datos"
     },
-    "viewSchedule": "Ver tu agenda",
+    "viewSchedule": "Entrenamientos próximos y pasados",
     "browseAvailableTrainers": "Explorar entrenadores disponibles",
-    "upcomingBookings": "Próximas Reservas",
+    "upcomingBookings": "Próximos entrenamientos",
     "viewAll": "Ver todo",
-    "noUpcomingBookings": "No hay reservas próximas",
+    "noUpcomingBookings": "No hay entrenamientos próximos",
     "followedTrainers": "Entrenadores Seguidos",
     "allTrainers": "Todos los entrenadores",
     "notFollowingYet": "Aún no sigues a ningún entrenador",
@@ -208,20 +208,22 @@
     "trainingCyclesHeading": "Ciclos de entrenamiento"
   },
   "bookings": {
-    "title": "Mis reservas",
-    "subtitle": "Ver y gestionar tus reservas de clases",
-    "empty": "Sin reservas todavía",
-    "emptyDescription": "¡Reserva tu primera sesión para empezar!",
+    "title": "Mis entrenamientos",
+    "subtitle": "Consulta tus entrenamientos próximos y pasados",
+    "pageGuide": "Usa las pestañas Próximas y Pasadas para encontrar entrenamientos antes y después de la fecha de la sesión.",
+    "empty": "Sin entrenamientos todavía",
+    "emptyDescription": "¡Reserva tu primer entrenamiento para empezar!",
     "findTrainer": "Buscar un entrenador",
     "tabs": {
       "upcoming": "Próximas",
       "past": "Pasadas"
     },
     "invoices": "Facturas",
-    "noUpcoming": "No hay reservas próximas",
-    "findTrainerDescription": "¡Encuentra un entrenador y reserva tu primera clase!",
+    "noUpcoming": "No hay entrenamientos próximos",
+    "findTrainerDescription": "¡Encuentra un entrenador y reserva tu primer entrenamiento!",
     "browseTrainers": "Explorar Entrenadores",
-    "noPast": "No hay reservas pasadas",
+    "noPast": "No hay entrenamientos pasados",
+    "noPastDescription": "Los entrenamientos completados aparecerán aquí después de la fecha del entrenamiento.",
     "trainingSession": "Sesión de entrenamiento",
     "coach": "Coach",
     "reviewed": "Reseñado",
@@ -229,7 +231,7 @@
     "confirmCancel": "¿Estás seguro de que quieres cancelar esta reserva?",
     "cancelSuccess": "Reserva cancelada",
     "cancelError": "Error al cancelar la reserva",
-    "loadError": "Error al cargar las reservas",
+    "loadError": "Error al cargar los entrenamientos",
     "status": {
       "confirmed": "Confirmada",
       "pending": "Pendiente",
@@ -256,7 +258,7 @@
     "whatsNext": "¿Qué sigue?",
     "confirmationSent": "Email de confirmación enviado",
     "addToCalendar": "Añadir a tu calendario",
-    "viewBookings": "Ver mis reservas",
+    "viewBookings": "Ver mis entrenamientos",
     "bookAnother": "Reservar otra clase",
     "noBookingId": "No se proporcionó ID de reserva.",
     "paymentNotCompleted": "El pago no se completó. Inténtalo de nuevo o contacta con soporte.",
@@ -323,7 +325,14 @@
     "loadError": "No se pudieron cargar las facturas",
     "empty": {
       "title": "No hay facturas",
-      "description": "Aún no has recibido ninguna factura de los entrenadores."
+      "description": "Aún no has recibido ninguna factura de los entrenadores.",
+      "claimLead": "Aún no se encontraron facturas.",
+      "claimStep1": "Asegúrate de haber creado tu cuenta con la misma dirección de correo que se usó en tu factura.",
+      "claimStep2": "Si usaste otro correo, cierra sesión y crea una cuenta con el correo de la factura, o contacta a tu entrenador o academia."
+    },
+    "claimToast": {
+      "title": "Tus facturas",
+      "description": "Si usaste el mismo correo que en tu factura, tus facturas deberían aparecer aquí."
     },
     "status": {
       "draft": "Borrador",
@@ -363,7 +372,7 @@
     "bookedTitle": "¡Reserva confirmada!",
     "bookedBody": "Tu clase con {{trainer}} está reservada. Recibirás una confirmación pronto.",
     "invoiceNotice": "Recibirás una factura del entrenador para el pago.",
-    "viewMyBookings": "Ver mis reservas",
+    "viewMyBookings": "Ver mis entrenamientos",
     "browseOtherTrainers": "Ver otros entrenadores"
   },
   "ratingShare": {

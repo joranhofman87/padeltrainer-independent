@@ -36,7 +36,7 @@ vi.mock('react-i18next', () => ({
         'invoice.paymentReceivedDescription': 'Thank you. This invoice has been paid successfully.',
         'invoice.paidPrivacyMessage': 'Privacy message',
         'invoice.publicPayLogIn': 'Log in',
-        'invoice.publicPayClaimAccount': 'Claim your account',
+        'invoice.publicPayClaimAccount': 'Create account to view invoices',
         'invoice.publicPaySignupHelper':
           'If this is your first time using PadelTrainer, create an account with the email address used for your booking or invoice. We will link your invoices after signup when the email matches.',
         'invoice.publicPayForgotPasswordNote':
@@ -63,6 +63,13 @@ vi.mock('react-i18next', () => ({
         'invoice.amount': 'Amount',
         'invoice.subtotal': 'Subtotal',
         'invoice.total': 'Total',
+        'invoice.paymentProcessing': 'Payment Processing',
+        'invoice.paymentProcessingDescription': 'Your payment is being processed.',
+        'invoice.publicPaySignupHelper': 'Use the same email as on your invoice.',
+        'invoice.publicPayForgotPasswordNote':
+          'Already have an account but forgot your password? Use the password reset option on the login page.',
+        'invoice.createAccountToViewInvoices': 'Create account to view invoices',
+        'invoice.goToMyAccount': 'Go to my account',
       };
       return map[key] ?? fallback ?? key;
     },
@@ -136,17 +143,69 @@ describe('PublicInvoicePay error UI', () => {
     expect(await screen.findByRole('heading', { name: 'Payment received' })).toBeInTheDocument();
     expect(screen.getByText('Thank you. This invoice has been paid successfully.')).toBeInTheDocument();
     expect(screen.getByText('Privacy message')).toBeInTheDocument();
-    const claimLink = screen.getByRole('link', { name: 'Claim your account' });
+    const claimLink = screen.getByRole('link', { name: 'Create account to view invoices' });
     expect(claimLink).toHaveAttribute(
       'href',
       '/app/signup/player?source=paid_invoice&redirect=%2Fapp%2Fplayer%2Finvoices',
     );
     expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/app/auth');
-    expect(screen.getByText(/first time using PadelTrainer/i)).toBeInTheDocument();
+    expect(screen.getByText(/Use the same email as on your invoice/i)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Reset password' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /forgot-password/i })).not.toBeInTheDocument();
     expect(screen.queryByText('INV-')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Download/i })).not.toBeInTheDocument();
+  });
+
+  it('PostPaymentCTA uses paid invoice claim signup path without email prefill', async () => {
+    invokeMock.mockResolvedValue({
+      data: {
+        invoice: {
+          id: 'inv-1',
+          invoiceNumber: 'INV-1',
+          invoiceDate: '2025-01-15',
+          dueDate: '2025-01-29',
+          playerName: 'Guest Player',
+          playerId: null,
+          playerEmail: 'guest@example.com',
+          total: 1,
+          subtotal: 1,
+          vatAmount: 0,
+          vatRate: 0,
+          lineItems: [{ description: 'Lesson', quantity: 1, unit_price: 1, total: 1 }],
+          status: 'sent',
+          hasMolliePayment: false,
+          hasMollieAccount: false,
+          paymentRecipient: 'trainer',
+        },
+        trainer: {
+          businessName: 'Coach',
+          businessAddress: 'Street 1',
+          kvkNumber: '123',
+          btwNumber: null,
+          iban: 'NL00TEST0000000000',
+          bic: null,
+        },
+        academy: null,
+      },
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/processing-token?status=success']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Payment Processing' })).toBeInTheDocument();
+    const signupLink = screen.getByRole('link', { name: 'Create account to view invoices' });
+    expect(signupLink).toHaveAttribute(
+      'href',
+      '/app/signup/player?source=paid_invoice&redirect=%2Fapp%2Fplayer%2Finvoices',
+    );
+    expect(signupLink.getAttribute('href')).not.toContain('email=');
+    expect(signupLink.getAttribute('href')).not.toContain('name=');
   });
 
   it('tracks invoice_claim_started when claim CTA is clicked', async () => {

@@ -264,6 +264,8 @@ export default function PlayerBookings() {
         actions={calendarAction}
       />
 
+      <p className="-mt-2 mb-4 text-sm text-muted-foreground">{t('bookings.pageGuide')}</p>
+
       <Tabs defaultValue="upcoming">
         <TabsList className="mb-4 flex w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="upcoming">
@@ -353,7 +355,8 @@ export default function PlayerBookings() {
           <TabsContent value="past">
             {pastBookings.length === 0 ? (
               <Card className={cn(surfaceCardClass(), 'p-10 text-center')}>
-                <p className="text-muted-foreground">{t('bookings.noPast')}</p>
+                <p className="mb-2 font-medium text-foreground">{t('bookings.noPast')}</p>
+                <p className="text-sm text-muted-foreground">{t('bookings.noPastDescription')}</p>
               </Card>
             ) : (
               <div className="space-y-4">

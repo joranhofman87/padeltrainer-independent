@@ -199,11 +199,20 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
       <Card className={cn(surfaceCardClass(), 'p-12 text-center')} data-testid="player-invoices-empty">
         <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-xl font-semibold mb-2">{t('playerInvoices.empty.title')}</h3>
-        <p className="text-muted-foreground" data-testid={claimEmpty ? 'player-invoices-empty-claim' : undefined}>
-          {claimEmpty
-            ? t('playerInvoices.empty.claimDescription')
-            : t('playerInvoices.empty.description')}
-        </p>
+        {claimEmpty ? (
+          <div
+            className="mx-auto max-w-md space-y-3 text-left text-muted-foreground"
+            data-testid="player-invoices-empty-claim"
+          >
+            <p className="text-center font-medium text-foreground">{t('playerInvoices.empty.claimLead')}</p>
+            <ul className="list-disc space-y-2 pl-5 text-sm">
+              <li>{t('playerInvoices.empty.claimStep1')}</li>
+              <li>{t('playerInvoices.empty.claimStep2')}</li>
+            </ul>
+          </div>
+        ) : (
+          <p className="text-muted-foreground">{t('playerInvoices.empty.description')}</p>
+        )}
       </Card>
     );
   }

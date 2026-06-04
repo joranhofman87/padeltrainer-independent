@@ -1,8 +1,8 @@
 {
   "nav": {
     "dashboard": "Tableau de bord",
-    "bookings": "Réservations",
-    "following": "Abonnements",
+    "bookings": "Mes entraînements",
+    "following": "Entraîneurs suivis",
     "account": "Compte",
     "settings": "Paramètres",
     "editProfile": "Modifier le profil",
@@ -14,7 +14,7 @@
     "title": "Paramètres",
     "subtitle": "Gérez les paramètres de votre compte",
     "profileDescription": "Mettez à jour vos informations et préférences",
-    "calendarSyncDescription": "Synchronisez vos réservations avec des calendriers externes",
+    "calendarSyncDescription": "Synchronisez vos entraînements avec des calendriers externes",
     "notificationsDescription": "Gérez vos préférences de notification",
     "dangerZone": "Zone de danger",
     "emailChangeVerification": "Un e-mail de vérification sera envoyé à votre nouvelle adresse.",
@@ -55,11 +55,11 @@
     "stats": {
       "upcoming": "À venir",
       "completed": "Terminées",
-      "totalBookings": "Total des réservations",
+      "totalBookings": "Total des entraînements",
       "following": "Abonnements"
     },
     "nextUp": "Prochainement",
-    "allBookings": "Toutes les réservations",
+    "allBookings": "Tous les entraînements",
     "with": "avec",
     "following": "Abonnements",
     "manage": "Gérer",
@@ -69,8 +69,8 @@
         "description": "Parcourez tous les entraîneurs disponibles et trouvez celui qui correspond à votre niveau"
       },
       "myBookings": {
-        "title": "Mes réservations",
-        "description": "Consultez et gérez vos séances à venir et passées"
+        "title": "Mes entraînements",
+        "description": "Consultez et gérez vos entraînements à venir et passés"
       },
       "editProfile": {
         "title": "Modifier le profil",
@@ -86,11 +86,11 @@
       "title": "Mon Profil",
       "description": "Mettez à jour vos informations"
     },
-    "viewSchedule": "Voir votre planning",
+    "viewSchedule": "Entraînements à venir et passés",
     "browseAvailableTrainers": "Parcourir les entraîneurs disponibles",
-    "upcomingBookings": "Réservations à venir",
+    "upcomingBookings": "Entraînements à venir",
     "viewAll": "Tout voir",
-    "noUpcomingBookings": "Aucune réservation à venir",
+    "noUpcomingBookings": "Aucun entraînement à venir",
     "followedTrainers": "Entraîneurs suivis",
     "allTrainers": "Tous les entraîneurs",
     "notFollowingYet": "Vous ne suivez aucun entraîneur",
@@ -208,20 +208,22 @@
     "trainingCyclesHeading": "Cycles d'entraînement"
   },
   "bookings": {
-    "title": "Mes réservations",
-    "subtitle": "Consultez et gérez vos réservations de cours",
-    "empty": "Aucune réservation",
-    "emptyDescription": "Réservez votre première séance pour commencer !",
+    "title": "Mes entraînements",
+    "subtitle": "Consultez vos entraînements à venir et passés",
+    "pageGuide": "Utilisez les onglets À venir et Passées pour trouver les entraînements avant et après la date de séance.",
+    "empty": "Aucun entraînement",
+    "emptyDescription": "Réservez votre premier entraînement pour commencer !",
     "findTrainer": "Trouver un entraîneur",
     "tabs": {
       "upcoming": "À venir",
       "past": "Passées"
     },
     "invoices": "Factures",
-    "noUpcoming": "Aucune réservation à venir",
-    "findTrainerDescription": "Trouvez un entraîneur et réservez votre premier cours !",
+    "noUpcoming": "Aucun entraînement à venir",
+    "findTrainerDescription": "Trouvez un entraîneur et réservez votre premier entraînement !",
     "browseTrainers": "Parcourir les entraîneurs",
-    "noPast": "Aucune réservation passée",
+    "noPast": "Aucun entraînement passé",
+    "noPastDescription": "Les entraînements terminés apparaîtront ici après la date de l'entraînement.",
     "trainingSession": "Séance d'entraînement",
     "coach": "Coach",
     "reviewed": "Évalué",
@@ -229,7 +231,7 @@
     "confirmCancel": "Êtes-vous sûr de vouloir annuler cette réservation ?",
     "cancelSuccess": "Réservation annulée",
     "cancelError": "Échec de l'annulation",
-    "loadError": "Échec du chargement des réservations",
+    "loadError": "Échec du chargement des entraînements",
     "status": {
       "confirmed": "Confirmée",
       "pending": "En attente",
@@ -256,7 +258,7 @@
     "whatsNext": "Et maintenant ?",
     "confirmationSent": "E-mail de confirmation envoyé",
     "addToCalendar": "Ajouter à votre calendrier",
-    "viewBookings": "Voir mes réservations",
+    "viewBookings": "Voir mes entraînements",
     "bookAnother": "Réserver un autre cours",
     "noBookingId": "Aucun ID de réservation fourni.",
     "paymentNotCompleted": "Le paiement n'a pas été effectué. Veuillez réessayer ou contacter le support.",
@@ -323,7 +325,14 @@
     "loadError": "Impossible de charger les factures",
     "empty": {
       "title": "Aucune facture",
-      "description": "Vous n'avez encore reçu aucune facture des entraîneurs."
+      "description": "Vous n'avez encore reçu aucune facture des entraîneurs.",
+      "claimLead": "Aucune facture trouvée pour le moment.",
+      "claimStep1": "Assurez-vous d'avoir créé votre compte avec la même adresse e-mail que celle utilisée sur votre facture.",
+      "claimStep2": "Si vous avez utilisé une autre adresse e-mail, déconnectez-vous et créez un compte avec l'e-mail de la facture, ou contactez votre entraîneur ou votre académie."
+    },
+    "claimToast": {
+      "title": "Vos factures",
+      "description": "Si vous avez utilisé la même adresse e-mail que sur votre facture, vos factures devraient apparaître ici."
     },
     "status": {
       "draft": "Brouillon",
@@ -363,7 +372,7 @@
     "bookedTitle": "Réservation confirmée !",
     "bookedBody": "Ton cours avec {{trainer}} est réservé. Tu recevras bientôt une confirmation.",
     "invoiceNotice": "Tu recevras une facture du coach pour le paiement.",
-    "viewMyBookings": "Voir mes réservations",
+    "viewMyBookings": "Voir mes entraînements",
     "browseOtherTrainers": "Voir d'autres coachs"
   },
   "ratingShare": {

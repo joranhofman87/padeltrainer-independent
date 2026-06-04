@@ -39,9 +39,20 @@ vi.mock('@/components/ReferralWidget', () => ({
   showReferralWidget: vi.fn(),
 }));
 
+const NAV_LABELS: Record<string, string> = {
+  'nav.dashboard': 'Dashboard',
+  'nav.bookings': 'My trainings',
+  'nav.invoices': 'Invoices',
+  'nav.profile': 'My Profile',
+  'nav.following': 'Trainers I follow',
+  'nav.account': 'Account',
+  'nav.settings': 'Settings',
+  'nav.notifications': 'Notifications',
+};
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string) => NAV_LABELS[key] ?? fallback ?? key,
     i18n: { language: 'en' },
   }),
 }));
@@ -62,6 +73,13 @@ describe('PlayerSidebar', () => {
 
     expect(screen.getByTestId('nav-player-invoices')).toHaveAttribute('href', '/app/player/invoices');
     expect(screen.getByTestId('nav-player-bookings')).toHaveAttribute('href', '/app/player/bookings');
+  });
+
+  it('shows My trainings and Trainers I follow in primary nav', () => {
+    renderSidebar('/app/player');
+
+    expect(screen.getByRole('link', { name: 'My trainings' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Trainers I follow' })).toBeInTheDocument();
   });
 
   it('marks invoices link active on invoices route', () => {

@@ -1,8 +1,8 @@
 {
   "nav": {
     "dashboard": "Dashboard",
-    "bookings": "Prenotazioni",
-    "following": "Following",
+    "bookings": "I miei allenamenti",
+    "following": "Trainer che seguo",
     "account": "Account",
     "settings": "Impostazioni",
     "editProfile": "Edit Profile",
@@ -101,8 +101,8 @@
         "description": "Browse all available trainers and find the perfect match for your skill level"
       },
       "myBookings": {
-        "title": "My Bookings",
-        "description": "View and manage your upcoming and past training sessions"
+        "title": "I miei allenamenti",
+        "description": "Visualizza e gestisci i tuoi allenamenti futuri e passati"
       },
       "editProfile": {
         "title": "Edit Profile",
@@ -118,11 +118,11 @@
       "title": "My Profile",
       "description": "Update your details"
     },
-    "viewSchedule": "View your schedule",
+    "viewSchedule": "Allenamenti futuri e passati",
     "browseAvailableTrainers": "Browse available trainers",
-    "upcomingBookings": "Upcoming Bookings",
+    "upcomingBookings": "Allenamenti in programma",
     "viewAll": "View all",
-    "noUpcomingBookings": "No upcoming bookings",
+    "noUpcomingBookings": "Nessun allenamento in programma",
     "followedTrainers": "Followed Trainers",
     "allTrainers": "All trainers",
     "notFollowingYet": "Not following any trainers yet",
@@ -240,20 +240,22 @@
     "trainingCyclesHeading": "Cicli di allenamento"
   },
   "bookings": {
-    "title": "My Bookings",
-    "subtitle": "View and manage your lesson bookings",
-    "empty": "No bookings yet",
-    "emptyDescription": "Book your first session to get started!",
+    "title": "I miei allenamenti",
+    "subtitle": "Visualizza i tuoi allenamenti futuri e passati",
+    "pageGuide": "Usa le schede Prossimi e Passati per trovare gli allenamenti prima e dopo la data della sessione.",
+    "empty": "Nessun allenamento ancora",
+    "emptyDescription": "Prenota il tuo primo allenamento per iniziare!",
     "findTrainer": "Find a Trainer",
     "tabs": {
       "upcoming": "Prossimi",
       "past": "Passati"
     },
     "invoices": "Fatture",
-    "noUpcoming": "No upcoming bookings",
-    "findTrainerDescription": "Find a trainer and book your first lesson!",
+    "noUpcoming": "Nessun allenamento in programma",
+    "findTrainerDescription": "Trova un trainer e prenota il tuo primo allenamento!",
     "browseTrainers": "Browse Trainers",
-    "noPast": "No past bookings",
+    "noPast": "Nessun allenamento passato",
+    "noPastDescription": "Gli allenamenti completati appariranno qui dopo la data dell'allenamento.",
     "trainingSession": "Training Session",
     "coach": "Coach",
     "reviewed": "Reviewed",
@@ -261,7 +263,7 @@
     "confirmCancel": "Are you sure you want to cancel this booking?",
     "cancelSuccess": "Booking cancelled",
     "cancelError": "Failed to cancel booking",
-    "loadError": "Failed to load bookings",
+    "loadError": "Impossibile caricare gli allenamenti",
     "status": {
       "confirmed": "Confermato",
       "pending": "In attesa",
@@ -288,7 +290,7 @@
     "whatsNext": "What's next?",
     "confirmationSent": "Confirmation email sent",
     "addToCalendar": "Add to your calendar",
-    "viewBookings": "View My Bookings",
+    "viewBookings": "Vedi i miei allenamenti",
     "bookAnother": "Book Another Lesson",
     "noBookingId": "No booking ID provided.",
     "paymentNotCompleted": "Payment was not completed. Please try again or contact support.",
@@ -299,7 +301,7 @@
     "title": "Payment not completed",
     "description": "The payment was cancelled or not completed. No amount was charged.",
     "tryAgain": "Try again",
-    "viewBookings": "View my bookings"
+    "viewBookings": "Vedi i miei allenamenti"
   },
   "bookLesson": {
     "title": "Book a Lesson",
@@ -355,7 +357,14 @@
     "loadError": "Impossibile caricare le fatture",
     "empty": {
       "title": "Nessuna fattura",
-      "description": "Non hai ancora ricevuto fatture dagli allenatori."
+      "description": "Non hai ancora ricevuto fatture dagli allenatori.",
+      "claimLead": "Nessuna fattura trovata per ora.",
+      "claimStep1": "Assicurati di aver creato l'account con lo stesso indirizzo email usato sulla fattura.",
+      "claimStep2": "Se hai usato un altro indirizzo email, esci e crea un account con l'email della fattura, oppure contatta il tuo trainer o la tua academy."
+    },
+    "claimToast": {
+      "title": "Le tue fatture",
+      "description": "Se hai usato lo stesso indirizzo email della fattura, le tue fatture dovrebbero apparire qui."
     },
     "status": {
       "draft": "Bozza",
@@ -395,7 +404,7 @@
     "bookedTitle": "Prenotazione confermata!",
     "bookedBody": "La tua lezione con {{trainer}} è prenotata. Riceverai presto una conferma.",
     "invoiceNotice": "Riceverai una fattura dall'allenatore per il pagamento.",
-    "viewMyBookings": "Vedi le mie prenotazioni",
+    "viewMyBookings": "Vedi i miei allenamenti",
     "browseOtherTrainers": "Sfoglia altri allenatori"
   },
   "ratingShare": {

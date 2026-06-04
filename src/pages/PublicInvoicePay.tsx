@@ -142,7 +142,7 @@ function PublicPayAccountActions() {
   );
 }
 
-function PostPaymentCTA({ playerName, playerEmail, playerId }: { playerName?: string; playerEmail?: string | null; playerId?: string | null }) {
+function PostPaymentCTA({ playerId }: { playerId?: string | null }) {
   const { t } = useTranslation();
 
   if (playerId) {
@@ -158,21 +158,13 @@ function PostPaymentCTA({ playerName, playerEmail, playerId }: { playerName?: st
     );
   }
 
-  const params = new URLSearchParams();
-  if (playerEmail) params.set('email', playerEmail);
-  if (playerName) params.set('name', playerName);
-  params.set('redirect', '/app/player');
-  const signupUrl = `/app/signup/player?${params.toString()}`;
-
   return (
     <div className="pt-4 space-y-2">
-      <p className="text-sm text-muted-foreground">
-        {t("invoice.optionalAccountDescription")}
-      </p>
-      <Link to={signupUrl}>
+      <p className="text-sm text-muted-foreground">{t("invoice.publicPaySignupHelper")}</p>
+      <Link to={buildPaidInvoiceClaimSignupPath()}>
         <Button variant="outline" className="gap-2">
           <UserPlus className="h-4 w-4" />
-          {t("invoice.createAccountToViewInvoices")}
+          {t("invoice.publicPayClaimAccount")}
         </Button>
       </Link>
     </div>
@@ -509,7 +501,7 @@ export default function PublicInvoicePay() {
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
             <h1 className="text-2xl font-bold">{t("invoice.paymentProcessing")}</h1>
             <p className="text-muted-foreground">{t("invoice.paymentProcessingDescription")}</p>
-            <PostPaymentCTA playerName={data?.invoice.playerName} playerEmail={data?.invoice.playerEmail} playerId={data?.invoice.playerId} />
+            <PostPaymentCTA playerId={data?.invoice.playerId} />
           </CardContent>
         </Card>
       </div>

@@ -26,8 +26,11 @@ vi.mock('react-i18next', () => ({
       const map: Record<string, string> = {
         'playerInvoices.empty.title': 'No invoices',
         'playerInvoices.empty.description': 'Default empty description',
-        'playerInvoices.empty.claimDescription':
-          'No invoices found yet. Make sure you signed up with the same email address used on your invoice.',
+        'playerInvoices.empty.claimLead': 'No invoices found yet.',
+        'playerInvoices.empty.claimStep1':
+          'Make sure you created your account using the same email address that was used on your invoice.',
+        'playerInvoices.empty.claimStep2':
+          'If you used another email address, log out and create an account using the invoice email address, or contact your trainer or academy.',
         'playerInvoices.loadError': 'Load error',
         'playerInvoices.status.draft': 'Draft',
         'playerInvoices.status.sent': 'Sent',
@@ -84,7 +87,8 @@ describe('PlayerInvoicesTab empty state', () => {
       'invoice_claim_no_invoices_found',
       expect.objectContaining({ invoice_count_bucket: '0' }),
     );
-    expect(screen.getByText(/same email address used on your invoice/i)).toBeInTheDocument();
+    expect(screen.getByText(/same email address that was used on your invoice/i)).toBeInTheDocument();
+    expect(screen.getByText(/contact your trainer or academy/i)).toBeInTheDocument();
     expect(screen.queryByText('Default empty description')).not.toBeInTheDocument();
   });
 

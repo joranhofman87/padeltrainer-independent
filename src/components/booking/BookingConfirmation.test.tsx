@@ -42,7 +42,7 @@ describe('BookingConfirmation', () => {
     const { getByText } = renderWithI18n(
       <BookingConfirmation type="booked" trainerName="Test" />,
     );
-    expect(getByText('View My Bookings')).toBeInTheDocument();
+    expect(getByText('View my trainings')).toBeInTheDocument();
     expect(getByText('Browse Other Trainers')).toBeInTheDocument();
   });
 });

@@ -38,7 +38,8 @@ vi.mock('react-i18next', () => ({
       const map: Record<string, string> = {
         'dashboard.welcome': 'Welcome back, Jan!',
         'dashboard.subtitle': 'Your padel hub',
-        'dashboard.quickActions.myBookings.title': 'My Bookings',
+        'dashboard.quickActions.myBookings.title': 'My trainings',
+        'dashboard.viewSchedule': 'Upcoming and past trainings',
         'dashboard.viewSchedule': 'View schedule',
         'nav.invoices': 'Invoices',
         'invoices.description': 'View invoices',
@@ -46,7 +47,7 @@ vi.mock('react-i18next', () => ({
         'dashboard.browseAvailableTrainers': 'Browse',
         'dashboard.myProfile.title': 'My Profile',
         'dashboard.myProfile.description': 'Edit profile',
-        'dashboard.upcomingBookings': 'Upcoming',
+        'dashboard.upcomingBookings': 'Upcoming trainings',
         'dashboard.viewAll': 'View all',
         'dashboard.noUpcomingBookings': 'None',
         'dashboard.followedTrainers': 'Following',

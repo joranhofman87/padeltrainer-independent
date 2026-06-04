@@ -34,8 +34,10 @@ vi.mock('react-router-dom', async () => {
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => {
-      if (key === 'bookings.title') return 'My Bookings';
-      if (key === 'bookings.subtitle') return 'Your sessions';
+      if (key === 'bookings.title') return 'My trainings';
+      if (key === 'bookings.subtitle') return 'View your upcoming and past trainings';
+      if (key === 'bookings.pageGuide') return 'Use the Upcoming and Past tabs';
+      if (key === 'bookings.noPastDescription') return 'Completed trainings will appear here after the training date.';
       if (key === 'bookings.tabs.upcoming') return 'Upcoming';
       if (key === 'bookings.tabs.past') return 'Past';
       if (key === 'bookings.invoices') return 'Invoices';
@@ -112,7 +114,8 @@ describe('PlayerBookings smoke', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('page-player-bookings')).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'My Bookings' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'My trainings' })).toBeInTheDocument();
+      expect(screen.getByText('Use the Upcoming and Past tabs')).toBeInTheDocument();
     });
     expect(screen.getByRole('tab', { name: /Invoices/i })).toBeInTheDocument();
   });

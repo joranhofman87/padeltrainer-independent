@@ -1,8 +1,8 @@
 {
   "nav": {
     "dashboard": "Dashboard",
-    "bookings": "Buchungen",
-    "following": "Folge ich",
+    "bookings": "Meine Trainings",
+    "following": "Trainer denen ich folge",
     "account": "Konto",
     "settings": "Einstellungen",
     "editProfile": "Profil bearbeiten",
@@ -14,7 +14,7 @@
     "title": "Einstellungen",
     "subtitle": "Verwalte deine Kontoeinstellungen",
     "profileDescription": "Aktualisiere deine Profilinformationen und Einstellungen",
-    "calendarSyncDescription": "Synchronisiere deine Buchungen mit externen Kalendern",
+    "calendarSyncDescription": "Synchronisiere deine Trainings mit externen Kalendern",
     "notificationsDescription": "Verwalte deine Benachrichtigungseinstellungen",
     "dangerZone": "Gefahrenzone",
     "emailChangeVerification": "Eine Bestätigungs-E-Mail wird an deine neue Adresse gesendet.",
@@ -55,11 +55,11 @@
     "stats": {
       "upcoming": "Bevorstehend",
       "completed": "Abgeschlossen",
-      "totalBookings": "Gesamte Buchungen",
+      "totalBookings": "Trainings gesamt",
       "following": "Folge ich"
     },
     "nextUp": "Als nächstes",
-    "allBookings": "Alle Buchungen",
+    "allBookings": "Alle Trainings",
     "with": "mit",
     "following": "Folge ich",
     "manage": "Verwalten",
@@ -69,8 +69,8 @@
         "description": "Durchsuche alle verfügbaren Trainer und finde die perfekte Übereinstimmung für dein Spielniveau"
       },
       "myBookings": {
-        "title": "Meine Buchungen",
-        "description": "Sieh und verwalte deine bevorstehenden und vergangenen Trainingseinheiten"
+        "title": "Meine Trainings",
+        "description": "Sieh und verwalte deine bevorstehenden und vergangenen Trainings"
       },
       "editProfile": {
         "title": "Profil bearbeiten",
@@ -86,11 +86,11 @@
       "title": "Mein Profil",
       "description": "Aktualisiere deine Daten"
     },
-    "viewSchedule": "Deinen Zeitplan ansehen",
+    "viewSchedule": "Bevorstehende und vergangene Trainings",
     "browseAvailableTrainers": "Verfügbare Trainer durchsuchen",
-    "upcomingBookings": "Bevorstehende Buchungen",
+    "upcomingBookings": "Bevorstehende Trainings",
     "viewAll": "Alle anzeigen",
-    "noUpcomingBookings": "Keine bevorstehenden Buchungen",
+    "noUpcomingBookings": "Keine bevorstehenden Trainings",
     "followedTrainers": "Gefolgte Trainer",
     "allTrainers": "Alle Trainer",
     "notFollowingYet": "Du folgst noch keinen Trainern",
@@ -208,20 +208,22 @@
     "trainingCyclesHeading": "Trainingszyklen"
   },
   "bookings": {
-    "title": "Meine Buchungen",
-    "subtitle": "Sieh und verwalte deine Buchungen",
-    "empty": "Noch keine Buchungen",
-    "emptyDescription": "Buche deine erste Einheit, um loszulegen!",
+    "title": "Meine Trainings",
+    "subtitle": "Sieh deine bevorstehenden und vergangenen Trainings",
+    "pageGuide": "Nutze die Tabs Bevorstehend und Vergangen, um Trainings vor und nach dem Trainingstermin zu finden.",
+    "empty": "Noch keine Trainings",
+    "emptyDescription": "Buche dein erstes Training, um loszulegen!",
     "findTrainer": "Trainer finden",
     "tabs": {
       "upcoming": "Bevorstehend",
       "past": "Vergangen"
     },
     "invoices": "Rechnungen",
-    "noUpcoming": "Keine bevorstehenden Buchungen",
-    "findTrainerDescription": "Finde einen Trainer und buche deine erste Stunde!",
+    "noUpcoming": "Keine bevorstehenden Trainings",
+    "findTrainerDescription": "Finde einen Trainer und buche dein erstes Training!",
     "browseTrainers": "Trainer durchsuchen",
-    "noPast": "Keine vergangenen Buchungen",
+    "noPast": "Keine vergangenen Trainings",
+    "noPastDescription": "Abgeschlossene Trainings erscheinen hier nach dem Trainingstermin.",
     "trainingSession": "Trainingseinheit",
     "coach": "Coach",
     "reviewed": "Bewertet",
@@ -229,7 +231,7 @@
     "confirmCancel": "Möchtest du diese Buchung wirklich stornieren?",
     "cancelSuccess": "Buchung storniert",
     "cancelError": "Stornierung fehlgeschlagen",
-    "loadError": "Buchungen konnten nicht geladen werden",
+    "loadError": "Trainings konnten nicht geladen werden",
     "status": {
       "confirmed": "Bestätigt",
       "pending": "Ausstehend",
@@ -256,7 +258,7 @@
     "whatsNext": "Wie geht es weiter?",
     "confirmationSent": "Bestätigungs-E-Mail gesendet",
     "addToCalendar": "Zum Kalender hinzufügen",
-    "viewBookings": "Meine Buchungen ansehen",
+    "viewBookings": "Meine Trainings ansehen",
     "bookAnother": "Weitere Stunde buchen",
     "noBookingId": "Keine Buchungs-ID angegeben.",
     "paymentNotCompleted": "Die Zahlung wurde nicht abgeschlossen. Bitte versuche es erneut oder kontaktiere den Support.",
@@ -323,7 +325,14 @@
     "loadError": "Rechnungen konnten nicht geladen werden",
     "empty": {
       "title": "Keine Rechnungen",
-      "description": "Sie haben noch keine Rechnungen von Trainern erhalten."
+      "description": "Sie haben noch keine Rechnungen von Trainern erhalten.",
+      "claimLead": "Noch keine Rechnungen gefunden.",
+      "claimStep1": "Stelle sicher, dass du dein Konto mit derselben E-Mail-Adresse erstellt hast, die auf deiner Rechnung steht.",
+      "claimStep2": "Wenn du eine andere E-Mail-Adresse verwendet hast, melde dich ab und erstelle ein Konto mit der Rechnungs-E-Mail-Adresse, oder kontaktiere deinen Trainer oder deine Academy."
+    },
+    "claimToast": {
+      "title": "Deine Rechnungen",
+      "description": "Wenn du dieselbe E-Mail-Adresse wie auf deiner Rechnung verwendet hast, sollten deine Rechnungen hier erscheinen."
     },
     "status": {
       "draft": "Entwurf",
@@ -363,7 +372,7 @@
     "bookedTitle": "Buchung bestätigt!",
     "bookedBody": "Deine Stunde mit {{trainer}} ist gebucht. Du erhältst bald eine Bestätigung.",
     "invoiceNotice": "Du erhältst eine Rechnung vom Trainer zur Zahlung.",
-    "viewMyBookings": "Meine Buchungen ansehen",
+    "viewMyBookings": "Meine Trainings ansehen",
     "browseOtherTrainers": "Andere Trainer ansehen"
   },
   "ratingShare": {
