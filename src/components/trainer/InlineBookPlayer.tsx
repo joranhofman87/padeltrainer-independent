@@ -29,11 +29,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
+import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { Check, Clock } from "lucide-react";
 
@@ -144,11 +142,6 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
     const newIds = [...selectedPlayerIds];
     newIds[index] = "";
     setSelectedPlayerIds(newIds);
-  };
-
-  const getAvailablePlayersForSlot = (slotIndex: number) => {
-    const selectedInOtherSlots = selectedPlayerIds.filter((id, idx) => id && idx !== slotIndex);
-    return players.filter(player => !selectedInOtherSlots.includes(player.id));
   };
 
   const selectedCount = selectedPlayerIds.filter(id => id).length;
@@ -565,23 +558,34 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
                 }
                 const selectionIndex = index - existingActiveCount;
                 if (selectionIndex < 0) return null;
-                const availablePlayers = getAvailablePlayersForSlot(selectionIndex);
                 const isFirst = index === existingActiveCount;
                 const currentPlayerId = selectedPlayerIds[selectionIndex];
 
                 return (
                   <div key={index} className="flex gap-2 items-center">
                     <span className="text-xs text-muted-foreground w-16 shrink-0">{t("bookings.player")} {index + 1}{isFirst && " *"}</span>
-                    <Select value={currentPlayerId} onValueChange={v => handlePlayerSelect(selectionIndex, v)}>
-                      <SelectTrigger className="flex-1 h-9"><SelectValue placeholder={isFirst ? t("bookings.selectPlayerPlaceholder") : t("bookings.optionalPlayer")} /></SelectTrigger>
-                      <SelectContent>
-                        {availablePlayers.length === 0 ? (
-                          <div className="p-2 text-sm text-muted-foreground text-center">{players.length === 0 ? t("players.noPlayers") : t("bookings.allPlayersSelected")}</div>
-                        ) : availablePlayers.map(p => (
-                          <SelectItem key={p.id} value={p.id}><span>{p.full_name}</span> <span className="text-xs text-muted-foreground ml-1">{p.email}</span></SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <GuestPlayerSlotCombobox
+                      players={players}
+                      value={currentPlayerId}
+                      showEmail
+                      placeholder={
+                        isFirst
+                          ? t("bookings.selectPlayerPlaceholder")
+                          : t("bookings.optionalPlayer")
+                      }
+                      emptyLabel={
+                        players.length === 0
+                          ? t("players.noPlayers")
+                          : t("calendar.selectPlayer")
+                      }
+                      allPlayersTakenLabel={t("bookings.allPlayersSelected")}
+                      disabledPlayerIds={selectedPlayerIds.filter(
+                        (id, i) => i !== selectionIndex && !!id,
+                      )}
+                      data-testid={`inline-book-player-slot-${selectionIndex}`}
+                      className="flex-1 h-9"
+                      onValueChange={(v) => handlePlayerSelect(selectionIndex, v)}
+                    />
                     {currentPlayerId && <Button type="button" variant="ghost" size="icon" aria-label="Close" className="h-8 w-8 shrink-0" onClick={() => clearPlayerSlot(selectionIndex)}><X className="h-4 w-4" /></Button>}
                     {!currentPlayerId && isFirst && <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => setShowAddPlayer(true)}><UserPlus className="h-4 w-4" /></Button>}
                   </div>

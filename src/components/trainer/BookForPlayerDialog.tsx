@@ -49,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -326,12 +327,6 @@ export function BookForPlayerDialog({
     const newIds = [...selectedPlayerIds];
     newIds[index] = "";
     syncPayerAfterSelectionChange(newIds);
-  };
-
-  const getAvailablePlayersForSlot = (slotIndex: number) => {
-    // Filter out players already selected in other slots
-    const selectedInOtherSlots = selectedPlayerIds.filter((id, idx) => id && idx !== slotIndex);
-    return players.filter(player => !selectedInOtherSlots.includes(player.id));
   };
 
   const selectedGuestIds = getSelectedGuestPlayerIds(selectedPlayerIds);
@@ -873,10 +868,8 @@ export function BookForPlayerDialog({
                     
                     // For empty slots, show player selection
                     const selectionIndex = index - existingBookedCount;
-                    const availablePlayers = getAvailablePlayersForSlot(selectionIndex);
                     const isFirstEmptySlot = index === existingBookedCount;
                     const currentPlayerId = selectedPlayerIds[selectionIndex];
-                    const currentPlayer = players.find(p => p.id === currentPlayerId);
 
                     return (
                       <div key={index} className="flex gap-2 items-center">
@@ -884,39 +877,30 @@ export function BookForPlayerDialog({
                           {t("bookings.player")} {index + 1}
                           {isFirstEmptySlot && " *"}
                         </span>
-                        <Select
+                        <GuestPlayerSlotCombobox
+                          players={players}
                           value={currentPlayerId}
-                          onValueChange={(value) => handlePlayerSelect(selectionIndex, value)}
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder={
-                              isFirstEmptySlot 
-                                ? t("bookings.selectPlayerPlaceholder")
-                                : t("bookings.optionalPlayer")
-                            } />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availablePlayers.length === 0 ? (
-                              <div className="p-2 text-sm text-muted-foreground text-center">
-                                {players.length === 0 
-                                  ? t("players.noPlayers")
-                                  : t("bookings.allPlayersSelected")
-                                }
-                              </div>
-                            ) : (
-                              availablePlayers.map((player) => (
-                                <SelectItem key={player.id} value={player.id}>
-                                  <div className="flex flex-col">
-                                    <span>{player.full_name}</span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {player.email}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
+                          showEmail
+                          placeholder={
+                            isFirstEmptySlot
+                              ? t("bookings.selectPlayerPlaceholder")
+                              : t("bookings.optionalPlayer")
+                          }
+                          emptyLabel={
+                            players.length === 0
+                              ? t("players.noPlayers")
+                              : t("calendar.selectPlayer")
+                          }
+                          allPlayersTakenLabel={t("bookings.allPlayersSelected")}
+                          disabledPlayerIds={selectedPlayerIds.filter(
+                            (id, i) => i !== selectionIndex && !!id,
+                          )}
+                          data-testid={`book-player-slot-${selectionIndex}`}
+                          className="flex-1 h-10"
+                          onValueChange={(value) =>
+                            handlePlayerSelect(selectionIndex, value)
+                          }
+                        />
                         {currentPlayerId && (
                           <Button
                             type="button"
