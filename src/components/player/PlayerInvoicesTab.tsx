@@ -145,7 +145,8 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
         player_btw_number: billingBtw || null,
         pdf_url: null,
       } as any)
-      .eq('id', editingInvoice.id);
+      .eq('id', editingInvoice.id)
+      .eq('player_id', profileId);
 
     if (error) {
       toast({ title: t('playerInvoices.billingDialog.saveError'), description: t('playerInvoices.billingDialog.saveError'), variant: 'destructive' });

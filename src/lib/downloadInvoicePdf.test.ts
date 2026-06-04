@@ -33,4 +33,20 @@ describe('downloadInvoicePdf (authenticated path)', () => {
     expect(invokeMock.mock.calls[0][0]).toBe('generate-invoice');
     expect(invokeMock.mock.calls[0][1]).toEqual({ body: { invoiceId: 'inv-uuid' } });
   });
+
+  it('returns false when generate-invoice rejects access to another player invoice', async () => {
+    invokeMock.mockResolvedValue({
+      data: { error: 'Unauthorized' },
+      error: null,
+    });
+
+    const { downloadInvoicePdf } = await import('./downloadInvoicePdf');
+    const ok = await downloadInvoicePdf('other-player-invoice-uuid', 'INV-999');
+
+    expect(ok).toBe(false);
+    expect(invokeMock).toHaveBeenCalledWith('generate-invoice', {
+      body: { invoiceId: 'other-player-invoice-uuid' },
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 });
