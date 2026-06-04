@@ -11,100 +11,15 @@ import { supabase } from "@/lib/supabaseClient";
 import { sendEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { sortBookingsBySlotStartTime } from "@/lib/unpaidBookings";
-
-interface UnpaidBooking {
-  id: string;
-  slotId: string;
-  playerName: string;
-  playerEmail: string;
-  playerId: string | null;
-  guestPlayerId: string | null;
-  sessionDate: string;
-  sessionTime: string;
-  amount: number | null;
-  cyclusName: string | null;
-  reminderSentAt: string | null;
-  trainerName: string;
-}
+import {
+  fetchUnpaidBookingsData,
+  unpaidBookingsQueryOptions,
+  type UnpaidBooking,
+} from "@/lib/unpaidBookings";
 
 interface UnpaidBookingsCardProps {
   trainerId?: string | null;
   academyId?: string | null;
-}
-
-async function fetchUnpaidBookingsData(trainerId?: string | null, academyId?: string | null): Promise<UnpaidBooking[]> {
-  let trainerIds: string[] = [];
-
-  if (academyId) {
-    const { data: academyTrainers } = await supabase
-      .from("academy_trainers")
-      .select("trainer_profile_id")
-      .eq("academy_profile_id", academyId)
-      .eq("status", "active");
-    trainerIds = academyTrainers?.map((t) => t.trainer_profile_id) || [];
-  } else if (trainerId) {
-    trainerIds = [trainerId];
-  }
-
-  const normalizedTrainerIds = trainerIds.filter((id): id is string => !!id?.trim());
-  if (normalizedTrainerIds.length === 0) return [];
-
-  const { data, error } = await supabase
-    .from("bookings")
-    .select(`
-      id,
-      slot_id,
-      payment_status,
-      payment_amount,
-      reminder_sent_at,
-      player_id,
-      guest_player_id,
-      profiles:player_id (full_name, email),
-      guest_players:guest_player_id (full_name, email),
-      availability_slots!inner (
-        start_time,
-        end_time,
-        trainer_id,
-        cyclus_name,
-        price_per_session,
-        trainer_profiles:trainer_id (
-          id,
-          profiles:user_id (full_name)
-        )
-      )
-    `)
-    .in("availability_slots.trainer_id", normalizedTrainerIds)
-    .eq("payment_status", "pending")
-    .in("status", ["confirmed", "pending"])
-    .gte("availability_slots.start_time", new Date().toISOString());
-
-  if (error) throw error;
-
-  const sorted = sortBookingsBySlotStartTime(data || []);
-
-  return sorted.map((b: any) => {
-    const slot = b.availability_slots;
-    const profile = b.profiles as { full_name: string | null; email: string | null } | null;
-    const guest = b.guest_players as { full_name: string | null; email: string | null } | null;
-    const trainerProfile = slot?.trainer_profiles as any;
-    const trainerProfileData = trainerProfile?.profiles as { full_name: string | null } | null;
-
-    return {
-      id: b.id,
-      slotId: b.slot_id,
-      playerName: profile?.full_name || guest?.full_name || "Unknown",
-      playerEmail: profile?.email || guest?.email || "",
-      playerId: b.player_id,
-      guestPlayerId: b.guest_player_id,
-      sessionDate: format(new Date(slot.start_time), "dd MMM yyyy"),
-      sessionTime: `${format(new Date(slot.start_time), "HH:mm")} - ${format(new Date(slot.end_time), "HH:mm")}`,
-      amount: b.payment_amount || slot.price_per_session || null,
-      cyclusName: slot.cyclus_name || null,
-      reminderSentAt: b.reminder_sent_at,
-      trainerName: trainerProfileData?.full_name || "Trainer",
-    };
-  });
 }
 
 export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardProps) {
@@ -117,11 +32,11 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
 
   const queryKey = ['unpaid-bookings', trainerId, academyId];
 
-  const { data: bookings = [], isLoading } = useQuery({
+  const { data: bookings = [], isLoading, isError } = useQuery({
     queryKey,
     queryFn: () => fetchUnpaidBookingsData(trainerId, academyId),
     enabled: !!(trainerId || academyId),
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    ...unpaidBookingsQueryOptions,
   });
 
   const handleMarkPaid = async (bookingId: string) => {
@@ -264,7 +179,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
 
   const totalOutstanding = bookings.reduce((sum, b) => sum + (b.amount || 0), 0);
 
-  if (isLoading) return null;
+  if (isLoading || isError) return null;
   if (bookings.length === 0) return null;
 
   return (
