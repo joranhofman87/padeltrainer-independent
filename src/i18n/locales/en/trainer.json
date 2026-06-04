@@ -874,7 +874,10 @@
     "lastReminder": "Last reminder",
     "reminderSentSuccess": "Payment reminder sent successfully",
     "bulkReminderSentSuccess": "Payment reminders sent to {{count}} players",
-    "sessionCount": "{{count}} sessions"
+    "sessionCount": "{{count}} sessions",
+    "showAll": "Show all",
+    "showLess": "Show less",
+    "showingCount": "Showing {{shown}} of {{total}}"
   },
   "waitingList": {
     "settingsTitle": "Waiting List",

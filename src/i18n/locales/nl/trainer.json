@@ -877,7 +877,10 @@
     "lastReminder": "Laatste herinnering",
     "reminderSentSuccess": "Betalingsherinnering succesvol verstuurd",
     "bulkReminderSentSuccess": "Betalingsherinneringen verstuurd naar {{count}} spelers",
-    "sessionCount": "{{count}} sessies"
+    "sessionCount": "{{count}} sessies",
+    "showAll": "Toon alles",
+    "showLess": "Toon minder",
+    "showingCount": "Toont {{shown}} van {{total}}"
   },
   "waitingList": {
     "settingsTitle": "Wachtlijst",

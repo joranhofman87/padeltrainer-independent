@@ -19,6 +19,8 @@ import {
   type UnpaidBooking,
 } from "@/lib/unpaidBookings";
 
+export const UNPAID_BOOKINGS_PREVIEW_LIMIT = 10;
+
 interface UnpaidBookingsCardProps {
   trainerId?: string | null;
   academyId?: string | null;
@@ -32,10 +34,20 @@ function obligationSubtitle(booking: UnpaidBooking, t: (key: string, opts?: Reco
   return `${booking.sessionDate} · ${booking.sessionTime}`;
 }
 
+export function getVisibleUnpaidBookings(
+  bookings: UnpaidBooking[],
+  expanded: boolean,
+  limit = UNPAID_BOOKINGS_PREVIEW_LIMIT,
+): UnpaidBooking[] {
+  if (expanded || bookings.length <= limit) return bookings;
+  return bookings.slice(0, limit);
+}
+
 export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [markingIds, setMarkingIds] = useState<Set<string>>(new Set());
@@ -48,6 +60,13 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
     enabled: !!(trainerId || academyId),
     ...unpaidBookingsQueryOptions,
   });
+
+  const hasMoreThanPreview = bookings.length > UNPAID_BOOKINGS_PREVIEW_LIMIT;
+  const visibleBookings = getVisibleUnpaidBookings(bookings, expanded);
+  const visibleIdSet = new Set(visibleBookings.map((b) => b.id));
+  const allVisibleSelected =
+    visibleBookings.length > 0 && visibleBookings.every((b) => selected.has(b.id));
+  const visibleSelectedCount = visibleBookings.filter((b) => selected.has(b.id)).length;
 
   const removeObligationsFromCache = (groupKeys: Set<string>) => {
     queryClient.setQueryData<UnpaidBooking[]>(queryKey, (old) =>
@@ -115,7 +134,9 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
   };
 
   const handleBulkReminder = async () => {
-    const selectedObligations = bookings.filter((b) => selected.has(b.id) && b.playerEmail);
+    const selectedObligations = bookings.filter(
+      (b) => selected.has(b.id) && visibleIdSet.has(b.id) && b.playerEmail,
+    );
     const allGroupKeys = new Set(selectedObligations.map((b) => b.id));
     setSendingIds(allGroupKeys);
 
@@ -155,11 +176,26 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
   };
 
   const toggleSelectAll = () => {
-    if (selected.size === bookings.length) {
-      setSelected(new Set());
+    const visibleIds = visibleBookings.map((b) => b.id);
+    if (allVisibleSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        visibleIds.forEach((id) => next.delete(id));
+        return next;
+      });
     } else {
-      setSelected(new Set(bookings.map((b) => b.id)));
+      setSelected((prev) => new Set([...prev, ...visibleIds]));
     }
+  };
+
+  const handleToggleExpanded = () => {
+    if (expanded) {
+      const previewIds = new Set(
+        bookings.slice(0, UNPAID_BOOKINGS_PREVIEW_LIMIT).map((b) => b.id),
+      );
+      setSelected((prev) => new Set([...prev].filter((id) => previewIds.has(id))));
+    }
+    setExpanded((prev) => !prev);
   };
 
   const totalOutstanding = bookings.reduce((sum, b) => sum + b.amount, 0);
@@ -187,14 +223,14 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
         <div className="flex items-center justify-between pb-2 border-b">
           <div className="flex items-center gap-2">
             <Checkbox
-              checked={selected.size === bookings.length && bookings.length > 0}
+              checked={allVisibleSelected}
               onCheckedChange={toggleSelectAll}
             />
             <span className="text-sm text-muted-foreground">
               {t("unpaidBookings.selectAll")}
             </span>
           </div>
-          {selected.size > 0 && (
+          {visibleSelectedCount > 0 && (
             <Button
               size="sm"
               variant="outline"
@@ -206,14 +242,15 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
               ) : (
                 <Send className="h-3 w-3 mr-1" />
               )}
-              {t("unpaidBookings.sendBulkReminder")} ({selected.size})
+              {t("unpaidBookings.sendBulkReminder")} ({visibleSelectedCount})
             </Button>
           )}
         </div>
 
-        {bookings.map((booking) => (
+        {visibleBookings.map((booking) => (
           <div
             key={booking.id}
+            data-testid="unpaid-obligation-row"
             className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50"
           >
             <Checkbox
@@ -278,6 +315,29 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
             </div>
           </div>
         ))}
+
+        {hasMoreThanPreview && (
+          <div className="flex flex-col items-center gap-1 pt-2 border-t">
+            {!expanded && (
+              <p className="text-xs text-muted-foreground">
+                {t("unpaidBookings.showingCount", {
+                  shown: UNPAID_BOOKINGS_PREVIEW_LIMIT,
+                  total: bookings.length,
+                })}
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-sm"
+              onClick={handleToggleExpanded}
+              data-testid="unpaid-bookings-expand-toggle"
+            >
+              {expanded ? t("unpaidBookings.showLess") : t("unpaidBookings.showAll")}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
