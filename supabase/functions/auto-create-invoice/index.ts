@@ -5,6 +5,10 @@ import {
   resolveAutoCreateBusinessGate,
 } from "../_shared/invoice-business.ts";
 import { resolveGuestNameForInvoice } from "../_shared/profileName.ts";
+import {
+  resolveInvoiceUnitPrice,
+  splitAmongPlayersForInvoiceCreate,
+} from "../_shared/invoice-split-pricing.ts";
 
 const corsHeaders = sharedCors;
 
@@ -26,7 +30,7 @@ serve(async (req) => {
     const body = await req.json();
     const bookingIds: string[] = body.bookingIds || (body.bookingId ? [body.bookingId] : []);
     const asDraft: boolean = body.asDraft === true;
-    let splitAmongPlayers: number | null = body.splitAmongPlayers || null;
+    const requestedSplitAmongPlayers: number | null = body.splitAmongPlayers || null;
 
     if (bookingIds.length === 0) {
       logStep("No booking IDs provided");
@@ -36,7 +40,7 @@ serve(async (req) => {
       });
     }
 
-    logStep("Processing bookings", { bookingIds, asDraft, splitAmongPlayers });
+    logStep("Processing bookings", { bookingIds, asDraft, requestedSplitAmongPlayers });
 
     // Fetch all bookings with details
     const { data: bookings, error: bookingsError } = await supabase
@@ -115,6 +119,7 @@ serve(async (req) => {
 
 
     // Auto-detect split payment from slot if not explicitly passed
+    let splitAmongPlayers: number | null = requestedSplitAmongPlayers;
     if (!splitAmongPlayers && slot.split_payment === true) {
       const uniquePlayers = new Set(bookings.map((b) => b.player_id || b.guest_player_id).filter(Boolean));
       if (uniquePlayers.size > 1) {
@@ -122,6 +127,15 @@ serve(async (req) => {
         logStep("Auto-detected split payment from slot", { splitAmongPlayers });
       }
     }
+
+    // Do not divide already-split booking.payment_amount again (per-player invoice batches)
+    splitAmongPlayers = splitAmongPlayersForInvoiceCreate(bookings, splitAmongPlayers);
+    const splitLabel =
+      requestedSplitAmongPlayers && requestedSplitAmongPlayers > 1
+        ? ` (1/${requestedSplitAmongPlayers})`
+        : splitAmongPlayers && splitAmongPlayers > 1
+          ? ` (1/${splitAmongPlayers})`
+          : "";
 
     // Check if trainer belongs to an academy
     let academyProfileId: string | null = null;
@@ -263,10 +277,13 @@ serve(async (req) => {
 
     let lineItems: { description: string; quantity: number; unit_price: number; date?: string }[];
 
-    // Resolve price per booking: prefer payment_amount, then slot price
     const resolveBookingPrice = (b: any): number => {
       const bSlot = b.availability_slots as any;
-      return b.payment_amount || bSlot.price_per_session || 0;
+      return resolveInvoiceUnitPrice({
+        paymentAmount: b.payment_amount,
+        slotPrice: bSlot.price_per_session,
+        splitAmongPlayers: requestedSplitAmongPlayers ?? splitAmongPlayers,
+      });
     };
 
     if (allSameCyclus) {
@@ -280,7 +297,7 @@ serve(async (req) => {
       if (allSamePrice) {
         // All sessions have the same price — use bundled line item
         lineItems = [{
-          description: `${cyclusName} (${bookings.length} weken)`,
+          description: `${cyclusName} (${bookings.length} weken)${splitLabel}`,
           quantity: bookings.length,
           unit_price: nonZeroPrices[0],
         }];
@@ -357,29 +374,22 @@ serve(async (req) => {
     }
 
     if (extraCosts && Array.isArray(extraCosts)) {
+      const splitForExtras = requestedSplitAmongPlayers ?? splitAmongPlayers;
       for (const ec of extraCosts) {
         if (ec.description && ec.price > 0) {
           const isOneTime = ec.type === 'one_time';
+          const ecUnitPrice = resolveInvoiceUnitPrice({
+            paymentAmount: null,
+            slotPrice: ec.price,
+            splitAmongPlayers: splitForExtras,
+          });
           lineItems.push({
             description: isOneTime ? ec.description : `${ec.description} (per sessie)`,
             quantity: isOneTime ? 1 : bookings.length,
-            unit_price: ec.price,
+            unit_price: ecUnitPrice,
             vat_rate: ec.vat_rate ?? vatRate,
           });
         }
-      }
-    }
-
-    // Apply split payment: divide each line item's unit_price among players
-    // Calculate unsplit total first, then use floor division for consistency
-    let unsplitTotal: number | null = null;
-    if (splitAmongPlayers && splitAmongPlayers > 1) {
-      logStep("Applying split payment", { splitAmongPlayers });
-      // Calculate the unsplit total before modifying line items
-      unsplitTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-      for (const item of lineItems) {
-        item.unit_price = Math.round((item.unit_price / splitAmongPlayers) * 100) / 100;
-        item.description = `${item.description} (1/${splitAmongPlayers})`;
       }
     }
 
@@ -446,24 +456,6 @@ serve(async (req) => {
         vatAmount = subtotal * (vatRate / 100);
         totalInclusive = subtotal + vatAmount;
       }
-    }
-
-    // For split payments, use floor(unsplitTotal/N) to ensure all shares sum to original
-    // The split-invoice function handles giving the remainder to the first player
-    if (unsplitTotal !== null && splitAmongPlayers && splitAmongPlayers > 1 && !hasMultipleVatRates) {
-      const splitShare = Math.floor((unsplitTotal / splitAmongPlayers) * 100) / 100;
-      logStep("Correcting split total", { unsplitTotal, splitShare, calculatedTotal: totalInclusive });
-      totalInclusive = splitShare;
-      // Recalculate VAT from corrected total
-      if (slotPricesIncludeVat) {
-        subtotal = totalInclusive / (1 + vatRate / 100);
-        vatAmount = totalInclusive - subtotal;
-      } else {
-        subtotal = totalInclusive / (1 + vatRate / 100);
-        vatAmount = totalInclusive - subtotal;
-      }
-      subtotal = Math.round(subtotal * 100) / 100;
-      vatAmount = Math.round(vatAmount * 100) / 100;
     }
 
     // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings

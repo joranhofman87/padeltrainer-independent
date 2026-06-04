@@ -76,11 +76,22 @@ describe("groupChargeableBookingsByRecipient", () => {
 });
 
 describe("buildAutoCreateInvoicePayload", () => {
-  it("sets asDraft and splitAmongPlayers when split active", () => {
+  it("sets asDraft and splitAmongPlayers when split active without pre-split amounts", () => {
     expect(buildAutoCreateInvoicePayload(["b1", "b2"], 3)).toEqual({
       bookingIds: ["b1", "b2"],
       asDraft: true,
       splitAmongPlayers: 3,
+    });
+  });
+
+  it("omits splitAmongPlayers when bookings already store split shares", () => {
+    const nineAt19 = Array.from({ length: 9 }, () => ({
+      payment_amount: 19,
+      availability_slots: { price_per_session: 76 },
+    }));
+    expect(buildAutoCreateInvoicePayload(["b1"], 4, nineAt19)).toEqual({
+      bookingIds: ["b1"],
+      asDraft: true,
     });
   });
 

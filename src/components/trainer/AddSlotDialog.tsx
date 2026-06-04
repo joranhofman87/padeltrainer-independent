@@ -70,6 +70,7 @@ import {
 } from "@/lib/academyPriceDisplay";
 import { loadGuestPlayersForBulkCreate } from "@/lib/guestPlayers";
 import { buildBulkCycleBookings } from "@/lib/bulkCycleBookings";
+import { splitAmongPlayersForInvoiceCreate } from "@/lib/invoiceSplitPricing";
 import {
   getSelectedGuestPlayerIds,
   groupChargeableBookingsByGuest,
@@ -1082,7 +1083,19 @@ export function BulkCreateContent({
                       try {
                         const invoiceBody: Record<string, unknown> = { bookingIds: bIds, asDraft: true };
                         if (config.splitPayment && playerBookingMap.size > 1) {
-                          invoiceBody.splitAmongPlayers = playerBookingMap.size;
+                          const playerBookings = (insertedBookings || []).filter((b) =>
+                            bIds.includes(b.id),
+                          );
+                          const splitCount = splitAmongPlayersForInvoiceCreate(
+                            playerBookings.map((b) => ({
+                              payment_amount: b.payment_amount,
+                              availability_slots: { price_per_session: config.pricePerSession },
+                            })),
+                            playerBookingMap.size,
+                          );
+                          if (splitCount != null) {
+                            invoiceBody.splitAmongPlayers = splitCount;
+                          }
                         }
                         await supabase.functions.invoke("auto-create-invoice", { body: invoiceBody });
                       } catch (invoiceErr) {

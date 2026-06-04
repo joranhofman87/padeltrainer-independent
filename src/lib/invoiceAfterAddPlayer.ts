@@ -4,6 +4,10 @@ import { applyAffectedInvoiceUpdates } from "@/lib/applyAffectedInvoiceUpdates";
 import type { AffectedInvoicesClassification } from "@/lib/affectedInvoices";
 import { buildAffectedInvoicesSummary } from "@/lib/affectedInvoices";
 import type { InvoiceUpdateChoice } from "@/lib/invoiceUpdateChoice";
+import {
+  splitAmongPlayersForInvoiceCreate,
+  type BookingWithSlotPrice,
+} from '@/lib/invoiceSplitPricing';
 
 export type AddPlayerBookingRow = {
   id: string;
@@ -106,13 +110,17 @@ export function groupChargeableBookingsByRecipient(
 export function buildAutoCreateInvoicePayload(
   bookingIds: string[],
   splitAmongPlayers: number | null,
+  bookingsForSplit?: BookingWithSlotPrice[],
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     bookingIds,
     asDraft: true,
   };
-  if (splitAmongPlayers != null && splitAmongPlayers > 1) {
-    body.splitAmongPlayers = splitAmongPlayers;
+  const effectiveSplit = bookingsForSplit
+    ? splitAmongPlayersForInvoiceCreate(bookingsForSplit, splitAmongPlayers)
+    : splitAmongPlayers;
+  if (effectiveSplit != null && effectiveSplit > 1) {
+    body.splitAmongPlayers = effectiveSplit;
   }
   return body;
 }
@@ -146,10 +154,11 @@ export async function countActiveParticipantsOnSlots(slotIds: string[]): Promise
 async function invokeAutoCreateDraftInvoice(
   bookingIds: string[],
   splitAmongPlayers: number | null,
+  bookingsForSplit?: BookingWithSlotPrice[],
 ): Promise<"created" | "skipped" | "failed"> {
   try {
     const { data, error } = await supabase.functions.invoke("auto-create-invoice", {
-      body: buildAutoCreateInvoicePayload(bookingIds, splitAmongPlayers),
+      body: buildAutoCreateInvoicePayload(bookingIds, splitAmongPlayers, bookingsForSplit),
     });
 
     if (error) {
@@ -235,7 +244,15 @@ export async function syncInvoicesAfterAddPlayer(
   }
 
   for (const group of groups) {
-    const outcome = await invokeAutoCreateDraftInvoice(group.bookingIds, splitAmongPlayers);
+    const groupBookings = chargeable.filter((b) => group.bookingIds.includes(b.id));
+    const bookingsForSplit: BookingWithSlotPrice[] = groupBookings.map((b) => ({
+      payment_amount: b.payment_amount,
+    }));
+    const outcome = await invokeAutoCreateDraftInvoice(
+      group.bookingIds,
+      splitAmongPlayers,
+      bookingsForSplit,
+    );
     if (outcome === "created") result.created += 1;
     else if (outcome === "skipped") {
       result.invoiceCreateSkipped += 1;
