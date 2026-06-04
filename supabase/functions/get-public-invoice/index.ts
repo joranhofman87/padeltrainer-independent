@@ -70,36 +70,19 @@ serve(async (req) => {
       });
     }
 
-    // Download mode (unchanged): paid invoices may still receive a PDF via revoked token.
-    // Response includes pdfUrl and invoiceNumber — see product report before changing.
-    if (access === "download") {
-      if (invoice.status !== "paid") {
-        return new Response(JSON.stringify({ ready: false, status: invoice.status }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: genData, error: genErr } = await supabase.functions.invoke("generate-invoice", {
-        body: { invoiceId: invoice.id },
-        headers: { Authorization: `Bearer ${supabaseServiceKey}` },
+    if (access === "login_required") {
+      return new Response(JSON.stringify({ error: "login_required" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
 
-      if (genErr || !genData?.pdfUrl) {
-        return new Response(
-          JSON.stringify({ error: "Failed to generate invoice PDF" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify({
-          ready: true,
-          pdfUrl: genData.pdfUrl,
-          invoiceNumber: invoice.invoice_number,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Public PDF download is only attempted for unpaid invoices (returns ready: false).
+    if (access === "download") {
+      return new Response(JSON.stringify({ ready: false, status: invoice.status }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Look up guest player email if no registered player

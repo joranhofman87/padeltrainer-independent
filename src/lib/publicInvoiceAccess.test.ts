@@ -40,12 +40,27 @@ describe('decidePublicInvoiceAccess', () => {
     expect(decidePublicInvoiceAccess({ status: 'sent', public_token_revoked_at: null })).toBe('full');
   });
 
-  it('download action -> download even when revoked', () => {
+  it('paid + revoked + action=download -> login_required', () => {
     expect(
       decidePublicInvoiceAccess(
         { status: 'paid', public_token_revoked_at: '2026-01-01T00:00:00Z' },
         { action: 'download' },
       ),
+    ).toBe('login_required');
+  });
+
+  it('cancelled + revoked + action=download -> login_required', () => {
+    expect(
+      decidePublicInvoiceAccess(
+        { status: 'cancelled', public_token_revoked_at: '2026-01-01T00:00:00Z' },
+        { action: 'download' },
+      ),
+    ).toBe('login_required');
+  });
+
+  it('unpaid + action=download -> download (ready:false path)', () => {
+    expect(
+      decidePublicInvoiceAccess({ status: 'sent', public_token_revoked_at: null }, { action: 'download' }),
     ).toBe('download');
   });
 });
