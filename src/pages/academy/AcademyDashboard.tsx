@@ -28,6 +28,8 @@ import { nl, enUS } from 'date-fns/locale';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { AcademyPublicLinkCard } from '@/components/academy/AcademyPublicLinkCard';
 import { useQuery } from '@tanstack/react-query';
+import { AppPage } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
 
 const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
@@ -232,7 +234,12 @@ export default function AcademyDashboard() {
   const isTrialExpired = subscription?.trialExpired && !subscription?.isSubscribed;
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <AppPage>
+      <PageHeader
+        title={activeAcademy?.name ?? t('dashboard.title')}
+        description={t('dashboard.overview')}
+      />
+
       {activeAcademy?.slug && (
         <AcademyPublicLinkCard academy={activeAcademy} lang={i18n.language} />
       )}
@@ -277,11 +284,11 @@ export default function AcademyDashboard() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/academy/trainers')}>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-5">
+        <Card className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => navigate('/app/academy/trainers')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.trainers')}</CardDescription>
-            <CardTitle className="text-3xl">{stats.trainers}</CardTitle>
+            <CardTitle className="font-display text-2xl font-semibold tabular-nums">{stats.trainers}</CardTitle>
           </CardHeader>
           <CardContent>
             <Button variant="ghost" size="sm" className="p-0 h-auto">
@@ -290,10 +297,10 @@ export default function AcademyDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/academy/locations')}>
+        <Card className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => navigate('/app/academy/locations')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.locations')}</CardDescription>
-            <CardTitle className="text-3xl">{stats.locations}</CardTitle>
+            <CardTitle className="font-display text-2xl font-semibold tabular-nums">{stats.locations}</CardTitle>
           </CardHeader>
           <CardContent>
             <Button variant="ghost" size="sm" className="p-0 h-auto">
@@ -302,13 +309,13 @@ export default function AcademyDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/academy/invoices?status=outstanding')}>
+        <Card className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => navigate('/app/academy/invoices?status=outstanding')}>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1">
               <Receipt className="h-3 w-3" />
               {t('stats.outstandingInvoices', 'Outstanding invoices')}
             </CardDescription>
-            <CardTitle className="text-3xl">{stats.outstandingInvoices}</CardTitle>
+            <CardTitle className="font-display text-2xl font-semibold tabular-nums">{stats.outstandingInvoices}</CardTitle>
           </CardHeader>
           <CardContent>
             <Button variant="ghost" size="sm" className="p-0 h-auto">
@@ -323,7 +330,7 @@ export default function AcademyDashboard() {
               <Eye className="h-3 w-3" />
               {t('stats.profileViews')}
             </CardDescription>
-            <CardTitle className="text-3xl">{stats.viewsLast30Days}</CardTitle>
+            <CardTitle className="font-display text-2xl font-semibold tabular-nums">{stats.viewsLast30Days}</CardTitle>
           </CardHeader>
           <CardContent>
             <Button
@@ -347,7 +354,7 @@ export default function AcademyDashboard() {
       )}
 
       {/* Activity Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         {/* Recent Players */}
         <Card>
           <CardHeader className="pb-3">
@@ -523,8 +530,8 @@ export default function AcademyDashboard() {
 
       {/* Trainers Section */}
       {activeTrainers.length > 0 && (
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold">{t('trainers.title')}</h2>
             <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/trainers')}>
               {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
@@ -571,6 +578,6 @@ export default function AcademyDashboard() {
           </div>
         </div>
       )}
-    </div>
+    </AppPage>
   );
 }

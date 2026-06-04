@@ -487,7 +487,7 @@ export default function TrainerPlayers() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-4 py-2">
+    <div className="mx-auto w-full max-w-7xl space-y-5">
       <TrainerPageHeader
         title={t('players.title')}
         description={t('players.subtitleShort', 'Manage your players and contacts')}

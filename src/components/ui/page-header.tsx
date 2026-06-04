@@ -38,9 +38,11 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
-        <h1 className="text-2xl font-display font-bold tracking-tight truncate">{title}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground truncate">
+          {title}
+        </h1>
         {(subtitle || description) && (
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {subtitle ?? description}
           </p>
         )}

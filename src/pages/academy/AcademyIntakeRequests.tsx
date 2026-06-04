@@ -11,6 +11,7 @@ import { List, CalendarDays, AlertCircle, UserPlus, Download } from 'lucide-reac
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PageHeader } from '@/components/ui/page-header';
+import { AppPage } from '@/components/ui/app-page';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { 
   generateProposals,
@@ -235,15 +236,15 @@ export default function AcademyIntakeRequests() {
 
   if (isFirstLoad) {
     return (
-      <div className="container mx-auto px-4 py-6">
+      <AppPage>
         <Skeleton className="h-8 w-48 mb-6" />
         <Skeleton className="h-[400px] w-full" />
-      </div>
+      </AppPage>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-4">
+    <AppPage className="space-y-4">
       {/* Header */}
       <PageHeader
         title={t('intakeRequests.title')}
@@ -594,6 +595,6 @@ export default function AcademyIntakeRequests() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AppPage>
   );
 }

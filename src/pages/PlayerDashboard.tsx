@@ -293,13 +293,12 @@ export default function PlayerDashboard() {
   };
 
   return (
-    <main className="container mx-auto px-4 py-8 space-y-8" data-testid="page-player-dashboard">
-      {/* Welcome Section */}
+    <main className="mx-auto w-full max-w-7xl space-y-6" data-testid="page-player-dashboard">
       <div>
-        <h1 className="text-3xl font-bold mb-2">
+        <h1 className="font-display text-2xl font-semibold tracking-tight">
           {t('dashboard.welcome', { name: profile?.full_name?.split(' ')[0] || 'Player' })}
         </h1>
-        <p className="text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           {t('dashboard.subtitle')}
         </p>
       </div>

@@ -15,10 +15,10 @@ export default function PlayerInvoicesPage() {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8" data-testid="page-player-invoices">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">{t('invoices.title', 'Invoices')}</h1>
-        <p className="text-muted-foreground">
+    <main className="mx-auto w-full max-w-7xl space-y-6" data-testid="page-player-invoices">
+      <div>
+        <h1 className="font-display text-2xl font-semibold tracking-tight">{t('invoices.title', 'Invoices')}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           {t('invoices.description', 'View and download invoices for your training sessions.')}
         </p>
       </div>

@@ -250,7 +250,7 @@ export default function TrainerSettings() {
 
   return (
     <>
-      <main className="mx-auto w-full max-w-7xl space-y-5 py-2" data-testid="page-trainer-settings">
+      <main className="mx-auto w-full max-w-7xl space-y-6" data-testid="page-trainer-settings">
         <TrainerPageHeader
           title={t('settings.title')}
           description={t('settings.subtitle')}

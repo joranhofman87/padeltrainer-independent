@@ -319,7 +319,7 @@ export default function TrainerDashboard() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-5 py-2" data-testid="page-trainer-dashboard">
+    <main className="mx-auto w-full max-w-7xl space-y-6" data-testid="page-trainer-dashboard">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="font-display text-2xl font-semibold tracking-tight text-[hsl(var(--navy-900))] sm:text-3xl">

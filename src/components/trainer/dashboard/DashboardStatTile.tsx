@@ -37,7 +37,7 @@ export function DashboardStatTile({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
           <p className="mt-1 font-display text-2xl font-semibold tabular-nums text-[hsl(var(--navy-900))]">
             {loading ? '—' : value}
           </p>

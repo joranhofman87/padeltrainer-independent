@@ -42,6 +42,8 @@ import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
+import { AppPage } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
@@ -731,40 +733,38 @@ export default function AcademyPlayers() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <AppPage>
         <Skeleton className="h-10 w-48 mb-6" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </AppPage>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-4">
-      {/* Header: title + primary actions on one row */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{t('nav.players')}</h1>
-          <p className="text-sm text-muted-foreground">
-            {players.length} {players.length === 1 ? 'player' : 'players'}
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)}>
-            <Tags className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)}>
-            <Upload className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
-            <span className="sm:hidden">Import</span>
-          </Button>
-          <Button size="sm" onClick={() => setShowAddPlayer(true)}>
-            <UserPlus className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">{tTrainer('players.addPlayer')}</span>
-            <span className="sm:hidden">Add</span>
-          </Button>
-        </div>
-      </div>
+    <AppPage className="space-y-4">
+      <PageHeader
+        title={t('nav.players')}
+        count={players.length}
+        countLabel={{ one: 'player', other: 'players' }}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)}>
+              <Tags className="h-4 w-4" />
+              <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)}>
+              <Upload className="h-4 w-4" />
+              <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
+              <span className="sm:hidden">Import</span>
+            </Button>
+            <Button size="sm" onClick={() => setShowAddPlayer(true)}>
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">{tTrainer('players.addPlayer')}</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          </>
+        }
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex items-center gap-3">
@@ -1375,6 +1375,6 @@ export default function AcademyPlayers() {
           onChanged={fetchTagsAndMetadata}
         />
       )}
-    </div>
+    </AppPage>
   );
 }

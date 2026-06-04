@@ -26,6 +26,7 @@ import { InvoiceSettingsCard } from "@/components/trainer/InvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -476,7 +477,7 @@ export default function TrainerInvoices() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <AppPage>
       <PageHeader
         title={t("invoices.title", "Facturen")}
         description={t("invoices.description", "Beheer je facturen")}
@@ -539,9 +540,9 @@ export default function TrainerInvoices() {
 
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="text-2xl font-bold">€{formatEuro(totalUnpaid)}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open facturen")}</p><p className="text-2xl font-bold">{unpaidInvoices.length}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.paid", "Betaald")}</p><p className="text-2xl font-bold">{paidInvoices.length}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="font-display text-2xl font-semibold tabular-nums">€{formatEuro(totalUnpaid)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open facturen")}</p><p className="font-display text-2xl font-semibold tabular-nums">{unpaidInvoices.length}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.paid", "Betaald")}</p><p className="font-display text-2xl font-semibold tabular-nums">{paidInvoices.length}</p></CardContent></Card>
           </div>
 
           {/* Tabs + Filters */}
@@ -584,6 +585,7 @@ export default function TrainerInvoices() {
                   {/* Desktop Table */}
                   <div className="hidden md:block">
                     <Card>
+                      <CardContent className={dataTableCardContentClass}>
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -653,6 +655,7 @@ export default function TrainerInvoices() {
                           ))}
                         </TableBody>
                       </Table>
+                      </CardContent>
                     </Card>
                   </div>
 
@@ -805,6 +808,6 @@ export default function TrainerInvoices() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AppPage>
   );
 }

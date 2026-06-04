@@ -183,7 +183,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
   if (bookings.length === 0) return null;
 
   return (
-    <Card className="mb-8">
+    <Card className="mb-6 border-border/60 shadow-sm">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">

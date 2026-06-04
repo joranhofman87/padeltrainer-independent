@@ -21,6 +21,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -668,7 +669,7 @@ export default function AcademyInvoices() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <AppPage>
       {/* Header */}
       <PageHeader
         title={t("invoices.title", "Facturen")}
@@ -708,19 +709,19 @@ export default function AcademyInvoices() {
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Unpaid")}</p>
-            <p className="text-2xl font-bold">€{formatEuro(totalUnpaid)}</p>
+            <p className="font-display text-2xl font-semibold tabular-nums">€{formatEuro(totalUnpaid)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open invoices")}</p>
-            <p className="text-2xl font-bold">{unpaidInvoices.length}</p>
+            <p className="font-display text-2xl font-semibold tabular-nums">{unpaidInvoices.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.paid", "Paid")}</p>
-            <p className="text-2xl font-bold">{paidInvoices.length}</p>
+            <p className="font-display text-2xl font-semibold tabular-nums">{paidInvoices.length}</p>
           </CardContent>
         </Card>
       </div>
@@ -835,6 +836,7 @@ export default function AcademyInvoices() {
               {/* Desktop Table */}
               <div className="hidden md:block">
                 <Card>
+                  <CardContent className={dataTableCardContentClass}>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -946,6 +948,7 @@ export default function AcademyInvoices() {
                       ))}
                     </TableBody>
                   </Table>
+                  </CardContent>
                 </Card>
               </div>
 
@@ -1104,6 +1107,6 @@ export default function AcademyInvoices() {
         </AlertDialogContent>
       </AlertDialog>
 
-    </div>
+    </AppPage>
   );
 }

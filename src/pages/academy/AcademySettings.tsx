@@ -17,6 +17,7 @@ import StarterKit from '@tiptap/starter-kit';
 import LinkExtension from '@tiptap/extension-link';
 import UnderlineExtension from '@tiptap/extension-underline';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AppPage } from '@/components/ui/app-page';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -315,8 +316,7 @@ export default function AcademySettings() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-3xl">
-      <div className="space-y-6">
+    <AppPage width="narrow" className="space-y-6">
         <AcademyMolliePaymentCard
           connectStatus={connectStatus}
           checkingStatus={checkingStatus || authLoading}
@@ -636,11 +636,10 @@ export default function AcademySettings() {
         </Card>
 
         {/* Danger Zone */}
-        <div className="pt-6 border-t border-destructive/20">
-          <h3 className="text-lg font-semibold text-destructive mb-4">{t('settings.dangerZone', 'Danger Zone')}</h3>
+        <div className="border-t border-destructive/20 pt-6">
+          <h3 className="mb-4 text-lg font-semibold text-destructive">{t('settings.dangerZone', 'Danger Zone')}</h3>
           <DeleteAccountDialog />
         </div>
-      </div>
-    </div>
+    </AppPage>
   );
 }

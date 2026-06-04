@@ -44,24 +44,24 @@ export default function PlayerSettings() {
     <>
       {/* Sub-page Header */}
       <div className="border-b bg-background/60">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+        <div className="mx-auto flex w-full max-w-7xl items-center gap-4 py-3">
           <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/player')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">{t('settings.title', 'Settings')}</h1>
+            <h1 className="font-display text-2xl font-semibold tracking-tight">{t('settings.title', 'Settings')}</h1>
             <p className="text-sm text-muted-foreground">{t('settings.subtitle', 'Manage your account settings')}</p>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        <div className="grid md:grid-cols-2 gap-4 max-w-4xl" data-testid="page-player-settings">
+      <main className="mx-auto w-full max-w-4xl py-6">
+        <div className="grid gap-4 md:grid-cols-2" data-testid="page-player-settings">
           {settingsItems.map((item) => (
             <Card
               key={item.route}
-              className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+              className="cursor-pointer transition-colors hover:bg-muted/30"
               onClick={() => navigate(item.route)}
             >
               <CardHeader className="pb-2">

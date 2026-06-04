@@ -10,6 +10,8 @@ import CyclesTable from '@/components/cycles/CyclesTable';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
 import { logger } from '@/lib/logger';
+import { AppPage } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
 
 interface LocationData {
   id: string;
@@ -68,38 +70,36 @@ export default function AcademyCycles() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-6">
+      <AppPage>
         <Skeleton className="h-8 w-48 mb-6" />
         <Skeleton className="h-12 w-full mb-4" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </AppPage>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{t('registration.openCycles', 'Registrations')}</h1>
-          <p className="text-muted-foreground hidden sm:block">
-            {t('noRegistrationsDescription', 'Create registrations to collect player interest')}
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
+    <AppPage>
+      <PageHeader
+        title={t('registration.openCycles', 'Registrations')}
+        description={t('noRegistrationsDescription', 'Create registrations to collect player interest')}
+        actions={
+          <>
           <Button onClick={() => navigate('/app/academy/cycles/new?type=registration')}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
           </Button>
           <Button variant="outline" onClick={() => navigate('/app/academy/cycles/new?type=event')}>
-            <PartyPopper className="mr-2 h-4 w-4" />
+            <PartyPopper className="h-4 w-4" />
             {t('createEvent', 'Create Event')}
           </Button>
           <Button variant="outline" onClick={() => navigate('/app/academy/cycles/bulk-copy')}>
-            <Copy className="mr-2 h-4 w-4" />
+            <Copy className="h-4 w-4" />
             {t('bulkCopy.cta', 'Copy slots to next cycle')}
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {cycles.length === 0 ? (
         <div className="text-center py-16">
@@ -126,6 +126,6 @@ export default function AcademyCycles() {
           ownerSlug={activeAcademy?.slug}
         />
       )}
-    </div>
+    </AppPage>
   );
 }

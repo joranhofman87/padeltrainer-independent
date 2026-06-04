@@ -12,6 +12,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/logger';
+import { AppPage } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Table,
   TableBody,
@@ -170,23 +172,22 @@ export default function AcademyTrainers() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <AppPage>
         <Skeleton className="h-10 w-48 mb-6" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </AppPage>
     );
   }
 
   const activeTrainers = trainers.filter((t) => t.status === 'active');
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold">{t('trainers.title')}</h2>
-          <p className="text-muted-foreground">{t('trainers.description')}</p>
-        </div>
-        {activeAcademy && user && profile && (
+    <AppPage>
+      <PageHeader
+        title={t('trainers.title')}
+        description={t('trainers.description')}
+        actions={
+          activeAcademy && user && profile ? (
           <div className="flex items-center gap-2">
             <CreateAcademyTrainerDialog
               academyProfileId={activeAcademy.id}
@@ -200,8 +201,9 @@ export default function AcademyTrainers() {
               onInviteSent={fetchData}
             />
           </div>
-        )}
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* Add yourself as trainer banner */}
       {canAddSelf.canAdd && (
@@ -476,6 +478,6 @@ export default function AcademyTrainers() {
           )}
         </TabsContent>
       </Tabs>
-    </div>
+    </AppPage>
   );
 }
