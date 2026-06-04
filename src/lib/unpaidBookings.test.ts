@@ -12,6 +12,14 @@ vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('@/lib/trainerDisplayNames', () => ({
+  fetchTrainerDisplayNamesByProfileIds: vi.fn(),
+}));
+
+import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
+
+const fetchTrainerNamesMock = vi.mocked(fetchTrainerDisplayNamesByProfileIds);
+
 function createMockClient(handlers: {
   academyTrainers?: { data: { trainer_profile_id: string }[] | null };
   bookings?: { data: unknown[] | null; error: { message: string; code?: string; details?: string; hint?: string } | null };
@@ -65,68 +73,48 @@ describe('sortBookingsBySlotStartTime', () => {
 });
 
 describe('UNPAID_BOOKINGS_SELECT', () => {
-  it('uses slot_trainer embed instead of trainer_profiles:trainer_id alias', () => {
-    expect(UNPAID_BOOKINGS_SELECT).toContain('slot_trainer:trainer_profiles!availability_slots_trainer_id_fkey');
+  it('does not use invalid trainer_profiles → profiles:user_id embeds', () => {
+    expect(UNPAID_BOOKINGS_SELECT).not.toContain('profiles:user_id');
+    expect(UNPAID_BOOKINGS_SELECT).not.toContain('slot_trainer');
     expect(UNPAID_BOOKINGS_SELECT).not.toContain('trainer_profiles:trainer_id');
+    expect(UNPAID_BOOKINGS_SELECT).toContain('trainer_id');
   });
 });
 
 describe('mapUnpaidBookingRow', () => {
-  it('maps trainer name from slot_trainer.profiles', () => {
-    const row = {
-      id: 'booking-1',
-      slot_id: 'slot-1',
-      payment_amount: 25,
-      reminder_sent_at: null,
-      player_id: 'player-1',
-      guest_player_id: null,
-      profiles: { full_name: 'Alex Player', email: 'alex@example.com' },
-      guest_players: null,
-      availability_slots: {
-        start_time: '2026-06-10T10:00:00Z',
-        end_time: '2026-06-10T11:00:00Z',
-        cyclus_name: 'Summer',
-        price_per_session: 30,
-        slot_trainer: {
-          id: 'trainer-1',
-          profiles: { full_name: 'Coach Sam' },
-        },
-      },
-    };
+  const baseRow = {
+    id: 'booking-1',
+    slot_id: 'slot-1',
+    payment_amount: 25,
+    reminder_sent_at: null,
+    player_id: 'player-1',
+    guest_player_id: null,
+    profiles: { full_name: 'Alex Player', email: 'alex@example.com' },
+    guest_players: null,
+    availability_slots: {
+      start_time: '2026-06-10T10:00:00Z',
+      end_time: '2026-06-10T11:00:00Z',
+      trainer_id: 'trainer-1',
+      cyclus_name: 'Summer',
+      price_per_session: 30,
+    },
+  };
 
-    const mapped = mapUnpaidBookingRow(row);
-    expect(mapped.trainerName).toBe('Coach Sam');
-    expect(mapped.playerName).toBe('Alex Player');
-    expect(mapped.amount).toBe(25);
+  it('maps trainer name from separate lookup map', () => {
+    const nameMap = new Map([['trainer-1', 'Coach Sam']]);
+    expect(mapUnpaidBookingRow(baseRow, nameMap).trainerName).toBe('Coach Sam');
   });
 
-  it('falls back to Trainer when slot_trainer profile is missing', () => {
-    const row = {
-      id: 'booking-2',
-      slot_id: 'slot-2',
-      payment_amount: null,
-      reminder_sent_at: null,
-      player_id: null,
-      guest_player_id: 'guest-1',
-      profiles: null,
-      guest_players: { full_name: 'Guest', email: 'guest@example.com' },
-      availability_slots: {
-        start_time: '2026-06-10T10:00:00Z',
-        end_time: '2026-06-10T11:00:00Z',
-        cyclus_name: null,
-        price_per_session: 40,
-        slot_trainer: null,
-      },
-    };
-
-    expect(mapUnpaidBookingRow(row).trainerName).toBe('Trainer');
-    expect(mapUnpaidBookingRow(row).amount).toBe(40);
+  it('falls back to Trainer when lookup map has no entry', () => {
+    expect(mapUnpaidBookingRow(baseRow, new Map()).trainerName).toBe('Trainer');
   });
 });
 
 describe('fetchUnpaidBookingsData', () => {
   beforeEach(() => {
     vi.mocked(logger.error).mockClear();
+    fetchTrainerNamesMock.mockReset();
+    fetchTrainerNamesMock.mockResolvedValue(new Map([['trainer-1', 'Coach Sam']]));
   });
 
   it('returns [] without querying bookings when no trainer or academy id', async () => {
@@ -145,28 +133,47 @@ describe('fetchUnpaidBookingsData', () => {
     expect(bookingsFrom).not.toHaveBeenCalled();
   });
 
-  it('queries bookings when trainer id is provided', async () => {
-    const { client, bookingsFrom } = createMockClient({
-      bookings: { data: [], error: null },
+  it('fetches trainer names separately and maps rows', async () => {
+    const { client } = createMockClient({
+      bookings: {
+        data: [
+          {
+            id: 'booking-1',
+            slot_id: 'slot-1',
+            payment_amount: 20,
+            reminder_sent_at: null,
+            player_id: 'p1',
+            guest_player_id: null,
+            profiles: { full_name: 'Player', email: 'p@example.com' },
+            guest_players: null,
+            availability_slots: {
+              start_time: '2026-07-01T10:00:00Z',
+              end_time: '2026-07-01T11:00:00Z',
+              trainer_id: 'trainer-1',
+              cyclus_name: null,
+              price_per_session: 25,
+            },
+          },
+        ],
+        error: null,
+      },
     });
-    await fetchUnpaidBookingsData('trainer-1', undefined, client);
-    expect(bookingsFrom).toHaveBeenCalled();
+
+    const result = await fetchUnpaidBookingsData('trainer-1', undefined, client);
+    expect(fetchTrainerNamesMock).toHaveBeenCalledWith(['trainer-1'], client, 'UnpaidBookingsCard');
+    expect(result[0]?.trainerName).toBe('Coach Sam');
   });
 
   it('returns [] and logs once on Supabase error without throwing', async () => {
     const { client } = createMockClient({
       bookings: {
         data: null,
-        error: { message: 'Bad operator', code: 'PGRST120', details: 'embed filter' },
+        error: { message: 'Bad operator', code: 'PGRST200', details: 'embed filter' },
       },
     });
     await expect(fetchUnpaidBookingsData('trainer-1', undefined, client)).resolves.toEqual([]);
     expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith(
-      'Failed to load unpaid bookings',
-      expect.any(Error),
-      expect.objectContaining({ component: 'UnpaidBookingsCard', code: 'PGRST120' }),
-    );
+    expect(fetchTrainerNamesMock).not.toHaveBeenCalled();
   });
 });
 

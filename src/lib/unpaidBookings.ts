@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
 
 export interface UnpaidBooking {
   id: string;
@@ -31,16 +32,13 @@ type UnpaidBookingRow = {
   availability_slots: {
     start_time: string;
     end_time: string;
+    trainer_id: string | null;
     cyclus_name: string | null;
     price_per_session: number | null;
-    slot_trainer: {
-      id: string;
-      profiles: { full_name: string | null } | null;
-    } | null;
   };
 };
 
-/** PostgREST select for unpaid bookings (slot_trainer avoids trainer_id embed alias clash). */
+/** Bookings select without nested trainer_profiles embed; trainer names loaded separately. */
 export const UNPAID_BOOKINGS_SELECT = `
   id,
   slot_id,
@@ -56,11 +54,7 @@ export const UNPAID_BOOKINGS_SELECT = `
     end_time,
     trainer_id,
     cyclus_name,
-    price_per_session,
-    slot_trainer:trainer_profiles!availability_slots_trainer_id_fkey (
-      id,
-      profiles:user_id (full_name)
-    )
+    price_per_session
   )
 `;
 
@@ -80,11 +74,16 @@ export function sortBookingsBySlotStartTime<T extends { availability_slots: { st
   );
 }
 
-export function mapUnpaidBookingRow(b: UnpaidBookingRow): UnpaidBooking {
+export function mapUnpaidBookingRow(
+  b: UnpaidBookingRow,
+  trainerNameByProfileId?: Map<string, string>,
+): UnpaidBooking {
   const slot = b.availability_slots;
   const profile = b.profiles;
   const guest = b.guest_players;
-  const trainerProfileData = slot?.slot_trainer?.profiles ?? null;
+  const trainerId = slot?.trainer_id;
+  const trainerName =
+    (trainerId && trainerNameByProfileId?.get(trainerId)) || 'Trainer';
 
   return {
     id: b.id,
@@ -98,7 +97,7 @@ export function mapUnpaidBookingRow(b: UnpaidBookingRow): UnpaidBooking {
     amount: b.payment_amount || slot.price_per_session || null,
     cyclusName: slot.cyclus_name || null,
     reminderSentAt: b.reminder_sent_at,
-    trainerName: trainerProfileData?.full_name || 'Trainer',
+    trainerName,
   };
 }
 
@@ -141,6 +140,16 @@ export async function fetchUnpaidBookingsData(
     return [];
   }
 
-  const sorted = sortBookingsBySlotStartTime((data || []) as UnpaidBookingRow[]);
-  return sorted.map(mapUnpaidBookingRow);
+  const rows = (data || []) as UnpaidBookingRow[];
+  const slotTrainerIds = [
+    ...new Set(rows.map((r) => r.availability_slots?.trainer_id).filter((id): id is string => !!id)),
+  ];
+  const trainerNameByProfileId = await fetchTrainerDisplayNamesByProfileIds(
+    slotTrainerIds,
+    client,
+    'UnpaidBookingsCard',
+  );
+
+  const sorted = sortBookingsBySlotStartTime(rows);
+  return sorted.map((row) => mapUnpaidBookingRow(row, trainerNameByProfileId));
 }
