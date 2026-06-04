@@ -67,6 +67,7 @@ vi.mock('react-i18next', () => ({
         'nav.dashboard': 'Dashboard',
         'nav.schedule': 'Schedule',
         'nav.players': 'Players',
+        'nav.trainers': 'Trainers',
         'nav.registrations': 'Registrations',
         'nav.invoices': 'Invoices',
         'nav.settings': 'Settings',
@@ -143,6 +144,15 @@ describe('AcademySidebar desktop', () => {
     expect(settingsLink).toHaveAttribute('href', '/app/academy/settings');
   });
 
+  it('renders Trainers link and highlights it on trainers route', () => {
+    renderSidebar('/app/academy/trainers');
+
+    const trainersLink = screen.getByRole('link', { name: 'Trainers' });
+    expect(trainersLink).toHaveAttribute('href', '/app/academy/trainers');
+    expect(trainersLink).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Settings' })).not.toHaveAttribute('aria-current');
+  });
+
   it('renders account actions in the footer', () => {
     renderSidebar();
 
@@ -162,6 +172,17 @@ describe('AcademySidebar mobile drawer', () => {
     renderSidebar('/app/academy');
 
     fireEvent.click(screen.getByTestId('nav-academy-players'));
+
+    expect(setOpenMobileMock).toHaveBeenCalledWith(false);
+  });
+
+  it('renders Trainers in mobile drawer and closes on click', () => {
+    renderSidebar('/app/academy');
+
+    const trainersLink = screen.getByTestId('nav-academy-trainers');
+    expect(trainersLink).toHaveAttribute('href', '/app/academy/trainers');
+
+    fireEvent.click(trainersLink);
 
     expect(setOpenMobileMock).toHaveBeenCalledWith(false);
   });

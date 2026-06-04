@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Calendar,
   Users,
+  UserRoundCog,
   CalendarDays,
   FileText,
   Settings,
@@ -12,6 +13,7 @@ export type AcademyNavItemId =
   | 'dashboard'
   | 'schedule'
   | 'players'
+  | 'trainers'
   | 'registrations'
   | 'invoices'
   | 'settings';
@@ -54,6 +56,14 @@ export const ACADEMY_PRIMARY_NAV: AcademyNavItem[] = [
     testId: 'nav-academy-players',
   },
   {
+    id: 'trainers',
+    to: '/app/academy/trainers',
+    labelKey: 'nav.trainers',
+    defaultLabel: 'Trainers',
+    icon: UserRoundCog,
+    testId: 'nav-academy-trainers',
+  },
+  {
     id: 'registrations',
     to: '/app/academy/cycles',
     labelKey: 'nav.registrations',
@@ -83,7 +93,6 @@ const SETTINGS_SECTION_PREFIXES = [
   '/app/academy/settings',
   '/app/academy/profile',
   '/app/academy/locations',
-  '/app/academy/trainers',
 ] as const;
 
 export function isAcademyNavItemActive(pathname: string, item: AcademyNavItem): boolean {
