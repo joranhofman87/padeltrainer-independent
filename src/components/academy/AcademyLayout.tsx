@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 import { logger } from '@/lib/logger';
 import { AcademySidebar } from '@/components/academy/AcademySidebar';
-import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { useQuery } from '@tanstack/react-query';
@@ -46,6 +46,28 @@ export function useAcademyContext() {
 
 const ACTIVE_ACADEMY_STORAGE_KEY = 'activeAcademyId';
 const SUBSCRIPTION_STALE_TIME = 5 * 60 * 1000; // 5 minutes
+
+function AcademyMobileHeader({ academyName }: { academyName?: string }) {
+  const { t } = useTranslation('academy');
+  const { toggleSidebar } = useSidebar();
+
+  return (
+    <header className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 md:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        onClick={toggleSidebar}
+        aria-label={t('nav.openMenu', 'Open menu')}
+        data-testid="academy-mobile-menu-trigger"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{academyName}</span>
+    </header>
+  );
+}
 
 export default function AcademyLayout() {
   const { t } = useTranslation('academy');
@@ -179,15 +201,7 @@ export default function AcademyLayout() {
           />
           <SidebarInset className="flex-1">
             {/* Mobile Header */}
-            <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 md:hidden">
-              <SidebarTrigger>
-                <Button variant="ghost" size="icon">
-                  <Menu className="h-5 w-5" />
-                  <span className="sr-only">Toggle sidebar</span>
-                </Button>
-              </SidebarTrigger>
-              <span className="font-semibold truncate">{activeAcademy?.name}</span>
-            </header>
+            <AcademyMobileHeader academyName={activeAcademy?.name} />
             
             {/* Page Content */}
             <main className="flex-1 p-4 md:p-6">

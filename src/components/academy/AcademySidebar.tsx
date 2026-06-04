@@ -1,12 +1,10 @@
-import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { NavLink } from "@/components/NavLink";
+import { Link } from "react-router-dom";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -17,34 +15,17 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubItem,
-  SidebarMenuSubButton,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  LayoutDashboard,
-  Users,
-  User,
-  Calendar,
-  CalendarDays,
-  MapPin,
-  Settings,
   CreditCard,
   LogOut,
   ExternalLink,
   PanelLeftClose,
   PanelLeft,
   GraduationCap,
-  CheckCircle,
-  FileText,
   Gift,
-  ChevronRight,
+  X,
 } from "lucide-react";
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { signOut } from "@/lib/auth";
@@ -53,6 +34,11 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
 import type { AcademyProfile } from "@/lib/academy";
+import {
+  ACADEMY_PRIMARY_NAV,
+  isAcademyNavItemActive,
+  type AcademyNavItem,
+} from "@/components/academy/academySidebarNav";
 
 interface AcademySidebarProps {
   academy: (AcademyProfile & { role: string }) | null;
@@ -60,13 +46,60 @@ interface AcademySidebarProps {
   isExpired?: boolean;
 }
 
+const navLinkBase =
+  "flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
+const navLinkInactive =
+  "text-slate-600 hover:bg-white hover:text-slate-900 [&>svg]:text-slate-500";
+
+const navLinkActive =
+  "border border-slate-200 bg-white text-slate-900 shadow-sm [&>svg]:text-[hsl(var(--brand-500))]";
+
+function AcademyNavLink({
+  item,
+  label,
+  collapsed,
+  onNavigate,
+}: {
+  item: AcademyNavItem;
+  label: string;
+  collapsed: boolean;
+  onNavigate: () => void;
+}) {
+  const Icon = item.icon;
+  const location = useLocation();
+  const active = isAcademyNavItemActive(location.pathname, item);
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild tooltip={label} isActive={active}>
+        <Link
+          to={item.to}
+          data-testid={item.testId}
+          onClick={onNavigate}
+          aria-current={active ? "page" : undefined}
+          className={cn(navLinkBase, active ? navLinkActive : navLinkInactive)}
+        >
+          <Icon className="h-4 w-4 shrink-0" aria-hidden />
+          {!collapsed && <span className="truncate">{label}</span>}
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: AcademySidebarProps) {
   const { t, i18n } = useTranslation("academy");
   const navigate = useNavigate();
-  const location = useLocation();
-  const { state, toggleSidebar } = useSidebar();
+  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { toast } = useToast();
+
+  const closeMobileDrawer = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   const handleLogout = async () => {
     const { error } = await signOut();
@@ -88,21 +121,6 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
     }
   };
 
-  const isActive = (path: string, exact = false) => {
-    if (exact) return location.pathname === path;
-    return location.pathname.startsWith(path);
-  };
-
-  const settingsActive =
-    isActive("/app/academy/profile") ||
-    isActive("/app/academy/locations") ||
-    isActive("/app/academy/trainers") ||
-    isActive("/app/academy/settings");
-  const [settingsOpen, setSettingsOpen] = useState(settingsActive);
-  useEffect(() => {
-    if (settingsActive) setSettingsOpen(true);
-  }, [settingsActive]);
-
   const initials = academy?.name
     ?.split(" ")
     .map((n) => n[0])
@@ -110,294 +128,174 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
     .toUpperCase()
     .slice(0, 2) || "A";
 
+  const statusLabel = academy?.is_verified
+    ? t("common.verified")
+    : t("badge");
+
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b">
-        {!collapsed && (
-          <div className="px-3 pt-3 pb-1">
-            <Logo className="h-6" variant="dark" />
-          </div>
-        )}
-        <div className={cn(
-          "flex px-2 py-2",
-          collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
-        )}>
-          <div className={cn(
-            "flex items-center",
-            collapsed ? "justify-center" : "gap-2"
-          )}>
-            {academy?.logo_url ? (
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={academy.logo_url} alt={academy?.name || ''} />
-                <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-              </Avatar>
-            ) : (
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <GraduationCap className="h-4 w-4 text-primary" />
-              </div>
+    <Sidebar
+      collapsible="icon"
+      className="[&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-slate-200 [&_[data-sidebar=sidebar]]:bg-slate-50"
+    >
+      <SidebarHeader className="border-b border-slate-200/80 bg-slate-50">
+        <div
+          className={cn(
+            "flex items-center gap-2 px-2 pt-2",
+            collapsed ? "flex-col justify-center" : "justify-between",
+          )}
+        >
+          <div
+            className={cn(
+              "flex min-w-0 items-center",
+              collapsed ? "justify-center" : "gap-2",
             )}
+          >
+            <Logo className="h-5 w-auto shrink-0" />
             {!collapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="font-semibold text-sm truncate max-w-[140px]">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold tracking-tight text-slate-800">
+                  padeltrainer
+                </p>
+                <p className="truncate text-[11px] text-slate-500">
                   {academy?.name || "Academy"}
-                </span>
-                <div className="flex items-center gap-1">
-                  {academy?.is_verified ? (
-                    <Badge
-                      variant="secondary"
-                      className="w-fit text-[10px] px-1.5 py-0 bg-green-500/10 text-green-600 dark:text-green-400"
-                    >
-                      <CheckCircle className="h-2.5 w-2.5 mr-0.5" />
-                      {t("common.verified")}
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="secondary"
-                      className="w-fit text-[10px] px-1.5 py-0"
-                    >
-                      {t("badge")}
-                    </Badge>
-                  )}
-                </div>
+                </p>
               </div>
             )}
           </div>
-          {!collapsed ? (
+          {isMobile ? (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
-              onClick={toggleSidebar}
+              className="h-8 w-8 shrink-0 text-slate-600"
+              onClick={() => setOpenMobile(false)}
+              aria-label={t("nav.closeMenu", "Close menu")}
             >
-              <PanelLeftClose className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </Button>
           ) : (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-8 w-8 shrink-0 text-slate-600"
               onClick={toggleSidebar}
+              aria-label={collapsed ? t("nav.expandSidebar", "Expand sidebar") : t("nav.collapseSidebar", "Collapse sidebar")}
             >
-              <PanelLeft className="h-4 w-4" />
+              {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </Button>
           )}
         </div>
       </SidebarHeader>
 
-      <SidebarContent className={cn(isExpired && "relative")}>
-        {isExpired && (
-          <div className="absolute inset-0 z-10" />
-        )}
-        <SidebarGroup>
-          <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
-            <SidebarMenu>
-              {/* Dashboard */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.dashboard")}>
-                  <NavLink
-                    to="/app/academy"
-                    end
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <LayoutDashboard className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.dashboard")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Players */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.players")}>
-                  <NavLink
-                    to="/app/academy/players"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <Users className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.players")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Schedule */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.schedule")}>
-                  <NavLink
-                    to="/app/academy/calendar"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <Calendar className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.schedule")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Registrations */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.registrations", "Registrations")}>
-                  <NavLink
-                    to="/app/academy/cycles"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <CalendarDays className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.registrations", "Registrations")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Invoices */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.invoices", "Invoices")}>
-                  <NavLink
-                    to="/app/academy/invoices"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <FileText className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.invoices", "Facturen")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Settings group */}
-              <Collapsible
-                open={settingsOpen && !collapsed}
-                onOpenChange={setSettingsOpen}
-                className="group/settings"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t("nav.settings")}
-                      className={settingsActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}
-                    >
-                      <Settings className="h-4 w-4" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{t("nav.settings")}</span>
-                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/settings:rotate-90" />
-                        </>
-                      )}
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/profile"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            <User className="h-4 w-4" />
-                            <span>{t("nav.profile")}</span>
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/locations"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            <MapPin className="h-4 w-4" />
-                            <span>{t("nav.locations")}</span>
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/trainers"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            <GraduationCap className="h-4 w-4" />
-                            <span>{t("nav.trainers")}</span>
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/settings"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            <Settings className="h-4 w-4" />
-                            <span>{t("nav.settings", "General")}</span>
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
-
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      <SidebarContent className={cn("bg-slate-50", isExpired && "relative")}>
+        {isExpired && <div className="absolute inset-0 z-10" aria-hidden />}
+        <nav aria-label={t("nav.primary", "Academy navigation")} className={cn(isExpired && "opacity-50 pointer-events-none")}>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5 px-1">
+                {ACADEMY_PRIMARY_NAV.map((item) => (
+                  <AcademyNavLink
+                    key={item.id}
+                    item={item}
+                    label={t(item.labelKey, item.defaultLabel)}
+                    collapsed={collapsed}
+                    onNavigate={closeMobileDrawer}
+                  />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </nav>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
-        <div className={cn(
-          "flex p-2",
-          collapsed ? "flex-col items-center gap-2" : "flex-col gap-2"
-        )}>
-          <ProfileSwitcher 
-            context="academy" 
+      <SidebarFooter className="border-t border-slate-200/80 bg-slate-50">
+        <div
+          className={cn(
+            "flex p-2",
+            collapsed ? "flex-col items-center gap-2" : "flex-col gap-2",
+          )}
+        >
+          {!collapsed && academy && (
+            <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
+              {academy.logo_url ? (
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={academy.logo_url} alt={academy.name || ""} />
+                  <AvatarFallback className="text-xs bg-slate-100 text-slate-700">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100">
+                  <GraduationCap className="h-4 w-4 text-slate-500" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-900">{academy.name}</p>
+                <p className="truncate text-xs text-slate-500">{statusLabel}</p>
+              </div>
+            </div>
+          )}
+
+          <ProfileSwitcher
+            context="academy"
             activeAcademyId={academy?.id}
             onAcademyChange={onAcademyChange}
             collapsed={collapsed}
           />
-          
-          {/* View Public Profile */}
+
           {academy?.slug && academy?.is_verified && academy?.is_public && (
             <Button
               variant="ghost"
               size="sm"
               onClick={handleViewPublicProfile}
               className={cn(
-                "w-full",
+                "w-full justify-start text-slate-600 hover:bg-white hover:text-slate-900",
                 collapsed && "w-auto px-2",
-                "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
             >
-              <ExternalLink className="h-4 w-4" />
-              {!collapsed && <span className="ml-2">{t("dashboard.viewPublicProfile")}</span>}
+              <ExternalLink className="h-4 w-4 shrink-0" />
+              {!collapsed && (
+                <span className="ml-2 truncate">{t("dashboard.viewPublicProfile")}</span>
+              )}
             </Button>
           )}
-          
-          {/* Theme and Logout */}
-          <div className={cn(
-            "flex",
-            collapsed ? "flex-col items-center gap-2" : "items-center gap-2"
-          )}>
+
+          <div
+            className={cn(
+              "flex",
+              collapsed ? "flex-col items-center gap-2" : "items-center gap-1",
+            )}
+          >
             <ThemeToggle />
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => navigate("/app/academy/subscription")}
+              className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900"
+              onClick={() => {
+                closeMobileDrawer();
+                navigate("/app/academy/subscription");
+              }}
               title={t("nav.subscription")}
+              aria-label={t("nav.subscription")}
             >
               <CreditCard className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
+              className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900"
               onClick={showReferralWidget}
+              aria-label={t("nav.referral", "Referral")}
             >
-              <Gift className="h-4 w-4 text-primary" />
+              <Gift className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               onClick={handleLogout}
-              className="h-9 w-9"
+              className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900"
+              aria-label={t("nav.logout", "Log out")}
             >
               <LogOut className="h-4 w-4" />
             </Button>
