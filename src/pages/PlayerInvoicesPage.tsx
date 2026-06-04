@@ -1,10 +1,36 @@
+import { useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
+import { useToast } from '@/hooks/use-toast';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
+import {
+  markPaidInvoiceClaimToastShown,
+  shouldShowPaidInvoiceClaimToast,
+} from '@/lib/signupClaimFlow';
+import { trackInvoiceClaimLandedOnInvoices } from '@/lib/invoiceClaimTracking';
 
 export default function PlayerInvoicesPage() {
   const { profile, loading } = useAuth();
   const { t } = useTranslation('player');
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (loading || !profile?.id) return;
+
+    try {
+      trackInvoiceClaimLandedOnInvoices();
+    } catch {
+      /* analytics must not block invoices page */
+    }
+
+    if (!shouldShowPaidInvoiceClaimToast()) return;
+
+    toast({
+      title: t('playerInvoices.claimToast.title'),
+      description: t('playerInvoices.claimToast.description'),
+    });
+    markPaidInvoiceClaimToastShown();
+  }, [loading, profile?.id, toast, t]);
 
   if (loading) {
     return (

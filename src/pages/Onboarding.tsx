@@ -14,6 +14,11 @@ import { supabase } from '@/lib/supabaseClient';
 import { validatePhone } from '@/lib/validation';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES, validateRating } from '@/lib/ratingSystems';
 import { trackEvent } from '@/lib/tracking';
+import {
+  sanitizeAppRedirect,
+  SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY,
+} from '@/lib/signupClaimFlow';
+import { trackInvoiceClaimOnboardingCompleted } from '@/lib/invoiceClaimTracking';
 
 export default function Onboarding() {
   const { role: urlRole } = useParams<{ role: string }>();
@@ -180,11 +185,18 @@ export default function Onboarding() {
       });
 
       trackEvent('player_onboarding_completed', { rating_system: ratingSystem });
-      
+      try {
+        trackInvoiceClaimOnboardingCompleted(ratingSystem);
+      } catch {
+        /* analytics must not block onboarding */
+      }
+
       // Check for redirect URL from signup flow
-      const redirectUrl = localStorage.getItem('redirectAfterOnboarding');
+      const redirectUrl = sanitizeAppRedirect(
+        localStorage.getItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY),
+      );
       if (redirectUrl) {
-        localStorage.removeItem('redirectAfterOnboarding');
+        localStorage.removeItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY);
         navigate(redirectUrl);
       } else {
         // Default: go to dashboard

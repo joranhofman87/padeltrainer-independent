@@ -33,6 +33,8 @@ import {
   getOnlinePaymentUnavailableMessageKey,
   type PublicInvoicePaymentRecipient,
 } from "@/lib/publicInvoiceMollieMessage";
+import { buildPaidInvoiceClaimSignupPath } from "@/lib/signupClaimFlow";
+import { trackInvoiceClaimStarted } from "@/lib/invoiceClaimTracking";
 
 // Keep the /pay/:token URL out of Referer headers — these tokens grant access
 // to invoice PII until the invoice is paid.
@@ -110,14 +112,21 @@ function PublicPayAccountActions() {
     <div className="pt-4 space-y-3 text-left" data-testid="public-pay-account-actions">
       <p className="text-sm text-muted-foreground">{t("invoice.paidPrivacyMessage")}</p>
       <div className="flex flex-col sm:flex-row gap-2 justify-center">
-        <Link to="/app/signup/player">
+        <Link to={buildPaidInvoiceClaimSignupPath()}>
           <Button
             variant="default"
-            className="gap-2 w-full sm:w-auto"
-            data-testid="public-pay-create-account"
+            className="ph-no-capture gap-2 w-full sm:w-auto"
+            data-testid="public-pay-claim-account"
+            onClick={() => {
+              try {
+                trackInvoiceClaimStarted();
+              } catch {
+                /* analytics must not block navigation */
+              }
+            }}
           >
             <UserPlus className="h-4 w-4" />
-            {t("invoice.publicPayCreateAccount")}
+            {t("invoice.publicPayClaimAccount")}
           </Button>
         </Link>
         <Link to="/app/auth">

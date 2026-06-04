@@ -1,0 +1,129 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { PlayerInvoicesTab } from './PlayerInvoicesTab';
+import { SIGNUP_CLAIM_SOURCE_STORAGE_KEY } from '@/lib/signupClaimFlow';
+import { mockSessionStorage, mockSignupLocalStorage } from '@/test/signupPageFreeze';
+
+const fromMock = vi.fn();
+
+vi.mock('@/lib/supabaseClient', () => ({
+  supabase: { from: (...args: unknown[]) => fromMock(...args) },
+}));
+
+const trackEventMock = vi.fn();
+
+vi.mock('@/lib/tracking', () => ({
+  trackEvent: (...args: unknown[]) => trackEventMock(...args),
+}));
+
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, fallbackOrParams?: string | Record<string, unknown>) => {
+      const map: Record<string, string> = {
+        'playerInvoices.empty.title': 'No invoices',
+        'playerInvoices.empty.description': 'Default empty description',
+        'playerInvoices.empty.claimDescription':
+          'No invoices found yet. Make sure you signed up with the same email address used on your invoice.',
+        'playerInvoices.loadError': 'Load error',
+        'playerInvoices.status.draft': 'Draft',
+        'playerInvoices.status.sent': 'Sent',
+        'playerInvoices.status.paid': 'Paid',
+        'playerInvoices.status.overdue': 'Overdue',
+        'playerInvoices.labels.date': 'Date',
+        'playerInvoices.labels.due': 'Due',
+        'playerInvoices.labels.paid': 'Paid',
+        'playerInvoices.labels.vatIncluded': 'VAT',
+      };
+      if (map[key]) return map[key];
+      if (typeof fallbackOrParams === 'string') return fallbackOrParams;
+      return key;
+    },
+    i18n: { language: 'en' },
+  }),
+}));
+
+describe('PlayerInvoicesTab empty state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    trackEventMock.mockClear();
+    mockSignupLocalStorage();
+    mockSessionStorage();
+    localStorage.clear();
+    sessionStorage.clear();
+    fromMock.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          neq: () => ({
+            order: () => Promise.resolve({ data: [], error: null }),
+          }),
+        }),
+      }),
+    });
+  });
+
+  it('shows default empty copy for normal users', async () => {
+    render(<PlayerInvoicesTab profileId="profile-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('Default empty description')).toBeInTheDocument();
+    });
+    expect(trackEventMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('player-invoices-empty-claim')).not.toBeInTheDocument();
+  });
+
+  it('shows claim-specific empty copy when paid invoice claim flow', async () => {
+    localStorage.setItem(SIGNUP_CLAIM_SOURCE_STORAGE_KEY, 'paid_invoice');
+    render(<PlayerInvoicesTab profileId="profile-1" />);
+    await waitFor(() => {
+      expect(screen.getByTestId('player-invoices-empty-claim')).toBeInTheDocument();
+    });
+    expect(trackEventMock).toHaveBeenCalledWith(
+      'invoice_claim_no_invoices_found',
+      expect.objectContaining({ invoice_count_bucket: '0' }),
+    );
+    expect(screen.getByText(/same email address used on your invoice/i)).toBeInTheDocument();
+    expect(screen.queryByText('Default empty description')).not.toBeInTheDocument();
+  });
+
+  it('tracks linked outcome when claim flow has invoices', async () => {
+    localStorage.setItem(SIGNUP_CLAIM_SOURCE_STORAGE_KEY, 'paid_invoice');
+    const invoiceRow = {
+      id: 'inv-1',
+      invoice_number: 'INV-1',
+      invoice_date: '2026-01-01',
+      due_date: '2026-02-01',
+      player_name: 'Test',
+      player_business_name: null,
+      player_address: null,
+      player_btw_number: null,
+      subtotal: 100,
+      vat_rate: 21,
+      vat_amount: 21,
+      total: 121,
+      status: 'paid',
+      pdf_url: null,
+      sent_at: null,
+      paid_at: '2026-01-10',
+      notes: null,
+    };
+    fromMock.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          neq: () => ({
+            order: () => Promise.resolve({ data: [invoiceRow], error: null }),
+          }),
+        }),
+      }),
+    });
+    render(<PlayerInvoicesTab profileId="profile-1" />);
+    await waitFor(() => {
+      expect(trackEventMock).toHaveBeenCalledWith(
+        'invoice_claim_linked_invoices_found',
+        expect.objectContaining({ invoice_count_bucket: '1' }),
+      );
+    });
+  });
+});

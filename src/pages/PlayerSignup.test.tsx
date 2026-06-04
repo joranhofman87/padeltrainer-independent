@@ -34,6 +34,9 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, fallbackOrParams?: string | Record<string, unknown>) => {
       if (typeof fallbackOrParams === 'string') return fallbackOrParams;
+      if (key === 'playerSignup.claimBanner') {
+        return 'Use the same email address as your booking or invoice so we can automatically connect your invoices and sessions.';
+      }
       return key;
     },
     i18n: { language: 'en' },
@@ -41,6 +44,13 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@/lib/tracking', () => ({ trackEvent: vi.fn() }));
+
+const trackInvoiceClaimSignupStartedMock = vi.fn();
+
+vi.mock('@/lib/invoiceClaimTracking', () => ({
+  trackInvoiceClaimSignupStarted: (...args: unknown[]) => trackInvoiceClaimSignupStartedMock(...args),
+  claimFlowHasInvoicesRedirect: (redirect: string | null) => redirect === '/app/player/invoices',
+}));
 vi.mock('@/lib/utm', () => ({ getUtmParams: () => ({}) }));
 vi.mock('@/hooks/useHoneypot', () => ({
   useHoneypot: () => ({ honeypotRef: { current: null }, isSuspicious: () => false }),
@@ -74,11 +84,28 @@ describe('PlayerSignup', () => {
   });
 
   it('renders role tabs with correct links', () => {
-    renderPage('/app/signup/player?redirect=%2Ffoo');
-    expect(screen.getByTestId('signup-tab-trainer')).toHaveAttribute('href', '/app/signup/trainer?redirect=%2Ffoo');
+    renderPage('/app/signup/player?redirect=%2Fapp%2Fplayer%2Finvoices');
+    expect(screen.getByTestId('signup-tab-trainer')).toHaveAttribute(
+      'href',
+      '/app/signup/trainer?redirect=%2Fapp%2Fplayer%2Finvoices',
+    );
     expect(screen.getByTestId('signup-tab-club')).toHaveAttribute(
       'href',
-      '/app/signup/club?redirect=%2Ffoo',
+      '/app/signup/club?redirect=%2Fapp%2Fplayer%2Finvoices',
+    );
+  });
+
+  it('shows claim banner and persists claim context when source=paid_invoice', () => {
+    trackInvoiceClaimSignupStartedMock.mockClear();
+    renderPage('/app/signup/player?source=paid_invoice&redirect=%2Fapp%2Fplayer%2Finvoices');
+    expect(trackInvoiceClaimSignupStartedMock).toHaveBeenCalledWith(true);
+    expect(screen.getByTestId('signup-paid-invoice-claim-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('signup-paid-invoice-claim-banner')).toHaveTextContent(/booking or invoice/i);
+    expect(localStorage.getItem('signupClaimSource')).toBe('paid_invoice');
+    expect(localStorage.getItem('redirectAfterOnboarding')).toBe('/app/player/invoices');
+    expect(screen.getByTestId('signup-tab-trainer')).toHaveAttribute(
+      'href',
+      '/app/signup/trainer?source=paid_invoice&redirect=%2Fapp%2Fplayer%2Finvoices',
     );
   });
 

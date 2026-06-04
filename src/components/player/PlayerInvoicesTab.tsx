@@ -21,6 +21,8 @@ import {
   Pencil,
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
+import { clearSignupClaimSource, isPaidInvoiceClaimFlow } from '@/lib/signupClaimFlow';
+import { trackInvoiceClaimOutcome } from '@/lib/invoiceClaimTracking';
 import { nl, enUS, es, de, fr, it } from 'date-fns/locale';
 
 interface PlayerInvoice {
@@ -95,6 +97,14 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
         return inv;
       }) as PlayerInvoice[];
       setInvoices(processed);
+      try {
+        trackInvoiceClaimOutcome(processed.length);
+      } catch {
+        /* analytics must not block invoice list */
+      }
+      if (processed.length > 0) {
+        clearSignupClaimSource();
+      }
     }
     setLoading(false);
   };
@@ -181,12 +191,15 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
   }
 
   if (invoices.length === 0) {
+    const claimEmpty = isPaidInvoiceClaimFlow();
     return (
-      <Card className="p-12 text-center">
+      <Card className="p-12 text-center" data-testid="player-invoices-empty">
         <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-xl font-semibold mb-2">{t('playerInvoices.empty.title')}</h3>
-        <p className="text-muted-foreground">
-          {t('playerInvoices.empty.description')}
+        <p className="text-muted-foreground" data-testid={claimEmpty ? 'player-invoices-empty-claim' : undefined}>
+          {claimEmpty
+            ? t('playerInvoices.empty.claimDescription')
+            : t('playerInvoices.empty.description')}
         </p>
       </Card>
     );

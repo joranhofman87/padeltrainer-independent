@@ -23,6 +23,17 @@ import { getUtmParams } from '@/lib/utm';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  persistSignupClaimFromSearchParams,
+  sanitizeAppRedirect,
+  SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY,
+  SIGNUP_SOURCE_PAID_INVOICE,
+} from '@/lib/signupClaimFlow';
+import {
+  claimFlowHasInvoicesRedirect,
+  trackInvoiceClaimSignupStarted,
+} from '@/lib/invoiceClaimTracking';
 
 export default function PlayerSignup() {
   const [isLoading, setIsLoading] = useState(false);
@@ -39,8 +50,22 @@ export default function PlayerSignup() {
   const { t, i18n } = useTranslation('auth');
   const { honeypotRef, isSuspicious } = useHoneypot();
 
-  // Pre-fill form from URL params (e.g. from invoice payment CTA)
+  const isPaidInvoiceClaim = searchParams.get('source') === SIGNUP_SOURCE_PAID_INVOICE;
+
+  // Pre-fill from URL (not used for paid-invoice claim — no PII on paid page)
   useEffect(() => {
+    persistSignupClaimFromSearchParams(searchParams);
+
+    if (isPaidInvoiceClaim) {
+      try {
+        trackInvoiceClaimSignupStarted(
+          claimFlowHasInvoicesRedirect(sanitizeAppRedirect(searchParams.get('redirect'))),
+        );
+      } catch {
+        /* analytics must not block signup */
+      }
+    }
+
     const prefillEmail = searchParams.get('email');
     const prefillName = searchParams.get('name');
     if (prefillEmail && !email) setEmail(prefillEmail);
@@ -51,6 +76,13 @@ export default function PlayerSignup() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const storeRedirectAfterOnboarding = () => {
+    const safeRedirect = sanitizeAppRedirect(searchParams.get('redirect'));
+    if (safeRedirect) {
+      localStorage.setItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY, safeRedirect);
+    }
+  };
 
   // Returning logged-in users only — do not override post-signup onboarding navigation
   useEffect(() => {
@@ -101,10 +133,7 @@ export default function PlayerSignup() {
         if (data.user?.id) {
           supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
         }
-        const redirectUrl = searchParams.get('redirect');
-        if (redirectUrl) {
-          localStorage.setItem('redirectAfterOnboarding', redirectUrl);
-        }
+        storeRedirectAfterOnboarding();
         toast({
           title: t('signUp.success'),
           description: t('signUp.successDescription'),
@@ -113,10 +142,7 @@ export default function PlayerSignup() {
       } else {
         try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch {}
         localStorage.setItem('pendingRole', 'player');
-        const redirectUrl = searchParams.get('redirect');
-        if (redirectUrl) {
-          localStorage.setItem('redirectAfterOnboarding', redirectUrl);
-        }
+        storeRedirectAfterOnboarding();
         setShowVerification(true);
       }
     } catch (err) {
@@ -136,11 +162,8 @@ export default function PlayerSignup() {
     try {
       try { trackEvent('signup_started', { role: 'player', method: 'google', ...getUtmParams() }); } catch {}
       localStorage.setItem('pendingRole', 'player');
-      const redirectUrl = searchParams.get('redirect');
-      if (redirectUrl) {
-        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
-      }
-      
+      storeRedirectAfterOnboarding();
+
       const { error } = await signInWithGoogle();
 
       if (error) {
@@ -184,6 +207,11 @@ export default function PlayerSignup() {
           <p className="text-xs text-muted-foreground pt-1">{t('playerSignup.trustLine')}</p>
         </CardHeader>
         <CardContent className="space-y-4">
+          {isPaidInvoiceClaim && (
+            <Alert data-testid="signup-paid-invoice-claim-banner">
+              <AlertDescription>{t('playerSignup.claimBanner')}</AlertDescription>
+            </Alert>
+          )}
           {/* Google OAuth - Prominent */}
           <Button
             variant="outline"

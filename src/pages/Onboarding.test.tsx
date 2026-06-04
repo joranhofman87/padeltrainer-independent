@@ -68,7 +68,15 @@ vi.mock('@/lib/tracking', () => ({
   trackEvent: vi.fn(),
 }));
 
+const trackInvoiceClaimOnboardingCompletedMock = vi.fn();
+
+vi.mock('@/lib/invoiceClaimTracking', () => ({
+  trackInvoiceClaimOnboardingCompleted: (...args: unknown[]) =>
+    trackInvoiceClaimOnboardingCompletedMock(...args),
+}));
+
 import Onboarding from './Onboarding';
+import { SIGNUP_CLAIM_SOURCE_STORAGE_KEY, SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY } from '@/lib/signupClaimFlow';
 
 const renderPlayerOnboarding = () =>
   render(
@@ -132,5 +140,45 @@ describe('Onboarding player flow', () => {
     expect(mockRpc).toHaveBeenCalledWith('has_role', { _user_id: 'user-1', _role: 'player' });
     expect(mockSetUserRole).not.toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith('/app/player');
+  });
+
+  it('redirects to sanitized redirectAfterOnboarding when set', async () => {
+    localStorage.setItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY, '/app/player/invoices');
+
+    renderPlayerOnboarding();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Complete Setup/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Complete Setup/i }));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/app/player/invoices');
+    });
+    expect(localStorage.getItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY)).toBeNull();
+  });
+
+  it('tracks invoice_claim_onboarding_completed in paid invoice claim flow', async () => {
+    localStorage.setItem(SIGNUP_CLAIM_SOURCE_STORAGE_KEY, 'paid_invoice');
+
+    renderPlayerOnboarding();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Complete Setup/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Complete Setup/i }));
+
+    await waitFor(() => {
+      expect(trackInvoiceClaimOnboardingCompletedMock).toHaveBeenCalled();
+    });
+  });
+
+  it('ignores unsafe redirectAfterOnboarding', async () => {
+    localStorage.setItem('redirectAfterOnboarding', 'https://evil.com');
+
+    renderPlayerOnboarding();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Complete Setup/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Complete Setup/i }));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/app/player');
+    });
   });
 });

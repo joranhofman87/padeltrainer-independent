@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import PublicInvoicePay from './PublicInvoicePay';
 import { resolvePublicInvoiceLoadError } from '@/lib/publicInvoiceFetch';
@@ -16,6 +16,12 @@ vi.mock('@/components/SEO', () => ({
   SEO: () => null,
 }));
 
+const trackInvoiceClaimStartedMock = vi.fn();
+
+vi.mock('@/lib/invoiceClaimTracking', () => ({
+  trackInvoiceClaimStarted: () => trackInvoiceClaimStartedMock(),
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => {
@@ -30,7 +36,7 @@ vi.mock('react-i18next', () => ({
         'invoice.paymentReceivedDescription': 'Thank you. This invoice has been paid successfully.',
         'invoice.paidPrivacyMessage': 'Privacy message',
         'invoice.publicPayLogIn': 'Log in',
-        'invoice.publicPayCreateAccount': 'Create account',
+        'invoice.publicPayClaimAccount': 'Claim your account',
         'invoice.publicPaySignupHelper':
           'If this is your first time using PadelTrainer, create an account with the email address used for your booking or invoice. We will link your invoices after signup when the email matches.',
         'invoice.publicPayForgotPasswordNote':
@@ -74,6 +80,7 @@ describe('resolvePublicInvoiceLoadError', () => {
 describe('PublicInvoicePay error UI', () => {
   beforeEach(() => {
     invokeMock.mockReset();
+    trackInvoiceClaimStartedMock.mockClear();
   });
 
   it('shows unavailable message on 401 invoke error', async () => {
@@ -129,13 +136,36 @@ describe('PublicInvoicePay error UI', () => {
     expect(await screen.findByRole('heading', { name: 'Payment received' })).toBeInTheDocument();
     expect(screen.getByText('Thank you. This invoice has been paid successfully.')).toBeInTheDocument();
     expect(screen.getByText('Privacy message')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Create account' })).toHaveAttribute('href', '/app/signup/player');
+    const claimLink = screen.getByRole('link', { name: 'Claim your account' });
+    expect(claimLink).toHaveAttribute(
+      'href',
+      '/app/signup/player?source=paid_invoice&redirect=%2Fapp%2Fplayer%2Finvoices',
+    );
     expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/app/auth');
     expect(screen.getByText(/first time using PadelTrainer/i)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Reset password' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /forgot-password/i })).not.toBeInTheDocument();
     expect(screen.queryByText('INV-')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Download/i })).not.toBeInTheDocument();
+  });
+
+  it('tracks invoice_claim_started when claim CTA is clicked', async () => {
+    invokeMock.mockResolvedValue({
+      data: { status: 'paid' },
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/paid-token']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Payment received' });
+    fireEvent.click(screen.getByTestId('public-pay-claim-account'));
+    expect(trackInvoiceClaimStartedMock).toHaveBeenCalledTimes(1);
   });
 
   it('shows cancelled state with no invoice details', async () => {
