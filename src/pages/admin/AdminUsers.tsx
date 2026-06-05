@@ -5,7 +5,14 @@ import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AppPage } from "@/components/ui/app-page";
+import { PageHeader } from "@/components/ui/page-header";
+import { TableToolbar } from "@/components/ui/table-toolbar";
+import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import {
   Table,
   TableBody,
@@ -39,11 +46,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Loader2,
-  Search,
   LogIn,
   Trash2,
   Pencil,
   Percent,
+  Users,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -518,35 +525,35 @@ export default function AdminUsers() {
 
   if (usersLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <AppPage>
+        <ListPageSkeleton />
+      </AppPage>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
-          <p className="text-muted-foreground">
-            Manage users, roles, and access
-          </p>
-        </div>
-      </div>
+    <AppPage>
+      <PageHeader
+        title="User Management"
+        description="Manage users, roles, and access"
+      />
 
-      {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+      <TableToolbar
+        searchPlaceholder="Search by name or email..."
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        trailing={
+          selectedUserIds.size > 0 ? (
+            <Button
+              variant="destructive"
+              onClick={() => setBulkDeleteDialogOpen(true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete {selectedUserIds.size} users
+            </Button>
+          ) : undefined
+        }
+      >
         <Select value={roleFilter} onValueChange={setRoleFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filter by role" />
@@ -559,21 +566,15 @@ export default function AdminUsers() {
             <SelectItem value="none">No role</SelectItem>
           </SelectContent>
         </Select>
-        {selectedUserIds.size > 0 && (
-          <Button
-            variant="destructive"
-            onClick={() => setBulkDeleteDialogOpen(true)}
-            className="ml-auto"
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete {selectedUserIds.size} users
-          </Button>
-        )}
-      </div>
+      </TableToolbar>
 
-      {/* Data Table */}
-      <div className="rounded-md border">
-        <Table>
+      {filteredUsers.length === 0 ? (
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <EmptyState icon={Users} title="No users found" />
+        </Card>
+      ) : (
+        <DataTableCard>
+          <Table className={compactDataTableClass}>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[50px]">
@@ -614,17 +615,7 @@ export default function AdminUsers() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  No users found
-                </TableCell>
-              </TableRow>
-            ) : (
-              sortedData.map((u) => (
+            {sortedData.map((u) => (
                 <TableRow 
                   key={u.user_id} 
                   className={`cursor-pointer ${selectedUserIds.has(u.user_id) ? "bg-muted/50" : ""}`}
@@ -706,11 +697,11 @@ export default function AdminUsers() {
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
+              ))}
           </TableBody>
         </Table>
-      </div>
+        </DataTableCard>
+      )}
 
       {/* Footer */}
       <p className="text-sm text-muted-foreground">
@@ -1021,6 +1012,6 @@ export default function AdminUsers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AppPage>
   );
 }

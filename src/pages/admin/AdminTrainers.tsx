@@ -1,9 +1,15 @@
 import { useState, useMemo } from "react";
 import { useAdminTrainers, useInvalidateAdminData, type TrainerProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AppPage } from "@/components/ui/app-page";
+import { PageHeader } from "@/components/ui/page-header";
+import { TableToolbar } from "@/components/ui/table-toolbar";
+import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import {
   Table,
   TableBody,
@@ -27,8 +33,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Loader2,
-  Search,
   MoreHorizontal,
   Pencil,
   Eye,
@@ -36,6 +40,7 @@ import {
   ExternalLink,
   LogIn,
   Plus,
+  Users,
 } from "lucide-react";
 import { format } from "date-fns";
 import { TrainerEditDialog, type TrainerEditData } from "@/components/admin/TrainerEditDialog";
@@ -148,39 +153,30 @@ export default function AdminTrainers() {
 
   if (trainersLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <AppPage>
+        <ListPageSkeleton />
+      </AppPage>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Trainer Management</h1>
-          <p className="text-muted-foreground">
-            View and manage trainer subscriptions
-          </p>
-        </div>
-        <Button onClick={() => setAddDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Trainer
-        </Button>
-      </div>
+    <AppPage>
+      <PageHeader
+        title="Trainer Management"
+        description="View and manage trainer subscriptions"
+        actions={
+          <Button onClick={() => setAddDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Trainer
+          </Button>
+        }
+      />
 
-      {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+      <TableToolbar
+        searchPlaceholder="Search by name or email..."
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+      >
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filter by status" />
@@ -194,11 +190,15 @@ export default function AdminTrainers() {
             <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </TableToolbar>
 
-      {/* Data Table */}
-      <div className="rounded-md border">
-        <Table>
+      {filteredTrainers.length === 0 ? (
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <EmptyState icon={Users} title="No trainers found" />
+        </Card>
+      ) : (
+        <DataTableCard>
+          <Table className={compactDataTableClass}>
           <TableHeader>
             <TableRow>
               <SortableTableHead
@@ -237,17 +237,7 @@ export default function AdminTrainers() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredTrainers.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  No trainers found
-                </TableCell>
-              </TableRow>
-            ) : (
-              sortedData.map((trainer) => {
+            {sortedData.map((trainer) => {
                 const status = trainer._subscriptionStatus;
                 return (
                   <TableRow
@@ -326,11 +316,11 @@ export default function AdminTrainers() {
                     </TableCell>
                   </TableRow>
                 );
-              })
-            )}
+              })}
           </TableBody>
         </Table>
-      </div>
+        </DataTableCard>
+      )}
 
       {/* Footer */}
       <p className="text-sm text-muted-foreground">
@@ -361,6 +351,6 @@ export default function AdminTrainers() {
         onOpenChange={setAddDialogOpen}
         onSuccess={() => invalidateTrainers()}
       />
-    </div>
+    </AppPage>
   );
 }

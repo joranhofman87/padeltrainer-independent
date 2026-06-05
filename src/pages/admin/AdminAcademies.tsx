@@ -2,8 +2,14 @@ import { useState, useEffect } from "react";
 import { useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } from "@/hooks/useAdminData";
 import { logger } from '@/lib/logger';
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { AppPage } from "@/components/ui/app-page";
+import { PageHeader } from "@/components/ui/page-header";
+import { TableToolbar } from "@/components/ui/table-toolbar";
+import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import {
   Table,
   TableBody,
@@ -44,7 +50,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Loader2,
-  Search,
   GraduationCap,
   CheckCircle2,
   XCircle,
@@ -260,58 +265,49 @@ export default function AdminAcademies() {
 
   if (academiesLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <AppPage>
+        <ListPageSkeleton />
+      </AppPage>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Academy Management</h1>
-          <p className="text-muted-foreground">
-            View and manage academies in the system
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleBulkVerify}
-            disabled={isVerifying}
-          >
-            {isVerifying ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Verifying...
-              </>
-            ) : (
-              <>
-                <ShieldCheck className="h-4 w-4 mr-2" />
-                Verify All Public
-              </>
-            )}
-          </Button>
-          <Button onClick={() => setIsAddDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Academy
-          </Button>
-        </div>
-      </div>
+    <AppPage>
+      <PageHeader
+        title="Academy Management"
+        description="View and manage academies in the system"
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={handleBulkVerify}
+              disabled={isVerifying}
+            >
+              {isVerifying ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="h-4 w-4 mr-2" />
+                  Verify All Public
+                </>
+              )}
+            </Button>
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Academy
+            </Button>
+          </>
+        }
+      />
 
-      {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+      <TableToolbar
+        searchPlaceholder="Search by name or email..."
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+      >
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filter by status" />
@@ -327,11 +323,15 @@ export default function AdminAcademies() {
             <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </TableToolbar>
 
-      {/* Data Table */}
-      <div className="rounded-md border">
-        <Table>
+      {sortedData.length === 0 ? (
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <EmptyState icon={GraduationCap} title="No academies found" />
+        </Card>
+      ) : (
+        <DataTableCard>
+          <Table className={compactDataTableClass}>
           <TableHeader>
             <TableRow>
               <SortableTableHead
@@ -370,17 +370,7 @@ export default function AdminAcademies() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedData.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  No academies found
-                </TableCell>
-              </TableRow>
-            ) : (
-              sortedData.map((academy) => {
+            {sortedData.map((academy) => {
                 const subscriptionStatus = academy._subscriptionStatus;
                 return (
                   <TableRow
@@ -495,11 +485,11 @@ export default function AdminAcademies() {
                     </TableCell>
                   </TableRow>
                 );
-              })
-            )}
+              })}
           </TableBody>
         </Table>
-      </div>
+        </DataTableCard>
+      )}
 
       {/* Pagination */}
       <div className="flex items-center justify-between">
@@ -599,6 +589,6 @@ export default function AdminAcademies() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AppPage>
   );
 }

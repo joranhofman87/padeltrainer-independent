@@ -1,11 +1,17 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { AppPage } from "@/components/ui/app-page";
+import { PageHeader } from "@/components/ui/page-header";
+import { TableToolbar } from "@/components/ui/table-toolbar";
+import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Search, UserCheck, UserX, Users } from "lucide-react";
 import { format } from "date-fns";
 
@@ -69,58 +75,49 @@ export default function AdminGuestPlayers() {
     return gp.academy_profiles?.name || "—";
   };
 
+  if (isLoading) {
+    return (
+      <AppPage>
+        <ListPageSkeleton />
+      </AppPage>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Registrations</h1>
-        <p className="text-muted-foreground">Guest players from intake forms and manual registrations</p>
-      </div>
+    <AppPage>
+      <PageHeader
+        title="Registrations"
+        description="Guest players from intake forms and manual registrations"
+      />
 
-      {/* Summary cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Registrations</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Converted to Account</CardTitle>
-            <UserCheck className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{convertedCount}</div>
-            <p className="text-xs text-muted-foreground">
-              {totalCount > 0 ? ((convertedCount / totalCount) * 100).toFixed(1) : 0}% conversion rate
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Has Trained</CardTitle>
-            <UserCheck className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{trainedCount}</div>
-          </CardContent>
-        </Card>
+        <StatTile
+          label="Total Registrations"
+          value={String(totalCount)}
+          icon={Users}
+        />
+        <StatTile
+          label="Converted to Account"
+          value={String(convertedCount)}
+          icon={UserCheck}
+          subtext={
+            totalCount > 0
+              ? `${((convertedCount / totalCount) * 100).toFixed(1)}% conversion rate`
+              : undefined
+          }
+        />
+        <StatTile
+          label="Has Trained"
+          value={String(trainedCount)}
+          icon={UserCheck}
+        />
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+      <TableToolbar
+        searchPlaceholder="Search by name or email..."
+        searchValue={search}
+        onSearchChange={setSearch}
+      >
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Status" />
@@ -142,12 +139,15 @@ export default function AdminGuestPlayers() {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </TableToolbar>
 
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
+      {filtered.length === 0 ? (
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <EmptyState icon={Search} title="No registrations found" />
+        </Card>
+      ) : (
+        <DataTableCard>
+          <Table className={compactDataTableClass}>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -162,66 +162,52 @@ export default function AdminGuestPlayers() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                    Loading...
+              {filtered.map((gp: any) => (
+                <TableRow key={gp.id}>
+                  <TableCell className="font-medium">{gp.full_name}</TableCell>
+                  <TableCell>{gp.email || "—"}</TableCell>
+                  <TableCell>{gp.phone || "—"}</TableCell>
+                  <TableCell>
+                    {gp.skill_rating ? (
+                      <span>{gp.skill_rating} ({gp.rating_system})</span>
+                    ) : "—"}
+                  </TableCell>
+                  <TableCell>{getTrainerName(gp)}</TableCell>
+                  <TableCell>{getAcademyName(gp)}</TableCell>
+                  <TableCell>
+                    {gp.source ? (
+                      <Badge variant="outline" className="text-xs">{gp.source}</Badge>
+                    ) : "—"}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      {gp.linked_profile_id ? (
+                        <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                          <UserCheck className="h-3 w-3 mr-1" />
+                          Converted
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">
+                          <UserX className="h-3 w-3 mr-1" />
+                          Guest
+                        </Badge>
+                      )}
+                      {gp.has_trained && (
+                        <Badge variant="outline" className="text-blue-600 border-blue-200">
+                          Trained
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {format(new Date(gp.created_at), "dd MMM yyyy")}
                   </TableCell>
                 </TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                    No registrations found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((gp: any) => (
-                  <TableRow key={gp.id}>
-                    <TableCell className="font-medium">{gp.full_name}</TableCell>
-                    <TableCell>{gp.email || "—"}</TableCell>
-                    <TableCell>{gp.phone || "—"}</TableCell>
-                    <TableCell>
-                      {gp.skill_rating ? (
-                        <span>{gp.skill_rating} ({gp.rating_system})</span>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell>{getTrainerName(gp)}</TableCell>
-                    <TableCell>{getAcademyName(gp)}</TableCell>
-                    <TableCell>
-                      {gp.source ? (
-                        <Badge variant="outline" className="text-xs">{gp.source}</Badge>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        {gp.linked_profile_id ? (
-                          <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                            <UserCheck className="h-3 w-3 mr-1" />
-                            Converted
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            <UserX className="h-3 w-3 mr-1" />
-                            Guest
-                          </Badge>
-                        )}
-                        {gp.has_trained && (
-                          <Badge variant="outline" className="text-blue-600 border-blue-200">
-                            Trained
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {format(new Date(gp.created_at), "dd MMM yyyy")}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
+              ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
-    </div>
+        </DataTableCard>
+      )}
+    </AppPage>
   );
 }
