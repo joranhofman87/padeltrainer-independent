@@ -12,7 +12,9 @@ import {
   Plus,
   UserPlus,
 } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
+import { AppPage } from '@/components/ui/app-page';
+import { DashboardPageSkeleton } from '@/components/ui/dashboard-page-skeleton';
+import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { supabase } from '@/lib/supabaseClient';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -304,45 +306,23 @@ export default function TrainerDashboard() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-7xl space-y-5 py-2" data-testid="page-trainer-dashboard">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <Skeleton className="h-10 w-32" />
-        </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-[72px] rounded-lg" />
-          ))}
-        </div>
-        <Skeleton className="h-40 w-full rounded-lg" />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Skeleton className="h-64 rounded-lg" />
-          <Skeleton className="h-64 rounded-lg" />
-        </div>
-      </div>
+      <AppPage data-testid="page-trainer-dashboard">
+        <DashboardPageSkeleton />
+      </AppPage>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-6" data-testid="page-trainer-dashboard">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[hsl(var(--navy-900))] sm:text-3xl">
-            {dashboardTitle}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.subtitleShort')}</p>
-        </div>
-        <Button
-          className="w-full shrink-0 bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))] sm:w-auto"
-          onClick={() => navigate('/app/trainer/slot/new')}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          {t('dashboard.addSlot')}
-        </Button>
-      </header>
+    <AppPage className="space-y-6" data-testid="page-trainer-dashboard">
+      <TrainerPageHeader
+        title={dashboardTitle}
+        description={t('dashboard.subtitleShort')}
+        primaryAction={{
+          label: t('dashboard.addSlot'),
+          onClick: () => navigate('/app/trainer/slot/new'),
+          icon: Plus,
+        }}
+      />
 
       {subscription && !subscription.isSubscribed && !hasAcademy && (
         <TrainerTrialBanner
@@ -508,6 +488,6 @@ export default function TrainerDashboard() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </AppPage>
   );
 }

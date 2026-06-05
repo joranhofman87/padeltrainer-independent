@@ -34,7 +34,11 @@ import {
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { updateBookingStatus } from '@/lib/lessons';
-import { PageHeader } from '@/components/ui/page-header';
+import { AppPage } from '@/components/ui/app-page';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
+import { StatTile } from '@/components/ui/stat-tile';
+import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 
 interface BookingWithDetails {
   id: string;
@@ -286,39 +290,35 @@ export default function TrainerBookings() {
 
   if (loading || loadingBookings) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
+      <AppPage>
+        <ListPageSkeleton />
+      </AppPage>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 space-y-4">
-        <PageHeader
+    <AppPage className="space-y-4">
+        <TrainerPageHeader
           title={t('manageBookings.title')}
           description={t('manageBookings.subtitle')}
         />
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-yellow-600">{pendingBookings.length}</p>
-              <p className="text-sm text-muted-foreground">{t('manageBookings.statusPending')}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-blue-600">{upcomingBookings.length}</p>
-              <p className="text-sm text-muted-foreground">{t('manageBookings.upcoming')}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-green-600">{pastBookings.filter(b => b.status === 'completed').length}</p>
-              <p className="text-sm text-muted-foreground">{t('manageBookings.statusCompleted')}</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatTile
+            label={t('manageBookings.statusPending')}
+            value={String(pendingBookings.length)}
+            icon={Bell}
+            highlight={pendingBookings.length > 0}
+          />
+          <StatTile
+            label={t('manageBookings.upcoming')}
+            value={String(upcomingBookings.length)}
+            icon={Calendar}
+          />
+          <StatTile
+            label={t('manageBookings.statusCompleted')}
+            value={String(pastBookings.filter((b) => b.status === 'completed').length)}
+            icon={CheckCircle2}
+          />
         </div>
 
         <Tabs defaultValue="pending" className="space-y-4">
@@ -335,10 +335,12 @@ export default function TrainerBookings() {
 
           <TabsContent value="pending" className="space-y-4">
             {pendingBookings.length === 0 ? (
-              <Card className="p-8 text-center">
-                <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">{t('manageBookings.allCaughtUp')}</h3>
-                <p className="text-muted-foreground">{t('manageBookings.noPendingBookings')}</p>
+              <Card className="overflow-hidden border-border/80 shadow-sm">
+                <EmptyState
+                  icon={CheckCircle2}
+                  title={t('manageBookings.allCaughtUp')}
+                  description={t('manageBookings.noPendingBookings')}
+                />
               </Card>
             ) : (
               pendingBookings.map(booking => (
@@ -357,10 +359,12 @@ export default function TrainerBookings() {
 
           <TabsContent value="upcoming" className="space-y-4">
             {upcomingBookings.length === 0 ? (
-              <Card className="p-8 text-center">
-                <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">{t('manageBookings.noUpcomingLessons')}</h3>
-                <p className="text-muted-foreground">{t('manageBookings.confirmedWillAppear')}</p>
+              <Card className="overflow-hidden border-border/80 shadow-sm">
+                <EmptyState
+                  icon={Calendar}
+                  title={t('manageBookings.noUpcomingLessons')}
+                  description={t('manageBookings.confirmedWillAppear')}
+                />
               </Card>
             ) : (
               upcomingBookings.map(booking => (
@@ -380,10 +384,12 @@ export default function TrainerBookings() {
 
           <TabsContent value="past" className="space-y-4">
             {pastBookings.length === 0 ? (
-              <Card className="p-8 text-center">
-                <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">{t('manageBookings.noPastLessons')}</h3>
-                <p className="text-muted-foreground">{t('manageBookings.pastWillAppear')}</p>
+              <Card className="overflow-hidden border-border/80 shadow-sm">
+                <EmptyState
+                  icon={Clock}
+                  title={t('manageBookings.noPastLessons')}
+                  description={t('manageBookings.pastWillAppear')}
+                />
               </Card>
             ) : (
               pastBookings.map(booking => (
@@ -398,7 +404,6 @@ export default function TrainerBookings() {
             )}
           </TabsContent>
         </Tabs>
-      </main>
 
       {/* Cancel Dialog */}
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
@@ -466,7 +471,7 @@ export default function TrainerBookings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AppPage>
   );
 }
 

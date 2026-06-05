@@ -10,6 +10,9 @@ import { Label } from '@/components/ui/label';
 import { ArrowLeft, ClipboardList, Loader2 } from 'lucide-react';
 import { WaitingListTable } from '@/components/waitingList';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
+import { AppPage, surfaceCardClass } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
+import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 
 export default function AcademyWaitingList() {
   const navigate = useNavigate();
@@ -63,67 +66,63 @@ export default function AcademyWaitingList() {
 
   if (loadingSettings) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
+      <AppPage width="narrow">
+        <ListPageSkeleton />
+      </AppPage>
     );
   }
 
   return (
-    <>
-      <div className="border-b bg-background/60">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+    <AppPage width="narrow" className="space-y-6">
+      <PageHeader
+        title={t('waitingList.settingsTitle', 'Waiting List')}
+        description={t('waitingList.settingsSubtitle', 'Let players join a waiting list when no spots are available')}
+        actions={
           <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/academy/cycles')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-xl font-bold">{t('waitingList.settingsTitle', 'Waiting List')}</h1>
-            <p className="text-sm text-muted-foreground">{t('waitingList.settingsSubtitle', 'Let players join a waiting list when no spots are available')}</p>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-primary" />
-              {t('waitingList.enableTitle', 'Enable Waiting List')}
-            </CardTitle>
-            <CardDescription>
-              {t('waitingList.enableDescription', 'When enabled, players can sign up for your waiting list on your public profile. You\'ll be notified when someone joins.')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex-1 pr-4">
-                <Label htmlFor="waiting-list-toggle" className="font-medium">
-                  {t('waitingList.enableTitle', 'Enable Waiting List')}
-                </Label>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {t('waitingList.enableDescription', 'When enabled, players can sign up for your waiting list on your public profile.')}
-                </p>
-              </div>
-              <Switch
-                id="waiting-list-toggle"
-                checked={enabled}
-                onCheckedChange={handleToggle}
-                disabled={saving}
-              />
+      <Card className={surfaceCardClass()}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-primary" />
+            {t('waitingList.enableTitle', 'Enable Waiting List')}
+          </CardTitle>
+          <CardDescription>
+            {t('waitingList.enableDescription', 'When enabled, players can sign up for your waiting list on your public profile. You\'ll be notified when someone joins.')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="flex-1 pr-4">
+              <Label htmlFor="waiting-list-toggle" className="font-medium">
+                {t('waitingList.enableTitle', 'Enable Waiting List')}
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                {t('waitingList.enableDescription', 'When enabled, players can sign up for your waiting list on your public profile.')}
+              </p>
             </div>
-            {saving && (
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-4">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('common.saving', 'Saving...')}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <Switch
+              id="waiting-list-toggle"
+              checked={enabled}
+              onCheckedChange={handleToggle}
+              disabled={saving}
+            />
+          </div>
+          {saving && (
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t('common.saving', 'Saving...')}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-        {enabled && activeAcademy?.id && (
-          <WaitingListTable ownerType="academy" ownerId={activeAcademy.id} />
-        )}
-      </main>
-    </>
+      {enabled && activeAcademy?.id && (
+        <WaitingListTable ownerType="academy" ownerId={activeAcademy.id} />
+      )}
+    </AppPage>
   );
 }

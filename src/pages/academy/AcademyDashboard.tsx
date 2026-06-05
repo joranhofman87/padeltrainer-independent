@@ -13,7 +13,7 @@ import {
   Receipt,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -30,6 +30,11 @@ import { AcademyPublicLinkCard } from '@/components/academy/AcademyPublicLinkCar
 import { useQuery } from '@tanstack/react-query';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
+import { compactDataTableClass } from '@/components/ui/data-table';
+import { DashboardPageSkeleton } from '@/components/ui/dashboard-page-skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatTile } from '@/components/ui/stat-tile';
+import { DashboardSectionHeader } from '@/components/trainer/dashboard/DashboardActivityList';
 
 const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
@@ -43,7 +48,7 @@ export default function AcademyDashboard() {
   const academyId = activeAcademy?.id;
 
   // Stats query
-  const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0, outstandingInvoices: 0 } } = useQuery({
+  const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0, outstandingInvoices: 0 }, isLoading: statsLoading } = useQuery({
     queryKey: ['academy-stats', academyId],
     queryFn: async () => {
       const [trainersData, locationsData, viewStats, invoicesRes] = await Promise.all([
@@ -80,7 +85,7 @@ export default function AcademyDashboard() {
     .slice(0, 6);
 
   // Activity data query - consolidated into one query with parallelized sub-fetches
-  const { data: activity } = useQuery({
+  const { data: activity, isLoading: activityLoading } = useQuery({
     queryKey: ['academy-activity', academyId],
     queryFn: async () => {
       const now = new Date().toISOString();
@@ -233,6 +238,14 @@ export default function AcademyDashboard() {
 
   const isTrialExpired = subscription?.trialExpired && !subscription?.isSubscribed;
 
+  if (!activeAcademy || statsLoading || activityLoading) {
+    return (
+      <AppPage>
+        <DashboardPageSkeleton />
+      </AppPage>
+    );
+  }
+
   return (
     <AppPage>
       <PageHeader
@@ -283,70 +296,36 @@ export default function AcademyDashboard() {
         </Alert>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-5">
-        <Card className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => navigate('/app/academy/trainers')}>
-          <CardHeader className="pb-2">
-            <CardDescription>{t('stats.trainers')}</CardDescription>
-            <CardTitle className="font-display text-2xl font-semibold tabular-nums">{stats.trainers}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button variant="ghost" size="sm" className="p-0 h-auto">
-              {t('trainers.title')} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => navigate('/app/academy/locations')}>
-          <CardHeader className="pb-2">
-            <CardDescription>{t('stats.locations')}</CardDescription>
-            <CardTitle className="font-display text-2xl font-semibold tabular-nums">{stats.locations}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button variant="ghost" size="sm" className="p-0 h-auto">
-              {t('locations.title')} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => navigate('/app/academy/invoices?status=outstanding')}>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <Receipt className="h-3 w-3" />
-              {t('stats.outstandingInvoices', 'Outstanding invoices')}
-            </CardDescription>
-            <CardTitle className="font-display text-2xl font-semibold tabular-nums">{stats.outstandingInvoices}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button variant="ghost" size="sm" className="p-0 h-auto">
-              {t('stats.viewInvoices', 'View invoices')} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <Eye className="h-3 w-3" />
-              {t('stats.profileViews')}
-            </CardDescription>
-            <CardTitle className="font-display text-2xl font-semibold tabular-nums">{stats.viewsLast30Days}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="p-0 h-auto"
-              onClick={() => {
-                const lang = i18n.language || 'nl';
-                window.open(getMarketingUrl(`academies/${activeAcademy?.slug}`, lang) + '?preview=true', '_blank');
-              }}
-            >
-              {t('dashboard.viewProfile', 'View profile')} <ExternalLink className="ml-2 h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={t('dashboard.overview')}>
+        <StatTile
+          label={t('stats.trainers')}
+          value={String(stats.trainers)}
+          icon={Users}
+          onClick={() => navigate('/app/academy/trainers')}
+        />
+        <StatTile
+          label={t('stats.locations')}
+          value={String(stats.locations)}
+          icon={MapPin}
+          onClick={() => navigate('/app/academy/locations')}
+        />
+        <StatTile
+          label={t('stats.outstandingInvoices', 'Outstanding invoices')}
+          value={String(stats.outstandingInvoices)}
+          icon={Receipt}
+          highlight={stats.outstandingInvoices > 0}
+          onClick={() => navigate('/app/academy/invoices?status=outstanding')}
+        />
+        <StatTile
+          label={t('stats.profileViews')}
+          value={String(stats.viewsLast30Days)}
+          icon={Eye}
+          onClick={() => {
+            const lang = i18n.language || 'nl';
+            window.open(getMarketingUrl(`academies/${activeAcademy?.slug}`, lang) + '?preview=true', '_blank');
+          }}
+        />
+      </section>
 
       {/* Unpaid Bookings */}
       {activeAcademy && (
@@ -355,21 +334,17 @@ export default function AcademyDashboard() {
 
       {/* Activity Sections */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        {/* Recent Players */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('dashboard.recentPlayers', 'Recent Players')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/players')}>
-                {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {recentPlayers.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t('dashboard.noData', 'No data yet')}</p>
-            ) : (
-              <Table>
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <DashboardSectionHeader
+            title={t('dashboard.recentPlayers', 'Recent Players')}
+            viewAllLabel={t('dashboard.viewAll', 'View all')}
+            onViewAll={() => navigate('/app/academy/players')}
+          />
+          {recentPlayers.length === 0 ? (
+            <EmptyState icon={Users} title={t('dashboard.noData', 'No data yet')} />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table className={compactDataTableClass}>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">{tTrainer('players.name')}</TableHead>
@@ -380,9 +355,9 @@ export default function AcademyDashboard() {
                 <TableBody>
                   {recentPlayers.map(player => (
                     <TableRow key={player.id}>
-                      <TableCell className="text-sm py-2">{player.full_name}</TableCell>
-                      <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(player.created_at), 'dd MMM')}</TableCell>
-                      <TableCell className="py-2">
+                      <TableCell className="truncate">{player.full_name}</TableCell>
+                      <TableCell className="text-muted-foreground">{format(new Date(player.created_at), 'dd MMM')}</TableCell>
+                      <TableCell>
                         <Badge variant={player.has_trained ? 'success' : 'muted'} className="text-xs">
                           {player.has_trained ? tTrainer('players.statuses.active') : tTrainer('players.statuses.prospect')}
                         </Badge>
@@ -391,25 +366,21 @@ export default function AcademyDashboard() {
                   ))}
                 </TableBody>
               </Table>
-            )}
-          </CardContent>
+            </div>
+          )}
         </Card>
 
-        {/* Recent Bookings */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('dashboard.recentBookings', 'Recent Bookings')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/calendar')}>
-                {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {recentBookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t('dashboard.noData', 'No data yet')}</p>
-            ) : (
-              <Table>
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <DashboardSectionHeader
+            title={t('dashboard.recentBookings', 'Recent Bookings')}
+            viewAllLabel={t('dashboard.viewAll', 'View all')}
+            onViewAll={() => navigate('/app/academy/calendar')}
+          />
+          {recentBookings.length === 0 ? (
+            <EmptyState icon={Receipt} title={t('dashboard.noData', 'No data yet')} />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table className={compactDataTableClass}>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">{tTrainer('bookings.player')}</TableHead>
@@ -443,25 +414,21 @@ export default function AcademyDashboard() {
                   })}
                 </TableBody>
               </Table>
-            )}
-          </CardContent>
+            </div>
+          )}
         </Card>
 
-        {/* Registrations */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('dashboard.registrations', 'Registrations')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/intake-requests')}>
-                {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {recentRegistrations.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t('dashboard.noData', 'No data yet')}</p>
-            ) : (
-              <Table>
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <DashboardSectionHeader
+            title={t('dashboard.registrations', 'Registrations')}
+            viewAllLabel={t('dashboard.viewAll', 'View all')}
+            onViewAll={() => navigate('/app/academy/intake-requests')}
+          />
+          {recentRegistrations.length === 0 ? (
+            <EmptyState icon={Users} title={t('dashboard.noData', 'No data yet')} />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table className={compactDataTableClass}>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">{tTrainer('players.name')}</TableHead>
@@ -482,25 +449,21 @@ export default function AcademyDashboard() {
                   })}
                 </TableBody>
               </Table>
-            )}
-          </CardContent>
+            </div>
+          )}
         </Card>
 
-        {/* Upcoming Open Spots */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('dashboard.upcomingSpots', 'Upcoming Open Spots')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/calendar?tab=cycles')}>
-                {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {upcomingSlots.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t('dashboard.noData', 'No data yet')}</p>
-            ) : (
-              <Table>
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <DashboardSectionHeader
+            title={t('dashboard.upcomingSpots', 'Upcoming Open Spots')}
+            viewAllLabel={t('dashboard.viewAll', 'View all')}
+            onViewAll={() => navigate('/app/academy/calendar?tab=cycles')}
+          />
+          {upcomingSlots.length === 0 ? (
+            <EmptyState icon={Clock} title={t('dashboard.noData', 'No data yet')} />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table className={compactDataTableClass}>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">{tTrainer('cycles.name', 'Name')}</TableHead>
@@ -523,8 +486,8 @@ export default function AcademyDashboard() {
                   ))}
                 </TableBody>
               </Table>
-            )}
-          </CardContent>
+            </div>
+          )}
         </Card>
       </div>
 

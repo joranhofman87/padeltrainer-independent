@@ -13,17 +13,28 @@ export type DataTableCardProps = {
   mobile?: ReactNode;
   className?: string;
   testId?: string;
+  /** When true (default), table scroll is md+ only; set false for dashboard/compact tables. */
+  desktopOnly?: boolean;
 };
 
 /**
  * Flush card wrapper for desktop data tables with horizontal scroll.
  * Presentation-only — no data or filter logic.
  */
-export function DataTableCard({ children, mobile, className, testId }: DataTableCardProps) {
+export function DataTableCard({
+  children,
+  mobile,
+  className,
+  testId,
+  desktopOnly = true,
+}: DataTableCardProps) {
   return (
     <Card className={cn('overflow-hidden border-border/80 shadow-sm', className)}>
       <CardContent className={dataTableCardContentClass}>
-        <div className="hidden md:block overflow-x-auto" data-testid={testId}>
+        <div
+          className={cn('overflow-x-auto', desktopOnly && 'hidden md:block')}
+          data-testid={testId}
+        >
           {children}
         </div>
         {mobile}

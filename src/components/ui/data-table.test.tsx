@@ -30,6 +30,16 @@ describe('DataTableCard', () => {
     expect(screen.getByText('Player')).toBeInTheDocument();
   });
 
+  it('shows table on all breakpoints when desktopOnly is false', () => {
+    render(
+      <DataTableCard testId="table" desktopOnly={false}>
+        <table><tbody><tr><td>Always</td></tr></tbody></table>
+      </DataTableCard>,
+    );
+
+    expect(screen.getByTestId('table')).not.toHaveClass('hidden');
+  });
+
   it('renders optional mobile slot', () => {
     render(
       <DataTableCard testId="table" mobile={<div data-testid="mobile-list">Mobile</div>}>

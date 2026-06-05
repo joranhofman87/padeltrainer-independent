@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
+import { TableToolbar } from '@/components/ui/table-toolbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -135,31 +139,31 @@ export default function WaitingListTable({
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <Card className="overflow-hidden border-border/80 shadow-sm">
+        <CardContent className="p-4">
+          <ListPageSkeleton />
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 font-display text-base font-semibold">
           <Users className="h-5 w-5" />
           {t('management.title')}
           {entries.length > 0 && (
-            <Badge variant="secondary" className="ml-2">
-              {entries.length}
-            </Badge>
+            <Badge variant="secondary">{entries.length}</Badge>
           )}
-        </CardTitle>
+        </h2>
+      </div>
+      <TableToolbar trailing={
         <Select
           value={statusFilter}
           onValueChange={(val) => setStatusFilter(val as WaitingListStatus | 'all')}
         >
-          <SelectTrigger className="w-32">
+          <SelectTrigger className="w-[160px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -169,16 +173,14 @@ export default function WaitingListTable({
             <SelectItem value="archived">{t('management.filters.archived')}</SelectItem>
           </SelectContent>
         </Select>
-      </CardHeader>
-      <CardContent>
-        {entries.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>{t('management.empty')}</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
+      } />
+      {entries.length === 0 ? (
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <EmptyState icon={Users} title={t('management.empty')} />
+        </Card>
+      ) : (
+        <DataTableCard testId="waiting-list-table-scroll" desktopOnly={false}>
+          <Table className={compactDataTableClass}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Player</TableHead>
@@ -274,9 +276,8 @@ export default function WaitingListTable({
                 })}
               </TableBody>
             </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+        </DataTableCard>
+      )}
+    </div>
   );
 }

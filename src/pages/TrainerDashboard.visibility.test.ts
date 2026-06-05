@@ -10,6 +10,11 @@ describe('TrainerDashboard visibility', () => {
     expect(source).not.toMatch(/guest_players.*count: 'exact'/);
   });
 
+  it('uses AppPage shell', () => {
+    expect(source).toContain('AppPage');
+    expect(source).toContain('TrainerPageHeader');
+  });
+
   it('filters recent activity guest players by removal', () => {
     expect(source).toContain('filterGuestRowsByRemoval');
     expect(source).toContain('fetchRemovedPlayerKeys');

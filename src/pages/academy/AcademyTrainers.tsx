@@ -6,7 +6,9 @@ import { Users, ExternalLink, Eye, EyeOff, Clock, UserPlus, Pencil, MapPin, Chev
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton';
+import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
@@ -173,8 +175,7 @@ export default function AcademyTrainers() {
   if (loading) {
     return (
       <AppPage>
-        <Skeleton className="h-10 w-48 mb-6" />
-        <Skeleton className="h-64 w-full" />
+        <ListPageSkeleton />
       </AppPage>
     );
   }
@@ -241,18 +242,77 @@ export default function AcademyTrainers() {
 
         <TabsContent value="active">
           {activeTrainers.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">{t('trainers.empty')}</h3>
-                <p className="text-muted-foreground">{t('trainers.emptyDescription')}</p>
-              </CardContent>
+            <Card className="overflow-hidden border-border/80 shadow-sm">
+              <EmptyState
+                icon={Users}
+                title={t('trainers.empty')}
+                description={t('trainers.emptyDescription')}
+              />
             </Card>
           ) : (
-            <>
-            {/* Desktop Table */}
-            <div className="hidden md:block rounded-md border">
-              <Table>
+            <DataTableCard
+              testId="academy-trainers-table-scroll"
+              mobile={
+                <div className="md:hidden space-y-3 p-4">
+                  {activeTrainers.map((trainer) => {
+                    const hasName = !!trainer.profile?.full_name;
+                    const isVisible = trainer.show_on_academy_page;
+
+                    return (
+                      <div
+                        key={trainer.id}
+                        className="border rounded-lg p-3 space-y-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div
+                            className="flex items-center gap-3 cursor-pointer hover:opacity-80 min-w-0 flex-1"
+                            onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
+                          >
+                            <Avatar className="h-9 w-9 shrink-0">
+                              <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
+                              <AvatarFallback className="text-xs">
+                                {getInitials(trainer.profile?.full_name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium truncate">
+                              {trainer.profile?.full_name || 'Trainer'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Switch
+                              checked={isVisible}
+                              onCheckedChange={(checked) =>
+                                handleVisibilityToggle(trainer.id, checked, hasName)
+                              }
+                              disabled={updatingVisibility === trainer.id || (!hasName && !isVisible)}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon" aria-label="Next"
+                              className="h-8 w-8"
+                              onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        {trainer.locations && trainer.locations.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {trainer.locations.map((loc: any) => (
+                              <Badge key={loc.id} variant="secondary" className="text-xs">
+                                <MapPin className="h-3 w-3 mr-1" />
+                                {loc.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              }
+            >
+              <Table className={compactDataTableClass}>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[250px]">{t('common:name', 'Name')}</TableHead>
@@ -362,78 +422,18 @@ export default function AcademyTrainers() {
                   })}
                 </TableBody>
               </Table>
-            </div>
-
-            {/* Mobile Cards */}
-            <div className="md:hidden space-y-3">
-              {activeTrainers.map((trainer) => {
-                const hasName = !!trainer.profile?.full_name;
-                const isVisible = trainer.show_on_academy_page;
-
-                return (
-                  <div
-                    key={trainer.id}
-                    className="border rounded-lg p-3 space-y-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div
-                        className="flex items-center gap-3 cursor-pointer hover:opacity-80 min-w-0 flex-1"
-                              onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
-                      >
-                        <Avatar className="h-9 w-9 shrink-0">
-                          <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
-                          <AvatarFallback className="text-xs">
-                            {getInitials(trainer.profile?.full_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium truncate">
-                          {trainer.profile?.full_name || 'Trainer'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Switch
-                          checked={isVisible}
-                          onCheckedChange={(checked) =>
-                            handleVisibilityToggle(trainer.id, checked, hasName)
-                          }
-                          disabled={updatingVisibility === trainer.id || (!hasName && !isVisible)}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon" aria-label="Next"
-                          className="h-8 w-8"
-                              onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    {trainer.locations && trainer.locations.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {trainer.locations.map((loc: any) => (
-                          <Badge key={loc.id} variant="secondary" className="text-xs">
-                            <MapPin className="h-3 w-3 mr-1" />
-                            {loc.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            </>
+            </DataTableCard>
           )}
         </TabsContent>
 
         <TabsContent value="pending">
           {pendingInvitations.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">{t('trainerInvitation.noPending')}</h3>
-                <p className="text-muted-foreground">{t('trainerInvitation.noPendingDescription')}</p>
-              </CardContent>
+            <Card className="overflow-hidden border-border/80 shadow-sm">
+              <EmptyState
+                icon={Clock}
+                title={t('trainerInvitation.noPending')}
+                description={t('trainerInvitation.noPendingDescription')}
+              />
             </Card>
           ) : (
             <div className="space-y-3">
