@@ -5,7 +5,6 @@ import { Users, UserPlus, Upload, Mail, RefreshCw, Columns3, Tags } from 'lucide
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -25,7 +24,10 @@ import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
+import { AppPage } from '@/components/ui/app-page';
 import { TableToolbar } from '@/components/ui/table-toolbar';
+import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
+import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { EmailCampaignTab } from '@/components/players/EmailCampaignTab';
 import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
 import { upsertMetadataTagIds } from '@/lib/playerTags';
@@ -476,15 +478,14 @@ export default function TrainerPlayers() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-7xl py-2">
-        <Skeleton className="h-10 w-48 mb-6" />
-        <Skeleton className="h-64 w-full" />
-      </div>
+      <AppPage>
+        <ListPageSkeleton />
+      </AppPage>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5">
+    <AppPage className="space-y-5">
       <TrainerPageHeader
         title={t('players.title')}
         description={t('players.subtitleShort', 'Manage your players and contacts')}
@@ -652,11 +653,55 @@ export default function TrainerPlayers() {
               )}
             </Card>
           ) : (
-            <Card>
-              <CardContent className="p-0">
-                {/* Desktop Table */}
-                <div className="hidden md:block overflow-x-auto" data-testid="trainer-players-table-scroll">
-                  <Table className="min-w-[960px] [&_td]:h-10 [&_td]:max-h-10 [&_td]:py-0 [&_td]:px-3 [&_td]:align-middle [&_td]:overflow-hidden [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 [&_tbody_tr]:h-10 text-sm">
+            <DataTableCard
+              testId="trainer-players-table-scroll"
+              mobile={
+                <div className="md:hidden space-y-3 p-4" data-testid="trainer-players-mobile-cards">
+                  {sortedPlayers.map((player) => (
+                    <div key={player.id} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            to={`/app/trainer/players/${toTrainerPlayerRouteId(player)}`}
+                            className="font-medium truncate hover:underline text-foreground block"
+                            data-testid="trainer-player-mobile-detail-link"
+                          >
+                            {player.full_name}
+                          </Link>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {player.type === 'registered' ? (
+                            <Badge variant="default" className="text-xs">{t('players.statuses.registered')}</Badge>
+                          ) : player.has_trained ? (
+                            <Badge variant="secondary" className="text-xs">{t('players.statuses.active')}</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">{t('players.statuses.prospect')}</Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                        {player.email && <span>{player.email}</span>}
+                        {player.phone && <span>{player.phone}</span>}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        {player.skill_rating && (
+                          <Badge variant="secondary" className="text-xs">
+                            {player.skill_rating.toFixed(1)} {player.rating_system?.toUpperCase()}
+                          </Badge>
+                        )}
+                        {player.has_active_cyclus && (
+                          <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                            <RefreshCw className="h-3 w-3 mr-1" /> Cyclus
+                          </Badge>
+                        )}
+                        <span>{format(new Date(player.created_at), 'MMM d, yyyy')}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              }
+            >
+                  <Table className={compactDataTableClass}>
                     <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>
                         <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
@@ -840,54 +885,7 @@ export default function TrainerPlayers() {
                       ))}
                     </TableBody>
                   </Table>
-                </div>
-
-                {/* Mobile Cards */}
-                <div className="md:hidden space-y-3 p-4" data-testid="trainer-players-mobile-cards">
-                  {sortedPlayers.map((player) => (
-                    <div key={player.id} className="border rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0 flex-1">
-                          <Link
-                            to={`/app/trainer/players/${toTrainerPlayerRouteId(player)}`}
-                            className="font-medium truncate hover:underline text-foreground block"
-                            data-testid="trainer-player-mobile-detail-link"
-                          >
-                            {player.full_name}
-                          </Link>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {player.type === 'registered' ? (
-                            <Badge variant="default" className="text-xs">{t('players.statuses.registered')}</Badge>
-                          ) : player.has_trained ? (
-                            <Badge variant="secondary" className="text-xs">{t('players.statuses.active')}</Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs">{t('players.statuses.prospect')}</Badge>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                        {player.email && <span>{player.email}</span>}
-                        {player.phone && <span>{player.phone}</span>}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        {player.skill_rating && (
-                          <Badge variant="secondary" className="text-xs">
-                            {player.skill_rating.toFixed(1)} {player.rating_system?.toUpperCase()}
-                          </Badge>
-                        )}
-                        {player.has_active_cyclus && (
-                          <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-                            <RefreshCw className="h-3 w-3 mr-1" /> Cyclus
-                          </Badge>
-                        )}
-                        <span>{format(new Date(player.created_at), 'MMM d, yyyy')}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            </DataTableCard>
           )}
         </TabsContent>
 
@@ -998,6 +996,6 @@ export default function TrainerPlayers() {
           onChanged={fetchTagsAndMetadata}
         />
       )}
-    </div>
+    </AppPage>
   );
 }

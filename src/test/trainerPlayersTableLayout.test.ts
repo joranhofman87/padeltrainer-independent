@@ -1,16 +1,27 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { compactDataTableClass } from '@/components/ui/data-table';
 
 const source = readFileSync(resolve(__dirname, '../pages/TrainerPlayers.tsx'), 'utf8');
 
 describe('TrainerPlayers table row layout', () => {
-  it('uses fixed row height and horizontal scroll on desktop table', () => {
-    expect(source).toContain('data-testid="trainer-players-table-scroll"');
-    expect(source).toContain('overflow-x-auto');
-    expect(source).toContain('min-w-[960px]');
-    expect(source).toContain('[&_tbody_tr]:h-10');
-    expect(source).toContain('[&_td]:max-h-10');
+  it('uses shared compact table class and DataTableCard wrapper', () => {
+    expect(source).toContain('compactDataTableClass');
+    expect(source).toContain('DataTableCard');
+    expect(source).toContain('testId="trainer-players-table-scroll"');
+    expect(source).toMatch(/className=\{compactDataTableClass\}/);
+  });
+
+  it('uses AppPage shell instead of manual max-w-7xl wrapper', () => {
+    expect(source).toContain('AppPage');
+    expect(source).not.toMatch(/mx-auto w-full max-w-7xl/);
+  });
+
+  it('uses fixed row height via shared compact table class', () => {
+    expect(compactDataTableClass).toContain('[&_tbody_tr]:h-10');
+    expect(compactDataTableClass).toContain('[&_td]:max-h-10');
+    expect(compactDataTableClass).toContain('min-w-[960px]');
   });
 
   it('prevents tag and note columns from expanding rows', () => {
@@ -56,5 +67,10 @@ describe('TrainerPlayers table row layout', () => {
     expect(source).toContain('removed_at');
     expect(source).toContain('shouldShowPlayerInTrainerOverview');
     expect(source).toContain('activePlayerCount');
+    expect(source).toContain('filterUnifiedPlayersForActiveContext');
+  });
+
+  it('keeps DashboardEmptyState for empty list', () => {
+    expect(source).toContain('DashboardEmptyState');
   });
 });

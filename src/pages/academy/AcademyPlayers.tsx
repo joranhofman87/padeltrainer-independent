@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Search, Upload, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -34,6 +32,10 @@ import { format } from 'date-fns';
 import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
+import { TableToolbar } from '@/components/ui/table-toolbar';
+import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
@@ -650,8 +652,7 @@ export default function AcademyPlayers() {
   if (loading) {
     return (
       <AppPage>
-        <Skeleton className="h-10 w-48 mb-6" />
-        <Skeleton className="h-64 w-full" />
+        <ListPageSkeleton />
       </AppPage>
     );
   }
@@ -702,18 +703,46 @@ export default function AcademyPlayers() {
 
         {/* All Players Tab */}
         <TabsContent value="all-players" className="space-y-3 mt-3">
-          {/* Toolbar: search first, filters next, columns at the end */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder={tTrainer('players.searchPlayers')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-
+          <TableToolbar
+            searchPlaceholder={tTrainer('players.searchPlayers')}
+            searchValue={searchQuery}
+            onSearchChange={setSearchQuery}
+            trailing={
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="hidden md:inline-flex">
+                    <Columns3 className="mr-2 h-4 w-4" />
+                    {tTrainer('players.columns.button', 'Columns')}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>{tTrainer('players.columns.default', 'Default')}</DropdownMenuLabel>
+                  {ALL_COLUMNS.filter((c) => c.isDefault).map((c) => (
+                    <DropdownMenuCheckboxItem
+                      key={c.key}
+                      checked={isColVisible(c.key)}
+                      onCheckedChange={() => toggleColumn(c.key)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {c.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>{tTrainer('players.columns.optional', 'Optional')}</DropdownMenuLabel>
+                  {ALL_COLUMNS.filter((c) => !c.isDefault).map((c) => (
+                    <DropdownMenuCheckboxItem
+                      key={c.key}
+                      checked={isColVisible(c.key)}
+                      onCheckedChange={() => toggleColumn(c.key)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {c.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
+          >
             {trainers.length > 0 && (
               <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
                 <SelectTrigger className="w-[160px]">
@@ -797,69 +826,85 @@ export default function AcademyPlayers() {
                 <SelectItem value="ok">{tTrainer('players.payment.ok', 'No overdue')}</SelectItem>
               </SelectContent>
             </Select>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="ml-auto hidden md:inline-flex">
-                  <Columns3 className="mr-2 h-4 w-4" />
-                  {tTrainer('players.columns.button', 'Columns')}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>{tTrainer('players.columns.default', 'Default')}</DropdownMenuLabel>
-                {ALL_COLUMNS.filter((c) => c.isDefault).map((c) => (
-                  <DropdownMenuCheckboxItem
-                    key={c.key}
-                    checked={isColVisible(c.key)}
-                    onCheckedChange={() => toggleColumn(c.key)}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {c.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>{tTrainer('players.columns.optional', 'Optional')}</DropdownMenuLabel>
-                {ALL_COLUMNS.filter((c) => !c.isDefault).map((c) => (
-                  <DropdownMenuCheckboxItem
-                    key={c.key}
-                    checked={isColVisible(c.key)}
-                    onCheckedChange={() => toggleColumn(c.key)}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {c.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          </TableToolbar>
 
           {/* Players Table */}
           {filteredPlayers.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">
-                  {searchQuery ? tTrainer('players.noPlayersFound') : tTrainer('players.empty', 'No players yet')}
-                </h3>
-                <p className="text-muted-foreground">
-                  {searchQuery
+            <Card className="overflow-hidden border-border/80 shadow-sm">
+              <EmptyState
+                icon={Users}
+                title={searchQuery ? tTrainer('players.noPlayersFound') : tTrainer('players.empty', 'No players yet')}
+                description={
+                  searchQuery
                     ? tTrainer('players.tryDifferentSearch')
-                    : tTrainer('players.emptyDescription', 'Players will appear here once they book with your trainers.')}
-                </p>
-                {!searchQuery && (
-                  <Button className="mt-4" onClick={() => setShowAddPlayer(true)}>
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    {tTrainer('players.addPlayer')}
-                  </Button>
-                )}
-              </CardContent>
+                    : tTrainer('players.emptyDescription', 'Players will appear here once they book with your trainers.')
+                }
+                action={
+                  !searchQuery ? (
+                    <Button onClick={() => setShowAddPlayer(true)}>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      {tTrainer('players.addPlayer')}
+                    </Button>
+                  ) : undefined
+                }
+              />
             </Card>
           ) : (
-            <Card>
-              <CardContent className="p-0">
-                {/* Desktop Table */}
-                <div className="hidden md:block overflow-x-auto" data-testid="academy-players-table-scroll">
-                <Table className="min-w-[960px] [&_td]:h-10 [&_td]:max-h-10 [&_td]:py-0 [&_td]:px-3 [&_td]:align-middle [&_td]:overflow-hidden [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 [&_tbody_tr]:h-10 text-sm">
+            <DataTableCard
+              testId="academy-players-table-scroll"
+              mobile={
+                <div className="md:hidden space-y-3 p-4">
+                  {sortedPlayers.map((player) => (
+                    <div key={player.id} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium truncate">{player.full_name}</p>
+                          {player.trainer_name && (
+                            <p className="text-xs text-muted-foreground">{player.trainer_name}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {player.type === 'registered' ? (
+                            <Badge variant="default" className="text-xs">{tTrainer('players.statuses.registered')}</Badge>
+                          ) : player.has_trained ? (
+                            <Badge variant="secondary" className="text-xs">{tTrainer('players.statuses.active')}</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">{tTrainer('players.statuses.prospect')}</Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                        {player.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3" /> {player.email}
+                          </span>
+                        )}
+                        {player.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {player.phone}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        {player.skill_rating && (
+                          <Badge variant="secondary" className="text-xs">
+                            {player.skill_rating.toFixed(1)} {player.rating_system?.toUpperCase()}
+                          </Badge>
+                        )}
+                        {player.has_active_cyclus && (
+                          <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Cyclus
+                          </Badge>
+                        )}
+                        <span>{format(new Date(player.created_at), 'MMM d, yyyy')}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              }
+            >
+                <Table className={compactDataTableClass}>
                   <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
                       <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
@@ -1055,60 +1100,7 @@ export default function AcademyPlayers() {
                     ))}
                   </TableBody>
                 </Table>
-                </div>
-
-                {/* Mobile Cards */}
-                <div className="md:hidden space-y-3 p-4">
-                  {sortedPlayers.map((player) => (
-                    <div key={player.id} className="border rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium truncate">{player.full_name}</p>
-                          {player.trainer_name && (
-                            <p className="text-xs text-muted-foreground">{player.trainer_name}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {player.type === 'registered' ? (
-                            <Badge variant="default" className="text-xs">{tTrainer('players.statuses.registered')}</Badge>
-                          ) : player.has_trained ? (
-                            <Badge variant="secondary" className="text-xs">{tTrainer('players.statuses.active')}</Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs">{tTrainer('players.statuses.prospect')}</Badge>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                        {player.email && (
-                          <span className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {player.email}
-                          </span>
-                        )}
-                        {player.phone && (
-                          <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {player.phone}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        {player.skill_rating && (
-                          <Badge variant="secondary" className="text-xs">
-                            {player.skill_rating.toFixed(1)} {player.rating_system?.toUpperCase()}
-                          </Badge>
-                        )}
-                        {player.has_active_cyclus && (
-                          <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            Cyclus
-                          </Badge>
-                        )}
-                        <span>{format(new Date(player.created_at), 'MMM d, yyyy')}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            </DataTableCard>
           )}
         </TabsContent>
 

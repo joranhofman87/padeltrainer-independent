@@ -21,6 +21,13 @@ describe('AcademyPlayers visibility', () => {
     expect(source).toContain("filterUnifiedPlayersForActiveContext(players, metadata, 'academy')");
   });
 
+  it('uses shared table primitives', () => {
+    expect(source).toContain('TableToolbar');
+    expect(source).toContain('DataTableCard');
+    expect(source).toContain('compactDataTableClass');
+    expect(source).toContain('EmptyState');
+  });
+
   it('does not hard-delete players from overview', () => {
     expect(source).not.toContain("from('guest_players').delete()");
   });
