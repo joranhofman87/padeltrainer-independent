@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { ArrowLeft, Loader2, Camera, Save, Trash2 } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
@@ -63,7 +62,6 @@ export default function AcademyTrainerDetail() {
   const { t } = useTranslation('academy');
   const { toast } = useToast();
   const navigate = useNavigate();
-  const localizePath = useLocalizedPathFn();
   const { trainerId } = useParams<{ trainerId: string }>();
   const { activeAcademy } = useAcademyContext();
 
@@ -123,7 +121,7 @@ export default function AcademyTrainerDetail() {
         .single();
 
       if (!academyTrainer) {
-        navigate(localizePath('/app/academy/trainers'));
+        navigate('/app/academy/trainers');
         return;
       }
 
@@ -138,7 +136,7 @@ export default function AcademyTrainerDetail() {
         .single();
 
       if (!trainerProfile) {
-        navigate(localizePath('/app/academy/trainers'));
+        navigate('/app/academy/trainers');
         return;
       }
 
@@ -311,7 +309,7 @@ export default function AcademyTrainerDetail() {
       }
 
       toast({ title: t('trainers.updated'), description: t('trainers.updatedDescription') });
-      navigate(localizePath('/app/academy/trainers'));
+      navigate('/app/academy/trainers');
     } catch (error: any) {
       logger.error('Error updating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainerDetail' });
       toast({ title: t('common.error'), description: error.message || 'Failed to update trainer profile', variant: 'destructive' });
@@ -325,7 +323,7 @@ export default function AcademyTrainerDetail() {
     const success = await removeAcademyTrainer(trainerId);
     if (success) {
       sonnerToast.success(t('trainers.removed'));
-      navigate(localizePath('/app/academy/trainers'));
+      navigate('/app/academy/trainers');
     } else {
       sonnerToast.error('Failed to remove trainer');
     }
@@ -364,7 +362,7 @@ export default function AcademyTrainerDetail() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate(localizePath('/app/academy/trainers'))}
+          onClick={() => navigate('/app/academy/trainers')}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           {t('trainers.title')}

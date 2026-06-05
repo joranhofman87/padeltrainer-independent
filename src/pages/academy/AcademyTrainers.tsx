@@ -271,7 +271,7 @@ export default function AcademyTrainers() {
                          <TableCell>
                           <div
                             className="flex items-center gap-3 cursor-pointer hover:opacity-80"
-                            onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
+                            onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
                           >
                             <Avatar className="h-9 w-9">
                               <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
@@ -351,7 +351,7 @@ export default function AcademyTrainers() {
                             <Button
                               variant="ghost"
                               size="icon" aria-label="Next"
-                              onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
+                              onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
                             >
                               <ChevronRight className="h-4 w-4" />
                             </Button>
@@ -378,7 +378,7 @@ export default function AcademyTrainers() {
                     <div className="flex items-center justify-between">
                       <div
                         className="flex items-center gap-3 cursor-pointer hover:opacity-80 min-w-0 flex-1"
-                        onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
+                              onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
                       >
                         <Avatar className="h-9 w-9 shrink-0">
                           <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
@@ -402,7 +402,7 @@ export default function AcademyTrainers() {
                           variant="ghost"
                           size="icon" aria-label="Next"
                           className="h-8 w-8"
-                          onClick={() => navigate(localizePath(`/app/academy/trainers/${trainer.id}`))}
+                              onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
                         >
                           <ChevronRight className="h-4 w-4" />
                         </Button>
