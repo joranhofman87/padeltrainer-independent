@@ -44,8 +44,11 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     nextNumber: t('invoiceSettings.nextNumber'),
     includeYear: t('invoiceSettings.includeYear', 'Jaar opnemen in factuurnummer'),
     previewNumber: t('invoiceSettings.previewNumber'),
-    replyToEmail: t('invoiceSettings.replyToEmail', 'Reply-to email for invoices'),
-    replyToEmailDescription: t('invoiceSettings.replyToEmailDescription', 'When a player replies to an invoice email, the reply will be sent to this address. If left empty, the academy contact email is used.'),
+    replyToEmail: t('invoiceSettings.replyToEmail', 'Invoice reply-to email'),
+    replyToEmailDescription: t(
+      'invoiceSettings.replyToEmailDescription',
+      'Used as the public contact email on invoice payment pages and as the reply-to for invoice emails.',
+    ),
     replyToEmailPlaceholder: 'info@academy.com',
     invoiceLanguage: t('invoiceSettings.invoiceLanguage', 'Default invoice language'),
     invoiceLanguageDescription: t('invoiceSettings.invoiceLanguageDescription', 'Used for invoice emails and the public payment page. Players with a language preference on their account get invoices in their own language.'),

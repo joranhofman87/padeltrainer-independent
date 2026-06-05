@@ -331,6 +331,8 @@
     "prefix": "Prefix",
     "nextNumber": "Next number",
     "previewNumber": "Preview",
+    "replyToEmail": "Invoice reply-to email",
+    "replyToEmailDescription": "Used as the public contact email on invoice payment pages and as the reply-to for invoice emails.",
     "forwardEmails": "Forward Invoices",
     "forwardEmailsDescription": "Paid invoices will be automatically forwarded to these email addresses (e.g. accounting software).",
     "bannerColor": "Invoice Banner Color",

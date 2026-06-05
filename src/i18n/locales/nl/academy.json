@@ -332,6 +332,8 @@
     "prefix": "Prefix",
     "nextNumber": "Volgend nummer",
     "previewNumber": "Voorbeeld",
+    "replyToEmail": "Factuur reply-to e-mail",
+    "replyToEmailDescription": "Wordt gebruikt als publiek contactadres op factuurbetaalpagina's en als reply-to voor factuur-e-mails.",
     "forwardEmails": "Facturen doorsturen",
     "forwardEmailsDescription": "Betaalde facturen worden automatisch doorgestuurd naar deze e-mailadressen (bijv. boekhoudsoftware).",
     "bannerColor": "Factuur bannerkeur",

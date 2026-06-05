@@ -44,6 +44,7 @@ import {
   trackInvoicePaymentRedirect,
   trackInvoicePaymentStarted,
 } from "@/lib/invoicePayTracking";
+import { resolvePublicInvoiceContactEmail } from "@/lib/publicInvoiceContact";
 
 // Keep the /pay/:token URL out of Referer headers — these tokens grant access
 // to invoice PII until the invoice is paid.
@@ -105,6 +106,7 @@ interface PublicInvoiceData {
     logoUrl: string | null;
     bannerColor: string | null;
     contactEmail: string | null;
+    invoiceReplyToEmail: string | null;
     businessName: string | null;
     businessAddress: string | null;
     kvkNumber: string | null;
@@ -627,6 +629,7 @@ export default function PublicInvoicePay() {
   }
 
   const { invoice, academy } = data;
+  const publicContactEmail = resolvePublicInvoiceContactEmail(academy);
   const isOverdue = new Date(invoice.dueDate) < new Date();
 
   return (
@@ -796,13 +799,13 @@ export default function PublicInvoicePay() {
           )}
 
           {/* Contact */}
-          {academy?.contactEmail && (
+          {publicContactEmail && (
             <p className="text-xs text-center text-muted-foreground">
               <Trans
                 i18nKey="invoice.questionsContact"
-                values={{ email: academy.contactEmail }}
+                values={{ email: publicContactEmail }}
                 components={{
-                  a: <a href={`mailto:${academy.contactEmail}`} className="underline" />,
+                  a: <a href={`mailto:${publicContactEmail}`} className="underline" />,
                 }}
               />
             </p>
