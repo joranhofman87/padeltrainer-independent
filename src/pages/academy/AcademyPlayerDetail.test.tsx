@@ -19,6 +19,10 @@ vi.mock('@/components/academy/AcademyPlayerDetailsCard', () => ({
   AcademyPlayerDetailsCard: () => <div data-testid="academy-player-details-card" />,
 }));
 
+vi.mock('@/components/academy/AcademyPlayerRemoveCard', () => ({
+  AcademyPlayerRemoveCard: () => <div data-testid="academy-player-remove-card" />,
+}));
+
 const GUEST_ID = 'guest-uuid-1';
 const ACADEMY_ID = 'academy-uuid-1';
 
@@ -87,17 +91,22 @@ vi.mock('react-i18next', () => ({
         'players.detail.guest': 'Guest',
         'players.detail.registered': 'Registered',
         'players.detail.addedOn': 'Added',
-        'players.detail.tabs.overview': 'Overview',
-        'players.detail.tabs.cycles': 'Cycles',
-        'players.detail.tabs.invoices': 'Invoices',
-        'players.detail.tabs.rating': 'Rating',
-        'players.detail.tabs.emails': 'Emails',
+        'players.detail.summary': 'Summary',
+        'players.detail.sectionCycles': 'Cycles',
+        'players.detail.sectionInvoices': 'Invoices',
+        'players.detail.ratingHistory': 'Rating history',
+        'players.detail.emailHistory': 'Email history',
+        'players.detail.stats.cycles': 'Cycles',
+        'players.detail.stats.invoices': 'Invoices',
+        'players.detail.stats.ratingPoints': 'Rating points',
+        'players.detail.stats.emails': 'Emails',
         'players.detail.singleSessions': 'Single sessions',
-        'players.detail.internalNotes': 'Internal notes',
-        'players.detail.internalNotesDesc': 'Private notes',
-        'players.notes.placeholder': 'Notes',
-        'players.detail.ratingTrend': 'Rating trend',
-        'players.detail.noRatingHistory': 'No rating history',
+        'players.detail.noCycles': 'No cycles joined yet',
+        'players.detail.noInvoices': 'No invoices yet',
+        'players.detail.noRating': 'No rating history available',
+        'players.detail.noEmails': 'No emails sent yet',
+        'players.detail.ratingProgress': 'Rating progress',
+        'players.detail.ratingGuestHint': 'Rating history is tracked for registered players.',
         'players.detail.createInvoice': 'Create invoice',
       };
       return map[key] ?? fallback ?? key;
@@ -115,16 +124,87 @@ function renderGuestDetail() {
   );
 }
 
+function getDomIndex(testId: string) {
+  const el = screen.getByTestId(testId);
+  const all = Array.from(document.body.querySelectorAll('*'));
+  return all.indexOf(el);
+}
+
 describe('AcademyPlayerDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders player details card on overview', async () => {
+  it('does not render tabs', async () => {
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Jane Guest' })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.queryByText('Overview')).not.toBeInTheDocument();
+  });
+
+  it('renders summary near top before player details', async () => {
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId('academy-player-summary')).toBeInTheDocument();
+    });
+
+    expect(getDomIndex('academy-player-summary')).toBeLessThan(
+      getDomIndex('academy-player-details-card'),
+    );
+    expect(screen.getByText('Summary')).toBeInTheDocument();
+    expect(screen.getAllByText('Cycles').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Invoices').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders content sections directly on the page', async () => {
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId('academy-player-section-cycles')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('academy-player-section-invoices')).toBeInTheDocument();
+    expect(screen.getByTestId('academy-player-section-rating')).toBeInTheDocument();
+    expect(screen.getByTestId('academy-player-section-emails')).toBeInTheDocument();
+    expect(screen.getByText('Rating history')).toBeInTheDocument();
+    expect(screen.getByText('Email history')).toBeInTheDocument();
+  });
+
+  it('renders empty states for sections without data', async () => {
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(screen.getByText('No cycles joined yet')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('No invoices yet')).toBeInTheDocument();
+    expect(screen.getByText('No rating history available')).toBeInTheDocument();
+    expect(screen.getByText('No emails sent yet')).toBeInTheDocument();
+  });
+
+  it('renders player details card and create invoice button', async () => {
     renderGuestDetail();
     await waitFor(() => {
       expect(screen.getByTestId('academy-player-details-card')).toBeInTheDocument();
     });
+
+    const createInvoice = screen.getByTestId('academy-player-create-invoice');
+    expect(createInvoice).toHaveAttribute(
+      'href',
+      `/app/academy/invoices/new?playerId=${encodeURIComponent(`g_${GUEST_ID}`)}`,
+    );
+  });
+
+  it('renders danger zone at the bottom', async () => {
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId('academy-player-remove-card')).toBeInTheDocument();
+    });
+
+    expect(getDomIndex('academy-player-remove-card')).toBeGreaterThan(
+      getDomIndex('academy-player-section-emails'),
+    );
   });
 
   it('renders guest detail with back link and player name without throwing', async () => {
@@ -137,11 +217,5 @@ describe('AcademyPlayerDetail', () => {
     const backLink = screen.getByRole('link', { name: /Back to players/i });
     expect(backLink).toBeInTheDocument();
     expect(backLink).toHaveAttribute('href', '/app/academy/players');
-
-    const createInvoice = screen.getByTestId('academy-player-create-invoice');
-    expect(createInvoice).toHaveAttribute(
-      'href',
-      `/app/academy/invoices/new?playerId=${encodeURIComponent(`g_${GUEST_ID}`)}`,
-    );
   });
 });

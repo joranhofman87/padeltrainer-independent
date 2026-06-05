@@ -469,6 +469,13 @@
       "intakeNotes": "Intake-notities",
       "intakeNotesDesc": "Notities van de speler bij inschrijving.",
       "summary": "Samenvatting",
+      "sectionCycles": "Cycli",
+      "sectionInvoices": "Facturen",
+      "ratingHistory": "Ratinggeschiedenis",
+      "emailHistory": "E-mailgeschiedenis",
+      "noInvoices": "Nog geen facturen",
+      "noEmails": "Nog geen e-mails verzonden",
+      "noRating": "Geen ratinggeschiedenis beschikbaar",
       "tabs": {
         "overview": "Overzicht",
         "cycles": "Cycli",

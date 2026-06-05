@@ -24,10 +24,9 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { PlayerTag } from '@/components/players/playerTagColors';
@@ -498,202 +497,194 @@ export default function AcademyPlayerDetail() {
         t={t}
       />
 
-      <Tabs defaultValue="overview">
-        <TabsList className="flex flex-wrap h-auto">
-          <TabsTrigger value="overview">{t('players.detail.tabs.overview', 'Overview')}</TabsTrigger>
-          <TabsTrigger value="cycles">
-            {t('players.detail.tabs.cycles', 'Cycles')} ({cycluses.length})
-          </TabsTrigger>
-          <TabsTrigger value="invoices">
-            {t('players.detail.tabs.invoices', 'Invoices')} ({invoices.length})
-          </TabsTrigger>
-          <TabsTrigger value="rating">
-            {t('players.detail.tabs.rating', 'Rating')} ({ratingHistory.length})
-          </TabsTrigger>
-          <TabsTrigger value="emails">
-            {t('players.detail.tabs.emails', 'Emails')} ({emails.length})
-          </TabsTrigger>
-        </TabsList>
+      {/* Summary */}
+      <Card data-testid="academy-player-summary">
+        <CardHeader>
+          <CardTitle className="text-base">{t('players.detail.summary', 'Summary')}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <Stat label={t('players.detail.stats.cycles', 'Cycles')} value={cycluses.length} />
+          <Stat label={t('players.detail.stats.invoices', 'Invoices')} value={invoices.length} />
+          <Stat label={t('players.detail.stats.ratingPoints', 'Rating points')} value={ratingHistory.length} />
+          <Stat label={t('players.detail.stats.emails', 'Emails')} value={emails.length} />
+        </CardContent>
+      </Card>
 
-        {/* Overview */}
-        <TabsContent value="overview" className="space-y-4 pt-4">
-          {detailsValues && activeAcademy && (
-            <AcademyPlayerDetailsCard
-              kind={player.type}
-              academyProfileId={activeAcademy.id}
-              guestPlayerId={player.guest_player_id}
-              profileId={player.profile_id}
-              values={detailsValues}
-              locations={academyLocations}
-              tagIds={tagIds}
-              onSaved={handleDetailsSaved}
-            />
-          )}
+      {/* Player details */}
+      {detailsValues && activeAcademy && (
+        <AcademyPlayerDetailsCard
+          kind={player.type}
+          academyProfileId={activeAcademy.id}
+          guestPlayerId={player.guest_player_id}
+          profileId={player.profile_id}
+          values={detailsValues}
+          locations={academyLocations}
+          tagIds={tagIds}
+          onSaved={handleDetailsSaved}
+        />
+      )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{t('players.detail.summary', 'Summary')}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <Stat label={t('players.detail.stats.cycles', 'Cycles')} value={cycluses.length} />
-              <Stat label={t('players.detail.stats.invoices', 'Invoices')} value={invoices.length} />
-              <Stat label={t('players.detail.stats.ratingPoints', 'Rating points')} value={ratingHistory.length} />
-              <Stat label={t('players.detail.stats.emails', 'Emails')} value={emails.length} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Cycles */}
-        <TabsContent value="cycles" className="pt-4">
-          <Card>
-            <CardContent className="p-0 divide-y">
-              {cycluses.length === 0 ? (
-                <Empty icon={<RefreshCw className="h-8 w-8" />} text={t('players.detail.noCycles', 'No cycles joined yet')} />
-              ) : (
-                cycluses.map(c => (
-                  <div key={c.cyclus_id} className="p-4 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-medium">{c.cyclus_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {c.first_session && format(new Date(c.first_session), 'dd-MM-yyyy')}
-                        {' → '}
-                        {c.last_session && format(new Date(c.last_session), 'dd-MM-yyyy')}
-                        {' · '}
-                        {c.session_count} {t('players.detail.sessions', 'sessions')}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={cyclusLinkLoadingId === c.cyclus_id}
-                      onClick={async () => {
-                        setCyclusLinkLoadingId(c.cyclus_id);
-                        try {
-                          navigate(await resolveAcademyCyclusPricingRoute(c.cyclus_id));
-                        } catch {
-                          toast({
-                            title: tCommon('error', 'Error'),
-                            description: t('calendar.editCyclePricingError', 'Could not open cycle pricing.'),
-                            variant: 'destructive',
-                          });
-                        } finally {
-                          setCyclusLinkLoadingId(null);
-                        }
-                      }}
-                    >
-                      {cyclusLinkLoadingId === c.cyclus_id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Invoices */}
-        <TabsContent value="invoices" className="pt-4">
-          <Card>
-            <CardContent className="p-0 divide-y">
-              {invoices.length === 0 ? (
-                <Empty icon={<FileText className="h-8 w-8" />} text={t('players.detail.noInvoices', 'No invoices yet')} />
-              ) : (
-                invoices.map(inv => (
-                  <div key={inv.id} className="p-4 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-medium">{inv.invoice_number || `#${inv.id.slice(0, 8)}`}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {inv.invoice_date && format(new Date(inv.invoice_date), 'dd-MM-yyyy')}
-                        {inv.total != null && ` · €${Number(inv.total).toFixed(2)}`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <InvoiceStatus status={inv.status} />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={async () => {
-                          const ok = await downloadInvoicePdf(inv.id, inv.invoice_number || undefined);
-                          if (!ok) {
-                            toast({
-                              title: t('players.detail.downloadFailed', 'Download failed'),
-                              variant: 'destructive',
-                            });
-                          }
-                        }}
-                        title={t('players.detail.downloadInvoice', 'Download invoice')}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Rating */}
-        <TabsContent value="rating" className="pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" /> {t('players.detail.ratingHistory', 'Rating history')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {ratingHistory.length === 0 ? (
-                <Empty icon={<BarChart3 className="h-8 w-8" />} text={t('players.detail.noRating', 'No rating history available')} />
-              ) : (
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={ratingHistory.map(r => ({
-                      ...r,
-                      label: format(new Date(r.date), 'MMM yyyy'),
-                    }))}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} reversed />
-                      <RTooltip />
-                      <Line type="monotone" dataKey="rating" stroke="hsl(var(--primary))" strokeWidth={2} dot />
-                    </LineChart>
-                  </ResponsiveContainer>
+      {/* Cycles */}
+      <Card data-testid="academy-player-section-cycles">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />
+            {t('players.detail.sectionCycles', 'Cycles')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 divide-y">
+          {cycluses.length === 0 ? (
+            <Empty icon={<RefreshCw className="h-8 w-8" />} text={t('players.detail.noCycles', 'No cycles joined yet')} />
+          ) : (
+            cycluses.map(c => (
+              <div key={c.cyclus_id} className="p-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">{c.cyclus_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.first_session && format(new Date(c.first_session), 'dd-MM-yyyy')}
+                    {' → '}
+                    {c.last_session && format(new Date(c.last_session), 'dd-MM-yyyy')}
+                    {' · '}
+                    {c.session_count} {t('players.detail.sessions', 'sessions')}
+                  </p>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={cyclusLinkLoadingId === c.cyclus_id}
+                  onClick={async () => {
+                    setCyclusLinkLoadingId(c.cyclus_id);
+                    try {
+                      navigate(await resolveAcademyCyclusPricingRoute(c.cyclus_id));
+                    } catch {
+                      toast({
+                        title: tCommon('error', 'Error'),
+                        description: t('calendar.editCyclePricingError', 'Could not open cycle pricing.'),
+                        variant: 'destructive',
+                      });
+                    } finally {
+                      setCyclusLinkLoadingId(null);
+                    }
+                  }}
+                >
+                  {cyclusLinkLoadingId === c.cyclus_id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
-        {/* Emails */}
-        <TabsContent value="emails" className="pt-4">
-          <Card>
-            <CardContent className="p-0 divide-y">
-              {emails.length === 0 ? (
-                <Empty icon={<Send className="h-8 w-8" />} text={t('players.detail.noEmails', 'No emails sent yet')} />
-              ) : (
-                emails.map(e => (
-                  <div key={e.id} className="p-4 flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{e.subject}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {e.sent_at
-                          ? format(new Date(e.sent_at), 'dd-MM-yyyy HH:mm')
-                          : format(new Date(e.created_at), 'dd-MM-yyyy HH:mm')}
-                      </p>
-                    </div>
-                    <Badge variant={e.status === 'sent' ? 'default' : e.status === 'failed' ? 'destructive' : 'secondary'}>
-                      {e.status}
-                    </Badge>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Invoices */}
+      <Card data-testid="academy-player-section-invoices">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            {t('players.detail.sectionInvoices', 'Invoices')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 divide-y">
+          {invoices.length === 0 ? (
+            <Empty icon={<FileText className="h-8 w-8" />} text={t('players.detail.noInvoices', 'No invoices yet')} />
+          ) : (
+            invoices.map(inv => (
+              <div key={inv.id} className="p-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">{inv.invoice_number || `#${inv.id.slice(0, 8)}`}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {inv.invoice_date && format(new Date(inv.invoice_date), 'dd-MM-yyyy')}
+                    {inv.total != null && ` · €${Number(inv.total).toFixed(2)}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <InvoiceStatus status={inv.status} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      const ok = await downloadInvoicePdf(inv.id, inv.invoice_number || undefined);
+                      if (!ok) {
+                        toast({
+                          title: t('players.detail.downloadFailed', 'Download failed'),
+                          variant: 'destructive',
+                        });
+                      }
+                    }}
+                    title={t('players.detail.downloadInvoice', 'Download invoice')}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Rating history */}
+      <Card data-testid="academy-player-section-rating">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            {t('players.detail.ratingHistory', 'Rating history')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {ratingHistory.length === 0 ? (
+            <Empty icon={<BarChart3 className="h-8 w-8" />} text={t('players.detail.noRating', 'No rating history available')} />
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={ratingHistory.map(r => ({
+                  ...r,
+                  label: format(new Date(r.date), 'MMM yyyy'),
+                }))}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} reversed />
+                  <RTooltip />
+                  <Line type="monotone" dataKey="rating" stroke="hsl(var(--primary))" strokeWidth={2} dot />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Email history */}
+      <Card data-testid="academy-player-section-emails">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Send className="h-4 w-4" />
+            {t('players.detail.emailHistory', 'Email history')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 divide-y">
+          {emails.length === 0 ? (
+            <Empty icon={<Send className="h-8 w-8" />} text={t('players.detail.noEmails', 'No emails sent yet')} />
+          ) : (
+            emails.map(e => (
+              <div key={e.id} className="p-4 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{e.subject}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {e.sent_at
+                      ? format(new Date(e.sent_at), 'dd-MM-yyyy HH:mm')
+                      : format(new Date(e.created_at), 'dd-MM-yyyy HH:mm')}
+                  </p>
+                </div>
+                <Badge variant={e.status === 'sent' ? 'default' : e.status === 'failed' ? 'destructive' : 'secondary'}>
+                  {e.status}
+                </Badge>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       {activeAcademy && player && parsed.kind && (
         <AcademyPlayerRemoveCard

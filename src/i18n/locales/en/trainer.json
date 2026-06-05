@@ -466,6 +466,13 @@
       "intakeNotes": "Intake notes",
       "intakeNotesDesc": "Notes provided by the player during signup.",
       "summary": "Summary",
+      "sectionCycles": "Cycles",
+      "sectionInvoices": "Invoices",
+      "ratingHistory": "Rating history",
+      "emailHistory": "Email history",
+      "noInvoices": "No invoices yet",
+      "noEmails": "No emails sent yet",
+      "noRating": "No rating history available",
       "tabs": {
         "overview": "Overview",
         "cycles": "Cycles",
