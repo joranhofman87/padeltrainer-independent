@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, Suspense } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
@@ -6,6 +6,7 @@ import { Building2, Menu } from 'lucide-react';
 // SubscriptionOverlay removed - now using redirect approach
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageContentSkeleton } from '@/components/AppShellSkeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, type ClubProfile } from '@/lib/club';
 import { ClubSidebar } from '@/components/club/ClubSidebar';
@@ -55,7 +56,8 @@ export default function ClubLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const localizePath = useLocalizedPathFn();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, profileReady } = useAuth();
+  const authResolving = authLoading || (!!user && !profileReady);
   const { toast } = useToast();
   const [clubs, setClubs] = useState<ClubWithLocation[]>([]);
   const [activeClub, setActiveClub] = useState<ClubWithLocation | null>(null);
@@ -64,10 +66,10 @@ export default function ClubLayout() {
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (!authResolving && !user) {
       navigate('/app/auth');
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authResolving, navigate]);
 
   const fetchClubs = async () => {
     if (!user) return;
@@ -140,21 +142,20 @@ export default function ClubLayout() {
     }
   }, [subscriptionLoading, isSubscriptionExpired, isOnSubscriptionPage, navigate]);
 
-  if (authLoading || loading) {
+  if (authResolving || loading || (clubs.length > 0 && !activeClub)) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="flex">
-          <div className="w-64 border-r bg-sidebar p-4 space-y-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-6 w-3/4" />
-            <Skeleton className="h-6 w-1/2" />
-          </div>
-          <div className="flex-1 p-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
+      <div className="min-h-screen bg-background" data-testid="club-layout-loading">
+        <div className="flex min-h-screen w-full">
+          <div className="hidden w-64 shrink-0 border-r border-slate-200 bg-slate-50 p-4 md:block">
+            <Skeleton className="mb-6 h-8 w-full rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-9 w-full rounded-lg" />
+              <Skeleton className="h-9 w-full rounded-lg" />
+              <Skeleton className="h-9 w-3/4 rounded-lg" />
             </div>
+          </div>
+          <div className="flex-1 p-4 md:p-6">
+            <PageContentSkeleton />
           </div>
         </div>
       </div>
@@ -216,7 +217,9 @@ export default function ClubLayout() {
             
             {/* Page Content */}
             <main className="flex-1">
-              <Outlet />
+              <Suspense fallback={<PageContentSkeleton />}>
+                <Outlet />
+              </Suspense>
             </main>
           </SidebarInset>
         </div>

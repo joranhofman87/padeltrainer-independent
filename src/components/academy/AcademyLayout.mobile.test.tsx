@@ -12,6 +12,7 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
     user: { id: 'user-1' },
     loading: false,
+    profileReady: true,
   }),
 }));
 

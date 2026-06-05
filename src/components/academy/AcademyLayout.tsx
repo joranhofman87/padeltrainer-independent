@@ -1,9 +1,10 @@
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, Suspense } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { GraduationCap, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageContentSkeleton } from '@/components/AppShellSkeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 import { logger } from '@/lib/logger';
@@ -73,17 +74,18 @@ export default function AcademyLayout() {
   const { t } = useTranslation('academy');
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, profileReady } = useAuth();
+  const authResolving = authLoading || (!!user && !profileReady);
   const { toast } = useToast();
   const [academies, setAcademies] = useState<AcademyWithRole[]>([]);
   const [activeAcademy, setActiveAcademy] = useState<AcademyWithRole | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (!authResolving && !user) {
       navigate('/app/auth');
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authResolving, navigate]);
 
   const fetchAcademies = async () => {
     if (!user) return;
@@ -92,14 +94,24 @@ export default function AcademyLayout() {
       const userAcademies = await getUserAcademyProfiles(user.id);
       setAcademies(userAcademies);
       
-      const savedAcademyId = localStorage.getItem(ACTIVE_ACADEMY_STORAGE_KEY);
+      const savedAcademyId = (() => {
+        try {
+          return localStorage.getItem(ACTIVE_ACADEMY_STORAGE_KEY);
+        } catch {
+          return null;
+        }
+      })();
       const savedAcademy = savedAcademyId ? userAcademies.find(a => a.id === savedAcademyId) : null;
       
       if (savedAcademy) {
         setActiveAcademy(savedAcademy);
       } else if (userAcademies.length > 0) {
         setActiveAcademy(userAcademies[0]);
-        localStorage.setItem(ACTIVE_ACADEMY_STORAGE_KEY, userAcademies[0].id);
+        try {
+          localStorage.setItem(ACTIVE_ACADEMY_STORAGE_KEY, userAcademies[0].id);
+        } catch {
+          /* ignore storage errors */
+        }
       }
     } catch (error) {
       logger.error('Error fetching academies', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyLayout' });
@@ -123,7 +135,11 @@ export default function AcademyLayout() {
 
   const handleAcademyChange = (academy: AcademyWithRole) => {
     setActiveAcademy(academy);
-    localStorage.setItem(ACTIVE_ACADEMY_STORAGE_KEY, academy.id);
+    try {
+      localStorage.setItem(ACTIVE_ACADEMY_STORAGE_KEY, academy.id);
+    } catch {
+      /* ignore storage errors */
+    }
   };
 
   // Calculate subscription status
@@ -142,20 +158,26 @@ export default function AcademyLayout() {
     }
   }, [subscription, isSubscriptionExpired, isOnSubscriptionPage, navigate]);
 
-  if (authLoading || loading) {
+  if (authResolving || loading || (academies.length > 0 && !activeAcademy)) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="flex">
-          <div className="w-64 border-r bg-sidebar p-4 space-y-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-6 w-3/4" />
-            <Skeleton className="h-6 w-1/2" />
+      <div className="min-h-screen bg-background" data-testid="academy-layout-loading">
+        <div className="flex min-h-screen w-full">
+          <div className="hidden w-64 shrink-0 border-r border-slate-200 bg-slate-50 p-4 md:block">
+            <Skeleton className="mb-6 h-8 w-full rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-9 w-full rounded-lg" />
+              <Skeleton className="h-9 w-full rounded-lg" />
+              <Skeleton className="h-9 w-full rounded-lg" />
+              <Skeleton className="h-9 w-3/4 rounded-lg" />
+            </div>
           </div>
-          <div className="flex-1 p-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex h-14 items-center gap-3 border-b border-slate-200 px-4 md:hidden">
+              <Skeleton className="h-8 w-8 rounded-md" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+            <div className="flex-1 p-4 md:p-6">
+              <PageContentSkeleton />
             </div>
           </div>
         </div>
@@ -205,7 +227,9 @@ export default function AcademyLayout() {
             
             {/* Page Content */}
             <main className="flex-1 p-4 md:p-6">
-              <Outlet />
+              <Suspense fallback={<PageContentSkeleton />}>
+                <Outlet />
+              </Suspense>
             </main>
           </SidebarInset>
         </div>

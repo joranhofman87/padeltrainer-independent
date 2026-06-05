@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { AppBootstrapGate } from "@/components/AppBootstrapGate";
 import { DomainRouter } from "@/components/DomainRouter";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { PageTracker } from "@/components/PageTracker";
@@ -35,7 +36,9 @@ const App = () => (
         <ScrollToTop />
         <PageTracker />
         <AuthProvider>
-          <DomainRouter />
+          <AppBootstrapGate>
+            <DomainRouter />
+          </AppBootstrapGate>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

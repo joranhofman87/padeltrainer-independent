@@ -48,7 +48,11 @@ export function LanguageRouter() {
     );
   }
 
-  return <Outlet />;
+  return (
+    <Suspense fallback={null}>
+      <Outlet />
+    </Suspense>
+  );
 }
 
 export function RootRedirect() {

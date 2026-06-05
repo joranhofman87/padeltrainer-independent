@@ -57,7 +57,7 @@ export default function AcademySettings() {
   // Mollie Connect state
   const [connectStatus, setConnectStatus] = useState<AcademyConnectStatus | null>(null);
   const [connectLoading, setConnectLoading] = useState(false);
-  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(true);
   const [savingTerms, setSavingTerms] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [savingWelcome, setSavingWelcome] = useState(false);
@@ -110,7 +110,7 @@ export default function AcademySettings() {
 
       if (authLoading || !accessToken) {
         setConnectStatus(null);
-        setCheckingStatus(false);
+        setCheckingStatus(true);
         return;
       }
 

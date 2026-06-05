@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const setOpenMobileMock = vi.fn();
@@ -13,6 +13,7 @@ vi.mock('@/hooks/useAuth', () => ({
     user: { id: 'user-1' },
     roles: ['player'],
     loading: false,
+    profileReady: true,
     profile: { full_name: 'Jan Player' },
   }),
 }));
@@ -63,14 +64,14 @@ describe('PlayerLayout mobile', () => {
     setOpenMobileMock.mockClear();
   });
 
-  it('opens mobile drawer when menu trigger is clicked', () => {
+  it('opens mobile drawer when menu trigger is clicked', async () => {
     render(
       <MemoryRouter initialEntries={['/app/player']}>
         <PlayerLayout />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByTestId('player-mobile-menu-trigger'));
+    fireEvent.click(await screen.findByTestId('player-mobile-menu-trigger'));
     expect(setOpenMobileMock).toHaveBeenCalledWith(true);
   });
 });

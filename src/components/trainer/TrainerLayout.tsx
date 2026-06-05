@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, Suspense } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,12 +10,14 @@ import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/s
 import { getTrainerAcademy } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
+import { PageContentSkeleton } from '@/components/AppShellSkeleton';
 
 export default function TrainerLayout() {
   const { t } = useTranslation('trainer');
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, role, roles, loading, subscription, refreshSubscription } = useAuth();
+  const { user, role, roles, loading, profileReady, subscription, refreshSubscription } = useAuth();
+  const authResolving = loading || (!!user && !profileReady);
 
   // Check academy membership with caching
   const { data: hasAcademy = false } = useQuery({
@@ -38,14 +40,14 @@ export default function TrainerLayout() {
 
   // Trigger subscription fetch when entering trainer layout (if not yet loaded)
   useEffect(() => {
-    if (!loading && user && roles.includes('trainer') && subscription === null) {
+    if (!authResolving && user && roles.includes('trainer') && subscription === null) {
       refreshSubscription();
     }
-  }, [loading, user, roles, subscription, refreshSubscription]);
+  }, [authResolving, user, roles, subscription, refreshSubscription]);
 
   // Auth guard
   useEffect(() => {
-    if (!loading) {
+    if (!authResolving) {
       if (!user) {
         navigate('/app/auth');
       } else if (roles.length === 0) {
@@ -54,7 +56,7 @@ export default function TrainerLayout() {
         navigate('/app/player');
       }
     }
-  }, [user, roles, loading, navigate]);
+  }, [user, roles, authResolving, navigate]);
 
   // Calculate subscription status
   const subscriptionLoaded = subscription !== null;
@@ -86,12 +88,12 @@ export default function TrainerLayout() {
 
   // Onboarding before subscription/paywall
   useEffect(() => {
-    if (loading || onboardingGateLoading || !user || !isTrainerUser) return;
+    if (authResolving || onboardingGateLoading || !user || !isTrainerUser) return;
     if (!trainerOnboardingComplete && !isOnTrainerOnboarding) {
       navigate('/app/onboarding/trainer', { replace: true });
     }
   }, [
-    loading,
+    authResolving,
     onboardingGateLoading,
     user,
     isTrainerUser,
@@ -103,7 +105,7 @@ export default function TrainerLayout() {
   // Redirect to subscription page when expired (only after onboarding complete)
   useEffect(() => {
     if (
-      loading ||
+      authResolving ||
       onboardingGateLoading ||
       !trainerOnboardingComplete ||
       !isSubscriptionExpired ||
@@ -114,7 +116,7 @@ export default function TrainerLayout() {
     }
     navigate('/app/trainer/subscription', { replace: true });
   }, [
-    loading,
+    authResolving,
     onboardingGateLoading,
     trainerOnboardingComplete,
     isSubscriptionExpired,
@@ -137,7 +139,7 @@ export default function TrainerLayout() {
   ];
 
   useEffect(() => {
-    if (!loading && hasAcademy) {
+    if (!authResolving && hasAcademy) {
       const isRestricted = RESTRICTED_PATHS_FOR_ACADEMY.some(p => location.pathname.startsWith(p));
       // Also redirect dashboard index for academy trainers
       const isDashboardIndex = location.pathname === '/app/trainer' || location.pathname === '/app/trainer/';
@@ -145,9 +147,9 @@ export default function TrainerLayout() {
         navigate('/app/trainer/calendar', { replace: true });
       }
     }
-  }, [loading, hasAcademy, location.pathname, navigate]);
+  }, [authResolving, hasAcademy, location.pathname, navigate]);
 
-  const showLayoutLoading = loading || (isTrainerUser && onboardingGateLoading);
+  const showLayoutLoading = authResolving || (isTrainerUser && onboardingGateLoading);
 
   if (showLayoutLoading) {
     return (
@@ -188,7 +190,9 @@ export default function TrainerLayout() {
             <span className="font-semibold">PadelTrainer<span className="text-primary">.ai</span></span>
           </header>
           <div className="p-4 md:p-6">
-            <Outlet />
+            <Suspense fallback={<PageContentSkeleton />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

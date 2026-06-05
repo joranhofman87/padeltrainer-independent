@@ -1,24 +1,27 @@
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "./AdminSidebar";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut, ShieldAlert } from "lucide-react";
+import { LogOut, ShieldAlert } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { AppShellSkeleton } from "@/components/AppShellSkeleton";
+import { PageContentSkeleton } from "@/components/AppShellSkeleton";
 
 export default function AdminLayout() {
   const navigate = useNavigate();
-  const { user, roles, loading: authLoading } = useAuth();
+  const { user, roles, loading: authLoading, profileReady } = useAuth();
+  const authResolving = authLoading || (!!user && !profileReady);
   const isAdmin = roles.includes('admin');
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (!authResolving && !user) {
       navigate("/app/auth");
     }
-  }, [authLoading, user, navigate]);
+  }, [authResolving, user, navigate]);
 
   const handleSignOut = async () => {
     const { error } = await signOut();
@@ -33,14 +36,8 @@ export default function AdminLayout() {
     }
   };
 
-  const loading = authLoading;
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+  if (authResolving) {
+    return <AppShellSkeleton />;
   }
 
   if (!isAdmin) {
@@ -72,7 +69,9 @@ export default function AdminLayout() {
             <span className="font-semibold">Admin Panel</span>
           </header>
           <div className="p-6">
-            <Outlet />
+            <Suspense fallback={<PageContentSkeleton />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

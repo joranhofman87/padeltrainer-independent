@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Menu } from 'lucide-react';
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/sidebar';
 import { PlayerSidebar } from '@/components/player/PlayerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
+import { PageContentSkeleton } from '@/components/AppShellSkeleton';
 
 function PlayerMobileHeader() {
   const { t } = useTranslation('player');
@@ -43,11 +44,12 @@ function PlayerMobileHeader() {
 
 export default function PlayerLayout() {
   const navigate = useNavigate();
-  const { user, roles, loading } = useAuth();
+  const { user, roles, loading, profileReady } = useAuth();
+  const authResolving = loading || (!!user && !profileReady);
 
   // Auth guard - allow player, trainer (with player role), and admin
   useEffect(() => {
-    if (!loading) {
+    if (!authResolving) {
       if (!user) {
         navigate('/app/auth');
       } else if (roles.length === 0) {
@@ -56,9 +58,9 @@ export default function PlayerLayout() {
         navigate('/app/auth');
       }
     }
-  }, [user, roles, loading, navigate]);
+  }, [user, roles, authResolving, navigate]);
 
-  if (loading) {
+  if (authResolving) {
     return (
       <div className="min-h-screen bg-slate-50/80">
         <div className="flex">
@@ -93,7 +95,9 @@ export default function PlayerLayout() {
         <SidebarInset className="flex min-w-0 flex-1 flex-col bg-slate-50/50">
           <PlayerMobileHeader />
           <div className="flex-1 p-4 md:p-6">
-            <Outlet />
+            <Suspense fallback={<PageContentSkeleton />}>
+              <Outlet />
+            </Suspense>
           </div>
         </SidebarInset>
       </div>
