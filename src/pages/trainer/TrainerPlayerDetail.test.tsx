@@ -32,6 +32,10 @@ vi.mock('@/components/trainer/TrainerPlayerDetailsCard', () => ({
   TrainerPlayerDetailsCard: () => <div data-testid="trainer-player-details-card" />,
 }));
 
+vi.mock('@/components/trainer/TrainerPlayerRemoveCard', () => ({
+  TrainerPlayerRemoveCard: () => <div data-testid="trainer-player-remove-card" />,
+}));
+
 const guestRow = {
   id: GUEST_ID,
   full_name: 'Jane Guest',
@@ -211,12 +215,23 @@ describe('TrainerPlayerDetail', () => {
     );
   });
 
-  it('does not render danger zone or delete actions', () => {
+  it('renders danger zone at the bottom without hard delete', () => {
     const source = readFileSync(resolve(__dirname, 'TrainerPlayerDetail.tsx'), 'utf8');
 
-    expect(source).not.toContain('RemoveCard');
+    expect(source).toContain('TrainerPlayerRemoveCard');
     expect(source).not.toContain("from('guest_players').delete()");
-    expect(source).not.toContain('danger');
+    expect(source).not.toContain("from('profiles').delete()");
+  });
+
+  it('renders remove card below email history', async () => {
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId('trainer-player-remove-card')).toBeInTheDocument();
+    });
+
+    expect(getDomIndex('trainer-player-remove-card')).toBeGreaterThan(
+      getDomIndex('trainer-player-section-emails'),
+    );
   });
 
   describe('related item navigation', () => {

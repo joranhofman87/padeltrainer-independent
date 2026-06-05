@@ -51,4 +51,10 @@ describe('TrainerPlayers table row layout', () => {
     expect(source).toContain('selectedTagId');
     expect(source).toContain('selectedPaymentStatus');
   });
+
+  it('hides removed players from overview', () => {
+    expect(source).toContain('removed_at');
+    expect(source).toContain('shouldShowPlayerInTrainerOverview');
+    expect(source).toContain('activePlayerCount');
+  });
 });

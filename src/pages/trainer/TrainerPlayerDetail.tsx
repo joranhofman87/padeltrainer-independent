@@ -41,6 +41,7 @@ import {
   type TrainerPlayerEmailHistoryItem,
 } from '@/lib/trainerPlayerEmailHistory';
 import { TrainerPlayerDetailsCard } from '@/components/trainer/TrainerPlayerDetailsCard';
+import { TrainerPlayerRemoveCard } from '@/components/trainer/TrainerPlayerRemoveCard';
 import { TagPicker } from '@/components/players/TagPicker';
 import { PlayerTag } from '@/components/players/playerTagColors';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -124,6 +125,7 @@ export default function TrainerPlayerDetail() {
   const [locationNames, setLocationNames] = useState<string[]>([]);
   const [trainerLocations, setTrainerLocations] = useState<{ id: string; name: string }[]>([]);
   const [detailsValues, setDetailsValues] = useState<TrainerPlayerDetailsValues | null>(null);
+  const [removedAt, setRemovedAt] = useState<string | null>(null);
 
   const [cycluses, setCycluses] = useState<CyclusItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
@@ -239,8 +241,10 @@ export default function TrainerPlayerDetail() {
         tag_ids?: string[];
         notes?: string | null;
         preferred_location_id?: string | null;
+        removed_at?: string | null;
       } | null;
       setTagIds(meta?.tag_ids || []);
+      setRemovedAt(meta?.removed_at ?? null);
 
       registeredPreferredLocationId =
         parsed.kind === 'profile' ? meta?.preferred_location_id ?? null : null;
@@ -773,6 +777,17 @@ export default function TrainerPlayerDetail() {
           )}
         </CardContent>
       </Card>
+
+      {trainerId && player && parsed.kind && (
+        <TrainerPlayerRemoveCard
+          kind={parsed.kind === 'guest' ? 'guest' : 'registered'}
+          trainerProfileId={trainerId}
+          guestPlayerId={player.guest_player_id}
+          profileId={player.profile_id}
+          playerName={player.full_name}
+          removedAt={removedAt}
+        />
+      )}
     </div>
   );
 }

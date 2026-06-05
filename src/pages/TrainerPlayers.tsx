@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Users, UserPlus, Upload, Mail, RefreshCw, Columns3, Tags } from 'lucide-react';
@@ -34,6 +34,7 @@ import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDia
 import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
 import { toTrainerPlayerRouteId } from '@/lib/invoiceCustomer';
+import { shouldShowPlayerInTrainerOverview } from '@/lib/trainerPlayerRemoval';
 
 type UnifiedPlayer = {
   id: string;
@@ -184,7 +185,7 @@ export default function TrainerPlayers() {
     if (!trainerId) return;
     const [tagsRes, metaRes] = await Promise.all([
       supabase.from('academy_player_tags').select('*').eq('trainer_profile_id', trainerId).order('name'),
-      supabase.from('academy_player_metadata').select('id, guest_player_id, profile_id, notes, tag_ids').eq('trainer_profile_id', trainerId),
+      supabase.from('academy_player_metadata').select('id, guest_player_id, profile_id, notes, tag_ids, removed_at').eq('trainer_profile_id', trainerId),
     ]);
     setTags((tagsRes.data || []) as PlayerTag[]);
     setMetadata((metaRes.data || []) as PlayerMetadata[]);
@@ -249,6 +250,13 @@ export default function TrainerPlayers() {
       };
     });
 
+    result = result.filter((p) => {
+      const meta = p.type === 'guest'
+        ? metaByGuest.get(p.id)
+        : metaByProfile.get(p.id.replace(/^reg-/, ''));
+      return shouldShowPlayerInTrainerOverview(meta);
+    });
+
     if (selectedLocation !== 'all') {
       result = result.filter((p) => p.location_names?.includes(selectedLocation));
     }
@@ -281,6 +289,21 @@ export default function TrainerPlayers() {
   }, [searchQuery, players, metadata, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
 
   const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(filteredPlayers);
+
+  const activePlayerCount = useMemo(() => {
+    const metaByGuest = new Map<string, PlayerMetadata>();
+    const metaByProfile = new Map<string, PlayerMetadata>();
+    metadata.forEach((m) => {
+      if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
+      if (m.profile_id) metaByProfile.set(m.profile_id, m);
+    });
+    return players.filter((p) => {
+      const meta = p.type === 'guest'
+        ? metaByGuest.get(p.id)
+        : metaByProfile.get(p.id.replace(/^reg-/, ''));
+      return shouldShowPlayerInTrainerOverview(meta);
+    }).length;
+  }, [players, metadata]);
 
   const fetchPlayers = async () => {
     if (!trainerId) return;
@@ -464,7 +487,7 @@ export default function TrainerPlayers() {
       <TrainerPageHeader
         title={t('players.title')}
         description={t('players.subtitleShort', 'Manage your players and contacts')}
-        countText={`${players.length} ${players.length === 1 ? t('players.playerSingular', 'player') : t('players.playerPlural', 'players')}`}
+        countText={`${activePlayerCount} ${activePlayerCount === 1 ? t('players.playerSingular', 'player') : t('players.playerPlural', 'players')}`}
         primaryAction={{
           label: t('players.addPlayer'),
           onClick: () => setShowAddPlayer(true),
