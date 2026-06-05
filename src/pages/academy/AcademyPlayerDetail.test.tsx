@@ -99,7 +99,10 @@ vi.mock('@/hooks/use-toast', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => {
+    t: (key: string, fallback?: string, opts?: Record<string, string>) => {
+      if (key === 'players.detail.invoiceSentNumber' && opts?.number) {
+        return `Invoice #${opts.number}`;
+      }
       const map: Record<string, string> = {
         'players.detail.back': 'Back to players',
         'players.detail.guest': 'Guest',
@@ -119,6 +122,8 @@ vi.mock('react-i18next', () => ({
         'players.detail.noInvoices': 'No invoices yet',
         'players.detail.noRating': 'No rating history available',
         'players.detail.noEmails': 'No emails sent yet',
+        'players.detail.invoiceSent': 'Invoice sent',
+        'players.detail.invoiceSentNumber': 'Invoice #{{number}}',
         'players.detail.ratingProgress': 'Rating progress',
         'players.detail.ratingGuestHint': 'Rating history is tracked for registered players.',
         'players.detail.createInvoice': 'Create invoice',
@@ -313,6 +318,58 @@ describe('AcademyPlayerDetail', () => {
         'href',
         '/app/academy/calendar?tab=list&cyclusId=bulk-cycle-1',
       );
+    });
+
+    it('shows invoice sent event in email history with edit link', async () => {
+      tableResponses.invoices = [
+        {
+          id: 'inv-sent',
+          invoice_number: '26000421',
+          invoice_date: '2026-01-01',
+          due_date: '2026-01-15',
+          total: 100,
+          status: 'sent',
+          pdf_url: null,
+          sent_at: '2026-02-01T14:30:00Z',
+          academy_profile_id: ACADEMY_ID,
+        },
+      ];
+
+      renderGuestDetail();
+      await waitFor(() => {
+        expect(screen.getByTestId('academy-player-email-invoice-sent-inv-sent')).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId('academy-player-email-link-invoice-sent-inv-sent')).toHaveAttribute(
+        'href',
+        '/app/academy/invoices/inv-sent/edit',
+      );
+      expect(screen.getByText('Invoice #26000421')).toBeInTheDocument();
+      expect(screen.queryByText('No emails sent yet')).not.toBeInTheDocument();
+    });
+
+    it('does not show invoice email event when sent_at is missing', async () => {
+      tableResponses.invoices = [
+        {
+          id: 'inv-draft',
+          invoice_number: '99',
+          invoice_date: '2026-01-01',
+          due_date: '2026-01-15',
+          total: 50,
+          status: 'draft',
+          pdf_url: null,
+          sent_at: null,
+          academy_profile_id: ACADEMY_ID,
+        },
+      ];
+
+      renderGuestDetail();
+      await waitFor(() => {
+        expect(screen.getByTestId('academy-player-section-emails')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId(/academy-player-email-invoice-sent-/)).not.toBeInTheDocument();
+      expect(screen.getByText('No emails sent yet')).toBeInTheDocument();
     });
 
     it('keeps empty states when there is no related data', async () => {

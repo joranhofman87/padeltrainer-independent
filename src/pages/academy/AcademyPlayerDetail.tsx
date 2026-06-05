@@ -36,6 +36,13 @@ import { AcademyPlayerRemoveCard } from '@/components/academy/AcademyPlayerRemov
 import { getAcademyLocations } from '@/lib/academy';
 import type { AcademyPlayerDetailsValues } from '@/lib/academyPlayerDetails';
 import { fetchPlayerTrainingLocations } from '@/lib/academyPlayerTrainingLocations';
+import {
+  buildInvoiceEmailEvents,
+  filterInvoicesForAcademy,
+  mapCampaignEmailEvents,
+  mergePlayerEmailHistory,
+  type AcademyPlayerEmailHistoryItem,
+} from '@/lib/academyPlayerEmailHistory';
 import { cn } from '@/lib/utils';
 import {
   LineChart,
@@ -82,6 +89,8 @@ interface InvoiceItem {
   total: number | null;
   status: string | null;
   pdf_url: string | null;
+  sent_at: string | null;
+  academy_profile_id: string | null;
 }
 
 interface RatingPoint {
@@ -90,14 +99,6 @@ interface RatingPoint {
   source: string;
 }
 
-interface EmailItem {
-  id: string;
-  subject: string;
-  status: string;
-  sent_at: string | null;
-  created_at: string;
-  campaign_status: string | null;
-}
 
 export default function AcademyPlayerDetail() {
   const { t } = useTranslation('trainer');
@@ -124,7 +125,7 @@ export default function AcademyPlayerDetail() {
   const [cycluses, setCycluses] = useState<CyclusItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [ratingHistory, setRatingHistory] = useState<RatingPoint[]>([]);
-  const [emails, setEmails] = useState<EmailItem[]>([]);
+  const [emails, setEmails] = useState<AcademyPlayerEmailHistoryItem[]>([]);
 
   useEffect(() => {
     if (!parsed.kind || !parsed.id || !activeAcademy) return;
@@ -292,12 +293,22 @@ export default function AcademyPlayerDetail() {
       }
       setCycluses(cycluses);
 
-      // Invoices
-      const invQuery = parsed.kind === 'guest'
-        ? supabase.from('invoices').select('id, invoice_number, invoice_date, due_date, total, status, pdf_url').eq('guest_player_id', parsed.id).order('invoice_date', { ascending: false })
-        : supabase.from('invoices').select('id, invoice_number, invoice_date, due_date, total, status, pdf_url').eq('player_id', parsed.id).order('invoice_date', { ascending: false });
-      const { data: invs } = await invQuery;
-      setInvoices((invs || []) as InvoiceItem[]);
+      // Invoices (scoped to current academy)
+      const invPlayerFilter =
+        parsed.kind === 'guest'
+          ? supabase
+              .from('invoices')
+              .select('id, invoice_number, invoice_date, due_date, total, status, pdf_url, sent_at, academy_profile_id')
+              .eq('academy_profile_id', activeAcademy!.id)
+              .eq('guest_player_id', parsed.id)
+          : supabase
+              .from('invoices')
+              .select('id, invoice_number, invoice_date, due_date, total, status, pdf_url, sent_at, academy_profile_id')
+              .eq('academy_profile_id', activeAcademy!.id)
+              .eq('player_id', parsed.id);
+      const { data: invs } = await invPlayerFilter.order('invoice_date', { ascending: false });
+      const invoiceRows = (invs || []) as InvoiceItem[];
+      setInvoices(invoiceRows);
 
       // Rating history (only for registered profiles)
       if (parsed.kind === 'profile') {
@@ -317,8 +328,9 @@ export default function AcademyPlayerDetail() {
         setRatingHistory([]);
       }
 
-      // Emails sent
+      // Email history: campaign emails + invoice send events
       const emailAddr = core.email;
+      let campaignEmails: AcademyPlayerEmailHistoryItem[] = [];
       if (emailAddr) {
         const { data: recs } = await supabase
           .from('email_campaign_recipients')
@@ -326,19 +338,26 @@ export default function AcademyPlayerDetail() {
           .eq('recipient_email', emailAddr)
           .eq('email_campaigns.academy_profile_id', activeAcademy!.id)
           .order('created_at', { ascending: false });
-        setEmails(
+        campaignEmails = mapCampaignEmailEvents(
           (recs || []).map((r: any) => ({
             id: r.id,
             subject: r.email_campaigns?.subject || '—',
             status: r.status,
             sent_at: r.sent_at,
             created_at: r.created_at,
-            campaign_status: r.email_campaigns?.status || null,
-          }))
+          })),
         );
-      } else {
-        setEmails([]);
       }
+
+      const invoiceEmailEvents = buildInvoiceEmailEvents(
+        filterInvoicesForAcademy(invoiceRows, activeAcademy!.id),
+        {
+          sent: t('players.detail.invoiceSent', 'Invoice sent'),
+          sentWithNumber: (number) =>
+            t('players.detail.invoiceSentNumber', 'Invoice #{{number}}', { number }),
+        },
+      );
+      setEmails(mergePlayerEmailHistory(campaignEmails, invoiceEmailEvents));
     } catch (err: any) {
       logger.error('Error loading player detail', err);
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -671,21 +690,48 @@ export default function AcademyPlayerDetail() {
           {emails.length === 0 ? (
             <Empty icon={<Send className="h-8 w-8" />} text={t('players.detail.noEmails', 'No emails sent yet')} />
           ) : (
-            emails.map(e => (
-              <div key={e.id} className="p-4 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-medium truncate">{e.subject}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {e.sent_at
-                      ? format(new Date(e.sent_at), 'dd-MM-yyyy HH:mm')
-                      : format(new Date(e.created_at), 'dd-MM-yyyy HH:mm')}
-                  </p>
+            emails.map((e) => {
+              const timestamp = e.sent_at
+                ? format(new Date(e.sent_at), 'dd-MM-yyyy HH:mm')
+                : format(new Date(e.created_at), 'dd-MM-yyyy HH:mm');
+              const title = e.href ? (
+                <Link
+                  to={e.href}
+                  className="font-medium truncate hover:underline"
+                  data-testid={`academy-player-email-link-${e.id}`}
+                >
+                  {e.title}
+                </Link>
+              ) : (
+                <p className="font-medium truncate">{e.title}</p>
+              );
+
+              return (
+                <div
+                  key={e.id}
+                  className="p-4 flex items-center justify-between gap-4"
+                  data-testid={`academy-player-email-${e.id}`}
+                >
+                  <div className="min-w-0">
+                    {title}
+                    <p className="text-xs text-muted-foreground">
+                      {e.subtitle ? `${e.subtitle} · ${timestamp}` : timestamp}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={
+                      e.status === 'sent'
+                        ? 'default'
+                        : e.status === 'failed'
+                          ? 'destructive'
+                          : 'secondary'
+                    }
+                  >
+                    {e.status}
+                  </Badge>
                 </div>
-                <Badge variant={e.status === 'sent' ? 'default' : e.status === 'failed' ? 'destructive' : 'secondary'}>
-                  {e.status}
-                </Badge>
-              </div>
-            ))
+              );
+            })
           )}
         </CardContent>
       </Card>
