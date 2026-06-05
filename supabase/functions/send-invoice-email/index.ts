@@ -1,10 +1,15 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const logStep = (step: string, details?: Record<string, unknown>) => {
+  console.log(`[SEND-INVOICE-EMAIL] ${step}`, details ? JSON.stringify(details) : "");
 };
 
 const handler = async (req: Request): Promise<Response> => {
@@ -81,6 +86,12 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    logStep("started", {
+      invoiceId,
+      previewOnly,
+      testSend: !!testEmail,
+    });
+
     // Fetch invoice with guest player info
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
@@ -117,6 +128,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // For test sends and previews we don't require a recipient email on the invoice
     if (!recipientEmail && !testEmail && !previewOnly) {
+      logStep("no_recipient", { invoiceId, invoiceNumber: invoice.invoice_number });
       return new Response(
         JSON.stringify({ success: false, error: "no_email", playerName: invoice.player_name }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -355,7 +367,16 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     if (sendError) {
-      console.error("Resend error:", sendError);
+      logStep("failed", {
+        invoiceId,
+        invoiceNumber: invoice.invoice_number,
+        errorCode: "send_failed",
+      });
+      await notifySlackEdgeError(
+        "send-invoice-email",
+        "Resend send failed",
+        { invoiceId, invoiceNumber: invoice.invoice_number, error: String(sendError) },
+      );
       return new Response(
         JSON.stringify({ success: false, error: "send_failed", details: sendError }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -369,23 +390,58 @@ const handler = async (req: Request): Promise<Response> => {
         if (!invoice.sent_at) updates.sent_at = new Date().toISOString();
         if (invoice.status === "draft") updates.status = "sent";
         if (Object.keys(updates).length > 0) {
-          await supabase.from("invoices").update(updates).eq("id", invoice.id);
+          const { error: statusUpdateError } = await supabase
+            .from("invoices")
+            .update(updates)
+            .eq("id", invoice.id);
+          if (statusUpdateError) {
+            logStep("status_update_failed", {
+              invoiceId,
+              invoiceNumber: invoice.invoice_number,
+              error: statusUpdateError.message,
+            });
+            await notifySlackEdgeError(
+              "send-invoice-email",
+              "Invoice sent_at/status update failed after email delivery",
+              {
+                invoiceId,
+                invoiceNumber: invoice.invoice_number,
+                error: statusUpdateError.message,
+              },
+            );
+          }
         }
       } catch (e) {
-        console.error("Failed to update invoice sent_at:", e);
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logStep("status_update_failed", {
+          invoiceId,
+          invoiceNumber: invoice.invoice_number,
+          error: errMsg,
+        });
+        await notifySlackEdgeError(
+          "send-invoice-email",
+          "Invoice sent_at/status update failed after email delivery",
+          { invoiceId, invoiceNumber: invoice.invoice_number, error: errMsg },
+        );
       }
     }
 
-    console.log(`Invoice email sent: ${invoice.invoice_number} to ${recipientEmail}`);
+    logStep("sent", {
+      invoiceId,
+      invoiceNumber: invoice.invoice_number,
+      testSend: !!testEmail,
+    });
 
     return new Response(
       JSON.stringify({ success: true, email: recipientEmail }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
-    console.error("Error sending invoice email:", error);
+    const message = error?.message ?? String(error);
+    logStep("failed", { error: message });
+    await notifySlackEdgeError("send-invoice-email", message);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: message }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }

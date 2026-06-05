@@ -287,9 +287,37 @@ serve(async (req) => {
           .update({ status: "paid", paid_at: new Date().toISOString(), mollie_payment_id: paymentId })
           .eq("id", invoiceIdFromMetadata);
         if (invUpdateError) {
-          logStep("Failed to update invoice", { error: invUpdateError.message });
+          logStep("Failed to update invoice", { error: invUpdateError.message, invoiceId: invoiceIdFromMetadata });
+          await notifySlackError(
+            "mollie-webhook",
+            "Invoice paid webhook: DB update failed",
+            { paymentId, invoiceId: invoiceIdFromMetadata, error: invUpdateError.message },
+          );
         } else {
           logStep("Invoice marked as paid via payment link", { invoiceId: invoiceIdFromMetadata });
+
+          try {
+            const { data: paidInvoice } = await supabase
+              .from("invoices")
+              .select("invoice_number, total")
+              .eq("id", invoiceIdFromMetadata)
+              .single();
+            await supabase.functions.invoke("slack-notify", {
+              body: {
+                event: "payment_received",
+                data: {
+                  type: "invoice",
+                  invoice_number: paidInvoice?.invoice_number ?? "unknown",
+                  amount: paidInvoice?.total != null
+                    ? `€${Number(paidInvoice.total).toFixed(2)}`
+                    : (payment.amount?.value ? `€${payment.amount.value}` : "?"),
+                  payment_id: paymentId,
+                },
+              },
+            });
+          } catch (slackErr) {
+            logStep("Slack payment_received failed (non-fatal)", { error: String(slackErr) });
+          }
         }
 
         // Also sync linked bookings so dashboard shows correct payment status
@@ -311,20 +339,44 @@ serve(async (req) => {
 
           if (bookingUpdateError) {
             logStep("Failed to update linked bookings", { error: bookingUpdateError.message });
+            await notifySlackError(
+              "mollie-webhook",
+              "Invoice paid webhook: linked bookings sync failed",
+              {
+                paymentId,
+                invoiceId: invoiceIdFromMetadata,
+                bookingCount: invoiceData.booking_ids.length,
+                error: bookingUpdateError.message,
+              },
+            );
           } else {
-          logStep("Linked bookings updated to paid", { count: invoiceData.booking_ids.length });
+            logStep("Linked bookings updated to paid", { count: invoiceData.booking_ids.length });
           }
         }
 
         // Forward invoice to bookkeeping emails
         try {
-          await supabase.functions.invoke("forward-invoice", {
+          const forwardRes = await supabase.functions.invoke("forward-invoice", {
             body: { invoiceId: invoiceIdFromMetadata },
             headers: { Authorization: `Bearer ${supabaseServiceKey}` },
           });
-          logStep("Invoice forwarded to bookkeeping");
+          if (forwardRes.error) {
+            logStep("Invoice forwarding failed (non-fatal)", { error: String(forwardRes.error) });
+            await notifySlackError(
+              "mollie-webhook",
+              "Invoice paid webhook: forward-invoice failed",
+              { paymentId, invoiceId: invoiceIdFromMetadata, error: String(forwardRes.error) },
+            );
+          } else {
+            logStep("Invoice forwarded to bookkeeping");
+          }
         } catch (fwdErr) {
           logStep("Invoice forwarding failed (non-fatal)", { error: String(fwdErr) });
+          await notifySlackError(
+            "mollie-webhook",
+            "Invoice paid webhook: forward-invoice failed",
+            { paymentId, invoiceId: invoiceIdFromMetadata, error: String(fwdErr) },
+          );
         }
       }
       return new Response("OK", { status: 200 });

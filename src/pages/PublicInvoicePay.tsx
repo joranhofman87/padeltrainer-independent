@@ -35,6 +35,15 @@ import {
 } from "@/lib/publicInvoiceMollieMessage";
 import { buildPaidInvoiceClaimSignupPath } from "@/lib/signupClaimFlow";
 import { trackInvoiceClaimStarted } from "@/lib/invoiceClaimTracking";
+import {
+  normalizeInvoicePayRecipientType,
+  normalizeInvoicePayStatus,
+  trackInvoicePayPageLoadFailed,
+  trackInvoicePayPageLoaded,
+  trackInvoicePaymentFailed,
+  trackInvoicePaymentRedirect,
+  trackInvoicePaymentStarted,
+} from "@/lib/invoicePayTracking";
 
 // Keep the /pay/:token URL out of Referer headers — these tokens grant access
 // to invoice PII until the invoice is paid.
@@ -382,25 +391,72 @@ export default function PublicInvoicePay() {
       const loadError = resolvePublicInvoiceLoadError(result, fnError);
       if (loadError === "already_paid") {
         setIsPaid(true);
+        try {
+          trackInvoicePayPageLoaded({
+            has_mollie_account: false,
+            recipient_type: "unknown",
+            status: "paid",
+          });
+        } catch {
+          /* analytics must not block page */
+        }
         return;
       }
       if (loadError === "cancelled") {
         setIsCancelled(true);
+        try {
+          trackInvoicePayPageLoaded({
+            has_mollie_account: false,
+            recipient_type: "unknown",
+            status: "cancelled",
+          });
+        } catch {
+          /* analytics must not block page */
+        }
         return;
       }
       if (loadError) {
         setError(loadError);
+        try {
+          trackInvoicePayPageLoadFailed(loadError);
+        } catch {
+          /* analytics must not block page */
+        }
         return;
       }
 
       if (fnError || !isPublicInvoiceDetailPayload(result)) {
         setError("not_found");
+        try {
+          trackInvoicePayPageLoadFailed("not_found");
+        } catch {
+          /* analytics must not block page */
+        }
         return;
       }
 
-      setData(result as PublicInvoiceData);
+      const loaded = result as PublicInvoiceData;
+      setData(loaded);
+      try {
+        const inv = loaded.invoice;
+        trackInvoicePayPageLoaded({
+          has_mollie_account: inv.hasMollieAccount,
+          payment_unavailable_reason: inv.paymentUnavailableReason ?? null,
+          recipient_type: normalizeInvoicePayRecipientType(
+            inv.paymentRecipient ?? (loaded.academy ? "academy" : "trainer"),
+          ),
+          status: normalizeInvoicePayStatus(inv.status),
+        });
+      } catch {
+        /* analytics must not block page */
+      }
     } catch {
       setError("not_found");
+      try {
+        trackInvoicePayPageLoadFailed("not_found");
+      } catch {
+        /* analytics must not block page */
+      }
     } finally {
       setLoading(false);
     }
@@ -419,6 +475,18 @@ export default function PublicInvoicePay() {
 
   const handlePay = async () => {
     if (!data || !data.invoice.hasMollieAccount) return;
+    const payRecipient = normalizeInvoicePayRecipientType(paymentRecipient);
+    const payStatus = normalizeInvoicePayStatus(data.invoice.status);
+    try {
+      trackInvoicePaymentStarted({
+        has_mollie_account: data.invoice.hasMollieAccount,
+        payment_unavailable_reason: data.invoice.paymentUnavailableReason ?? null,
+        recipient_type: payRecipient,
+        status: payStatus,
+      });
+    } catch {
+      /* analytics must not block payment */
+    }
     setPayLoading(true);
     try {
       const { data: result, error: fnError } = await supabase.functions.invoke("create-invoice-payment", {
@@ -427,6 +495,14 @@ export default function PublicInvoicePay() {
 
       if (fnError) throw fnError;
       if (result?.paymentUrl) {
+        try {
+          trackInvoicePaymentRedirect({
+            recipient_type: payRecipient,
+            status: payStatus,
+          });
+        } catch {
+          /* analytics must not block redirect */
+        }
         window.location.href = result.paymentUrl;
       } else {
         throw new Error("No payment URL");
@@ -438,6 +514,12 @@ export default function PublicInvoicePay() {
         errorCode = parsed?.error ?? null;
       } catch {
         errorCode = err?.error ?? null;
+      }
+      const trackedErrorCode = errorCode ?? "payment_failed";
+      try {
+        trackInvoicePaymentFailed(trackedErrorCode);
+      } catch {
+        /* analytics must not block error UI */
       }
 
       if (errorCode === "no_mollie_account") {

@@ -1,10 +1,15 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-migration-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const logStep = (step: string, details?: Record<string, unknown>) => {
+  console.log(`[GENERATE-INVOICE] ${step}`, details ? JSON.stringify(details) : "");
 };
 
 /** Temporary migration-only bypass; remove after invoice PDF migration. */
@@ -617,6 +622,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!isMigrationBypass) {
       if (!authHeader) {
+        logStep("auth_denied", { reason: "missing_auth_header" });
         return new Response(
           JSON.stringify({ error: "Authentication required" }),
           { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -629,6 +635,7 @@ const handler = async (req: Request): Promise<Response> => {
       if (!isServiceRole) {
         const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
         if (authError || !authUser) {
+          logStep("auth_denied", { reason: "invalid_token" });
           return new Response(
             JSON.stringify({ error: "Unauthorized" }),
             { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -645,6 +652,8 @@ const handler = async (req: Request): Promise<Response> => {
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
+
+    logStep("started", { invoiceId, migrationBypass: isMigrationBypass, serviceRole: isServiceRole });
 
     // Fetch invoice
     const { data: invoice, error: invoiceError } = await supabase
@@ -737,6 +746,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       if (!isTrainer && !isPlayer && !isAcademyManager) {
+        logStep("auth_denied", { invoiceId, reason: "forbidden" });
         return new Response(
           JSON.stringify({ error: "Unauthorized" }),
           { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -838,7 +848,17 @@ const handler = async (req: Request): Promise<Response> => {
     ]);
 
     if (htmlUpload.error) {
-      console.error('HTML upload error:', htmlUpload.error);
+      logStep("storage_upload_failed", {
+        invoiceId,
+        invoiceNumber: invoice.invoice_number,
+        fileType: "html",
+        error: htmlUpload.error.message,
+      });
+      await notifySlackEdgeError(
+        "generate-invoice",
+        "Invoice HTML storage upload failed",
+        { invoiceId, invoiceNumber: invoice.invoice_number, error: htmlUpload.error.message },
+      );
       return new Response(
         JSON.stringify({ error: "Failed to save invoice HTML" }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -846,10 +866,19 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     if (pdfUpload.error) {
-      console.error('PDF upload error:', pdfUpload.error);
-      // Non-fatal — continue without PDF
+      logStep("storage_upload_failed", {
+        invoiceId,
+        invoiceNumber: invoice.invoice_number,
+        fileType: "pdf",
+        error: pdfUpload.error.message,
+      });
+      await notifySlackEdgeError(
+        "generate-invoice",
+        "Invoice PDF storage upload failed",
+        { invoiceId, invoiceNumber: invoice.invoice_number, error: pdfUpload.error.message },
+      );
     } else {
-      console.log('PDF invoice uploaded:', pdfFileName);
+      logStep("pdf_uploaded", { invoiceId, invoiceNumber: invoice.invoice_number });
     }
 
     // Get signed URLs for download — use PDF file for pdf_url
@@ -869,7 +898,7 @@ const handler = async (req: Request): Promise<Response> => {
         .eq('id', invoiceId);
     }
 
-    console.log('Invoice generated successfully:', invoice.invoice_number);
+    logStep("success", { invoiceId, invoiceNumber: invoice.invoice_number, hasPdf: !!pdfUrl });
 
     return new Response(
       JSON.stringify({ 
@@ -881,9 +910,11 @@ const handler = async (req: Request): Promise<Response> => {
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
-    console.error("Error generating invoice:", error);
+    const message = error?.message ?? String(error);
+    logStep("failed", { error: message });
+    await notifySlackEdgeError("generate-invoice", message);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: message }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }

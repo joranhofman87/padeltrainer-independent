@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import PublicInvoicePay from './PublicInvoicePay';
 import { resolvePublicInvoiceLoadError } from '@/lib/publicInvoiceFetch';
@@ -16,10 +16,31 @@ vi.mock('@/components/SEO', () => ({
   SEO: () => null,
 }));
 
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn() },
+}));
+
 const trackInvoiceClaimStartedMock = vi.fn();
+const trackInvoicePayPageLoadedMock = vi.fn();
+const trackInvoicePayPageLoadFailedMock = vi.fn();
+const trackInvoicePaymentStartedMock = vi.fn();
+const trackInvoicePaymentRedirectMock = vi.fn();
+const trackInvoicePaymentFailedMock = vi.fn();
 
 vi.mock('@/lib/invoiceClaimTracking', () => ({
   trackInvoiceClaimStarted: () => trackInvoiceClaimStartedMock(),
+}));
+
+vi.mock('@/lib/invoicePayTracking', () => ({
+  normalizeInvoicePayRecipientType: (r: string | null | undefined) =>
+    r === 'academy' ? 'academy' : r === 'trainer' ? 'trainer' : 'unknown',
+  normalizeInvoicePayStatus: (s: string) =>
+    ['sent', 'paid', 'cancelled', 'draft'].includes(s) ? s : 'unknown',
+  trackInvoicePayPageLoaded: (...args: unknown[]) => trackInvoicePayPageLoadedMock(...args),
+  trackInvoicePayPageLoadFailed: (...args: unknown[]) => trackInvoicePayPageLoadFailedMock(...args),
+  trackInvoicePaymentStarted: (...args: unknown[]) => trackInvoicePaymentStartedMock(...args),
+  trackInvoicePaymentRedirect: (...args: unknown[]) => trackInvoicePaymentRedirectMock(...args),
+  trackInvoicePaymentFailed: (...args: unknown[]) => trackInvoicePaymentFailedMock(...args),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -88,6 +109,11 @@ describe('PublicInvoicePay error UI', () => {
   beforeEach(() => {
     invokeMock.mockReset();
     trackInvoiceClaimStartedMock.mockClear();
+    trackInvoicePayPageLoadedMock.mockClear();
+    trackInvoicePayPageLoadFailedMock.mockClear();
+    trackInvoicePaymentStartedMock.mockClear();
+    trackInvoicePaymentRedirectMock.mockClear();
+    trackInvoicePaymentFailedMock.mockClear();
   });
 
   it('shows unavailable message on 401 invoke error', async () => {
@@ -316,5 +342,125 @@ describe('PublicInvoicePay error UI', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Pay €/i })).not.toBeInTheDocument();
+    expect(trackInvoicePayPageLoadedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        has_mollie_account: false,
+        recipient_type: 'academy',
+        status: 'sent',
+      }),
+    );
+    const loadedProps = trackInvoicePayPageLoadedMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(loadedProps).not.toHaveProperty('invoice_id');
+    expect(loadedProps).not.toHaveProperty('amount');
+  });
+
+  it('tracks invoice_pay_page_load_failed without PII', async () => {
+    invokeMock.mockResolvedValue({
+      data: { error: 'Invoice not found' },
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/missing']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Invoice not found' });
+    expect(trackInvoicePayPageLoadFailedMock).toHaveBeenCalledWith('not_found');
+    const props = trackInvoicePayPageLoadFailedMock.mock.calls[0] as unknown[];
+    expect(props).toHaveLength(1);
+  });
+
+  const molliePayableInvoicePayload = {
+    invoice: {
+      id: 'inv-secret',
+      invoiceNumber: 'INV-SECRET',
+      invoiceDate: '2025-01-15',
+      dueDate: '2025-01-29',
+      playerName: 'Secret Player',
+      playerId: null,
+      playerEmail: 'secret@example.com',
+      total: 99,
+      subtotal: 99,
+      vatAmount: 0,
+      vatRate: 0,
+      lineItems: [{ description: 'Lesson', quantity: 1, unit_price: 99, total: 99 }],
+      status: 'sent',
+      hasMolliePayment: false,
+      hasMollieAccount: true,
+      paymentRecipient: 'trainer',
+    },
+    academy: null,
+  };
+
+  it('tracks payment started and redirect without PII', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { pathname: '/pay/pay-token', href: 'http://localhost/pay/pay-token' },
+    });
+
+    invokeMock
+      .mockResolvedValueOnce({ data: molliePayableInvoicePayload, error: null })
+      .mockResolvedValueOnce({ data: { paymentUrl: 'https://mollie.test/pay' }, error: null });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/pay-token']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Pay €/i }));
+
+    await waitFor(() => {
+      expect(trackInvoicePaymentStartedMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          has_mollie_account: true,
+          recipient_type: 'trainer',
+          status: 'sent',
+        }),
+      );
+      expect(trackInvoicePaymentRedirectMock).toHaveBeenCalledWith(
+        expect.objectContaining({ recipient_type: 'trainer', status: 'sent' }),
+      );
+    });
+    for (const mock of [trackInvoicePaymentStartedMock, trackInvoicePaymentRedirectMock]) {
+      const callProps = mock.mock.calls[0][0] as Record<string, unknown>;
+      expect(callProps).not.toHaveProperty('invoice_id');
+      expect(callProps).not.toHaveProperty('amount');
+    }
+  });
+
+  it('tracks payment failed with error_code only', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { pathname: '/pay/fail-token', href: 'http://localhost/pay/fail-token' },
+    });
+
+    invokeMock
+      .mockResolvedValueOnce({ data: molliePayableInvoicePayload, error: null })
+      .mockResolvedValueOnce({
+        data: null,
+        error: { message: JSON.stringify({ error: 'no_mollie_account' }) },
+      });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/fail-token']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Pay €/i }));
+    await waitFor(() => {
+      expect(trackInvoicePaymentFailedMock).toHaveBeenCalledWith('no_mollie_account');
+    });
+    const failedProps = trackInvoicePaymentFailedMock.mock.calls[0] as unknown[];
+    expect(failedProps).toEqual(['no_mollie_account']);
   });
 });
