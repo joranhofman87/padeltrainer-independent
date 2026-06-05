@@ -452,6 +452,8 @@
       "saveDetails": "Gegevens opslaan",
       "cancel": "Annuleren",
       "club": "Club",
+      "preferredClub": "Voorkeursclub",
+      "invalidPreferredClub": "Selecteer een geldige club uit de lijst.",
       "knltbLevel": "KNLTB niveau",
       "emailReadOnly": "E-mail kan hier niet worden gewijzigd",
       "emailReadOnlyHelp": "Het wijzigen van het profiel-e-mailadres werkt het inlog-e-mailadres niet bij. Neem contact op met support om dit te wijzigen.",

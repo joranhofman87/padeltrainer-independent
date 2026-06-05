@@ -7,6 +7,9 @@ import {
   validatePlayerDetailsForm,
 } from './academyPlayerDetails';
 
+const LOC_A = '11111111-1111-4111-8111-111111111111';
+const allowedLocationIds = new Set([LOC_A]);
+
 const updateMock = vi.fn();
 const eqMock = vi.fn();
 const insertMock = vi.fn();
@@ -55,7 +58,6 @@ describe('academyPlayerDetails', () => {
         name: ' ',
         email: '',
         locationId: '',
-        locationName: '',
         skillRating: '',
         ratingSystem: 'knltb',
         notes: '',
@@ -63,25 +65,43 @@ describe('academyPlayerDetails', () => {
     ).toBe('nameRequired');
   });
 
+  it('rejects free-text preferred club ids', () => {
+    expect(
+      validatePlayerDetailsForm(
+        {
+          name: 'Jane',
+          email: '',
+          locationId: 'Padel Club Amsterdam',
+          skillRating: '',
+          ratingSystem: 'knltb',
+          notes: '',
+        },
+        allowedLocationIds,
+      ),
+    ).toBe('invalidLocationId');
+  });
+
   it('does not allow registered email edits', () => {
     expect(canEditRegisteredPlayerEmail()).toBe(false);
   });
 
-  it('builds guest update payload with preferred location and notes', () => {
-    const payload = buildGuestPlayerUpdatePayload({
-      name: 'Jane Guest',
-      email: 'jane@example.com',
-      locationId: 'loc-1',
-      locationName: 'Club A',
-      skillRating: '4.5',
-      ratingSystem: 'knltb',
-      notes: 'Intake note',
-    });
+  it('builds guest update payload with preferred_location_id only', () => {
+    const payload = buildGuestPlayerUpdatePayload(
+      {
+        name: 'Jane Guest',
+        email: 'jane@example.com',
+        locationId: LOC_A,
+        skillRating: '4.5',
+        ratingSystem: 'knltb',
+        notes: 'Intake note',
+      },
+      allowedLocationIds,
+    );
 
     expect(payload).toMatchObject({
       full_name: 'Jane Guest',
       email: 'jane@example.com',
-      preferred_location_id: 'loc-1',
+      preferred_location_id: LOC_A,
       skill_rating: 4.5,
       rating_system: 'knltb',
       notes: 'Intake note',
@@ -89,12 +109,11 @@ describe('academyPlayerDetails', () => {
     expect(payload).not.toHaveProperty('location');
   });
 
-  it('builds registered profile payload without email', () => {
+  it('builds registered profile payload without email or location', () => {
     const payload = buildRegisteredProfileUpdatePayload({
       name: 'John Player',
       email: 'john@example.com',
-      locationId: '',
-      locationName: 'Club B',
+      locationId: LOC_A,
       skillRating: '6',
       ratingSystem: 'knltb',
       notes: 'Internal note',
@@ -102,11 +121,11 @@ describe('academyPlayerDetails', () => {
 
     expect(payload).toMatchObject({
       full_name: 'John Player',
-      location: 'Club B',
       skill_rating: 6,
       rating_system: 'knltb',
     });
     expect(payload).not.toHaveProperty('email');
+    expect(payload).not.toHaveProperty('location');
   });
 
   it('includes email in guest player update payload', async () => {
@@ -115,11 +134,11 @@ describe('academyPlayerDetails', () => {
       academyProfileId: 'academy-1',
       guestPlayerId: 'guest-1',
       profileId: null,
+      allowedLocationIds,
       form: {
         name: 'Jane Guest',
         email: 'new-email@example.com',
-        locationId: 'loc-1',
-        locationName: 'Club A',
+        locationId: LOC_A,
         skillRating: '4',
         ratingSystem: 'knltb',
         notes: 'Note',
@@ -130,49 +149,22 @@ describe('academyPlayerDetails', () => {
       'guest_players',
       expect.objectContaining({
         email: 'new-email@example.com',
+        preferred_location_id: LOC_A,
       }),
     );
   });
 
-  it('saves guest player to guest_players scoped by id', async () => {
-    await saveAcademyPlayerDetails({
-      kind: 'guest',
-      academyProfileId: 'academy-1',
-      guestPlayerId: 'guest-1',
-      profileId: null,
-      form: {
-        name: 'Jane Guest',
-        email: 'jane@example.com',
-        locationId: 'loc-1',
-        locationName: 'Club A',
-        skillRating: '4',
-        ratingSystem: 'knltb',
-        notes: 'Note',
-      },
-    });
-
-    expect(updateMock).toHaveBeenCalledWith(
-      'guest_players',
-      expect.objectContaining({
-        full_name: 'Jane Guest',
-        preferred_location_id: 'loc-1',
-        notes: 'Note',
-      }),
-    );
-    expect(eqMock).toHaveBeenCalledWith('guest_players', 'id', 'guest-1');
-  });
-
-  it('never sends email in registered profile update even when form email differs', async () => {
+  it('never sends email or location in registered profile update', async () => {
     await saveAcademyPlayerDetails({
       kind: 'registered',
       academyProfileId: 'academy-1',
       guestPlayerId: null,
       profileId: 'profile-1',
+      allowedLocationIds,
       form: {
         name: 'John Player',
         email: 'tampered@example.com',
-        locationId: '',
-        locationName: 'Club B',
+        locationId: LOC_A,
         skillRating: '5',
         ratingSystem: 'knltb',
         notes: 'Team note',
@@ -181,40 +173,15 @@ describe('academyPlayerDetails', () => {
 
     const profileUpdate = updateMock.mock.calls.find(([table]) => table === 'profiles');
     expect(profileUpdate?.[1]).not.toHaveProperty('email');
-  });
+    expect(profileUpdate?.[1]).not.toHaveProperty('location');
 
-  it('saves registered player name, club, level, and notes', async () => {
-    await saveAcademyPlayerDetails({
-      kind: 'registered',
-      academyProfileId: 'academy-1',
-      guestPlayerId: null,
-      profileId: 'profile-1',
-      form: {
-        name: 'John Player',
-        email: 'john@example.com',
-        locationId: '',
-        locationName: 'Club B',
-        skillRating: '5',
-        ratingSystem: 'knltb',
-        notes: 'Team note',
-      },
-    });
-
-    expect(updateMock).toHaveBeenCalledWith(
-      'profiles',
-      expect.objectContaining({
-        full_name: 'John Player',
-        location: 'Club B',
-        skill_rating: 5,
-      }),
-    );
-    expect(eqMock).toHaveBeenCalledWith('profiles', 'id', 'profile-1');
     expect(insertMock).toHaveBeenCalledWith(
       'academy_player_metadata',
       expect.objectContaining({
         academy_profile_id: 'academy-1',
         profile_id: 'profile-1',
         notes: 'Team note',
+        preferred_location_id: LOC_A,
       }),
     );
   });

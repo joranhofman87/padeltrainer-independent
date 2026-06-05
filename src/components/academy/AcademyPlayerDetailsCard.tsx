@@ -57,6 +57,7 @@ export function AcademyPlayerDetailsCard({
   const [form, setForm] = useState(() => formFromValues(values));
 
   const emailReadOnly = kind === 'registered' && !canEditRegisteredPlayerEmail();
+  const allowedLocationIds = useMemo(() => new Set(locations.map((l) => l.id)), [locations]);
 
   useEffect(() => {
     if (!editing) {
@@ -64,21 +65,12 @@ export function AcademyPlayerDetailsCard({
     }
   }, [values, editing]);
 
-  const displayLocation = useMemo(() => {
-    if (kind === 'guest') {
-      const loc = locations.find((l) => l.id === values.locationId);
-      return loc?.name ?? '—';
-    }
-    return values.locationName?.trim() || '—';
-  }, [kind, locations, values.locationId, values.locationName]);
+  const displayPreferredClub = useMemo(() => {
+    const loc = locations.find((l) => l.id === values.locationId);
+    return loc?.name ?? '—';
+  }, [locations, values.locationId]);
 
-  const selectedLocationValue = useMemo(() => {
-    if (kind === 'guest') {
-      return form.locationId || NONE_LOCATION;
-    }
-    const match = locations.find((l) => l.name === form.locationName);
-    return match?.id ?? (form.locationName ? NONE_LOCATION : NONE_LOCATION);
-  }, [kind, form.locationId, form.locationName, locations]);
+  const selectedLocationValue = form.locationId || NONE_LOCATION;
 
   function handleCancel() {
     setForm(formFromValues(values));
@@ -86,24 +78,14 @@ export function AcademyPlayerDetailsCard({
   }
 
   function handleLocationChange(locationId: string) {
-    if (locationId === NONE_LOCATION) {
-      setForm((prev) => ({
-        ...prev,
-        locationId: '',
-        locationName: '',
-      }));
-      return;
-    }
-    const loc = locations.find((l) => l.id === locationId);
     setForm((prev) => ({
       ...prev,
-      locationId: kind === 'guest' ? locationId : prev.locationId,
-      locationName: loc?.name ?? '',
+      locationId: locationId === NONE_LOCATION ? '' : locationId,
     }));
   }
 
   async function handleSave() {
-    const validationError = validatePlayerDetailsForm(form);
+    const validationError = validatePlayerDetailsForm(form, allowedLocationIds);
     if (validationError === 'nameRequired') {
       toast({
         title: tCommon('error', 'Error'),
@@ -120,6 +102,14 @@ export function AcademyPlayerDetailsCard({
       });
       return;
     }
+    if (validationError === 'invalidLocationId') {
+      toast({
+        title: tCommon('error', 'Error'),
+        description: t('players.detail.invalidPreferredClub', 'Select a valid club from the list.'),
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -129,14 +119,14 @@ export function AcademyPlayerDetailsCard({
         guestPlayerId,
         profileId,
         form,
+        allowedLocationIds,
         tagIds,
       });
 
       const nextValues: AcademyPlayerDetailsValues = {
         name: form.name.trim(),
         email: emailReadOnly ? values.email : form.email.trim() || null,
-        locationId: kind === 'guest' ? form.locationId || null : values.locationId,
-        locationName: form.locationName.trim() || null,
+        locationId: form.locationId || null,
         skillRating: form.skillRating.trim() ? parseFloat(form.skillRating) : null,
         ratingSystem: form.ratingSystem || 'knltb',
         notes: form.notes.trim() || null,
@@ -198,7 +188,10 @@ export function AcademyPlayerDetailsCard({
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <DetailField label={t('players.name', 'Name')} value={values.name} />
             <DetailField label={t('players.email', 'Email')} value={values.email || '—'} />
-            <DetailField label={t('players.detail.club', 'Club')} value={displayLocation} />
+            <DetailField
+              label={t('players.detail.preferredClub', 'Preferred club')}
+              value={displayPreferredClub}
+            />
             <DetailField
               label={t('players.detail.knltbLevel', 'KNLTB level')}
               value={values.skillRating != null ? String(values.skillRating) : '—'}
@@ -241,7 +234,7 @@ export function AcademyPlayerDetailsCard({
               )}
             </div>
             <div className="space-y-2">
-              <Label>{t('players.detail.club', 'Club')}</Label>
+              <Label>{t('players.detail.preferredClub', 'Preferred club')}</Label>
               <Select value={selectedLocationValue} onValueChange={handleLocationChange}>
                 <SelectTrigger data-testid="academy-player-details-club">
                   <SelectValue placeholder={t('scheduleOverview.selectLocation', 'Select location')} />

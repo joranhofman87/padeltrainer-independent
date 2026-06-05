@@ -9,6 +9,12 @@ vi.mock('@/lib/academy', () => ({
   ]),
 }));
 
+vi.mock('@/lib/academyPlayerTrainingLocations', () => ({
+  fetchPlayerTrainingLocations: vi.fn().mockResolvedValue([
+    { location_id: 'loc-1', location_name: 'Test Club', session_count: 1, last_session_at: null },
+  ]),
+}));
+
 vi.mock('@/components/academy/AcademyPlayerDetailsCard', () => ({
   AcademyPlayerDetailsCard: () => <div data-testid="academy-player-details-card" />,
 }));

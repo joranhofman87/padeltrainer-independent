@@ -35,6 +35,7 @@ import { TagPicker } from '@/components/players/TagPicker';
 import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDetailsCard';
 import { getAcademyLocations } from '@/lib/academy';
 import type { AcademyPlayerDetailsValues } from '@/lib/academyPlayerDetails';
+import { fetchPlayerTrainingLocations } from '@/lib/academyPlayerTrainingLocations';
 import { cn } from '@/lib/utils';
 import {
   LineChart,
@@ -138,7 +139,7 @@ export default function AcademyPlayerDetail() {
       // Player core
       let core: PlayerCore | null = null;
       let guestPreferredLocationId: string | null = null;
-      let profileLocation: string | null = null;
+      let registeredPreferredLocationId: string | null = null;
       const [locationsRes] = await Promise.all([
         getAcademyLocations(activeAcademy!.id),
       ]);
@@ -173,11 +174,10 @@ export default function AcademyPlayerDetail() {
       } else if (parsed.kind === 'profile') {
         const { data } = await supabase
           .from('profiles')
-          .select('id, full_name, email, phone, skill_rating, rating_system, birth_date, created_at, location')
+          .select('id, full_name, email, phone, skill_rating, rating_system, birth_date, created_at')
           .eq('id', parsed.id)
           .maybeSingle();
         if (data) {
-          profileLocation = (data as { location?: string | null }).location ?? null;
           core = {
             full_name: (data as any).full_name || '',
             email: (data as any).email,
@@ -225,14 +225,14 @@ export default function AcademyPlayerDetail() {
       const meta: any = metaRes.data;
       setTagIds(meta?.tag_ids || []);
 
+      registeredPreferredLocationId =
+        parsed.kind === 'profile' ? (meta?.preferred_location_id as string | null) ?? null : null;
+
       setDetailsValues({
         name: core.full_name,
         email: core.email,
-        locationId: guestPreferredLocationId,
-        locationName:
-          parsed.kind === 'profile'
-            ? profileLocation
-            : locationOptions.find((l) => l.id === guestPreferredLocationId)?.name ?? null,
+        locationId:
+          parsed.kind === 'guest' ? guestPreferredLocationId : registeredPreferredLocationId,
         skillRating: core.skill_rating,
         ratingSystem: core.rating_system || 'knltb',
         notes:
@@ -241,7 +241,14 @@ export default function AcademyPlayerDetail() {
             : meta?.notes ?? null,
       });
 
-      // Bookings (cycluses + locations)
+      const trainingLocations = await fetchPlayerTrainingLocations({
+        academyProfileId: activeAcademy!.id,
+        guestPlayerId: parsed.kind === 'guest' ? parsed.id : null,
+        profileId: parsed.kind === 'profile' ? parsed.id : null,
+      });
+      setLocationNames(trainingLocations.map((l) => l.location_name));
+
+      // Bookings (cycluses)
       const bookingFilter = parsed.kind === 'guest'
         ? supabase.from('bookings').select('id, slot_id, status').eq('guest_player_id', parsed.id)
         : supabase.from('bookings').select('id, slot_id, status').eq('player_id', parsed.id);
@@ -249,23 +256,12 @@ export default function AcademyPlayerDetail() {
       const slotIds = Array.from(new Set((bookingsData || []).map((b: any) => b.slot_id))).filter(Boolean);
 
       let cycluses: CyclusItem[] = [];
-      let locNames: string[] = [];
       if (slotIds.length) {
         const { data: slots } = await supabase
           .from('availability_slots')
-          .select('id, cyclus_id, cyclus_name, start_time, location_id')
+          .select('id, cyclus_id, cyclus_name, start_time')
           .in('id', slotIds);
         const slotsArr = (slots || []) as any[];
-
-        // Locations
-        const locIds = Array.from(new Set(slotsArr.map(s => s.location_id))).filter(Boolean);
-        if (locIds.length) {
-          const { data: locs } = await supabase
-            .from('locations')
-            .select('id, name')
-            .in('id', locIds);
-          locNames = (locs || []).map((l: any) => l.name);
-        }
 
         // Cycluses
         const byCyc = new Map<string, { id: string; name: string; dates: Date[] }>();
@@ -288,7 +284,6 @@ export default function AcademyPlayerDetail() {
         }).sort((a, b) => (b.last_session || '').localeCompare(a.last_session || ''));
       }
       setCycluses(cycluses);
-      setLocationNames(locNames);
 
       // Invoices
       const invQuery = parsed.kind === 'guest'

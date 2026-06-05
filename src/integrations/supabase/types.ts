@@ -304,6 +304,7 @@ export type Database = {
           guest_player_id: string | null
           id: string
           notes: string | null
+          preferred_location_id: string | null
           profile_id: string | null
           tag_ids: string[]
           trainer_profile_id: string | null
@@ -315,6 +316,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           notes?: string | null
+          preferred_location_id?: string | null
           profile_id?: string | null
           tag_ids?: string[]
           trainer_profile_id?: string | null
@@ -326,6 +328,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           notes?: string | null
+          preferred_location_id?: string | null
           profile_id?: string | null
           tag_ids?: string[]
           trainer_profile_id?: string | null

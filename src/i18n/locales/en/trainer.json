@@ -449,6 +449,8 @@
       "saveDetails": "Save details",
       "cancel": "Cancel",
       "club": "Club",
+      "preferredClub": "Preferred club",
+      "invalidPreferredClub": "Select a valid club from the list.",
       "knltbLevel": "KNLTB level",
       "emailReadOnly": "Email cannot be changed here",
       "emailReadOnlyHelp": "Changing profile email does not update the login email. Contact support to change it.",

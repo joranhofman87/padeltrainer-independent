@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { buildGuestPlayerDbFields, splitFullName, buildFullName } from '@/lib/profileName';
+import { validatePreferredLocationId } from '@/lib/academyPlayerTrainingLocations';
 
 export type AcademyPlayerKind = 'guest' | 'registered';
 
@@ -7,7 +8,6 @@ export type AcademyPlayerDetailsForm = {
   name: string;
   email: string;
   locationId: string;
-  locationName: string;
   skillRating: string;
   ratingSystem: string;
   notes: string;
@@ -17,7 +17,6 @@ export type AcademyPlayerDetailsValues = {
   name: string;
   email: string | null;
   locationId: string | null;
-  locationName: string | null;
   skillRating: number | null;
   ratingSystem: string;
   notes: string | null;
@@ -27,7 +26,10 @@ export function canEditRegisteredPlayerEmail(): boolean {
   return false;
 }
 
-export function validatePlayerDetailsForm(form: AcademyPlayerDetailsForm): string | null {
+export function validatePlayerDetailsForm(
+  form: AcademyPlayerDetailsForm,
+  allowedLocationIds?: ReadonlySet<string>,
+): string | null {
   if (!form.name.trim()) {
     return 'nameRequired';
   }
@@ -37,27 +39,37 @@ export function validatePlayerDetailsForm(form: AcademyPlayerDetailsForm): strin
       return 'skillOutOfRange';
     }
   }
+  if (allowedLocationIds && form.locationId.trim()) {
+    try {
+      validatePreferredLocationId(form.locationId, allowedLocationIds);
+    } catch {
+      return 'invalidLocationId';
+    }
+  }
   return null;
 }
 
-export function buildGuestPlayerUpdatePayload(form: AcademyPlayerDetailsForm) {
+export function buildGuestPlayerUpdatePayload(
+  form: AcademyPlayerDetailsForm,
+  allowedLocationIds: ReadonlySet<string>,
+) {
+  const preferredLocationId = validatePreferredLocationId(form.locationId, allowedLocationIds);
   const { first_name, last_name } = splitFullName(form.name);
   return {
     ...buildGuestPlayerDbFields(first_name, last_name),
     email: form.email.trim().toLowerCase() || null,
-    preferred_location_id: form.locationId || null,
+    preferred_location_id: preferredLocationId,
     skill_rating: form.skillRating.trim() ? parseFloat(form.skillRating) : null,
     rating_system: form.ratingSystem || 'knltb',
     notes: form.notes.trim() || null,
   };
 }
 
-/** Allowed profile fields for claimed/registered players. Email is intentionally excluded. */
+/** Allowed profile fields for claimed/registered players. Email and location are excluded. */
 export const REGISTERED_PROFILE_UPDATE_FIELDS = [
   'first_name',
   'last_name',
   'full_name',
-  'location',
   'skill_rating',
   'rating_system',
 ] as const;
@@ -69,13 +81,12 @@ export function buildRegisteredProfileUpdatePayload(form: AcademyPlayerDetailsFo
     first_name: first_name || null,
     last_name: last_name || null,
     full_name: fullName,
-    location: form.locationName.trim() || null,
     skill_rating: form.skillRating.trim() ? parseFloat(form.skillRating) : null,
     rating_system: form.ratingSystem || 'knltb',
   };
 
-  if ('email' in payload) {
-    throw new Error('registeredEmailUpdateForbidden');
+  if ('email' in payload || 'location' in payload) {
+    throw new Error('registeredRestrictedFieldUpdateForbidden');
   }
 
   return payload;
@@ -86,18 +97,18 @@ export function formFromValues(values: AcademyPlayerDetailsValues): AcademyPlaye
     name: values.name,
     email: values.email ?? '',
     locationId: values.locationId ?? '',
-    locationName: values.locationName ?? '',
     skillRating: values.skillRating != null ? String(values.skillRating) : '',
     ratingSystem: values.ratingSystem || 'knltb',
     notes: values.notes ?? '',
   };
 }
 
-export async function saveAcademyPlayerMetadataNotes(params: {
+export async function saveAcademyPlayerMetadataFields(params: {
   academyProfileId: string;
   guestPlayerId: string | null;
   profileId: string | null;
   notes: string | null;
+  preferredLocationId?: string | null;
   tagIds?: string[];
 }) {
   const baseQuery = supabase
@@ -110,13 +121,16 @@ export async function saveAcademyPlayerMetadataNotes(params: {
     : baseQuery.eq('profile_id', params.profileId!)
   ).maybeSingle();
 
+  const metadataFields = {
+    notes: params.notes,
+    preferred_location_id: params.preferredLocationId ?? null,
+    ...(params.tagIds ? { tag_ids: params.tagIds } : {}),
+  };
+
   if (existing) {
     const { error } = await supabase
       .from('academy_player_metadata')
-      .update({
-        notes: params.notes,
-        ...(params.tagIds ? { tag_ids: params.tagIds } : {}),
-      })
+      .update(metadataFields as any)
       .eq('id', existing.id);
     if (error) throw error;
     return;
@@ -126,8 +140,8 @@ export async function saveAcademyPlayerMetadataNotes(params: {
     academy_profile_id: params.academyProfileId,
     guest_player_id: params.guestPlayerId,
     profile_id: params.profileId,
-    notes: params.notes,
     tag_ids: params.tagIds ?? [],
+    ...metadataFields,
   } as any);
   if (error) throw error;
 }
@@ -138,15 +152,21 @@ export async function saveAcademyPlayerDetails(params: {
   guestPlayerId: string | null;
   profileId: string | null;
   form: AcademyPlayerDetailsForm;
+  allowedLocationIds: ReadonlySet<string>;
   tagIds?: string[];
 }) {
-  const validationError = validatePlayerDetailsForm(params.form);
+  const validationError = validatePlayerDetailsForm(params.form, params.allowedLocationIds);
   if (validationError) {
     throw new Error(validationError);
   }
 
+  const preferredLocationId = validatePreferredLocationId(
+    params.form.locationId,
+    params.allowedLocationIds,
+  );
+
   if (params.kind === 'guest' && params.guestPlayerId) {
-    const payload = buildGuestPlayerUpdatePayload(params.form);
+    const payload = buildGuestPlayerUpdatePayload(params.form, params.allowedLocationIds);
     const { error } = await supabase
       .from('guest_players')
       .update(payload)
@@ -156,10 +176,9 @@ export async function saveAcademyPlayerDetails(params: {
   }
 
   if (params.kind === 'registered' && params.profileId) {
-    // Claimed accounts are global: never persist email changes from academy UI.
     const profilePayload = buildRegisteredProfileUpdatePayload(params.form);
-    if ('email' in profilePayload) {
-      throw new Error('registeredEmailUpdateForbidden');
+    if ('email' in profilePayload || 'location' in profilePayload) {
+      throw new Error('registeredRestrictedFieldUpdateForbidden');
     }
     const { error: profileError } = await supabase
       .from('profiles')
@@ -167,15 +186,16 @@ export async function saveAcademyPlayerDetails(params: {
       .eq('id', params.profileId);
     if (profileError) throw profileError;
 
-    await saveAcademyPlayerMetadataNotes({
+    await saveAcademyPlayerMetadataFields({
       academyProfileId: params.academyProfileId,
       guestPlayerId: null,
       profileId: params.profileId,
       notes: params.form.notes.trim() || null,
+      preferredLocationId,
       tagIds: params.tagIds,
     });
 
-    return profilePayload;
+    return { profilePayload, preferredLocationId };
   }
 
   throw new Error('invalidPlayer');
