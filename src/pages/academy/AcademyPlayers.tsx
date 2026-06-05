@@ -842,8 +842,8 @@ export default function AcademyPlayers() {
             <Card>
               <CardContent className="p-0">
                 {/* Desktop Table */}
-                <div className="hidden md:block">
-                <Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
+                <div className="hidden md:block overflow-x-auto" data-testid="academy-players-table-scroll">
+                <Table className="min-w-[960px] [&_td]:h-10 [&_td]:max-h-10 [&_td]:py-0 [&_td]:px-3 [&_td]:align-middle [&_td]:overflow-hidden [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 [&_tbody_tr]:h-10 text-sm">
                   <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
                       <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
@@ -879,9 +879,9 @@ export default function AcademyPlayers() {
                   </TableHeader>
                   <TableBody>
                     {sortedPlayers.map((player) => (
-                      <TableRow key={player.id} className="h-8">
-                        <TableCell className="font-medium whitespace-nowrap max-w-[260px] truncate" title={player.full_name}>
-                          <div className="flex items-center gap-1.5">
+                      <TableRow key={player.id} className="h-10 max-h-10">
+                        <TableCell className="font-medium whitespace-nowrap max-w-[260px] min-w-0 overflow-hidden" title={player.full_name}>
+                          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                             <Link
                               to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
                               className="hover:underline text-foreground truncate"
@@ -899,19 +899,19 @@ export default function AcademyPlayers() {
                           switch (key) {
                             case 'email':
                               return (
-                                <TableCell key={key} className="whitespace-nowrap max-w-[220px] truncate" title={player.email}>
+                                <TableCell key={key} className="whitespace-nowrap max-w-[220px] min-w-0 overflow-hidden truncate" title={player.email || ''}>
                                   {player.email || <span className="text-muted-foreground">—</span>}
                                 </TableCell>
                               );
                             case 'phone':
                               return (
-                                <TableCell key={key} className="whitespace-nowrap">
+                                <TableCell key={key} className="whitespace-nowrap overflow-hidden">
                                   {player.phone || <span className="text-muted-foreground">—</span>}
                                 </TableCell>
                               );
                             case 'location':
                               return (
-                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[180px] truncate" title={player.location_names?.join(', ') || ''}>
+                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[180px] min-w-0 overflow-hidden truncate" title={player.location_names?.join(', ') || ''}>
                                   {player.location_names && player.location_names.length > 0
                                     ? player.location_names.join(', ')
                                     : '—'}
@@ -977,7 +977,7 @@ export default function AcademyPlayers() {
                               );
                             case 'notes':
                               return (
-                                <TableCell key={key} className="text-muted-foreground max-w-[220px]">
+                                <TableCell key={key} className="text-muted-foreground max-w-[220px] min-w-0 overflow-hidden whitespace-nowrap">
                                   <div className="truncate" title={player.notes || ''}>
                                     {player.notes || '—'}
                                   </div>
@@ -997,7 +997,7 @@ export default function AcademyPlayers() {
                               );
                             case 'tags':
                               return (
-                                <TableCell key={key} className="max-w-[240px]">
+                                <TableCell key={key} className="max-w-[240px] min-w-[140px] overflow-hidden">
                                   {activeAcademy && (
                                     <PlayerTagsCell
                                       academyId={activeAcademy.id}
@@ -1020,7 +1020,7 @@ export default function AcademyPlayers() {
                               );
                             case 'internalNotes':
                               return (
-                                <TableCell key={key} className="max-w-[260px]">
+                                <TableCell key={key} className="max-w-[260px] min-w-[140px] overflow-hidden">
                                   {activeAcademy && (
                                     <PlayerNotesCell
                                       academyId={activeAcademy.id}

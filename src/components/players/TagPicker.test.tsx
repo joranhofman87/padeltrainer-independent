@@ -112,6 +112,33 @@ describe('TagPicker', () => {
     });
   });
 
+  it('table variant shows at most two tags and a +N overflow indicator', () => {
+    const manyTags: PlayerTag[] = [
+      { id: 'tag-1', name: 'VIP', color: 'blue', academy_profile_id: 'academy-1' },
+      { id: 'tag-2', name: 'Lead', color: 'green', academy_profile_id: 'academy-1' },
+      { id: 'tag-3', name: 'Trial', color: 'amber', academy_profile_id: 'academy-1' },
+    ];
+
+    render(
+      <TagPicker
+        academyId="academy-1"
+        playerKey={playerKey}
+        tags={manyTags}
+        selectedTagIds={['tag-1', 'tag-2', 'tag-3']}
+        onTagsChange={vi.fn()}
+        onSelectedTagIdsChange={vi.fn()}
+        variant="table"
+      />,
+    );
+
+    expect(screen.getByTestId('tag-picker-table')).toHaveClass('flex-nowrap');
+    expect(screen.getByText('VIP')).toBeInTheDocument();
+    expect(screen.getByText('Lead')).toBeInTheDocument();
+    expect(screen.queryByText('Trial')).not.toBeInTheDocument();
+    expect(screen.getByTestId('tag-picker-overflow-count')).toHaveTextContent('+1');
+    expect(screen.getByTestId('tag-picker-add-button')).toHaveClass('whitespace-nowrap');
+  });
+
   it('does not show create option for duplicate tag names', () => {
     render(
       <TagPicker

@@ -33,6 +33,9 @@ import {
 
 export type TagPickerVariant = 'table' | 'detail';
 
+/** Max visible tag chips in table cells; remainder shown as +N. */
+export const TABLE_TAG_VISIBLE_LIMIT = 2;
+
 export interface TagPickerProps {
   /** Owner: pass either academyId OR trainerId (one required). */
   academyId?: string;
@@ -195,26 +198,43 @@ export function TagPicker({
 
   if (!scope) return null;
 
-  const triggerClass =
-    variant === 'table'
-      ? 'flex flex-wrap gap-1 items-center min-h-[24px] hover:bg-muted/50 rounded px-1 -mx-1 w-full text-left'
-      : 'flex flex-wrap gap-1.5 items-center min-h-[28px]';
+  const isTable = variant === 'table';
+  const visibleTags = isTable
+    ? selectedTags.slice(0, TABLE_TAG_VISIBLE_LIMIT)
+    : selectedTags;
+  const overflowCount = isTable
+    ? Math.max(0, selectedTags.length - TABLE_TAG_VISIBLE_LIMIT)
+    : 0;
+
+  const addButtonClass = cn(
+    'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-1 -mx-1 text-left hover:bg-muted/50',
+    isTable ? 'h-6 text-xs' : 'min-h-[28px] text-sm',
+    selectedTags.length === 0 && 'text-muted-foreground',
+  );
 
   return (
-    <div className={cn('flex flex-wrap gap-1 items-center', variant === 'detail' && 'gap-1.5')}>
-      {selectedTags.map((tag) => (
+    <div
+      className={cn(
+        'flex items-center gap-1 min-w-0',
+        isTable ? 'flex-nowrap overflow-hidden h-8 max-w-full' : 'flex-wrap gap-1.5',
+      )}
+      data-testid={isTable ? 'tag-picker-table' : undefined}
+    >
+      {visibleTags.map((tag) => (
         <Badge
           key={tag.id}
           variant="outline"
           className={cn(
-            'h-5 px-1.5 text-[11px] border gap-0.5 pr-0.5',
+            'h-5 px-1.5 text-[11px] border gap-0.5 pr-0.5 shrink-0',
+            isTable && 'max-w-[100px]',
             getTagColorClass(tag.color),
           )}
+          title={tag.name}
         >
-          {tag.name}
+          <span className={cn(isTable && 'truncate')}>{tag.name}</span>
           <button
             type="button"
-            className="rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
+            className="rounded-full p-0.5 shrink-0 hover:bg-black/10 dark:hover:bg-white/10"
             aria-label={t('players.tags.remove', 'Remove tag')}
             onClick={(e) => {
               e.stopPropagation();
@@ -227,6 +247,20 @@ export function TagPicker({
         </Badge>
       ))}
 
+      {overflowCount > 0 && (
+        <Badge
+          variant="secondary"
+          className="h-5 px-1.5 text-[11px] shrink-0"
+          data-testid="tag-picker-overflow-count"
+          title={selectedTags
+            .slice(TABLE_TAG_VISIBLE_LIMIT)
+            .map((tag) => tag.name)
+            .join(', ')}
+        >
+          +{overflowCount}
+        </Badge>
+      )}
+
       <Popover
         open={open}
         onOpenChange={(next) => {
@@ -238,18 +272,17 @@ export function TagPicker({
           <button
             type="button"
             onClick={(e) => e.stopPropagation()}
-            className={cn(triggerClass, selectedTags.length === 0 && 'text-xs text-muted-foreground')}
+            className={addButtonClass}
+            data-testid="tag-picker-add-button"
           >
-            <span className="inline-flex items-center gap-1">
-              {busy ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Plus className="h-3 w-3" />
-              )}
-              {selectedTags.length === 0
-                ? t('players.tags.add', 'Add tag')
-                : t('players.tags.addMore', 'Add')}
-            </span>
+            {busy ? (
+              <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+            ) : (
+              <Plus className="h-3 w-3 shrink-0" />
+            )}
+            {selectedTags.length === 0
+              ? t('players.tags.add', 'Add tag')
+              : t('players.tags.addMore', 'Add')}
           </button>
         </PopoverTrigger>
         <PopoverContent

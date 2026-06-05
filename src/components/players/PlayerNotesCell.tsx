@@ -79,14 +79,17 @@ export function PlayerNotesCell({ academyId, trainerId, playerKey, notes, onChan
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) persist(); }}>
       <PopoverTrigger asChild>
         <button
+          type="button"
           onClick={(e) => e.stopPropagation()}
-          className="flex items-start gap-1 min-h-[24px] hover:bg-muted/50 rounded px-1 -mx-1 w-full text-left text-xs text-muted-foreground"
+          className="flex h-8 min-w-0 max-w-full items-center gap-1 overflow-hidden rounded px-1 -mx-1 text-left text-xs text-muted-foreground hover:bg-muted/50 whitespace-nowrap"
+          data-testid="player-notes-cell-trigger"
+          title={preview || undefined}
         >
-          <StickyNote className="h-3 w-3 mt-0.5 shrink-0" />
+          <StickyNote className="h-3 w-3 shrink-0" />
           {preview ? (
-            <span className="line-clamp-2">{preview}</span>
+            <span className="min-w-0 truncate">{preview}</span>
           ) : (
-            <span>{t('players.notes.add', 'Add note')}</span>
+            <span className="shrink-0">{t('players.notes.add', 'Add note')}</span>
           )}
         </button>
       </PopoverTrigger>
