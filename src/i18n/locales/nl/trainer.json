@@ -476,6 +476,7 @@
       "noInvoices": "Nog geen facturen",
       "noEmails": "Nog geen e-mails verzonden",
       "noRating": "Geen ratinggeschiedenis beschikbaar",
+      "openRecord": "Openen",
       "tabs": {
         "overview": "Overzicht",
         "cycles": "Cycli",

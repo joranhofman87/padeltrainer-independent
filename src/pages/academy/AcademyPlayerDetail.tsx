@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { resolveAcademyCyclusPricingRoute } from '@/lib/cyclusPricingRoute';
+import { buildAcademyInvoiceEditPath } from '@/lib/academyPlayerDetailNavigation';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import {
@@ -14,7 +15,6 @@ import {
   FileText,
   RefreshCw,
   Send,
-  Loader2,
   ExternalLink,
   Download,
 } from 'lucide-react';
@@ -71,6 +71,7 @@ interface CyclusItem {
   first_session: string;
   last_session: string;
   session_count: number;
+  href: string;
 }
 
 interface InvoiceItem {
@@ -100,12 +101,9 @@ interface EmailItem {
 
 export default function AcademyPlayerDetail() {
   const { t } = useTranslation('trainer');
-  const { t: tCommon } = useTranslation('common');
   const { playerId } = useParams<{ playerId: string }>();
-  const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
-  const [cyclusLinkLoadingId, setCyclusLinkLoadingId] = useState<string | null>(null);
 
   const parsed = useMemo(() => {
     if (!playerId) return { kind: null as null | 'guest' | 'profile', id: '' };
@@ -274,7 +272,7 @@ export default function AcademyPlayerDetail() {
           if (s.start_time) cur.dates.push(new Date(s.start_time));
           byCyc.set(cid, cur);
         }
-        cycluses = Array.from(byCyc.values()).map(c => {
+        const rawCycluses = Array.from(byCyc.values()).map(c => {
           const sorted = c.dates.sort((a, b) => a.getTime() - b.getTime());
           return {
             cyclus_id: c.id,
@@ -284,6 +282,13 @@ export default function AcademyPlayerDetail() {
             last_session: sorted[sorted.length - 1]?.toISOString() || '',
           };
         }).sort((a, b) => (b.last_session || '').localeCompare(a.last_session || ''));
+
+        cycluses = await Promise.all(
+          rawCycluses.map(async (c) => ({
+            ...c,
+            href: await resolveAcademyCyclusPricingRoute(c.cyclus_id),
+          })),
+        );
       }
       setCycluses(cycluses);
 
@@ -537,8 +542,13 @@ export default function AcademyPlayerDetail() {
             <Empty icon={<RefreshCw className="h-8 w-8" />} text={t('players.detail.noCycles', 'No cycles joined yet')} />
           ) : (
             cycluses.map(c => (
-              <div key={c.cyclus_id} className="p-4 flex items-center justify-between gap-4">
-                <div>
+              <Link
+                key={c.cyclus_id}
+                to={c.href}
+                data-testid={`academy-player-cycle-link-${c.cyclus_id}`}
+                className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-muted/50"
+              >
+                <div className="min-w-0">
                   <p className="font-medium">{c.cyclus_name}</p>
                   <p className="text-xs text-muted-foreground">
                     {c.first_session && format(new Date(c.first_session), 'dd-MM-yyyy')}
@@ -548,32 +558,11 @@ export default function AcademyPlayerDetail() {
                     {c.session_count} {t('players.detail.sessions', 'sessions')}
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={cyclusLinkLoadingId === c.cyclus_id}
-                  onClick={async () => {
-                    setCyclusLinkLoadingId(c.cyclus_id);
-                    try {
-                      navigate(await resolveAcademyCyclusPricingRoute(c.cyclus_id));
-                    } catch {
-                      toast({
-                        title: tCommon('error', 'Error'),
-                        description: t('calendar.editCyclePricingError', 'Could not open cycle pricing.'),
-                        variant: 'destructive',
-                      });
-                    } finally {
-                      setCyclusLinkLoadingId(null);
-                    }
-                  }}
-                >
-                  {cyclusLinkLoadingId === c.cyclus_id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                  {t('players.detail.openRecord', 'Open')}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </span>
+              </Link>
             ))
           )}
         </CardContent>
@@ -592,20 +581,35 @@ export default function AcademyPlayerDetail() {
             <Empty icon={<FileText className="h-8 w-8" />} text={t('players.detail.noInvoices', 'No invoices yet')} />
           ) : (
             invoices.map(inv => (
-              <div key={inv.id} className="p-4 flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-medium">{inv.invoice_number || `#${inv.id.slice(0, 8)}`}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {inv.invoice_date && format(new Date(inv.invoice_date), 'dd-MM-yyyy')}
-                    {inv.total != null && ` · €${Number(inv.total).toFixed(2)}`}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
+              <div
+                key={inv.id}
+                className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/50"
+              >
+                <Link
+                  to={buildAcademyInvoiceEditPath(inv.id)}
+                  data-testid={`academy-player-invoice-link-${inv.id}`}
+                  className="flex flex-1 min-w-0 items-center justify-between gap-4"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">{inv.invoice_number || `#${inv.id.slice(0, 8)}`}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {inv.invoice_date && format(new Date(inv.invoice_date), 'dd-MM-yyyy')}
+                      {inv.total != null && ` · €${Number(inv.total).toFixed(2)}`}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                    {t('players.detail.openRecord', 'Open')}
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </span>
+                </Link>
+                <div className="flex items-center gap-2 shrink-0">
                   <InvoiceStatus status={inv.status} />
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       const ok = await downloadInvoicePdf(inv.id, inv.invoice_number || undefined);
                       if (!ok) {
                         toast({

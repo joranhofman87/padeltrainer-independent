@@ -473,6 +473,7 @@
       "noInvoices": "No invoices yet",
       "noEmails": "No emails sent yet",
       "noRating": "No rating history available",
+      "openRecord": "Open",
       "tabs": {
         "overview": "Overview",
         "cycles": "Cycles",
