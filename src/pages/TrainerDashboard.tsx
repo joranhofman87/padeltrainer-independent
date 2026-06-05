@@ -28,6 +28,11 @@ import { DashboardSetupBanner } from '@/components/trainer/dashboard/DashboardSe
 import { computeTrainerPaymentsSetupComplete } from '@/lib/trainerSetupPlan';
 import { getAcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import {
+  fetchActiveGuestPlayerCountForTrainer,
+  fetchRemovedPlayerKeys,
+  filterGuestRowsByRemoval,
+} from '@/lib/playerRemovalVisibility';
+import {
   DashboardSectionHeader,
   DashboardActivityRow,
   DashboardPaymentBadge,
@@ -71,7 +76,7 @@ async function fetchTrainerStats(userId: string): Promise<{
 
   const [
     profileResult,
-    guestResult,
+    activeStudentCount,
     futureSlots,
     monthlyBookings,
     followerResult,
@@ -80,7 +85,7 @@ async function fetchTrainerStats(userId: string): Promise<{
     academyPaymentInfo,
   ] = await Promise.all([
     supabase.from('profiles').select('full_name, bio').eq('user_id', userId).maybeSingle(),
-    supabase.from('guest_players').select('id', { count: 'exact', head: true }).eq('trainer_id', currentTrainerId),
+    fetchActiveGuestPlayerCountForTrainer(currentTrainerId),
     supabase.from('availability_slots')
       .select('id, max_participants, bookings(id, status)')
       .eq('trainer_id', currentTrainerId)
@@ -138,7 +143,7 @@ async function fetchTrainerStats(userId: string): Promise<{
       slug,
     },
     stats: {
-      totalStudents: guestResult.count || 0,
+      totalStudents: activeStudentCount,
       openSlots: openSlotsCount,
       monthlyEarnings: totalEarnings * 0.9,
       followerCount: followerResult.count || 0,
@@ -151,7 +156,7 @@ async function fetchTrainerStats(userId: string): Promise<{
 async function fetchTrainerActivity(trainerId: string) {
   const now = new Date().toISOString();
 
-  const [guestPlayers, registeredBookings, bookings, registrations, slots] = await Promise.all([
+  const [guestPlayersRaw, registeredBookings, bookings, registrations, slots] = await Promise.all([
     supabase.from('guest_players')
       .select('id, full_name, email, skill_rating, rating_system, has_trained, created_at')
       .eq('trainer_id', trainerId)
@@ -187,16 +192,19 @@ async function fetchTrainerActivity(trainerId: string) {
       .then(r => r.data),
   ]);
 
+  const removedKeys = await fetchRemovedPlayerKeys({ kind: 'trainer', trainerProfileId: trainerId });
+  const guestPlayers = filterGuestRowsByRemoval(guestPlayersRaw || [], removedKeys);
+
   const seenPlayerIds = new Set<string>();
   const regPlayers: any[] = [];
   for (const b of registeredBookings || []) {
     const profile = b.profiles as any;
-    if (profile?.id && !seenPlayerIds.has(profile.id)) {
+    if (profile?.id && !seenPlayerIds.has(profile.id) && !removedKeys.profileIds.has(profile.id)) {
       seenPlayerIds.add(profile.id);
       regPlayers.push({ id: profile.id, full_name: profile.full_name || '—', has_trained: true, created_at: b.created_at, _isRegistered: true });
     }
   }
-  const allPlayers = [...(guestPlayers || []), ...regPlayers]
+  const allPlayers = [...guestPlayers, ...regPlayers]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 10);
 

@@ -5,6 +5,7 @@ import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw, Trash2, Info } f
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
+import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
 import {
   Dialog,
   DialogContent,
@@ -97,12 +98,7 @@ export function EditBookingDialog({
   const fetchPlayers = async () => {
     setIsFetching(true);
     try {
-      const { data, error } = await supabase
-        .from("guest_players")
-        .select("*")
-        .eq("trainer_id", trainerId)
-        .order("full_name");
-
+      const { data, error } = await loadActiveGuestPlayersForBooking(trainerId);
       if (error) throw error;
       setPlayers(data as GuestPlayer[]);
     } catch (error) {

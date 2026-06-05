@@ -8,6 +8,7 @@ import { nl, enUS, de, fr, es, it as itLocale } from "date-fns/locale";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { getTrainerProfile } from "@/lib/auth";
+import { loadGuestPlayersForTrainer } from "@/lib/guestPlayers";
 import { logger } from "@/lib/logger";
 import { syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { Input } from "@/components/ui/input";
@@ -411,12 +412,10 @@ export default function TrainerScheduleOverview() {
     if (user) {
       const tp = await getTrainerProfile(user.id);
       if (tp) {
-        const { data: guests } = await supabase
-          .from("guest_players")
-          .select("id, full_name")
-          .eq("trainer_id", tp.id)
-          .order("full_name");
-        setAvailableGuestPlayers(guests || []);
+        const { data: guests } = await loadGuestPlayersForTrainer(tp.id);
+        setAvailableGuestPlayers(
+          (guests || []).map((g) => ({ id: g.id, full_name: g.full_name })),
+        );
       }
     }
 

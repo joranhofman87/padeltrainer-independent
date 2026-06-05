@@ -35,6 +35,7 @@ import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/player
 import { cn } from '@/lib/utils';
 import { toTrainerPlayerRouteId } from '@/lib/invoiceCustomer';
 import { shouldShowPlayerInTrainerOverview } from '@/lib/trainerPlayerRemoval';
+import { filterUnifiedPlayersForActiveContext } from '@/lib/playerRemovalVisibility';
 
 type UnifiedPlayer = {
   id: string;
@@ -946,7 +947,7 @@ export default function TrainerPlayers() {
                 trainers={[]}
                 locations={allLocations}
                 tags={tags}
-                players={players.map((p) => {
+                players={filterUnifiedPlayersForActiveContext(players, metadata, 'trainer').map((p) => {
                   const meta = p.type === 'guest'
                     ? metaByGuest.get(p.id)
                     : metaByProfile.get(p.id.replace(/^reg-/, ''));

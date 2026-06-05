@@ -1,5 +1,10 @@
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
+import {
+  fetchRemovedPlayerKeys,
+  filterGuestRowsByRemoval,
+  mergeRemovedPlayerKeys,
+} from "@/lib/playerRemovalVisibility";
 
 /** Columns for calendar/agenda guest player lists (must match DB schema). */
 export const GUEST_PLAYER_CALENDAR_SELECT =
@@ -99,7 +104,15 @@ export async function loadGuestPlayersForTrainer(
     return { data: [], error: toError(error) };
   }
 
-  return { data: (data as GuestPlayerRow[]) || [], error: null };
+  const removedKeys = await fetchRemovedPlayerKeys({
+    kind: "trainer",
+    trainerProfileId: trainerId,
+  });
+
+  return {
+    data: filterGuestRowsByRemoval((data as GuestPlayerRow[]) || [], removedKeys),
+    error: null,
+  };
 }
 
 export async function loadGuestPlayersForAcademy(
@@ -120,5 +133,51 @@ export async function loadGuestPlayersForAcademy(
     return { data: [], error: toError(error) };
   }
 
-  return { data: (data as GuestPlayerRow[]) || [], error: null };
+  const removedKeys = await fetchRemovedPlayerKeys({
+    kind: "academy",
+    academyProfileId: academyId,
+  });
+
+  return {
+    data: filterGuestRowsByRemoval((data as GuestPlayerRow[]) || [], removedKeys),
+    error: null,
+  };
+}
+
+/** Guest list for booking/slot flows; applies trainer + optional academy removal. */
+export async function loadActiveGuestPlayersForBooking(
+  trainerId: string,
+  academyProfileId?: string | null,
+): Promise<{ data: GuestPlayerRow[]; error: Error | null }> {
+  const { data, error } = await supabase
+    .from("guest_players")
+    .select("*")
+    .eq("trainer_id", trainerId)
+    .order("full_name");
+
+  if (error) {
+    logger.error("Failed to load bookable guest players", new Error(error.message), {
+      component: "guestPlayers",
+      trainerId,
+      academyProfileId,
+    });
+    return { data: [], error: toError(error) };
+  }
+
+  const trainerKeys = await fetchRemovedPlayerKeys({
+    kind: "trainer",
+    trainerProfileId: trainerId,
+  });
+
+  const keys = academyProfileId
+    ? mergeRemovedPlayerKeys(
+        trainerKeys,
+        await fetchRemovedPlayerKeys({ kind: "academy", academyProfileId }),
+      )
+    : trainerKeys;
+
+  return {
+    data: filterGuestRowsByRemoval((data as GuestPlayerRow[]) || [], keys),
+    error: null,
+  };
 }

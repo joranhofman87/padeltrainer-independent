@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Loader2, UserPlus, Clock, MapPin, Calendar, Repeat, X, Check, Users, Percent, ChevronDown, Euro } from "lucide-react";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
+import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
 import { Badge } from "@/components/ui/badge";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { cn } from "@/lib/utils";
@@ -94,6 +95,8 @@ interface BookForPlayerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trainerId: string;
+  /** When booking from academy calendar/slot detail, also hide academy-removed players. */
+  academyProfileId?: string | null;
   slot: Slot | null;
   onBookingCreated?: () => void;
 }
@@ -107,6 +110,7 @@ export function BookForPlayerDialog({
   open,
   onOpenChange,
   trainerId,
+  academyProfileId,
   slot,
   onBookingCreated,
 }: BookForPlayerDialogProps) {
@@ -199,12 +203,7 @@ export function BookForPlayerDialog({
   const fetchPlayers = async () => {
     setIsFetching(true);
     try {
-      const { data, error } = await supabase
-        .from("guest_players")
-        .select("*")
-        .eq("trainer_id", trainerId)
-        .order("full_name");
-
+      const { data, error } = await loadActiveGuestPlayersForBooking(trainerId, academyProfileId);
       if (error) throw error;
       setPlayers(data as GuestPlayer[]);
     } catch (error: any) {

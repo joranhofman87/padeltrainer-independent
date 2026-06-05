@@ -1160,6 +1160,7 @@ export default function AcademySlotDetail() {
               {showBookPlayer && (
                 <InlineBookPlayer
                   trainerId={detail.trainer_id}
+                  academyProfileId={activeAcademy?.id}
                   slot={{
                     id: detail.id,
                     start_time: detail.start_time,

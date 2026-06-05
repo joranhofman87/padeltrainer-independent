@@ -12,6 +12,18 @@ vi.mock("@/lib/supabaseClient", () => ({
   },
 }));
 
+vi.mock("@/lib/playerRemovalVisibility", () => ({
+  fetchRemovedPlayerKeys: vi.fn().mockResolvedValue({ guestIds: new Set(), profileIds: new Set() }),
+  filterGuestRowsByRemoval: vi.fn(
+    (rows: { id: string }[], keys: { guestIds: Set<string> }) =>
+      rows.filter((g) => !keys.guestIds.has(g.id)),
+  ),
+  mergeRemovedPlayerKeys: vi.fn((...sets: { guestIds: Set<string>; profileIds: Set<string> }[]) => ({
+    guestIds: new Set(sets.flatMap((s) => Array.from(s.guestIds))),
+    profileIds: new Set(sets.flatMap((s) => Array.from(s.profileIds))),
+  })),
+}));
+
 import { supabase } from "@/lib/supabaseClient";
 import {
   GUEST_PLAYER_ACADEMY_FILTER_COLUMN,
@@ -22,8 +34,10 @@ import {
   loadGuestPlayersForAcademy,
   loadGuestPlayersForTrainer,
   loadGuestPlayersForBulkCreate,
+  loadActiveGuestPlayersForBooking,
   usesAcademyProfileIdFilterOnly,
 } from "@/lib/guestPlayers";
+import { fetchRemovedPlayerKeys } from "@/lib/playerRemovalVisibility";
 
 describe("guest player query filters", () => {
   it("academy filter uses academy_profile_id only", () => {
@@ -89,5 +103,26 @@ describe("guest player Supabase loaders", () => {
   it("loadGuestPlayersForBulkCreate uses trainer path without academyId", async () => {
     await loadGuestPlayersForBulkCreate(undefined, "trainer-uuid");
     expect(eqMock).toHaveBeenCalledWith("trainer_id", "trainer-uuid");
+  });
+
+  it("loadActiveGuestPlayersForBooking applies trainer removal keys", async () => {
+    vi.mocked(fetchRemovedPlayerKeys).mockResolvedValue({
+      guestIds: new Set(["g-removed"]),
+      profileIds: new Set(),
+    });
+    orderMock.mockResolvedValue({
+      data: [
+        { id: "g-active", full_name: "Active" },
+        { id: "g-removed", full_name: "Removed" },
+      ],
+      error: null,
+    });
+
+    const { data } = await loadActiveGuestPlayersForBooking("trainer-uuid");
+    expect(data?.map((g) => g.id)).toEqual(["g-active"]);
+    expect(fetchRemovedPlayerKeys).toHaveBeenCalledWith({
+      kind: "trainer",
+      trainerProfileId: "trainer-uuid",
+    });
   });
 });

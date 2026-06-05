@@ -40,6 +40,11 @@ import {
   GUEST_PLAYER_CALENDAR_SELECT,
   loadGuestPlayersForAcademy,
 } from "@/lib/guestPlayers";
+import {
+  fetchRemovedPlayerKeysForAcademyContext,
+  filterGuestRowsByRemoval,
+  filterProfileIdsByRemoval,
+} from "@/lib/playerRemovalVisibility";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
 import {
@@ -403,6 +408,10 @@ export default function AcademyCalendar() {
         .map((at: any) => at.trainer_profile.id);
 
       const playerMap = new Map<string, KnownPlayer>();
+      const removedKeys = await fetchRemovedPlayerKeysForAcademyContext(
+        activeAcademy.id,
+        trainerIds,
+      );
 
       // 1) Guest players: trainer-owned (for academy trainers) + academy-level
       const guestRows: any[] = [];
@@ -411,7 +420,9 @@ export default function AcademyCalendar() {
           .from('guest_players')
           .select(GUEST_PLAYER_CALENDAR_SELECT)
           .in('trainer_id', trainerIds);
-        if (trainerGuests) guestRows.push(...trainerGuests);
+        if (trainerGuests) {
+          guestRows.push(...filterGuestRowsByRemoval(trainerGuests, removedKeys));
+        }
       }
 
       const { data: academyGuests, error: academyGuestsError } =
@@ -465,11 +476,15 @@ export default function AcademyCalendar() {
         // Drop ids already covered by a linked guest record
         linkedProfileIds.forEach((id) => profileIds.delete(id));
 
-        if (profileIds.size > 0) {
+        const activeProfileIds = filterProfileIdsByRemoval(
+          Array.from(profileIds),
+          removedKeys,
+        );
+        if (activeProfileIds.length > 0) {
           const { data: profiles } = await supabase
             .from('profiles')
             .select('id, full_name, skill_rating, rating_system')
-            .in('id', Array.from(profileIds));
+            .in('id', activeProfileIds);
           profiles?.forEach((p: any) => {
             if (playerMap.has(p.id)) return;
             playerMap.set(p.id, {
@@ -1156,6 +1171,7 @@ export default function AcademyCalendar() {
                 if (!open) setSelectedSlot(null);
               }}
               trainerId={selectedSlot.trainer_id || getTrainerIdForSlot()}
+              academyProfileId={activeAcademy.id}
               slot={{
                 id: selectedSlot.id,
                 start_time: selectedSlot.start_time,

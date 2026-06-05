@@ -1,4 +1,9 @@
 import { supabase } from '@/lib/supabaseClient';
+import {
+  fetchRemovedPlayerKeys,
+  filterGuestRowsByRemoval,
+  filterProfileIdsByRemoval,
+} from '@/lib/playerRemovalVisibility';
 
 export type InvoiceSelectablePlayer = {
   comboboxId: string;
@@ -37,6 +42,11 @@ export async function fetchAcademyInvoiceSelectablePlayers(
   }
 
   const { data: guests } = await guestQuery;
+  const removedKeys = await fetchRemovedPlayerKeys({
+    kind: 'academy',
+    academyProfileId,
+  });
+  const activeGuests = filterGuestRowsByRemoval(guests || [], removedKeys);
 
   const profileIdSet = new Set<string>();
   if (trainerIds.length > 0) {
@@ -57,13 +67,9 @@ export async function fetchAcademyInvoiceSelectablePlayers(
     }
   }
 
-  const linkedProfileIds = new Set(
-    (guests || []).map((g) => g.linked_profile_id).filter(Boolean) as string[],
-  );
-
   let profiles: InvoiceSelectablePlayer[] = [];
   if (profileIdSet.size > 0) {
-    const ids = Array.from(profileIdSet).filter((id) => !linkedProfileIds.has(id));
+    const ids = filterProfileIdsByRemoval(Array.from(profileIdSet), removedKeys);
     if (ids.length > 0) {
       const { data: profileRows } = await supabase
         .from('profiles')
@@ -84,7 +90,7 @@ export async function fetchAcademyInvoiceSelectablePlayers(
     }
   }
 
-  const guestPlayers: InvoiceSelectablePlayer[] = (guests || []).map((g) => ({
+  const guestPlayers: InvoiceSelectablePlayer[] = activeGuests.map((g) => ({
     comboboxId: `g_${g.id}`,
     full_name: g.full_name,
     email: g.email || '',
@@ -109,6 +115,12 @@ export async function fetchTrainerInvoiceSelectablePlayers(
     .eq('trainer_id', trainerId)
     .order('full_name');
 
+  const removedKeys = await fetchRemovedPlayerKeys({
+    kind: 'trainer',
+    trainerProfileId: trainerId,
+  });
+  const activeGuests = filterGuestRowsByRemoval(guests || [], removedKeys);
+
   const { data: slots } = await supabase
     .from('availability_slots')
     .select('id')
@@ -128,13 +140,9 @@ export async function fetchTrainerInvoiceSelectablePlayers(
     });
   }
 
-  const linkedProfileIds = new Set(
-    (guests || []).map((g) => g.linked_profile_id).filter(Boolean) as string[],
-  );
-
   let profiles: InvoiceSelectablePlayer[] = [];
   if (profileIdSet.size > 0) {
-    const ids = Array.from(profileIdSet).filter((id) => !linkedProfileIds.has(id));
+    const ids = filterProfileIdsByRemoval(Array.from(profileIdSet), removedKeys);
     if (ids.length > 0) {
       const { data: profileRows } = await supabase
         .from('profiles')
@@ -155,7 +163,7 @@ export async function fetchTrainerInvoiceSelectablePlayers(
     }
   }
 
-  const guestPlayers: InvoiceSelectablePlayer[] = (guests || []).map((g) => ({
+  const guestPlayers: InvoiceSelectablePlayer[] = activeGuests.map((g) => ({
     comboboxId: `g_${g.id}`,
     full_name: g.full_name,
     email: g.email || '',

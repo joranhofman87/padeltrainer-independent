@@ -16,6 +16,11 @@ describe('TrainerPlayers visibility', () => {
     expect(source).not.toMatch(/countText=\{`\$\{players\.length\}/);
   });
 
+  it('excludes removed players from email campaign recipients', () => {
+    expect(source).toContain('filterUnifiedPlayersForActiveContext');
+    expect(source).toContain("filterUnifiedPlayersForActiveContext(players, metadata, 'trainer')");
+  });
+
   it('does not hard-delete players from overview', () => {
     expect(source).not.toContain("from('guest_players').delete()");
     expect(source).not.toContain('handleDeletePlayer');

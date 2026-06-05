@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Users, UserPlus, Search, Upload, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,6 +47,7 @@ import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDia
 import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
 import { shouldShowPlayerInAcademyOverview } from '@/lib/academyPlayerRemoval';
+import { filterUnifiedPlayersForActiveContext } from '@/lib/playerRemovalVisibility';
 
 interface TrainerOption {
   id: string;
@@ -329,6 +330,21 @@ export default function AcademyPlayers() {
   }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
 
   const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(filteredPlayers);
+
+  const activePlayerCount = useMemo(() => {
+    const metaByGuest = new Map<string, PlayerMetadata>();
+    const metaByProfile = new Map<string, PlayerMetadata>();
+    metadata.forEach((m) => {
+      if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
+      if (m.profile_id) metaByProfile.set(m.profile_id, m);
+    });
+    return players.filter((p) => {
+      const meta = p.type === 'guest'
+        ? metaByGuest.get(p.id)
+        : metaByProfile.get(p.id.replace(/^reg-/, ''));
+      return shouldShowPlayerInAcademyOverview(meta);
+    }).length;
+  }, [players, metadata]);
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
@@ -644,7 +660,7 @@ export default function AcademyPlayers() {
     <AppPage className="space-y-4">
       <PageHeader
         title={t('nav.players')}
-        count={players.length}
+        count={activePlayerCount}
         countLabel={{ one: 'player', other: 'players' }}
         actions={
           <>
@@ -1152,7 +1168,7 @@ export default function AcademyPlayers() {
                 trainers={trainers}
                 locations={allLocations}
                 tags={tags}
-                players={players.map((p) => {
+                players={filterUnifiedPlayersForActiveContext(players, metadata, 'academy').map((p) => {
                   const meta = p.type === 'guest'
                     ? metaByGuest.get(p.id)
                     : metaByProfile.get(p.id.replace(/^reg-/, ''));

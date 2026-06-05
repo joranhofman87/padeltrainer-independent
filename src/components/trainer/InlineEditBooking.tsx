@@ -17,6 +17,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { GuestPlayer } from "./AddPlayerDialog";
+import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
 
 interface BookingDetails {
   id: string;
@@ -64,8 +65,7 @@ export function InlineEditBooking({ booking, trainerId, onBookingUpdated, onClos
     (async () => {
       setIsFetching(true);
       try {
-        const { data, error } = await supabase
-          .from("guest_players").select("*").eq("trainer_id", trainerId).order("full_name");
+        const { data, error } = await loadActiveGuestPlayersForBooking(trainerId);
         if (error) throw error;
         setPlayers(data as GuestPlayer[]);
       } catch (error) {

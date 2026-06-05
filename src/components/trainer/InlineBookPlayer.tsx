@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
+import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
 import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { Check, Clock } from "lucide-react";
@@ -48,6 +49,7 @@ interface Slot {
 
 interface InlineBookPlayerProps {
   trainerId: string;
+  academyProfileId?: string | null;
   slot: Slot;
   onBookingCreated: () => void;
   onClose: () => void;
@@ -65,7 +67,13 @@ type ExistingBookingRow = {
 const INSERTED_BOOKING_SELECT =
   "id, slot_id, guest_player_id, player_id, payment_amount, payment_status, paid_externally";
 
-export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }: InlineBookPlayerProps) {
+export function InlineBookPlayer({
+  trainerId,
+  academyProfileId,
+  slot,
+  onBookingCreated,
+  onClose,
+}: InlineBookPlayerProps) {
   const { t } = useTranslation("trainer");
   const { t: tCommon } = useTranslation("common");
   const { toast } = useToast();
@@ -94,12 +102,12 @@ export function InlineBookPlayer({ trainerId, slot, onBookingCreated, onClose }:
   useEffect(() => {
     fetchPlayers();
     if (slot.cyclus_id) fetchCyclusSlots(slot.cyclus_id);
-  }, [trainerId, slot.cyclus_id]);
+  }, [trainerId, academyProfileId, slot.cyclus_id]);
 
   const fetchPlayers = async () => {
     setIsFetching(true);
     try {
-      const { data, error } = await supabase.from("guest_players").select("*").eq("trainer_id", trainerId).order("full_name");
+      const { data, error } = await loadActiveGuestPlayersForBooking(trainerId, academyProfileId);
       if (error) throw error;
       setPlayers(data as GuestPlayer[]);
     } catch (error) {
