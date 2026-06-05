@@ -484,7 +484,17 @@
         "invoices": "Invoices",
         "ratingPoints": "Rating points",
         "emails": "Emails"
-      }
+      },
+      "dangerZone": "Danger zone",
+      "removeFromAcademy": "Remove from academy",
+      "removeFromAcademyConfirmTitle": "Remove player from academy?",
+      "removeFromAcademyConfirmDesc": "This will remove {{name}} from your academy list, but it will not delete their account or historical bookings/invoices.",
+      "removeRegisteredHint": "Remove this player from your academy list. Their account and history stay intact.",
+      "removeGuestHint": "Remove this guest from your academy list without deleting historical bookings or invoices.",
+      "removedFromAcademyTitle": "Removed from academy",
+      "removedFromAcademyDesc": "This player was removed from your academy on {{date}}.",
+      "removedFromAcademySuccess": "Player removed from academy",
+      "removedFromAcademySuccessDesc": "Historical bookings and invoices are unchanged."
     },
     "import": {
       "button": "Import CSV",

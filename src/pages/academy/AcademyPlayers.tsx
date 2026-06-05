@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Search, Upload, MoreVertical, Trash2, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
+import { Users, UserPlus, Search, Upload, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,29 +19,17 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
 import { TRAINING_BOOKING_STATUSES } from '@/lib/academyPlayerTrainingLocations';
 import { loadGuestPlayersForAcademy } from '@/lib/guestPlayers';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
 import { AppPage } from '@/components/ui/app-page';
@@ -58,6 +46,7 @@ import { PlayerNotesCell } from '@/components/players/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDialog';
 import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
+import { shouldShowPlayerInAcademyOverview } from '@/lib/academyPlayerRemoval';
 
 interface TrainerOption {
   id: string;
@@ -117,7 +106,6 @@ export default function AcademyPlayers() {
   const { t } = useTranslation('academy');
   const { t: tTrainer } = useTranslation('trainer');
   const { activeAcademy } = useAcademyContext();
-  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get('tab') || 'all-players';
@@ -152,8 +140,6 @@ export default function AcademyPlayers() {
   // Dialogs
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showImportPlayers, setShowImportPlayers] = useState(false);
-  const [deletingPlayer, setDeletingPlayer] = useState<GuestPlayer | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Column customization
   type ColumnKey =
@@ -223,7 +209,7 @@ export default function AcademyPlayers() {
     if (!activeAcademy) return;
     const [tagsRes, metaRes] = await Promise.all([
       supabase.from('academy_player_tags').select('*').eq('academy_profile_id', activeAcademy.id).order('name'),
-      supabase.from('academy_player_metadata').select('id, guest_player_id, profile_id, notes, tag_ids').eq('academy_profile_id', activeAcademy.id),
+      supabase.from('academy_player_metadata').select('id, guest_player_id, profile_id, notes, tag_ids, removed_at').eq('academy_profile_id', activeAcademy.id),
     ]);
     setTags((tagsRes.data || []) as PlayerTag[]);
     setMetadata((metaRes.data || []) as PlayerMetadata[]);
@@ -288,6 +274,13 @@ export default function AcademyPlayers() {
           (guestId && overdueGuestIds.has(guestId)) ||
           (profileId && overdueProfileIds.has(profileId)) || false,
       };
+    });
+
+    result = result.filter((p) => {
+      const meta = p.type === 'guest'
+        ? metaByGuest.get(p.id)
+        : metaByProfile.get(p.id.replace(/^reg-/, ''));
+      return shouldShowPlayerInAcademyOverview(meta);
     });
 
     if (selectedTrainerId && selectedTrainerId !== 'all') {
@@ -638,35 +631,6 @@ export default function AcademyPlayers() {
     fetchPlayers();
   };
 
-  const handleDeletePlayer = async () => {
-    if (!deletingPlayer) return;
-    setIsDeleting(true);
-    try {
-      const { error } = await supabase
-        .from('guest_players')
-        .delete()
-        .eq('id', deletingPlayer.id);
-
-      if (error) throw error;
-
-      setPlayers((prev) => prev.filter((p) => p.id !== deletingPlayer.id));
-      toast({
-        title: tTrainer('players.playerDeleted'),
-        description: tTrainer('players.playerDeletedDescription'),
-      });
-    } catch (error: any) {
-      logger.error('Error deleting player', error as Error, { component: 'AcademyPlayers' });
-      toast({
-        title: t('common:error'),
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsDeleting(false);
-      setDeletingPlayer(null);
-    }
-  };
-
   if (loading) {
     return (
       <AppPage>
@@ -911,7 +875,6 @@ export default function AcademyPlayers() {
                         }
                         return <TableHead key={key} className="whitespace-nowrap">{col.label}</TableHead>;
                       })}
-                      <TableHead className="w-[40px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1072,26 +1035,6 @@ export default function AcademyPlayers() {
                               return null;
                           }
                         })}
-                        <TableCell className="w-[40px]">
-                          {player.type === 'guest' && player.originalGuest ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="Open actions menu" className="h-7 w-7">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() => setDeletingPlayer(player.originalGuest!)}
-                                  className="text-destructive"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  {tTrainer('players.delete')}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          ) : null}
-                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1116,21 +1059,6 @@ export default function AcademyPlayers() {
                             <Badge variant="secondary" className="text-xs">{tTrainer('players.statuses.active')}</Badge>
                           ) : (
                             <Badge variant="outline" className="text-xs">{tTrainer('players.statuses.prospect')}</Badge>
-                          )}
-                          {player.type === 'guest' && player.originalGuest && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="Open actions menu" className="h-8 w-8">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setDeletingPlayer(player.originalGuest!)} className="text-destructive">
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  {tTrainer('players.delete')}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
                           )}
                         </div>
                       </div>
@@ -1264,24 +1192,6 @@ export default function AcademyPlayers() {
         trainerId={selectedTrainerId && selectedTrainerId !== 'all' ? selectedTrainerId : undefined}
         onPlayersImported={handlePlayersImported}
       />
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!deletingPlayer} onOpenChange={(open) => !open && setDeletingPlayer(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tTrainer('players.deleteConfirmTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {tTrainer('players.deleteConfirmDescription', { name: deletingPlayer?.full_name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeletePlayer} disabled={isDeleting}>
-              {tTrainer('players.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Manage Tags Dialog */}
       {activeAcademy && (

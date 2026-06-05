@@ -28,4 +28,7 @@ export type PlayerMetadata = {
   profile_id: string | null;
   notes: string | null;
   tag_ids: string[];
+  removed_at?: string | null;
+  removed_by?: string | null;
+  remove_reason?: string | null;
 };

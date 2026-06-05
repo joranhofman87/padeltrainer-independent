@@ -306,6 +306,9 @@ export type Database = {
           notes: string | null
           preferred_location_id: string | null
           profile_id: string | null
+          remove_reason: string | null
+          removed_at: string | null
+          removed_by: string | null
           tag_ids: string[]
           trainer_profile_id: string | null
           updated_at: string
@@ -318,6 +321,9 @@ export type Database = {
           notes?: string | null
           preferred_location_id?: string | null
           profile_id?: string | null
+          remove_reason?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
           tag_ids?: string[]
           trainer_profile_id?: string | null
           updated_at?: string
@@ -330,6 +336,9 @@ export type Database = {
           notes?: string | null
           preferred_location_id?: string | null
           profile_id?: string | null
+          remove_reason?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
           tag_ids?: string[]
           trainer_profile_id?: string | null
           updated_at?: string

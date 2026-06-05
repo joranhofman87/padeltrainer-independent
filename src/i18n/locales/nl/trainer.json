@@ -487,7 +487,17 @@
         "invoices": "Facturen",
         "ratingPoints": "Ratingpunten",
         "emails": "E-mails"
-      }
+      },
+      "dangerZone": "Gevarenzone",
+      "removeFromAcademy": "Verwijderen uit academie",
+      "removeFromAcademyConfirmTitle": "Speler uit academie verwijderen?",
+      "removeFromAcademyConfirmDesc": "Dit verwijdert {{name}} uit je academielijst, maar verwijdert niet hun account of historische boekingen/facturen.",
+      "removeRegisteredHint": "Verwijder deze speler uit je academielijst. Hun account en geschiedenis blijven intact.",
+      "removeGuestHint": "Verwijder deze gast uit je academielijst zonder historische boekingen of facturen te verwijderen.",
+      "removedFromAcademyTitle": "Verwijderd uit academie",
+      "removedFromAcademyDesc": "Deze speler is op {{date}} uit je academie verwijderd.",
+      "removedFromAcademySuccess": "Speler verwijderd uit academie",
+      "removedFromAcademySuccessDesc": "Historische boekingen en facturen zijn ongewijzigd."
     },
     "import": {
       "button": "CSV importeren",

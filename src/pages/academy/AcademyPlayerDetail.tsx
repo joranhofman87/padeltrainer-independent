@@ -33,6 +33,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { PlayerTag } from '@/components/players/playerTagColors';
 import { TagPicker } from '@/components/players/TagPicker';
 import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDetailsCard';
+import { AcademyPlayerRemoveCard } from '@/components/academy/AcademyPlayerRemoveCard';
 import { getAcademyLocations } from '@/lib/academy';
 import type { AcademyPlayerDetailsValues } from '@/lib/academyPlayerDetails';
 import { fetchPlayerTrainingLocations } from '@/lib/academyPlayerTrainingLocations';
@@ -121,6 +122,7 @@ export default function AcademyPlayerDetail() {
   const [locationNames, setLocationNames] = useState<string[]>([]);
   const [academyLocations, setAcademyLocations] = useState<{ id: string; name: string }[]>([]);
   const [detailsValues, setDetailsValues] = useState<AcademyPlayerDetailsValues | null>(null);
+  const [removedAt, setRemovedAt] = useState<string | null>(null);
 
   const [cycluses, setCycluses] = useState<CyclusItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
@@ -224,6 +226,7 @@ export default function AcademyPlayerDetail() {
       setTags((tagsRes.data || []) as PlayerTag[]);
       const meta: any = metaRes.data;
       setTagIds(meta?.tag_ids || []);
+      setRemovedAt(meta?.removed_at ?? null);
 
       registeredPreferredLocationId =
         parsed.kind === 'profile' ? (meta?.preferred_location_id as string | null) ?? null : null;
@@ -691,6 +694,17 @@ export default function AcademyPlayerDetail() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {activeAcademy && player && parsed.kind && (
+        <AcademyPlayerRemoveCard
+          kind={parsed.kind === 'guest' ? 'guest' : 'registered'}
+          academyProfileId={activeAcademy.id}
+          guestPlayerId={player.guest_player_id}
+          profileId={player.profile_id}
+          playerName={player.full_name}
+          removedAt={removedAt}
+        />
+      )}
     </div>
   );
 }
