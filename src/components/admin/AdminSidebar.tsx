@@ -6,6 +6,16 @@ import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import {
+  appNavLinkActive,
+  appNavLinkBase,
+  appNavLinkInactive,
+  appSidebarContentClass,
+  appSidebarFooterClass,
+  appSidebarGhostButtonClass,
+  appSidebarHeaderClass,
+  appSidebarShellClass,
+} from "@/components/ui/appSidebarStyles";
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -50,6 +60,7 @@ import {
   ListTodo,
   Database,
   UserPlus,
+  X,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -59,10 +70,16 @@ import { Logo } from "@/components/Logo";
 export function AdminSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { state, toggleSidebar } = useSidebar();
+  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { data: pendingClaimsCount = 0 } = usePendingClaimsCount();
   const { t } = useTranslation("admin");
+
+  const closeMobileDrawer = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   const mainNavItems = [
     { title: t("sidebar.dashboard"), url: "/app/admin", icon: LayoutDashboard, end: true },
@@ -88,9 +105,8 @@ export function AdminSidebar() {
     { title: t("sidebar.backups"), url: "/app/admin/backups", icon: Database },
   ];
 
-  // Track which collapsibles are open
   const [locationsOpen, setLocationsOpen] = useState(
-    location.pathname.startsWith("/app/admin/locations") || 
+    location.pathname.startsWith("/app/admin/locations") ||
     location.pathname.startsWith("/app/admin/club")
   );
   const [settingsOpen, setSettingsOpen] = useState(
@@ -102,64 +118,84 @@ export function AdminSidebar() {
     navigate("/");
   };
 
-   const isLocationActive = location.pathname.startsWith("/app/admin/locations") || 
+  const isLocationActive = location.pathname.startsWith("/app/admin/locations") ||
                             location.pathname.startsWith("/app/admin/clubs") ||
                             location.pathname.startsWith("/app/admin/club-claims");
 
+  const isSettingsActive = settingsNavItems.some(item => location.pathname.startsWith(item.url));
+
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b">
-        {!collapsed && (
-          <div className="px-3 pt-3 pb-1">
-            <Logo className="h-6" variant="dark" />
-          </div>
-        )}
-        <div className={cn(
-          "flex px-2 py-2",
-          collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
-        )}>
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
+    <Sidebar collapsible="icon" className={appSidebarShellClass} data-testid="admin-sidebar-shell">
+      <SidebarHeader className={appSidebarHeaderClass}>
+        <div
+          className={cn(
+            "flex items-center gap-2 px-2 pt-2",
+            collapsed ? "flex-col justify-center" : "justify-between",
+          )}
+        >
+          <div className={cn("flex min-w-0 items-center", collapsed ? "justify-center" : "gap-2")}>
+            <Logo className="h-5 w-auto shrink-0" />
             {!collapsed && (
-              <span className="font-semibold">{t("panelTitle")}</span>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold tracking-tight text-slate-800">
+                  padeltrainer
+                </p>
+                <p className="truncate text-[11px] text-slate-500">{t("panelTitle")}</p>
+              </div>
             )}
           </div>
-          {!collapsed ? (
+          {isMobile ? (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
-              onClick={toggleSidebar}
+              className="h-8 w-8 shrink-0 text-slate-600"
+              onClick={() => setOpenMobile(false)}
+              aria-label={t("nav.closeMenu", "Close menu")}
+              data-testid="admin-mobile-menu-close"
             >
-              <PanelLeftClose className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </Button>
           ) : (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-8 w-8 shrink-0 text-slate-600"
               onClick={toggleSidebar}
+              aria-label={
+                collapsed
+                  ? t("nav.expandSidebar", "Expand sidebar")
+                  : t("nav.collapseSidebar", "Collapse sidebar")
+              }
             >
-              <PanelLeft className="h-4 w-4" />
+              {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </Button>
           )}
         </div>
+        {!collapsed && (
+          <div className="flex items-center gap-2 px-2 pb-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <p className="truncate text-sm font-medium text-slate-900">{t("panelTitle")}</p>
+          </div>
+        )}
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className={appSidebarContentClass}>
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-0.5 px-1">
               {mainNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild tooltip={item.title}>
                     <NavLink
                       to={item.url}
                       end={item.end}
-                      className="flex items-center gap-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                      className={cn(appNavLinkBase, appNavLinkInactive)}
+                      activeClassName={appNavLinkActive}
+                      onClick={closeMobileDrawer}
                     >
                       <item.icon className="h-4 w-4" />
                       {!collapsed && <span>{item.title}</span>}
@@ -168,7 +204,6 @@ export function AdminSidebar() {
                 </SidebarMenuItem>
               ))}
 
-              {/* Locations Group with Club Claims */}
               <Collapsible
                 open={locationsOpen && !collapsed}
                 onOpenChange={setLocationsOpen}
@@ -176,9 +211,12 @@ export function AdminSidebar() {
               >
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
-                    <SidebarMenuButton 
-                      tooltip={t("sidebar.locations")} 
-                      className={isLocationActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}
+                    <SidebarMenuButton
+                      tooltip={t("sidebar.locations")}
+                      className={cn(
+                        appNavLinkBase,
+                        isLocationActive ? appNavLinkActive : appNavLinkInactive,
+                      )}
                     >
                       <MapPin className="h-4 w-4" />
                       {!collapsed && (
@@ -205,8 +243,9 @@ export function AdminSidebar() {
                         <SidebarMenuSubButton asChild>
                           <NavLink
                             to="/app/admin/locations"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                            className={cn(appNavLinkBase, appNavLinkInactive)}
+                            activeClassName={appNavLinkActive}
+                            onClick={closeMobileDrawer}
                           >
                             {t("sidebar.allLocations")}
                           </NavLink>
@@ -216,8 +255,9 @@ export function AdminSidebar() {
                         <SidebarMenuSubButton asChild>
                           <NavLink
                             to="/app/admin/clubs"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                            className={cn(appNavLinkBase, appNavLinkInactive)}
+                            activeClassName={appNavLinkActive}
+                            onClick={closeMobileDrawer}
                           >
                             {t("sidebar.verifiedClubs")}
                           </NavLink>
@@ -227,8 +267,9 @@ export function AdminSidebar() {
                         <SidebarMenuSubButton asChild>
                           <NavLink
                             to="/app/admin/club-claims"
-                            className="flex items-center justify-between"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                            className={cn(appNavLinkBase, appNavLinkInactive, "justify-between")}
+                            activeClassName={appNavLinkActive}
+                            onClick={closeMobileDrawer}
                           >
                             <span>{t("sidebar.clubClaims")}</span>
                             {pendingClaimsCount > 0 && (
@@ -247,17 +288,17 @@ export function AdminSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Content Group */}
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-0.5 px-1">
               {contentNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild tooltip={item.title}>
                     <NavLink
                       to={item.url}
-                      className="flex items-center gap-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                      className={cn(appNavLinkBase, appNavLinkInactive)}
+                      activeClassName={appNavLinkActive}
+                      onClick={closeMobileDrawer}
                     >
                       <item.icon className="h-4 w-4" />
                       {!collapsed && <span>{item.title}</span>}
@@ -269,15 +310,21 @@ export function AdminSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Settings Group */}
         <SidebarGroup>
-          <Collapsible 
-            open={settingsOpen && !collapsed} 
+          <Collapsible
+            open={settingsOpen && !collapsed}
             onOpenChange={setSettingsOpen}
             className="group/collapsible"
           >
             <CollapsibleTrigger asChild>
-              <SidebarMenuButton className="w-full justify-between" tooltip={t("sidebar.settings")}>
+              <SidebarMenuButton
+                className={cn(
+                  appNavLinkBase,
+                  "w-full justify-between",
+                  isSettingsActive ? appNavLinkActive : appNavLinkInactive,
+                )}
+                tooltip={t("sidebar.settings")}
+              >
                 <div className="flex items-center gap-2">
                   <Settings className="h-4 w-4" />
                   {!collapsed && <span>{t("sidebar.settings")}</span>}
@@ -289,14 +336,15 @@ export function AdminSidebar() {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <SidebarGroupContent>
-                <SidebarMenu className="pl-4">
+                <SidebarMenu className="gap-0.5 px-1 pl-4">
                   {settingsNavItems.map((item) => (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild tooltip={item.title}>
                         <NavLink
                           to={item.url}
-                          className="flex items-center gap-2"
-                          activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          className={cn(appNavLinkBase, appNavLinkInactive)}
+                          activeClassName={appNavLinkActive}
+                          onClick={closeMobileDrawer}
                         >
                           <item.icon className="h-4 w-4" />
                           {!collapsed && <span>{item.title}</span>}
@@ -311,16 +359,17 @@ export function AdminSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
+      <SidebarFooter className={appSidebarFooterClass}>
         <div className={cn(
           "flex p-2",
           collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
         )}>
           <ThemeToggle />
-          <Button 
-            variant="ghost" 
-            size={collapsed ? "icon" : "sm"} 
+          <Button
+            variant="ghost"
+            size={collapsed ? "icon" : "sm"}
             onClick={handleLogout}
+            className={cn("w-full justify-start", appSidebarGhostButtonClass)}
           >
             <LogOut className="h-4 w-4" />
             {!collapsed && <span className="ml-2">{t("logout")}</span>}

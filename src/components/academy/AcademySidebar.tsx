@@ -33,6 +33,16 @@ import { getMarketingUrl } from "@/lib/domains";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
+import {
+  appNavLinkActive,
+  appNavLinkBase,
+  appNavLinkInactive,
+  appSidebarContentClass,
+  appSidebarFooterClass,
+  appSidebarHeaderClass,
+  appSidebarGhostButtonClass,
+  appSidebarShellClass,
+} from "@/components/ui/appSidebarStyles";
 import type { AcademyProfile } from "@/lib/academy";
 import {
   ACADEMY_PRIMARY_NAV,
@@ -45,15 +55,6 @@ interface AcademySidebarProps {
   onAcademyChange?: (academy: AcademyProfile & { role: string }) => void;
   isExpired?: boolean;
 }
-
-const navLinkBase =
-  "flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
-const navLinkInactive =
-  "text-slate-600 hover:bg-white hover:text-slate-900 [&>svg]:text-slate-500";
-
-const navLinkActive =
-  "border border-slate-200 bg-white text-slate-900 shadow-sm [&>svg]:text-[hsl(var(--brand-500))]";
 
 function AcademyNavLink({
   item,
@@ -78,7 +79,7 @@ function AcademyNavLink({
           data-testid={item.testId}
           onClick={onNavigate}
           aria-current={active ? "page" : undefined}
-          className={cn(navLinkBase, active ? navLinkActive : navLinkInactive)}
+          className={cn(appNavLinkBase, active ? appNavLinkActive : appNavLinkInactive)}
         >
           <Icon className="h-4 w-4 shrink-0" aria-hidden />
           {!collapsed && <span className="truncate">{label}</span>}
@@ -135,9 +136,9 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
   return (
     <Sidebar
       collapsible="icon"
-      className="[&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-slate-200 [&_[data-sidebar=sidebar]]:bg-slate-50"
+      className={appSidebarShellClass}
     >
-      <SidebarHeader className="border-b border-slate-200/80 bg-slate-50">
+      <SidebarHeader className={appSidebarHeaderClass}>
         <div
           className={cn(
             "flex items-center gap-2 px-2 pt-2",
@@ -188,7 +189,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
         </div>
       </SidebarHeader>
 
-      <SidebarContent className={cn("bg-slate-50", isExpired && "relative")}>
+      <SidebarContent className={cn(appSidebarContentClass, isExpired && "relative")}>
         {isExpired && <div className="absolute inset-0 z-10" aria-hidden />}
         <nav aria-label={t("nav.primary", "Academy navigation")} className={cn(isExpired && "opacity-50 pointer-events-none")}>
           <SidebarGroup>
@@ -209,7 +210,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
         </nav>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-slate-200/80 bg-slate-50">
+      <SidebarFooter className={appSidebarFooterClass}>
         <div
           className={cn(
             "flex p-2",
@@ -250,7 +251,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
               size="sm"
               onClick={handleViewPublicProfile}
               className={cn(
-                "w-full justify-start text-slate-600 hover:bg-white hover:text-slate-900",
+                cn("w-full justify-start", appSidebarGhostButtonClass),
                 collapsed && "w-auto px-2",
               )}
             >
@@ -271,7 +272,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900"
+              className={cn("h-9 w-9", appSidebarGhostButtonClass)}
               onClick={() => {
                 closeMobileDrawer();
                 navigate("/app/academy/subscription");
@@ -284,7 +285,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900"
+              className={cn("h-9 w-9", appSidebarGhostButtonClass)}
               onClick={showReferralWidget}
               aria-label={t("nav.referral", "Referral")}
             >
@@ -294,7 +295,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
               variant="ghost"
               size="icon"
               onClick={handleLogout}
-              className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900"
+              className={cn("h-9 w-9", appSidebarGhostButtonClass)}
               aria-label={t("nav.logout", "Log out")}
             >
               <LogOut className="h-4 w-4" />

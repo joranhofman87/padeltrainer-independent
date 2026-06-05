@@ -1,7 +1,9 @@
 import { useEffect, Suspense } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Menu } from "lucide-react";
+import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
+import { useTranslation } from "react-i18next";
 import { AdminSidebar } from "./AdminSidebar";
 import { Button } from "@/components/ui/button";
 import { LogOut, ShieldAlert } from "lucide-react";
@@ -9,6 +11,31 @@ import { signOut } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { AppShellSkeleton } from "@/components/AppShellSkeleton";
 import { PageContentSkeleton } from "@/components/AppShellSkeleton";
+
+function AdminMobileHeader() {
+  const { t } = useTranslation("admin");
+  const { toggleSidebar } = useSidebar();
+
+  return (
+    <header
+      className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 lg:hidden"
+      data-testid="admin-mobile-header"
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        onClick={toggleSidebar}
+        aria-label={t("nav.openMenu", "Open menu")}
+        data-testid="admin-mobile-menu-trigger"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{t("panelTitle")}</span>
+    </header>
+  );
+}
 
 export default function AdminLayout() {
   const navigate = useNavigate();
@@ -62,18 +89,14 @@ export default function AdminLayout() {
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <AdminSidebar />
-        <main className="flex-1 overflow-auto">
-          {/* Mobile header with trigger */}
-          <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 lg:hidden">
-            <SidebarTrigger />
-            <span className="font-semibold">Admin Panel</span>
-          </header>
-          <div className="p-6">
+        <SidebarInset className="flex-1">
+          <AdminMobileHeader />
+          <main className="flex-1 overflow-auto p-6">
             <Suspense fallback={<PageContentSkeleton />}>
               <Outlet />
             </Suspense>
-          </div>
-        </main>
+          </main>
+        </SidebarInset>
       </div>
     </SidebarProvider>
   );

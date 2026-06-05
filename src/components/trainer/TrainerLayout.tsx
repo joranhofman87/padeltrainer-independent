@@ -3,7 +3,9 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { Menu } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/subscription';
@@ -11,6 +13,34 @@ import { getTrainerAcademy } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
+
+function TrainerMobileHeader() {
+  const { t } = useTranslation('trainer');
+  const { profile } = useAuth();
+  const { toggleSidebar } = useSidebar();
+
+  const displayName = profile?.full_name?.split(' ')[0] || t('badge', 'Trainer');
+
+  return (
+    <header
+      className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 lg:hidden"
+      data-testid="trainer-mobile-header"
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        onClick={toggleSidebar}
+        aria-label={t('nav.openMenu', 'Open menu')}
+        data-testid="trainer-mobile-menu-trigger"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{displayName}</span>
+    </header>
+  );
+}
 
 export default function TrainerLayout() {
   const { t } = useTranslation('trainer');
@@ -183,21 +213,15 @@ export default function TrainerLayout() {
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
         <TrainerSidebar isExpired={!!(isSubscriptionExpired && !hasAcademy)} />
-        <main className="flex-1 overflow-auto">
-          {/* Mobile header */}
-          <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 lg:hidden">
-            <SidebarTrigger />
-            <span className="font-semibold">PadelTrainer<span className="text-primary">.ai</span></span>
-          </header>
-          <div className="p-4 md:p-6">
+        <SidebarInset className="flex-1">
+          <TrainerMobileHeader />
+          <main className="flex-1 overflow-auto p-4 md:p-6">
             <Suspense fallback={<PageContentSkeleton />}>
               <Outlet />
             </Suspense>
-          </div>
-        </main>
+          </main>
+        </SidebarInset>
       </div>
-      
-      
       <ReferralWidget />
     </SidebarProvider>
   );

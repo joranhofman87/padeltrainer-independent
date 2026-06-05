@@ -10,7 +10,7 @@ import { PageContentSkeleton } from '@/components/AppShellSkeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, type ClubProfile } from '@/lib/club';
 import { ClubSidebar } from '@/components/club/ClubSidebar';
-import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
 
@@ -50,6 +50,31 @@ export function useClubContext() {
 }
 
 const ACTIVE_CLUB_STORAGE_KEY = 'activeClubId';
+
+function ClubMobileHeader({ clubName }: { clubName?: string }) {
+  const { t } = useTranslation('club');
+  const { toggleSidebar } = useSidebar();
+
+  return (
+    <header
+      className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 md:hidden"
+      data-testid="club-mobile-header"
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        onClick={toggleSidebar}
+        aria-label={t('nav.openMenu', 'Open menu')}
+        data-testid="club-mobile-menu-trigger"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{clubName}</span>
+    </header>
+  );
+}
 
 export default function ClubLayout() {
   const { t } = useTranslation('club');
@@ -204,18 +229,7 @@ export default function ClubLayout() {
             isExpired={!!isSubscriptionExpired}
           />
           <SidebarInset className="flex-1">
-            {/* Mobile Header */}
-            <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 md:hidden">
-              <SidebarTrigger>
-                <Button variant="ghost" size="icon">
-                  <Menu className="h-5 w-5" />
-                  <span className="sr-only">Toggle sidebar</span>
-                </Button>
-              </SidebarTrigger>
-              <span className="font-semibold truncate">{activeClub?.location?.name}</span>
-            </header>
-            
-            {/* Page Content */}
+            <ClubMobileHeader clubName={activeClub?.location?.name} />
             <main className="flex-1">
               <Suspense fallback={<PageContentSkeleton />}>
                 <Outlet />

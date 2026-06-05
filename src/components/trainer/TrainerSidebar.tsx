@@ -2,6 +2,16 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "@/components/NavLink";
+import {
+  appNavLinkActive,
+  appNavLinkBase,
+  appNavLinkInactive,
+  appSidebarContentClass,
+  appSidebarFooterClass,
+  appSidebarGhostButtonClass,
+  appSidebarHeaderClass,
+  appSidebarShellClass,
+} from "@/components/ui/appSidebarStyles";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Button } from "@/components/ui/button";
@@ -44,6 +54,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Gift,
+  X,
 } from "lucide-react";
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { useAuth } from "@/hooks/useAuth";
@@ -62,7 +73,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
   const { t, i18n } = useTranslation("trainer");
   const navigate = useNavigate();
   const location = useLocation();
-  const { state, toggleSidebar } = useSidebar();
+  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { user, profile } = useAuth();
   const { toast } = useToast();
@@ -74,24 +85,30 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
 
   // Track which groups are open
   const [playersOpen, setPlayersOpen] = useState(
-    location.pathname.startsWith("/trainer/players")
+    location.pathname.startsWith("/app/trainer/players")
   );
   const [scheduleOpen, setScheduleOpen] = useState(
-    location.pathname.startsWith("/trainer/calendar") ||
-    location.pathname.startsWith("/trainer/open-slots") ||
-    location.pathname.startsWith("/trainer/schedule-overview")
+    location.pathname.startsWith("/app/trainer/calendar") ||
+    location.pathname.startsWith("/app/trainer/open-slots") ||
+    location.pathname.startsWith("/app/trainer/schedule-overview")
   );
   const [registrationOpen, setRegistrationOpen] = useState(
-    location.pathname.startsWith("/trainer/cycles") ||
-    location.pathname.startsWith("/trainer/intake-requests") ||
-    location.pathname.startsWith("/trainer/waiting-list")
+    location.pathname.startsWith("/app/trainer/cycles") ||
+    location.pathname.startsWith("/app/trainer/intake-requests") ||
+    location.pathname.startsWith("/app/trainer/waiting-list")
   );
   
   const [businessOpen, setBusinessOpen] = useState(
-    location.pathname.startsWith("/trainer/settings") ||
-    location.pathname.startsWith("/trainer/subscription") ||
-    location.pathname.startsWith("/trainer/earnings")
+    location.pathname.startsWith("/app/trainer/settings") ||
+    location.pathname.startsWith("/app/trainer/subscription") ||
+    location.pathname.startsWith("/app/trainer/earnings")
   );
+
+  const closeMobileDrawer = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   // Fetch trainer profile, clubs, and academy status
   useEffect(() => {
@@ -143,75 +160,92 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
     .toUpperCase() || "T";
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b">
-        {!collapsed && (
-          <div className="px-3 pt-3 pb-1">
-            <Logo className="h-6" variant="dark" />
-          </div>
-        )}
-        <div className={cn(
-          "flex px-2 py-2",
-          collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
-        )}>
-          <div className={cn(
-            "flex items-center",
-            collapsed ? "justify-center" : "gap-2"
-          )}>
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={profile?.avatar_url || undefined} />
-              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-            </Avatar>
+    <Sidebar collapsible="icon" className={appSidebarShellClass} data-testid="trainer-sidebar-shell">
+      <SidebarHeader className={appSidebarHeaderClass}>
+        <div
+          className={cn(
+            "flex items-center gap-2 px-2 pt-2",
+            collapsed ? "flex-col justify-center" : "justify-between",
+          )}
+        >
+          <div className={cn("flex min-w-0 items-center", collapsed ? "justify-center" : "gap-2")}>
+            <Logo className="h-5 w-auto shrink-0" />
             {!collapsed && (
-              <div className="flex flex-col">
-                <span className="font-semibold text-sm truncate max-w-[140px]">
-                  {profile?.full_name || "Trainer"}
-                </span>
-                <Badge
-                  variant="secondary"
-                  className="w-fit text-[10px] px-1.5 py-0 bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                >
-                  {t("badge")}
-                </Badge>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold tracking-tight text-slate-800">
+                  padeltrainer
+                </p>
+                <p className="truncate text-[11px] text-slate-500">
+                  {profile?.full_name || t("badge")}
+                </p>
               </div>
             )}
           </div>
-          {!collapsed ? (
+          {isMobile ? (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
-              onClick={toggleSidebar}
+              className="h-8 w-8 shrink-0 text-slate-600"
+              onClick={() => setOpenMobile(false)}
+              aria-label={t("nav.closeMenu", "Close menu")}
+              data-testid="trainer-mobile-menu-close"
             >
-              <PanelLeftClose className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </Button>
           ) : (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-8 w-8 shrink-0 text-slate-600"
               onClick={toggleSidebar}
+              aria-label={
+                collapsed
+                  ? t("nav.expandSidebar", "Expand sidebar")
+                  : t("nav.collapseSidebar", "Collapse sidebar")
+              }
             >
-              <PanelLeft className="h-4 w-4" />
+              {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </Button>
           )}
         </div>
+        {!collapsed && (
+          <div className="flex items-center gap-2 px-2 pb-2">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={profile?.avatar_url || undefined} />
+              <AvatarFallback className="bg-slate-100 text-xs text-slate-700">{initials}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-900">
+                {profile?.full_name || "Trainer"}
+              </p>
+              <Badge
+                variant="secondary"
+                className="mt-0.5 w-fit text-[10px] px-1.5 py-0 bg-orange-500/10 text-orange-600 dark:text-orange-400"
+              >
+                {t("badge")}
+              </Badge>
+            </div>
+          </div>
+        )}
       </SidebarHeader>
 
-      <SidebarContent className={cn(isExpired && "relative")}>
+      <SidebarContent className={cn(appSidebarContentClass, isExpired && "relative")}>
         {isExpired && (
           <div className="absolute inset-0 z-10" />
         )}
         <SidebarGroup>
           <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
-            <SidebarMenu>
+            <SidebarMenu className="gap-0.5 px-1">
               {/* My Profile */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.myProfile")}>
                   <NavLink
-                    to="/trainer/profile"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    to="/app/trainer/profile"
+                    className={cn(appNavLinkBase, appNavLinkInactive)}
+                    activeClassName={appNavLinkActive}
+                    onClick={closeMobileDrawer}
                     data-testid="nav-trainer-profile"
                   >
                     <User className="h-4 w-4" />
@@ -227,9 +261,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild tooltip={t("nav.calendar")}>
                       <NavLink
-                        to="/trainer/calendar"
-                        className="flex items-center gap-2"
-                        activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                        to="/app/trainer/calendar"
+                        className={cn(appNavLinkBase, appNavLinkInactive)}
+                        activeClassName={appNavLinkActive}
+                        onClick={closeMobileDrawer}
                       >
                         <Calendar className="h-4 w-4" />
                         {!collapsed && <span>{t("nav.calendar")}</span>}
@@ -241,9 +276,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild tooltip={t("nav.players")}>
                       <NavLink
-                        to="/trainer/players"
-                        className="flex items-center gap-2"
-                        activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                        to="/app/trainer/players"
+                        className={cn(appNavLinkBase, appNavLinkInactive)}
+                        activeClassName={appNavLinkActive}
+                        onClick={closeMobileDrawer}
                       >
                         <Users className="h-4 w-4" />
                         {!collapsed && <span>{t("nav.players")}</span>}
@@ -257,10 +293,11 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild tooltip={t("nav.dashboard")}>
                       <NavLink
-                        to="/trainer"
+                        to="/app/trainer"
                         end
-                        className="flex items-center gap-2"
-                        activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                        className={cn(appNavLinkBase, appNavLinkInactive)}
+                        activeClassName={appNavLinkActive}
+                        onClick={closeMobileDrawer}
                         data-testid="nav-trainer-dashboard"
                       >
                         <LayoutDashboard className="h-4 w-4" />
@@ -273,9 +310,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild tooltip={t("nav.players")}>
                       <NavLink
-                        to="/trainer/players"
-                        className="flex items-center gap-2"
-                        activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                        to="/app/trainer/players"
+                        className={cn(appNavLinkBase, appNavLinkInactive)}
+                        activeClassName={appNavLinkActive}
+                        onClick={closeMobileDrawer}
                       >
                         <Users className="h-4 w-4" />
                         {!collapsed && <span>{t("nav.players")}</span>}
@@ -293,9 +331,14 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
                           tooltip={t("nav.schedule")}
-                          className={isActive("/trainer/calendar") || isActive("/trainer/open-slots") || isActive("/trainer/schedule-overview")
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : ""}
+                          className={cn(
+                            appNavLinkBase,
+                            isActive("/app/trainer/calendar") ||
+                              isActive("/app/trainer/open-slots") ||
+                              isActive("/app/trainer/schedule-overview")
+                              ? appNavLinkActive
+                              : appNavLinkInactive,
+                          )}
                         >
                           <Calendar className="h-4 w-4" />
                           {!collapsed && (
@@ -311,9 +354,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/calendar"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/calendar"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 {t("nav.calendar")}
                               </NavLink>
@@ -322,9 +366,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/open-slots"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/open-slots"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 {t("nav.openSlots")}
                               </NavLink>
@@ -333,9 +378,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/schedule-overview"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/schedule-overview"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 {t("nav.scheduleOverview", "Overview")}
                               </NavLink>
@@ -356,9 +402,14 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
                           tooltip={t("nav.registration")}
-                          className={isActive("/trainer/cycles") || isActive("/trainer/intake-requests") || isActive("/trainer/waiting-list")
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : ""}
+                          className={cn(
+                            appNavLinkBase,
+                            isActive("/app/trainer/cycles") ||
+                              isActive("/app/trainer/intake-requests") ||
+                              isActive("/app/trainer/waiting-list")
+                              ? appNavLinkActive
+                              : appNavLinkInactive,
+                          )}
                         >
                           <CalendarDays className="h-4 w-4" />
                           {!collapsed && (
@@ -374,9 +425,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/cycles"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/cycles"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 {t("nav.registrations", "Registrations")}
                               </NavLink>
@@ -385,9 +437,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/intake-requests"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/intake-requests"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 {t("nav.intakeRequests")}
                               </NavLink>
@@ -396,9 +449,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/waiting-list"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/waiting-list"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 {t("nav.waitingList", "Waiting List")}
                               </NavLink>
@@ -419,9 +473,14 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
                           tooltip={t("nav.business")}
-                          className={isActive("/trainer/settings") || isActive("/trainer/subscription") || isActive("/trainer/earnings")
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : ""}
+                          className={cn(
+                            appNavLinkBase,
+                            isActive("/app/trainer/settings") ||
+                              isActive("/app/trainer/subscription") ||
+                              isActive("/app/trainer/earnings")
+                              ? appNavLinkActive
+                              : appNavLinkInactive,
+                          )}
                         >
                           <CreditCard className="h-4 w-4" />
                           {!collapsed && (
@@ -437,9 +496,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/settings"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/settings"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 <Settings className="h-4 w-4" />
                                 {t("nav.settings")}
@@ -449,9 +509,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/subscription"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/subscription"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 {t("nav.subscription")}
                               </NavLink>
@@ -460,9 +521,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton asChild>
                               <NavLink
-                                to="/trainer/earnings"
-                                className="flex items-center gap-2"
-                                activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                                to="/app/trainer/earnings"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
                               >
                                 {t("nav.earnings")}
                               </NavLink>
@@ -480,7 +542,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
+      <SidebarFooter className={appSidebarFooterClass}>
         <div className={cn(
           "flex p-2",
           collapsed ? "flex-col items-center gap-2" : "flex-col gap-2"
@@ -495,7 +557,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
               size={collapsed ? "icon" : "sm"}
               className={cn(
                 collapsed ? "h-8 w-8" : "w-full justify-start",
-                "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                cn("w-full justify-start", appSidebarGhostButtonClass)
               )}
               onClick={handleViewPublicProfile}
             >

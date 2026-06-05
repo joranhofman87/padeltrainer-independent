@@ -42,19 +42,19 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
 import {
+  appNavLinkActive,
+  appNavLinkBase,
+  appNavLinkInactive,
+  appSidebarContentClass,
+  appSidebarFooterClass,
+  appSidebarHeaderClass,
+  appSidebarShellClass,
+} from "@/components/ui/appSidebarStyles";
+import {
   PLAYER_PRIMARY_NAV,
   isPlayerNavItemActive,
   type PlayerNavItem,
 } from "@/components/player/playerSidebarNav";
-
-const navLinkBase =
-  "flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
-const navLinkInactive =
-  "text-slate-600 hover:bg-white hover:text-slate-900 [&>svg]:text-slate-500";
-
-const navLinkActive =
-  "border border-slate-200 bg-white text-slate-900 shadow-sm [&>svg]:text-[hsl(var(--brand-500))]";
 
 function PlayerNavLink({
   item,
@@ -79,7 +79,7 @@ function PlayerNavLink({
           data-testid={item.testId}
           onClick={onNavigate}
           aria-current={active ? "page" : undefined}
-          className={cn(navLinkBase, active ? navLinkActive : navLinkInactive)}
+          className={cn(appNavLinkBase, active ? appNavLinkActive : appNavLinkInactive)}
         >
           <Icon className="h-4 w-4 shrink-0" aria-hidden />
           {!collapsed && <span className="truncate">{label}</span>}
@@ -134,9 +134,9 @@ export function PlayerSidebar() {
   return (
     <Sidebar
       collapsible="icon"
-      className="[&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-slate-200 [&_[data-sidebar=sidebar]]:bg-slate-50"
+      className={appSidebarShellClass}
     >
-      <SidebarHeader className="border-b border-slate-200/80 bg-slate-50">
+      <SidebarHeader className={appSidebarHeaderClass}>
         <div
           className={cn(
             "flex items-center gap-2 px-2 pt-2",
@@ -209,7 +209,7 @@ export function PlayerSidebar() {
         )}
       </SidebarHeader>
 
-      <SidebarContent className="bg-slate-50">
+      <SidebarContent className={appSidebarContentClass}>
         <nav aria-label={t("nav.primary", "Player navigation")}>
           <SidebarGroup>
             <SidebarGroupContent>
@@ -232,7 +232,7 @@ export function PlayerSidebar() {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={closeMobileDrawer}
-                      className={cn(navLinkBase, navLinkInactive)}
+                      className={cn(appNavLinkBase, appNavLinkInactive)}
                     >
                       <Gamepad2 className="h-4 w-4 shrink-0" aria-hidden />
                       {!collapsed && (
@@ -247,7 +247,7 @@ export function PlayerSidebar() {
         </nav>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-slate-200/80 bg-slate-50">
+      <SidebarFooter className={appSidebarFooterClass}>
         <div
           className={cn(
             "flex p-2",
@@ -267,8 +267,8 @@ export function PlayerSidebar() {
                   <SidebarMenuButton
                     tooltip={t("nav.account")}
                     className={cn(
-                      navLinkBase,
-                      isSettingsActive ? navLinkActive : navLinkInactive,
+                      appNavLinkBase,
+                      isSettingsActive ? appNavLinkActive : appNavLinkInactive,
                       "w-full",
                     )}
                   >
@@ -289,11 +289,11 @@ export function PlayerSidebar() {
                           to="/app/player/settings"
                           onClick={closeMobileDrawer}
                           className={cn(
-                            navLinkBase,
+                            appNavLinkBase,
                             "py-1.5 text-sm",
                             location.pathname === "/app/player/settings"
-                              ? navLinkActive
-                              : navLinkInactive,
+                              ? appNavLinkActive
+                              : appNavLinkInactive,
                           )}
                         >
                           {t("nav.settings")}
@@ -306,11 +306,11 @@ export function PlayerSidebar() {
                           to="/app/player/settings/notifications"
                           onClick={closeMobileDrawer}
                           className={cn(
-                            navLinkBase,
+                            appNavLinkBase,
                             "py-1.5 text-sm",
                             location.pathname.startsWith("/app/player/settings/notifications")
-                              ? navLinkActive
-                              : navLinkInactive,
+                              ? appNavLinkActive
+                              : appNavLinkInactive,
                           )}
                         >
                           {t("nav.notifications")}

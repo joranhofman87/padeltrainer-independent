@@ -2,6 +2,16 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "@/components/NavLink";
+import {
+  appNavLinkActive,
+  appNavLinkBase,
+  appNavLinkInactive,
+  appSidebarContentClass,
+  appSidebarFooterClass,
+  appSidebarGhostButtonClass,
+  appSidebarHeaderClass,
+  appSidebarShellClass,
+} from "@/components/ui/appSidebarStyles";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Button } from "@/components/ui/button";
@@ -44,6 +54,7 @@ import {
   CheckCircle,
   Trophy,
   Gift,
+  X,
 } from "lucide-react";
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { signOut } from "@/lib/auth";
@@ -69,7 +80,13 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
   const { t, i18n } = useTranslation("club");
   const navigate = useNavigate();
   const location = useLocation();
-  const { state, toggleSidebar } = useSidebar();
+  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
+
+  const closeMobileDrawer = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
   const collapsed = state === "collapsed";
   const { toast } = useToast();
 
@@ -115,94 +132,106 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
     .slice(0, 2) || "C";
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b">
-        {!collapsed && (
-          <div className="px-3 pt-3 pb-1">
-            <Logo className="h-6" variant="dark" />
-          </div>
-        )}
-        <div className={cn(
-          "flex px-2 py-2",
-          collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
-        )}>
-          <div className={cn(
-            "flex items-center",
-            collapsed ? "justify-center" : "gap-2"
-          )}>
-            {club?.logo_url ? (
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={club.logo_url} />
-                <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-              </Avatar>
-            ) : (
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <Building2 className="h-4 w-4 text-primary" />
-              </div>
-            )}
+    <Sidebar collapsible="icon" className={appSidebarShellClass} data-testid="club-sidebar-shell">
+      <SidebarHeader className={appSidebarHeaderClass}>
+        <div
+          className={cn(
+            "flex items-center gap-2 px-2 pt-2",
+            collapsed ? "flex-col justify-center" : "justify-between",
+          )}
+        >
+          <div className={cn("flex min-w-0 items-center", collapsed ? "justify-center" : "gap-2")}>
+            <Logo className="h-5 w-auto shrink-0" />
             {!collapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="font-semibold text-sm truncate max-w-[140px]">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold tracking-tight text-slate-800">
+                  padeltrainer
+                </p>
+                <p className="truncate text-[11px] text-slate-500">
                   {club?.location?.name || "Club"}
-                </span>
-                <div className="flex items-center gap-1">
-                  {club?.is_verified ? (
-                    <Badge
-                      variant="secondary"
-                      className="w-fit text-[10px] px-1.5 py-0 bg-green-500/10 text-green-600 dark:text-green-400"
-                    >
-                      <CheckCircle className="h-2.5 w-2.5 mr-0.5" />
-                      {t("common:verified")}
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="secondary"
-                      className="w-fit text-[10px] px-1.5 py-0"
-                    >
-                      {t("badge")}
-                    </Badge>
-                  )}
-                </div>
+                </p>
               </div>
             )}
           </div>
-          {!collapsed ? (
+          {isMobile ? (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
-              onClick={toggleSidebar}
+              className="h-8 w-8 shrink-0 text-slate-600"
+              onClick={() => setOpenMobile(false)}
+              aria-label={t("nav.closeMenu", "Close menu")}
+              data-testid="club-mobile-menu-close"
             >
-              <PanelLeftClose className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </Button>
           ) : (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-8 w-8 shrink-0 text-slate-600"
               onClick={toggleSidebar}
+              aria-label={
+                collapsed
+                  ? t("nav.expandSidebar", "Expand sidebar")
+                  : t("nav.collapseSidebar", "Collapse sidebar")
+              }
             >
-              <PanelLeft className="h-4 w-4" />
+              {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </Button>
           )}
         </div>
+        {!collapsed && club && (
+          <div className="flex items-center gap-2 px-2 pb-2">
+            {club.logo_url ? (
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={club.logo_url} />
+                <AvatarFallback className="bg-slate-100 text-xs text-slate-700">{initials}</AvatarFallback>
+              </Avatar>
+            ) : (
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100">
+                <Building2 className="h-4 w-4 text-slate-500" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-900">
+                {club.location?.name || "Club"}
+              </p>
+              {club.is_verified ? (
+                <Badge
+                  variant="secondary"
+                  className="mt-0.5 w-fit text-[10px] px-1.5 py-0 bg-green-500/10 text-green-600 dark:text-green-400"
+                >
+                  <CheckCircle className="h-2.5 w-2.5 mr-0.5" />
+                  {t("common:verified")}
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="mt-0.5 w-fit text-[10px] px-1.5 py-0">
+                  {t("badge")}
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
       </SidebarHeader>
 
-      <SidebarContent className={cn(isExpired && "relative")}>
+      <SidebarContent className={cn(appSidebarContentClass, isExpired && "relative")}>
         {isExpired && (
           <div className="absolute inset-0 z-10" />
         )}
         <SidebarGroup>
           <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
-            <SidebarMenu>
+            <SidebarMenu className="gap-0.5 px-1">
               {/* Dashboard */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.dashboard")}>
                   <NavLink
                     to="/app/club"
                     end
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    className={cn(appNavLinkBase, appNavLinkInactive)}
+                    activeClassName={appNavLinkActive}
+                    onClick={closeMobileDrawer}
                   >
                     <LayoutDashboard className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.dashboard")}</span>}
@@ -215,8 +244,9 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                 <SidebarMenuButton asChild tooltip={t("nav.profile")}>
                   <NavLink
                     to="/app/club/profile"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    className={cn(appNavLinkBase, appNavLinkInactive)}
+                    activeClassName={appNavLinkActive}
+                    onClick={closeMobileDrawer}
                   >
                     <Building2 className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.profile")}</span>}
@@ -235,8 +265,8 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                     <SidebarMenuButton
                       tooltip={t("nav.people")}
                       className={isActive("/app/club/trainers") || isActive("/app/club/players")
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : ""}
+                        ? cn(appNavLinkBase, appNavLinkActive)
+                        : cn(appNavLinkBase, appNavLinkInactive)}
                     >
                       <Users className="h-4 w-4" />
                       {!collapsed && (
@@ -253,8 +283,9 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                         <SidebarMenuSubButton asChild>
                           <NavLink
                             to="/app/club/trainers"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                            className={cn(appNavLinkBase, appNavLinkInactive)}
+                            activeClassName={appNavLinkActive}
+                            onClick={closeMobileDrawer}
                           >
                             {t("nav.trainers")}
                           </NavLink>
@@ -264,8 +295,9 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                         <SidebarMenuSubButton asChild>
                           <NavLink
                             to="/app/club/players"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                            className={cn(appNavLinkBase, appNavLinkInactive)}
+                            activeClassName={appNavLinkActive}
+                            onClick={closeMobileDrawer}
                           >
                             {t("nav.players")}
                           </NavLink>
@@ -281,8 +313,9 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                 <SidebarMenuButton asChild tooltip={t("nav.calendar")}>
                   <NavLink
                     to="/app/club/calendar"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    className={cn(appNavLinkBase, appNavLinkInactive)}
+                    activeClassName={appNavLinkActive}
+                    onClick={closeMobileDrawer}
                   >
                     <Calendar className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.calendar")}</span>}
@@ -295,8 +328,9 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                 <SidebarMenuButton asChild tooltip={t("nav.registrations", "Registrations")}>
                   <NavLink
                     to="/app/club/registrations"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    className={cn(appNavLinkBase, appNavLinkInactive)}
+                    activeClassName={appNavLinkActive}
+                    onClick={closeMobileDrawer}
                   >
                     <BookOpen className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.registrations", "Registrations")}</span>}
@@ -309,8 +343,9 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                 <SidebarMenuButton asChild tooltip={t("nav.tournaments")}>
                   <NavLink
                     to="/app/club/tournaments"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    className={cn(appNavLinkBase, appNavLinkInactive)}
+                    activeClassName={appNavLinkActive}
+                    onClick={closeMobileDrawer}
                   >
                     <Trophy className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.tournaments")}</span>}
@@ -329,8 +364,8 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                     <SidebarMenuButton
                       tooltip={t("nav.business")}
                       className={isActive("/app/club/subscription") || isActive("/app/club/settings")
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : ""}
+                        ? cn(appNavLinkBase, appNavLinkActive)
+                        : cn(appNavLinkBase, appNavLinkInactive)}
                     >
                       <CreditCard className="h-4 w-4" />
                       {!collapsed && (
@@ -347,8 +382,9 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                         <SidebarMenuSubButton asChild>
                           <NavLink
                             to="/app/club/subscription"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                            className={cn(appNavLinkBase, appNavLinkInactive)}
+                            activeClassName={appNavLinkActive}
+                            onClick={closeMobileDrawer}
                           >
                             {t("nav.subscription")}
                           </NavLink>
@@ -358,8 +394,9 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                         <SidebarMenuSubButton asChild>
                           <NavLink
                             to="/app/club/settings"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                            className={cn(appNavLinkBase, appNavLinkInactive)}
+                            activeClassName={appNavLinkActive}
+                            onClick={closeMobileDrawer}
                           >
                             <Settings className="h-4 w-4" />
                             {t("nav.settings")}
@@ -376,7 +413,7 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
+      <SidebarFooter className={appSidebarFooterClass}>
         <div className={cn(
           "flex p-2",
           collapsed ? "flex-col items-center gap-2" : "flex-col gap-2"
@@ -397,7 +434,7 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
               className={cn(
                 "w-full",
                 collapsed && "w-auto px-2",
-                "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                cn("w-full justify-start", appSidebarGhostButtonClass)
               )}
             >
               <ExternalLink className="h-4 w-4" />
