@@ -14,7 +14,6 @@ import {
   FileText,
   RefreshCw,
   Send,
-  StickyNote,
   Loader2,
   ExternalLink,
   Download,
@@ -29,11 +28,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { PlayerTag } from '@/components/players/playerTagColors';
 import { TagPicker } from '@/components/players/TagPicker';
+import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDetailsCard';
+import { getAcademyLocations } from '@/lib/academy';
+import type { AcademyPlayerDetailsValues } from '@/lib/academyPlayerDetails';
 import { cn } from '@/lib/utils';
 import {
   LineChart,
@@ -116,9 +117,9 @@ export default function AcademyPlayerDetail() {
   const [player, setPlayer] = useState<PlayerCore | null>(null);
   const [tags, setTags] = useState<PlayerTag[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
-  const [internalNotes, setInternalNotes] = useState('');
-  const [savingNotes, setSavingNotes] = useState(false);
   const [locationNames, setLocationNames] = useState<string[]>([]);
+  const [academyLocations, setAcademyLocations] = useState<{ id: string; name: string }[]>([]);
+  const [detailsValues, setDetailsValues] = useState<AcademyPlayerDetailsValues | null>(null);
 
   const [cycluses, setCycluses] = useState<CyclusItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
@@ -136,13 +137,24 @@ export default function AcademyPlayerDetail() {
     try {
       // Player core
       let core: PlayerCore | null = null;
+      let guestPreferredLocationId: string | null = null;
+      let profileLocation: string | null = null;
+      const [locationsRes] = await Promise.all([
+        getAcademyLocations(activeAcademy!.id),
+      ]);
+      const locationOptions = (locationsRes || [])
+        .map((row: { location?: { id: string; name: string } }) => row.location)
+        .filter((loc): loc is { id: string; name: string } => Boolean(loc?.id && loc?.name));
+      setAcademyLocations(locationOptions);
+
       if (parsed.kind === 'guest') {
         const { data } = await supabase
           .from('guest_players')
-          .select('id, full_name, email, phone, skill_rating, rating_system, notes, source, birth_date, created_at, linked_profile_id')
+          .select('id, full_name, email, phone, skill_rating, rating_system, notes, source, birth_date, created_at, linked_profile_id, preferred_location_id')
           .eq('id', parsed.id)
           .maybeSingle();
         if (data) {
+          guestPreferredLocationId = data.preferred_location_id ?? null;
           core = {
             full_name: data.full_name,
             email: data.email,
@@ -161,10 +173,11 @@ export default function AcademyPlayerDetail() {
       } else if (parsed.kind === 'profile') {
         const { data } = await supabase
           .from('profiles')
-          .select('id, full_name, email, phone, skill_rating, rating_system, birth_date, created_at')
+          .select('id, full_name, email, phone, skill_rating, rating_system, birth_date, created_at, location')
           .eq('id', parsed.id)
           .maybeSingle();
         if (data) {
+          profileLocation = (data as { location?: string | null }).location ?? null;
           core = {
             full_name: (data as any).full_name || '',
             email: (data as any).email,
@@ -211,7 +224,22 @@ export default function AcademyPlayerDetail() {
       setTags((tagsRes.data || []) as PlayerTag[]);
       const meta: any = metaRes.data;
       setTagIds(meta?.tag_ids || []);
-      setInternalNotes(meta?.notes || '');
+
+      setDetailsValues({
+        name: core.full_name,
+        email: core.email,
+        locationId: guestPreferredLocationId,
+        locationName:
+          parsed.kind === 'profile'
+            ? profileLocation
+            : locationOptions.find((l) => l.id === guestPreferredLocationId)?.name ?? null,
+        skillRating: core.skill_rating,
+        ratingSystem: core.rating_system || 'knltb',
+        notes:
+          parsed.kind === 'guest'
+            ? core.notes
+            : meta?.notes ?? null,
+      });
 
       // Bookings (cycluses + locations)
       const bookingFilter = parsed.kind === 'guest'
@@ -317,45 +345,20 @@ export default function AcademyPlayerDetail() {
     }
   }
 
-  async function saveNotes() {
-    if (!activeAcademy || !player) return;
-    setSavingNotes(true);
-    try {
-      const baseQuery = supabase
-        .from('academy_player_metadata')
-        .select('id')
-        .eq('academy_profile_id', activeAcademy.id);
-      const { data: existing } = await (player.guest_player_id
-        ? baseQuery.eq('guest_player_id', player.guest_player_id)
-        : baseQuery.eq('profile_id', player.profile_id!)
-      ).maybeSingle();
-
-      const trimmed = internalNotes.trim() || null;
-      if (existing) {
-        const { error } = await supabase
-          .from('academy_player_metadata')
-          .update({ notes: trimmed, tag_ids: tagIds })
-          .eq('id', existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('academy_player_metadata')
-          .insert({
-            academy_profile_id: activeAcademy.id,
-            guest_player_id: player.guest_player_id,
-            profile_id: player.profile_id,
-            notes: trimmed,
-            tag_ids: tagIds,
-          } as any);
-        if (error) throw error;
-      }
-      toast({ title: t('players.detail.notesSaved', 'Notes saved') });
-    } catch (err: any) {
-      logger.error('Error saving notes', err);
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    } finally {
-      setSavingNotes(false);
-    }
+  function handleDetailsSaved(next: AcademyPlayerDetailsValues) {
+    setDetailsValues(next);
+    setPlayer((prev) =>
+      prev
+        ? {
+            ...prev,
+            full_name: next.name,
+            email: next.email,
+            skill_rating: next.skillRating,
+            rating_system: next.ratingSystem,
+            notes: next.notes,
+          }
+        : prev,
+    );
   }
 
   if (loading) {
@@ -516,43 +519,17 @@ export default function AcademyPlayerDetail() {
 
         {/* Overview */}
         <TabsContent value="overview" className="space-y-4 pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <StickyNote className="h-4 w-4" /> {t('players.detail.internalNotes', 'Internal notes')}
-              </CardTitle>
-              <CardDescription>
-                {t('players.detail.internalNotesDesc', 'Private notes visible only to your academy team.')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Textarea
-                value={internalNotes}
-                onChange={(e) => setInternalNotes(e.target.value)}
-                rows={6}
-                placeholder={t('players.notes.placeholder', 'Internal notes about this player...')}
-              />
-              <div className="flex justify-end">
-                <Button onClick={saveNotes} disabled={savingNotes} size="sm">
-                  {savingNotes && <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />}
-                  {t('common.save', 'Save')}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {player.notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">{t('players.detail.intakeNotes', 'Intake notes')}</CardTitle>
-                <CardDescription>
-                  {t('players.detail.intakeNotesDesc', 'Notes provided by the player during signup.')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm whitespace-pre-wrap">{player.notes}</p>
-              </CardContent>
-            </Card>
+          {detailsValues && activeAcademy && (
+            <AcademyPlayerDetailsCard
+              kind={player.type}
+              academyProfileId={activeAcademy.id}
+              guestPlayerId={player.guest_player_id}
+              profileId={player.profile_id}
+              values={detailsValues}
+              locations={academyLocations}
+              tagIds={tagIds}
+              onSaved={handleDetailsSaved}
+            />
           )}
 
           <Card>

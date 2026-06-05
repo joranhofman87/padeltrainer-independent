@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Search, Upload, MoreVertical, Pencil, Trash2, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
+import { Users, UserPlus, Search, Upload, MoreVertical, Trash2, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,6 @@ import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
-import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
 import { useSearchParams, Link } from 'react-router-dom';
@@ -150,7 +149,6 @@ export default function AcademyPlayers() {
   // Dialogs
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showImportPlayers, setShowImportPlayers] = useState(false);
-  const [editingPlayer, setEditingPlayer] = useState<GuestPlayer | null>(null);
   const [deletingPlayer, setDeletingPlayer] = useState<GuestPlayer | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -697,11 +695,6 @@ export default function AcademyPlayers() {
     fetchPlayers();
   };
 
-  const handlePlayerUpdated = (updatedPlayer: GuestPlayer) => {
-    fetchPlayers();
-    setEditingPlayer(null);
-  };
-
   const handleDeletePlayer = async () => {
     if (!deletingPlayer) return;
     setIsDeleting(true);
@@ -1145,10 +1138,6 @@ export default function AcademyPlayers() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setEditingPlayer(player.originalGuest!)}>
-                                  <Pencil className="mr-2 h-4 w-4" />
-                                  {tTrainer('players.edit')}
-                                </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => setDeletingPlayer(player.originalGuest!)}
                                   className="text-destructive"
@@ -1193,10 +1182,6 @@ export default function AcademyPlayers() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setEditingPlayer(player.originalGuest!)}>
-                                  <Pencil className="mr-2 h-4 w-4" />
-                                  {tTrainer('players.edit')}
-                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setDeletingPlayer(player.originalGuest!)} className="text-destructive">
                                   <Trash2 className="mr-2 h-4 w-4" />
                                   {tTrainer('players.delete')}
@@ -1336,16 +1321,6 @@ export default function AcademyPlayers() {
         trainerId={selectedTrainerId && selectedTrainerId !== 'all' ? selectedTrainerId : undefined}
         onPlayersImported={handlePlayersImported}
       />
-
-      {/* Edit Player Dialog */}
-      {editingPlayer && (
-        <EditPlayerDialog
-          open={!!editingPlayer}
-          onOpenChange={(open) => !open && setEditingPlayer(null)}
-          player={editingPlayer}
-          onPlayerUpdated={handlePlayerUpdated}
-        />
-      )}
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingPlayer} onOpenChange={(open) => !open && setDeletingPlayer(null)}>

@@ -3,6 +3,16 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AcademyPlayerDetail from './AcademyPlayerDetail';
 
+vi.mock('@/lib/academy', () => ({
+  getAcademyLocations: vi.fn().mockResolvedValue([
+    { location: { id: 'loc-1', name: 'Test Club' } },
+  ]),
+}));
+
+vi.mock('@/components/academy/AcademyPlayerDetailsCard', () => ({
+  AcademyPlayerDetailsCard: () => <div data-testid="academy-player-details-card" />,
+}));
+
 const GUEST_ID = 'guest-uuid-1';
 const ACADEMY_ID = 'academy-uuid-1';
 
@@ -102,6 +112,13 @@ function renderGuestDetail() {
 describe('AcademyPlayerDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('renders player details card on overview', async () => {
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId('academy-player-details-card')).toBeInTheDocument();
+    });
   });
 
   it('renders guest detail with back link and player name without throwing', async () => {
