@@ -2,33 +2,87 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
-import { ArrowLeft, FileText, Mail, Phone } from 'lucide-react';
+import {
+  ArrowLeft,
+  Mail,
+  Phone,
+  MapPin,
+  Calendar,
+  Cake,
+  BarChart3,
+  FileText,
+  RefreshCw,
+  Send,
+  ExternalLink,
+  Download,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+} from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { useToast } from '@/hooks/use-toast';
 import { getTrainerCreateInvoiceUrl } from '@/lib/invoiceCustomer';
 import { isTrainerRegisteredPlayerVisible } from '@/lib/invoiceSelectablePlayers';
-import { Card, CardContent } from '@/components/ui/card';
+import { buildTrainerInvoiceEditPath } from '@/lib/trainerPlayerDetailNavigation';
+import { resolveTrainerCyclusPricingRoute } from '@/lib/trainerCyclusPricingRoute';
+import { downloadInvoicePdf } from '@/lib/downloadInvoicePdf';
+import {
+  fetchTrainerLocationOptions,
+  type TrainerPlayerDetailsValues,
+} from '@/lib/trainerPlayerDetails';
+import { fetchTrainerPlayerTrainingLocations } from '@/lib/trainerPlayerTrainingLocations';
+import {
+  buildTrainerInvoiceEmailEvents,
+  filterInvoicesForTrainer,
+  mapCampaignEmailEvents,
+  mergePlayerEmailHistory,
+  type TrainerPlayerEmailHistoryItem,
+} from '@/lib/trainerPlayerEmailHistory';
+import { TrainerPlayerDetailsCard } from '@/components/trainer/TrainerPlayerDetailsCard';
+import { TagPicker } from '@/components/players/TagPicker';
+import { PlayerTag } from '@/components/players/playerTagColors';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+} from 'recharts';
 
 interface PlayerCore {
   full_name: string;
   email: string | null;
   phone: string | null;
+  skill_rating: number | null;
+  rating_system: string | null;
+  notes: string | null;
+  source: string | null;
+  birth_date: string | null;
+  created_at: string;
   type: 'guest' | 'registered';
   guest_player_id: string | null;
   profile_id: string | null;
+}
+
+interface CyclusItem {
+  cyclus_id: string;
+  cyclus_name: string;
+  first_session: string;
+  last_session: string;
+  session_count: number;
+  href: string;
 }
 
 interface InvoiceItem {
@@ -38,12 +92,22 @@ interface InvoiceItem {
   due_date: string | null;
   total: number | null;
   status: string | null;
+  pdf_url: string | null;
+  sent_at: string | null;
+  trainer_id: string | null;
+}
+
+interface RatingPoint {
+  date: string;
+  rating: number;
+  source: string;
 }
 
 export default function TrainerPlayerDetail() {
   const { t } = useTranslation('trainer');
   const { playerId } = useParams<{ playerId: string }>();
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const parsed = useMemo(() => {
     if (!playerId) return { kind: null as null | 'guest' | 'profile', id: '' };
@@ -55,7 +119,16 @@ export default function TrainerPlayerDetail() {
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [player, setPlayer] = useState<PlayerCore | null>(null);
+  const [tags, setTags] = useState<PlayerTag[]>([]);
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [locationNames, setLocationNames] = useState<string[]>([]);
+  const [trainerLocations, setTrainerLocations] = useState<{ id: string; name: string }[]>([]);
+  const [detailsValues, setDetailsValues] = useState<TrainerPlayerDetailsValues | null>(null);
+
+  const [cycluses, setCycluses] = useState<CyclusItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [ratingHistory, setRatingHistory] = useState<RatingPoint[]>([]);
+  const [emails, setEmails] = useState<TrainerPlayerEmailHistoryItem[]>([]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -77,17 +150,32 @@ export default function TrainerPlayerDetail() {
     setLoading(true);
     try {
       let core: PlayerCore | null = null;
+      let guestPreferredLocationId: string | null = null;
+      let registeredPreferredLocationId: string | null = null;
+
+      const locationOptions = await fetchTrainerLocationOptions(trainerId!);
+      setTrainerLocations(locationOptions);
+
       if (parsed.kind === 'guest') {
         const { data } = await supabase
           .from('guest_players')
-          .select('id, full_name, email, phone, trainer_id, linked_profile_id')
+          .select(
+            'id, full_name, email, phone, skill_rating, rating_system, notes, source, birth_date, created_at, linked_profile_id, preferred_location_id, trainer_id',
+          )
           .eq('id', parsed.id)
           .maybeSingle();
         if (data && data.trainer_id === trainerId) {
+          guestPreferredLocationId = data.preferred_location_id ?? null;
           core = {
             full_name: data.full_name,
             email: data.email,
             phone: data.phone,
+            skill_rating: data.skill_rating as number | null,
+            rating_system: data.rating_system,
+            notes: data.notes,
+            source: data.source,
+            birth_date: data.birth_date,
+            created_at: data.created_at,
             type: 'guest',
             guest_player_id: data.id,
             profile_id: data.linked_profile_id,
@@ -98,7 +186,7 @@ export default function TrainerPlayerDetail() {
         if (visible) {
           const { data } = await supabase
             .from('profiles')
-            .select('id, full_name, email, phone')
+            .select('id, full_name, email, phone, skill_rating, rating_system, birth_date, created_at')
             .eq('id', parsed.id)
             .maybeSingle();
           if (data) {
@@ -106,6 +194,12 @@ export default function TrainerPlayerDetail() {
               full_name: (data as { full_name?: string }).full_name || '',
               email: (data as { email?: string | null }).email ?? null,
               phone: (data as { phone?: string | null }).phone ?? null,
+              skill_rating: (data as { skill_rating?: number | null }).skill_rating ?? null,
+              rating_system: (data as { rating_system?: string | null }).rating_system ?? null,
+              notes: null,
+              source: null,
+              birth_date: (data as { birth_date?: string | null }).birth_date ?? null,
+              created_at: (data as { created_at: string }).created_at,
               type: 'registered',
               guest_player_id: null,
               profile_id: (data as { id: string }).id,
@@ -113,33 +207,218 @@ export default function TrainerPlayerDetail() {
           }
         }
       }
+
       setPlayer(core);
       if (!core) {
-        setInvoices([]);
+        setLoading(false);
         return;
       }
 
-      const invQuery =
+      const [tagsRes, metaRes] = await Promise.all([
+        supabase
+          .from('academy_player_tags')
+          .select('*')
+          .eq('trainer_profile_id', trainerId!)
+          .order('name'),
+        parsed.kind === 'guest'
+          ? supabase
+              .from('academy_player_metadata')
+              .select('*')
+              .eq('trainer_profile_id', trainerId!)
+              .eq('guest_player_id', parsed.id)
+              .maybeSingle()
+          : supabase
+              .from('academy_player_metadata')
+              .select('*')
+              .eq('trainer_profile_id', trainerId!)
+              .eq('profile_id', parsed.id)
+              .maybeSingle(),
+      ]);
+      setTags((tagsRes.data || []) as PlayerTag[]);
+      const meta = metaRes.data as {
+        tag_ids?: string[];
+        notes?: string | null;
+        preferred_location_id?: string | null;
+      } | null;
+      setTagIds(meta?.tag_ids || []);
+
+      registeredPreferredLocationId =
+        parsed.kind === 'profile' ? meta?.preferred_location_id ?? null : null;
+
+      setDetailsValues({
+        name: core.full_name,
+        email: core.email,
+        locationId:
+          parsed.kind === 'guest' ? guestPreferredLocationId : registeredPreferredLocationId,
+        skillRating: core.skill_rating,
+        ratingSystem: core.rating_system || 'knltb',
+        notes: parsed.kind === 'guest' ? core.notes : meta?.notes ?? null,
+      });
+
+      const trainingLocations = await fetchTrainerPlayerTrainingLocations({
+        trainerProfileId: trainerId!,
+        guestPlayerId: parsed.kind === 'guest' ? parsed.id : null,
+        profileId: parsed.kind === 'profile' ? parsed.id : null,
+      });
+      setLocationNames(trainingLocations.map((l) => l.location_name));
+
+      const bookingFilter =
+        parsed.kind === 'guest'
+          ? supabase.from('bookings').select('id, slot_id, status').eq('guest_player_id', parsed.id)
+          : supabase.from('bookings').select('id, slot_id, status').eq('player_id', parsed.id);
+      const { data: bookingsData } = await bookingFilter;
+      const slotIds = Array.from(new Set((bookingsData || []).map((b) => b.slot_id))).filter(Boolean);
+
+      let cyclusItems: CyclusItem[] = [];
+      if (slotIds.length) {
+        const { data: slots } = await supabase
+          .from('availability_slots')
+          .select('id, cyclus_id, cyclus_name, start_time')
+          .in('id', slotIds)
+          .eq('trainer_id', trainerId!);
+        const slotsArr = (slots || []) as Array<{
+          id: string;
+          cyclus_id: string | null;
+          cyclus_name: string | null;
+          start_time: string | null;
+        }>;
+
+        const byCyc = new Map<string, { id: string; name: string; dates: Date[] }>();
+        for (const s of slotsArr) {
+          const cid = s.cyclus_id || s.id;
+          const cname = s.cyclus_name || t('players.detail.singleSessions', 'Single sessions');
+          const cur = byCyc.get(cid) || { id: cid, name: cname, dates: [] };
+          if (s.start_time) cur.dates.push(new Date(s.start_time));
+          byCyc.set(cid, cur);
+        }
+        const rawCycluses = Array.from(byCyc.values())
+          .map((c) => {
+            const sorted = c.dates.sort((a, b) => a.getTime() - b.getTime());
+            return {
+              cyclus_id: c.id,
+              cyclus_name: c.name,
+              session_count: sorted.length,
+              first_session: sorted[0]?.toISOString() || '',
+              last_session: sorted[sorted.length - 1]?.toISOString() || '',
+            };
+          })
+          .sort((a, b) => (b.last_session || '').localeCompare(a.last_session || ''));
+
+        cyclusItems = await Promise.all(
+          rawCycluses.map(async (c) => ({
+            ...c,
+            href: await resolveTrainerCyclusPricingRoute(c.cyclus_id),
+          })),
+        );
+      }
+      setCycluses(cyclusItems);
+
+      const invPlayerFilter =
         parsed.kind === 'guest'
           ? supabase
               .from('invoices')
-              .select('id, invoice_number, invoice_date, due_date, total, status')
-              .eq('guest_player_id', parsed.id)
+              .select(
+                'id, invoice_number, invoice_date, due_date, total, status, pdf_url, sent_at, trainer_id',
+              )
               .eq('trainer_id', trainerId!)
-              .order('invoice_date', { ascending: false })
+              .eq('guest_player_id', parsed.id)
           : supabase
               .from('invoices')
-              .select('id, invoice_number, invoice_date, due_date, total, status')
-              .eq('player_id', parsed.id)
+              .select(
+                'id, invoice_number, invoice_date, due_date, total, status, pdf_url, sent_at, trainer_id',
+              )
               .eq('trainer_id', trainerId!)
-              .order('invoice_date', { ascending: false });
-      const { data: invs } = await invQuery;
-      setInvoices((invs || []) as InvoiceItem[]);
-    } catch (err) {
+              .eq('player_id', parsed.id);
+      const { data: invs } = await invPlayerFilter.order('invoice_date', { ascending: false });
+      const invoiceRows = (invs || []) as InvoiceItem[];
+      setInvoices(invoiceRows);
+
+      if (parsed.kind === 'profile') {
+        const { data: ratings } = await supabase
+          .from('player_rating_history')
+          .select('rating, rating_system, source, scraped_at, created_at')
+          .eq('profile_id', parsed.id)
+          .order('scraped_at', { ascending: true });
+        setRatingHistory(
+          (ratings || []).map((r) => ({
+            date: (r as { scraped_at?: string; created_at: string }).scraped_at ||
+              (r as { created_at: string }).created_at,
+            rating: Number((r as { rating: number }).rating),
+            source: (r as { source?: string; rating_system?: string }).source ||
+              (r as { rating_system?: string }).rating_system ||
+              'knltb',
+          })),
+        );
+      } else {
+        setRatingHistory([]);
+      }
+
+      const emailAddr = core.email;
+      let campaignEmails: TrainerPlayerEmailHistoryItem[] = [];
+      if (emailAddr) {
+        const { data: recs } = await supabase
+          .from('email_campaign_recipients')
+          .select(
+            'id, status, sent_at, created_at, campaign_id, email_campaigns!inner(subject, status, trainer_profile_id)',
+          )
+          .eq('recipient_email', emailAddr)
+          .eq('email_campaigns.trainer_profile_id', trainerId!)
+          .order('created_at', { ascending: false });
+        campaignEmails = mapCampaignEmailEvents(
+          (recs || []).map((r) => {
+            const row = r as {
+              id: string;
+              status: string;
+              sent_at: string | null;
+              created_at: string;
+              email_campaigns?: { subject?: string };
+            };
+            return {
+              id: row.id,
+              subject: row.email_campaigns?.subject || '—',
+              status: row.status,
+              sent_at: row.sent_at,
+              created_at: row.created_at,
+            };
+          }),
+        );
+      }
+
+      const invoiceEmailEvents = buildTrainerInvoiceEmailEvents(
+        filterInvoicesForTrainer(invoiceRows, trainerId!),
+        {
+          sent: t('players.detail.invoiceSent', 'Invoice sent'),
+          sentWithNumber: (number) =>
+            t('players.detail.invoiceSentNumber', 'Invoice #{{number}}', { number }),
+        },
+      );
+      setEmails(mergePlayerEmailHistory(campaignEmails, invoiceEmailEvents));
+    } catch (err: unknown) {
       logger.error('Error loading trainer player detail', err as Error);
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleDetailsSaved(next: TrainerPlayerDetailsValues) {
+    setDetailsValues(next);
+    setPlayer((prev) =>
+      prev
+        ? {
+            ...prev,
+            full_name: next.name,
+            email: next.email,
+            skill_rating: next.skillRating,
+            rating_system: next.ratingSystem,
+            notes: next.notes,
+          }
+        : prev,
+    );
   }
 
   if (loading) {
@@ -147,6 +426,7 @@ export default function TrainerPlayerDetail() {
       <div className="p-6 space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
@@ -197,6 +477,29 @@ export default function TrainerPlayerDetail() {
                   ? t('players.detail.registered', 'Registered')
                   : t('players.detail.guest', 'Guest')}
               </Badge>
+              {player.skill_rating != null && (
+                <Badge variant="secondary">
+                  {player.skill_rating.toFixed(1)} {(player.rating_system || 'knltb').toUpperCase()}
+                </Badge>
+              )}
+              {(() => {
+                const todayIso = new Date().toISOString().slice(0, 10);
+                const overdueCount = invoices.filter((inv) => {
+                  const status = (inv.status || '').toLowerCase();
+                  if (status === 'overdue') return true;
+                  if (status === 'paid' || status === 'cancelled' || status === 'draft' || status === 'void') {
+                    return false;
+                  }
+                  return !!inv.due_date && inv.due_date < todayIso;
+                }).length;
+                if (!overdueCount) return null;
+                return (
+                  <Badge variant="destructive">
+                    {t('players.detail.overdueBadge', 'Overdue payment')}
+                    {overdueCount > 1 ? ` (${overdueCount})` : ''}
+                  </Badge>
+                );
+              })()}
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
               {player.email && (
@@ -209,7 +512,37 @@ export default function TrainerPlayerDetail() {
                   <Phone className="h-3.5 w-3.5" /> {player.phone}
                 </a>
               )}
+              {locationNames.length > 0 && (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" /> {locationNames.join(', ')}
+                </span>
+              )}
+              {player.birth_date && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Cake className="h-3.5 w-3.5" /> {format(new Date(player.birth_date), 'dd-MM-yyyy')}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />
+                {t('players.detail.addedOn', 'Added')} {format(new Date(player.created_at), 'dd-MM-yyyy')}
+              </span>
             </div>
+            {trainerId && (
+              <div className="pt-2">
+                <TagPicker
+                  trainerId={trainerId}
+                  playerKey={{
+                    guest_player_id: player.guest_player_id,
+                    profile_id: player.profile_id,
+                  }}
+                  tags={tags}
+                  selectedTagIds={tagIds}
+                  onTagsChange={setTags}
+                  onSelectedTagIdsChange={setTagIds}
+                  variant="detail"
+                />
+              </div>
+            )}
           </div>
           <div className="shrink-0 md:self-start">
             <Button asChild data-testid="trainer-player-create-invoice">
@@ -222,51 +555,373 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="px-6 py-4 border-b">
-            <h2 className="text-lg font-medium">
-              {t('players.detail.tabs.invoices', 'Invoices')} ({invoices.length})
-            </h2>
-          </div>
-          {invoices.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              {t('players.detail.noInvoices', 'No invoices yet.')}
-            </p>
+      <RatingTrendCard
+        history={ratingHistory}
+        ratingSystem={player.rating_system}
+        currentRating={player.skill_rating}
+        isGuest={player.type === 'guest'}
+        t={t}
+      />
+
+      <Card data-testid="trainer-player-summary">
+        <CardHeader>
+          <CardTitle className="text-base">{t('players.detail.summary', 'Summary')}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <Stat label={t('players.detail.stats.cycles', 'Cycles')} value={cycluses.length} />
+          <Stat label={t('players.detail.stats.invoices', 'Invoices')} value={invoices.length} />
+          <Stat label={t('players.detail.stats.ratingPoints', 'Rating points')} value={ratingHistory.length} />
+          <Stat label={t('players.detail.stats.emails', 'Emails')} value={emails.length} />
+        </CardContent>
+      </Card>
+
+      {detailsValues && trainerId && (
+        <TrainerPlayerDetailsCard
+          kind={player.type}
+          trainerProfileId={trainerId}
+          guestPlayerId={player.guest_player_id}
+          profileId={player.profile_id}
+          values={detailsValues}
+          locations={trainerLocations}
+          tagIds={tagIds}
+          onSaved={handleDetailsSaved}
+        />
+      )}
+
+      <Card data-testid="trainer-player-section-cycles">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />
+            {t('players.detail.sectionCycles', 'Cycles')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 divide-y">
+          {cycluses.length === 0 ? (
+            <Empty icon={<RefreshCw className="h-8 w-8" />} text={t('players.detail.noCycles', 'No cycles joined yet')} />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('players.detail.invoiceNumber', 'Invoice')}</TableHead>
-                  <TableHead>{t('players.detail.invoiceDate', 'Date')}</TableHead>
-                  <TableHead>{t('players.detail.invoiceDue', 'Due')}</TableHead>
-                  <TableHead>{t('players.detail.invoiceStatus', 'Status')}</TableHead>
-                  <TableHead className="text-right">{t('players.detail.invoiceTotal', 'Total')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell>{inv.invoice_number || '—'}</TableCell>
-                    <TableCell>
-                      {inv.invoice_date ? format(new Date(inv.invoice_date), 'dd-MM-yyyy') : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {inv.due_date ? format(new Date(inv.due_date), 'dd-MM-yyyy') : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{inv.status || '—'}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {inv.total != null ? `€${Number(inv.total).toFixed(2)}` : '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            cycluses.map((c) => (
+              <Link
+                key={c.cyclus_id}
+                to={c.href}
+                data-testid={`trainer-player-cycle-link-${c.cyclus_id}`}
+                className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-muted/50"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium">{c.cyclus_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.first_session && format(new Date(c.first_session), 'dd-MM-yyyy')}
+                    {' → '}
+                    {c.last_session && format(new Date(c.last_session), 'dd-MM-yyyy')}
+                    {' · '}
+                    {c.session_count} {t('players.detail.sessions', 'sessions')}
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                  {t('players.detail.openRecord', 'Open')}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </span>
+              </Link>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="trainer-player-section-invoices">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            {t('players.detail.sectionInvoices', 'Invoices')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 divide-y">
+          {invoices.length === 0 ? (
+            <Empty icon={<FileText className="h-8 w-8" />} text={t('players.detail.noInvoices', 'No invoices yet')} />
+          ) : (
+            invoices.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/50"
+              >
+                <Link
+                  to={buildTrainerInvoiceEditPath(inv.id)}
+                  data-testid={`trainer-player-invoice-link-${inv.id}`}
+                  className="flex flex-1 min-w-0 items-center justify-between gap-4"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">{inv.invoice_number || `#${inv.id.slice(0, 8)}`}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {inv.invoice_date && format(new Date(inv.invoice_date), 'dd-MM-yyyy')}
+                      {inv.total != null && ` · €${Number(inv.total).toFixed(2)}`}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                    {t('players.detail.openRecord', 'Open')}
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </span>
+                </Link>
+                <div className="flex items-center gap-2 shrink-0">
+                  <InvoiceStatus status={inv.status} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const ok = await downloadInvoicePdf(inv.id, inv.invoice_number || undefined);
+                      if (!ok) {
+                        toast({
+                          title: t('players.detail.downloadFailed', 'Download failed'),
+                          variant: 'destructive',
+                        });
+                      }
+                    }}
+                    title={t('players.detail.downloadInvoice', 'Download invoice')}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="trainer-player-section-rating">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            {t('players.detail.ratingHistory', 'Rating history')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {ratingHistory.length === 0 ? (
+            <Empty icon={<BarChart3 className="h-8 w-8" />} text={t('players.detail.noRating', 'No rating history available')} />
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={ratingHistory.map((r) => ({
+                    ...r,
+                    label: format(new Date(r.date), 'MMM yyyy'),
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} reversed />
+                  <RTooltip />
+                  <Line type="monotone" dataKey="rating" stroke="hsl(var(--primary))" strokeWidth={2} dot />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="trainer-player-section-emails">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Send className="h-4 w-4" />
+            {t('players.detail.emailHistory', 'Email history')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 divide-y">
+          {emails.length === 0 ? (
+            <Empty icon={<Send className="h-8 w-8" />} text={t('players.detail.noEmails', 'No emails sent yet')} />
+          ) : (
+            emails.map((e) => {
+              const timestamp = e.sent_at
+                ? format(new Date(e.sent_at), 'dd-MM-yyyy HH:mm')
+                : format(new Date(e.created_at), 'dd-MM-yyyy HH:mm');
+              const title = e.href ? (
+                <Link
+                  to={e.href}
+                  className="font-medium truncate hover:underline"
+                  data-testid={`trainer-player-email-link-${e.id}`}
+                >
+                  {e.title}
+                </Link>
+              ) : (
+                <p className="font-medium truncate">{e.title}</p>
+              );
+
+              return (
+                <div
+                  key={e.id}
+                  className="p-4 flex items-center justify-between gap-4"
+                  data-testid={`trainer-player-email-${e.id}`}
+                >
+                  <div className="min-w-0">
+                    {title}
+                    <p className="text-xs text-muted-foreground">
+                      {e.subtitle ? `${e.subtitle} · ${timestamp}` : timestamp}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={
+                      e.status === 'sent'
+                        ? 'default'
+                        : e.status === 'failed'
+                          ? 'destructive'
+                          : 'secondary'
+                    }
+                  >
+                    {e.status}
+                  </Badge>
+                </div>
+              );
+            })
           )}
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function Empty({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="py-12 flex flex-col items-center text-muted-foreground">
+      {icon}
+      <p className="mt-2 text-sm">{text}</p>
+    </div>
+  );
+}
+
+function InvoiceStatus({ status }: { status: string | null }) {
+  const variant = status === 'paid' ? 'default' : status === 'overdue' ? 'destructive' : 'secondary';
+  return <Badge variant={variant as 'default' | 'destructive' | 'secondary'}>{status || 'draft'}</Badge>;
+}
+
+function RatingTrendCard({
+  history,
+  ratingSystem,
+  currentRating,
+  isGuest,
+  t,
+}: {
+  history: RatingPoint[];
+  ratingSystem: string | null;
+  currentRating: number | null;
+  isGuest: boolean;
+  t: (key: string, fallback?: string) => string;
+}) {
+  const lowerIsBetter = (ratingSystem || 'knltb').toLowerCase() === 'knltb';
+  const systemLabel = (ratingSystem || 'knltb').toUpperCase();
+
+  if (!history || history.length < 2) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" /> {t('players.detail.ratingProgress', 'Rating progress')}
+            <span className="text-xs font-normal text-muted-foreground">({systemLabel})</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {isGuest
+              ? t('players.detail.ratingGuestHint', 'Rating history is tracked for registered players.')
+              : t('players.detail.ratingNotEnough', 'Not enough rating history to show a trend yet.')}
+            {currentRating != null && (
+              <span className="ml-1">
+                {t('players.detail.currentRating', 'Current')}:{' '}
+                <span className="font-semibold text-foreground">{currentRating.toFixed(1)}</span>
+              </span>
+            )}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const first = history[0].rating;
+  const latest = history[history.length - 1].rating;
+  const rawDiff = Number((first - latest).toFixed(2));
+  const improvement = lowerIsBetter ? rawDiff : -rawDiff;
+  const improved = improvement > 0;
+  const declined = improvement < 0;
+  const best = lowerIsBetter
+    ? Math.min(...history.map((h) => h.rating))
+    : Math.max(...history.map((h) => h.rating));
+
+  const chartData = history.map((r) => ({
+    label: format(new Date(r.date), 'MMM yyyy'),
+    rating: r.rating,
+  }));
+
+  const trendColor = improved
+    ? 'text-green-600 dark:text-green-400'
+    : declined
+      ? 'text-red-600 dark:text-red-400'
+      : 'text-muted-foreground';
+  const TrendIcon = improved ? TrendingUp : declined ? TrendingDown : Minus;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendIcon className={cn('h-4 w-4', trendColor)} />
+            {t('players.detail.ratingProgress', 'Rating progress')}
+            <span className="text-xs font-normal text-muted-foreground">({systemLabel})</span>
+          </CardTitle>
+          {improvement !== 0 && (
+            <span className={cn('text-sm font-semibold', trendColor)}>
+              {improvement > 0 ? '+' : ''}
+              {improvement.toFixed(1)} {t('players.detail.points', 'points')}
+            </span>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-md bg-muted/50 p-3 text-center">
+            <p className="text-xs text-muted-foreground">{t('players.detail.started', 'Started')}</p>
+            <p className="text-lg font-semibold font-mono">{first.toFixed(1)}</p>
+          </div>
+          <div className="rounded-md bg-muted/50 p-3 text-center">
+            <p className="text-xs text-muted-foreground">{t('players.detail.current', 'Current')}</p>
+            <p className="text-lg font-semibold font-mono">{latest.toFixed(1)}</p>
+          </div>
+          <div className="rounded-md bg-primary/10 p-3 text-center">
+            <p className="text-xs text-muted-foreground">{t('players.detail.best', 'Best')}</p>
+            <p className="text-lg font-semibold font-mono text-primary">{best.toFixed(1)}</p>
+          </div>
+        </div>
+        <div className="h-28">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="trainerRatingGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} reversed={lowerIsBetter} width={30} />
+              <RTooltip />
+              <Area
+                type="monotone"
+                dataKey="rating"
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                fill="url(#trainerRatingGradient)"
+                dot={false}
+                activeDot={{ r: 4 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

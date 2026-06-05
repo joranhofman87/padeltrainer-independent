@@ -20,6 +20,7 @@ export interface InvoiceEmailSourceRow {
   sent_at: string | null;
   status: string | null;
   academy_profile_id?: string | null;
+  trainer_id?: string | null;
 }
 
 export interface CampaignEmailSourceRow {
@@ -33,6 +34,7 @@ export interface CampaignEmailSourceRow {
 export function buildInvoiceEmailEvents(
   invoices: InvoiceEmailSourceRow[],
   labels: { sent: string; sentWithNumber: (number: string) => string },
+  buildEditPath: (invoiceId: string) => string = buildAcademyInvoiceEditPath,
 ): AcademyPlayerEmailHistoryItem[] {
   return invoices
     .filter((inv) => !!inv.sent_at)
@@ -47,7 +49,7 @@ export function buildInvoiceEmailEvents(
         sortAt: inv.sent_at!,
         sent_at: inv.sent_at,
         created_at: inv.sent_at!,
-        href: buildAcademyInvoiceEditPath(inv.id),
+        href: buildEditPath(inv.id),
       };
     });
 }
