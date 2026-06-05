@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Users, UserPlus, Upload, MoreVertical, Pencil, Trash2, Mail, RefreshCw, Columns3, Tags } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,22 +12,16 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenu, DropdownMenuContent, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuCheckboxItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
-import { EditPlayerDialog } from '@/components/trainer/EditPlayerDialog';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
@@ -88,7 +82,6 @@ function getLevelLabel(band: string): string {
 export default function TrainerPlayers() {
   const { t } = useTranslation('trainer');
   const { user } = useAuth();
-  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get('tab') || 'all-players';
@@ -118,9 +111,6 @@ export default function TrainerPlayers() {
   // Dialogs
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showImportPlayers, setShowImportPlayers] = useState(false);
-  const [editingPlayer, setEditingPlayer] = useState<GuestPlayer | null>(null);
-  const [deletingPlayer, setDeletingPlayer] = useState<GuestPlayer | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Column customization
   type ColumnKey =
@@ -459,24 +449,6 @@ export default function TrainerPlayers() {
 
   const handlePlayerCreated = () => { fetchPlayers(); setShowAddPlayer(false); };
   const handlePlayersImported = () => { fetchPlayers(); };
-  const handlePlayerUpdated = () => { fetchPlayers(); setEditingPlayer(null); };
-
-  const handleDeletePlayer = async () => {
-    if (!deletingPlayer) return;
-    setIsDeleting(true);
-    try {
-      const { error } = await supabase.from('guest_players').delete().eq('id', deletingPlayer.id);
-      if (error) throw error;
-      setPlayers((prev) => prev.filter((p) => p.id !== deletingPlayer.id));
-      toast({ title: t('players.playerDeleted'), description: t('players.playerDeletedDescription') });
-    } catch (error: any) {
-      logger.error('Error deleting player', error as Error, { component: 'TrainerPlayers' });
-      toast({ title: t('common:error'), description: error.message, variant: 'destructive' });
-    } finally {
-      setIsDeleting(false);
-      setDeletingPlayer(null);
-    }
-  };
 
   if (loading) {
     return (
@@ -659,8 +631,8 @@ export default function TrainerPlayers() {
             <Card>
               <CardContent className="p-0">
                 {/* Desktop Table */}
-                <div className="hidden md:block">
-                  <Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
+                <div className="hidden md:block overflow-x-auto" data-testid="trainer-players-table-scroll">
+                  <Table className="min-w-[960px] [&_td]:h-10 [&_td]:max-h-10 [&_td]:py-0 [&_td]:px-3 [&_td]:align-middle [&_td]:overflow-hidden [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 [&_tbody_tr]:h-10 text-sm">
                     <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>
                         <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
@@ -692,17 +664,16 @@ export default function TrainerPlayers() {
                           }
                           return <TableHead key={key} className="whitespace-nowrap">{col.label}</TableHead>;
                         })}
-                        <TableHead className="w-[40px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {sortedPlayers.map((player) => (
-                        <TableRow key={player.id} className="h-8">
-                          <TableCell className="font-medium whitespace-nowrap max-w-[260px] truncate" title={player.full_name}>
-                            <div className="flex items-center gap-1.5">
+                        <TableRow key={player.id} className="h-10 max-h-10">
+                          <TableCell className="font-medium whitespace-nowrap max-w-[260px] min-w-0 overflow-hidden" title={player.full_name}>
+                            <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                               <Link
                                 to={`/app/trainer/players/${toTrainerPlayerRouteId(player)}`}
-                                className="truncate hover:underline"
+                                className="hover:underline text-foreground truncate"
                               >
                                 {player.full_name}
                               </Link>
@@ -717,19 +688,19 @@ export default function TrainerPlayers() {
                             switch (key) {
                               case 'email':
                                 return (
-                                  <TableCell key={key} className="whitespace-nowrap max-w-[220px] truncate" title={player.email}>
+                                  <TableCell key={key} className="whitespace-nowrap max-w-[220px] min-w-0 overflow-hidden truncate" title={player.email || ''}>
                                     {player.email || <span className="text-muted-foreground">—</span>}
                                   </TableCell>
                                 );
                               case 'phone':
                                 return (
-                                  <TableCell key={key} className="whitespace-nowrap">
+                                  <TableCell key={key} className="whitespace-nowrap overflow-hidden">
                                     {player.phone || <span className="text-muted-foreground">—</span>}
                                   </TableCell>
                                 );
                               case 'location':
                                 return (
-                                  <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[180px] truncate" title={player.location_names?.join(', ') || ''}>
+                                  <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[180px] min-w-0 overflow-hidden truncate" title={player.location_names?.join(', ') || ''}>
                                     {player.location_names && player.location_names.length > 0 ? player.location_names.join(', ') : '—'}
                                   </TableCell>
                                 );
@@ -803,7 +774,7 @@ export default function TrainerPlayers() {
                                 );
                               case 'tags':
                                 return (
-                                  <TableCell key={key} className="max-w-[240px]">
+                                  <TableCell key={key} className="max-w-[240px] min-w-[140px] overflow-hidden">
                                     {trainerId && (
                                       <PlayerTagsCell
                                         trainerId={trainerId}
@@ -826,7 +797,7 @@ export default function TrainerPlayers() {
                                 );
                               case 'internalNotes':
                                 return (
-                                  <TableCell key={key} className="max-w-[260px]">
+                                  <TableCell key={key} className="max-w-[260px] min-w-[140px] overflow-hidden">
                                     {trainerId && (
                                       <PlayerNotesCell
                                         trainerId={trainerId}
@@ -841,27 +812,6 @@ export default function TrainerPlayers() {
                                 return null;
                             }
                           })}
-                          <TableCell className="w-[40px]">
-                            {player.type === 'guest' && player.originalGuest ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" aria-label="Open actions menu" className="h-7 w-7">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => setEditingPlayer(player.originalGuest!)}>
-                                    <Pencil className="mr-2 h-4 w-4" />
-                                    {t('players.edit')}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => setDeletingPlayer(player.originalGuest!)} className="text-destructive">
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    {t('players.delete')}
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            ) : null}
-                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -869,12 +819,18 @@ export default function TrainerPlayers() {
                 </div>
 
                 {/* Mobile Cards */}
-                <div className="md:hidden space-y-3 p-4">
+                <div className="md:hidden space-y-3 p-4" data-testid="trainer-players-mobile-cards">
                   {sortedPlayers.map((player) => (
                     <div key={player.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium truncate">{player.full_name}</p>
+                          <Link
+                            to={`/app/trainer/players/${toTrainerPlayerRouteId(player)}`}
+                            className="font-medium truncate hover:underline text-foreground block"
+                            data-testid="trainer-player-mobile-detail-link"
+                          >
+                            {player.full_name}
+                          </Link>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {player.type === 'registered' ? (
@@ -883,25 +839,6 @@ export default function TrainerPlayers() {
                             <Badge variant="secondary" className="text-xs">{t('players.statuses.active')}</Badge>
                           ) : (
                             <Badge variant="outline" className="text-xs">{t('players.statuses.prospect')}</Badge>
-                          )}
-                          {player.type === 'guest' && player.originalGuest && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="Open actions menu" className="h-8 w-8">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setEditingPlayer(player.originalGuest!)}>
-                                  <Pencil className="mr-2 h-4 w-4" />
-                                  {t('players.edit')}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setDeletingPlayer(player.originalGuest!)} className="text-destructive">
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  {t('players.delete')}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
                           )}
                         </div>
                       </div>
@@ -1026,34 +963,6 @@ export default function TrainerPlayers() {
           onPlayersImported={handlePlayersImported}
         />
       )}
-
-      {/* Edit Player Dialog */}
-      {editingPlayer && (
-        <EditPlayerDialog
-          open={!!editingPlayer}
-          onOpenChange={(open) => !open && setEditingPlayer(null)}
-          player={editingPlayer}
-          onPlayerUpdated={handlePlayerUpdated}
-        />
-      )}
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!deletingPlayer} onOpenChange={(open) => !open && setDeletingPlayer(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('players.deleteConfirmTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('players.deleteConfirmDescription', { name: deletingPlayer?.full_name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeletePlayer} disabled={isDeleting}>
-              {t('players.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Manage Tags Dialog */}
       {trainerId && (
