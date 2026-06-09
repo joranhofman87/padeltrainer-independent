@@ -128,6 +128,7 @@ export function TrainerPlayerDetailsCard({
       const nextValues: TrainerPlayerDetailsValues = {
         name: form.name.trim(),
         email: emailReadOnly ? values.email : form.email.trim() || null,
+        phone: form.phone.trim() || null,
         locationId: form.locationId || null,
         skillRating: form.skillRating.trim() ? parseFloat(form.skillRating) : null,
         ratingSystem: form.ratingSystem || 'knltb',

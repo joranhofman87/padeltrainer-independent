@@ -57,6 +57,7 @@ describe('academyPlayerDetails', () => {
       validatePlayerDetailsForm({
         name: ' ',
         email: '',
+        phone: '',
         locationId: '',
         skillRating: '',
         ratingSystem: 'knltb',
@@ -71,6 +72,7 @@ describe('academyPlayerDetails', () => {
         {
           name: 'Jane',
           email: '',
+          phone: '',
           locationId: 'Padel Club Amsterdam',
           skillRating: '',
           ratingSystem: 'knltb',
@@ -90,6 +92,7 @@ describe('academyPlayerDetails', () => {
       {
         name: 'Jane Guest',
         email: 'jane@example.com',
+        phone: '',
         locationId: LOC_A,
         skillRating: '4.5',
         ratingSystem: 'knltb',
@@ -113,6 +116,7 @@ describe('academyPlayerDetails', () => {
     const payload = buildRegisteredProfileUpdatePayload({
       name: 'John Player',
       email: 'john@example.com',
+      phone: '',
       locationId: LOC_A,
       skillRating: '6',
       ratingSystem: 'knltb',
@@ -138,6 +142,7 @@ describe('academyPlayerDetails', () => {
       form: {
         name: 'Jane Guest',
         email: 'new-email@example.com',
+        phone: '',
         locationId: LOC_A,
         skillRating: '4',
         ratingSystem: 'knltb',
@@ -164,6 +169,7 @@ describe('academyPlayerDetails', () => {
       form: {
         name: 'John Player',
         email: 'tampered@example.com',
+        phone: '',
         locationId: LOC_A,
         skillRating: '5',
         ratingSystem: 'knltb',

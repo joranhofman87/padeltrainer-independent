@@ -126,6 +126,7 @@ export function AcademyPlayerDetailsCard({
       const nextValues: AcademyPlayerDetailsValues = {
         name: form.name.trim(),
         email: emailReadOnly ? values.email : form.email.trim() || null,
+        phone: form.phone.trim() || null,
         locationId: form.locationId || null,
         skillRating: form.skillRating.trim() ? parseFloat(form.skillRating) : null,
         ratingSystem: form.ratingSystem || 'knltb',
@@ -188,6 +189,7 @@ export function AcademyPlayerDetailsCard({
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <DetailField label={t('players.name', 'Name')} value={values.name} />
             <DetailField label={t('players.email', 'Email')} value={values.email || '—'} />
+            <DetailField label={t('players.phone', 'Phone')} value={values.phone || '—'} />
             <DetailField
               label={t('players.detail.preferredClub', 'Preferred club')}
               value={displayPreferredClub}
@@ -232,6 +234,17 @@ export function AcademyPlayerDetailsCard({
                   )}
                 </p>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="player-details-phone">{t('players.phone', 'Phone')}</Label>
+              <Input
+                id="player-details-phone"
+                data-testid="academy-player-details-phone"
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                placeholder={t('players.phonePlaceholder', 'e.g. +31 6 12345678')}
+              />
             </div>
             <div className="space-y-2">
               <Label>{t('players.detail.preferredClub', 'Preferred club')}</Label>

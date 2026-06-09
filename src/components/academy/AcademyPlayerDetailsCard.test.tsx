@@ -29,6 +29,7 @@ const locations = [{ id: LOC_A, name: 'Club A' }];
 const baseValues = {
   name: 'Jane Guest',
   email: 'jane@example.com',
+  phone: null,
   locationId: LOC_A,
   skillRating: 4.5,
   ratingSystem: 'knltb',

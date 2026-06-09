@@ -232,6 +232,7 @@ export default function AcademyPlayerDetail() {
       setDetailsValues({
         name: core.full_name,
         email: core.email,
+        phone: core.phone,
         locationId:
           parsed.kind === 'guest' ? guestPreferredLocationId : registeredPreferredLocationId,
         skillRating: core.skill_rating,
@@ -374,6 +375,7 @@ export default function AcademyPlayerDetail() {
             ...prev,
             full_name: next.name,
             email: next.email,
+            phone: next.phone,
             skill_rating: next.skillRating,
             rating_system: next.ratingSystem,
             notes: next.notes,

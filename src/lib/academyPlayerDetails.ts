@@ -7,6 +7,7 @@ export type AcademyPlayerKind = 'guest' | 'registered';
 export type AcademyPlayerDetailsForm = {
   name: string;
   email: string;
+  phone: string;
   locationId: string;
   skillRating: string;
   ratingSystem: string;
@@ -16,6 +17,7 @@ export type AcademyPlayerDetailsForm = {
 export type AcademyPlayerDetailsValues = {
   name: string;
   email: string | null;
+  phone: string | null;
   locationId: string | null;
   skillRating: number | null;
   ratingSystem: string;
@@ -58,6 +60,7 @@ export function buildGuestPlayerUpdatePayload(
   return {
     ...buildGuestPlayerDbFields(first_name, last_name),
     email: form.email.trim().toLowerCase() || null,
+    phone: form.phone.trim() || null,
     preferred_location_id: preferredLocationId,
     skill_rating: form.skillRating.trim() ? parseFloat(form.skillRating) : null,
     rating_system: form.ratingSystem || 'knltb',
@@ -72,6 +75,7 @@ export const REGISTERED_PROFILE_UPDATE_FIELDS = [
   'full_name',
   'skill_rating',
   'rating_system',
+  'phone',
 ] as const;
 
 export function buildRegisteredProfileUpdatePayload(form: AcademyPlayerDetailsForm) {
@@ -83,6 +87,7 @@ export function buildRegisteredProfileUpdatePayload(form: AcademyPlayerDetailsFo
     full_name: fullName,
     skill_rating: form.skillRating.trim() ? parseFloat(form.skillRating) : null,
     rating_system: form.ratingSystem || 'knltb',
+    phone: form.phone.trim() || null,
   };
 
   if ('email' in payload || 'location' in payload) {
@@ -96,6 +101,7 @@ export function formFromValues(values: AcademyPlayerDetailsValues): AcademyPlaye
   return {
     name: values.name,
     email: values.email ?? '',
+    phone: values.phone ?? '',
     locationId: values.locationId ?? '',
     skillRating: values.skillRating != null ? String(values.skillRating) : '',
     ratingSystem: values.ratingSystem || 'knltb',

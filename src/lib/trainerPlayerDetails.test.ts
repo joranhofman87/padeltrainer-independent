@@ -62,6 +62,7 @@ describe('trainerPlayerDetails save', () => {
       form: {
         name: 'Jane Guest',
         email: 'jane@example.com',
+        phone: '',
         locationId: LOC_A,
         skillRating: '4.5',
         ratingSystem: 'knltb',
@@ -89,6 +90,7 @@ describe('trainerPlayerDetails save', () => {
       form: {
         name: 'Registered Player',
         email: 'should-not-update@example.com',
+        phone: '',
         locationId: LOC_A,
         skillRating: '5',
         ratingSystem: 'knltb',
@@ -117,6 +119,7 @@ describe('validatePlayerDetailsForm (shared)', () => {
       validatePlayerDetailsForm({
         name: ' ',
         email: '',
+        phone: '',
         locationId: '',
         skillRating: '',
         ratingSystem: 'knltb',
