@@ -19,7 +19,7 @@ import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDi
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailX } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -216,6 +216,42 @@ export default function AcademyInvoices() {
     },
     enabled: !!activeAcademy?.id,
   });
+
+  // Build a set of player/guest IDs that have an email, purely for display
+  const { data: playerEmailSet = new Set<string>() } = useQuery({
+    queryKey: ["invoice-player-emails", invoices.map(i => i.guest_player_id ?? i.player_id).join(",")],
+    queryFn: async () => {
+      const guestIds = invoices.map(i => i.guest_player_id).filter(Boolean) as string[];
+      const profileIds = invoices.map(i => i.player_id).filter(Boolean) as string[];
+      const results = new Set<string>();
+
+      if (guestIds.length) {
+        const { data } = await supabase
+          .from("guest_players")
+          .select("id, email")
+          .in("id", guestIds);
+        for (const row of data || []) {
+          if (row.email) results.add(row.id);
+        }
+      }
+      if (profileIds.length) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("id, email")
+          .in("id", profileIds);
+        for (const row of data || []) {
+          if ((row as any).email) results.add(row.id);
+        }
+      }
+      return results;
+    },
+    enabled: invoices.length > 0,
+  });
+
+  const invoiceHasEmail = (inv: Invoice) => {
+    const id = inv.guest_player_id ?? inv.player_id;
+    return id ? playerEmailSet.has(id) : false;
+  };
 
   // Build invoice → location map from booking_ids → bookings → slots
   const { data: invoiceLocationMap = {} } = useQuery({
@@ -849,6 +885,7 @@ export default function AcademyInvoices() {
                         </TableHead>
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
                         <TableHead>{t("invoices.player", "Player")}</TableHead>
+                        <TableHead className="w-8"></TableHead>
                         <TableHead>{t("invoices.date", "Date")}</TableHead>
                         {activeTab === "paid" ? (
                           <SortableTableHead
@@ -905,6 +942,18 @@ export default function AcademyInvoices() {
                           </TableCell>
                           <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                           <TableCell>{inv.player_name}</TableCell>
+                          <TableCell className="w-8">
+                            {!invoiceHasEmail(inv) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <MailX className="h-3.5 w-3.5 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {t("invoices.noEmail", "No email address")}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
