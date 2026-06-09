@@ -93,9 +93,10 @@ export default function AcademyInvoices() {
 
   const [bulkDueOpen, setBulkDueOpen] = useState(false);
   const [bulkDueDate, setBulkDueDate] = useState<Date | undefined>(undefined);
+  const [noEmailFilter, setNoEmailFilter] = useState(false);
 
   // Clear selection when filters/tab change
-  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, searchQuery]);
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, searchQuery, noEmailFilter]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -345,7 +346,7 @@ export default function AcademyInvoices() {
 
   const searchFiltered = statusFiltered.filter(i =>
     !searchQuery || i.player_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ).filter(i => !noEmailFilter || !invoiceHasEmail(i));
 
   // Add computed status for sorting
   const dataWithStatus = searchFiltered.map(i => ({ ...i, _computedStatus: getComputedStatus(i) }));
@@ -853,6 +854,14 @@ export default function AcademyInvoices() {
               <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            size="sm"
+            variant={noEmailFilter ? "default" : "outline"}
+            onClick={() => setNoEmailFilter(v => !v)}
+          >
+            <MailX className="h-4 w-4 mr-1.5" />
+            {t("invoices.noEmailFilter", "Geen e-mail")}
+          </Button>
         </TableToolbar>
 
         <TabsContent value={activeTab} className="mt-4">
