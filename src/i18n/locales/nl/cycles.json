@@ -679,5 +679,33 @@
   },
   "alwaysOpen": {
     "badge": "Altijd open"
+  },
+  "rebooking": {
+    "title": "Hou je je vaste plek?",
+    "intro": "Hi {{name}}, je hebt voorrang om je plek voor de volgende cyclus te houden.",
+    "introNoName": "Je hebt voorrang om je plek voor de volgende cyclus te houden.",
+    "payLater": "Je betaalt pas wanneer de cyclus start; de prijs wordt verdeeld over de spelers die meedoen.",
+    "respondBefore": "Reageer voor {{date}}.",
+    "respondByShort": "Reageer voor {{date}}",
+    "keep": "Ja, ik hou mijn plek",
+    "release": "Nee, geef mijn plek vrij",
+    "keepShort": "Hou mijn plek",
+    "releaseShort": "Geef vrij",
+    "working": "Bezig…",
+    "reserved": "Je plek is gereserveerd. Je ontvangt een factuur wanneer de cyclus start.",
+    "released": "Je plek is vrijgegeven. Bedankt voor je reactie.",
+    "windowEnded": "De reserveringsperiode is verlopen.",
+    "browse": "Bekijk beschikbare plekken",
+    "perSession": "{{amount}} per sessie",
+    "cardTitle": "Hou je je vaste plek?",
+    "cardDescription": "Je hebt voorrang om je plek voor de volgende cyclus te houden. Je betaalt pas wanneer de cyclus start; de prijs wordt verdeeld over de spelers die meedoen.",
+    "toastReserved": "Top! Je plek is gereserveerd voor de volgende cyclus.",
+    "toastReleased": "Je plek is vrijgegeven. Bedankt voor je reactie.",
+    "errorFull": "Deze plek is helaas net volgeboekt.",
+    "errorExpired": "De reserveringsperiode is verlopen.",
+    "errorAlready": "Je hebt al gereageerd op deze uitnodiging.",
+    "errorGeneric": "Er ging iets mis. Probeer het opnieuw.",
+    "linkInvalid": "Link niet gevonden",
+    "linkInvalidDescription": "Deze link is ongeldig of verlopen."
   }
 }

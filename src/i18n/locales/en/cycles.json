@@ -559,5 +559,33 @@
   },
   "alwaysOpen": {
     "badge": "Always open"
+  },
+  "rebooking": {
+    "title": "Keep your spot?",
+    "intro": "{{name}}, you have priority to keep your spot for the next cycle.",
+    "introNoName": "You have priority to keep your spot for the next cycle.",
+    "payLater": "You only pay when the cycle starts; the price is split between the players who join.",
+    "respondBefore": "Respond before {{date}}.",
+    "respondByShort": "Respond before {{date}}",
+    "keep": "Yes, keep my spot",
+    "release": "No, release my spot",
+    "keepShort": "Keep my spot",
+    "releaseShort": "Release",
+    "working": "Working…",
+    "reserved": "Your spot is reserved. You'll receive an invoice when the cycle starts.",
+    "released": "Your spot has been released. Thanks for letting us know.",
+    "windowEnded": "The reservation period has ended.",
+    "browse": "Browse available spots",
+    "perSession": "{{amount}} per session",
+    "cardTitle": "Keep your spot?",
+    "cardDescription": "You have priority to keep your spot for the next cycle. You only pay when the cycle starts; the price is split between the players who join.",
+    "toastReserved": "Great! Your spot is reserved for the next cycle.",
+    "toastReleased": "Your spot has been released. Thanks for your response.",
+    "errorFull": "This spot was just filled.",
+    "errorExpired": "The reservation period has expired.",
+    "errorAlready": "You have already responded to this invitation.",
+    "errorGeneric": "Something went wrong. Please try again.",
+    "linkInvalid": "Link not found",
+    "linkInvalidDescription": "This claim link is invalid or has expired."
   }
 }
