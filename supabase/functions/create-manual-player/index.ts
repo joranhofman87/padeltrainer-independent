@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
+import { evaluateManualPlayerAccess } from "../_shared/manual-player-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -75,6 +76,61 @@ serve(async (req) => {
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Authorization: if the caller attaches the player to a specific academy or
+    // trainer, verify they control that context. Without this, any trainer or
+    // club manager could inject guest-player rows into academies/trainers they
+    // do not own. (The normal intake flow passes neither id.)
+    let managesAcademy = false;
+    if (academyProfileId) {
+      const { data } = await supabaseUser.rpc("is_academy_manager", {
+        _user_id: userId,
+        _academy_profile_id: academyProfileId,
+      });
+      managesAcademy = !!data;
+    }
+
+    let controlsTrainer = false;
+    if (trainerProfileId) {
+      const { data: ownTrainer } = await supabaseAdmin
+        .from("trainer_profiles")
+        .select("id")
+        .eq("id", trainerProfileId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (ownTrainer) {
+        controlsTrainer = true;
+      } else {
+        // Or the caller manages an academy this trainer belongs to.
+        const { data: links } = await supabaseAdmin
+          .from("academy_trainers")
+          .select("academy_profile_id")
+          .eq("trainer_profile_id", trainerProfileId);
+        for (const link of links || []) {
+          const { data: manages } = await supabaseUser.rpc("is_academy_manager", {
+            _user_id: userId,
+            _academy_profile_id: link.academy_profile_id,
+          });
+          if (manages) {
+            controlsTrainer = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const access = evaluateManualPlayerAccess({
+      academyProfileId,
+      trainerProfileId,
+      managesAcademy,
+      controlsTrainer,
+    });
+    if (!access.ok) {
+      return new Response(
+        JSON.stringify({ error: "You do not control the target academy or trainer" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Check if a profile already exists with this email
     const { data: existingProfile } = await supabaseAdmin
