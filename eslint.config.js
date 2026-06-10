@@ -7,7 +7,7 @@ import tseslint from "typescript-eslint";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
-const localRules = require("./eslint-rules/index.js");
+const localRules = require("./eslint-rules/index.cjs");
 
 export default tseslint.config(
   { ignores: ["dist", "eslint-rules/**"] },
