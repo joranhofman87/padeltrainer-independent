@@ -20,13 +20,14 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
  *
  * Safe by construction:
  *  - admin/service-role only.
- *  - dryRun (default for ad-hoc calls is opt-in via body) returns the plan
- *    without creating invoices, so amounts can be verified first.
+ *  - dryRun returns the plan (incl. per-group N) without creating invoices.
+ *  - auto-create-invoice creates DRAFT invoices for unpaid bookings, so a
+ *    human reviews and sends them — the cron never auto-charges.
  *  - idempotent: auto-create-invoice de-dupes on booking_ids.
  *
- * NOTE: N is currently the distinct committers in the cycle. If a cycle mixes
- * multiple independent groups (different day/time), confirm whether N should be
- * per-group instead before wiring this to the daily cron.
+ * N is scoped per GROUP (players sharing a slot), so a cycle with multiple
+ * independent day/time groups bills each group correctly. See
+ * buildCommitmentInvoicePlan.
  */
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -78,7 +79,7 @@ serve(async (req) => {
 
       const { data: bookings } = await supabase
         .from("bookings")
-        .select("id, player_id, guest_player_id, payment_status, status")
+        .select("id, slot_id, player_id, guest_player_id, payment_status, status")
         .in("id", bookingIds);
 
       const plan = buildCommitmentInvoicePlan((bookings || []) as CommitmentBooking[]);
@@ -88,7 +89,11 @@ serve(async (req) => {
         cycleId: cycle.id,
         cycleName: cycle.name,
         committerCount: plan.committerCount,
-        batches: plan.batches.map((b) => ({ playerKey: b.playerKey, bookings: b.bookingIds.length })),
+        batches: plan.batches.map((b) => ({
+          playerKey: b.playerKey,
+          bookings: b.bookingIds.length,
+          splitAmongPlayers: b.splitAmongPlayers,
+        })),
         invoiced: 0 as number,
       };
 
@@ -96,7 +101,7 @@ serve(async (req) => {
         for (const batch of plan.batches) {
           try {
             const res = await supabase.functions.invoke("auto-create-invoice", {
-              body: { bookingIds: batch.bookingIds, splitAmongPlayers: plan.committerCount },
+              body: { bookingIds: batch.bookingIds, splitAmongPlayers: batch.splitAmongPlayers },
             });
             if (res.error) {
               logStep("auto-create-invoice failed", { cycleId: cycle.id, playerKey: batch.playerKey, error: String(res.error) });

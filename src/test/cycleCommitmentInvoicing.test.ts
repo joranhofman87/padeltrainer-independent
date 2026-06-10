@@ -11,6 +11,7 @@ import { applySplitPayment } from '../../supabase/functions/_shared/booking-pric
 const NOW = new Date('2026-06-10T12:00:00.000Z');
 
 const booking = (over: Partial<CommitmentBooking> & { id: string }): CommitmentBooking => ({
+  slot_id: 'slot-1',
   player_id: null,
   guest_player_id: null,
   payment_status: 'pending',
@@ -47,19 +48,23 @@ describe('isOpenCommitment / committerKey', () => {
 });
 
 describe('buildCommitmentInvoicePlan', () => {
-  it('groups one batch per committer and counts headcount', () => {
+  it('one batch per committer; group N = players sharing the slots', () => {
+    // p1, p2, g1 all share slot-1 (one group of 3); p1 has two sessions.
     const plan = buildCommitmentInvoicePlan([
-      booking({ id: 'b1', player_id: 'p1' }),
-      booking({ id: 'b2', player_id: 'p1' }), // same player, two sessions
-      booking({ id: 'b3', player_id: 'p2' }),
-      booking({ id: 'b4', guest_player_id: 'g1' }),
+      booking({ id: 'b1', slot_id: 's1', player_id: 'p1' }),
+      booking({ id: 'b2', slot_id: 's2', player_id: 'p1' }),
+      booking({ id: 'b3', slot_id: 's1', player_id: 'p2' }),
+      booking({ id: 'b4', slot_id: 's1', guest_player_id: 'g1' }),
+      booking({ id: 'b5', slot_id: 's2', player_id: 'p2' }),
+      booking({ id: 'b6', slot_id: 's2', guest_player_id: 'g1' }),
     ]);
     expect(plan.committerCount).toBe(3);
     const p1 = plan.batches.find((b) => b.playerKey === 'p1');
     expect(p1?.bookingIds.sort()).toEqual(['b1', 'b2']);
+    expect(p1?.splitAmongPlayers).toBe(3);
   });
 
-  it('ignores paid/cancelled bookings and keyless rows when counting N', () => {
+  it('ignores paid/cancelled bookings and keyless rows', () => {
     const plan = buildCommitmentInvoicePlan([
       booking({ id: 'b1', player_id: 'p1' }),
       booking({ id: 'b2', player_id: 'p2', payment_status: 'paid' }),
@@ -67,16 +72,30 @@ describe('buildCommitmentInvoicePlan', () => {
       booking({ id: 'b4' }), // no key
     ]);
     expect(plan.committerCount).toBe(1);
-    expect(plan.batches).toEqual([{ playerKey: 'p1', bookingIds: ['b1'] }]);
+    expect(plan.batches).toEqual([{ playerKey: 'p1', bookingIds: ['b1'], splitAmongPlayers: 1 }]);
   });
 
-  it('headcount feeds the existing split: 2 of 4 committed → each pays half', () => {
-    const cycleTotal = 120; // e.g. price_per_session 15 x 8 sessions
+  it('splits PER GROUP, not per cycle: two groups in one cycle bill independently', () => {
+    // Group A on slot a1 (p1, p2 → N=2); group B on slot b1 (p3 alone → N=1).
     const plan = buildCommitmentInvoicePlan([
-      booking({ id: 'b1', player_id: 'p1' }),
-      booking({ id: 'b2', player_id: 'p2' }),
+      booking({ id: 'b1', slot_id: 'a1', player_id: 'p1' }),
+      booking({ id: 'b2', slot_id: 'a1', player_id: 'p2' }),
+      booking({ id: 'b3', slot_id: 'b1', player_id: 'p3' }),
     ]);
-    expect(plan.committerCount).toBe(2);
-    expect(applySplitPayment(cycleTotal, plan.committerCount)).toBe(60);
+    expect(plan.committerCount).toBe(3);
+    expect(plan.batches.find((b) => b.playerKey === 'p1')?.splitAmongPlayers).toBe(2);
+    expect(plan.batches.find((b) => b.playerKey === 'p2')?.splitAmongPlayers).toBe(2);
+    expect(plan.batches.find((b) => b.playerKey === 'p3')?.splitAmongPlayers).toBe(1);
+  });
+
+  it('group N feeds the split: group total €120 over 2 players → €60 each', () => {
+    const cycleTotal = 120; // price_per_session 15 x 8 sessions
+    const plan = buildCommitmentInvoicePlan([
+      booking({ id: 'b1', slot_id: 's1', player_id: 'p1' }),
+      booking({ id: 'b2', slot_id: 's1', player_id: 'p2' }),
+    ]);
+    const n = plan.batches[0].splitAmongPlayers;
+    expect(n).toBe(2);
+    expect(applySplitPayment(cycleTotal, n)).toBe(60);
   });
 });

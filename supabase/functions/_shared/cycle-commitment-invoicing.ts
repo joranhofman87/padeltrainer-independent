@@ -15,6 +15,7 @@
 /** A confirmed, unpaid commitment booking awaiting cycle-start invoicing. */
 export type CommitmentBooking = {
   id: string;
+  slot_id: string;
   player_id: string | null;
   guest_player_id: string | null;
   payment_status: string | null;
@@ -47,34 +48,61 @@ export function isOpenCommitment(b: CommitmentBooking): boolean {
 export type CommitmentInvoiceBatch = {
   playerKey: string;
   bookingIds: string[];
+  /**
+   * Headcount of the player's GROUP — the number to split each session price
+   * by. This is per-group (players sharing the same slots), NOT the whole
+   * cycle, so a cycle with two independent groups bills each correctly.
+   */
+  splitAmongPlayers: number;
 };
 
 export type CommitmentInvoicePlan = {
-  /** Distinct committers — the N to split the cycle total by. */
+  /** Total distinct committers across the cycle (for reporting only). */
   committerCount: number;
-  /** One invoice batch per committer (their booking ids in this cycle). */
+  /** One invoice batch per committer. */
   batches: CommitmentInvoiceBatch[];
 };
 
 /**
- * Group open commitment bookings by player into one invoice batch each, and
- * report the headcount used for the split. Paid/cancelled bookings and rows
- * without any player key are ignored.
+ * Group open commitment bookings into one invoice batch per committer, with the
+ * split headcount scoped to the committer's GROUP (the distinct players sharing
+ * their slots). Paid/cancelled bookings and rows without a player key are
+ * ignored.
  */
 export function buildCommitmentInvoicePlan(
   bookings: CommitmentBooking[],
 ): CommitmentInvoicePlan {
-  const byPlayer = new Map<string, string[]>();
-  for (const b of bookings) {
-    if (!isOpenCommitment(b)) continue;
-    const key = committerKey(b);
-    if (!key) continue;
-    const list = byPlayer.get(key) ?? [];
-    list.push(b.id);
-    byPlayer.set(key, list);
+  const open = bookings.filter(isOpenCommitment).filter((b) => committerKey(b) !== null);
+
+  // slot -> set of committer keys on that slot (the group sharing that session).
+  const slotCommitters = new Map<string, Set<string>>();
+  for (const b of open) {
+    const key = committerKey(b)!;
+    const set = slotCommitters.get(b.slot_id) ?? new Set<string>();
+    set.add(key);
+    slotCommitters.set(b.slot_id, set);
   }
+
+  // committer -> their booking ids + the slots they're in.
+  const byPlayer = new Map<string, { bookingIds: string[]; slotIds: Set<string> }>();
+  for (const b of open) {
+    const key = committerKey(b)!;
+    const entry = byPlayer.get(key) ?? { bookingIds: [], slotIds: new Set<string>() };
+    entry.bookingIds.push(b.id);
+    entry.slotIds.add(b.slot_id);
+    byPlayer.set(key, entry);
+  }
+
   const batches: CommitmentInvoiceBatch[] = Array.from(byPlayer.entries()).map(
-    ([playerKey, bookingIds]) => ({ playerKey, bookingIds }),
+    ([playerKey, { bookingIds, slotIds }]) => {
+      // The player's group = everyone sharing any of their slots.
+      const group = new Set<string>();
+      for (const slotId of slotIds) {
+        for (const k of slotCommitters.get(slotId) ?? []) group.add(k);
+      }
+      return { playerKey, bookingIds, splitAmongPlayers: Math.max(1, group.size) };
+    },
   );
-  return { committerCount: batches.length, batches };
+
+  return { committerCount: byPlayer.size, batches };
 }
