@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendResendEmail } from "../_shared/resend-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,8 +56,6 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("RESEND_API_KEY is not configured");
     }
 
-    const resend = new Resend(resendApiKey);
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -104,17 +102,21 @@ const handler = async (req: Request): Promise<Response> => {
       const subject = replaceVariables(template.subject, testData);
       const body = replaceVariables(template.body_html, testData);
 
-      const emailResult = await resend.emails.send({
+      const emailResult = await sendResendEmail(resendApiKey, {
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [testEmail],
         subject: `[TEST] ${subject}`,
         html: body,
       });
 
+      if (!emailResult.ok) {
+        throw new Error(emailResult.error);
+      }
+
       console.log("Test email sent:", emailResult);
 
       return new Response(
-        JSON.stringify({ success: true, emailId: emailResult.data?.id }),
+        JSON.stringify({ success: true, emailId: emailResult.id }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -198,26 +200,54 @@ const handler = async (req: Request): Promise<Response> => {
       const subject = replaceVariables(queueItem.template.subject, variableData);
       const body = replaceVariables(queueItem.template.body_html, variableData);
 
+      const { data: existingLog } = await supabase
+        .from("onboarding_email_logs")
+        .select("id")
+        .eq("queue_id", queueItem.id)
+        .eq("status", "sent")
+        .limit(1)
+        .maybeSingle();
+
+      if (existingLog) {
+        await supabase
+          .from("onboarding_email_queue")
+          .update({ status: "sent", sent_at: new Date().toISOString() })
+          .eq("id", queueItem.id)
+          .eq("status", "pending");
+        continue;
+      }
+
+      const { data: claimed, error: claimError } = await supabase.rpc(
+        "claim_onboarding_email_queue_item",
+        { p_queue_id: queueItem.id, p_from_status: "pending" },
+      );
+
+      if (claimError) {
+        console.error(`Claim failed for ${queueItem.id}:`, claimError);
+        failCount++;
+        continue;
+      }
+
+      if (!claimed) {
+        console.log(`Queue item ${queueItem.id} already claimed, skipping`);
+        continue;
+      }
+
       try {
-        const emailResult = await resend.emails.send({
+        const emailResult = await sendResendEmail(resendApiKey, {
           from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
           to: [queueItem.email],
           subject,
           html: body,
         });
 
+        if (!emailResult.ok) {
+          throw new Error(emailResult.error);
+        }
+
         console.log(`Email sent to ${queueItem.email}:`, emailResult);
 
-        // Update queue status to sent
-        await supabase
-          .from("onboarding_email_queue")
-          .update({
-            status: "sent",
-            sent_at: new Date().toISOString(),
-          })
-          .eq("id", queueItem.id);
-
-        // Log the sent email
+        // Log the sent email (unique index prevents duplicate sent logs)
         await supabase.from("onboarding_email_logs").insert({
           template_id: queueItem.template_id,
           queue_id: queueItem.id,
@@ -239,6 +269,7 @@ const handler = async (req: Request): Promise<Response> => {
           .update({
             status: "failed",
             error_message: errorMessage,
+            sent_at: null,
           })
           .eq("id", queueItem.id);
 

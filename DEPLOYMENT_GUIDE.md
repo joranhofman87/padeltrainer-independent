@@ -73,6 +73,13 @@ The “frontend” is everything users see in the browser. It is built from the 
 4. **Cloudflare** must point `ORIGIN_URL` at your Vercel URL (see §5). If that is already correct, the new UI goes live on the next visit (you may need cache purge—see §5).
 5. Smoke test in **incognito**: https://padeltrainer.ai/app/auth (login page loads, no blank screen).
 
+### Local development
+
+| Item | Value |
+|------|-------|
+| Dev server | `npm run dev` → **http://localhost:8080** |
+| Env template | Copy `.env.example` → `.env` (ficwb keys) |
+
 ### What must be correct on Vercel (Production environment)
 
 These are **not secrets** in the sense of payment keys—they are public keys wired into the app:
@@ -359,6 +366,7 @@ Use this before announcing “we’re live” or after any major deploy.
 
 ### Auth and accounts
 
+- [ ] Supabase Auth redirect URLs: `https://padeltrainer.ai/**`, `http://localhost:8080/**`, `https://*-joranhofman87s-projects.vercel.app/**`
 - [ ] Email/password login (trainer + player)
 - [ ] Google login
 - [ ] Password reset email (if enabled)
@@ -408,6 +416,7 @@ Use this before announcing “we’re live” or after any major deploy.
 
 | Document | Use for |
 |----------|---------|
+| `docs/PHASE5_DEPLOYMENT.md` | Preview deploy, cron, Resend DNS, redirect URLs |
 | `MIGRATION_STABILIZATION.md` | Detailed smoke tests and known issues |
 | `docs/FICWB_SECRETS_AUDIT.md` | Which secrets must exist on ficwb |
 | `docs/EDGE_FUNCTIONS_FICWB_AUDIT.md` | Function deploy priority history |

@@ -1,0 +1,58 @@
+name: Migrations and types
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'src/integrations/supabase/types.ts'
+      - 'scripts/check-types-drift.ts'
+      - '.github/workflows/migrations.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'src/integrations/supabase/types.ts'
+      - 'scripts/check-types-drift.ts'
+      - '.github/workflows/migrations.yml'
+
+jobs:
+  db-reset:
+    name: supabase db reset
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase local stack
+        run: supabase start
+
+      - name: Reset database from migrations
+        run: supabase db reset --yes
+
+  types-drift:
+    name: generated types drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start Supabase and check types drift
+        run: |
+          supabase start
+          npx tsx scripts/check-types-drift.ts

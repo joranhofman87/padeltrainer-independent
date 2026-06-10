@@ -38,8 +38,9 @@ describe('mollie-webhook invoice branch alerts', () => {
     expect(source).toContain('Invoice paid webhook: linked bookings sync failed');
   });
 
-  it('sends Slack when forward-invoice fails', () => {
-    expect(source).toContain('Invoice paid webhook: forward-invoice failed');
+  it('evaluates forward-invoice response for Slack warnings', () => {
+    expect(source).toContain('evaluateForwardInvoiceWebhookResult');
+    expect(source).toContain('forwardEval.shouldWarn');
   });
 });
 

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendResendEmail } from "../_shared/resend-send.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -153,6 +154,10 @@ const handler = async (req: Request): Promise<Response> => {
       userName = profile.full_name;
     }
 
+    const origin = req.headers.get("origin") || "https://padeltrainer.ai";
+    const defaultAuthPath = `${origin}/app/auth`;
+    const defaultResetPath = `${origin}/app/reset-password`;
+
     // Generate the appropriate link using Supabase Admin API
     let actionLink: string;
     
@@ -162,7 +167,7 @@ const handler = async (req: Request): Promise<Response> => {
         type: "magiclink",
         email,
         options: {
-          redirectTo: redirectTo || `${req.headers.get("origin") || "https://padeltrainer.ai"}/auth`,
+          redirectTo: redirectTo || defaultAuthPath,
         },
       });
 
@@ -177,7 +182,7 @@ const handler = async (req: Request): Promise<Response> => {
         type: "recovery",
         email,
         options: {
-          redirectTo: redirectTo || `${req.headers.get("origin") || "https://padeltrainer.ai"}/reset-password`,
+          redirectTo: redirectTo || defaultResetPath,
         },
       });
 
@@ -194,31 +199,21 @@ const handler = async (req: Request): Promise<Response> => {
     // Get email template
     const emailContent = getEmailTemplate(type, { userName, actionLink });
 
-    // Send email via Resend
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
-        to: [email],
-        subject: emailContent.subject,
-        html: emailContent.html,
-      }),
+    const sendResult = await sendResendEmail(RESEND_API_KEY, {
+      from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
+      to: [email],
+      subject: emailContent.subject,
+      html: emailContent.html,
     });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("Resend API error:", errorText);
-      throw new Error(`Failed to send email: ${errorText}`);
+    if (!sendResult.ok) {
+      console.error("Resend send failed:", sendResult.error, { attempts: sendResult.attempts });
+      throw new Error(`Failed to send email: ${sendResult.error}`);
     }
 
-    const result = await res.json();
-    console.log(`Auth email sent successfully: ${type} to ${email}`);
+    console.log(`Auth email sent successfully: ${type} to ${email}`, { attempts: sendResult.attempts });
 
-    return new Response(JSON.stringify({ success: true, messageId: result.id }), {
+    return new Response(JSON.stringify({ success: true, messageId: sendResult.id }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });

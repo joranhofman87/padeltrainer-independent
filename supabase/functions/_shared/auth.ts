@@ -3,6 +3,7 @@
 // validate identity in code. These helpers centralize that pattern.
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractBearerToken, getEnvServiceRoleKey, isServiceRoleRequest } from "./service-role-auth.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,12 +46,10 @@ function getServiceClient(): SupabaseClient {
  * Returns null on success, or an error Response.
  */
 export function requireServiceRole(req: Request): Response | null {
-  const authHeader = req.headers.get("Authorization");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  if (!authHeader || authHeader !== `Bearer ${serviceRoleKey}`) {
-    return jsonError(401, "Unauthorized");
+  if (isServiceRoleRequest(req)) {
+    return null;
   }
-  return null;
+  return jsonError(401, "Unauthorized");
 }
 
 export interface AuthedUser {
@@ -64,20 +63,23 @@ export interface AuthedUser {
  * Returns the resolved user + a service-role supabase client, or an error Response.
  */
 export async function requireUser(req: Request): Promise<AuthedUser | Response> {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return jsonUnauthorized();
-  }
-  const token = authHeader.replace("Bearer ", "");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const serviceRoleKey = getEnvServiceRoleKey();
   const supabase = getServiceClient();
 
-  // Service-role bearer token short-circuit (used by cron + internal calls).
-  if (token === serviceRoleKey) {
+  if (isServiceRoleRequest(req)) {
     return { user: { id: "service-role" }, supabase, isServiceRole: true };
   }
 
-  const { data, error } = await supabase.auth.getUser(token);
+  const bearerToken = extractBearerToken(req.headers.get("Authorization"));
+  if (!bearerToken) {
+    return jsonUnauthorized();
+  }
+
+  if (!serviceRoleKey) {
+    return jsonUnauthorized("Service role key not configured");
+  }
+
+  const { data, error } = await supabase.auth.getUser(bearerToken);
   if (error || !data?.user) {
     return jsonUnauthorized();
   }

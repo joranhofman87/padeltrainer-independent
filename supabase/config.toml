@@ -1,4 +1,4 @@
-project_id = "ppkbhdiiqdusdeatgdft"
+project_id = "ficwbdrzefmblkbkomzw"
 
 
 [functions.google-calendar-auth]
@@ -182,4 +182,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.create-invoice-payment]
+verify_jwt = false
+
+[functions.forward-invoice]
 verify_jwt = false

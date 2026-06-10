@@ -1,29 +1,55 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import {
+  resolveForwardRecipients,
+  type ForwardEmailSource,
+} from "../_shared/forward-invoice-emails.ts";
+import { authenticateForwardInvoice } from "../_shared/forward-invoice-auth.ts";
+import {
+  countSendOutcomes,
+  evaluateForwardSendCompletion,
+  parseResendSendResult,
+  type ForwardInvoiceResponse,
+} from "../_shared/forward-invoice-response.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const logStep = (step: string, details?: Record<string, unknown>) => {
+  console.log(`[FORWARD-INVOICE] ${step}`, details ? JSON.stringify(details) : "");
+};
+
+function jsonResponse(body: ForwardInvoiceResponse | Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
 
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  logStep("request_received", {
+    method: req.method,
+    hasAuthorizationHeader: !!req.headers.get("Authorization"),
+    hasApiKeyHeader: !!req.headers.get("apikey"),
+  });
+
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
-      return new Response(
-        JSON.stringify({ error: "Email service not configured" }),
-        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return jsonResponse({ success: false, reason: "email_not_configured", sent: 0, failed: 0 }, 500);
     }
 
     const resend = new Resend(resendApiKey);
 
-    const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
+    const EMAIL_LOGO =
+      `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
 
     const formatCurrency = (amount: number) =>
       new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(amount);
@@ -31,41 +57,28 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Authentication required" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+    const auth = await authenticateForwardInvoice(req);
+    if (!auth.ok) {
+      logStep("auth_denied", { status: auth.status, authMode: auth.authMode });
+      return auth.response;
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const token = authHeader.replace("Bearer ", "");
+    const { supabase, isServiceRole, user } = auth.auth;
+    const authenticatedUserId = isServiceRole ? null : user.id;
 
-    // Allow service-role calls (from auto-create-invoice) to skip user ownership check
-    const isServiceRole = token === supabaseServiceKey;
-    let authenticatedUserId: string | null = null;
+    logStep("auth_resolved", { authMode: auth.authMode });
 
-    if (!isServiceRole) {
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
-      }
-      authenticatedUserId = user.id;
-    }
+    const body = await req.json();
+    const invoiceId = typeof body?.invoiceId === "string" ? body.invoiceId : "";
+    const force = body?.force === true;
 
-    const { invoiceId } = await req.json();
     if (!invoiceId) {
-      return new Response(
-        JSON.stringify({ error: "Missing invoiceId" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      logStep("validation_failed", { reason: "missing_invoice_id", authMode: auth.authMode });
+      return jsonResponse({ error: "Missing invoiceId" }, 400);
     }
 
-    // Fetch invoice
+    logStep("started", { invoiceId, force, authMode: auth.authMode });
+
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
       .select("*")
@@ -73,83 +86,97 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (invoiceError || !invoice) {
-      return new Response(
-        JSON.stringify({ error: "Invoice not found" }),
-        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return jsonResponse({ error: "Invoice not found" }, 404);
     }
 
-    // Fetch trainer profile with forward emails
-    const { data: trainerProfile } = await supabase
-      .from("trainer_profiles")
-      .select("user_id, invoice_forward_emails, business_name")
-      
-      .eq("id", invoice.trainer_id)
-      .single();
+    if (invoice.forwarded_at && !force) {
+      logStep("skipped", { invoiceId, invoiceNumber: invoice.invoice_number, reason: "already_forwarded" });
+      return jsonResponse({
+        success: true,
+        skipped: true,
+        reason: "already_forwarded",
+        sent: 0,
+        failed: 0,
+        invoice_number: invoice.invoice_number,
+      });
+    }
 
-    // Check authorization
+    let trainerProfile: { user_id: string; invoice_forward_emails: string[] | null; business_name: string | null } | null = null;
+    if (invoice.trainer_id) {
+      const { data } = await supabase
+        .from("trainer_profiles")
+        .select("user_id, invoice_forward_emails, business_name")
+        .eq("id", invoice.trainer_id)
+        .maybeSingle();
+      trainerProfile = data;
+    }
+
+    let academyProfile: { invoice_forward_emails: string[] | null; business_name: string | null } | null = null;
+    if (invoice.academy_profile_id) {
+      const { data } = await supabase
+        .from("academy_profiles")
+        .select("invoice_forward_emails, business_name")
+        .eq("id", invoice.academy_profile_id)
+        .maybeSingle();
+      academyProfile = data;
+    }
+
     if (!isServiceRole) {
       let authorized = trainerProfile?.user_id === authenticatedUserId;
-      
-      // Also allow academy managers
+
       if (!authorized && invoice.academy_profile_id) {
         const { data: isManager } = await supabase
-          .rpc("is_academy_manager", { _user_id: authenticatedUserId, _academy_profile_id: invoice.academy_profile_id });
+          .rpc("is_academy_manager", {
+            _user_id: authenticatedUserId,
+            _academy_profile_id: invoice.academy_profile_id,
+          });
         authorized = !!isManager;
       }
 
       if (!authorized) {
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
+        return jsonResponse({ error: "Unauthorized" }, 403);
       }
     }
 
-    // Resolve forwarding emails: try trainer first, then academy fallback
-    let emails = trainerProfile?.invoice_forward_emails;
-    let businessName = trainerProfile?.business_name;
+    const { emails, source: emailSource } = resolveForwardRecipients({
+      academyProfileId: invoice.academy_profile_id,
+      academyForwardEmails: academyProfile?.invoice_forward_emails,
+      trainerForwardEmails: trainerProfile?.invoice_forward_emails,
+    });
 
-    if ((!emails || emails.length === 0) && invoice.academy_profile_id) {
-      const { data: academy } = await supabase
-        .from("academy_profiles")
-        .select("invoice_forward_emails, business_name")
-        .eq("id", invoice.academy_profile_id)
-        .single();
-      if (academy?.invoice_forward_emails?.length) {
-        emails = academy.invoice_forward_emails;
-        businessName = academy.business_name || businessName;
-      }
+    const businessName = invoice.academy_profile_id
+      ? (academyProfile?.business_name || trainerProfile?.business_name || invoice.player_name)
+      : (trainerProfile?.business_name || invoice.player_name);
+
+    logStep("recipients_resolved", {
+      invoiceId,
+      invoiceNumber: invoice.invoice_number,
+      emailSource,
+      recipientCount: emails.length,
+    });
+
+    if (emails.length === 0) {
+      logStep("no_recipients", { invoiceId, invoiceNumber: invoice.invoice_number, emailSource: "none" });
+      return jsonResponse({
+        success: false,
+        sent: 0,
+        failed: 0,
+        reason: "no_recipients",
+        pdf_attached: false,
+        email_source: "none" as ForwardEmailSource,
+        invoice_number: invoice.invoice_number,
+      });
     }
 
-    if (!emails || emails.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: "No forwarding emails configured" }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    // Generate a fresh signed URL for the PDF invoice
-    const folderKey = trainerProfile?.user_id || invoice.academy_profile_id || 'custom';
+    const folderKey = trainerProfile?.user_id || invoice.academy_profile_id || "custom";
     const pdfFileName = `${folderKey}/${invoice.invoice_number}.pdf`;
-    const { data: signedUrl } = await supabase.storage
-      .from("invoices")
-      .createSignedUrl(pdfFileName, 86400); // 24 hours
 
-    const pdfLink = signedUrl?.signedUrl || invoice.pdf_url || "";
-
-    // Download PDF file for attachment, generate if missing
-    let attachments: { filename: string; content: string }[] = [];
     let pdfData: Blob | null = null;
-
-    const downloadResult = await supabase.storage
-      .from("invoices")
-      .download(pdfFileName);
+    const downloadResult = await supabase.storage.from("invoices").download(pdfFileName);
     pdfData = downloadResult.data;
 
-    // If PDF not found, trigger generation and retry
     if (!pdfData) {
-      console.log("PDF not found in storage, triggering generate-invoice...");
+      logStep("pdf_missing_generating", { invoiceId, pdfFileName });
       try {
         const genResponse = await fetch(`${supabaseUrl}/functions/v1/generate-invoice`, {
           method: "POST",
@@ -160,34 +187,46 @@ const handler = async (req: Request): Promise<Response> => {
           body: JSON.stringify({ invoiceId }),
         });
         if (genResponse.ok) {
-          console.log("generate-invoice completed, retrying PDF download...");
-          const retryResult = await supabase.storage
-            .from("invoices")
-            .download(pdfFileName);
+          const retryResult = await supabase.storage.from("invoices").download(pdfFileName);
           pdfData = retryResult.data;
         } else {
-          console.log(`generate-invoice failed with status ${genResponse.status}`);
+          const errText = await genResponse.text();
+          logStep("pdf_generate_failed", { invoiceId, status: genResponse.status, error: errText.slice(0, 200) });
         }
       } catch (genErr) {
-        console.log("Error calling generate-invoice:", String(genErr));
+        logStep("pdf_generate_error", { invoiceId, error: String(genErr) });
       }
     }
 
-    if (pdfData) {
-      const buffer = await pdfData.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const base64 = btoa(binary);
-      attachments = [{ filename: `${invoice.invoice_number}.pdf`, content: base64 }];
-      console.log(`Attached PDF invoice: ${invoice.invoice_number}.pdf (${bytes.length} bytes)`);
-    } else {
-      console.log("Could not obtain PDF even after generation attempt, sending without attachment");
+    if (!pdfData) {
+      logStep("pdf_unavailable", { invoiceId, invoiceNumber: invoice.invoice_number });
+      return jsonResponse({
+        success: false,
+        sent: 0,
+        failed: 0,
+        reason: "pdf_missing",
+        pdf_attached: false,
+        email_source: emailSource,
+        invoice_number: invoice.invoice_number,
+      });
     }
 
-    // Resolve player email for reply-to so trainer can reply directly to the player
+    const buffer = await pdfData.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    const attachments = [{ filename: `${invoice.invoice_number}.pdf`, content: base64 }];
+
+    logStep("pdf_attached", { invoiceId, invoiceNumber: invoice.invoice_number, bytes: bytes.length });
+
+    const { data: signedUrl } = await supabase.storage
+      .from("invoices")
+      .createSignedUrl(pdfFileName, 86400);
+    const pdfLink = signedUrl?.signedUrl || invoice.pdf_url || "";
+
     let playerReplyTo: string | null = null;
     if (invoice.guest_player_id) {
       const { data: guest } = await supabase
@@ -206,8 +245,9 @@ const handler = async (req: Request): Promise<Response> => {
       if (profile?.email) playerReplyTo = profile.email;
     }
 
-    const emailPromises = emails.map((email: string) =>
-      resend.emails.send({
+    const sendOutcomes: Array<{ ok: boolean; email: string; error?: string; resendId?: string }> = [];
+    for (const email of emails) {
+      const { data: resendData, error: resendError } = await resend.emails.send({
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [email],
         subject: `Factuur ${invoice.invoice_number} - ${businessName || invoice.player_name}`,
@@ -226,33 +266,61 @@ const handler = async (req: Request): Promise<Response> => {
           <p style="margin-top:24px;font-size:12px;color:#9ca3af;">Verzonden via PadelTrainer.ai namens ${businessName || "je trainer"}</p>
           </div>
         `,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      })
-    );
+        attachments,
+      });
 
-    const results = await Promise.allSettled(emailPromises);
-    const failed = results.filter((r) => r.status === "rejected").length;
+      const parsed = parseResendSendResult(resendData, resendError);
+      sendOutcomes.push({
+        ok: parsed.ok,
+        email,
+        error: parsed.error,
+        resendId: parsed.resendId,
+      });
+    }
 
-    console.log(`Forward invoice ${invoice.invoice_number}: sent to ${emails.length - failed}/${emails.length} addresses`);
+    const { sent, failed } = countSendOutcomes(sendOutcomes);
+    const errors = sendOutcomes.filter((o) => !o.ok).map((o) => `${o.email}: ${o.error ?? "unknown"}`);
+    const pdfAttached = true;
+    const completion = evaluateForwardSendCompletion({
+      sent,
+      failed,
+      totalRecipients: emails.length,
+      pdfAttached,
+    });
 
-    // Track forwarding timestamp
-    if (emails.length - failed > 0) {
+    logStep("send_complete", {
+      invoiceId,
+      invoiceNumber: invoice.invoice_number,
+      emailSource,
+      sent,
+      failed,
+      totalRecipients: emails.length,
+      pdf_attached: pdfAttached,
+      success: completion.success,
+      reason: completion.reason,
+    });
+
+    if (completion.shouldSetForwardedAt) {
       await supabase
         .from("invoices")
         .update({ forwarded_at: new Date().toISOString() })
         .eq("id", invoice.id);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, sent: emails.length - failed, failed }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
-  } catch (error: any) {
-    console.error("Error forwarding invoice:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
+    return jsonResponse({
+      success: completion.success,
+      sent,
+      failed,
+      pdf_attached: pdfAttached,
+      email_source: emailSource,
+      invoice_number: invoice.invoice_number,
+      ...(completion.reason ? { reason: completion.reason } : {}),
+      ...(errors.length > 0 ? { errors } : {}),
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logStep("failed", { error: message });
+    return jsonResponse({ success: false, reason: "internal_error", sent: 0, failed: 0, error: message }, 500);
   }
 };
 

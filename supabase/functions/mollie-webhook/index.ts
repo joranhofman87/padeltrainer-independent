@@ -1,6 +1,16 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { amountsMatch, parseMollieAmountValue } from "../_shared/booking-pricing.ts";
+import { evaluateForwardInvoiceWebhookResult } from "../_shared/forward-invoice-response.ts";
+import {
+  hasNoRoutableMetadata,
+  parseMolliePaymentMetadata,
+  usesInvoicePaidBranch,
+} from "../_shared/mollie-webhook-metadata.ts";
+import {
+  evaluateInvoicePayment,
+  shouldRunBookingPaidSideEffects,
+} from "../_shared/mollie-webhook-payment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -267,21 +277,54 @@ serve(async (req) => {
       metadata: payment.metadata 
     });
 
-    // Support both single booking_id and multiple booking_ids
-    const bookingIds: string[] = payment.metadata?.booking_ids || 
-      (payment.metadata?.booking_id ? [payment.metadata.booking_id] : []);
-    
-    // Check if this is an invoice-only payment (no bookings)
-    const invoiceIdFromMetadata = payment.metadata?.invoice_id;
+    const { invoiceId: invoiceIdFromMetadata, bookingIds } = parseMolliePaymentMetadata(
+      payment.metadata,
+    );
 
-    if (bookingIds.length === 0 && !invoiceIdFromMetadata) {
+    if (hasNoRoutableMetadata(invoiceIdFromMetadata, bookingIds)) {
       logStep("No booking IDs or invoice ID in payment metadata");
       return new Response("OK", { status: 200 });
     }
 
-    // Handle invoice-only payments (generated via create-invoice-payment)
-    if (invoiceIdFromMetadata && bookingIds.length === 0) {
+    // Handle invoice payments (create-invoice-payment); invoice_id takes priority over booking_ids
+    if (usesInvoicePaidBranch(invoiceIdFromMetadata)) {
+      logStep("invoice_paid_branch", {
+        invoiceId: invoiceIdFromMetadata,
+        metadataBookingCount: bookingIds.length,
+      });
       if (payment.status === "paid") {
+        // Fetch the invoice to (a) verify the paid amount matches the invoice
+        // total before flipping to paid, and (b) detect whether it was already
+        // paid so duplicate webhook deliveries don't re-fire notifications.
+        const { data: invoiceForPay } = await supabase
+          .from("invoices")
+          .select("total, status")
+          .eq("id", invoiceIdFromMetadata)
+          .maybeSingle();
+
+        const expectedTotal = Number(invoiceForPay?.total) || 0;
+        const paidValue = parseMollieAmountValue(payment.amount?.value);
+        const invoiceAlreadyPaid = invoiceForPay?.status === "paid";
+        const invoiceDecision = evaluateInvoicePayment(
+          expectedTotal,
+          paidValue,
+          invoiceAlreadyPaid,
+        );
+
+        if (invoiceDecision.amountMismatch) {
+          logStep("BLOCKED: Invoice payment amount mismatch", {
+            invoiceId: invoiceIdFromMetadata,
+            expectedTotal,
+            paidValue,
+          });
+          await notifySlackError(
+            "mollie-webhook",
+            "Invoice payment amount mismatch — invoice not marked paid",
+            { paymentId, invoiceId: invoiceIdFromMetadata, expectedTotal, paidValue },
+          );
+          return new Response("OK", { status: 200 });
+        }
+
         const { error: invUpdateError } = await supabase
           .from("invoices")
           .update({ status: "paid", paid_at: new Date().toISOString(), mollie_payment_id: paymentId })
@@ -296,27 +339,31 @@ serve(async (req) => {
         } else {
           logStep("Invoice marked as paid via payment link", { invoiceId: invoiceIdFromMetadata });
 
-          try {
-            const { data: paidInvoice } = await supabase
-              .from("invoices")
-              .select("invoice_number, total")
-              .eq("id", invoiceIdFromMetadata)
-              .single();
-            await supabase.functions.invoke("slack-notify", {
-              body: {
-                event: "payment_received",
-                data: {
-                  type: "invoice",
-                  invoice_number: paidInvoice?.invoice_number ?? "unknown",
-                  amount: paidInvoice?.total != null
-                    ? `€${Number(paidInvoice.total).toFixed(2)}`
-                    : (payment.amount?.value ? `€${payment.amount.value}` : "?"),
-                  payment_id: paymentId,
+          // Only notify on the first transition to paid — duplicate webhook
+          // deliveries must not re-send the payment_received notification.
+          if (invoiceDecision.notify) {
+            try {
+              const { data: paidInvoice } = await supabase
+                .from("invoices")
+                .select("invoice_number, total")
+                .eq("id", invoiceIdFromMetadata)
+                .single();
+              await supabase.functions.invoke("slack-notify", {
+                body: {
+                  event: "payment_received",
+                  data: {
+                    type: "invoice",
+                    invoice_number: paidInvoice?.invoice_number ?? "unknown",
+                    amount: paidInvoice?.total != null
+                      ? `€${Number(paidInvoice.total).toFixed(2)}`
+                      : (payment.amount?.value ? `€${payment.amount.value}` : "?"),
+                    payment_id: paymentId,
+                  },
                 },
-              },
-            });
-          } catch (slackErr) {
-            logStep("Slack payment_received failed (non-fatal)", { error: String(slackErr) });
+              });
+            } catch (slackErr) {
+              logStep("Slack payment_received failed (non-fatal)", { error: String(slackErr) });
+            }
           }
         }
 
@@ -354,24 +401,31 @@ serve(async (req) => {
           }
         }
 
-        // Forward invoice to bookkeeping emails
+        // Forward invoice to bookkeeping emails (non-fatal — paid status already saved)
         try {
+          logStep("forward_invoice_invoke", { invoiceId: invoiceIdFromMetadata, paymentId });
           const forwardRes = await supabase.functions.invoke("forward-invoice", {
             body: { invoiceId: invoiceIdFromMetadata },
-            headers: { Authorization: `Bearer ${supabaseServiceKey}` },
+            headers: {
+              Authorization: `Bearer ${supabaseServiceKey}`,
+              apikey: supabaseServiceKey,
+            },
           });
-          if (forwardRes.error) {
-            logStep("Invoice forwarding failed (non-fatal)", { error: String(forwardRes.error) });
+          const forwardEval = evaluateForwardInvoiceWebhookResult(
+            forwardRes.data as Record<string, unknown> | null,
+            forwardRes.error,
+            { paymentId, invoiceId: invoiceIdFromMetadata },
+          );
+          logStep(forwardEval.logStep, forwardEval.context);
+          if (forwardEval.shouldWarn) {
             await notifySlackError(
               "mollie-webhook",
-              "Invoice paid webhook: forward-invoice failed",
-              { paymentId, invoiceId: invoiceIdFromMetadata, error: String(forwardRes.error) },
+              forwardEval.slackMessage,
+              forwardEval.context,
             );
-          } else {
-            logStep("Invoice forwarded to bookkeeping");
           }
         } catch (fwdErr) {
-          logStep("Invoice forwarding failed (non-fatal)", { error: String(fwdErr) });
+          logStep("forward_invoke_exception", { error: String(fwdErr), paymentId, invoiceId: invoiceIdFromMetadata });
           await notifySlackError(
             "mollie-webhook",
             "Invoice paid webhook: forward-invoice failed",
@@ -409,11 +463,20 @@ serve(async (req) => {
 
     logStep("Updating bookings", { bookingIds, paymentStatus, bookingStatus });
 
+    // Track whether the bookings were already paid before this webhook so
+    // duplicate deliveries don't re-send confirmation emails / re-trigger
+    // invoice creation / re-notify Slack.
+    let bookingsAlreadyPaid = false;
+
     if (payment.status === "paid") {
       const { data: amountRows } = await supabase
         .from("bookings")
-        .select("id, payment_amount")
+        .select("id, payment_amount, payment_status")
         .in("id", bookingIds);
+
+      bookingsAlreadyPaid =
+        (amountRows?.length ?? 0) > 0 &&
+        (amountRows ?? []).every((b) => b.payment_status === "paid");
 
       const expectedSum = (amountRows || []).reduce(
         (sum, b) => sum + (Number(b.payment_amount) || 0),
@@ -479,8 +542,10 @@ serve(async (req) => {
       }
     }
 
-    // If payment is successful, auto-create invoice and send confirmation email
-    if (payment.status === "paid") {
+    // If payment is successful, auto-create invoice and send confirmation email.
+    // Skip when the bookings were already paid (duplicate webhook delivery) so
+    // we don't create duplicate invoices or re-send confirmation emails.
+    if (shouldRunBookingPaidSideEffects(payment.status, bookingsAlreadyPaid)) {
       // Auto-create invoice
       try {
         const { error: invoiceError } = await supabase.functions.invoke("auto-create-invoice", {

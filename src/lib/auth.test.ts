@@ -22,7 +22,7 @@ vi.mock('@/lib/supabaseClient', () => ({
 
 // Mock domains module
 vi.mock('@/lib/domains', () => ({
-  getAuthRedirectUrl: vi.fn((path: string) => `http://localhost:3000${path}`),
+  getAuthRedirectUrl: vi.fn((path: string) => `http://localhost:8080${path}`),
 }));
 
 // Mock logger
@@ -294,7 +294,7 @@ describe('Auth module', () => {
       expect(supabase.auth.signInWithOAuth).toHaveBeenCalledWith({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/app/auth`,
+          redirectTo: 'http://localhost:8080/app/auth',
         },
       });
     });
@@ -524,7 +524,7 @@ describe('Auth module', () => {
         body: {
           type: 'password_reset',
           email: 'test@example.com',
-          redirectTo: 'http://localhost:3000/app/reset-password',
+          redirectTo: 'http://localhost:8080/app/reset-password',
         },
       });
     });
