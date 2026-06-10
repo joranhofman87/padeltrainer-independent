@@ -1,10 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, requireServiceRoleOrAdmin } from "../_shared/auth.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[GENERATE-MISSING-INVOICES] ${step}`, details ? JSON.stringify(details) : "");
@@ -15,11 +10,14 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  // Ops/backfill tool: only an admin or service-role caller may generate
+  // invoices for an academy. Previously this had no auth, so any holder of the
+  // public anon key could mint invoices for an arbitrary academyId.
+  const auth = await requireServiceRoleOrAdmin(req);
+  if (auth instanceof Response) return auth;
+  const supabase = auth.supabase;
 
+  try {
     const { academyId } = await req.json();
     if (!academyId) {
       return new Response(JSON.stringify({ error: "academyId is required" }), {

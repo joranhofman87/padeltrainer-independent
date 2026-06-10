@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { evaluateClubTrainerAccess } from "../_shared/club-trainer-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,18 +39,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check if user is a club manager
-    const { data: isManager } = await supabaseUser.rpc("is_any_club_manager", {
-      _user_id: user.id,
-    });
-
-    if (!isManager) {
-      return new Response(JSON.stringify({ error: "Only club managers can create trainers" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     // Parse the request body
     const { email, fullName, phone, clubProfileId, locationId } = await req.json();
 
@@ -62,6 +51,37 @@ Deno.serve(async (req) => {
 
     // Create admin client for privileged operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Authorization: the caller must manage THIS specific club (not just any
+    // club), and the requested location must belong to that club. Without the
+    // club-scoped check, a manager of one club could mint trainer accounts and
+    // attach them to another club's location.
+    const { data: managesClub } = await supabaseUser.rpc("is_club_manager", {
+      _user_id: user.id,
+      _club_profile_id: clubProfileId,
+    });
+
+    const { data: clubRow } = await supabaseAdmin
+      .from("club_profiles")
+      .select("id, location_id")
+      .eq("id", clubProfileId)
+      .maybeSingle();
+
+    const access = evaluateClubTrainerAccess({
+      managesClub: !!managesClub,
+      clubLocationId: clubRow?.location_id,
+      requestedLocationId: locationId,
+    });
+
+    if (!access.ok) {
+      const message = access.reason === "not_club_manager"
+        ? "You do not manage this club"
+        : "Location does not belong to this club";
+      return new Response(JSON.stringify({ error: message }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Check if user with this email already exists
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();

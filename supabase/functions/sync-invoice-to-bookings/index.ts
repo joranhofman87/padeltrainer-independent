@@ -1,20 +1,16 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, requireUser } from "../_shared/auth.ts";
+import { canManageInvoice } from "../_shared/invoice-access.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceKey);
+  const auth = await requireUser(req);
+  if (auth instanceof Response) return auth;
+  const supabase = auth.supabase;
 
+  try {
     const { invoiceId } = await req.json();
     if (!invoiceId) {
       return new Response(JSON.stringify({ error: "invoiceId required" }), {
@@ -33,6 +29,15 @@ Deno.serve(async (req) => {
     if (invErr || !invoice) {
       return new Response(JSON.stringify({ error: "Invoice not found" }), {
         status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Authorization: only the invoice's trainer, an academy manager, an admin,
+    // or a service-role caller may rewrite the derived booking/slot amounts.
+    if (!(await canManageInvoice(supabase, auth, invoice))) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
