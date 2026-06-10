@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AcademyPlayerDetail from './AcademyPlayerDetail';
 
 const { tableResponses, resolveCycleRouteMock } = vi.hoisted(() => ({
@@ -136,12 +137,17 @@ vi.mock('react-i18next', () => ({
 }));
 
 function renderGuestDetail() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
-    <MemoryRouter initialEntries={[`/app/academy/players/g_${GUEST_ID}`]}>
-      <Routes>
-        <Route path="/app/academy/players/:playerId" element={<AcademyPlayerDetail />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[`/app/academy/players/g_${GUEST_ID}`]}>
+        <Routes>
+          <Route path="/app/academy/players/:playerId" element={<AcademyPlayerDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
