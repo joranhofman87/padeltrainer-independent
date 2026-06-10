@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Copy, ChevronDown, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
-import { getCycles, type Cycle } from '@/lib/cycles';
+import { getCycles, createCycle, type Cycle } from '@/lib/cycles';
 import { bulkCopySlotsToCycle, getBookingsBySlotIds, notifyPriorityClaimsForSlots } from '@/lib/priorityClaims';
 
 interface Props {
@@ -38,7 +38,10 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [loadingCycles, setLoadingCycles] = useState(true);
   const [sourceCycleId, setSourceCycleId] = useState<string>(searchParams.get('source') ?? '');
+  const [targetMode, setTargetMode] = useState<'new' | 'existing'>('new');
   const [targetCycleId, setTargetCycleId] = useState<string>('');
+  const [newCycleName, setNewCycleName] = useState<string>('');
+  const [newCycleStart, setNewCycleStart] = useState<string>('');
   const [sourceSlots, setSourceSlots] = useState<SourceSlot[]>([]);
   const [excludeSlotIds, setExcludeSlotIds] = useState<Set<string>>(new Set());
   const [bookingCounts, setBookingCounts] = useState<Map<string, number>>(new Map());
@@ -81,12 +84,28 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
     })();
   }, [sourceCycleId]);
 
+  const sourceCycle = useMemo(
+    () => cycles.find((c) => c.id === sourceCycleId) ?? null,
+    [cycles, sourceCycleId],
+  );
+
+  // Suggest a name for the new cycle once a source is chosen.
+  useEffect(() => {
+    if (sourceCycle && !newCycleName) {
+      setNewCycleName(`${sourceCycle.name} (volgende ronde)`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceCycle?.id]);
+
   const weeksOffset = useMemo(() => {
-    const src = cycles.find((c) => c.id === sourceCycleId);
-    const tgt = cycles.find((c) => c.id === targetCycleId);
-    if (!src?.start_date || !tgt?.start_date) return 0;
-    return differenceInCalendarWeeks(new Date(tgt.start_date), new Date(src.start_date));
-  }, [cycles, sourceCycleId, targetCycleId]);
+    const src = sourceCycle;
+    const targetStart =
+      targetMode === 'new'
+        ? (newCycleStart || null)
+        : (cycles.find((c) => c.id === targetCycleId)?.start_date ?? null);
+    if (!src?.start_date || !targetStart) return 0;
+    return differenceInCalendarWeeks(new Date(targetStart), new Date(src.start_date));
+  }, [sourceCycle, cycles, targetCycleId, targetMode, newCycleStart]);
 
   const toggleExclude = (id: string) => {
     setExcludeSlotIds((prev) => {
@@ -98,19 +117,57 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
   };
 
   const handleSubmit = async () => {
-    if (!sourceCycleId || !targetCycleId) {
-      toast.error('Select source and target cycles');
+    if (!sourceCycleId) {
+      toast.error('Kies eerst een cyclus om van te kopiëren');
       return;
     }
-    if (sourceCycleId === targetCycleId) {
-      toast.error('Source and target must be different');
+    if (targetMode === 'new' && !newCycleStart) {
+      toast.error('Kies een startdatum voor de nieuwe cyclus');
+      return;
+    }
+    if (targetMode === 'existing' && (!targetCycleId || targetCycleId === sourceCycleId)) {
+      toast.error('Kies een andere doelcyclus');
       return;
     }
     setSubmitting(true);
     try {
+      // Create the target cycle inline when requested, carrying the source
+      // cycle's settings/pricing and keeping the same length.
+      let effectiveTargetId = targetCycleId;
+      if (targetMode === 'new') {
+        if (!sourceCycle) {
+          toast.error('Broncyclus niet gevonden');
+          setSubmitting(false);
+          return;
+        }
+        let endDate: string | null = null;
+        if (sourceCycle.start_date && sourceCycle.end_date) {
+          const durationMs = new Date(sourceCycle.end_date).getTime() - new Date(sourceCycle.start_date).getTime();
+          endDate = new Date(new Date(newCycleStart).getTime() + Math.max(0, durationMs)).toISOString().slice(0, 10);
+        }
+        const created = await createCycle({
+          owner_type: ownerType,
+          owner_id: ownerId,
+          name: newCycleName.trim() || `${sourceCycle.name} (volgende ronde)`,
+          description: sourceCycle.description ?? undefined,
+          start_date: newCycleStart,
+          end_date: endDate,
+          settings: sourceCycle.settings,
+          status: 'open',
+          type: sourceCycle.type,
+          location_id: sourceCycle.location_id,
+          price_per_session: sourceCycle.price_per_session,
+          total_price: sourceCycle.total_price,
+          currency: sourceCycle.currency,
+          terms: sourceCycle.terms,
+          price_table: sourceCycle.price_table,
+        });
+        effectiveTargetId = created.id;
+      }
+
       const result = await bulkCopySlotsToCycle({
         sourceCycleId,
-        targetCycleId,
+        targetCycleId: effectiveTargetId,
         weeksOffset,
         priorityWindowDays,
         createPriorityClaims,
@@ -150,27 +207,53 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       </div>
 
       <Card>
-        <CardHeader><CardTitle>{t('bulkCopy.cycles', 'Cycles')}</CardTitle></CardHeader>
-        <CardContent className="grid sm:grid-cols-2 gap-4">
+        <CardHeader><CardTitle>{t('bulkCopy.cycles', 'Welke cyclus?')}</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
           <div>
-            <Label>{t('bulkCopy.source', 'Copy from')}</Label>
+            <Label>{t('bulkCopy.source', 'Kopieer van')}</Label>
             <Select value={sourceCycleId} onValueChange={setSourceCycleId}>
-              <SelectTrigger><SelectValue placeholder={t('bulkCopy.selectCycle', 'Select cycle')} /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t('bulkCopy.selectCycle', 'Kies een cyclus')} /></SelectTrigger>
               <SelectContent>
                 {cycles.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>{t('bulkCopy.target', 'Copy to')}</Label>
-            <Select value={targetCycleId} onValueChange={setTargetCycleId}>
-              <SelectTrigger><SelectValue placeholder={t('bulkCopy.selectCycle', 'Select cycle')} /></SelectTrigger>
-              <SelectContent>
-                {cycles.filter((c) => c.id !== sourceCycleId).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {targetCycleId && weeksOffset !== 0 && (
-              <p className="text-xs text-muted-foreground mt-1">{t('bulkCopy.shiftWeeks', { count: weeksOffset, defaultValue: 'Slots will be shifted by {{count}} weeks.' })}</p>
+
+          <div className="space-y-3">
+            <Label>{t('bulkCopy.target', 'Naar')}</Label>
+            <div className="flex gap-4 text-sm">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" checked={targetMode === 'new'} onChange={() => setTargetMode('new')} />
+                {t('bulkCopy.newCycle', 'Nieuwe cyclus aanmaken')}
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" checked={targetMode === 'existing'} onChange={() => setTargetMode('existing')} />
+                {t('bulkCopy.existingCycle', 'Bestaande cyclus kiezen')}
+              </label>
+            </div>
+
+            {targetMode === 'new' ? (
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs">{t('bulkCopy.newName', 'Naam')}</Label>
+                  <Input value={newCycleName} onChange={(e) => setNewCycleName(e.target.value)} placeholder="bv. Najaar 2026" />
+                </div>
+                <div>
+                  <Label className="text-xs">{t('bulkCopy.newStart', 'Startdatum')}</Label>
+                  <Input type="date" value={newCycleStart} onChange={(e) => setNewCycleStart(e.target.value)} />
+                </div>
+              </div>
+            ) : (
+              <Select value={targetCycleId} onValueChange={setTargetCycleId}>
+                <SelectTrigger><SelectValue placeholder={t('bulkCopy.selectCycle', 'Kies een cyclus')} /></SelectTrigger>
+                <SelectContent>
+                  {cycles.filter((c) => c.id !== sourceCycleId).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+
+            {weeksOffset !== 0 && (
+              <p className="text-xs text-muted-foreground">{t('bulkCopy.shiftWeeks', { count: weeksOffset, defaultValue: 'De trainingen verschuiven {{count}} weken.' })}</p>
             )}
           </div>
         </CardContent>
@@ -281,7 +364,14 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       )}
 
       <div className="flex justify-end">
-        <Button onClick={handleSubmit} disabled={submitting || !sourceCycleId || !targetCycleId}>
+        <Button
+          onClick={handleSubmit}
+          disabled={
+            submitting ||
+            !sourceCycleId ||
+            (targetMode === 'new' ? !newCycleStart : !targetCycleId)
+          }
+        >
           {createPriorityClaims && notifyPlayers ? <Send className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
           {submitting
             ? t('common:saving', 'Bezig...')
