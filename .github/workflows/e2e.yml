@@ -32,6 +32,15 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
+      # Role / payment / booking UI smoke specs (non-destructive: render +
+      # route-mocked + login-gate checks; no account or booking creation).
+      # Previously authored but never run by CI.
+      - name: Run role/payment/booking E2E tests
+        run: npx playwright test e2e/roles.spec.ts e2e/payments.spec.ts e2e/booking.spec.ts
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

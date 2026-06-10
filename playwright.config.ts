@@ -3,7 +3,12 @@ import { defineConfig, devices } from '@playwright/test';
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:8080';
 
 export default defineConfig({
-  testDir: './tests',
+  // Discover Playwright specs in both ./e2e and ./tests. Previously testDir was
+  // './tests', so the CI commands that pass explicit e2e/*.spec.ts paths matched
+  // ZERO tests (silent no-op). testMatch scopes discovery to those two dirs so
+  // the vitest unit tests under src/ are never picked up.
+  testDir: '.',
+  testMatch: ['e2e/**/*.spec.ts', 'tests/**/*.spec.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
