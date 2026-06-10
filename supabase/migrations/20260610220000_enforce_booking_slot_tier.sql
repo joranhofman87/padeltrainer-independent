@@ -1,14 +1,10 @@
 -- ============================================================================
 -- Phase 1 enforcement: gate player self-bookings by slot tier + capacity.
 --
--- NOT YET DEPLOYED. This lives in docs/pending-migrations/ so it is reviewable
--- but is not auto-applied. To deploy:
---   1. Move this file to supabase/migrations/<timestamp>_enforce_booking_slot_tier.sql
---   2. Apply it (supabase db push / your migrations workflow).
---   3. Run the integration test:
---        RUN_REBOOKING_ENFORCEMENT=1 SUPABASE_SERVICE_ROLE_KEY=... \
---        VITE_SUPABASE_URL=... VITE_SUPABASE_PUBLISHABLE_KEY=... \
---        npx playwright test tests/rebooking-enforcement.spec.ts
+-- Verify after deploy with:
+--   RUN_REBOOKING_ENFORCEMENT=1 SUPABASE_SERVICE_ROLE_KEY=... \
+--   VITE_SUPABASE_URL=... VITE_SUPABASE_PUBLISHABLE_KEY=... \
+--   npx playwright test tests/rebooking-enforcement.spec.ts
 --
 -- Why a trigger: bookings are inserted directly from the client and the
 -- bookings INSERT RLS only checks `player_id = self`. It does NOT enforce the

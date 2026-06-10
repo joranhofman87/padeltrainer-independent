@@ -328,6 +328,21 @@ export async function declineClaimWithToken(token: string, reason?: string) {
   return data;
 }
 
+/**
+ * Accept a priority claim = commit to the next cycle (no upfront payment).
+ * Creates a confirmed, unpaid commitment booking server-side and marks the
+ * claim 'claimed'. Returns the RPC result, e.g. { ok, status, booking_id } or
+ * { ok: false, reason: 'slot_full' | 'window_expired' | 'already_responded' }.
+ */
+export async function acceptClaimWithToken(token: string) {
+  const { data, error } = await supabase.rpc('respond_to_priority_claim', {
+    _token: token,
+    _action: 'accept',
+  });
+  if (error) throw error;
+  return data as { ok: boolean; status?: string; reason?: string; booking_id?: string } | null;
+}
+
 // === Tier overrides ===
 
 export async function openSlotToMembersNow(slotId: string, memberWindowDays = 7) {

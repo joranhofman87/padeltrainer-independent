@@ -140,23 +140,27 @@ const handler = async (req: Request): Promise<Response> => {
       });
       const fmtTime = `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`;
       const claimUrl = buildClaimUrl(APP_BASE, c.claim_token, isTest);
+      const acceptUrl = `${claimUrl}?intent=accept`;
+      const declineUrl = `${claimUrl}?intent=decline`;
       const deadline = slot.priority_window_ends_at
         ? new Date(slot.priority_window_ends_at).toLocaleDateString("nl-NL", { day: "numeric", month: "long" })
         : null;
 
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color:#1a1a1a;">
-          <h2 style="margin:0 0 12px;">Reserveer je plek voor de volgende cyclus${slot.cyclus_name ? `: ${slot.cyclus_name}` : ""}</h2>
+          <h2 style="margin:0 0 12px;">Hou je je vaste plek?${slot.cyclus_name ? ` (${slot.cyclus_name})` : ""}</h2>
           <p style="color:#374151;line-height:1.6;">${recipientName ? `Hi ${recipientName},` : "Hi,"}</p>
-          <p style="color:#374151;line-height:1.6;">Je hebt voorrang om je vaste plek opnieuw te boeken voor de volgende cyclus. Laat ons weten of je doorgaat.</p>
+          <p style="color:#374151;line-height:1.6;">Je hebt voorrang om je vaste plek voor de volgende cyclus te houden. Laat ons weten of je doorgaat.</p>
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0;">
             <div style="font-weight:600;">${fmtDate}</div>
             <div style="color:#6b7280;">${fmtTime}</div>
             ${slot.price_per_session ? `<div style="margin-top:6px;">EUR ${Number(slot.price_per_session).toFixed(2)} per sessie</div>` : ""}
           </div>
+          <p style="color:#6b7280;font-size:13px;">Je betaalt pas wanneer de cyclus start; de prijs wordt verdeeld over de spelers die meedoen.</p>
           ${deadline ? `<p style="color:#6b7280;font-size:13px;">Reageer voor <strong>${deadline}</strong>, daarna komt je plek vrij voor anderen.</p>` : ""}
           <div style="text-align:center;margin:28px 0;">
-            <a href="${claimUrl}" style="display:inline-block;background:#f45d25;color:white;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Bekijk en reserveer</a>
+            <a href="${acceptUrl}" style="display:inline-block;background:#16a34a;color:white;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Ja, ik hou mijn plek</a>
+            <a href="${declineUrl}" style="display:inline-block;background:#ffffff;color:#1a1a1a;border:1px solid #d1d5db;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Nee, geef mijn plek vrij</a>
           </div>
           <p style="color:#9ca3af;font-size:12px;text-align:center;">Of open deze link: <a href="${claimUrl}" style="color:#f45d25;">${claimUrl}</a></p>
         </div>

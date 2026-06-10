@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { CalendarClock, MapPin, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchClaimByToken, declineClaimWithToken } from '@/lib/priorityClaims';
+import { fetchClaimByToken, declineClaimWithToken, acceptClaimWithToken } from '@/lib/priorityClaims';
 
 interface ClaimData {
   claim: {
@@ -32,11 +32,13 @@ interface ClaimData {
 
 export default function PriorityClaimPage() {
   const { token } = useParams<{ token: string }>();
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const intent = searchParams.get('intent'); // 'accept' | 'decline' from the email buttons
   const [data, setData] = useState<ClaimData | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [declined, setDeclined] = useState(false);
+  const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -46,9 +48,29 @@ export default function PriorityClaimPage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const onClaim = () => {
-    if (!data || !token) return;
-    navigate(`/app/book/${data.slot.trainer_id}?slot=${data.slot.id}&claim=${token}`);
+  const onClaim = async () => {
+    if (!token) return;
+    setActing(true);
+    try {
+      const res = await acceptClaimWithToken(token);
+      if (res?.ok) {
+        setAccepted(true);
+        toast.success('Top! Je plek is gereserveerd voor de volgende cyclus.');
+      } else if (res?.reason === 'slot_full') {
+        toast.error('Deze plek is helaas net volgeboekt.');
+      } else if (res?.reason === 'window_expired') {
+        toast.error('De reserveringsperiode is verlopen.');
+      } else if (res?.reason === 'already_responded') {
+        toast.info('Je hebt al gereageerd op deze uitnodiging.');
+        setAccepted(true);
+      } else {
+        toast.error('Er ging iets mis. Probeer het opnieuw.');
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setActing(false);
+    }
   };
 
   const onDecline = async () => {
@@ -114,30 +136,47 @@ export default function PriorityClaimPage() {
               <div className="text-sm">EUR {Number(data.slot.price_per_session).toFixed(2)} per session</div>
             </div>
           )}
+          {data.slot.price_per_session && (
+            <p className="text-xs text-muted-foreground">
+              Je betaalt pas wanneer de cyclus start. De prijs wordt verdeeld over de spelers die meedoen.
+            </p>
+          )}
           {data.slot.priority_window_ends_at && !windowEnded && (
             <p className="text-sm text-muted-foreground">
-              Please respond before {format(new Date(data.slot.priority_window_ends_at), 'd MMM yyyy HH:mm')}.
+              Reageer voor {format(new Date(data.slot.priority_window_ends_at), 'd MMM yyyy HH:mm')}.
             </p>
           )}
 
-          {declined || status === 'declined' ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <XCircle className="h-5 w-5" /> You released this spot. Thanks for letting us know.
-            </div>
-          ) : status === 'claimed' ? (
+          {accepted || status === 'claimed' ? (
             <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="h-5 w-5" /> You already claimed this spot.
+              <CheckCircle2 className="h-5 w-5" /> Je plek is gereserveerd. Je ontvangt een factuur wanneer de cyclus start.
+            </div>
+          ) : declined || status === 'declined' ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <XCircle className="h-5 w-5" /> Je plek is vrijgegeven. Bedankt voor je reactie.
             </div>
           ) : windowEnded ? (
             <div>
-              <p className="text-sm text-muted-foreground mb-3">The priority window has ended.</p>
-              <Button asChild><Link to={`/app/book/${data.slot.trainer_id}`}>Browse public availability</Link></Button>
+              <p className="text-sm text-muted-foreground mb-3">De reserveringsperiode is verlopen.</p>
+              <Button asChild><Link to={`/app/book/${data.slot.trainer_id}`}>Bekijk beschikbare plekken</Link></Button>
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              <Button onClick={onClaim} className="flex-1">Yes, claim my spot</Button>
-              <Button onClick={onDecline} variant="outline" disabled={acting} className="flex-1">
-                {acting ? 'Releasing...' : "No, I won't continue"}
+              <Button
+                onClick={onClaim}
+                disabled={acting}
+                variant={intent === 'decline' ? 'outline' : 'default'}
+                className="flex-1"
+              >
+                {acting ? 'Bezig...' : 'Ja, ik hou mijn plek'}
+              </Button>
+              <Button
+                onClick={onDecline}
+                disabled={acting}
+                variant={intent === 'decline' ? 'default' : 'outline'}
+                className="flex-1"
+              >
+                {acting ? '...' : 'Nee, geef mijn plek vrij'}
               </Button>
             </div>
           )}
