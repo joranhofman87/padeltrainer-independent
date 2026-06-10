@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
@@ -33,6 +34,7 @@ import {
   type TrainerPlayerDetailsValues,
 } from '@/lib/trainerPlayerDetails';
 import { fetchTrainerPlayerTrainingLocations } from '@/lib/trainerPlayerTrainingLocations';
+import { trainerPlayersQueryKey } from '@/lib/trainerPlayersQuery';
 import {
   buildTrainerInvoiceEmailEvents,
   filterInvoicesForTrainer,
@@ -109,6 +111,7 @@ export default function TrainerPlayerDetail() {
   const { playerId } = useParams<{ playerId: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const parsed = useMemo(() => {
     if (!playerId) return { kind: null as null | 'guest' | 'profile', id: '' };
@@ -411,6 +414,7 @@ export default function TrainerPlayerDetail() {
   }
 
   function handleDetailsSaved(next: TrainerPlayerDetailsValues) {
+    queryClient.invalidateQueries({ queryKey: trainerPlayersQueryKey(trainerId) });
     setDetailsValues(next);
     setPlayer((prev) =>
       prev

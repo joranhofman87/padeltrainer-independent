@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TrainerPlayerDetail from './TrainerPlayerDetail';
 
 const TRAINER_ID = 'trainer-uuid-1';
@@ -145,12 +146,17 @@ vi.mock('react-i18next', () => ({
 }));
 
 function renderGuestDetail() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
-    <MemoryRouter initialEntries={[`/app/trainer/players/g_${GUEST_ID}`]}>
-      <Routes>
-        <Route path="/app/trainer/players/:playerId" element={<TrainerPlayerDetail />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[`/app/trainer/players/g_${GUEST_ID}`]}>
+        <Routes>
+          <Route path="/app/trainer/players/:playerId" element={<TrainerPlayerDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 

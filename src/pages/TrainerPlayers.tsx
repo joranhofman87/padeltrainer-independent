@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Users, UserPlus, Upload, Mail, RefreshCw, Columns3, Tags } from 'lucide-react';
@@ -17,6 +18,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { trainerPlayersQueryKey } from '@/lib/trainerPlayersQuery';
 import { format } from 'date-fns';
 import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
@@ -91,10 +93,9 @@ export default function TrainerPlayers() {
   const activeTab = searchParams.get('tab') || 'all-players';
   const setActiveTab = (tab: string) => setSearchParams({ tab });
 
+  const queryClient = useQueryClient();
   const [trainerId, setTrainerId] = useState<string | null>(null);
-  const [players, setPlayers] = useState<UnifiedPlayer[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<UnifiedPlayer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filters
@@ -181,8 +182,13 @@ export default function TrainerPlayers() {
     if (!trainerId) return;
     fetchTagsAndMetadata();
     fetchOverduePayments();
-    fetchPlayers();
   }, [trainerId]);
+
+  const { data: players = [], isLoading: loading } = useQuery({
+    queryKey: trainerPlayersQueryKey(trainerId),
+    queryFn: () => fetchPlayers(),
+    enabled: !!trainerId,
+  });
 
   const fetchTagsAndMetadata = async () => {
     if (!trainerId) return;
@@ -308,9 +314,8 @@ export default function TrainerPlayers() {
     }).length;
   }, [players, metadata]);
 
-  const fetchPlayers = async () => {
-    if (!trainerId) return;
-    setLoading(true);
+  const fetchPlayers = async (): Promise<UnifiedPlayer[]> => {
+    if (!trainerId) return [];
     try {
       // Guest players owned by this trainer
       const { data: guestData } = await supabase
@@ -461,20 +466,23 @@ export default function TrainerPlayers() {
       }
 
       const all = [...guests, ...regPlayers].sort((a, b) => a.full_name.localeCompare(b.full_name));
-      setPlayers(all);
 
       const uniqueLocations = new Map<string, string>();
       locationNameMap.forEach((name, id) => uniqueLocations.set(name, id));
       setAllLocations(Array.from(uniqueLocations.entries()).map(([name, id]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)));
+
+      return all;
     } catch (error) {
       logger.error('Error fetching trainer players', error as Error, { component: 'TrainerPlayers' });
-    } finally {
-      setLoading(false);
+      return [];
     }
   };
 
-  const handlePlayerCreated = () => { fetchPlayers(); setShowAddPlayer(false); };
-  const handlePlayersImported = () => { fetchPlayers(); };
+  const invalidatePlayers = () =>
+    queryClient.invalidateQueries({ queryKey: trainerPlayersQueryKey(trainerId) });
+
+  const handlePlayerCreated = () => { invalidatePlayers(); setShowAddPlayer(false); };
+  const handlePlayersImported = () => { invalidatePlayers(); };
 
   if (loading) {
     return (
@@ -905,7 +913,7 @@ export default function TrainerPlayers() {
               <CardContent>
                 <AddPlayerForm
                   trainerId={trainerId || undefined}
-                  onPlayerCreated={() => fetchPlayers()}
+                  onPlayerCreated={() => invalidatePlayers()}
                 />
               </CardContent>
             </Card>
