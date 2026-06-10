@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { resolveAcademyCyclusPricingRoute } from '@/lib/cyclusPricingRoute';
 import { buildAcademyInvoiceEditPath } from '@/lib/academyPlayerDetailNavigation';
@@ -44,6 +45,7 @@ import {
   type AcademyPlayerEmailHistoryItem,
 } from '@/lib/academyPlayerEmailHistory';
 import { cn } from '@/lib/utils';
+import { academyPlayersQueryKey } from '@/lib/academyPlayersQuery';
 import {
   LineChart,
   Line,
@@ -105,6 +107,7 @@ export default function AcademyPlayerDetail() {
   const { playerId } = useParams<{ playerId: string }>();
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const parsed = useMemo(() => {
     if (!playerId) return { kind: null as null | 'guest' | 'profile', id: '' };
@@ -368,6 +371,7 @@ export default function AcademyPlayerDetail() {
   }
 
   function handleDetailsSaved(next: AcademyPlayerDetailsValues) {
+    queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) });
     setDetailsValues(next);
     setPlayer((prev) =>
       prev

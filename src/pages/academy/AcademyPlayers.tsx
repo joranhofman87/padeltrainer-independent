@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Users, UserPlus, Upload, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,6 +51,7 @@ import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/player
 import { cn } from '@/lib/utils';
 import { shouldShowPlayerInAcademyOverview } from '@/lib/academyPlayerRemoval';
 import { filterUnifiedPlayersForActiveContext } from '@/lib/playerRemovalVisibility';
+import { academyPlayersQueryKey } from '@/lib/academyPlayersQuery';
 
 interface TrainerOption {
   id: string;
@@ -116,9 +118,8 @@ export default function AcademyPlayers() {
     setSearchParams({ tab });
   };
 
-  const [players, setPlayers] = useState<UnifiedPlayer[]>([]);
+  const queryClient = useQueryClient();
   const [filteredPlayers, setFilteredPlayers] = useState<UnifiedPlayer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Trainer selector
@@ -201,13 +202,6 @@ export default function AcademyPlayers() {
     fetchOverduePayments();
   }, [activeAcademy]);
 
-  // Fetch players when trainers are loaded or academy changes
-  useEffect(() => {
-    if (activeAcademy) {
-      fetchPlayers();
-    }
-  }, [trainers, activeAcademy]);
-
   const fetchTagsAndMetadata = async () => {
     if (!activeAcademy) return;
     const [tagsRes, metaRes] = await Promise.all([
@@ -248,6 +242,21 @@ export default function AcademyPlayers() {
     setOverdueGuestIds(guests);
     setOverdueProfileIds(profiles);
   };
+
+  const trainerIdsKey = useMemo(() => trainers.map((t) => t.id).sort().join(','), [trainers]);
+
+  const { data: players = [], isLoading: loading } = useQuery({
+    queryKey: academyPlayersQueryKey(activeAcademy?.id),
+    queryFn: () => fetchPlayers(),
+    enabled: !!activeAcademy,
+  });
+  // Refetch whenever the trainer roster changes (handled via trainerIdsKey dependency)
+  useEffect(() => {
+    if (activeAcademy) {
+      queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy.id) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trainerIdsKey, activeAcademy?.id]);
 
   // Filter by search query, selected trainer, and new filters
   useEffect(() => {
@@ -388,9 +397,8 @@ export default function AcademyPlayers() {
     setTrainers(opts);
   };
 
-  const fetchPlayers = async () => {
-    if (!activeAcademy) return;
-    setLoading(true);
+  const fetchPlayers = async (): Promise<UnifiedPlayer[]> => {
+    if (!activeAcademy) return [];
 
     try {
       const trainerIds = trainers.map((t) => t.id);
@@ -629,24 +637,23 @@ export default function AcademyPlayers() {
       const allPlayers = [...guests, ...regPlayers].sort((a, b) =>
         a.full_name.localeCompare(b.full_name)
       );
-      setPlayers(allPlayers);
+      return allPlayers;
     } catch (error) {
       logger.error('Error fetching academy players', error as Error, {
         component: 'AcademyPlayers',
         academyId: activeAcademy.id,
       });
-    } finally {
-      setLoading(false);
+      return [];
     }
   };
 
   const handlePlayerCreated = (player: GuestPlayer) => {
-    fetchPlayers();
+    queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) });
     setShowAddPlayer(false);
   };
 
   const handlePlayersImported = (importedPlayers: GuestPlayer[]) => {
-    fetchPlayers();
+    queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) });
   };
 
   if (loading) {
@@ -1120,7 +1127,7 @@ export default function AcademyPlayers() {
               <CardContent>
                 <AddPlayerForm
                   academyId={activeAcademy?.id}
-                  onPlayerCreated={() => fetchPlayers()}
+                  onPlayerCreated={() => queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) })}
                 />
               </CardContent>
             </Card>
