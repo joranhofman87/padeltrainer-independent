@@ -14,6 +14,7 @@ import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 import { MyWaitingListEntries } from '@/components/waitingList';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
+import { PlayerRebookCard } from '@/components/dashboard/PlayerRebookCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { logger } from '@/lib/logger';
 
@@ -306,6 +307,8 @@ export default function PlayerDashboard() {
         title={t('dashboard.welcome', { name: profile?.full_name?.split(' ')[0] || 'Player' })}
         description={t('dashboard.subtitle')}
       />
+
+      <PlayerRebookCard profileId={profileId ?? undefined} />
 
       <PendingAttendanceCard mode="player" profileId={profileId ?? undefined} />
 

@@ -18,6 +18,7 @@ vi.mock('@/hooks/useAuth', () => ({
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: [], isLoading: false }),
+  useQueryClient: () => ({ invalidateQueries: () => {} }),
 }));
 
 vi.mock('@/components/player/RatingHistoryChart', () => ({

@@ -271,6 +271,48 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
   return { copiedSlots, createdClaims };
 }
 
+export interface MyPendingClaim {
+  id: string;
+  claim_token: string;
+  slot_id: string;
+  start_time: string;
+  end_time: string;
+  cyclus_name: string | null;
+  price_per_session: number | null;
+  priority_window_ends_at: string | null;
+}
+
+/**
+ * The logged-in player's own still-actionable priority claims (pending and
+ * within the priority window). RLS ("Players read own priority claims") scopes
+ * the rows to this player, including their own claim_token.
+ */
+export async function getMyPendingPriorityClaims(profileId: string): Promise<MyPendingClaim[]> {
+  const { data, error } = await supabase
+    .from('slot_priority_claims')
+    .select('id, claim_token, slot_id, availability_slots:slot_id(start_time, end_time, cyclus_name, price_per_session, priority_window_ends_at)')
+    .eq('player_id', profileId)
+    .eq('status', 'pending');
+  if (error) throw error;
+  const now = Date.now();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data || []).flatMap((c: any) => {
+    const s = c.availability_slots;
+    if (!s) return [];
+    if (s.priority_window_ends_at && new Date(s.priority_window_ends_at).getTime() <= now) return [];
+    return [{
+      id: c.id,
+      claim_token: c.claim_token,
+      slot_id: c.slot_id,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      cyclus_name: s.cyclus_name,
+      price_per_session: s.price_per_session,
+      priority_window_ends_at: s.priority_window_ends_at,
+    }];
+  });
+}
+
 export async function getPriorityClaimsForSlot(slotId: string) {
   const { data, error } = await supabase
     .from('slot_priority_claims')
