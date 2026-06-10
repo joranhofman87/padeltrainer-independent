@@ -498,6 +498,7 @@ export default function PlayerDashboard() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={t('dashboard.viewTrainer', 'View trainer')}
                           onClick={() => navigate(getMarketingPath(`trainer/${trainer.trainer_slug || trainer.trainer_id}`))}
                         >
                           <ArrowRight className="h-4 w-4" />
@@ -615,6 +616,7 @@ export default function PlayerDashboard() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={t('dashboard.viewLocation', 'View location')}
                           onClick={() => navigate(getMarketingPath(`locations/${club.locationSlug}`))}
                         >
                           <ArrowRight className="h-4 w-4" />

@@ -164,7 +164,7 @@ export default function PriorityClaimPage() {
           ) : windowEnded ? (
             <div>
               <p className="text-sm text-muted-foreground mb-3">{t('rebooking.windowEnded', 'The reservation period has ended.')}</p>
-              <Button asChild><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+              <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row gap-2 pt-2">

@@ -268,19 +268,19 @@ export function RatingHistoryChart({
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleDownloadPng}>
+            <Button variant="outline" size="sm" className="gap-1.5" aria-label={t('ratingHistory.downloadImage', 'Download')} onClick={handleDownloadPng}>
               <Download className="h-4 w-4" />
               <span className="hidden sm:inline">{t('ratingHistory.downloadImage', 'Download')}</span>
             </Button>
             {canNativeShare ? (
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleNativeShare}>
+              <Button variant="outline" size="sm" className="gap-1.5" aria-label={t('ratingHistory.share', 'Share')} onClick={handleNativeShare}>
                 <Share2 className="h-4 w-4" />
                 <span className="hidden sm:inline">{t('ratingHistory.share', 'Share')}</span>
               </Button>
             ) : (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1.5">
+                  <Button variant="outline" size="sm" className="gap-1.5" aria-label={t('ratingHistory.share', 'Share')}>
                     <Share2 className="h-4 w-4" />
                     <span className="hidden sm:inline">{t('ratingHistory.share', 'Share')}</span>
                   </Button>

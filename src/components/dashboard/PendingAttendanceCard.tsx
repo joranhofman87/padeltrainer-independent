@@ -397,6 +397,7 @@ export function PendingAttendanceCard({ mode, trainerId, profileId }: PendingAtt
                       </Button>
                     )}
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                      aria-label={t('pendingAttendance.dismiss', 'Dismiss')}
                       onClick={() => handleDismiss(slot.slotId)}>
                       <X className="h-3.5 w-3.5" />
                     </Button>
