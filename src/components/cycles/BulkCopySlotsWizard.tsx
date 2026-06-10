@@ -9,11 +9,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { ArrowLeft, Copy } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Copy, ChevronDown, Send } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { getCycles, type Cycle } from '@/lib/cycles';
-import { bulkCopySlotsToCycle, getBookingsBySlotIds } from '@/lib/priorityClaims';
+import { bulkCopySlotsToCycle, getBookingsBySlotIds, notifyPriorityClaimsForSlots } from '@/lib/priorityClaims';
 
 interface Props {
   ownerType: 'trainer' | 'club' | 'academy';
@@ -33,19 +33,22 @@ interface SourceSlot {
 export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Props) {
   const { t } = useTranslation('cycles');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [loadingCycles, setLoadingCycles] = useState(true);
-  const [sourceCycleId, setSourceCycleId] = useState<string>('');
+  const [sourceCycleId, setSourceCycleId] = useState<string>(searchParams.get('source') ?? '');
   const [targetCycleId, setTargetCycleId] = useState<string>('');
   const [sourceSlots, setSourceSlots] = useState<SourceSlot[]>([]);
   const [excludeSlotIds, setExcludeSlotIds] = useState<Set<string>>(new Set());
   const [bookingCounts, setBookingCounts] = useState<Map<string, number>>(new Map());
   const [priorityWindowDays, setPriorityWindowDays] = useState(14);
   const [createPriorityClaims, setCreatePriorityClaims] = useState(true);
+  const [notifyPlayers, setNotifyPlayers] = useState(true);
   const [memberWindowDays, setMemberWindowDays] = useState(7);
   const [enableMemberWindow, setEnableMemberWindow] = useState(true);
   const [requireAdminReview, setRequireAdminReview] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -115,7 +118,16 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
         memberWindowDays: enableMemberWindow ? memberWindowDays : 0,
         publicReleaseStatus: requireAdminReview ? 'pending_admin_review' : 'auto_release_scheduled',
       });
-      toast.success(`${result.copiedSlots} slots copied, ${result.createdClaims} priority claims created.`);
+
+      let notified = 0;
+      if (createPriorityClaims && notifyPlayers && result.notifiableSlotIds.length > 0) {
+        notified = await notifyPriorityClaimsForSlots(result.notifiableSlotIds);
+      }
+
+      const parts = [`${result.copiedSlots} trainingen gekopieerd`];
+      if (createPriorityClaims) parts.push(`${result.createdClaims} spelers uitgenodigd`);
+      if (notified > 0) parts.push(`${notified} e-mails verstuurd`);
+      toast.success(parts.join(' · '));
       navigate(backHref);
     } catch (e) {
       toast.error((e as Error).message);
@@ -133,8 +145,8 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       </Button>
 
       <div>
-        <h1 className="text-2xl font-bold">{t('bulkCopy.title', 'Copy slots to next cycle')}</h1>
-        <p className="text-muted-foreground">{t('bulkCopy.subtitle', 'Reuse last cycle\'s slots and give existing players priority to rebook.')}</p>
+        <h1 className="text-2xl font-bold">{t('bulkCopy.title', 'Volgende ronde opzetten')}</h1>
+        <p className="text-muted-foreground">{t('bulkCopy.subtitle', 'Hergebruik de trainingen van een vorige cyclus en laat je huidige spelers als eerste hun vaste plek houden.')}</p>
       </div>
 
       <Card>
@@ -194,67 +206,88 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       )}
 
       <Card>
-        <CardHeader><CardTitle>{t('bulkCopy.window', 'Priority window')}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t('bulkCopy.window', 'Spelers hun plek laten houden')}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <label className="flex items-center gap-3 cursor-pointer">
             <Checkbox checked={createPriorityClaims} onCheckedChange={(v) => setCreatePriorityClaims(Boolean(v))} />
-            <span className="text-sm">{t('bulkCopy.createClaims', 'Create priority claims for current players')}</span>
+            <span className="text-sm">{t('bulkCopy.createClaims', 'Geef de huidige spelers als eerste de kans hun vaste plek te houden')}</span>
           </label>
           {createPriorityClaims && (
-            <div className="max-w-xs">
-              <Label>{t('bulkCopy.windowDays', 'Window length (days)')}</Label>
-              <Input type="number" min={1} max={60} value={priorityWindowDays} onChange={(e) => setPriorityWindowDays(Number(e.target.value))} />
-              <p className="text-xs text-muted-foreground mt-1">
-                {t('bulkCopy.windowHint', 'Slots stay hidden from public until a player declines or this window ends.')}
-              </p>
-            </div>
+            <>
+              <div className="max-w-xs">
+                <Label>{t('bulkCopy.windowDays', 'Hoeveel dagen krijgen ze de tijd?')}</Label>
+                <Input type="number" min={1} max={60} value={priorityWindowDays} onChange={(e) => setPriorityWindowDays(Number(e.target.value))} />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('bulkCopy.windowHint', 'De plek blijft gereserveerd voor de speler totdat die nee zegt of deze periode voorbij is.')}
+                </p>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <Checkbox checked={notifyPlayers} onCheckedChange={(v) => setNotifyPlayers(Boolean(v))} />
+                <span className="text-sm">{t('bulkCopy.notifyPlayers', 'Stuur spelers meteen een e-mail met een ja/nee knop')}</span>
+              </label>
+            </>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle>{t('bulkCopy.memberWindow', 'Member window')}</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <Checkbox checked={enableMemberWindow} onCheckedChange={(v) => setEnableMemberWindow(Boolean(v))} />
-            <span className="text-sm">{t('bulkCopy.enableMemberWindow', 'Give previous-cycle players early access before opening publicly')}</span>
-          </label>
-          {enableMemberWindow && (
-            <div className="max-w-xs">
-              <Label>{t('bulkCopy.memberDays', 'Member window length (days)')}</Label>
-              <Input type="number" min={1} max={60} value={memberWindowDays} onChange={(e) => setMemberWindowDays(Number(e.target.value))} />
-              <p className="text-xs text-muted-foreground mt-1">
-                {t('bulkCopy.memberHint', 'After the priority window, only players from the source cycle can book or switch into these slots.')}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div>
+        <Button variant="ghost" size="sm" onClick={() => setShowAdvanced((v) => !v)}>
+          <ChevronDown className={`h-4 w-4 mr-1 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+          {t('bulkCopy.advanced', 'Geavanceerde opties')}
+        </Button>
+      </div>
 
-      <Card>
-        <CardHeader><CardTitle>{t('bulkCopy.publicRelease', 'Public release')}</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <label className="flex items-start gap-3 cursor-pointer">
-            <Checkbox checked={!requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(!Boolean(v))} />
-            <div>
-              <div className="text-sm font-medium">{t('bulkCopy.autoRelease', 'Auto-release after member window')}</div>
-              <div className="text-xs text-muted-foreground">{t('bulkCopy.autoReleaseHint', 'Slots open to the public automatically when the member window ends.')}</div>
-            </div>
-          </label>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <Checkbox checked={requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(Boolean(v))} />
-            <div>
-              <div className="text-sm font-medium">{t('bulkCopy.requireReview', 'Require my approval before public')}</div>
-              <div className="text-xs text-muted-foreground">{t('bulkCopy.requireReviewHint', 'Slots stay hidden until you review and release them from the cycles page.')}</div>
-            </div>
-          </label>
-        </CardContent>
-      </Card>
+      {showAdvanced && (
+        <>
+          <Card>
+            <CardHeader><CardTitle>{t('bulkCopy.memberWindow', 'Member window')}</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <Checkbox checked={enableMemberWindow} onCheckedChange={(v) => setEnableMemberWindow(Boolean(v))} />
+                <span className="text-sm">{t('bulkCopy.enableMemberWindow', 'Give previous-cycle players early access before opening publicly')}</span>
+              </label>
+              {enableMemberWindow && (
+                <div className="max-w-xs">
+                  <Label>{t('bulkCopy.memberDays', 'Member window length (days)')}</Label>
+                  <Input type="number" min={1} max={60} value={memberWindowDays} onChange={(e) => setMemberWindowDays(Number(e.target.value))} />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t('bulkCopy.memberHint', 'After the priority window, only players from the source cycle can book or switch into these slots.')}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>{t('bulkCopy.publicRelease', 'Public release')}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <Checkbox checked={!requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(!Boolean(v))} />
+                <div>
+                  <div className="text-sm font-medium">{t('bulkCopy.autoRelease', 'Auto-release after member window')}</div>
+                  <div className="text-xs text-muted-foreground">{t('bulkCopy.autoReleaseHint', 'Slots open to the public automatically when the member window ends.')}</div>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <Checkbox checked={requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(Boolean(v))} />
+                <div>
+                  <div className="text-sm font-medium">{t('bulkCopy.requireReview', 'Require my approval before public')}</div>
+                  <div className="text-xs text-muted-foreground">{t('bulkCopy.requireReviewHint', 'Slots stay hidden until you review and release them from the cycles page.')}</div>
+                </div>
+              </label>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       <div className="flex justify-end">
         <Button onClick={handleSubmit} disabled={submitting || !sourceCycleId || !targetCycleId}>
-          <Copy className="h-4 w-4 mr-2" />
-          {submitting ? t('common:saving', 'Saving...') : t('bulkCopy.confirm', 'Copy slots')}
+          {createPriorityClaims && notifyPlayers ? <Send className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+          {submitting
+            ? t('common:saving', 'Bezig...')
+            : createPriorityClaims && notifyPlayers
+              ? t('bulkCopy.confirmNotify', 'Aanmaken & spelers uitnodigen')
+              : t('bulkCopy.confirm', 'Trainingen kopiëren')}
         </Button>
       </div>
     </div>

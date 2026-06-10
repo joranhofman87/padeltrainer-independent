@@ -95,7 +95,7 @@ export default function AcademyCycles() {
           </Button>
           <Button variant="outline" onClick={() => navigate('/app/academy/cycles/bulk-copy')}>
             <Copy className="h-4 w-4" />
-            {t('bulkCopy.cta', 'Copy slots to next cycle')}
+            {t('bulkCopy.cta', 'Volgende ronde opzetten')}
           </Button>
           </>
         }

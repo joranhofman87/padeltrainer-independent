@@ -86,7 +86,7 @@ export default function TrainerCycles() {
             icon: PartyPopper,
           },
           {
-            label: t('bulkCopy.cta', 'Copy slots to next cycle'),
+            label: t('bulkCopy.cta', 'Volgende ronde opzetten'),
             onClick: () => navigate('/app/trainer/cycles/bulk-copy'),
             icon: Copy,
           },

@@ -158,6 +158,8 @@ export interface BulkCopyInput {
 export interface BulkCopyResult {
   copiedSlots: number;
   createdClaims: number;
+  /** New slot ids that received priority claims — use to notify those players. */
+  notifiableSlotIds: string[];
 }
 
 /**
@@ -203,6 +205,7 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
 
   let copiedSlots = 0;
   let createdClaims = 0;
+  const notifiableSlotIds: string[] = [];
 
   for (const src of slotsToCopy) {
     const newStart = applyWeeksOffset(src.start_time, weeksOffset);
@@ -254,6 +257,7 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
     if (createPriorityClaims) {
       const bookingsMap = await getBookingsBySlotIds([src.id]);
       const bookings = bookingsMap.get(src.id) || [];
+      let slotGotClaim = false;
       for (const b of bookings) {
         if (!b.player_id && !b.guest_player_id) continue;
         const { error: cErr } = await supabase.from('slot_priority_claims').insert({
@@ -263,12 +267,33 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
           source_slot_id: src.id,
           status: 'pending',
         });
-        if (!cErr) createdClaims++;
+        if (!cErr) {
+          createdClaims++;
+          slotGotClaim = true;
+        }
       }
+      if (slotGotClaim) notifiableSlotIds.push(newSlot.id);
     }
   }
 
-  return { copiedSlots, createdClaims };
+  return { copiedSlots, createdClaims, notifiableSlotIds };
+}
+
+/**
+ * Send priority-claim invitation emails for the given slots (one call per slot;
+ * the edge function emails every pending claim on that slot). Returns how many
+ * slots were notified. Failures per slot are swallowed so one bad slot doesn't
+ * abort the rest.
+ */
+export async function notifyPriorityClaimsForSlots(slotIds: string[]): Promise<number> {
+  let notified = 0;
+  for (const slotId of slotIds) {
+    const { error } = await supabase.functions.invoke('send-priority-claim-invitation', {
+      body: { slotId },
+    });
+    if (!error) notified++;
+  }
+  return notified;
 }
 
 export interface MyPendingClaim {
