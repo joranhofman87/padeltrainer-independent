@@ -1404,7 +1404,7 @@
   },
   "supabase/functions/finalize-proposals/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 8
+      "count": 7
     }
   },
   "supabase/functions/generate-blog-cover/index.ts": {

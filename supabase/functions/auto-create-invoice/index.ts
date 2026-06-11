@@ -471,7 +471,10 @@ serve(async (req) => {
         .select("id, invoice_number")
         .eq("trainer_id", trainerId)
         .not("status", "eq", "cancelled")
-        .contains("booking_ids", bookingIds);
+        // OVERLAP, not contains: any active invoice that already bills ANY of these
+        // bookings is a duplicate risk. The old `.contains` only matched a SUPERSET,
+        // so invoice [A] then a request for [A,B] both succeeded → A billed twice.
+        .overlaps("booking_ids", bookingIds);
 
       if (recipientFilter.player_id) {
         dupeQuery.eq("player_id", recipientFilter.player_id);
@@ -481,8 +484,8 @@ serve(async (req) => {
 
       const { data: existingInvoices } = await dupeQuery;
       if (existingInvoices && existingInvoices.length > 0) {
-        // Check for exact match (same booking set)
-        const exactMatch = existingInvoices.find(() => true); // contains already checks subset
+        // Any overlapping active invoice blocks creation — never re-bill a booking.
+        const exactMatch = existingInvoices.find(() => true);
         if (exactMatch) {
           logStep("Duplicate invoice found, skipping creation", {
             existingId: exactMatch.id,
@@ -583,10 +586,11 @@ serve(async (req) => {
           .select("id, invoice_number")
           .eq("trainer_id", trainerId)
           .not("status", "eq", "cancelled")
-          .contains("booking_ids", bookingIds);
+          .overlaps("booking_ids", bookingIds);
         if (playerId) dupeFetch.eq("player_id", playerId);
         else if (guestPlayerId) dupeFetch.eq("guest_player_id", guestPlayerId);
-        const { data: winner } = await dupeFetch.maybeSingle();
+        // overlaps can match >1 row; take the first so maybeSingle never throws.
+        const { data: winner } = await dupeFetch.limit(1).maybeSingle();
         if (winner) {
           logStep("Race lost - returning existing invoice", { existingId: winner.id, existingNumber: winner.invoice_number });
           return new Response(

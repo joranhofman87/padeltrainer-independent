@@ -84,12 +84,18 @@ serve(async (req: Request) => {
 
     console.log(`Finalizing proposals for cycle: ${cycle_id}`);
 
-    // 1. Fetch all intake_requests for this cycle where status = 'proposed'
+    // 1. ATOMICALLY claim the proposed intake requests by flipping them to
+    // 'booked' in a single UPDATE ... WHERE status='proposed' RETURNING. Postgres
+    // row-locks each matched row, so when two admins finalize the same cycle at
+    // once each call only receives the rows IT actually transitioned — neither
+    // reprocesses the other's intake requests (was: both read status='proposed'
+    // and both created bookings + invoices → duplicates).
     const { data: intakeRequests, error: irError } = await supabaseAdmin
       .from("intake_requests")
-      .select("id, guest_player_id, player_id, status")
+      .update({ status: "booked" as any })
       .eq("cycle_id", cycle_id)
-      .eq("status", "proposed");
+      .eq("status", "proposed")
+      .select("id, guest_player_id, player_id");
 
     if (irError) throw irError;
 
@@ -112,7 +118,14 @@ serve(async (req: Request) => {
     if (paError) throw paError;
 
     const errors: string[] = [];
-    let bookingsCreated = 0;
+    // Bookings THIS run actually created — the invoicing step bills only these,
+    // never a blind re-query of every pending booking on the cycle's slots.
+    const createdBookings: {
+      id: string;
+      player_id: string | null;
+      guest_player_id: string | null;
+      slot_id: string;
+    }[] = [];
 
     // 3. For each assignment, create a booking and confirm the assignment
     for (const assignment of (assignments || [])) {
@@ -135,17 +148,19 @@ serve(async (req: Request) => {
           bookingData.player_id = intakeRequest.player_id;
         }
 
-        const { error: bookingError } = await supabaseAdmin
+        const { data: createdBooking, error: bookingError } = await supabaseAdmin
           .from("bookings")
-          .insert(bookingData);
+          .insert(bookingData)
+          .select("id, player_id, guest_player_id, slot_id")
+          .single();
 
-        if (bookingError) {
+        if (bookingError || !createdBooking) {
           console.error(`Error creating booking for assignment ${assignment.id}:`, bookingError);
-          errors.push(`Booking failed for assignment ${assignment.id}: ${bookingError.message}`);
+          errors.push(`Booking failed for assignment ${assignment.id}: ${bookingError?.message ?? "unknown"}`);
           continue;
         }
 
-        bookingsCreated++;
+        createdBookings.push(createdBooking);
 
         // Update assignment status to confirmed
         await supabaseAdmin
@@ -157,16 +172,8 @@ serve(async (req: Request) => {
       }
     }
 
-    // 4. Update intake_requests status to 'booked'
-    const { error: updateError } = await supabaseAdmin
-      .from("intake_requests")
-      .update({ status: "booked" as any })
-      .in("id", intakeIds);
-
-    if (updateError) {
-      console.error("Error updating intake requests:", updateError);
-      errors.push(`Failed to update intake request statuses: ${updateError.message}`);
-    }
+    const bookingsCreated = createdBookings.length;
+    // intake_requests are already 'booked' from the atomic claim in step 1.
 
     // 5. Auto-generate invoices for upfront payment cycles
     let invoicesCreated = 0;
@@ -185,40 +192,56 @@ serve(async (req: Request) => {
     if (paymentTiming === "upfront" && bookingsCreated > 0) {
       console.log("Generating invoices for upfront cycle...");
 
-      // Re-query confirmed bookings for this cycle's slots
-      const { data: slots } = await supabaseAdmin
-        .from("availability_slots")
-        .select("id")
-        .eq("cyclus_id", cycle_id);
+      // Invoice ONLY the bookings this finalize run created — never a blanket
+      // re-query of every confirmed+pending booking on the cycle's slots, which
+      // swept in already-invoiced commitment bookings and manually-added players
+      // and re-billed them.
+      const newBookings = createdBookings;
 
-      if (slots && slots.length > 0) {
-        const slotIds = slots.map((s: any) => s.id);
-
-        const { data: newBookings } = await supabaseAdmin
-          .from("bookings")
-          .select("id, player_id, guest_player_id")
-          .in("slot_id", slotIds)
-          .eq("status", "confirmed")
-          .eq("payment_status", "pending");
-
-        if (newBookings && newBookings.length > 0) {
-          // Group by player
-          const playerBookings = new Map<string, string[]>();
+      {
+        if (newBookings.length > 0) {
+          // Distinct players sharing each slot = the real "group" for splitting.
+          const slotPlayers = new Map<string, Set<string>>();
           for (const b of newBookings) {
             const key = b.player_id || b.guest_player_id;
             if (!key) continue;
-            const existing = playerBookings.get(key) || [];
-            existing.push(b.id);
-            playerBookings.set(key, existing);
+            const set = slotPlayers.get(b.slot_id) ?? new Set<string>();
+            set.add(key);
+            slotPlayers.set(b.slot_id, set);
           }
 
-          const totalUniquePlayers = playerBookings.size;
+          // Group by player → their booking ids and the slots they're on.
+          const playerBookings = new Map<string, string[]>();
+          const playerSlots = new Map<string, Set<string>>();
+          for (const b of newBookings) {
+            const key = b.player_id || b.guest_player_id;
+            if (!key) continue;
+            const ids = playerBookings.get(key) || [];
+            ids.push(b.id);
+            playerBookings.set(key, ids);
+            const slots = playerSlots.get(key) ?? new Set<string>();
+            slots.add(b.slot_id);
+            playerSlots.set(key, slots);
+          }
+
+          // A player's split divisor is the size of THEIR group (the distinct
+          // players sharing their slots), not the whole-cycle headcount. With two
+          // independent groups of 4 on different slots the old code divided by 8
+          // and collected half — now each group correctly pays price/4.
+          const groupSizeFor = (playerKey: string): number => {
+            const coPlayers = new Set<string>();
+            for (const slotId of playerSlots.get(playerKey) ?? []) {
+              for (const p of slotPlayers.get(slotId) ?? []) coPlayers.add(p);
+            }
+            return coPlayers.size || 1;
+          };
 
           for (const [playerId, bookingIds] of playerBookings) {
             try {
               const invoiceBody: Record<string, unknown> = { bookingIds };
-              if (isSplitPayment && totalUniquePlayers > 1) {
-                invoiceBody.splitAmongPlayers = totalUniquePlayers;
+              const groupSize = groupSizeFor(playerId);
+              if (isSplitPayment && groupSize > 1) {
+                invoiceBody.splitAmongPlayers = groupSize;
               }
 
               const invoiceRes = await supabaseAdmin.functions.invoke("auto-create-invoice", {

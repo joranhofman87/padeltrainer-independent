@@ -85,23 +85,45 @@ serve(async (req) => {
       const plan = buildCommitmentInvoicePlan((bookings || []) as CommitmentBooking[]);
       if (plan.committerCount === 0) continue;
 
+      // Exclude bookings already on an active (non-cancelled) invoice. The cron
+      // re-derives each player's FULL claimed batch every run and claims arrive
+      // across days, so batches grow — without this, a later run re-bills the
+      // earlier sessions (booking double-charged on an auto-sent invoice). The
+      // split divisor stays the full group headcount from the plan; only the
+      // not-yet-billed bookings are sent, each still split price/groupSize.
+      const { data: existingInvoices } = await supabase
+        .from("invoices")
+        .select("booking_ids")
+        .not("status", "eq", "cancelled")
+        .overlaps("booking_ids", bookingIds);
+      const alreadyInvoiced = new Set<string>();
+      for (const inv of existingInvoices || []) {
+        for (const id of ((inv.booking_ids as string[] | null) || [])) {
+          if (bookingIds.includes(id)) alreadyInvoiced.add(id);
+        }
+      }
+
+      const pendingBatches = plan.batches
+        .map((b) => ({ ...b, newBookingIds: b.bookingIds.filter((id) => !alreadyInvoiced.has(id)) }))
+        .filter((b) => b.newBookingIds.length > 0);
+
       const cycleReport = {
         cycleId: cycle.id,
         cycleName: cycle.name,
         committerCount: plan.committerCount,
-        batches: plan.batches.map((b) => ({
+        batches: pendingBatches.map((b) => ({
           playerKey: b.playerKey,
-          bookings: b.bookingIds.length,
+          bookings: b.newBookingIds.length,
           splitAmongPlayers: b.splitAmongPlayers,
         })),
         invoiced: 0 as number,
       };
 
       if (!dryRun) {
-        for (const batch of plan.batches) {
+        for (const batch of pendingBatches) {
           try {
             const res = await supabase.functions.invoke("auto-create-invoice", {
-              body: { bookingIds: batch.bookingIds, splitAmongPlayers: batch.splitAmongPlayers },
+              body: { bookingIds: batch.newBookingIds, splitAmongPlayers: batch.splitAmongPlayers },
             });
             if (res.error) {
               logStep("auto-create-invoice failed", { cycleId: cycle.id, playerKey: batch.playerKey, error: String(res.error) });
