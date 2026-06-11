@@ -284,8 +284,12 @@ serve(async (req) => {
 
     const isPaid = payment.status === "paid";
 
-    if (isPaid && !amountsMatch(expectedSum, paidValue)) {
-      logStep("Amount mismatch — refusing to mark paid", { expectedSum, paidValue, metadataIds });
+    // Tolerance scales with booking count (per-booking amounts are cent-rounded),
+    // mirroring the webhook — a flat 1ct tolerance wrongly rejected legitimate
+    // multi-session payments on the success-page fallback.
+    const sumTolerance = Math.max(0.01, (relatedBookings?.length ?? 1) * 0.01);
+    if (isPaid && !amountsMatch(expectedSum, paidValue, sumTolerance)) {
+      logStep("Amount mismatch — refusing to mark paid", { expectedSum, paidValue, metadataIds, sumTolerance });
       await notifySlackError("verify-mollie-payment", "Payment amount mismatch", {
         bookingId,
         expectedSum,

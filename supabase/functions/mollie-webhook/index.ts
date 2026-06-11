@@ -325,6 +325,20 @@ serve(async (req) => {
           return new Response("OK", { status: 200 });
         }
 
+        // A cancelled invoice must never resurrect to "paid" from a stale
+        // checkout (e.g. a slow bank transfer completing after cancel/reissue).
+        // Money was taken on a cancelled invoice → flag for a manual refund
+        // instead of silently re-collecting.
+        if (invoiceForPay?.status === "cancelled") {
+          logStep("BLOCKED: payment for cancelled invoice", { invoiceId: invoiceIdFromMetadata, paidValue });
+          await notifySlackError(
+            "mollie-webhook",
+            "Payment received for a CANCELLED invoice — needs manual refund/review",
+            { paymentId, invoiceId: invoiceIdFromMetadata, paidValue },
+          );
+          return new Response("OK", { status: 200 });
+        }
+
         const { error: invUpdateError } = await supabase
           .from("invoices")
           .update({ status: "paid", paid_at: new Date().toISOString(), mollie_payment_id: paymentId })
@@ -484,8 +498,13 @@ serve(async (req) => {
       );
       const paidValue = parseMollieAmountValue(payment.amount?.value);
 
-      if (expectedSum > 0 && !amountsMatch(expectedSum, paidValue)) {
-        logStep("BLOCKED: Payment amount mismatch", { bookingIds, expectedSum, paidValue });
+      // Tolerance scales with booking count: per-booking amounts are stored to
+      // the cent, so the sum can legitimately differ from the charged total by
+      // up to ~half a cent per booking. A flat 1ct tolerance wrongly rejected
+      // legitimate multi-session cyclus payments (money taken, booking stuck).
+      const sumTolerance = Math.max(0.01, bookingIds.length * 0.01);
+      if (expectedSum > 0 && !amountsMatch(expectedSum, paidValue, sumTolerance)) {
+        logStep("BLOCKED: Payment amount mismatch", { bookingIds, expectedSum, paidValue, sumTolerance });
         await notifySlackError("mollie-webhook", "Payment amount mismatch — bookings not marked paid", {
           bookingIds,
           expectedSum,
@@ -506,10 +525,20 @@ serve(async (req) => {
       updateData.paid_at = new Date().toISOString();
     }
 
-    const { error: updateError } = await supabase
+    let bookingUpdate = supabase
       .from("bookings")
       .update(updateData)
       .in("id", bookingIds);
+
+    // Never un-confirm a booking that's already PAID just because a stale Mollie
+    // payment later failed/expired/cancelled (e.g. the player paid out-of-band
+    // in cash after starting an online payment). Only the paid transition may
+    // touch paid rows.
+    if (bookingStatus === "cancelled") {
+      bookingUpdate = bookingUpdate.neq("payment_status", "paid");
+    }
+
+    const { error: updateError } = await bookingUpdate;
 
     if (updateError) {
       logStep("Failed to update bookings", { error: updateError.message });

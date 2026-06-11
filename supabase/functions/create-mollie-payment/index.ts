@@ -269,12 +269,20 @@ serve(async (req) => {
       const total = computeCyclusTotalFromSlots(slots, hourlyRate);
       if (splitPayment) {
         const slotIds = [...new Set(existingBookings.map((b) => b.slot_id))];
-        const { count: existingPlayers } = await supabase
+        // Split by DISTINCT participants, not booking rows. A multi-session
+        // cycle has players×sessions rows, so counting rows divided the cycle
+        // far too many ways and massively undercharged each payer.
+        const { data: participantRows } = await supabase
           .from("bookings")
-          .select("player_id", { count: "exact", head: true })
+          .select("player_id, guest_player_id")
           .in("slot_id", slotIds)
           .in("status", ["pending", "confirmed"]);
-        expectedAmount = applySplitPayment(total, existingPlayers || 1);
+        const distinctPlayers = new Set(
+          (participantRows || [])
+            .map((b) => b.player_id ?? b.guest_player_id)
+            .filter(Boolean),
+        ).size;
+        expectedAmount = applySplitPayment(total, distinctPlayers || 1);
       } else {
         expectedAmount = total;
       }
@@ -458,16 +466,25 @@ serve(async (req) => {
       bookingId = allBookingIds[0];
       logStep("Using existing bookings", { bookingIds: allBookingIds });
 
-      const perBookingAmount = Math.round((expectedAmount / allBookingIds.length) * 100) / 100;
-      const { error: amountUpdateError } = await supabase
-        .from("bookings")
-        .update({ payment_amount: perBookingAmount })
-        .in("id", allBookingIds);
-
-      if (amountUpdateError) {
-        throw new Error(`Failed to set payment amount: ${amountUpdateError.message}`);
+      // Distribute the charged total across the bookings to the cent so their
+      // sum equals exactly what Mollie is charged. The webhook verifies
+      // sum(payment_amount) == amount paid; naive round(total/N) per row drifts
+      // by up to N/2 cents and made that guard reject legitimate payments.
+      const totalCents = Math.round(expectedAmount * 100);
+      const n = allBookingIds.length;
+      const baseCents = Math.floor(totalCents / n);
+      const remainderCents = totalCents - baseCents * n;
+      for (let i = 0; i < n; i++) {
+        const cents = baseCents + (i < remainderCents ? 1 : 0);
+        const { error: amountUpdateError } = await supabase
+          .from("bookings")
+          .update({ payment_amount: cents / 100 })
+          .eq("id", allBookingIds[i]);
+        if (amountUpdateError) {
+          throw new Error(`Failed to set payment amount: ${amountUpdateError.message}`);
+        }
       }
-      logStep("Payment amounts set on cyclus bookings", { perBookingAmount, count: allBookingIds.length });
+      logStep("Payment amounts distributed across cyclus bookings", { totalCents, count: n });
     } else {
       const { data: booking, error: bookingError } = await supabase
         .from("bookings")
