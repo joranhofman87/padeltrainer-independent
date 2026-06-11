@@ -141,7 +141,27 @@ export function DeleteSlotDialog({
   };
 
   const handleInvoiceUpdates = async (cancelledBookingIds: string[]) => {
-    for (const invoice of affectedInvoices) {
+    if (cancelledBookingIds.length === 0) return;
+
+    // Fetch EVERY invoice overlapping the bookings actually being cancelled — not
+    // the dialog-open-time `affectedInvoices`, which only covered the single slot
+    // the dialog was opened from. On a full-cyclus delete the bookings are cancelled
+    // across all cycle slots, so a player who joined mid-cycle (invoice on other
+    // slots) would otherwise keep a payable invoice for sessions that no longer
+    // exist — and the cascade then destroys the data needed to fix it.
+    const { data: invoiceRows } = await supabase
+      .from("invoices")
+      .select("id, invoice_number, status, booking_ids, total, vat_rate, line_items")
+      .in("status", ["draft", "sent", "paid", "pending"])
+      .overlaps("booking_ids", cancelledBookingIds);
+
+    const invoicesToFix: InvoiceInfo[] = (invoiceRows || []).map(inv => ({
+      ...inv,
+      booking_ids: inv.booking_ids || [],
+      line_items: (inv.line_items as InvoiceInfo["line_items"]) || [],
+    }));
+
+    for (const invoice of invoicesToFix) {
       const overlappingIds = invoice.booking_ids.filter(id => cancelledBookingIds.includes(id));
       if (overlappingIds.length === 0) continue;
 
@@ -248,8 +268,11 @@ export function DeleteSlotDialog({
             }
           }
 
-          // Handle invoice updates before deleting slots
-          if (cancelledBookingIds.length > 0 && affectedInvoices.length > 0) {
+          // Handle invoice updates before deleting slots. Gate only on the bookings
+          // ACTUALLY cancelled (across all cycle slots) — not the single-slot
+          // affectedInvoices preview, which misses invoices on the cycle's other
+          // slots. handleInvoiceUpdates re-resolves the affected invoices itself.
+          if (cancelledBookingIds.length > 0) {
             await handleInvoiceUpdates(cancelledBookingIds);
           }
 
@@ -324,8 +347,8 @@ export function DeleteSlotDialog({
           }
         }
 
-        // Handle invoice updates before deleting the slot
-        if (cancelledBookingIds.length > 0 && affectedInvoices.length > 0) {
+        // Handle invoice updates before deleting the slot.
+        if (cancelledBookingIds.length > 0) {
           await handleInvoiceUpdates(cancelledBookingIds);
         }
 
