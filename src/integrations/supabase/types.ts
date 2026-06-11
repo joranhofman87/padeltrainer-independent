@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       academy_followers: {
@@ -349,6 +374,13 @@ export type Database = {
             columns: ["guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_metadata_preferred_location_id_fkey"
+            columns: ["preferred_location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {
@@ -2650,9 +2682,9 @@ export type Database = {
           email: string | null
           first_name: string | null
           full_name: string
-          last_name: string | null
           has_trained: boolean
           id: string
+          last_name: string | null
           linked_profile_id: string | null
           notes: string | null
           phone: string | null
@@ -2673,9 +2705,9 @@ export type Database = {
           email?: string | null
           first_name?: string | null
           full_name: string
-          last_name?: string | null
           has_trained?: boolean
           id?: string
+          last_name?: string | null
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string | null
@@ -2696,9 +2728,9 @@ export type Database = {
           email?: string | null
           first_name?: string | null
           full_name?: string
-          last_name?: string | null
           has_trained?: boolean
           id?: string
+          last_name?: string | null
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string | null
@@ -6785,6 +6817,10 @@ export type Database = {
       }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
+      claim_onboarding_email_queue_item: {
+        Args: { p_from_status: string; p_queue_id: string }
+        Returns: boolean
+      }
       club_has_managers: {
         Args: { _club_profile_id: string }
         Returns: boolean
@@ -6859,9 +6895,17 @@ export type Database = {
         Returns: boolean
       }
       is_player: { Args: { _user_id: string }; Returns: boolean }
+      is_player_of_academy: {
+        Args: { p_academy_profile_id: string; p_player_id: string }
+        Returns: boolean
+      }
       is_player_of_trainer: { Args: { p_player_id: string }; Returns: boolean }
       is_reserved_handle: { Args: { _handle: string }; Returns: boolean }
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
+      link_guest_data_to_profile: {
+        Args: { _profile_id: string }
+        Returns: Json
+      }
       queue_onboarding_emails: {
         Args: {
           p_email: string
@@ -6878,6 +6922,7 @@ export type Database = {
         Returns: Json
       }
       schedule_enrichment_job: { Args: never; Returns: number }
+      schedule_invoice_health_check_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
       swap_member_booking: {
         Args: { _new_slot_id: string; _old_booking_id: string }
@@ -6896,7 +6941,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      unschedule_all_background_pg_cron_jobs: {
+        Args: never
+        Returns: undefined
+      }
       unschedule_enrichment_job: { Args: never; Returns: undefined }
+      unschedule_invoice_health_check_job: { Args: never; Returns: undefined }
       unschedule_logo_fetch_job: { Args: never; Returns: undefined }
     }
     Enums: {
@@ -7038,6 +7088,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: [
