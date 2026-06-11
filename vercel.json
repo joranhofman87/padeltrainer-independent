@@ -12,7 +12,7 @@
   "crons": [
     {
       "path": "/api/cron/hourly-maintenance",
-      "schedule": "0 * * * *"
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/daily-maintenance",
