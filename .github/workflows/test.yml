@@ -7,6 +7,27 @@ on:
     branches: [main, master]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gated by eslint-suppressions.json: NEW violations of any rule fail.
+      # The baseline is shrink-only — when a suppressed issue is fixed, run
+      # `npm run lint:prune` and commit, or this step fails on stale suppressions.
+      - name: Lint (ratcheted)
+        run: npm run lint
+
   test:
     runs-on: ubuntu-latest
 
@@ -31,6 +52,5 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Check i18n parity
+      - name: Check i18n parity (en + nl)
         run: bun scripts/check-i18n-parity.ts
-        continue-on-error: true

@@ -26,21 +26,27 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": ["warn", {
+      // Every rule below is an error and gated in CI. Pre-existing violations
+      // of no-explicit-any / exhaustive-deps / only-export-components are
+      // captured in eslint-suppressions.json (a shrink-only baseline) so the
+      // build is green today while NEW violations fail. When you fix a
+      // suppressed issue, run `npm run lint:prune` and commit the smaller
+      // baseline. See CONTRIBUTING / package.json lint scripts.
+      "react-hooks/exhaustive-deps": "error",
+      "react-refresh/only-export-components": ["error", { allowConstantExport: true }],
+      "@typescript-eslint/no-unused-vars": ["error", {
         argsIgnorePattern: "^_",
         varsIgnorePattern: "^_",
         caughtErrorsIgnorePattern: "^_"
       }],
-      // a11y — keep narrow & noisy-rule-free for now; expand over time.
+      // a11y — these categories are fully cleared, so they stay at zero as errors.
       "jsx-a11y/alt-text": "error",
-      "jsx-a11y/anchor-has-content": "warn",
+      "jsx-a11y/anchor-has-content": "error",
       "jsx-a11y/aria-props": "error",
       "jsx-a11y/aria-role": "error",
-      // Custom: icon-only Buttons must have aria-label.
-      // Start as 'warn' so the existing 195 occurrences don't break the build;
-      // flip to 'error' once the backlog is burned down.
-      "local/button-icon-aria-label": "warn",
+      // Custom: icon-only Buttons must have aria-label. Backlog burned down to 0,
+      // so this is now an error to keep it there.
+      "local/button-icon-aria-label": "error",
     },
   },
 );
