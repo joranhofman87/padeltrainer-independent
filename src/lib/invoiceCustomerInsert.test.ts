@@ -4,6 +4,7 @@ import {
   findExistingGuestPlayerIdForInvoice,
   resolveInvoiceGuestPlayerId,
   resolveOrCreateAcademyInvoiceGuest,
+  resolveOrCreateInvoiceGuest,
 } from './invoiceCustomerInsert';
 
 const insertMock = vi.fn();
@@ -165,7 +166,7 @@ describe('resolveInvoiceGuestPlayerId', () => {
     expect(fromMock).toHaveBeenCalledWith('guest_players');
   });
 
-  it('returns null when no email for manual recipient', async () => {
+  it('creates an emailless guest for a manual recipient with a name', async () => {
     const id = await resolveInvoiceGuestPlayerId({
       playerLink: { profileId: null, guestPlayerId: null, linkedDisplayName: null },
       oneTimeMode: true,
@@ -181,8 +182,79 @@ describe('resolveInvoiceGuestPlayerId', () => {
       scope: 'trainer',
       trainerId: 't1',
     });
+    expect(id).toBe('new-guest');
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    const insertArg = insertMock.mock.calls[0][0];
+    expect(insertArg.trainer_id).toBe('t1');
+    expect(insertArg.full_name).toBe('Walk-in');
+    expect(insertArg.email).toBeUndefined();
+  });
+
+  it('returns null when name and email are both empty', async () => {
+    const id = await resolveInvoiceGuestPlayerId({
+      playerLink: { profileId: null, guestPlayerId: null, linkedDisplayName: null },
+      oneTimeMode: true,
+      receiver: {
+        playerName: '   ',
+        playerEmail: '',
+        playerBusinessName: '',
+        playerStreet: '',
+        playerZipCode: '',
+        playerCity: '',
+        playerBtwNumber: '',
+      },
+      scope: 'trainer',
+      trainerId: 't1',
+    });
     expect(id).toBeNull();
-    expect(fromMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveOrCreateInvoiceGuest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    guestLookupResult = null;
+    insertMock.mockReturnValue({
+      select: () => ({
+        single: () => Promise.resolve({ data: { id: 'new-guest' }, error: null }),
+      }),
+    });
+  });
+
+  it('creates an emailless trainer-scoped guest', async () => {
+    const id = await resolveOrCreateInvoiceGuest({
+      playerName: 'Cash Customer',
+      playerEmail: '',
+      scope: 'trainer',
+      trainerId: 't1',
+    });
+    expect(id).toBe('new-guest');
+    const insertArg = insertMock.mock.calls[0][0];
+    expect(insertArg.trainer_id).toBe('t1');
+    expect(insertArg.email).toBeUndefined();
+  });
+
+  it('dedupes by email within academy scope', async () => {
+    guestLookupResult = { id: 'existing-by-email' };
+    const id = await resolveOrCreateInvoiceGuest({
+      playerName: 'Jan',
+      playerEmail: 'jan@test.com',
+      scope: 'academy',
+      academyProfileId: 'a1',
+    });
+    expect(id).toBe('existing-by-email');
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the scope owner id is missing', async () => {
+    const id = await resolveOrCreateInvoiceGuest({
+      playerName: 'Jan',
+      playerEmail: 'jan@test.com',
+      scope: 'trainer',
+    });
+    expect(id).toBeNull();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });
 

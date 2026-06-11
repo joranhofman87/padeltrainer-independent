@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { resolveOrCreateInvoiceGuest } from '@/lib/invoiceCustomerInsert';
 import { formatCurrency } from '@/lib/format';
 import { Loader2, Plus, Trash2, FileText, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -176,6 +177,23 @@ export function CreateInvoiceDialog({
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + (trainerBusinessInfo.payment_terms_days || 14));
 
+      // Without a registered player link, always create/link a guest player so
+      // the recipient shows up in the trainer's players list (players table is
+      // the single source of truth). Falls back to an unlinked invoice if the
+      // guest resolve fails.
+      let guestPlayerId: string | null = null;
+      if (!booking?.playerId) {
+        guestPlayerId = await resolveOrCreateInvoiceGuest({
+          playerName,
+          playerEmail: booking?.playerEmail ?? '',
+          scope: 'trainer',
+          trainerId,
+        });
+        if (!guestPlayerId) {
+          logger.error('Guest player resolve/create failed for invoice', undefined, { component: 'CreateInvoiceDialog' });
+        }
+      }
+
       const { data: invoice, error } = await supabase
         .from('invoices')
         .insert({
@@ -184,6 +202,7 @@ export function CreateInvoiceDialog({
           invoice_date: format(invoiceDate, 'yyyy-MM-dd'),
           due_date: format(dueDate, 'yyyy-MM-dd'),
           player_id: booking?.playerId || null,
+          guest_player_id: guestPlayerId,
           player_name: playerName,
           player_address: playerAddress || null,
           player_btw_number: playerBtwNumber || null,

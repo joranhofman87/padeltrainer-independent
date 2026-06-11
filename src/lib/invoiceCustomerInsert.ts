@@ -1,4 +1,4 @@
-import { buildAcademyInvoiceGuestInsert, buildTrainerInvoiceGuestInsert, invoiceGuestNameFields } from '@/lib/invoiceGuestPlayerInsert';
+import { invoiceGuestNameFields } from '@/lib/invoiceGuestPlayerInsert';
 import { joinBillingAddress } from '@/lib/invoiceCustomer';
 import type { InvoicePlayerLink, InvoiceReceiverFormFields } from '@/lib/invoiceCustomer';
 import { supabase } from '@/lib/supabaseClient';
@@ -58,6 +58,64 @@ export type ResolveInvoiceGuestPlayerArgs = {
   trainerId?: string;
 };
 
+export type ResolveOrCreateInvoiceGuestArgs = {
+  playerName: string;
+  playerEmail: string;
+  scope: 'academy' | 'trainer';
+  academyProfileId?: string;
+  trainerId?: string;
+};
+
+/**
+ * Resolve-or-create a guest player for an invoice recipient (academy or trainer
+ * scope). ALWAYS yields a player record when a name is present — creating an
+ * emailless guest when no email is given — so every invoice recipient becomes a
+ * player visible in the players list (the players table is the single source of
+ * truth). Dedupes by email within scope to respect the unique partial indexes.
+ *
+ * Returns the guest_players id, or null if no name/owner was given or the
+ * insert failed.
+ */
+export async function resolveOrCreateInvoiceGuest(
+  args: ResolveOrCreateInvoiceGuestArgs,
+): Promise<string | null> {
+  const { scope, academyProfileId, trainerId } = args;
+  const name = args.playerName.trim();
+  if (!name) return null;
+  const email = args.playerEmail.trim();
+
+  const ownerFields =
+    scope === 'academy' && academyProfileId
+      ? { academy_profile_id: academyProfileId }
+      : scope === 'trainer' && trainerId
+        ? { trainer_id: trainerId }
+        : null;
+  if (!ownerFields) return null;
+
+  if (email) {
+    const existingId = await findExistingGuestPlayerIdForInvoice(
+      email,
+      scope,
+      academyProfileId,
+      trainerId,
+    );
+    if (existingId) return existingId;
+  }
+
+  const insert = email
+    ? { ...invoiceGuestNameFields(name), email, ...ownerFields }
+    : { ...invoiceGuestNameFields(name), ...ownerFields };
+
+  const { data, error } = await supabase
+    .from('guest_players')
+    .insert(insert)
+    .select('id')
+    .single();
+
+  if (error || !data) return null;
+  return data.id;
+}
+
 /** Resolves guest_player_id for insert; never overwrites an existing linked guest. */
 export async function resolveInvoiceGuestPlayerId(
   args: ResolveInvoiceGuestPlayerArgs,
@@ -72,77 +130,24 @@ export async function resolveInvoiceGuestPlayerId(
     return null;
   }
 
-  if (!receiver.playerEmail.trim()) {
-    return null;
-  }
-
-  const insert =
-    scope === 'academy' && academyProfileId
-      ? buildAcademyInvoiceGuestInsert(receiver.playerName, receiver.playerEmail, academyProfileId)
-      : scope === 'trainer' && trainerId
-        ? buildTrainerInvoiceGuestInsert(receiver.playerName, receiver.playerEmail, trainerId)
-        : null;
-
-  if (!insert) return null;
-
-  const existingId = await findExistingGuestPlayerIdForInvoice(
-    receiver.playerEmail,
+  return resolveOrCreateInvoiceGuest({
+    playerName: receiver.playerName,
+    playerEmail: receiver.playerEmail,
     scope,
     academyProfileId,
     trainerId,
-  );
-  if (existingId) return existingId;
-
-  const { data: guestPlayer, error } = await supabase
-    .from('guest_players')
-    .insert(insert)
-    .select('id')
-    .single();
-
-  if (error || !guestPlayer) return null;
-  return guestPlayer.id;
+  });
 }
 
 export function buildInvoicePlayerAddress(receiver: InvoiceReceiverFormFields): string | null {
   return joinBillingAddress(receiver.playerStreet, receiver.playerZipCode, receiver.playerCity);
 }
 
-/**
- * Resolve-or-create an academy guest player for a manual/custom invoice.
- *
- * Unlike resolveInvoiceGuestPlayerId (which only links when an email is given),
- * this ALWAYS yields a player record when a name is present — creating an
- * emailless guest when no email is provided — so every invoice recipient becomes
- * a player visible in the academy players list (the players table is the single
- * source of truth). Dedupes by email within academy scope to avoid duplicates
- * and to respect the unique (academy_profile_id, email) index.
- *
- * Returns the guest_players id, or null if no name was given / the insert failed.
- */
+/** Academy convenience wrapper around resolveOrCreateInvoiceGuest. */
 export async function resolveOrCreateAcademyInvoiceGuest(
   playerName: string,
   playerEmail: string,
   academyProfileId: string,
 ): Promise<string | null> {
-  const name = playerName.trim();
-  if (!name) return null;
-  const email = playerEmail.trim();
-
-  if (email) {
-    const existingId = await findExistingGuestPlayerIdForInvoice(email, 'academy', academyProfileId);
-    if (existingId) return existingId;
-  }
-
-  const insert = email
-    ? buildAcademyInvoiceGuestInsert(name, email, academyProfileId)
-    : { ...invoiceGuestNameFields(name), academy_profile_id: academyProfileId };
-
-  const { data, error } = await supabase
-    .from('guest_players')
-    .insert(insert)
-    .select('id')
-    .single();
-
-  if (error || !data) return null;
-  return data.id;
+  return resolveOrCreateInvoiceGuest({ playerName, playerEmail, scope: 'academy', academyProfileId });
 }
