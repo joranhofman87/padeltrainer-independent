@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
-import { fetchUnifiedPlayersCore, type CorePlayer } from '@/lib/unifiedPlayers';
-import { fetchPlayersOverview, type PlayersOverviewRow } from '@/lib/playersOverview';
+import { fetchAllPlayersOverview, fetchPlayersOverview, type PlayersOverviewRow } from '@/lib/playersOverview';
 import type { PlayerScope } from '@/lib/playerQueryKeys';
 
 export type InvoiceSelectablePlayer = {
@@ -15,21 +14,6 @@ export type InvoiceSelectablePlayer = {
   billing_address: string | null;
   billing_btw_number: string | null;
 };
-
-function coreToInvoiceSelectablePlayer(core: CorePlayer): InvoiceSelectablePlayer {
-  return {
-    comboboxId: core.key,
-    full_name: core.full_name,
-    email: core.email,
-    phone: core.phone,
-    type: core.type,
-    profileId: core.profileId,
-    guestPlayerId: core.guestPlayerId,
-    billing_business_name: core.billing_business_name,
-    billing_address: core.billing_address,
-    billing_btw_number: core.billing_btw_number,
-  };
-}
 
 export function overviewRowToInvoiceSelectablePlayer(row: PlayersOverviewRow): InvoiceSelectablePlayer {
   return {
@@ -59,18 +43,19 @@ export async function searchInvoiceSelectablePlayers(
   return rows.map(overviewRowToInvoiceSelectablePlayer);
 }
 
+/** Complete scoped list via the overview RPC (membership rules enforced in SQL). */
 export async function fetchAcademyInvoiceSelectablePlayers(
   academyProfileId: string,
 ): Promise<InvoiceSelectablePlayer[]> {
-  const { players } = await fetchUnifiedPlayersCore({ kind: 'academy', academyProfileId });
-  return players.map(coreToInvoiceSelectablePlayer);
+  const rows = await fetchAllPlayersOverview({ kind: 'academy', id: academyProfileId });
+  return rows.map(overviewRowToInvoiceSelectablePlayer);
 }
 
 export async function fetchTrainerInvoiceSelectablePlayers(
   trainerId: string,
 ): Promise<InvoiceSelectablePlayer[]> {
-  const { players } = await fetchUnifiedPlayersCore({ kind: 'trainer', trainerId });
-  return players.map(coreToInvoiceSelectablePlayer);
+  const rows = await fetchAllPlayersOverview({ kind: 'trainer', id: trainerId });
+  return rows.map(overviewRowToInvoiceSelectablePlayer);
 }
 
 export type InvoicePrefillScope =

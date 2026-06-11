@@ -8,8 +8,6 @@ import {
 import type { InvoiceSelectablePlayer } from './invoiceSelectablePlayers';
 import type { PlayersOverviewRow } from './playersOverview';
 
-const source = readFileSync(resolve(__dirname, 'invoiceSelectablePlayers.ts'), 'utf8');
-
 const sampleGuest: InvoiceSelectablePlayer = {
   comboboxId: 'g_guest-1',
   full_name: 'Guest A',
@@ -36,14 +34,13 @@ const sampleRegistered: InvoiceSelectablePlayer = {
   billing_btw_number: null,
 };
 
-describe('invoice selectable players unified core delegation', () => {
-  it('builds both fetchers on fetchUnifiedPlayersCore (removal filtering lives in the core)', () => {
-    expect(source).toContain('fetchUnifiedPlayersCore');
-    expect(source).toContain("fetchUnifiedPlayersCore({ kind: 'academy', academyProfileId })");
-    expect(source).toContain("fetchUnifiedPlayersCore({ kind: 'trainer', trainerId })");
-    // Removal filtering moved into the shared core; no local filtering remains.
+describe('invoice selectable players overview delegation', () => {
+  it('builds both fetchers on the players-overview RPC (membership rules live in SQL)', () => {
+    const source = readFileSync(resolve(__dirname, 'invoiceSelectablePlayers.ts'), 'utf8');
+    expect(source).toContain('fetchAllPlayersOverview');
+    expect(source).toContain('searchInvoiceSelectablePlayers');
+    expect(source).not.toContain('fetchUnifiedPlayersCore');
     expect(source).not.toContain('filterGuestRowsByRemoval');
-    expect(source).not.toContain('filterProfileIdsByRemoval');
   });
 });
 
