@@ -193,9 +193,6 @@ serve(async (req) => {
       discounts = [{ coupon: couponId }];
     }
 
-    // Allow Stripe Promotion Codes at checkout
-    const allowPromotionCodes = !discounts;
-
     // Determine redirect URLs
     const successPath = type === "trainer" ? "/app/trainer/subscription" 
       : type === "club" ? "/app/club/subscription" 

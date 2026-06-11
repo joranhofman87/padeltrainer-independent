@@ -49,7 +49,7 @@ export default function RateMyCourtPage() {
     url: `${MARKETING_DOMAIN}/${lang}/playground/rate-my-court`,
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
   };
-  const [pendingReview, setPendingReview] = useState<CourtReviewInsert | null>(null);
+  const [_pendingReview, setPendingReview] = useState<CourtReviewInsert | null>(null);
 
   const { data: existingReview } = useUserReviewForLocation(selectedLocation?.id);
   const submitReview = useSubmitReview();

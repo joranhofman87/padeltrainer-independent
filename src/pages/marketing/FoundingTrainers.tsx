@@ -6,7 +6,7 @@ import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Trophy, Gift, CreditCard, Star, CheckCircle, ArrowRight } from 'lucide-react';
+import { Gift, CreditCard, Star, CheckCircle, ArrowRight } from 'lucide-react';
 import { getAppUrl } from '@/lib/domains';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 

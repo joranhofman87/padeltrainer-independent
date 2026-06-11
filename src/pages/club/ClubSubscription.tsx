@@ -39,7 +39,7 @@ export default function ClubSubscription() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
-  const [clubs, setClubs] = useState<(ClubProfile & { role: string; location: any })[]>([]);
+  const [_clubs, setClubs] = useState<(ClubProfile & { role: string; location: any })[]>([]);
   const [activeClub, setActiveClub] = useState<(ClubProfile & { role: string; location: any }) | null>(null);
   const [subscription, setSubscription] = useState<ClubSubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);

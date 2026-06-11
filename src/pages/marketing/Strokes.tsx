@@ -107,7 +107,9 @@ export default function Strokes() {
     setGroupByCategory(next);
     try {
       localStorage.setItem('strokes-group-by-category', String(next));
-    } catch {}
+    } catch {
+      /* non-fatal: persisting the grouping preference is best-effort */
+    }
   };
 
   const renderStrokeCard = (stroke: StrokeListItem, index: number) => (

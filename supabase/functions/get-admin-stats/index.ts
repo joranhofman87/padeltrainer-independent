@@ -159,10 +159,6 @@ serve(async (req) => {
 
     // Estimate platform fees using flat fee per booking
     const totalTrainers = trainers.length || 1;
-    const estimatedPlatformFees = 
-      (trainerTiers.starter * TIER_FLAT_FEES.starter) +
-      (trainerTiers.professional * TIER_FLAT_FEES.professional) +
-      (trainerTiers.academy * TIER_FLAT_FEES.academy);
     // Weight by bookings (rough estimate: distribute paid bookings proportionally by trainer count)
     const totalPaidBookings = paidBookings.length;
     const avgFeeFlat = totalPaidBookings > 0

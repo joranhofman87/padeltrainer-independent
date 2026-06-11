@@ -136,13 +136,6 @@ function slotToMinutes(slotStart: string): number {
   return hour * 60 + minutes;
 }
 
-// Get slot duration in minutes
-function slotDurationMinutes(slot: AvailabilitySlot): number {
-  const start = new Date(slot.start_time).getTime();
-  const end = new Date(slot.end_time).getTime();
-  return Math.round((end - start) / 60000);
-}
-
 function matchesTimeWindow(slotStart: string, timeWindow: TimeWindow): boolean {
   const slotDay = getDayOfWeek(slotStart);
 

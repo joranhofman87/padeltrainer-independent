@@ -176,7 +176,7 @@ export default function AdminCertifications() {
     try {
       await updateCertification(cert.id, { is_active: !cert.is_active });
       await fetchData();
-    } catch (error) {
+    } catch {
       toast({ title: 'Error', description: 'Failed to update status', variant: 'destructive' });
     }
   };
@@ -226,7 +226,7 @@ export default function AdminCertifications() {
     try {
       await updateSpecialization(spec.id, { is_active: !spec.is_active });
       await fetchData();
-    } catch (error) {
+    } catch {
       toast({ title: 'Error', description: 'Failed to update status', variant: 'destructive' });
     }
   };
@@ -248,7 +248,7 @@ export default function AdminCertifications() {
       }
       toast({ title: `${deletingItem.type === 'cert' ? 'Certification' : 'Specialization'} deleted` });
       await fetchData();
-    } catch (error) {
+    } catch {
       toast({ title: 'Error', description: 'Failed to delete', variant: 'destructive' });
     } finally {
       setDeleteDialogOpen(false);

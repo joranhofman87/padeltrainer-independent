@@ -3,7 +3,7 @@ import { useAdminReviews, useUpdateReviewStatus } from '@/hooks/useCourtReviews'
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Check, X, Clock, Star } from 'lucide-react';
+import { Check, X, Star } from 'lucide-react';
 import { format } from 'date-fns';
 
 const statusColors: Record<string, string> = {

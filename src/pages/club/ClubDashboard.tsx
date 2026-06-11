@@ -23,7 +23,7 @@ import { logger } from '@/lib/logger';
 export default function ClubDashboard() {
   const { t } = useTranslation('club');
   const navigate = useNavigate();
-  const { activeClub, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useClubContext();
+  const { activeClub, isTrialing, trialDaysRemaining, subscription } = useClubContext();
   const [stats, setStats] = useState({ trainers: 0, players: 0, followers: 0, viewsLast7Days: 0, viewsLast30Days: 0 });
 
   useEffect(() => {

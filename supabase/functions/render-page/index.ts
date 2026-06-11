@@ -261,7 +261,6 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
   if (padelCityMatch) {
     const citySlug = padelCityMatch[1];
     const city = slugToDisplay(citySlug);
-    const L = labels(lang);
 
     let seoTitle = `Padel in ${city} — Courts, Clubs & Coaches`;
     let seoDesc = `Find padel clubs and coaches in ${city}. Compare courts, book lessons and start playing padel today.`;

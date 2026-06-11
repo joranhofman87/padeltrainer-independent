@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { isUserAdmin, importPipelineData, type ImportPipelineSummary } from '@/lib/admin';
 import {
   Loader2,
@@ -40,7 +40,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import {
   getAllLocations,
-  createLocation,
   updateLocation,
   getLocationTrainerCounts,
   getUniqueCities,
@@ -240,7 +239,7 @@ export default function AdminLocations() {
         title: 'Success',
         description: `Location ${location.is_active ? 'deactivated' : 'activated'}`,
       });
-    } catch (error) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to update location',

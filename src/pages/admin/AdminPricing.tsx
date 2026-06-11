@@ -78,7 +78,7 @@ export default function AdminPricing() {
           status: !plan.is_active ? t("pricing.active").toLowerCase() : t("pricing.inactive").toLowerCase() 
         }),
       });
-    } catch (error) {
+    } catch {
       toast({
         title: t("common:toasts.errorTitle"),
         description: t("common:toasts.errorDescription"),
@@ -96,7 +96,7 @@ export default function AdminPricing() {
         description: t("pricing.planDeletedDesc", { name: deletingPlan.name }),
       });
       setDeletingPlan(null);
-    } catch (error) {
+    } catch {
       toast({
         title: t("common:toasts.errorTitle"),
         description: t("common:toasts.errorDescription"),

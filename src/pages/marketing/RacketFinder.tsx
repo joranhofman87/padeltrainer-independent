@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
@@ -100,7 +100,7 @@ function parseAnswersFromParams(params: URLSearchParams): QuizAnswers | null {
 }
 
 export default function RacketFinder() {
-  const { t, i18n } = useTranslation('marketing');
+  const { t } = useTranslation('marketing');
   const { lang = 'en' } = useParams<{ lang: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 

@@ -72,10 +72,6 @@ export default function PublicRatingCard() {
   const rawDiff = Number((firstRating - latestRating).toFixed(2));
   const improvement = lower_is_better ? rawDiff : -rawDiff;
 
-  const bestRating = lower_is_better
-    ? Math.min(...history.map(e => e.rating))
-    : Math.max(...history.map(e => e.rating));
-
   const firstDate = new Date(history[0].scraped_at);
   const lastDate = new Date(history[history.length - 1].scraped_at);
   const months = differenceInMonths(lastDate, firstDate);

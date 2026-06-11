@@ -15,7 +15,7 @@ import { CTASection } from '@/components/sanity/CTASection';
 import { VideoTipCard } from '@/components/sanity/VideoTipCard';
 import type { VideoTip } from '@/components/sanity/VideoTipCard';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Lightbulb } from 'lucide-react';
+import { ArrowLeft, Lightbulb } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { sanityClient, STROKE_BY_SLUG_QUERY, VIDEO_TIPS_BY_STROKE_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields, BodySection } from '@/lib/sanity';

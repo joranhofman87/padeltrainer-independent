@@ -32,7 +32,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -49,7 +48,6 @@ import {
   LogIn,
   Trash2,
   Pencil,
-  Percent,
   Users,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -257,7 +255,7 @@ export default function AdminUsers() {
 
     setActionLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("delete-user", {
+      const { data: _data, error } = await supabase.functions.invoke("delete-user", {
         body: { target_user_id: selectedUser.user_id },
       });
 

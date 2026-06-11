@@ -1,14 +1,14 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
-import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
+import { useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MapPin, Users, Star, ChevronRight, ChevronDown, ArrowRight, Home, Sun } from 'lucide-react';
+import { Star, ChevronRight, ChevronDown, ArrowRight } from 'lucide-react';
 import { TopRatedCourts } from '@/components/locations/TopRatedCourts';
 import { getActiveLocations, getLocationTrainerCounts, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { getCitiesWithTrainers, type CityWithTrainerCount } from '@/lib/cities';
@@ -21,7 +21,6 @@ import { generateCityIntro, generateClubIntro, generateLessonsText, generateFAQs
 import { getBatchTrainerRatings } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
 import { getLearningArticles, type LearningArticleSummary } from '@/lib/learningArticles';
-import { Helmet } from 'react-helmet-async';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { sanityClient, CITY_PAGE_QUERY, type CityPage } from '@/lib/sanity';
 import { PortableTextRenderer } from '@/components/sanity/PortableTextRenderer';
@@ -62,7 +61,6 @@ export default function CityLanding() {
   const [showAllClubs, setShowAllClubs] = useState(false);
   const { t } = useTranslation('marketing');
   const { t: tc } = useTranslation('common');
-  const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
 
   const displayCity = useMemo(() => {
@@ -134,7 +132,6 @@ export default function CityLanding() {
       // Fetch trainers linked to locations in this city
       if (cityLocations.length > 0) {
         const locationIds = cityLocations.map(l => l.id);
-        const now = new Date().toISOString();
 
         const { data: trainerLocationLinks } = await supabase
           .from('trainer_locations')

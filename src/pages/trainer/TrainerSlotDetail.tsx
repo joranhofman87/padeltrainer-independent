@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { format, isPast } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
-  ArrowLeft, Calendar, Clock, Lock, MapPin, Users, Pencil,
+  ArrowLeft, Calendar, Lock, MapPin, Users, Pencil,
   Trash2, UserPlus, DollarSign, Loader2, Save, X, Check, Plus, Minus,
   FileText, CheckCircle2,
 } from 'lucide-react';

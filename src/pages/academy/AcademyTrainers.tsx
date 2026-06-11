@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Users, ExternalLink, Eye, EyeOff, Clock, UserPlus, Pencil, MapPin, ChevronRight } from 'lucide-react';
+import { Users, ExternalLink, Clock, UserPlus, MapPin, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -41,7 +41,6 @@ import {
   getAcademyTrainersWithProfiles,
   getAcademyPendingInvitations,
   updateAcademyTrainerVisibility,
-  removeAcademyTrainer,
   cancelAcademyInvitation,
   canUserAddSelfAsTrainer,
   addSelfAsAcademyTrainer,
@@ -61,7 +60,7 @@ export default function AcademyTrainers() {
   const { user, profile } = useAuth();
   const [trainers, setTrainers] = useState<any[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
-  const [academyLocations, setAcademyLocations] = useState<any[]>([]);
+  const [_academyLocations, setAcademyLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null);
   const [canAddSelf, setCanAddSelf] = useState<{
@@ -140,16 +139,6 @@ export default function AcademyTrainers() {
       toast.error('Failed to update visibility');
     }
     setUpdatingVisibility(null);
-  };
-
-  const handleRemoveTrainer = async (trainerId: string) => {
-    const success = await removeAcademyTrainer(trainerId);
-    if (success) {
-      setTrainers((prev) => prev.filter((t) => t.id !== trainerId));
-      toast.success(t('trainers.removed'));
-    } else {
-      toast.error('Failed to remove trainer');
-    }
   };
 
   const handleCancelInvitation = async (invitationId: string) => {

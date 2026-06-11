@@ -12,7 +12,6 @@ import {
   subMonths,
   startOfMonth,
   endOfMonth,
-  isBefore,
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
@@ -118,7 +117,6 @@ type TabValue = AcademyCalendarTabValue;
 
 export default function AcademyCalendar() {
   const { t, i18n } = useTranslation("academy");
-  const { t: tTrainer } = useTranslation("trainer");
   const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split("-")[0]] || enUS;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -161,15 +159,15 @@ export default function AcademyCalendar() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
   
   // Selected trainer for create tab
-  const [selectedSlotTrainerId, setSelectedSlotTrainerId] = useState<string | null>(null);
+  const [selectedSlotTrainerId, _setSelectedSlotTrainerId] = useState<string | null>(null);
 
   // Action dialog state
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
-  const [preselectedCyclusId] = useState<string | undefined>();
-  const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
+  const [_preselectedCyclusId] = useState<string | undefined>();
+  const [_trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
   // SlotDetailDialog state removed — using page navigation now
 
   const handleCellClick = (day: Date, hour: number) => {
@@ -537,27 +535,6 @@ export default function AcademyCalendar() {
     }));
   }, [filteredSlots]);
 
-  // Overview data from week slots (same as manage tab)
-  const overviewSlots = useMemo(() => {
-    return slots.map(s => ({
-      id: s.id,
-      start_time: s.start_time,
-      end_time: s.end_time,
-      trainer_name: s.trainer_name,
-      trainer_id: s.trainer_id,
-      trainer_avatar: s.trainer_avatar,
-      max_participants: s.max_participants,
-      booked_count: s.active_bookings + s.pending_bookings,
-      location_name: s.location_name,
-      location_id: s.location_id,
-      is_public: s.is_public,
-      players: s.booked_players.map(p => ({
-        rating: p.skillRating ?? null,
-        birthDate: p.birthDate ?? null,
-      })),
-    }));
-  }, [slots]);
-
   // Trainer hours data from month slots
   const trainerHoursSlots = useMemo(() => {
     return monthSlots.map(s => ({
@@ -633,10 +610,6 @@ export default function AcademyCalendar() {
     setBookForPlayerOpen(true);
   };
 
-  const handleDuplicateCyclus = (cyclusId: string) => {
-    navigate(`/app/academy/slot/new?cyclus=${cyclusId}`);
-  };
-
   const handleDeleteSlot = (slot: SlotWithBookings) => {
     setSlotToDelete(slot);
     setDeleteSlotOpen(true);
@@ -654,57 +627,15 @@ export default function AcademyCalendar() {
     }
   };
 
-  const handleToggleMarkedFull = async (slotId: string, value: boolean, applyToCyclus?: boolean) => {
-    try {
-      if (applyToCyclus) {
-        const slot = slots.find((s) => s.id === slotId);
-        if (slot?.cyclus_id) {
-          const { error } = await supabase
-            .from("availability_slots")
-            .update({ is_public: !value })
-            .eq("cyclus_id", slot.cyclus_id)
-            .gte("start_time", new Date().toISOString());
-          if (error) throw error;
-          toast({ title: value ? tTrainer("calendar.cyclusMarkedFull") : tTrainer("calendar.cyclusMarkedOpen") });
-        }
-      } else {
-        const { error } = await supabase
-          .from("availability_slots")
-          .update({ is_public: !value })
-          .eq("id", slotId);
-        if (error) throw error;
-        toast({ title: value ? tTrainer("calendar.slotMarkedFull") : tTrainer("calendar.slotMarkedOpen") });
-      }
-      fetchSlots();
-    } catch (error) {
-      logger.error("Error toggling marked full", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyCalendar' });
-    }
-  };
-
   const handleSlotsCreated = () => {
     fetchSlots();
     fetchMonthSlots();
   };
 
-  const freeSlots = slots.filter(
-    (s) => !isBefore(new Date(s.start_time), new Date()) && s.active_bookings === 0 && s.pending_bookings === 0
-  ).length;
-  const bookedSlots = slots.filter(
-    (s) => !isBefore(new Date(s.start_time), new Date()) && s.active_bookings > 0
-  ).length;
-  const pendingSlots = slots.filter(
-    (s) => !isBefore(new Date(s.start_time), new Date()) && s.pending_bookings > 0 && s.active_bookings === 0
-  ).length;
-
   const getTrainerIdForSlot = () => {
     if (selectedSlot?.trainer_id) return selectedSlot.trainer_id;
     if (selectedTrainerId !== "all") return selectedTrainerId;
     return trainers[0]?.id || "";
-  };
-
-  const handleOverviewDayClick = (date: Date) => {
-    setCurrentDate(date);
-    setActiveTab("day");
   };
 
   const handleSlotClick = (slotId: string) => {
@@ -804,9 +735,6 @@ export default function AcademyCalendar() {
       freeHours,
     };
   }, [isMonth, agendaSlots, agendaMonthSlots]);
-
-  const fmtHours = (h: number) =>
-    h <= 0 ? '0h' : h % 1 === 0 ? `${h}h` : `${h.toFixed(1)}h`;
 
   if (loading && slots.length === 0) {
     return (

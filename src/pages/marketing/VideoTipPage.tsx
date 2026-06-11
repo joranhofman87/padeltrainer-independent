@@ -10,7 +10,7 @@ import { SEO } from '@/components/SEO';
 import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
 import { CTASection } from '@/components/sanity/CTASection';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ExternalLink, User } from 'lucide-react';
+import { ExternalLink, User } from 'lucide-react';
 import { sanityClient, VIDEO_TIP_BY_SLUG_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields } from '@/lib/sanity';
 import { useTranslation } from 'react-i18next';

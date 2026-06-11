@@ -152,7 +152,7 @@ serve(async (req) => {
     }
 
     // Check for canceled but still active subscriptions
-    const canceledSubs = await stripe.subscriptions.list({
+    await stripe.subscriptions.list({
       customer: profile.stripe_customer_id,
       status: "canceled",
       limit: 1,

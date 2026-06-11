@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAdmin } from "../_shared/auth.ts";
 
 const corsHeaders = {
@@ -348,7 +348,7 @@ ${scrapeResult.markdown.substring(0, 8000)}`;
 function generateSlug(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[^a-z0-9\-]/g, "-")
+    .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 }

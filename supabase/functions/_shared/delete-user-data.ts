@@ -6,12 +6,12 @@ import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
  * 
  * @param supabaseAdmin - Service role Supabase client
  * @param targetUserId - The auth.users UUID of the user to delete
- * @param preserveClubsAndAcademies - If true, nullifies created_by instead of deleting org profiles
+ * @param _preserveClubsAndAcademies - If true, nullifies created_by instead of deleting org profiles
  */
 export async function deleteUserData(
   supabaseAdmin: SupabaseClient,
   targetUserId: string,
-  preserveClubsAndAcademies: boolean = true
+  _preserveClubsAndAcademies: boolean = true
 ) {
   // 1. Delete calendar events & calendar connections
   await Promise.all([

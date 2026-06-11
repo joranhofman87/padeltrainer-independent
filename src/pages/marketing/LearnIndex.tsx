@@ -4,7 +4,6 @@ import { LocalizedLink } from '@/components/LocalizedLink';
 import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
-import { motion } from 'framer-motion';
 import { BookOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getLearningArticles, CONTENT_TYPE_LABELS, SKILL_LEVEL_LABELS } from '@/lib/learningArticles';

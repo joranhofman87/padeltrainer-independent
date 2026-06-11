@@ -270,11 +270,6 @@ export default function AdminReviewTags() {
     return acc;
   }, {} as Record<string, ReviewTag[]>);
 
-  const getCategoryLabel = (category: string) => {
-    const cat = CATEGORIES.find(c => c.value === category);
-    return cat?.label || category;
-  };
-
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center py-12">

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { buildBreadcrumbList } from '@/lib/structuredData';
 import { MARKETING_DOMAIN } from '@/lib/domains';
@@ -9,7 +9,7 @@ import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { RedFlagQuizQuestion } from '@/components/redflagquiz/RedFlagQuizQuestion';
 import { RedFlagQuizResult } from '@/components/redflagquiz/RedFlagQuizResult';
-import { questions, profiles, calculateResult, type ProfileId, type QuizProfile } from '@/lib/redFlagQuizData';
+import { questions, calculateResult, type ProfileId, type QuizProfile } from '@/lib/redFlagQuizData';
 
 type Phase = 'intro' | 'quiz' | 'result';
 

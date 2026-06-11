@@ -360,7 +360,7 @@ function CoverImageCard({
   const [generating, setGenerating] = useState(false);
   const [generatingAll, setGeneratingAll] = useState(false);
 
-  const generateCover = async (force?: boolean) => {
+  const generateCover = async (_force?: boolean) => {
     if (!articleId) return;
     setGenerating(true);
     try {

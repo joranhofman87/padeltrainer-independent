@@ -1,4 +1,3 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, requireServiceRoleOrAdmin } from "../_shared/auth.ts";
 
 const TABLES_TO_BACKUP = [
@@ -28,8 +27,6 @@ Deno.serve(async (req) => {
     const authResult = await requireServiceRoleOrAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = authResult.supabase;
     const timestamp = new Date()
       .toISOString()

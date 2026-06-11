@@ -60,7 +60,7 @@ const defaultFormData: RatingSystemFormData = {
 };
 
 export default function AdminRatingSystems() {
-  const { user, role, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation("admin");

@@ -1,9 +1,9 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Filter, X } from 'lucide-react';
+import { Filter } from 'lucide-react';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { sanityClient, RACKETS_LIST_QUERY } from '@/lib/sanity';
