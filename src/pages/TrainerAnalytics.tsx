@@ -10,6 +10,7 @@ import { ArrowLeft, TrendingUp, TrendingDown, Calendar, Euro, Star, Users } from
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, LineChart, Line } from 'recharts';
 import { getTrainerAverageRating, getTrainerReviews } from '@/lib/reviews';
+import { formatCurrency } from '@/lib/format';
 
 interface MonthlyStats {
   month: string;
@@ -261,9 +262,8 @@ export default function TrainerAnalytics() {
           />
           <StatCard 
             title={t('analyticsPage.totalEarnings')} 
-            value={summary.totalEarnings} 
+            value={formatCurrency(summary.totalEarnings)}
             icon={Euro}
-            prefix="€"
             change={summary.earningsChange}
           />
           <StatCard 
@@ -332,14 +332,14 @@ export default function TrainerAnalytics() {
                     <AreaChart data={monthlyStats}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="month" className="text-xs" />
-                      <YAxis className="text-xs" tickFormatter={(value) => `€${value}`} />
+                      <YAxis className="text-xs" tickFormatter={(value) => formatCurrency(value)} />
                       <Tooltip 
                         contentStyle={{ 
                           backgroundColor: 'hsl(var(--background))', 
                           border: '1px solid hsl(var(--border))',
                           borderRadius: '8px'
                         }}
-                        formatter={(value: number) => [`€${value}`, 'Earnings']}
+                        formatter={(value: number) => [formatCurrency(value), 'Earnings']}
                       />
                       <Area 
                         type="monotone" 
@@ -462,13 +462,13 @@ export default function TrainerAnalytics() {
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <span className="text-sm">{t('analyticsPage.avgEarningsPerMonth')}</span>
                 <span className="font-semibold">
-                  €{(summary.totalEarnings / 6).toFixed(0)}
+                  {formatCurrency(summary.totalEarnings / 6)}
                 </span>
               </div>
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <span className="text-sm">{t('analyticsPage.avgPerBooking')}</span>
                 <span className="font-semibold">
-                  €{summary.totalBookings > 0 ? (summary.totalEarnings / summary.totalBookings).toFixed(0) : 0}
+                  {formatCurrency(summary.totalBookings > 0 ? summary.totalEarnings / summary.totalBookings : 0)}
                 </span>
               </div>
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { formatCurrency } from '@/lib/format';
 import { InvoiceEmailDialog } from './InvoiceEmailDialog';
 import { EditInvoiceDialog } from '@/components/invoices/EditInvoiceDialog';
 import { 
@@ -431,7 +432,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                 
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <p className="text-xl font-bold">€{invoice.total.toFixed(2)}</p>
+                    <p className="text-xl font-bold">{formatCurrency(invoice.total)}</p>
                     <p className="text-xs text-muted-foreground">
                       incl. {invoice.vat_rate}% BTW
                     </p>

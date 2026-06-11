@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { sendEmail } from "@/lib/email";
+import { formatCurrency } from "@/lib/format";
 import { logger } from "@/lib/logger";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -215,7 +216,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
             </Badge>
           </CardTitle>
           <div className="text-sm font-semibold text-orange-600 dark:text-orange-400">
-            {t("unpaidBookings.totalOutstanding")}: €{totalOutstanding.toFixed(2)}
+            {t("unpaidBookings.totalOutstanding")}: {formatCurrency(totalOutstanding)}
           </div>
         </div>
       </CardHeader>
@@ -271,7 +272,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
               <div className="text-xs text-muted-foreground">
                 {obligationSubtitle(booking, t)}
                 <span className="ml-2 font-medium text-foreground">
-                  €{booking.amount.toFixed(2)}
+                  {formatCurrency(booking.amount)}
                 </span>
               </div>
               {booking.reminderSentAt && (

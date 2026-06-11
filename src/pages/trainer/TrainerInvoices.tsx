@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl, enUS } from "date-fns/locale";
 import { canSharePublicPaymentLink } from "@/lib/invoiceSettingsComplete";
+import { formatCurrency } from "@/lib/format";
 import {
   buildTrainerInvoiceSettingsLabels,
   checkInvoiceSettingsGate,
@@ -106,9 +107,6 @@ export default function TrainerInvoices() {
       return next;
     });
   };
-
-  const formatEuro = (amount: number) =>
-    amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Fetch trainer profile ID
   const { data: trainerProfile } = useQuery({
@@ -540,7 +538,7 @@ export default function TrainerInvoices() {
 
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="font-display text-2xl font-semibold tabular-nums">€{formatEuro(totalUnpaid)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="font-display text-2xl font-semibold tabular-nums">{formatCurrency(totalUnpaid)}</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open facturen")}</p><p className="font-display text-2xl font-semibold tabular-nums">{unpaidInvoices.length}</p></CardContent></Card>
             <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.paid", "Betaald")}</p><p className="font-display text-2xl font-semibold tabular-nums">{paidInvoices.length}</p></CardContent></Card>
           </div>
@@ -631,7 +629,7 @@ export default function TrainerInvoices() {
                               <TableCell>{inv.player_name}</TableCell>
                               <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                               <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                              <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
+                              <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1.5">
                                   {getStatusBadge(inv)}
@@ -689,7 +687,7 @@ export default function TrainerInvoices() {
                                 ? `${t("invoices.paymentDate", "Betaaldatum")}: ${format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale })}`
                                 : format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}
                             </span>
-                            <span className="font-bold text-lg">€{formatEuro(inv.total)}</span>
+                            <span className="font-bold text-lg">{formatCurrency(inv.total)}</span>
                           </div>
                           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                             {inv.status !== "paid" && inv.status !== "cancelled" && <ShareDropdown invoice={inv} />}

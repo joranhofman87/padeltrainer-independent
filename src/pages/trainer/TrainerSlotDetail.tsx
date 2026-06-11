@@ -9,6 +9,7 @@ import {
   FileText, CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
 import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { useToast } from '@/hooks/use-toast';
@@ -473,7 +474,7 @@ export default function TrainerSlotDetail() {
                     {detail.location_name && <Badge variant="outline" className="gap-1"><MapPin className="h-3 w-3" />{detail.location_name}</Badge>}
                     {detail.cyclus_name && <Badge variant="secondary">{detail.cyclus_name}</Badge>}
                     {!detail.is_public && <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300"><Lock className="h-3 w-3" />{t('calendar.private', 'Privé')}</Badge>}
-                    {detail.price_per_session != null && <Badge variant="outline" className="gap-1"><DollarSign className="h-3 w-3" />€{detail.price_per_session.toFixed(2)} / sessie</Badge>}
+                    {detail.price_per_session != null && <Badge variant="outline" className="gap-1"><DollarSign className="h-3 w-3" />{formatCurrency(detail.price_per_session)} / sessie</Badge>}
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between">
@@ -574,7 +575,7 @@ export default function TrainerSlotDetail() {
                       <button key={inv.id} className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent/50 transition-colors text-left" onClick={() => navigate(`/app/trainer/invoices/${inv.id}/edit`)}>
                         <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                         <div className="flex-1 min-w-0"><p className="text-sm font-mono font-medium truncate">{inv.invoice_number}</p><p className="text-xs text-muted-foreground truncate">{inv.player_name}</p></div>
-                        <span className="text-sm font-medium shrink-0">€{inv.total.toFixed(2)}</span>
+                        <span className="text-sm font-medium shrink-0">{formatCurrency(inv.total)}</span>
                         {displayStatus === 'paid' && <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{t('invoices.paid', 'Betaald')}</Badge>}
                         {displayStatus === 'sent' && <Badge variant="default" className="text-[10px] h-5 px-1.5">{t('invoices.sent', 'Verstuurd')}</Badge>}
                         {displayStatus === 'draft' && <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{t('invoices.draft', 'Concept')}</Badge>}

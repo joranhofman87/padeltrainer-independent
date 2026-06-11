@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Plus, Trash2, Loader2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/lib/format';
 
 interface Preset {
   id: string;
@@ -109,7 +110,7 @@ export function ExtraCostPresetsCard({ trainerId, academyProfileId }: ExtraCostP
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{preset.description}</p>
                       <p className="text-xs text-muted-foreground">
-                        €{Number(preset.price).toFixed(2)} · {preset.vat_rate}% BTW · {preset.type === 'one_time' ? 'Eenmalig' : 'Per sessie'}
+                        {formatCurrency(Number(preset.price))} · {preset.vat_rate}% BTW · {preset.type === 'one_time' ? 'Eenmalig' : 'Per sessie'}
                       </p>
                     </div>
                     <Button

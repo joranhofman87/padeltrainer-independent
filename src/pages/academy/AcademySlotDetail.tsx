@@ -42,6 +42,7 @@ import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
 import PriorityClaimsSection from '@/components/cycles/PriorityClaimsSection';
 import SlotTierControlCard from '@/components/cycles/SlotTierControlCard';
 import { resolveAcademyCyclusPricingRoute } from '@/lib/cyclusPricingRoute';
+import { formatCurrency } from '@/lib/format';
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
@@ -994,13 +995,13 @@ export default function AcademySlotDetail() {
                     {detail.price_per_session != null && (
                       <Badge variant="outline" className="gap-1">
                         <DollarSign className="h-3 w-3" />
-                        €{detail.price_per_session.toFixed(2)} / {t('calendar.session', 'session')}
+                        {formatCurrency(detail.price_per_session)} / {t('calendar.session', 'session')}
                       </Badge>
                     )}
                     {detail.total_price != null && (
                       <Badge variant="outline" className="gap-1">
                         <DollarSign className="h-3 w-3" />
-                        €{detail.total_price.toFixed(2)} {t('calendar.total', 'total')}
+                        {formatCurrency(detail.total_price)} {t('calendar.total', 'total')}
                       </Badge>
                     )}
                     <Badge variant="outline" className="gap-1 text-muted-foreground">
@@ -1024,7 +1025,7 @@ export default function AcademySlotDetail() {
                       <p className="font-medium">{t('calendar.extraCosts', 'Extra costs')}:</p>
                       {detail.extra_costs.map((ec, i) => (
                         <p key={i}>
-                          {ec.description}: €{ec.amount.toFixed(2)} ({ec.type === 'one_time' ? t('calendar.oneTime', 'One-time') : t('calendar.perSession', 'Per session')})
+                          {ec.description}: {formatCurrency(ec.amount)} ({ec.type === 'one_time' ? t('calendar.oneTime', 'One-time') : t('calendar.perSession', 'Per session')})
                         </p>
                       ))}
                     </div>
@@ -1224,7 +1225,7 @@ export default function AcademySlotDetail() {
                           <p className="text-sm font-mono font-medium truncate">{inv.invoice_number}</p>
                           <p className="text-xs text-muted-foreground truncate">{inv.player_name}</p>
                         </div>
-                        <span className="text-sm font-medium shrink-0">€{inv.total.toFixed(2)}</span>
+                        <span className="text-sm font-medium shrink-0">{formatCurrency(inv.total)}</span>
                         {displayStatus === 'paid' && (
                           <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300">
                             <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabaseClient';
+import { formatCurrency } from '@/lib/format';
 import { Package, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { ExtraCost } from '@/lib/cycles';
@@ -87,7 +88,7 @@ export function ExtraCostPresetPicker({ trainerId, academyProfileId, onSelect }:
               >
                 <div className="font-medium">{preset.description}</div>
                 <div className="text-xs text-muted-foreground">
-                  €{Number(preset.price).toFixed(2)} · {preset.vat_rate}% BTW · {preset.type === 'one_time' ? 'Eenmalig' : 'Per sessie'}
+                  {formatCurrency(Number(preset.price))} · {preset.vat_rate}% BTW · {preset.type === 'one_time' ? 'Eenmalig' : 'Per sessie'}
                 </div>
               </button>
             ))}

@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { formatCurrency } from '@/lib/format';
 import { Loader2, CalendarIcon, Plus, Trash2, ArrowLeft, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
@@ -437,7 +438,7 @@ export default function AcademyEditInvoice() {
                     <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
                     <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                   </div>
-                  <div className="text-right text-sm font-medium py-2">€{(li.quantity * li.unit_price).toFixed(2)}</div>
+                  <div className="text-right text-sm font-medium py-2">{formatCurrency(li.quantity * li.unit_price)}</div>
                   <Button type="button" variant="ghost" size="icon" aria-label="Delete" className="h-7 w-7" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                     <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
@@ -471,7 +472,7 @@ export default function AcademyEditInvoice() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right text-sm font-medium">{t('invoiceEdit.total')}: €{(li.quantity * li.unit_price).toFixed(2)}</div>
+                  <div className="text-right text-sm font-medium">{t('invoiceEdit.total')}: {formatCurrency(li.quantity * li.unit_price)}</div>
                 </div>
               ))}
             </div>
@@ -492,7 +493,7 @@ export default function AcademyEditInvoice() {
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{t('invoiceEdit.subtotal')}</span>
-                <span>€{subtotal.toFixed(2)}</span>
+                <span>{formatCurrency(subtotal)}</span>
               </div>
               {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
                 Object.entries(vatBreakdown)
@@ -500,7 +501,7 @@ export default function AcademyEditInvoice() {
                   .map(([rate, data]) => (
                     <div key={rate} className="flex justify-between">
                       <span className="text-muted-foreground">BTW {rate}%</span>
-                      <span>€{data.vat.toFixed(2)}</span>
+                      <span>{formatCurrency(data.vat)}</span>
                     </div>
                   ))
               ) : (
@@ -518,12 +519,12 @@ export default function AcademyEditInvoice() {
                     />
                     %
                   </span>
-                  <span>€{vatAmount.toFixed(2)}</span>
+                  <span>{formatCurrency(vatAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-base border-t pt-2">
                 <span>{t('invoiceEdit.total')}</span>
-                <span>€{total.toFixed(2)}</span>
+                <span>{formatCurrency(total)}</span>
               </div>
             </div>
 

@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote, Calculator, Info } from 'lucide-react';
 import { formatPrice } from '@/lib/pricing';
+import { formatCurrency } from '@/lib/format';
 import { createOptionalPhoneSchema } from '@/lib/validation';
 import { buildFullName, buildGuestPlayerDbFields, prefillProfileNameFields } from '@/lib/profileName';
 import { getTermsForCycleOwner } from '@/lib/terms';
@@ -702,7 +703,7 @@ export default function CycleApplicationForm({
               <div className="flex items-center justify-between">
                 <span className="font-medium">{t('application.form.eventPrice', 'Price')}</span>
                 <span className="text-lg font-semibold">
-                  {new Intl.NumberFormat('nl-NL', { style: 'currency', currency: cycle.currency || 'EUR' }).format(cycle.total_price)}
+                  {formatCurrency(cycle.total_price)}
                 </span>
               </div>
             </CardContent>
@@ -739,12 +740,12 @@ export default function CycleApplicationForm({
                         <p className="text-xs text-muted-foreground">
                           {opt.number_of_sessions} {t('application.form.lessons', 'lessen')}
                           {opt.number_of_weeks ? ` · ${opt.number_of_weeks} ${t('application.form.weeks', 'weken')}` : ''}
-                          {' · '}{new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.price_per_session)} {t('application.form.perLesson', 'per les')}
+                          {' · '}{formatCurrency(opt.price_per_session)} {t('application.form.perLesson', 'per les')}
                         </p>
                       </div>
                     </div>
                     <span className="text-sm font-semibold">
-                      {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.total_price)}
+                      {formatCurrency(opt.total_price)}
                     </span>
                   </label>
                 );
@@ -983,9 +984,6 @@ export default function CycleApplicationForm({
           
           if (watchedLessonTypes.length === 0) return null;
 
-          const currency = cycle.currency || 'EUR';
-          const fmt = (v: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency }).format(v);
-
           const effectiveWeeks = selectedDurationWeeks || (() => {
             if (!cycle.start_date || !cycle.end_date) return null;
             return Math.max(1, Math.round(
@@ -1043,10 +1041,10 @@ export default function CycleApplicationForm({
                     <span className="font-medium text-right whitespace-nowrap">
                       {line.perLesson != null && line.perLesson > 0 ? (
                         <>
-                          {fmt(line.perLesson)}/{t('form.perLesson')}
+                          {formatCurrency(line.perLesson)}/{t('form.perLesson')}
                           {line.total != null && effectiveWeeks && (
                             <span className="text-muted-foreground font-normal ml-2">
-                              {effectiveWeeks}w: {fmt(line.total)}
+                              {effectiveWeeks}w: {formatCurrency(line.total)}
                             </span>
                           )}
                         </>

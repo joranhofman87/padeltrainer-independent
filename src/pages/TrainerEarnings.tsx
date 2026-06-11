@@ -36,6 +36,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { InvoiceList } from '@/components/trainer/InvoiceList';
 import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
+import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -572,12 +573,12 @@ export default function TrainerEarnings() {
                      <p className="text-sm text-muted-foreground">{t('earningsPage.mollieBalance')}</p>
                      <div className="flex flex-wrap items-baseline gap-3">
                        <span className="font-display text-2xl font-semibold tabular-nums text-[hsl(var(--navy-900))]">
-                         €{connectStatus.balance.available.toFixed(2)}
+                         {formatCurrency(connectStatus.balance.available)}
                        </span>
                        <span className="text-sm text-muted-foreground">{t('earningsPage.available')}</span>
                       {connectStatus.balance.pending > 0 && (
                         <span className="text-sm text-[hsl(var(--warning))]">
-                          +€{connectStatus.balance.pending.toFixed(2)} pending
+                          +{formatCurrency(connectStatus.balance.pending)} pending
                         </span>
                       )}
                     </div>
@@ -633,23 +634,23 @@ export default function TrainerEarnings() {
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <DashboardStatTile
             label={t('earningsPage.totalEarned')}
-            value={`€${totalEarnings.toFixed(0)}`}
+            value={formatCurrency(totalEarnings)}
             icon={Euro}
           />
           <DashboardStatTile
             label={t('earningsPage.thisMonth')}
-            value={`€${thisMonthEarnings.toFixed(0)}`}
+            value={formatCurrency(thisMonthEarnings)}
             icon={Calendar}
             subtext={`${Number(monthlyGrowth) >= 0 ? '+' : ''}${monthlyGrowth}%`}
           />
           <DashboardStatTile
             label={t('earningsPage.lastMonth')}
-            value={`€${lastMonthEarnings.toFixed(0)}`}
+            value={formatCurrency(lastMonthEarnings)}
             icon={Clock}
           />
           <DashboardStatTile
             label={t('earningsPage.pending')}
-            value={`€${pendingAmount.toFixed(0)}`}
+            value={formatCurrency(pendingAmount)}
             icon={CreditCard}
             subtext={`${pendingPayments.length} payments`}
             highlight={pendingAmount > 0}
@@ -704,7 +705,7 @@ export default function TrainerEarnings() {
                       <Badge variant="secondary">Invoiced</Badge>
                     ) : undefined
                   }
-                  amount={`€${getAmount(booking)}`}
+                  amount={formatCurrency(getAmount(booking))}
                   actions={
                     useManualInvoicing ? (
                       <div className="flex flex-wrap gap-2">
@@ -779,7 +780,7 @@ export default function TrainerEarnings() {
                           : 'Paid'}
                       </Badge>
                     }
-                    amount={`+€${getAmount(booking)}`}
+                    amount={`+${formatCurrency(getAmount(booking))}`}
                     amountClassName="text-[hsl(var(--brand-600))]"
                   />
                 ))

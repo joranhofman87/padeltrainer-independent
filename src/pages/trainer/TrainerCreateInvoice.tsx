@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Loader2, CalendarIcon, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
@@ -317,7 +318,7 @@ export default function TrainerCreateInvoice() {
                     <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
                     <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                   </div>
-                  <div className="text-right text-sm font-medium py-2">€{(li.quantity * li.unit_price).toFixed(2)}</div>
+                  <div className="text-right text-sm font-medium py-2">{formatCurrency(li.quantity * li.unit_price)}</div>
                   <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t('invoiceForm.lineItems.removeRow', 'Remove row')} onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                     <Trash2 className="h-3 w-3 text-muted-foreground" />
                   </Button>
@@ -339,7 +340,7 @@ export default function TrainerCreateInvoice() {
                     <div><Label className="text-xs text-muted-foreground">{t('invoiceForm.lineItems.price')}</Label><Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} /></div>
                     <div><Label className="text-xs text-muted-foreground">{t('invoiceForm.lineItems.vatPercent')}</Label><div className="relative"><Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} /><span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span></div></div>
                   </div>
-                  <div className="text-right text-sm font-medium">{t('invoiceForm.lineItems.totalLabel', { amount: `€${(li.quantity * li.unit_price).toFixed(2)}` })}</div>
+                  <div className="text-right text-sm font-medium">{t('invoiceForm.lineItems.totalLabel', { amount: formatCurrency(li.quantity * li.unit_price) })}</div>
                 </div>
               ))}
             </div>
@@ -356,15 +357,15 @@ export default function TrainerCreateInvoice() {
           </div>
           <Separator />
           <div className="space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">{t('invoiceForm.totals.subtotal')}</span><span>€{subtotal.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">{t('invoiceForm.totals.subtotal')}</span><span>{formatCurrency(subtotal)}</span></div>
             {vatBreakdown ? (
               Object.entries(vatBreakdown).sort(([a], [b]) => Number(a) - Number(b)).map(([rate, data]) => (
-                <div key={rate} className="flex justify-between"><span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate })}</span><span>€{data.vat.toFixed(2)}</span></div>
+                <div key={rate} className="flex justify-between"><span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate })}</span><span>{formatCurrency(data.vat)}</span></div>
               ))
             ) : (
-              <div className="flex justify-between"><span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate: lineItems[0]?.vat_rate ?? 21 })}</span><span>€{vatAmount.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate: lineItems[0]?.vat_rate ?? 21 })}</span><span>{formatCurrency(vatAmount)}</span></div>
             )}
-            <div className="flex justify-between font-bold text-base border-t pt-2"><span>{t('invoiceForm.totals.total')}</span><span>€{total.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold text-base border-t pt-2"><span>{t('invoiceForm.totals.total')}</span><span>{formatCurrency(total)}</span></div>
           </div>
           <Separator />
           <div className="flex items-center gap-4">

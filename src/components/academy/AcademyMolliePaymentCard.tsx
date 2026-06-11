@@ -29,6 +29,7 @@ import {
   getAcademyMollieUiState,
   getAcademyPaymentUnavailableReasonKey,
 } from '@/lib/academyMollieSettingsState';
+import { formatCurrency } from '@/lib/format';
 
 export interface AcademyMolliePaymentCardProps {
   connectStatus: AcademyConnectStatus | null;
@@ -201,9 +202,9 @@ export function AcademyMolliePaymentCard({
                   </div>
                   <div className="text-xl font-semibold">
                     {connectStatus.balance.available.map((b, i) => (
-                      <span key={i}>€{b.amount.toFixed(2)}</span>
+                      <span key={i}>{formatCurrency(b.amount)}</span>
                     ))}
-                    {connectStatus.balance.available.length === 0 && <span>€0.00</span>}
+                    {connectStatus.balance.available.length === 0 && <span>{formatCurrency(0)}</span>}
                   </div>
                 </div>
                 <div>
@@ -212,9 +213,9 @@ export function AcademyMolliePaymentCard({
                   </div>
                   <div className="text-xl font-semibold text-muted-foreground">
                     {connectStatus.balance.pending.map((b, i) => (
-                      <span key={i}>€{b.amount.toFixed(2)}</span>
+                      <span key={i}>{formatCurrency(b.amount)}</span>
                     ))}
-                    {connectStatus.balance.pending.length === 0 && <span>€0.00</span>}
+                    {connectStatus.balance.pending.length === 0 && <span>{formatCurrency(0)}</span>}
                   </div>
                 </div>
               </div>

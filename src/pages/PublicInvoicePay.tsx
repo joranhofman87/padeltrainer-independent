@@ -45,6 +45,7 @@ import {
   trackInvoicePaymentStarted,
 } from "@/lib/invoicePayTracking";
 import { resolvePublicInvoiceContactEmail } from "@/lib/publicInvoiceContact";
+import { formatCurrency } from "@/lib/format";
 
 // Keep the /pay/:token URL out of Referer headers — these tokens grant access
 // to invoice PII until the invoice is paid.
@@ -720,8 +721,8 @@ export default function PublicInvoicePay() {
                   <tr key={idx} className="border-b last:border-0">
                     <td className="p-3">{item.description}</td>
                     <td className="text-right p-3">{item.quantity}</td>
-                    <td className="text-right p-3">€{formatEuro(item.unit_price)}</td>
-                    <td className="text-right p-3">€{formatEuro(item.total ?? item.quantity * item.unit_price)}</td>
+                    <td className="text-right p-3">{formatCurrency(item.unit_price)}</td>
+                    <td className="text-right p-3">{formatCurrency(item.total ?? item.quantity * item.unit_price)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -732,17 +733,17 @@ export default function PublicInvoicePay() {
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("invoice.subtotal")}</span>
-              <span>€{formatEuro(invoice.subtotal)}</span>
+              <span>{formatCurrency(invoice.subtotal)}</span>
             </div>
             {invoice.vatAmount > 0 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{t("invoice.vatLine", { rate: invoice.vatRate ?? 0 })}</span>
-                <span>€{formatEuro(invoice.vatAmount)}</span>
+                <span>{formatCurrency(invoice.vatAmount)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-lg pt-2 border-t">
               <span>{t("invoice.total")}</span>
-              <span>€{formatEuro(invoice.total)}</span>
+              <span>{formatCurrency(invoice.total)}</span>
             </div>
           </div>
 

@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { formatCurrency } from '@/lib/format';
 import {
   FileText,
   Download,
@@ -248,7 +249,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
 
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <p className="text-xl font-bold">€{invoice.total.toFixed(2)}</p>
+                    <p className="text-xl font-bold">{formatCurrency(invoice.total)}</p>
                     <p className="text-xs text-muted-foreground">
                       {t('playerInvoices.labels.vatIncluded', { rate: invoice.vat_rate })}
                     </p>

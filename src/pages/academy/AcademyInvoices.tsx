@@ -27,6 +27,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { format } from "date-fns";
@@ -106,9 +107,6 @@ export default function AcademyInvoices() {
     });
   };
 
-
-  const formatEuro = (amount: number) =>
-    amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Fetch trainers for filter (two-step: get user_ids, then profiles for names)
   const { data: trainers = [] } = useQuery({
@@ -746,7 +744,7 @@ export default function AcademyInvoices() {
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Unpaid")}</p>
-            <p className="font-display text-2xl font-semibold tabular-nums">€{formatEuro(totalUnpaid)}</p>
+            <p className="font-display text-2xl font-semibold tabular-nums">{formatCurrency(totalUnpaid)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -965,7 +963,7 @@ export default function AcademyInvoices() {
                           </TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                          <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               {getStatusBadge(inv)}
@@ -1040,7 +1038,7 @@ export default function AcademyInvoices() {
                             ? `${t("invoices.paymentDate", "Betaaldatum")}: ${format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale })}`
                             : format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}
                         </span>
-                        <span className="font-bold text-lg">€{formatEuro(inv.total)}</span>
+                        <span className="font-bold text-lg">{formatCurrency(inv.total)}</span>
                       </div>
                       <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                         {inv.status !== "paid" && inv.status !== "cancelled" && (

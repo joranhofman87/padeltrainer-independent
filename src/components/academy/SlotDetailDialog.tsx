@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { formatCurrency } from '@/lib/format';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -252,7 +253,7 @@ export function SlotDetailDialog({
               {detail.price_per_session != null && (
                 <Badge variant="outline" className="gap-1">
                   <DollarSign className="h-3 w-3" />
-                  €{detail.price_per_session.toFixed(2)}
+                  {formatCurrency(detail.price_per_session)}
                 </Badge>
               )}
             </div>

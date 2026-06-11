@@ -14,6 +14,7 @@ import { logger } from '@/lib/logger';
 import { Loader2, CalendarIcon, Plus, Trash2, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
@@ -405,7 +406,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                       <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                     </div>
                     <div className="text-right text-sm font-medium py-2">
-                      €{(li.quantity * li.unit_price).toFixed(2)}
+                      {formatCurrency(li.quantity * li.unit_price)}
                     </div>
                     <Button
                       type="button"
@@ -432,7 +433,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
             <div className="border-t pt-3 space-y-1 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{t('invoiceForm.totals.subtotal')}</span>
-                <span>€{subtotal.toFixed(2)}</span>
+                <span>{formatCurrency(subtotal)}</span>
               </div>
               {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
                 Object.entries(vatBreakdown)
@@ -440,7 +441,7 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                   .map(([rate, data]) => (
                     <div key={rate} className="flex justify-between">
                       <span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate })}</span>
-                      <span>€{data.vat.toFixed(2)}</span>
+                      <span>{formatCurrency(data.vat)}</span>
                     </div>
                   ))
               ) : (
@@ -458,12 +459,12 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
                     />
                     %
                   </span>
-                  <span>€{vatAmount.toFixed(2)}</span>
+                  <span>{formatCurrency(vatAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-base border-t pt-2">
                 <span>{t('invoiceForm.totals.total')}</span>
-                <span>€{total.toFixed(2)}</span>
+                <span>{formatCurrency(total)}</span>
               </div>
             </div>
 

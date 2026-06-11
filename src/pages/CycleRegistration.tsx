@@ -18,6 +18,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getActiveLocations, type Location } from '@/lib/locations';
+import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
 import { SafeHtml } from '@/components/ui/SafeHtml';
@@ -401,7 +402,7 @@ export default function CycleRegistration() {
                       <div key={idx} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
                         <span className="text-sm">{tier.label}</span>
                         <span className="text-sm font-semibold">
-                          {new Intl.NumberFormat('nl-NL', { style: 'currency', currency: cycle.currency || 'EUR' }).format(tier.price)}
+                          {formatCurrency(tier.price)}
                         </span>
                       </div>
                     ))}

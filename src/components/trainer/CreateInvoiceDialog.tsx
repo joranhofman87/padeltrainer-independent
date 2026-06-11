@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { formatCurrency } from '@/lib/format';
 import { Loader2, Plus, Trash2, FileText, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
@@ -437,16 +438,16 @@ export function CreateInvoiceDialog({
               <CardContent className="p-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>{t('invoices.subtotal', 'Subtotaal')}</span>
-                  <span>€{subtotal.toFixed(2)}</span>
+                  <span>{formatCurrency(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>BTW {vatRate}%</span>
-                  <span>€{vatAmount.toFixed(2)}</span>
+                  <span>{formatCurrency(vatAmount)}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>{t('invoices.total', 'Totaal')}</span>
-                  <span>€{total.toFixed(2)}</span>
+                  <span>{formatCurrency(total)}</span>
                 </div>
               </CardContent>
             </Card>

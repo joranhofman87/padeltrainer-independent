@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table';
 import { Download, Calendar, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatCurrency, formatCurrencyMaybe } from '@/lib/format';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 
@@ -173,10 +174,10 @@ export default function AcademyTrainerHours({
                     </TableCell>
                     <TableCell className="text-center text-sm">{trainer.hours.toFixed(1)}h</TableCell>
                     <TableCell className="text-center text-sm text-muted-foreground">
-                      {trainer.hourly_rate != null ? `€${trainer.hourly_rate}` : '—'}
+                      {formatCurrencyMaybe(trainer.hourly_rate)}
                     </TableCell>
                     <TableCell className="text-right text-sm font-medium">
-                      {trainer.amount != null ? `€${trainer.amount.toFixed(2)}` : '—'}
+                      {formatCurrencyMaybe(trainer.amount)}
                     </TableCell>
                   </TableRow>
                 );
@@ -194,7 +195,7 @@ export default function AcademyTrainerHours({
                   <TableCell className="text-center">{totalSessions}</TableCell>
                   <TableCell className="text-center">{totalHours.toFixed(1)}h</TableCell>
                   <TableCell />
-                  <TableCell className="text-right">€{totalAmount.toFixed(2)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(totalAmount)}</TableCell>
                 </TableRow>
               )}
             </TableBody>

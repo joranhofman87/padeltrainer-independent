@@ -18,6 +18,7 @@ import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { formatCurrency } from '@/lib/format';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
@@ -364,7 +365,7 @@ export default function AcademyCreateInvoice() {
                     <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
                     <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                   </div>
-                  <div className="text-right text-sm font-medium py-2">€{(li.quantity * li.unit_price).toFixed(2)}</div>
+                  <div className="text-right text-sm font-medium py-2">{formatCurrency(li.quantity * li.unit_price)}</div>
                   <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t('invoiceForm.lineItems.removeRow', 'Remove row')} onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                     <Trash2 className="h-3 w-3 text-muted-foreground" />
                   </Button>
@@ -398,7 +399,7 @@ export default function AcademyCreateInvoice() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right text-sm font-medium">{t('invoiceForm.lineItems.totalLabel', { amount: `€${(li.quantity * li.unit_price).toFixed(2)}` })}</div>
+                  <div className="text-right text-sm font-medium">{t('invoiceForm.lineItems.totalLabel', { amount: formatCurrency(li.quantity * li.unit_price) })}</div>
                 </div>
               ))}
             </div>
@@ -421,7 +422,7 @@ export default function AcademyCreateInvoice() {
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t('invoiceForm.totals.subtotal')}</span>
-              <span>€{subtotal.toFixed(2)}</span>
+              <span>{formatCurrency(subtotal)}</span>
             </div>
             {vatBreakdown ? (
               Object.entries(vatBreakdown)
@@ -429,18 +430,18 @@ export default function AcademyCreateInvoice() {
                 .map(([rate, data]) => (
                   <div key={rate} className="flex justify-between">
                     <span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate })}</span>
-                    <span>€{data.vat.toFixed(2)}</span>
+                    <span>{formatCurrency(data.vat)}</span>
                   </div>
                 ))
             ) : (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate: lineItems[0]?.vat_rate ?? 21 })}</span>
-                <span>€{vatAmount.toFixed(2)}</span>
+                <span>{formatCurrency(vatAmount)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-base border-t pt-2">
               <span>{t('invoiceForm.totals.total')}</span>
-              <span>€{total.toFixed(2)}</span>
+              <span>{formatCurrency(total)}</span>
             </div>
           </div>
 

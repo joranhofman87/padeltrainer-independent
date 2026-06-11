@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Pencil, Trash2, Shield, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PlanEditDialog } from "@/components/admin/PlanEditDialog";
+import { formatCurrency, formatCurrencyMaybe } from "@/lib/format";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -151,9 +152,9 @@ export default function AdminPricing() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>€{plan.monthly_price}</TableCell>
-                    <TableCell>€{plan.yearly_price}</TableCell>
-                    <TableCell>€{plan.platform_fee_flat?.toFixed(2) ?? '—'}</TableCell>
+                    <TableCell>{formatCurrency(plan.monthly_price)}</TableCell>
+                    <TableCell>{formatCurrency(plan.yearly_price)}</TableCell>
+                    <TableCell>{formatCurrencyMaybe(plan.platform_fee_flat)}</TableCell>
                     <TableCell>
                       <Switch
                         checked={plan.is_active}
@@ -217,9 +218,9 @@ export default function AdminPricing() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>€{plan.monthly_price}</TableCell>
-                    <TableCell>€{plan.yearly_price}</TableCell>
-                    <TableCell>€{plan.platform_fee_flat?.toFixed(2) ?? '—'}</TableCell>
+                    <TableCell>{formatCurrency(plan.monthly_price)}</TableCell>
+                    <TableCell>{formatCurrency(plan.yearly_price)}</TableCell>
+                    <TableCell>{formatCurrencyMaybe(plan.platform_fee_flat)}</TableCell>
                     <TableCell>
                       <Switch
                         checked={plan.is_active}

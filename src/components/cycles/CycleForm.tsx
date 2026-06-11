@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/lib/format';
 import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow, type CyclusOption } from '@/lib/cycles';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
@@ -1330,7 +1331,7 @@ export default function CycleForm({
                           {priceTable.filter(r => column.getPrice(r) > 0).map((row, ri) => (
                             <div key={ri} className="flex justify-between text-sm">
                               <span className="text-muted-foreground truncate mr-2">{row.label || '—'}</span>
-                              <span className="font-medium tabular-nums">€{column.getPrice(row).toFixed(2)}</span>
+                              <span className="font-medium tabular-nums">{formatCurrency(column.getPrice(row))}</span>
                             </div>
                           ))}
                         </div>
@@ -1351,7 +1352,7 @@ export default function CycleForm({
                             {priceTable.filter(r => column.getPrice(r) > 0).map((row, ri) => (
                               <div key={ri} className="flex justify-between text-sm">
                                 <span className="text-muted-foreground truncate mr-2">{row.label || '—'}</span>
-                                <span className="font-semibold tabular-nums">€{(column.getPrice(row) * column.weeks).toFixed(2)}</span>
+                                <span className="font-semibold tabular-nums">{formatCurrency(column.getPrice(row) * column.weeks)}</span>
                               </div>
                             ))}
                           </div>
@@ -1433,7 +1434,7 @@ export default function CycleForm({
                       />
                     </div>
                     <div className="text-sm text-muted-foreground text-right whitespace-nowrap">
-                      €{(opt.total_price || 0).toFixed(2)}
+                      {formatCurrency(opt.total_price || 0)}
                     </div>
                     <Button
                       type="button"
@@ -1718,23 +1719,23 @@ export default function CycleForm({
                   <div className="rounded-lg border bg-muted/50 p-3 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('form.totalPrice')}</span>
-                      <span>€{Number(baseTotal).toFixed(2)}</span>
+                      <span>{formatCurrency(Number(baseTotal))}</span>
                     </div>
                     {perSessionTotal > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">{t('form.extraCosts')} ({weeks}x €{perSessionTotal.toFixed(2)})</span>
-                        <span>€{(Math.round(perSessionTotal * weeks * 100) / 100).toFixed(2)}</span>
+                        <span className="text-muted-foreground">{t('form.extraCosts')} ({weeks}x {formatCurrency(perSessionTotal)})</span>
+                        <span>{formatCurrency(Math.round(perSessionTotal * weeks * 100) / 100)}</span>
                       </div>
                     )}
                     {oneTimeTotal > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">{t('form.extraCosts')} ({t('form.oneTime', 'One-time')})</span>
-                        <span>€{oneTimeTotal.toFixed(2)}</span>
+                        <span>{formatCurrency(oneTimeTotal)}</span>
                       </div>
                     )}
                     <div className="border-t pt-1 flex justify-between font-semibold">
                       <span>{t('form.totalLabel')}</span>
-                      <span>€{grandTotal.toFixed(2)}</span>
+                      <span>{formatCurrency(grandTotal)}</span>
                     </div>
                   </div>
                 );
