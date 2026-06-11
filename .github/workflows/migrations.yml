@@ -64,3 +64,11 @@ jobs:
           export SUPABASE_ACCESS_TOKEN="sbp_$(printf '0%.0s' $(seq 1 40))"
           supabase start
           npx tsx scripts/check-types-drift.ts
+
+      - name: Upload generated types on drift
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: types-generated
+          path: types.generated.ts
+          if-no-files-found: ignore

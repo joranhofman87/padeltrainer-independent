@@ -42,3 +42,4 @@ supabase/.temp/
 
 # Local migration exports - do not commit
 migration_exports/
+types.generated.ts

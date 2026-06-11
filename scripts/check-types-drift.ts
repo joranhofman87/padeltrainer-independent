@@ -35,11 +35,20 @@ try {
   const generated = readFileSync(join(tmp, 'types.ts'), 'utf8');
 
   if (committed.trim() !== generated.trim()) {
-    writeFileSync(join(tmp, 'types.generated.ts'), generated);
+    // Persist the generated file where CI can pick it up as an artifact, so
+    // the fix is one download away instead of needing a local stack.
+    writeFileSync('types.generated.ts', generated);
+    const committedLines = committed.trim().split('\n');
+    const generatedLines = generated.trim().split('\n');
+    const firstDiff = committedLines.findIndex((l, i) => l !== generatedLines[i]);
     console.error(
       [
         'Supabase types drift detected.',
-        `Committed: ${TYPES_PATH}`,
+        `Committed: ${TYPES_PATH} (${committedLines.length} lines)`,
+        `Generated: types.generated.ts (${generatedLines.length} lines)`,
+        `First differing line: ${firstDiff + 1}`,
+        `  committed: ${committedLines[firstDiff] ?? '<eof>'}`,
+        `  generated: ${generatedLines[firstDiff] ?? '<eof>'}`,
         'Run: npx supabase gen types typescript --local > src/integrations/supabase/types.ts',
       ].join('\n'),
     );
