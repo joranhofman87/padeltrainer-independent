@@ -32,11 +32,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
-import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { Check, Clock } from "lucide-react";
+import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
 interface Slot {
   id: string;
@@ -110,8 +110,11 @@ export function InlineBookPlayer({
   const fetchPlayers = async () => {
     setIsFetching(true);
     try {
-      const { data, error } = await loadActiveGuestPlayersForBooking(trainerId, academyProfileId);
-      if (error) throw error;
+      const data = await fetchBookableGuestPlayers(
+        academyProfileId
+          ? { kind: 'academy', id: academyProfileId }
+          : { kind: 'trainer', id: trainerId },
+      );
       setPlayers(data as GuestPlayer[]);
     } catch (error) {
       logger.error("Error fetching players", error as Error, { component: "InlineBookPlayer" });

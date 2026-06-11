@@ -16,7 +16,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { GuestPlayer } from "./AddPlayerDialog";
-import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
+import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
 interface BookingDetails {
   id: string;
@@ -43,11 +43,13 @@ interface BookingDetails {
 interface InlineEditBookingProps {
   booking: BookingDetails;
   trainerId: string;
+  /** Academy context: widens the player picker to the academy's full membership. */
+  academyProfileId?: string;
   onBookingUpdated: () => void;
   onClose: () => void;
 }
 
-export function InlineEditBooking({ booking, trainerId, onBookingUpdated, onClose }: InlineEditBookingProps) {
+export function InlineEditBooking({ booking, trainerId, academyProfileId, onBookingUpdated, onClose }: InlineEditBookingProps) {
   const { t } = useTranslation("trainer");
   const { t: tCommon } = useTranslation("common");
   const { toast } = useToast();
@@ -64,8 +66,11 @@ export function InlineEditBooking({ booking, trainerId, onBookingUpdated, onClos
     (async () => {
       setIsFetching(true);
       try {
-        const { data, error } = await loadActiveGuestPlayersForBooking(trainerId);
-        if (error) throw error;
+        const data = await fetchBookableGuestPlayers(
+          academyProfileId
+            ? { kind: 'academy', id: academyProfileId }
+            : { kind: 'trainer', id: trainerId },
+        );
         setPlayers(data as GuestPlayer[]);
       } catch (error) {
         logger.error("Error fetching players", error as Error, { component: "InlineEditBooking" });
@@ -73,7 +78,7 @@ export function InlineEditBooking({ booking, trainerId, onBookingUpdated, onClos
         setIsFetching(false);
       }
     })();
-  }, [trainerId]);
+  }, [trainerId, academyProfileId]);
 
   const handleSave = async () => {
     setIsLoading(true);

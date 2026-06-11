@@ -91,6 +91,56 @@ export async function fetchAllPlayersOverview(
   throw new Error('fetchAllPlayersOverview: exceeded 100-page safety cap (20k players)');
 }
 
+/** Guest-player shape the booking dialogs consume (matches AddPlayerDialog's GuestPlayer). */
+export interface BookableGuestPlayer {
+  id: string;
+  trainer_id: string | null;
+  academy_profile_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string;
+  email: string;
+  phone: string;
+  skill_rating: number | null;
+  rating_system: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  linked_profile_id: string | null;
+}
+
+/**
+ * Bookable players for the add-to-cyclus/slot pickers — the SAME membership
+ * as the players table (overview RPC: academy-level guests + active trainers'
+ * guests, removal-filtered, linked identity from the live profile), reduced to
+ * rows with a guest record because the booking pipeline books by
+ * guest_player_id. Registered players without a guest record are not bookable
+ * through this flow (they book themselves).
+ */
+export async function fetchBookableGuestPlayers(
+  scope: PlayerScope,
+): Promise<BookableGuestPlayer[]> {
+  const rows = await fetchAllPlayersOverview(scope);
+  return rows
+    .filter((row) => Boolean(row.guest_player_id))
+    .map((row) => ({
+      id: row.guest_player_id as string,
+      trainer_id: row.owner_trainer_id ?? null,
+      academy_profile_id: scope.kind === 'academy' && !row.owner_trainer_id ? scope.id : null,
+      first_name: null,
+      last_name: null,
+      full_name: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      skill_rating: row.skill_rating ?? null,
+      rating_system: row.rating_system,
+      notes: row.notes ?? null,
+      created_at: row.created_at,
+      updated_at: row.created_at,
+      linked_profile_id: row.profile_id ?? null,
+    }));
+}
+
 export function usePlayersOverview(
   scope: { kind: PlayerScope['kind']; id: string | undefined | null },
   params: PlayersOverviewParams = {},

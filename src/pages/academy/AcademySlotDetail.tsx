@@ -1150,6 +1150,7 @@ export default function AcademySlotDetail() {
                         <InlineEditBooking
                           booking={editingBookingData}
                           trainerId={detail.trainer_id}
+                          academyProfileId={activeAcademy?.id}
                           onBookingUpdated={() => { setEditingBookingId(null); setEditingBookingData(null); fetchSlotDetail(); }}
                           onClose={() => { setEditingBookingId(null); setEditingBookingData(null); }}
                         />

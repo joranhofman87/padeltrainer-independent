@@ -8,7 +8,6 @@ import { nl, enUS, de, fr, es, it as itLocale } from "date-fns/locale";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { getTrainerProfile } from "@/lib/auth";
-import { loadGuestPlayersForTrainer } from "@/lib/guestPlayers";
 import { logger } from "@/lib/logger";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
@@ -70,6 +69,7 @@ import { cn } from "@/lib/utils";
 import { TrainerAttendanceForm } from "@/components/attendance/TrainerAttendanceForm";
 import { useToast } from "@/hooks/use-toast";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
+import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
 const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es, it: itLocale };
 
@@ -413,10 +413,8 @@ export default function TrainerScheduleOverview() {
     if (user) {
       const tp = await getTrainerProfile(user.id);
       if (tp) {
-        const { data: guests } = await loadGuestPlayersForTrainer(tp.id);
-        setAvailableGuestPlayers(
-          (guests || []).map((g) => ({ id: g.id, full_name: g.full_name })),
-        );
+        const guests = await fetchBookableGuestPlayers({ kind: 'trainer', id: tp.id });
+        setAvailableGuestPlayers(guests.map((g) => ({ id: g.id, full_name: g.full_name })));
       }
     }
 

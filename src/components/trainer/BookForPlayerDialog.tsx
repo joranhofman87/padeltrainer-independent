@@ -59,17 +59,17 @@ import {
 } from "@/components/ui/collapsible";
 import { Loader2, UserPlus, Clock, Calendar, Repeat, X, Check, Users, Percent, ChevronDown, Euro } from "lucide-react";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
-import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
 import { Badge } from "@/components/ui/badge";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { cn } from "@/lib/utils";
 import { calculateSlotPrice, applyDiscount, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
+import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
 // Lesson interface removed - pricing now on slots
 
 /**
- * loadActiveGuestPlayersForBooking selects '*', so rows carry the billing
+ * fetchBookableGuestPlayers rows carry the billing
  * fields; declaring billing_business_name here lets the player combobox
  * search on business name.
  */
@@ -215,8 +215,13 @@ export function BookForPlayerDialog({
   const fetchPlayers = async () => {
     setIsFetching(true);
     try {
-      const { data, error } = await loadActiveGuestPlayersForBooking(trainerId, academyProfileId);
-      if (error) throw error;
+      // Same membership as the players table: academy scope shows academy-level
+      // guests + every active trainer's guests; trainer scope shows own guests.
+      const data = await fetchBookableGuestPlayers(
+        academyProfileId
+          ? { kind: 'academy', id: academyProfileId }
+          : { kind: 'trainer', id: trainerId },
+      );
       setPlayers(data as BookableGuestPlayer[]);
     } catch (error: any) {
       logger.error("Error fetching players", error as Error, { component: "BookForPlayerDialog" });

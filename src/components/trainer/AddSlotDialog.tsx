@@ -61,7 +61,6 @@ import {
   priceDisplayModeToIncludesVat,
   shouldUseTrainerPricesIncludeVat,
 } from "@/lib/academyPriceDisplay";
-import { loadGuestPlayersForBulkCreate } from "@/lib/guestPlayers";
 import { buildBulkCycleBookings } from "@/lib/bulkCycleBookings";
 import { splitAmongPlayersForInvoiceCreate } from "@/lib/invoiceSplitPricing";
 import {
@@ -78,6 +77,7 @@ import {
 } from "@/lib/bulkCreateSlot";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
+import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
@@ -553,8 +553,16 @@ export function BulkCreateContent({
         return;
       }
 
-      const { data, error } = await loadGuestPlayersForBulkCreate(academyId, trainerId);
-      if (error) {
+      const data = await fetchBookableGuestPlayers(
+        academyId
+          ? { kind: 'academy', id: academyId }
+          : { kind: 'trainer', id: trainerId! },
+      ).catch((error: Error) => {
+        setPlayers([]);
+        return error;
+      });
+      if (data instanceof Error) {
+        const error = data;
         toast({
           title: t("calendar.guestPlayersLoadError", "Could not load players"),
           description: error.message,
