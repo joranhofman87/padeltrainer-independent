@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useState } from "react";
 import { type OnboardingEmailTemplate } from "@/lib/onboardingEmails";
+import { formatDate } from "@/lib/format";
 import { SafeHtml } from "@/components/ui/SafeHtml";
 
 interface OnboardingEmailPreviewProps {
@@ -29,7 +30,7 @@ const SAMPLE_DATA = {
   user_name: "John Doe",
   user_email: "john.doe@example.com",
   user_type: "Trainer",
-  signup_date: new Date().toLocaleDateString(),
+  signup_date: formatDate(new Date()),
   plan_name: "Pro Plan",
 };
 

@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
+import { formatDate } from '@/lib/format';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink } from 'lucide-react';
@@ -47,7 +48,7 @@ export default function AdminBlogSources() {
                 </TableCell>
                 <TableCell><Badge variant={s.allowed_to_use ? 'default' : 'destructive'}>{s.allowed_to_use ? 'Yes' : 'No'}</Badge></TableCell>
                 <TableCell className="max-w-xs truncate">{s.notes || '—'}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{new Date(s.retrieved_at).toLocaleDateString()}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{formatDate(s.retrieved_at)}</TableCell>
               </TableRow>
             ))
           )}

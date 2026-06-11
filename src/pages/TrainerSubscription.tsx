@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useTrainerPlans, SubscriptionPlan } from '@/hooks/usePricingPlans';
 import { logger } from '@/lib/logger';
 import { trackEvent } from '@/lib/tracking';
+import { formatDate } from '@/lib/format';
 import { useTranslation } from 'react-i18next';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { cn } from '@/lib/utils';
@@ -183,20 +184,11 @@ export default function TrainerSubscription() {
     }
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return null;
-    return new Date(dateString).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
   const planStatusHint =
     currentPlan === 'starter'
       ? t('subscriptionPage.upgradeHint')
       : subscription?.subscriptionEnd
-        ? t('subscriptionPage.nextBilling', { date: formatDate(subscription.subscriptionEnd) })
+        ? t('subscriptionPage.nextBilling', { date: formatDate(subscription.subscriptionEnd, 'd MMMM yyyy') })
         : t('subscriptionPage.activeHint');
 
   const primaryHeaderAction =

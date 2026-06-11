@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ExternalLink, Eye, Pencil } from 'lucide-react';
 import { sanityClient, SANITY_STUDIO_URL } from '@/lib/sanity';
+import { formatDate } from '@/lib/format';
 import { useState } from 'react';
 
 interface SanityPost {
@@ -68,10 +69,10 @@ export default function AdminBlog() {
                 <TableCell className="font-medium max-w-xs truncate">{article.title}</TableCell>
                 <TableCell><Badge variant="outline">{article.category || '—'}</Badge></TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {article.datePublished ? new Date(article.datePublished).toLocaleDateString() : '—'}
+                  {article.datePublished ? formatDate(article.datePublished) : '—'}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {new Date(article._updatedAt).toLocaleDateString()}
+                  {formatDate(article._updatedAt)}
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">

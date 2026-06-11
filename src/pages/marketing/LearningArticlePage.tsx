@@ -20,6 +20,7 @@ import { getLearningArticleBySlug, CONTENT_TYPE_LABELS, SKILL_LEVEL_LABELS } fro
 import type { LearningArticleDetail } from '@/lib/learningArticles';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { getTranslations } from '@/lib/translations';
+import { formatDate } from '@/lib/format';
 import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 function ArticleSkeleton() {
@@ -36,19 +37,6 @@ function ArticleSkeleton() {
       </div>
     </article>
   );
-}
-
-function formatDate(dateStr: string | null, lang: string): string | null {
-  if (!dateStr) return null;
-  try {
-    return new Date(dateStr).toLocaleDateString(lang, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  } catch {
-    return dateStr;
-  }
 }
 
 function buildStructuredData(article: LearningArticleDetail, slug: string, currentLang: string) {
@@ -213,8 +201,8 @@ export default function LearningArticlePage() {
 
   const structuredData = buildStructuredData(article, slug!, currentLang);
 
-  const publishedFormatted = formatDate(article.datePublished, currentLang);
-  const modifiedFormatted = formatDate(article.dateModified, currentLang);
+  const publishedFormatted = formatDate(article.datePublished, 'd MMMM yyyy');
+  const modifiedFormatted = formatDate(article.dateModified, 'd MMMM yyyy');
   const showModified = article.dateModified && article.datePublished && article.dateModified !== article.datePublished;
 
   return (

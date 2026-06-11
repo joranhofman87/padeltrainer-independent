@@ -10,6 +10,7 @@ import { getPublishedArticles, getAllCategories, calculateReadTime } from '@/lib
 import type { Article } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+import { formatDate } from '@/lib/format';
 import { useState } from 'react';
 import { BannerZone } from '@/components/sponsors/BannerZone';
 import { MarketingHero, MarketingSection, MarketingFinalCTA } from '@/components/marketing/sections';
@@ -39,7 +40,7 @@ function EmptyState() {
   );
 }
 
-function ArticleCard({ article, dateLocale, index }: { article: Article; dateLocale: string; index: number }) {
+function ArticleCard({ article, index }: { article: Article; index: number }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -60,12 +61,7 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
           <p className="text-navy-600 line-clamp-2 mb-4 flex-1">{article.excerpt}</p>
           <div className="flex items-center gap-4 text-xs text-navy-500">
             <span>
-              {article.datePublished
-                ? new Date(article.datePublished).toLocaleDateString(dateLocale, {
-                    month: 'short',
-                    day: 'numeric',
-                  })
-                : ''}
+              {article.datePublished ? formatDate(article.datePublished, 'd MMM') : ''}
             </span>
             <span>{calculateReadTime(article.bodySections, article.content)}</span>
           </div>
@@ -96,16 +92,6 @@ export default function Blog() {
   const articles = data?.articles || [];
   const featuredPost = articles.find((a) => a.isFeatured) || articles[0];
   const recentPosts = articles.filter((a) => a !== featuredPost);
-  const dateLocale =
-    i18n.language === 'nl'
-      ? 'nl-NL'
-      : i18n.language === 'de'
-        ? 'de-DE'
-        : i18n.language === 'es'
-          ? 'es-ES'
-          : i18n.language === 'fr'
-            ? 'fr-FR'
-            : 'en-US';
 
   const breadcrumbListSD = {
     '@context': 'https://schema.org',
@@ -231,12 +217,7 @@ export default function Blog() {
                       <div className="flex flex-wrap items-center gap-4 text-sm text-navy-500">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-4 w-4" />
-                          {featuredPost.datePublished &&
-                            new Date(featuredPost.datePublished).toLocaleDateString(dateLocale, {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })}
+                          {featuredPost.datePublished && formatDate(featuredPost.datePublished, 'd MMM yyyy')}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-4 w-4" />
@@ -262,7 +243,7 @@ export default function Blog() {
             >
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {recentPosts.map((article, index) => (
-                  <ArticleCard key={article._id} article={article} dateLocale={dateLocale} index={index} />
+                  <ArticleCard key={article._id} article={article} index={index} />
                 ))}
               </div>
             </MarketingSection>

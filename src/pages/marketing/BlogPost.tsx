@@ -19,6 +19,7 @@ import { isHubPage, getSpokeArticles } from '@/lib/hubPages';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
 import { getArticleBySlug, calculateReadTime } from '@/lib/blog';
+import { formatDate } from '@/lib/format';
 import { useTranslation } from 'react-i18next';
 import { getTranslations } from '@/lib/translations';
 import { useTranslationsContext } from '@/contexts/TranslationsContext';
@@ -78,8 +79,6 @@ export default function BlogPost() {
     }
     return () => clearTranslations();
   }, [translationsList, setTranslations, clearTranslations]);
-
-  const dateLocale = i18n.language === 'nl' ? 'nl-NL' : i18n.language === 'de' ? 'de-DE' : i18n.language === 'es' ? 'es-ES' : i18n.language === 'fr' ? 'fr-FR' : 'en-US';
 
   if (isLoading) {
     return (
@@ -297,7 +296,7 @@ export default function BlogPost() {
             {post.datePublished && (
               <span className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
-                {new Date(post.datePublished).toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' })}
+                {formatDate(post.datePublished, 'd MMMM yyyy')}
               </span>
             )}
             <span className="flex items-center gap-1">

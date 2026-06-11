@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Copy, ChevronDown, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
+import { formatDate } from '@/lib/format';
 import { getCycles, createCycle, type Cycle } from '@/lib/cycles';
 import { bulkCopySlotsToCycle, getBookingsBySlotIds, notifyPriorityClaimsForSlots } from '@/lib/priorityClaims';
 
@@ -273,7 +274,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
                     <Checkbox checked={!excluded} onCheckedChange={() => toggleExclude(s.id)} />
                     <div className="flex-1 text-sm">
                       <div className="font-medium">
-                        {start.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}{' '}
+                        {formatDate(start, 'EEE d MMM')}{' '}
                         {start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                       </div>
                       <div className="text-muted-foreground text-xs">

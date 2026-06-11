@@ -16,6 +16,7 @@ import { useAcademyPlan } from "@/hooks/usePricingPlans";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { formatDate } from "@/lib/format";
 import { 
   CheckCircle2, 
   Clock, 
@@ -265,12 +266,12 @@ export default function AcademySubscription() {
             {/* Subscription Details */}
             {subscription?.subscriptionEnd && (
               <div className="text-sm text-muted-foreground pt-2">
-                {isActive 
-                  ? t("subscription.renewsOn", { 
-                      date: new Date(subscription.subscriptionEnd).toLocaleDateString() 
+                {isActive
+                  ? t("subscription.renewsOn", {
+                      date: formatDate(subscription.subscriptionEnd)
                     })
-                  : t("subscription.endsOn", { 
-                      date: new Date(subscription.subscriptionEnd).toLocaleDateString() 
+                  : t("subscription.endsOn", {
+                      date: formatDate(subscription.subscriptionEnd)
                     })
                 }
               </div>

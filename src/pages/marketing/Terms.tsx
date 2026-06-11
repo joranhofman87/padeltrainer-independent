@@ -1,13 +1,13 @@
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
+import { formatDate } from '@/lib/format';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
 export default function Terms() {
-  const { t, i18n } = useTranslation('marketing');
+  const { t } = useTranslation('marketing');
 
-  const dateLocale = i18n.language === 'nl' ? 'nl-NL' : 'en-US';
-  const formattedDate = new Date().toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' });
+  const formattedDate = formatDate(new Date(), 'MMMM d, yyyy');
 
   const s = (key: string) => t(`terms.sections.${key}`);
 

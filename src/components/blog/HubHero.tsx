@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/format';
 import { Calendar, Clock, Share2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -14,8 +15,7 @@ interface HubHeroProps {
 }
 
 export function HubHero({ title, excerpt, category, datePublished, readTime, authorName }: HubHeroProps) {
-  const { t, i18n } = useTranslation('marketing');
-  const dateLocale = i18n.language === 'nl' ? 'nl-NL' : i18n.language === 'de' ? 'de-DE' : i18n.language === 'es' ? 'es-ES' : i18n.language === 'fr' ? 'fr-FR' : 'en-US';
+  const { t } = useTranslation('marketing');
 
   return (
     <motion.div
@@ -49,7 +49,7 @@ export function HubHero({ title, excerpt, category, datePublished, readTime, aut
           {datePublished && (
             <span className="flex items-center gap-1 text-sm">
               <Calendar className="h-4 w-4" />
-              {new Date(datePublished).toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' })}
+              {formatDate(datePublished, 'd MMMM yyyy')}
             </span>
           )}
           <span className="flex items-center gap-1 text-sm">
