@@ -1147,8 +1147,13 @@ const handler = async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization");
     const { type, to, data, language }: EmailRequest = await req.json();
     
-    // Allow partner_inquiry and location_request without auth (public forms)
-    const isPublicForm = type === "partner_inquiry" || type === "location_request" || type === "new_intake_registration_admin";
+    // Allow partner_inquiry and location_request without auth (public forms,
+    // locked to the info@ inbox below). new_intake_registration_admin is NOT a
+    // public form: it notifies the academy/trainer's OWN address and is sent
+    // service-to-service by submit-guest-intake, so it must go through the
+    // authenticated/service-role branch — both to reach the real recipient and
+    // to deny anonymous callers an arbitrary-recipient send.
+    const isPublicForm = type === "partner_inquiry" || type === "location_request";
     
     // Create supabase client for rate limiting (service role needed for rate_limits table)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);

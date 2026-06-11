@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
+import { requireAdmin, requireServiceRole } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,6 +78,11 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     if (testMode && testTemplateId && testEmail) {
+      // Test sends go to a caller-supplied address — require an admin JWT so this
+      // can't be used as an arbitrary-recipient email primitive.
+      const auth = await requireAdmin(req);
+      if (auth instanceof Response) return auth;
+
       // Send a test email
       const { data: template, error: templateError } = await supabase
         .from("onboarding_email_templates")
@@ -121,7 +127,11 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Normal processing: fetch pending emails that are due
+    // Normal processing (queue flush) is a server-to-server job — cron only.
+    const guard = requireServiceRole(req);
+    if (guard) return guard;
+
+    // fetch pending emails that are due
     const { data: pendingEmails, error: fetchError } = await supabase
       .from("onboarding_email_queue")
       .select(`

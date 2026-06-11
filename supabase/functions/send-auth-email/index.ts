@@ -114,6 +114,48 @@ const getEmailTemplate = (type: string, data: { userName?: string; actionLink: s
   throw new Error(`Unknown email type: ${type}`);
 };
 
+/**
+ * Best-effort per-key throttle on the shared rate_limits table. Returns true
+ * when the call is allowed (under `max` within `windowMin`), false otherwise.
+ * Fails OPEN on storage errors so a transient DB hiccup never blocks a real
+ * password reset — the recipient cap is the load-bearing anti-abuse guard.
+ */
+async function throttle(
+  admin: ReturnType<typeof createClient>,
+  identifier: string,
+  max: number,
+  windowMin: number,
+): Promise<boolean> {
+  const windowStart = new Date(Date.now() - windowMin * 60 * 1000);
+  try {
+    const { data: existing } = await admin
+      .from("rate_limits")
+      .select("id, request_count, window_start")
+      .eq("identifier", identifier)
+      .eq("endpoint", "send-auth-email")
+      .maybeSingle();
+
+    if (existing && new Date(existing.window_start) > windowStart) {
+      if (existing.request_count >= max) return false;
+      await admin
+        .from("rate_limits")
+        .update({ request_count: existing.request_count + 1 })
+        .eq("id", existing.id);
+      return true;
+    }
+
+    await admin
+      .from("rate_limits")
+      .upsert(
+        { identifier, endpoint: "send-auth-email", request_count: 1, window_start: new Date().toISOString() },
+        { onConflict: "identifier,endpoint" },
+      );
+    return true;
+  } catch (_err) {
+    return true; // fail open
+  }
+}
+
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -141,6 +183,22 @@ const handler = async (req: Request): Promise<Response> => {
         persistSession: false,
       },
     });
+
+    // Anti-abuse: this endpoint is unauthenticated (legit caller is the
+    // anonymous SPA at password-reset / verification time) and drives the admin
+    // generateLink API, which bypasses GoTrue's own throttle. Cap by RECIPIENT
+    // (stops bombing one inbox) and by IP (raises spray cost). 429 on either.
+    const emailKey = String(email).trim().toLowerCase();
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("cf-connecting-ip") || "unknown";
+    const recipientOk = await throttle(supabaseAdmin, `recipient:${emailKey}`, 5, 60);
+    const ipOk = await throttle(supabaseAdmin, `ip:${clientIp}`, 30, 60);
+    if (!recipientOk || !ipOk) {
+      return new Response(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "3600", ...corsHeaders } },
+      );
+    }
 
     // Get user name from profiles if available
     let userName: string | undefined;
@@ -211,7 +269,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error(`Failed to send email: ${sendResult.error}`);
     }
 
-    console.log(`Auth email sent successfully: ${type} to ${email}`, { attempts: sendResult.attempts });
+    console.log(`Auth email sent successfully: ${type}`, { attempts: sendResult.attempts });
 
     return new Response(JSON.stringify({ success: true, messageId: sendResult.id }), {
       status: 200,

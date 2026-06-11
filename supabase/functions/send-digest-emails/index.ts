@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { requireServiceRole } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -126,6 +127,10 @@ const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Digest flush is a scheduled server-to-server job — cron only.
+  const guard = requireServiceRole(req);
+  if (guard) return guard;
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
