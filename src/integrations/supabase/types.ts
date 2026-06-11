@@ -6820,6 +6820,8 @@ export type Database = {
         Args: { _club_profile_id: string }
         Returns: boolean
       }
+      digits_only: { Args: { _value: string }; Returns: string }
+      fold_search_text: { Args: { _value: string }; Returns: string }
       gen_random_bytes: { Args: { len: number }; Returns: string }
       generate_location_slug: {
         Args: { city: string; name: string }
@@ -6837,6 +6839,47 @@ export type Database = {
       get_location_review_stats: {
         Args: { _location_id: string }
         Returns: Json
+      }
+      get_players_overview: {
+        Args: {
+          p_filters?: Json
+          p_limit?: number
+          p_offset?: number
+          p_scope: string
+          p_scope_id: string
+          p_search?: string
+          p_sort?: string
+          p_sort_dir?: string
+        }
+        Returns: {
+          academy_notes: string
+          billing_address: string
+          billing_btw_number: string
+          billing_business_name: string
+          birth_date: string
+          created_at: string
+          email: string
+          full_name: string
+          guest_player_id: string
+          has_active_cyclus: boolean
+          has_overdue_payment: boolean
+          has_trained: boolean
+          location_ids: string[]
+          location_names: string[]
+          metadata_id: string
+          notes: string
+          owner_trainer_id: string
+          phone: string
+          player_key: string
+          player_type: string
+          profile_id: string
+          rating_system: string
+          skill_rating: number
+          source: string
+          tag_ids: string[]
+          total_count: number
+          trainer_ids: string[]
+        }[]
       }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
@@ -7105,4 +7148,3 @@ export const Constants = {
     },
   },
 } as const
-
