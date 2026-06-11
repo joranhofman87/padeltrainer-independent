@@ -741,5 +741,21 @@
     "errorGeneric": "Er ging iets mis. Probeer het opnieuw.",
     "linkInvalid": "Link niet gevonden",
     "linkInvalidDescription": "Deze link is ongeldig of verlopen."
+  },
+  "tierControl": {
+    "title": "Zichtbaarheid & herboeking",
+    "tier": {
+      "priority": "Alleen voorrang",
+      "members": "Alleen leden",
+      "public": "Openbaar",
+      "hidden": "Verborgen"
+    },
+    "priorityEnds": "Voorrangsperiode eindigt",
+    "memberEnds": "Ledenperiode eindigt",
+    "releaseStatus": "Vrijgavestatus",
+    "openMembers": "Nu openstellen voor leden",
+    "openPublic": "Nu openbaar maken",
+    "hold": "Vasthouden voor controle",
+    "unhold": "Naar controle"
   }
 }

@@ -474,7 +474,14 @@
     "benefitReminders": "Automatische agendaherinneringen",
     "benefitSeeEvents": "Zie trainingssessies naast je andere afspraken",
     "benefitAnyDevice": "Toegang vanaf elk apparaat",
-    "primaryCalendar": "Hoofdagenda"
+    "primaryCalendar": "Hoofdagenda",
+    "howDetailsIncluded": "Agenda-evenementen bevatten sessiedetails en deelnemersinformatie",
+    "howCancelRemoved": "Als een boeking wordt geannuleerd, wordt het evenement verwijderd",
+    "disconnectConfirmTitle": "Google Agenda ontkoppelen?",
+    "disconnectConfirmDescription": "Dit stopt het synchroniseren van nieuwe boekingen naar je agenda. Bestaande agenda-evenementen blijven ongewijzigd.",
+    "connectButton": "Google Agenda verbinden",
+    "benefitSeeAlongside": "Zie trainingssessies naast je andere afspraken",
+    "connectedState": "Verbonden"
   },
   "publicRating": {
     "notFound": "Beoordeling niet gevonden",
@@ -597,5 +604,7 @@
     "listView": "Lijstweergave",
     "scheduleView": "Roosterweergave"
   },
-  "saving": "Bezig…"
+  "saving": "Bezig…",
+  "ratingNotFound": "Beoordeling niet gevonden",
+  "goToHomepage": "Naar de homepage"
 }

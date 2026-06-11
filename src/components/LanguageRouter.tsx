@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 const ShortLinkResolver = lazy(() => import('@/pages/ShortLinkResolver'));
 
-const SUPPORTED_LANGUAGES = ['en', 'nl', 'es', 'de', 'fr', 'it'];
+const SUPPORTED_LANGUAGES = ['en', 'nl'];
 const DEFAULT_LANGUAGE = 'en';
 
 export function LanguageRouter() {

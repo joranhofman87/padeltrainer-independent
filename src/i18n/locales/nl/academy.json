@@ -88,7 +88,10 @@
     "addMyselfAsTrainer": "Voeg mezelf toe als trainer",
     "addedSelf": "Je bent toegevoegd als trainer",
     "createTrainer": "Trainer aanmaken",
-    "createTrainerDescription": "Maak een nieuw trainer account aan voor je academy."
+    "createTrainerDescription": "Maak een nieuw trainer account aan voor je academy.",
+    "trainerCreated": "Trainer aangemaakt",
+    "newUserCredentials": "Er is een nieuw account aangemaakt. Deel deze inloggegevens veilig.",
+    "existingUserLinked": "De bestaande gebruiker is gekoppeld aan je academy."
   },
   "trainerInvitation": {
     "title": "Academy uitnodiging",

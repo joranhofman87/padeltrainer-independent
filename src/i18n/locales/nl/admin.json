@@ -108,7 +108,19 @@
         "nameMissing": "Naam is verplicht",
         "cityMissing": "Stad is verplicht",
         "duplicateSlug": "Bestaat al",
-        "duplicateInFile": "Duplicaat in bestand"
+        "duplicateInFile": "Duplicaat in bestand",
+        "googleMapsMatch": "Komt overeen met \"{{name}}\" (zelfde Google Maps-link)",
+        "nearbyMatch": "Komt overeen met \"{{name}}\" ({{distance}}m verderop)"
+      },
+      "warningRows": "{{count}} waarschuwingen",
+      "filterAll": "Alle",
+      "filterValid": "Geldig",
+      "filterDuplicates": "Duplicaten",
+      "filterErrors": "Fouten",
+      "showingRows": "Eerste 200 van {{count}} rijen worden getoond",
+      "warnings": {
+        "unknownCountry": "Onbekend land: {{value}}",
+        "invalidEmail": "Ongeldig e-mailformaat"
       }
     }
   },

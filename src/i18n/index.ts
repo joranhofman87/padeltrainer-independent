@@ -10,7 +10,8 @@ import enCommon from './locales/en/common.json';
 import enMarketing from './locales/en/marketing.json';
 import enNotifications from './locales/en/notifications.json';
 
-const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr', 'it'] as const;
+// Shipping en + nl only. Other languages were dropped (incomplete translations).
+const SUPPORTED_LANGS = ['en', 'nl'] as const;
 const NAMESPACES = ['common', 'marketing', 'auth', 'player', 'trainer', 'club', 'cycles', 'admin', 'academy', 'waitingList', 'onboarding'] as const;
 
 async function loadOnboardingBundle(lang: string) {
@@ -82,10 +83,6 @@ async function loadNlExtended() {
 // Lazy loaders for non-default languages
 const lazyLoaders: Record<string, () => Promise<Record<string, any>>> = {
   en: createLazyLoader('en'),
-  es: createLazyLoader('es'),
-  de: createLazyLoader('de'),
-  fr: createLazyLoader('fr'),
-  it: createLazyLoader('it'),
 };
 
 // Track which languages have had ALL namespaces loaded
@@ -123,7 +120,7 @@ async function loadLanguage(lng: string): Promise<void> {
 
 // Detect initial language before init
 const detectLanguage = (): string => {
-  const pathMatch = window.location.pathname.match(/^\/(en|nl|es|de|fr|it)\b/);
+  const pathMatch = window.location.pathname.match(/^\/(en|nl)\b/);
   if (pathMatch) return pathMatch[1];
   
   const stored = localStorage.getItem('i18nextLng');

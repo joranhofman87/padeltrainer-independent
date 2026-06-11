@@ -601,12 +601,30 @@
     "toastCheckoutError": "Afrekenen starten mislukt. Probeer het opnieuw.",
     "toastPortalError": "Abonnementsbeheer openen mislukt. Probeer het opnieuw.",
     "features": {
-      "lowerFees": { "title": "Lagere kosten", "description": "Houd meer over met lagere platformkosten" },
-      "visibility": { "title": "Meer zichtbaarheid", "description": "Prioriteit in zoekresultaten" },
-      "analytics": { "title": "Geavanceerde analytics", "description": "Volg je prestaties met gedetailleerde inzichten" },
-      "scheduling": { "title": "Flexibele planning", "description": "Geavanceerde beschikbaarheid en boekingen" },
-      "support": { "title": "Prioriteitssupport", "description": "Sneller geholpen wanneer je het nodig hebt" },
-      "verified": { "title": "Geverifieerd badge", "description": "Meer vertrouwen met een geverifieerd trainer-badge" }
+      "lowerFees": {
+        "title": "Lagere kosten",
+        "description": "Houd meer over met lagere platformkosten"
+      },
+      "visibility": {
+        "title": "Meer zichtbaarheid",
+        "description": "Prioriteit in zoekresultaten"
+      },
+      "analytics": {
+        "title": "Geavanceerde analytics",
+        "description": "Volg je prestaties met gedetailleerde inzichten"
+      },
+      "scheduling": {
+        "title": "Flexibele planning",
+        "description": "Geavanceerde beschikbaarheid en boekingen"
+      },
+      "support": {
+        "title": "Prioriteitssupport",
+        "description": "Sneller geholpen wanneer je het nodig hebt"
+      },
+      "verified": {
+        "title": "Geverifieerd badge",
+        "description": "Meer vertrouwen met een geverifieerd trainer-badge"
+      }
     }
   },
   "subscription": {
@@ -1269,7 +1287,11 @@
       "sendTest": "Test verzenden",
       "testEmailPlaceholder": "test@email.com",
       "sendToCount_one": "Verstuur naar {{count}} ontvanger",
-      "sendToCount_other": "Verstuur naar {{count}} ontvangers"
+      "sendToCount_other": "Verstuur naar {{count}} ontvangers",
+      "saveDraft": "Opslaan als concept",
+      "savingDraft": "Opslaan...",
+      "editingDraft": "Concept bewerken",
+      "discardDraftChanges": "Verwerpen"
     },
     "templates": {
       "title": "Opgeslagen sjablonen",
@@ -1289,7 +1311,15 @@
       "recipients": "Ontvangers",
       "sentFailed": "Verzonden / Mislukt",
       "date": "Datum",
-      "failed": "{{count}} mislukt"
+      "failed": "{{count}} mislukt",
+      "draftsTitle": "Concepten",
+      "sentTitle": "Verzonden campagnes",
+      "openDraft": "Concept openen",
+      "deleteDraft": "Concept verwijderen",
+      "confirmDeleteDraft": "Dit concept verwijderen? Dit kan niet ongedaan worden gemaakt.",
+      "noDrafts": "Geen concepten opgeslagen.",
+      "actions": "Acties",
+      "draftSaved": "Laatst opgeslagen {{date}}"
     },
     "status": {
       "sent": "Verzonden",
@@ -1324,7 +1354,12 @@
       "campaignSent": "Campagne verzonden!",
       "campaignSentDesc": "E-mails worden verzonden naar {{count}} ontvangers.",
       "campaignError": "Kon campagne niet verzenden.",
-      "error": "Fout"
+      "error": "Fout",
+      "draftSaved": "Concept opgeslagen",
+      "draftSavedDesc": "Je kunt later terugkomen om het af te maken.",
+      "draftError": "Kon concept niet opslaan.",
+      "draftDeleted": "Concept verwijderd",
+      "draftLoaded": "Concept geladen"
     }
   }
 }
