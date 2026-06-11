@@ -68,27 +68,22 @@ export async function recalculateInvoiceAfterRemoval(
     );
   const defaultVatRate = invoice.vat_rate || 21;
 
-  // Resolve price per booking: prefer payment_amount, then slot price
+  // A booking's payment_amount is the AUTHORITATIVE per-player charge for that
+  // session (already a split share when split, or the full price when not).
+  // It must NEVER be re-divided. Only the slot-price fallback (used when
+  // payment_amount is absent) is the *full* session price that needs dividing
+  // by splitCount for a split. Re-dividing payment_amount was the bug that
+  // collapsed invoice totals to a fraction whenever this recalc re-ran.
+  const bookingHasExplicitAmount = (b: { payment_amount?: number | null }): boolean =>
+    b.payment_amount != null && Number(b.payment_amount) > 0;
+
   const resolveBookingPrice = (b: any): number => {
     const bSlot = b.availability_slots as any;
     return b.payment_amount || bSlot.price_per_session || 0;
   };
 
-  /** payment_amount already reflects per-player share after split rebalance. */
-  const paymentAmountsAreSplitShares =
-    splitCount > 1 &&
-    remainingBookings.length > 0 &&
-    (() => {
-      const amounts = remainingBookings
-        .map((b) => b.payment_amount)
-        .filter((a): a is number => a != null && a > 0);
-      if (amounts.length === 0) return false;
-      const first = amounts[0];
-      if (!amounts.every((a) => a === first)) return false;
-      const slotPrice = (remainingBookings[0].availability_slots as any)?.price_per_session;
-      if (!slotPrice || slotPrice <= 0) return true;
-      return Math.abs(first * splitCount - slotPrice) < 0.02;
-    })();
+  // Only divide when every billed booking fell back to the full slot price.
+  const allHaveExplicitAmount = remainingBookings.every(bookingHasExplicitAmount);
 
   // Build session line items
   let lineItems: {
@@ -109,7 +104,7 @@ export async function recalculateInvoiceAfterRemoval(
 
     if (allSamePrice) {
       let pricePerSession = nonZeroPrices[0];
-      if (splitCount > 1 && !paymentAmountsAreSplitShares) {
+      if (splitCount > 1 && !allHaveExplicitAmount) {
         pricePerSession = Math.round((pricePerSession / splitCount) * 100) / 100;
       }
       const desc = splitCount > 1
@@ -129,7 +124,7 @@ export async function recalculateInvoiceAfterRemoval(
         const startTime = new Date(bSlot.start_time);
         const locationName = bSlot.locations?.name || "";
         let price = resolveBookingPrice(b);
-        if (splitCount > 1 && !paymentAmountsAreSplitShares) {
+        if (splitCount > 1 && !bookingHasExplicitAmount(b)) {
           price = Math.round((price / splitCount) * 100) / 100;
         }
         const desc = splitCount > 1
@@ -152,7 +147,7 @@ export async function recalculateInvoiceAfterRemoval(
         ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
         : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
       let price = resolveBookingPrice(b);
-      if (splitCount > 1 && !paymentAmountsAreSplitShares) {
+      if (splitCount > 1 && !bookingHasExplicitAmount(b)) {
         price = Math.round((price / splitCount) * 100) / 100;
         desc = `${desc} (1/${splitCount})`;
       }

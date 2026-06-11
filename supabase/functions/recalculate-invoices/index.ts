@@ -100,6 +100,13 @@ Deno.serve(async (req) => {
             const bSlot = b.availability_slots as any;
             return b.payment_amount || bSlot.price_per_session || 0;
           };
+          // payment_amount is the authoritative per-player charge — never
+          // re-divide it. Only the slot-price fallback is the full session price
+          // a split must divide. (Previously divided UNCONDITIONALLY → one run
+          // halved every split invoice.)
+          const bookingHasExplicitAmount = (b: { payment_amount?: number | null }): boolean =>
+            b.payment_amount != null && Number(b.payment_amount) > 0;
+          const allHaveExplicitAmount = bookings.every(bookingHasExplicitAmount);
 
           // Detect split count from existing line items
           let splitCount = 1;
@@ -120,7 +127,7 @@ Deno.serve(async (req) => {
 
             if (allSamePrice) {
               let price = nonZeroPrices[0];
-              if (splitCount > 1) price = Math.round((price / splitCount) * 100) / 100;
+              if (splitCount > 1 && !allHaveExplicitAmount) price = Math.round((price / splitCount) * 100) / 100;
               const desc = splitCount > 1
                 ? `${cyclusName} (${bookings.length} weken) (1/${splitCount})`
                 : `${cyclusName} (${bookings.length} weken)`;
@@ -131,7 +138,7 @@ Deno.serve(async (req) => {
                 const startTime = new Date(bSlot.start_time);
                 const locationName = bSlot.locations?.name || "";
                 let price = resolvePrice(b);
-                if (splitCount > 1) price = Math.round((price / splitCount) * 100) / 100;
+                if (splitCount > 1 && !bookingHasExplicitAmount(b)) price = Math.round((price / splitCount) * 100) / 100;
                 const desc = splitCount > 1
                   ? `${cyclusName} - ${startTime.toLocaleDateString("nl-NL")}${locationName ? ` (${locationName})` : ""} (1/${splitCount})`
                   : `${cyclusName} - ${startTime.toLocaleDateString("nl-NL")}${locationName ? ` (${locationName})` : ""}`;
@@ -144,7 +151,7 @@ Deno.serve(async (req) => {
               const startTime = new Date(bSlot.start_time);
               const locationName = bSlot.locations?.name || "";
               let price = resolvePrice(b);
-              if (splitCount > 1) price = Math.round((price / splitCount) * 100) / 100;
+              if (splitCount > 1 && !bookingHasExplicitAmount(b)) price = Math.round((price / splitCount) * 100) / 100;
               const desc = bSlot.cyclus_name
                 ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")}${locationName ? ` (${locationName})` : ""}`
                 : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;

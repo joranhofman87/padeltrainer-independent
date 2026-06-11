@@ -713,7 +713,7 @@
   },
   "src/lib/invoiceSync.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 20
+      "count": 19
     }
   },
   "src/lib/playerTagService.test.ts": {
