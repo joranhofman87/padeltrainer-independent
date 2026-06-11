@@ -42,10 +42,15 @@ CREATE TABLE public.guest_players (
   preferred_location_id uuid, linked_profile_id uuid,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX idx_gp_trainer_email ON public.guest_players (trainer_id, email)
+CREATE UNIQUE INDEX idx_guest_players_trainer_email_unique ON public.guest_players (trainer_id, email)
   WHERE email IS NOT NULL AND email <> '' AND trainer_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_gp_academy_email ON public.guest_players (academy_profile_id, email)
+CREATE UNIQUE INDEX idx_guest_players_academy_email_unique ON public.guest_players (academy_profile_id, email)
   WHERE email IS NOT NULL AND email <> '' AND academy_profile_id IS NOT NULL AND trainer_id IS NULL;
+CREATE TABLE public.club_players (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  club_profile_id uuid NOT NULL, full_name text NOT NULL, email text NOT NULL
+);
+CREATE UNIQUE INDEX unique_club_player_email ON public.club_players (club_profile_id, email);
 
 CREATE TABLE public.bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid,
@@ -78,6 +83,8 @@ CREATE UNIQUE INDEX uq_meta_academy_guest ON public.academy_player_metadata (aca
 for (const f of [
   'supabase/migrations/20260611200000_merge_guest_players.sql',
   'supabase/migrations/20260611210000_merge_guest_players_email_conflict.sql',
+  'supabase/migrations/20260611220000_relax_guest_email_uniqueness.sql',
+  'supabase/migrations/20260611220001_merge_guest_players_v3.sql',
 ]) {
   await db.exec(readFileSync(join(process.cwd(), f), 'utf8'));
 }
@@ -210,26 +217,23 @@ const q = async (sql: string) => (await db.query(sql)).rows as Record<string, un
   check('out-of-scope source rejected for trainer', rejected);
 }
 
-// kept-email collision with a THIRD player (the production Sander case):
-// keeping the source's email while another trainer guest already holds it
+// kept-email shared with a THIRD player (the production Sander case):
+// with uniqueness relaxed, the merge proceeds and keeps the email even
+// though another player also carries it.
 {
   await db.exec(`
     INSERT INTO public.guest_players (id, trainer_id, full_name, email) VALUES
-      ('dddddddd-0000-0000-0000-000000000001', '${T1}', 'Sander', null),
+      ('dddddddd-0000-0000-0000-000000000001', '${T1}', 'Sander', 'sander@test.com'),
       ('dddddddd-0000-0000-0000-000000000002', '${T1}', 'Sander van Oss', null),
       ('dddddddd-0000-0000-0000-000000000003', '${T1}', 'Third Holder', 'sander@test.com');
   `);
-  let friendly = false;
-  try {
-    await rpc(T1_USER,
-      `'trainer','${T1}','dddddddd-0000-0000-0000-000000000001'::uuid,'dddddddd-0000-0000-0000-000000000002'::uuid,` +
-      `'{"email":"sander@test.com"}'::jsonb`);
-  } catch (e) {
-    friendly = String(e).includes('already used by another player: Third Holder');
-  }
-  check('kept-email collision with third player -> friendly error naming the holder', friendly);
-  const both = await q(`SELECT count(*)::int AS n FROM public.guest_players WHERE id::text LIKE 'dddddddd%'`);
-  check('collision aborts atomically (all three rows intact)', both[0].n === 3, both);
+  const { r } = await rpc(T1_USER,
+    `'trainer','${T1}','dddddddd-0000-0000-0000-000000000001'::uuid,'dddddddd-0000-0000-0000-000000000002'::uuid,` +
+    `'{"email":"sander@test.com"}'::jsonb`);
+  const tgt = (await q(`SELECT email FROM public.guest_players WHERE id='dddddddd-0000-0000-0000-000000000002'`))[0];
+  const third = (await q(`SELECT email FROM public.guest_players WHERE id='dddddddd-0000-0000-0000-000000000003'`))[0];
+  check('shared kept-email merge succeeds; third holder untouched',
+    tgt.email === 'sander@test.com' && third.email === 'sander@test.com' && typeof r === 'object', { tgt, third });
 }
 
 console.log(failures ? `\n*** REHEARSAL FAILED (${failures}) ***` : '\n*** REHEARSAL PASSED ***');

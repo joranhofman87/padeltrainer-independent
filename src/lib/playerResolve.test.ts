@@ -5,8 +5,9 @@ const insertMock = vi.fn();
 const updateMock = vi.fn();
 const emailLookupMock = vi.fn();
 
-// Queue of results for successive select('id') email lookups.
-let emailLookupResults: Array<{ id: string } | null> = [];
+// Queue of result LISTS for successive select('id, full_name') email lookups
+// (shared emails are allowed, so the lookup returns multiple rows).
+let emailLookupResults: Array<Array<{ id: string; full_name: string | null }>> = [];
 // Result for the patch row lookup (select of patchable columns).
 let patchRowResult: Record<string, unknown> | null = null;
 // Result of insert(...).select('id').single().
@@ -22,6 +23,7 @@ function thenableBuilder(resolved: unknown) {
     eq: () => builder,
     or: () => builder,
     in: () => builder,
+    order: () => builder,
     limit: () => builder,
     maybeSingle: () => Promise.resolve(resolved),
     single: () => Promise.resolve(resolved),
@@ -37,9 +39,9 @@ const fromMock = vi.fn((table: string) => {
   if (table === 'guest_players') {
     return {
       select: (cols: string) => {
-        if (cols === 'id') {
+        if (cols === 'id, full_name') {
           emailLookupMock();
-          const next = emailLookupResults.length > 0 ? emailLookupResults.shift()! : null;
+          const next = emailLookupResults.length > 0 ? emailLookupResults.shift()! : [];
           return thenableBuilder({ data: next, error: null });
         }
         return thenableBuilder({ data: patchRowResult, error: null });
@@ -81,8 +83,8 @@ describe('findExistingGuestPlayerIdByEmail', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
-  it('finds a trainer-scoped guest by email', async () => {
-    emailLookupResults = [{ id: 'existing-by-email' }];
+  it('finds a trainer-scoped guest by email (single match, no name needed)', async () => {
+    emailLookupResults = [[{ id: 'existing-by-email', full_name: 'Jan Jansen' }]];
     const id = await findExistingGuestPlayerIdByEmail('dup@test.com', {
       kind: 'trainer',
       trainerId: 't1',
@@ -92,13 +94,57 @@ describe('findExistingGuestPlayerIdByEmail', () => {
 
   it('finds an academy-scoped guest by email (including trainer-owned rows)', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't9' }];
-    emailLookupResults = [{ id: 'academy-existing' }];
+    emailLookupResults = [[{ id: 'academy-existing', full_name: 'Jan Jansen' }]];
     const id = await findExistingGuestPlayerIdByEmail('dup@test.com', {
       kind: 'academy',
       academyProfileId: 'a1',
     });
     expect(id).toBe('academy-existing');
     expect(fromMock).toHaveBeenCalledWith('academy_trainers');
+  });
+
+  it('disambiguates a shared email by full name (diacritic/case-insensitive)', async () => {
+    emailLookupResults = [
+      [
+        { id: 'kid-a', full_name: 'Anna Jansen' },
+        { id: 'kid-b', full_name: 'José Jansen' },
+      ],
+    ];
+    const id = await findExistingGuestPlayerIdByEmail(
+      'family@test.com',
+      { kind: 'trainer', trainerId: 't1' },
+      '  jose jansen ',
+    );
+    expect(id).toBe('kid-b');
+  });
+
+  it('returns null for a shared email when the name matches none of the players', async () => {
+    emailLookupResults = [
+      [
+        { id: 'kid-a', full_name: 'Anna Jansen' },
+        { id: 'kid-b', full_name: 'José Jansen' },
+      ],
+    ];
+    const id = await findExistingGuestPlayerIdByEmail(
+      'family@test.com',
+      { kind: 'trainer', trainerId: 't1' },
+      'Kees Jansen',
+    );
+    expect(id).toBeNull();
+  });
+
+  it('returns null for a shared email when no name is given', async () => {
+    emailLookupResults = [
+      [
+        { id: 'kid-a', full_name: 'Anna Jansen' },
+        { id: 'kid-b', full_name: 'José Jansen' },
+      ],
+    ];
+    const id = await findExistingGuestPlayerIdByEmail('family@test.com', {
+      kind: 'trainer',
+      trainerId: 't1',
+    });
+    expect(id).toBeNull();
   });
 });
 
@@ -114,7 +160,7 @@ describe('resolveOrCreateGuestPlayer', () => {
   });
 
   it('reuses an existing guest by email instead of inserting (trainer scope)', async () => {
-    emailLookupResults = [{ id: 'existing-by-email' }];
+    emailLookupResults = [[{ id: 'existing-by-email', full_name: 'Jan Jansen' }]];
     const id = await resolveOrCreateGuestPlayer({
       scope: { kind: 'trainer', trainerId: 't1' },
       fullName: 'Jan Jansen',
@@ -123,6 +169,41 @@ describe('resolveOrCreateGuestPlayer', () => {
     expect(id).toBe('existing-by-email');
     expect(insertMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses the name-matching guest when the email is shared', async () => {
+    emailLookupResults = [
+      [
+        { id: 'kid-a', full_name: 'Anna Jansen' },
+        { id: 'kid-b', full_name: 'José Jansen' },
+      ],
+    ];
+    const id = await resolveOrCreateGuestPlayer({
+      scope: { kind: 'trainer', trainerId: 't1' },
+      fullName: 'Jose Jansen',
+      email: 'family@test.com',
+    });
+    expect(id).toBe('kid-b');
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('creates a NEW player when the shared email matches no name (kid B gets own record)', async () => {
+    emailLookupResults = [
+      [
+        { id: 'kid-a', full_name: 'Anna Jansen' },
+        { id: 'kid-b', full_name: 'José Jansen' },
+      ],
+    ];
+    const id = await resolveOrCreateGuestPlayer({
+      scope: { kind: 'trainer', trainerId: 't1' },
+      fullName: 'Kees Jansen',
+      email: 'family@test.com',
+    });
+    expect(id).toBe('new-guest');
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    const payload = insertMock.mock.calls[0][0];
+    expect(payload.full_name).toBe('Kees Jansen');
+    expect(payload.email).toBe('family@test.com');
   });
 
   it('inserts an emailless guest without any dedup lookup', async () => {
@@ -188,7 +269,7 @@ describe('resolveOrCreateGuestPlayer', () => {
   });
 
   it('falls back to re-select on insert unique violation (23505 race)', async () => {
-    emailLookupResults = [null, { id: 'raced-existing' }];
+    emailLookupResults = [[], [{ id: 'raced-existing', full_name: 'Jan' }]];
     insertResult = { data: null, error: { code: '23505', message: 'duplicate key value' } };
     const id = await resolveOrCreateGuestPlayer({
       scope: { kind: 'trainer', trainerId: 't1' },
@@ -211,7 +292,7 @@ describe('resolveOrCreateGuestPlayer', () => {
   });
 
   it('patchExistingEmptyFields fills only null/empty fields on the existing row', async () => {
-    emailLookupResults = [{ id: 'existing-by-email' }];
+    emailLookupResults = [[{ id: 'existing-by-email', full_name: 'Jan Jansen' }]];
     patchRowResult = {
       phone: null,
       skill_rating: 7,
@@ -241,7 +322,7 @@ describe('resolveOrCreateGuestPlayer', () => {
   });
 
   it('patchExistingEmptyFields skips the update when nothing is empty', async () => {
-    emailLookupResults = [{ id: 'existing-by-email' }];
+    emailLookupResults = [[{ id: 'existing-by-email', full_name: 'Jan' }]];
     patchRowResult = {
       phone: '+31600000000',
       skill_rating: 7,
@@ -264,7 +345,7 @@ describe('resolveOrCreateGuestPlayer', () => {
   });
 
   it('does not patch when patchExistingEmptyFields is not set', async () => {
-    emailLookupResults = [{ id: 'existing-by-email' }];
+    emailLookupResults = [[{ id: 'existing-by-email', full_name: 'Jan' }]];
     const id = await resolveOrCreateGuestPlayer({
       scope: { kind: 'trainer', trainerId: 't1' },
       fullName: 'Jan',

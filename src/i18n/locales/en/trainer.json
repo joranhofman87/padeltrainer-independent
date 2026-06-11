@@ -442,6 +442,11 @@
     "linkedToProfile": "Linked to registered player",
     "duplicateEmail": "Player already exists",
     "duplicateEmailDescription": "A player with this email is already in your list",
+    "sharedEmail": {
+      "title": "Email already in use",
+      "description": "{{names}} already use(s) this email. Create a separate player with the same email anyway (e.g. a family member)?",
+      "confirm": "Create separate player"
+    },
     "autoFilledFromProfile": "Skill rating auto-filled from player profile",
     "detail": {
       "playerDetails": "Player details",
@@ -536,7 +541,8 @@
       "importing": "Importing players...",
       "complete": "Import Complete!",
       "importedCount": "{{count}} players have been added",
-      "failedCount": "{{count}} failed to import"
+      "failedCount": "{{count}} failed to import",
+      "sharedEmails": "{{count}} imported players share an email with existing players (e.g. family members)."
     },
     "merge": {
       "action": "Merge with another player…",
@@ -560,8 +566,7 @@
       "successDescription": "Merged into {{name}}: {{bookings}} trainings and {{invoices}} invoices moved.",
       "errorTitle": "Merge failed",
       "errors": {
-        "linkedAccounts": "These players are linked to two different accounts and cannot be merged.",
-        "emailConflict": "That email address is already used by another player: {{name}}. Merge or update that player first."
+        "linkedAccounts": "These players are linked to two different accounts and cannot be merged."
       },
       "fields": {
         "fullName": "Name",

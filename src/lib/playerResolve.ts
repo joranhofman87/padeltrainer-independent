@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { buildGuestPlayerDbFields, splitFullName } from '@/lib/profileName';
+import { normalize } from '@/lib/playerSearch';
 import { logger } from '@/lib/logger';
 import type { TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 
@@ -9,15 +10,40 @@ export type GuestResolveScope =
   | { kind: 'trainer'; trainerId: string };
 
 /**
+ * Pick the guest to reuse from the email matches. Shared emails are allowed
+ * (families share one address), so multiple matches are ambiguous unless the
+ * full name singles one out — ambiguity yields null and the caller creates a
+ * NEW player (e.g. kid B gets their own record next to kid A).
+ */
+function pickGuestIdByName(
+  rows: Array<{ id: string; full_name: string | null }>,
+  fullName?: string | null,
+): string | null {
+  if (rows.length === 0) return null;
+  if (rows.length === 1) return rows[0].id;
+  const wanted = (fullName ?? '').trim();
+  if (wanted) {
+    const match = rows.find((row) => normalize(row.full_name ?? '') === normalize(wanted));
+    if (match) return match.id;
+  }
+  return null;
+}
+
+/**
  * Find an existing guest_players row by email within an owner scope.
  *
  * Trainer scope: exact (trainer_id, email) match.
  * Academy scope: matches guests owned by the academy itself OR by any of the
  * academy's active trainers, so academy flows reuse trainer-created guests.
+ *
+ * Multiple guests may share an email (family members); when more than one
+ * matches, the optional fullName disambiguates (diacritic/case-insensitive).
+ * Without a unique pick this returns null so callers create a new player.
  */
 export async function findExistingGuestPlayerIdByEmail(
   email: string,
   scope: GuestResolveScope,
+  fullName?: string | null,
 ): Promise<string | null> {
   const trimmed = email.trim();
   if (!trimmed) return null;
@@ -25,12 +51,12 @@ export async function findExistingGuestPlayerIdByEmail(
   if (scope.kind === 'trainer') {
     const { data } = await supabase
       .from('guest_players')
-      .select('id')
+      .select('id, full_name')
       .eq('trainer_id', scope.trainerId)
       .eq('email', trimmed)
-      .limit(1)
-      .maybeSingle();
-    return data?.id ?? null;
+      .order('created_at')
+      .limit(10);
+    return pickGuestIdByName(data ?? [], fullName);
   }
 
   const { data: academyTrainers } = await supabase
@@ -41,7 +67,7 @@ export async function findExistingGuestPlayerIdByEmail(
 
   const trainerIds = (academyTrainers || []).map((t) => t.trainer_profile_id).filter(Boolean);
 
-  let query = supabase.from('guest_players').select('id').eq('email', trimmed);
+  let query = supabase.from('guest_players').select('id, full_name').eq('email', trimmed);
   if (trainerIds.length > 0) {
     query = query.or(
       `academy_profile_id.eq.${scope.academyProfileId},trainer_id.in.(${trainerIds.join(',')})`,
@@ -50,8 +76,8 @@ export async function findExistingGuestPlayerIdByEmail(
     query = query.eq('academy_profile_id', scope.academyProfileId);
   }
 
-  const { data } = await query.limit(1).maybeSingle();
-  return data?.id ?? null;
+  const { data } = await query.order('created_at').limit(10);
+  return pickGuestIdByName(data ?? [], fullName);
 }
 
 export type ResolveOrCreateGuestPlayerArgs = {
@@ -124,7 +150,7 @@ export async function resolveOrCreateGuestPlayer(
   const email = (args.email ?? '').trim();
 
   if (email) {
-    const existingId = await findExistingGuestPlayerIdByEmail(email, scope);
+    const existingId = await findExistingGuestPlayerIdByEmail(email, scope, args.fullName);
     if (existingId) {
       if (args.patchExistingEmptyFields) {
         await patchExistingGuestEmptyFields(existingId, args);

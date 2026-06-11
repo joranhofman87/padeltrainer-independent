@@ -13,16 +13,21 @@ function toGuestResolveScope(
   return null;
 }
 
-/** Reuse an existing guest row by email within academy/trainer scope before inserting. */
+/**
+ * Reuse an existing guest row by email within academy/trainer scope before
+ * inserting. Shared emails are allowed: with multiple matches the optional
+ * fullName disambiguates, otherwise null is returned (caller creates new).
+ */
 export async function findExistingGuestPlayerIdForInvoice(
   email: string,
   scope: 'academy' | 'trainer',
   academyProfileId?: string,
   trainerId?: string,
+  fullName: string | null | undefined = undefined,
 ): Promise<string | null> {
   const resolveScope = toGuestResolveScope(scope, academyProfileId, trainerId);
   if (!resolveScope) return null;
-  return findExistingGuestPlayerIdByEmail(email, resolveScope);
+  return findExistingGuestPlayerIdByEmail(email, resolveScope, fullName);
 }
 
 export type ResolveInvoiceGuestPlayerArgs = {

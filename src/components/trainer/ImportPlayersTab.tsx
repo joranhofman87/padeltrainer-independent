@@ -73,6 +73,7 @@ export function ImportPlayersTab({
   const [importProgress, setImportProgress] = useState(0);
   const [importedCount, setImportedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
+  const [sharedEmailCount, setSharedEmailCount] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
   const resetState = () => {
@@ -81,6 +82,7 @@ export function ImportPlayersTab({
     setImportProgress(0);
     setImportedCount(0);
     setFailedCount(0);
+    setSharedEmailCount(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -202,6 +204,31 @@ export function ImportPlayersTab({
     if (file) handleFileSelect(file);
   };
 
+  /**
+   * Emails among `emails` already used by a same-scope guest. Shared emails
+   * import normally (family members share one address) — this only feeds the
+   * informational line in the completion summary. Errors return an empty set.
+   */
+  const fetchExistingScopedEmails = async (emails: string[]): Promise<Set<string>> => {
+    if (emails.length === 0 || (!trainerId && !academyId)) return new Set();
+    try {
+      let query = supabase.from("guest_players").select("email").in("email", emails);
+      query = trainerId
+        ? query.eq("trainer_id", trainerId)
+        : query.eq("academy_profile_id", academyId as string);
+      const { data, error } = await query;
+      if (error) throw error;
+      return new Set(
+        (data ?? [])
+          .map((row) => (row.email ?? "").toLowerCase())
+          .filter(Boolean),
+      );
+    } catch (error) {
+      logger.warn("Shared-email import pre-check failed", { error, component: "ImportPlayersTab" });
+      return new Set();
+    }
+  };
+
   const handleImport = async () => {
     const validPlayers = parsedPlayers.filter(p => p.isValid);
     if (validPlayers.length === 0) return;
@@ -209,6 +236,10 @@ export function ImportPlayersTab({
     setImportProgress(0);
     const imported: GuestPlayer[] = [];
     let failed = 0;
+    let sharedEmails = 0;
+
+    const uniqueEmails = Array.from(new Set(validPlayers.map(p => p.email.toLowerCase())));
+    const existingEmails = await fetchExistingScopedEmails(uniqueEmails);
 
     for (let i = 0; i < validPlayers.length; i++) {
       const player = validPlayers[i];
@@ -231,6 +262,7 @@ export function ImportPlayersTab({
           .single();
         if (error) throw error;
         imported.push(data as GuestPlayer);
+        if (existingEmails.has(player.email.toLowerCase())) sharedEmails++;
       } catch (error) {
         logger.error("Failed to import player", error instanceof Error ? error : new Error(String(error)), { component: 'ImportPlayersTab' });
         failed++;
@@ -240,6 +272,7 @@ export function ImportPlayersTab({
 
     setImportedCount(imported.length);
     setFailedCount(failed);
+    setSharedEmailCount(sharedEmails);
     setStep("complete");
     if (imported.length > 0) onPlayersImported(imported);
   };
@@ -364,6 +397,11 @@ export function ImportPlayersTab({
             <div>
               <p className="font-medium text-lg">{t("players.import.complete")}</p>
               <p className="text-muted-foreground">{t("players.import.importedCount", { count: importedCount })}</p>
+              {sharedEmailCount > 0 && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t("players.import.sharedEmails", "{{count}} imported players share an email with existing players (e.g. family members).", { count: sharedEmailCount })}
+                </p>
+              )}
               {failedCount > 0 && <p className="text-sm text-destructive mt-1">{t("players.import.failedCount", { count: failedCount })}</p>}
             </div>
             <Button onClick={resetState}>{t("players.import.importMore", "Import more")}</Button>

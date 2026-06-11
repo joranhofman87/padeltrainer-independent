@@ -8,22 +8,25 @@ import {
 } from './invoiceCustomerInsert';
 
 const insertMock = vi.fn();
-let guestLookupResult: { id: string } | null = null;
+let guestLookupResult: { id: string; full_name?: string | null } | null = null;
 
-function chainable(resolved: unknown = { data: guestLookupResult, error: null }) {
+// The email lookup selects 'id, full_name' as a LIST (shared emails allowed).
+function chainable(resolved?: unknown) {
+  const value =
+    resolved ?? { data: guestLookupResult ? [guestLookupResult] : [], error: null };
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
     or: () => builder,
     in: () => builder,
     limit: () => builder,
-    order: () => resolved,
-    maybeSingle: () => Promise.resolve(resolved),
-    single: () => Promise.resolve(resolved),
+    order: () => builder,
+    maybeSingle: () => Promise.resolve(value),
+    single: () => Promise.resolve(value),
     then: (
       onFulfilled: (v: { data: unknown; error: null }) => unknown,
       onRejected?: (e: unknown) => unknown,
-    ) => Promise.resolve(resolved).then(onFulfilled, onRejected),
+    ) => Promise.resolve(value).then(onFulfilled, onRejected),
   };
   return builder;
 }

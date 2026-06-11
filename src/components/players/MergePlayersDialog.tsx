@@ -11,7 +11,7 @@ import { invalidateAllPlayerData, playerKeys, type PlayerScope } from '@/lib/pla
 import {
   buildMergeFields,
   compareMergeFields,
-  isLinkedAccountsMergeError, getMergeErrorMessage, parseEmailConflictName,
+  isLinkedAccountsMergeError, getMergeErrorMessage,
   parseMergeCounts,
   type MergeChoice,
   type MergeComparisonKey,
@@ -183,7 +183,6 @@ export function MergePlayersDialog({
         { component: 'MergePlayersDialog' },
       );
       const message = getMergeErrorMessage(err);
-      const conflictName = parseEmailConflictName(message);
       toast({
         title: t('players.merge.errorTitle', 'Merge failed'),
         description: isLinkedAccountsMergeError(message)
@@ -191,13 +190,7 @@ export function MergePlayersDialog({
               'players.merge.errors.linkedAccounts',
               'These players are linked to two different accounts and cannot be merged.',
             )
-          : conflictName
-            ? t('players.merge.errors.emailConflict', {
-                name: conflictName,
-                defaultValue:
-                  'That email address is already used by another player: {{name}}. Merge or update that player first.',
-              })
-            : message,
+          : message,
         variant: 'destructive',
       });
     } finally {

@@ -202,7 +202,6 @@ export function parseMergeCounts(result: unknown): MergeResultCounts {
   };
 }
 
-/** The RPC's "two different linked accounts" rejection, mapped for a friendly toast. */
 /** Supabase errors are plain objects, not Error instances — extract a readable message. */
 export function getMergeErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -213,12 +212,7 @@ export function getMergeErrorMessage(err: unknown): string {
   return String(err);
 }
 
-/** RPC raises 'email is already used by another player: <name>' on kept-email collisions. */
-export function parseEmailConflictName(message: string): string | null {
-  const match = message.match(/already used by another player:\s*(.+)$/);
-  return match ? match[1].trim() : null;
-}
-
+/** The RPC's "two different linked accounts" rejection, mapped for a friendly toast. */
 export function isLinkedAccountsMergeError(message: string): boolean {
   return message.toLowerCase().includes('two different accounts');
 }

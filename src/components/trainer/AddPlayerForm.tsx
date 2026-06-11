@@ -8,6 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, CheckCircle2, PartyPopper } from "lucide-react";
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from "@/lib/ratingSystems";
@@ -53,6 +63,9 @@ export function AddPlayerForm({
   const [loadingRatingSystems, setLoadingRatingSystems] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastCreatedName, setLastCreatedName] = useState("");
+  // Shared-email confirm step (families may share one address).
+  const [sharedEmailConfirmOpen, setSharedEmailConfirmOpen] = useState(false);
+  const [sharedEmailNames, setSharedEmailNames] = useState<string[]>([]);
 
   useEffect(() => {
     async function fetchRatingSystems() {
@@ -128,6 +141,31 @@ export function AddPlayerForm({
     }
   };
 
+  /**
+   * Same-scope guests already using this email. Shared emails are allowed
+   * (the unique indexes were dropped), so this only powers a confirm step.
+   * Returns [] on lookup errors — the guard rail must never block creation.
+   */
+  const findSameScopeGuestNamesByEmail = async (trimmedEmail: string): Promise<string[]> => {
+    if (!trimmedEmail || (!trainerId && !academyId)) return [];
+    try {
+      let query = supabase
+        .from("guest_players")
+        .select("full_name")
+        .eq("email", trimmedEmail)
+        .limit(3);
+      query = trainerId
+        ? query.eq("trainer_id", trainerId)
+        : query.eq("academy_profile_id", academyId as string);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []).map((row) => row.full_name).filter((name): name is string => Boolean(name));
+    } catch (error) {
+      logger.warn("Shared-email pre-check failed", { error, component: "AddPlayerForm" });
+      return [];
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const nameFields = buildGuestPlayerDbFields(firstName, lastName);
@@ -139,6 +177,23 @@ export function AddPlayerForm({
       });
       return;
     }
+
+    setIsLoading(true);
+    const existingNames = await findSameScopeGuestNamesByEmail(email.trim().toLowerCase());
+    if (existingNames.length > 0) {
+      // Shared email: ask before creating a separate player (e.g. a family member).
+      setSharedEmailNames(existingNames);
+      setSharedEmailConfirmOpen(true);
+      setIsLoading(false);
+      return;
+    }
+
+    await performInsert();
+  };
+
+  const performInsert = async () => {
+    const nameFields = buildGuestPlayerDbFields(firstName, lastName);
+    if (!nameFields.full_name) return;
 
     setIsLoading(true);
 
@@ -160,6 +215,9 @@ export function AddPlayerForm({
         .single();
 
       if (error) {
+        // Harmless fallback: the unique email indexes were dropped (shared
+        // emails are allowed), so 23505 only fires on environments that have
+        // not run that migration yet.
         if (error.code === "23505") {
           toast({
             title: t("players.duplicateEmail"),
@@ -212,6 +270,38 @@ export function AddPlayerForm({
   }
 
   return (
+    <>
+      <AlertDialog open={sharedEmailConfirmOpen} onOpenChange={setSharedEmailConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("players.sharedEmail.title", "Email already in use")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "players.sharedEmail.description",
+                "{{names}} already use(s) this email. Create a separate player with the same email anyway (e.g. a family member)?",
+                { names: sharedEmailNames.join(", ") },
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLoading}>{t("common:cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="shared-email-confirm"
+              disabled={isLoading}
+              onClick={(e) => {
+                e.preventDefault();
+                setSharedEmailConfirmOpen(false);
+                void performInsert();
+              }}
+            >
+              {t("players.sharedEmail.confirm", "Create separate player")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -353,6 +443,7 @@ export function AddPlayerForm({
         </Button>
       </div>
     </form>
+    </>
   );
 }
 

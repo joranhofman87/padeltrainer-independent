@@ -16,7 +16,7 @@ export interface SearchablePlayerFields {
   billing_business_name?: string | null;
 }
 
-const normalize = (value: string): string =>
+export const normalize = (value: string): string =>
   value
     .toLowerCase()
     .normalize('NFD')
