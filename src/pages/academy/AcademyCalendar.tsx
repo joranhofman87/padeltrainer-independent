@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -16,14 +16,12 @@ import {
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, LayoutGrid, ArrowLeft, Plus, Clock, BarChart3, List, SlidersHorizontal, X, User, MapPin, Filter } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, ArrowLeft, Plus, Clock, BarChart3, List, SlidersHorizontal, X, User, MapPin, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -153,8 +151,8 @@ export default function AcademyCalendar() {
   const [monthSlots, setMonthSlots] = useState<AcademySlot[]>([]);
   
   // Warning thresholds
-  const [warningMaxRatingSpread, setWarningMaxRatingSpread] = useState<number | null>(null);
-  const [warningMaxAgeDiffYears, setWarningMaxAgeDiffYears] = useState<number | null>(null);
+  const [_warningMaxRatingSpread, setWarningMaxRatingSpread] = useState<number | null>(null);
+  const [_warningMaxAgeDiffYears, setWarningMaxAgeDiffYears] = useState<number | null>(null);
 
   // Filter state
   const [trainers, setTrainers] = useState<Trainer[]>([]);

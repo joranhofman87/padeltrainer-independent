@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Upload, Mail, Phone, MapPin, BarChart3, RefreshCw, Columns3, Tags } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,6 @@ import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
-import { ImportPlayersTab } from '@/components/trainer/ImportPlayersTab';
 import { useSearchParams, Link } from 'react-router-dom';
 import { EmailCampaignTab } from '@/components/players/EmailCampaignTab';
 import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
@@ -178,7 +177,7 @@ export default function AcademyPlayers() {
         const valid = parsed.filter((k) => ALL_COLUMNS.some((c) => c.key === k));
         if (valid.length) setVisibleColumns(valid);
       }
-    } catch {}
+    } catch { /* non-fatal: fall back to default columns if stored prefs are unreadable */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
@@ -186,7 +185,7 @@ export default function AcademyPlayers() {
     setVisibleColumns((prev) => {
       const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
       if (storageKey) {
-        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
+        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* non-fatal: best-effort persistence of column prefs */ }
       }
       return next;
     });
@@ -647,12 +646,12 @@ export default function AcademyPlayers() {
     }
   };
 
-  const handlePlayerCreated = (player: GuestPlayer) => {
+  const handlePlayerCreated = (_player: GuestPlayer) => {
     queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) });
     setShowAddPlayer(false);
   };
 
-  const handlePlayersImported = (importedPlayers: GuestPlayer[]) => {
+  const handlePlayersImported = (_importedPlayers: GuestPlayer[]) => {
     queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) });
   };
 

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
-  ArrowLeft, Calendar, Clock, Lock, MapPin, Users, Pencil,
+  ArrowLeft, Calendar, Lock, MapPin, Users, Pencil,
   Trash2, UserPlus, DollarSign, Loader2, Save, X, Check, Plus, Minus,
   AlertTriangle, Settings, FileText, CheckCircle2,
 } from 'lucide-react';
@@ -17,7 +17,6 @@ import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';

@@ -35,7 +35,6 @@ import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/compone
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { logger } from '@/lib/logger';
 import {
   useCyclesQuery,
   useIntakeRequestsQuery,
@@ -54,11 +53,6 @@ export default function AcademyIntakeRequests() {
   const statusFilter = searchParams.get('status') || 'all';
   const viewMode = searchParams.get('view') || 'list';
 
-  const setSelectedCycleId = (value: string) => {
-    const params = new URLSearchParams(searchParams);
-    if (value === 'all') params.delete('cycle'); else params.set('cycle', value);
-    setSearchParams(params, { replace: true });
-  };
   const setStatusFilter = (value: string) => {
     const params = new URLSearchParams(searchParams);
     if (value === 'all') params.delete('status'); else params.set('status', value);
@@ -73,7 +67,7 @@ export default function AcademyIntakeRequests() {
   // TanStack Query — cached data
   const academyId = activeAcademy?.id ?? null;
   const { data: cycles = [], isLoading: cyclesLoading } = useCyclesQuery('academy', academyId);
-  const { data: requests = [], isLoading: requestsLoading } = useIntakeRequestsQuery('academy', academyId);
+  const { data: requests = [], isLoading: _requestsLoading } = useIntakeRequestsQuery('academy', academyId);
   const cycleIds = useMemo(() => cycles.map(c => c.id), [cycles]);
   const { data: playerLinksData = [] } = usePlayerLinksQuery(cycleIds);
 

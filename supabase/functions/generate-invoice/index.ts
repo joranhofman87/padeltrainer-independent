@@ -479,7 +479,7 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
 
     if (y < 80) {
       // Add new page if running out of space
-      const newPage = pdfDoc.addPage([595.28, 841.89]);
+      pdfDoc.addPage([595.28, 841.89]);
       // For simplicity we stop here — most invoices fit on one page
       break;
     }

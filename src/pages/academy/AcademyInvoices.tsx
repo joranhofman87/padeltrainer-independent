@@ -12,14 +12,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, Search, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailX } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailX } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -29,7 +28,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
-import { logger } from "@/lib/logger";
 import { format } from "date-fns";
 import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
@@ -481,21 +479,6 @@ export default function AcademyInvoices() {
     },
   });
 
-  // Mark as paid mutation
-  const markPaidMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      const { error } = await supabase
-        .from("invoices")
-        .update({ status: "paid", paid_at: new Date().toISOString() })
-        .eq("id", invoiceId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-      toast.success(t("invoices.markedAsPaid", "Invoice marked as paid"));
-    },
-  });
-
   const handleForwardInvoice = async (invoiceId: string) => {
     setForwardingId(invoiceId);
     const { error } = await supabase.functions.invoke('forward-invoice', {
@@ -508,29 +491,6 @@ export default function AcademyInvoices() {
     }
     setForwardingId(null);
   };
-
-  // Delete / cancel invoice
-  const deleteMutation = useMutation({
-    mutationFn: async (invoice: Invoice) => {
-      if (invoice.status === 'draft') {
-        const { error } = await supabase.from("invoices").delete().eq("id", invoice.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
-        if (error) throw error;
-      }
-      return invoice;
-    },
-    onSuccess: (invoice) => {
-      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-      toast.success(invoice.status === 'draft'
-        ? t("invoices.deleted", "Invoice deleted")
-        : t("invoices.cancelled", "Invoice cancelled"));
-    },
-    onError: () => {
-      toast.error(t("invoices.deleteError", "Failed to delete invoice"));
-    },
-  });
 
   // ========== Bulk actions ==========
   const selectedInvoices = invoices.filter((i) => selectedIds.has(i.id));
@@ -613,17 +573,6 @@ export default function AcademyInvoices() {
     setSelectedIds(new Set());
     queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
     toast.success(t("invoices.bulk.dueDateDone", "Due date updated for {{count}} invoices", { count: ids.length }));
-  };
-
-  const handleDownloadPdf = async (invoice: Invoice) => {
-    try {
-      const { downloadInvoicePdf } = await import('@/lib/downloadInvoicePdf');
-      const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
-      if (!ok) toast.error(t("invoices.noPdf", "No PDF available"));
-    } catch (err) {
-      logger.error('Invoice download failed:', err);
-      toast.error(t("invoices.noPdf", "No PDF available"));
-    }
   };
 
   const getStatusBadge = (invoice: Invoice) => {
