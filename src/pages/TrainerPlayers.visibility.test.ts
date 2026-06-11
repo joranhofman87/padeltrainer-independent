@@ -4,11 +4,18 @@ import { resolve } from 'node:path';
 import { shouldShowPlayerInTrainerOverview } from '@/lib/trainerPlayerRemoval';
 
 const source = readFileSync(resolve(__dirname, 'TrainerPlayers.tsx'), 'utf8');
+const rpcMigration = readFileSync(
+  resolve(__dirname, '../../supabase/migrations/20260611160001_get_players_overview.sql'),
+  'utf8',
+);
 
 describe('TrainerPlayers visibility', () => {
-  it('filters overview with shouldShowPlayerInTrainerOverview', () => {
-    expect(source).toContain('shouldShowPlayerInTrainerOverview');
-    expect(source).toContain('removed_at');
+  it('consumes the players-overview RPC, which enforces removal in SQL', () => {
+    expect(source).toContain('usePlayersOverview');
+    expect(source).toContain("kind: 'trainer'");
+    expect(rpcMigration).toContain('removed_at IS NOT NULL');
+    expect(rpcMigration).toContain('NOT EXISTS (SELECT 1 FROM removed_meta rm WHERE rm.gid = g.id)');
+    expect(rpcMigration).toContain('NOT EXISTS (SELECT 1 FROM removed_meta rm WHERE rm.pid = r.pid)');
   });
 
   it('uses active player count excluding removed players', () => {
@@ -16,9 +23,9 @@ describe('TrainerPlayers visibility', () => {
     expect(source).not.toMatch(/countText=\{`\$\{players\.length\}/);
   });
 
-  it('excludes removed players from email campaign recipients', () => {
-    expect(source).toContain('filterUnifiedPlayersForActiveContext');
-    expect(source).toContain("filterUnifiedPlayersForActiveContext(players, metadata, 'trainer')");
+  it('email campaign recipients come from the complete server-filtered list', () => {
+    expect(source).toContain('fetchAllPlayersOverview');
+    expect(source).toContain('campaignAll');
   });
 
   it('does not hard-delete players from overview', () => {

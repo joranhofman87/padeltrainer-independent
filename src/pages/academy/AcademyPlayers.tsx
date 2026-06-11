@@ -25,13 +25,27 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
-import { TRAINING_BOOKING_STATUSES } from '@/lib/academyPlayerTrainingLocations';
-import { fetchUnifiedPlayersCore } from '@/lib/unifiedPlayers';
-import { filterPlayersByQuery } from '@/lib/playerSearch';
+import {
+  usePlayersOverview,
+  fetchPlayersOverview,
+  fetchAllPlayersOverview,
+  type PlayersOverviewRow,
+  type PlayersOverviewFilters,
+  type LevelBand,
+} from '@/lib/playersOverview';
+import { playerKeys, invalidateAllPlayerData } from '@/lib/playerQueryKeys';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { supabase } from '@/lib/supabaseClient';
-import { logger } from '@/lib/logger';
 import { format } from 'date-fns';
-import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
+import { SortableHeader } from '@/components/players/usePlayerSort';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { TableToolbar } from '@/components/ui/table-toolbar';
@@ -44,14 +58,10 @@ import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { useSearchParams, Link } from 'react-router-dom';
 import { EmailCampaignTab } from '@/components/players/EmailCampaignTab';
 import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
-import { upsertMetadataTagIds } from '@/lib/playerTags';
 import { PlayerNotesCell } from '@/components/players/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDialog';
-import { PlayerTag, PlayerMetadata, getTagColorClass } from '@/components/players/playerTagColors';
+import { PlayerTag, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
-import { shouldShowPlayerInAcademyOverview } from '@/lib/academyPlayerRemoval';
-import { filterUnifiedPlayersForActiveContext } from '@/lib/playerRemovalVisibility';
-import { academyPlayersQueryKey } from '@/lib/academyPlayersQuery';
 
 interface TrainerOption {
   id: string;
@@ -89,14 +99,6 @@ type UnifiedPlayer = {
   has_overdue_payment?: boolean;
 };
 
-function getLevelBand(rating: number | null): string {
-  if (rating === null) return 'unrated';
-  if (rating <= 3) return 'beginner';
-  if (rating <= 6) return 'intermediate';
-  if (rating <= 9) return 'advanced';
-  return 'pro';
-}
-
 function getLevelLabel(band: string): string {
   switch (band) {
     case 'beginner': return 'Beginner (1-3)';
@@ -120,26 +122,38 @@ export default function AcademyPlayers() {
   };
 
   const queryClient = useQueryClient();
-  const [filteredPlayers, setFilteredPlayers] = useState<UnifiedPlayer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebouncedValue(searchQuery);
 
   // Trainer selector
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>('');
 
-  // Filters
+  // Filters (server-side via the players-overview RPC)
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedCyclus, setSelectedCyclus] = useState<string>('all');
   const [selectedTagId, setSelectedTagId] = useState<string>('all');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
-  const [overdueGuestIds, setOverdueGuestIds] = useState<Set<string>>(new Set());
-  const [overdueProfileIds, setOverdueProfileIds] = useState<Set<string>>(new Set());
   const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
+
+  // Server-side sort + pagination
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(0);
+  const [sortKey, setSortKey] = useState<'name' | 'email' | 'skill' | 'addedOn'>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const toggleSort = (key: string) => {
+    const k = key as 'name' | 'email' | 'skill' | 'addedOn';
+    if (k === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(k);
+      setSortDir('asc');
+    }
+  };
 
   // Tags
   const [tags, setTags] = useState<PlayerTag[]>([]);
-  const [metadata, setMetadata] = useState<PlayerMetadata[]>([]);
   const [showManageTags, setShowManageTags] = useState(false);
 
   // Dialogs
@@ -195,160 +209,119 @@ export default function AcademyPlayers() {
 
   const isColVisible = (key: ColumnKey) => visibleColumns.includes(key);
 
-  // Fetch trainers
+  // Fetch trainers, tags and academy locations (filter dropdowns)
   useEffect(() => {
     if (!activeAcademy) return;
     fetchTrainers();
-    fetchTagsAndMetadata();
-    fetchOverduePayments();
+    fetchTags();
+    fetchLocations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAcademy]);
 
-  const fetchTagsAndMetadata = async () => {
+  const fetchTags = async () => {
     if (!activeAcademy) return;
-    const [tagsRes, metaRes] = await Promise.all([
-      supabase.from('academy_player_tags').select('*').eq('academy_profile_id', activeAcademy.id).order('name'),
-      supabase.from('academy_player_metadata').select('id, guest_player_id, profile_id, notes, tag_ids, removed_at').eq('academy_profile_id', activeAcademy.id),
-    ]);
-    setTags((tagsRes.data || []) as PlayerTag[]);
-    setMetadata((metaRes.data || []) as PlayerMetadata[]);
-  };
-
-  const handlePlayerTagIdsChange = (
-    playerKey: { guest_player_id: string | null; profile_id: string | null },
-    tagIds: string[],
-  ) => {
-    setMetadata((prev) => upsertMetadataTagIds(prev, playerKey, tagIds));
-  };
-
-  const fetchOverduePayments = async () => {
-    if (!activeAcademy) return;
-    const todayIso = new Date().toISOString().slice(0, 10);
     const { data } = await supabase
-      .from('invoices')
-      .select('guest_player_id, player_id, status, due_date, paid_at')
-      .eq('academy_profile_id', activeAcademy.id);
-    const guests = new Set<string>();
-    const profiles = new Set<string>();
-    for (const inv of (data || []) as any[]) {
-      const status = (inv.status || '').toLowerCase();
-      const isPaid = status === 'paid' || !!inv.paid_at;
-      const isClosed = status === 'cancelled' || status === 'draft' || status === 'void';
-      const explicitlyOverdue = status === 'overdue';
-      const pastDue = inv.due_date && inv.due_date < todayIso && !isPaid && !isClosed;
-      if (explicitlyOverdue || pastDue) {
-        if (inv.guest_player_id) guests.add(inv.guest_player_id);
-        if (inv.player_id) profiles.add(inv.player_id);
-      }
-    }
-    setOverdueGuestIds(guests);
-    setOverdueProfileIds(profiles);
+      .from('academy_player_tags')
+      .select('*')
+      .eq('academy_profile_id', activeAcademy.id)
+      .order('name');
+    setTags((data || []) as PlayerTag[]);
   };
 
-  const trainerIdsKey = useMemo(() => trainers.map((t) => t.id).sort().join(','), [trainers]);
+  const fetchLocations = async () => {
+    if (!activeAcademy) return;
+    const rows = await getAcademyLocations(activeAcademy.id);
+    const locs = rows
+      .map((row: { location?: { id: string; name: string } }) => row.location)
+      .filter((l): l is { id: string; name: string } => Boolean(l?.id && l?.name));
+    setAllLocations(locs.sort((a, b) => a.name.localeCompare(b.name)));
+  };
 
-  const { data: players = [], isLoading: loading } = useQuery({
-    queryKey: academyPlayersQueryKey(activeAcademy?.id),
-    queryFn: () => fetchPlayers(),
+  // Tag/notes edits refresh every player view through the central subtree.
+  const handlePlayerDataChanged = () => {
+    if (activeAcademy) invalidateAllPlayerData(queryClient, { kind: 'academy', id: activeAcademy.id });
+  };
+
+  const trainerNameMap = useMemo(() => new Map(trainers.map((tr) => [tr.id, tr.name])), [trainers]);
+
+  // Server-side overview: search, filters, sort and pagination all happen in
+  // the get_players_overview RPC — one round trip, exact totals, no 1000-row
+  // truncation. Removal filtering (removed_at) is enforced in SQL.
+  const overviewFilters: PlayersOverviewFilters = useMemo(() => ({
+    trainerId: selectedTrainerId && selectedTrainerId !== 'all' ? selectedTrainerId : null,
+    locationId: selectedLocation !== 'all' ? selectedLocation : null,
+    levelBand: selectedLevel !== 'all' ? (selectedLevel as LevelBand) : null,
+    hasActiveCyclus: selectedCyclus === 'yes' ? true : selectedCyclus === 'no' ? false : null,
+    tagId: selectedTagId !== 'all' ? selectedTagId : null,
+    payment: selectedPaymentStatus !== 'all' ? (selectedPaymentStatus as 'overdue' | 'ok') : null,
+  }), [selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus]);
+
+  // Snap back to the first page whenever the result set changes shape.
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch, overviewFilters]);
+
+  const rpcSort = sortKey === 'addedOn' ? 'created_at' : sortKey;
+  const { data: overview, isLoading: loading } = usePlayersOverview(
+    { kind: 'academy', id: activeAcademy?.id },
+    { search: debouncedSearch, filters: overviewFilters, sort: rpcSort, sortDir, page, pageSize: PAGE_SIZE },
+  );
+  const totalFiltered = overview?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+
+  const sortedPlayers: UnifiedPlayer[] = useMemo(() => {
+    return (overview?.rows ?? []).map((row: PlayersOverviewRow) => ({
+      id: row.guest_player_id ?? `reg-${row.profile_id}`,
+      full_name: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      billing_business_name: row.billing_business_name,
+      skill_rating: row.skill_rating,
+      rating_system: row.rating_system,
+      has_trained: row.has_trained,
+      notes: row.notes,
+      created_at: row.created_at,
+      type: row.player_type as 'guest' | 'registered',
+      trainer_id: row.owner_trainer_id ?? undefined,
+      trainer_ids: row.trainer_ids ?? [],
+      trainer_name: row.player_type === 'guest'
+        ? (row.owner_trainer_id ? (trainerNameMap.get(row.owner_trainer_id) || '—') : t('nav.academy', 'Academy'))
+        : (row.trainer_ids?.length ? trainerNameMap.get(row.trainer_ids[0]) || '—' : '—'),
+      location_names: row.location_names ?? [],
+      training_location_ids: row.location_ids ?? [],
+      has_active_cyclus: row.has_active_cyclus,
+      source: row.source,
+      birth_date: row.birth_date,
+      metadata_id: row.metadata_id ?? undefined,
+      tag_ids: row.tag_ids ?? [],
+      academy_notes: row.academy_notes ?? '',
+      guest_player_id: row.guest_player_id,
+      profile_id: row.profile_id,
+      has_overdue_payment: row.has_overdue_payment,
+    }));
+  }, [overview, trainerNameMap, t]);
+
+  // Header count: unfiltered active-player total (removal already applied by
+  // the RPC), independent of the table's search/filters.
+  const { data: activePlayerCount = 0 } = useQuery({
+    queryKey: playerKeys.count('academy', activeAcademy?.id),
+    queryFn: async () => {
+      const { total } = await fetchPlayersOverview(
+        { kind: 'academy', id: activeAcademy!.id },
+        { pageSize: 1 },
+      );
+      return total;
+    },
     enabled: !!activeAcademy,
   });
-  // Refetch whenever the trainer roster changes (handled via trainerIdsKey dependency)
-  useEffect(() => {
-    if (activeAcademy) {
-      queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy.id) });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trainerIdsKey, activeAcademy?.id]);
 
-  // Filter by search query, selected trainer, and new filters
-  useEffect(() => {
-    // Build metadata lookup maps
-    const metaByGuest = new Map<string, PlayerMetadata>();
-    const metaByProfile = new Map<string, PlayerMetadata>();
-    metadata.forEach((m) => {
-      if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
-      if (m.profile_id) metaByProfile.set(m.profile_id, m);
-    });
-
-    // Enrich players with metadata
-    let result = players.map((p) => {
-      const meta = p.type === 'guest'
-        ? metaByGuest.get(p.id)
-        : metaByProfile.get(p.id.replace(/^reg-/, ''));
-      const guestId = p.type === 'guest' ? p.id : null;
-      const profileId = p.type === 'registered' ? p.id.replace(/^reg-/, '') : null;
-      return {
-        ...p,
-        tag_ids: meta?.tag_ids || [],
-        academy_notes: meta?.notes || '',
-        metadata_id: meta?.id,
-        guest_player_id: guestId,
-        profile_id: profileId,
-        has_overdue_payment:
-          (guestId && overdueGuestIds.has(guestId)) ||
-          (profileId && overdueProfileIds.has(profileId)) || false,
-      };
-    });
-
-    result = result.filter((p) => {
-      const meta = p.type === 'guest'
-        ? metaByGuest.get(p.id)
-        : metaByProfile.get(p.id.replace(/^reg-/, ''));
-      return shouldShowPlayerInAcademyOverview(meta ? { removed_at: meta.removed_at ?? null } : undefined);
-    });
-
-    if (selectedTrainerId && selectedTrainerId !== 'all') {
-      result = result.filter((p) => p.trainer_ids?.includes(selectedTrainerId));
-    }
-
-    if (selectedLocation && selectedLocation !== 'all') {
-      result = result.filter((p) => p.training_location_ids?.includes(selectedLocation));
-    }
-
-    if (selectedLevel && selectedLevel !== 'all') {
-      result = result.filter((p) => getLevelBand(p.skill_rating) === selectedLevel);
-    }
-
-    if (selectedCyclus === 'yes') {
-      result = result.filter((p) => p.has_active_cyclus === true);
-    } else if (selectedCyclus === 'no') {
-      result = result.filter((p) => !p.has_active_cyclus);
-    }
-
-    if (selectedTagId && selectedTagId !== 'all') {
-      if (selectedTagId === 'untagged') {
-        result = result.filter((p) => !p.tag_ids || p.tag_ids.length === 0);
-      } else {
-        result = result.filter((p) => p.tag_ids?.includes(selectedTagId));
-      }
-    }
-
-    if (selectedPaymentStatus === 'overdue') {
-      result = result.filter((p) => p.has_overdue_payment === true);
-    } else if (selectedPaymentStatus === 'ok') {
-      result = result.filter((p) => !p.has_overdue_payment);
-    }
-
-    result = filterPlayersByQuery(result, searchQuery);
-
-    setFilteredPlayers(result);
-  }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
-
-  const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(filteredPlayers);
-
-  const activePlayerCount = useMemo(() => {
-    const metaByGuest = new Map<string, PlayerMetadata>();
-    const metaByProfile = new Map<string, PlayerMetadata>();
-    metadata.forEach((m) => {
-      if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
-      if (m.profile_id) metaByProfile.set(m.profile_id, m);
-    });
-    return players.filter((p) => {
-      const meta = p.type === 'guest'
-        ? metaByGuest.get(p.id)
-        : metaByProfile.get(p.id.replace(/^reg-/, ''));
-      return shouldShowPlayerInAcademyOverview(meta ? { removed_at: meta.removed_at ?? null } : undefined);
-    }).length;
-  }, [players, metadata]);
+  // Email campaign needs the COMPLETE player list (recipient selection) —
+  // fetched via deterministic page-through, so no silent 1000-row cap.
+  const { data: campaignPlayers = [] } = useQuery({
+    queryKey: playerKeys.campaignAll('academy', activeAcademy?.id),
+    queryFn: () => fetchAllPlayersOverview({ kind: 'academy', id: activeAcademy!.id }),
+    enabled: !!activeAcademy && activeTab === 'email-campaign',
+  });
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
@@ -390,219 +363,14 @@ export default function AcademyPlayers() {
     setTrainers(opts);
   };
 
-  const fetchPlayers = async (): Promise<UnifiedPlayer[]> => {
-    if (!activeAcademy) return [];
-
-    try {
-      const trainerIds = trainers.map((t) => t.id);
-      const trainerIdSet = new Set(trainerIds);
-      const trainerNameMap = new Map(trainers.map((t) => [t.id, t.name]));
-
-      const academyLocRows = await getAcademyLocations(activeAcademy.id);
-      const academyLocationIds = new Set(
-        academyLocRows
-          .map((row: { location?: { id: string; name: string } }) => row.location?.id)
-          .filter((id): id is string => Boolean(id)),
-      );
-      const locationNameMap = new Map<string, string>();
-      academyLocRows.forEach((row: { location?: { id: string; name: string } }) => {
-        if (row.location?.id && row.location?.name) {
-          locationNameMap.set(row.location.id, row.location.name);
-        }
-      });
-      setAllLocations(
-        Array.from(locationNameMap.entries())
-          .map(([id, name]) => ({ id, name }))
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      );
-
-      // Single source of truth for who counts as a player (guests + registered)
-      const core = await fetchUnifiedPlayersCore({
-        kind: 'academy',
-        academyProfileId: activeAcademy.id,
-        trainerIds,
-      });
-      const coreGuests = core.players.filter((p) => p.type === 'guest');
-
-      // --- Enrich guest players with location + cyclus data ---
-      const guestPlayerIds = coreGuests
-        .map((p) => p.guestPlayerId)
-        .filter((id): id is string => Boolean(id));
-      const guestLocationMap = new Map<string, Set<string>>();
-      const guestCyclusMap = new Map<string, boolean>();
-      const guestTrainerMap = new Map<string, Set<string>>();
-      const now = new Date().toISOString();
-
-      const addTrainingLocation = (
-        map: Map<string, Set<string>>,
-        playerKey: string,
-        locationId: string | null | undefined,
-        slotTrainerId: string | null | undefined,
-        slotAcademyId: string | null | undefined,
-      ) => {
-        if (!locationId || !academyLocationIds.has(locationId)) return;
-        const academyScoped =
-          slotAcademyId === activeAcademy.id ||
-          (slotTrainerId != null && trainerIdSet.has(slotTrainerId));
-        if (!academyScoped) return;
-        if (!map.has(playerKey)) map.set(playerKey, new Set());
-        map.get(playerKey)!.add(locationId);
-      };
-
-      if (guestPlayerIds.length > 0) {
-        // Fetch bookings for guest players with slot details
-        const { data: guestBookings } = await supabase
-          .from('bookings')
-          .select('guest_player_id, slot_id')
-          .in('guest_player_id', guestPlayerIds)
-          .in('status', [...TRAINING_BOOKING_STATUSES]);
-
-        if (guestBookings && guestBookings.length > 0) {
-          const slotIdsForGuests = [...new Set(guestBookings.map((b) => b.slot_id))];
-          const { data: slotsData } = await supabase
-            .from('availability_slots')
-            .select('id, location_id, cyclus_id, end_time, trainer_id, academy_profile_id')
-            .in('id', slotIdsForGuests);
-
-          if (slotsData) {
-            const slotMap = new Map(slotsData.map((s) => [s.id, s]));
-
-            guestBookings.forEach((b) => {
-              if (!b.guest_player_id) return;
-              const slot = slotMap.get(b.slot_id);
-              if (!slot) return;
-
-              if (slot.trainer_id) {
-                if (!guestTrainerMap.has(b.guest_player_id)) guestTrainerMap.set(b.guest_player_id, new Set());
-                guestTrainerMap.get(b.guest_player_id)!.add(slot.trainer_id);
-              }
-
-              addTrainingLocation(
-                guestLocationMap,
-                b.guest_player_id,
-                slot.location_id,
-                slot.trainer_id,
-                slot.academy_profile_id,
-              );
-
-              if (slot.cyclus_id && slot.end_time && slot.end_time >= now) {
-                guestCyclusMap.set(b.guest_player_id, true);
-              }
-            });
-          }
-        }
-      }
-
-      const guests: UnifiedPlayer[] = coreGuests.map((p) => {
-        const guestId = p.guestPlayerId || '';
-        const ownerTrainerId = p.guestRow?.trainer_id || undefined;
-        const bookingTrainerIds = guestTrainerMap.has(guestId) ? Array.from(guestTrainerMap.get(guestId)!) : [];
-        const allTrainerIds = ownerTrainerId
-          ? [...new Set([ownerTrainerId, ...bookingTrainerIds])]
-          : bookingTrainerIds;
-        return {
-          id: guestId,
-          full_name: p.full_name,
-          email: p.email,
-          phone: p.phone,
-          billing_business_name: p.billing_business_name,
-          skill_rating: p.skill_rating,
-          rating_system: p.rating_system,
-          has_trained: p.has_trained,
-          notes: p.notes,
-          created_at: p.created_at,
-          type: 'guest' as const,
-          trainer_id: ownerTrainerId,
-          trainer_ids: allTrainerIds,
-          trainer_name: ownerTrainerId ? (trainerNameMap.get(ownerTrainerId) || '—') : t('nav.academy', 'Academy'),
-          originalGuest: (p.guestRow || undefined) as GuestPlayer | undefined,
-          training_location_ids: guestLocationMap.has(guestId) ? Array.from(guestLocationMap.get(guestId)!) : [],
-          location_names: guestLocationMap.has(guestId)
-            ? Array.from(guestLocationMap.get(guestId)!)
-                .map((id) => locationNameMap.get(id))
-                .filter((name): name is string => Boolean(name))
-            : [],
-          has_active_cyclus: guestCyclusMap.get(guestId) || false,
-          source: p.source,
-          birth_date: p.birth_date,
-        };
-      });
-
-      // Registered players come from the core; enrich with slot details from core.slots
-      const slotTrainerMap = new Map(core.slots.map((s) => [s.id, s.trainer_id]));
-      const slotDetailMap = new Map(core.slots.map((s) => [s.id, s]));
-
-      const playerMap = new Map<string, { created_at: string; trainer_ids: Set<string>; location_ids: Set<string>; has_active_cyclus: boolean }>();
-      core.registeredBookings.forEach((b) => {
-        if (!b.player_id) return;
-        const slot = slotDetailMap.get(b.slot_id);
-        const trainerId = slotTrainerMap.get(b.slot_id) || '';
-        if (!playerMap.has(b.player_id)) {
-          playerMap.set(b.player_id, {
-            created_at: b.created_at,
-            trainer_ids: new Set(),
-            location_ids: new Set(),
-            has_active_cyclus: false,
-          });
-        }
-        const entry = playerMap.get(b.player_id)!;
-        if (trainerId) entry.trainer_ids.add(trainerId);
-        if (slot?.location_id && academyLocationIds.has(slot.location_id)) {
-          entry.location_ids.add(slot.location_id);
-        }
-        if (slot?.cyclus_id && slot?.end_time && slot.end_time >= now) {
-          entry.has_active_cyclus = true;
-        }
-      });
-
-      const regPlayers: UnifiedPlayer[] = core.players
-        .filter((p) => p.type === 'registered')
-        .map((p) => {
-          const info = p.profileId ? playerMap.get(p.profileId) : undefined;
-          return {
-            id: `reg-${p.profileId}`,
-            full_name: p.full_name,
-            email: p.email,
-            phone: p.phone,
-            billing_business_name: p.billing_business_name,
-            skill_rating: p.skill_rating,
-            rating_system: p.rating_system,
-            has_trained: true,
-            notes: null,
-            created_at: info?.created_at || p.created_at,
-            type: 'registered' as const,
-            trainer_ids: info ? Array.from(info.trainer_ids) : [],
-            trainer_name: info?.trainer_ids.size ? trainerNameMap.get(Array.from(info.trainer_ids)[0]) || '—' : '—',
-            training_location_ids: info ? Array.from(info.location_ids) : [],
-            location_names: info
-              ? Array.from(info.location_ids)
-                  .map((id) => locationNameMap.get(id))
-                  .filter((name): name is string => Boolean(name))
-              : [],
-            has_active_cyclus: info?.has_active_cyclus || false,
-          };
-        });
-
-      const allPlayers = [...guests, ...regPlayers].sort((a, b) =>
-        a.full_name.localeCompare(b.full_name)
-      );
-      return allPlayers;
-    } catch (error) {
-      logger.error('Error fetching academy players', error as Error, {
-        component: 'AcademyPlayers',
-        academyId: activeAcademy.id,
-      });
-      return [];
-    }
-  };
 
   const handlePlayerCreated = (_player: GuestPlayer) => {
-    queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) });
+    handlePlayerDataChanged();
     setShowAddPlayer(false);
   };
 
   const handlePlayersImported = (_importedPlayers: GuestPlayer[]) => {
-    queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) });
+    handlePlayerDataChanged();
   };
 
   if (loading) {
@@ -785,7 +553,7 @@ export default function AcademyPlayers() {
           </TableToolbar>
 
           {/* Players Table */}
-          {filteredPlayers.length === 0 ? (
+          {sortedPlayers.length === 0 ? (
             <Card className="overflow-hidden border-border/80 shadow-sm">
               <EmptyState
                 icon={Users}
@@ -1022,15 +790,7 @@ export default function AcademyPlayers() {
                                       tags={tags}
                                       selectedTagIds={player.tag_ids || []}
                                       onTagsChange={setTags}
-                                      onSelectedTagIdsChange={(tagIds) =>
-                                        handlePlayerTagIdsChange(
-                                          {
-                                            guest_player_id: player.guest_player_id || null,
-                                            profile_id: player.profile_id || null,
-                                          },
-                                          tagIds,
-                                        )
-                                      }
+                                      onSelectedTagIdsChange={() => handlePlayerDataChanged()}
                                     />
                                   )}
                                 </TableCell>
@@ -1043,7 +803,7 @@ export default function AcademyPlayers() {
                                       academyId={activeAcademy.id}
                                       playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
                                       notes={player.academy_notes || ''}
-                                      onChanged={fetchTagsAndMetadata}
+                                      onChanged={handlePlayerDataChanged}
                                     />
                                   )}
                                 </TableCell>
@@ -1057,6 +817,45 @@ export default function AcademyPlayers() {
                   </TableBody>
                 </Table>
             </DataTableCard>
+          )}
+
+          {pageCount > 1 && (
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    aria-disabled={page === 0}
+                    className={page === 0 ? 'pointer-events-none opacity-50' : ''}
+                    onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(0, p - 1)); }}
+                  />
+                </PaginationItem>
+                {Array.from({ length: pageCount }, (_, i) => i)
+                  .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
+                  .map((i, idx, arr) => (
+                    <PaginationItem key={i}>
+                      {idx > 0 && arr[idx - 1] !== i - 1 ? (
+                        <span className="px-2 text-muted-foreground">…</span>
+                      ) : null}
+                      <PaginationLink
+                        href="#"
+                        isActive={i === page}
+                        onClick={(e) => { e.preventDefault(); setPage(i); }}
+                      >
+                        {i + 1}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    aria-disabled={page >= pageCount - 1}
+                    className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
+                    onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(pageCount - 1, p + 1)); }}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           )}
         </TabsContent>
 
@@ -1076,7 +875,7 @@ export default function AcademyPlayers() {
               <CardContent>
                 <AddPlayerForm
                   academyId={activeAcademy?.id}
-                  onPlayerCreated={() => queryClient.invalidateQueries({ queryKey: academyPlayersQueryKey(activeAcademy?.id) })}
+                  onPlayerCreated={() => handlePlayerDataChanged()}
                 />
               </CardContent>
             </Card>
@@ -1103,39 +902,28 @@ export default function AcademyPlayers() {
 
         {/* Email Campaign Tab */}
         <TabsContent value="email-campaign" className="mt-4">
-          {activeAcademy && (() => {
-            const metaByGuest = new Map<string, PlayerMetadata>();
-            const metaByProfile = new Map<string, PlayerMetadata>();
-            metadata.forEach((m) => {
-              if (m.guest_player_id) metaByGuest.set(m.guest_player_id, m);
-              if (m.profile_id) metaByProfile.set(m.profile_id, m);
-            });
-            return (
-              <EmailCampaignTab
-                academyId={activeAcademy.id}
-                trainers={trainers}
-                locations={allLocations}
-                tags={tags}
-                players={filterUnifiedPlayersForActiveContext(players, metadata, 'academy').map((p) => {
-                  const meta = p.type === 'guest'
-                    ? metaByGuest.get(p.id)
-                    : metaByProfile.get(p.id.replace(/^reg-/, ''));
-                  return {
-                    id: p.id,
-                    full_name: p.full_name,
-                    email: p.email,
-                    skill_rating: p.skill_rating,
-                    trainer_id: p.trainer_id,
-                    trainer_ids: p.trainer_ids,
-                    location_names: p.location_names,
-                    has_active_cyclus: p.has_active_cyclus,
-                    type: p.type,
-                    tag_ids: meta?.tag_ids || [],
-                  };
-                })}
-              />
-            );
-          })()}
+          {activeAcademy && (
+            <EmailCampaignTab
+              academyId={activeAcademy.id}
+              trainers={trainers}
+              locations={allLocations}
+              tags={tags}
+              players={campaignPlayers.map((row) => ({
+                id: row.guest_player_id ?? `reg-${row.profile_id}`,
+                full_name: row.full_name,
+                email: row.email,
+                phone: row.phone,
+                billing_business_name: row.billing_business_name,
+                skill_rating: row.skill_rating,
+                trainer_id: row.owner_trainer_id ?? undefined,
+                trainer_ids: row.trainer_ids ?? [],
+                location_names: row.location_names ?? [],
+                has_active_cyclus: row.has_active_cyclus,
+                type: row.player_type as 'guest' | 'registered',
+                tag_ids: row.tag_ids ?? [],
+              }))}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
@@ -1164,7 +952,7 @@ export default function AcademyPlayers() {
           onOpenChange={setShowManageTags}
           academyId={activeAcademy.id}
           tags={tags}
-          onChanged={fetchTagsAndMetadata}
+          onChanged={handlePlayerDataChanged}
         />
       )}
     </AppPage>

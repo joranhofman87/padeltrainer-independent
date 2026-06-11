@@ -18,7 +18,8 @@ describe('AcademyPlayers actions menu', () => {
     expect(source).not.toContain('handleDeletePlayer');
     expect(source).not.toContain("from('guest_players').delete()");
     expect(source).not.toContain('w-[40px]');
-    expect(source).toContain('shouldShowPlayerInAcademyOverview');
-    expect(source).toContain('removed_at');
+    // Removal filtering moved server-side: the page must consume the
+    // players-overview RPC (which enforces removed_at IS NOT NULL in SQL).
+    expect(source).toContain('usePlayersOverview');
   });
 });

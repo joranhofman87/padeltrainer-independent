@@ -63,11 +63,11 @@ describe('TrainerPlayers table row layout', () => {
     expect(source).toContain('selectedPaymentStatus');
   });
 
-  it('hides removed players from overview', () => {
+  it('hides removed players from overview (enforced in SQL by the players-overview RPC)', () => {
+    expect(source).toContain('usePlayersOverview');
     expect(source).toContain('removed_at');
-    expect(source).toContain('shouldShowPlayerInTrainerOverview');
     expect(source).toContain('activePlayerCount');
-    expect(source).toContain('filterUnifiedPlayersForActiveContext');
+    expect(source).toContain('invalidateAllPlayerData');
   });
 
   it('keeps DashboardEmptyState for empty list', () => {
