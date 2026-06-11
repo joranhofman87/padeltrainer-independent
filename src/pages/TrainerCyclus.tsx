@@ -42,10 +42,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  Pencil,
   Trash2,
-  UserPlus,
-  UserMinus,
 } from "lucide-react";
 import { format, parseISO, isPast } from "date-fns";
 import { logger } from "@/lib/logger";
@@ -67,7 +64,7 @@ interface CyclusInfo {
 
 export default function TrainerCyclus() {
   const { t } = useTranslation("trainer");
-  const { user, role, loading } = useAuth();
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -75,7 +72,7 @@ export default function TrainerCyclus() {
   const [filteredCyclus, setFilteredCyclus] = useState<CyclusInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
-  const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
+  const [, setTrainerHourlyRate] = useState<number | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCyclus, setExpandedCyclus] = useState<string | null>(null);
   const [deletingCyclus, setDeletingCyclus] = useState<CyclusInfo | null>(null);

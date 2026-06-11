@@ -6,7 +6,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { Loader2, Send, Eye, Mail, Info } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
@@ -95,7 +94,7 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
     }
   };
 
-  const [progress, setProgress] = useState({ current: 0, total: 0, sent: 0, noEmail: 0, failed: 0 });
+  const [, setProgress] = useState({ current: 0, total: 0, sent: 0, noEmail: 0, failed: 0 });
 
   const runBulkSend = async (ids: string[], message: string, mark: boolean, toastId: string | number) => {
     let sent = 0, noEmail = 0, failed = 0;

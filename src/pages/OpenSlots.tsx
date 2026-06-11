@@ -132,7 +132,6 @@ export default function OpenSlots() {
       processedSlots.forEach(slot => {
         if (slot.cyclus_id) {
           const existing = cyclusMap.get(slot.cyclus_id);
-          const slotInfo = slots?.find(s => s.id === slot.id);
 
           if (existing) {
             existing.slots.push(slot);
@@ -184,7 +183,8 @@ export default function OpenSlots() {
   const toggleCyclus = (cyclusId: string) => {
     setExpandedCycluses(prev => {
       const next = new Set(prev);
-      next.has(cyclusId) ? next.delete(cyclusId) : next.add(cyclusId);
+      if (next.has(cyclusId)) next.delete(cyclusId);
+      else next.add(cyclusId);
       return next;
     });
   };

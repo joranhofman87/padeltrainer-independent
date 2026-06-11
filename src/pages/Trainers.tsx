@@ -8,23 +8,21 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight, ChevronDown, MessageSquare, CalendarCheck, Clock, CheckCircle, Trophy } from 'lucide-react';
+import { Search, Star, ArrowLeft, TrendingUp, ChevronDown, CalendarCheck, CheckCircle } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS, RatingSystem } from '@/components/trainers/TrainerFilters';
-import { FollowButton } from '@/components/trainers/FollowButton';
+import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS } from '@/components/trainers/TrainerFilters';
 import { getBatchTrainerRatings } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
 import { SEO } from '@/components/SEO';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { logger } from '@/lib/logger';
-import MarketingLayout from '@/components/marketing/MarketingLayout';
-import { getPopularCities, type CityWithTrainerCount } from '@/lib/cities';
+import { getPopularCities } from '@/lib/cities';
 import { Location } from '@/lib/locations';
-import { FeaturedSection, FeaturedBadge, shuffleArray } from '@/components/featured/FeaturedSection';
+import { shuffleArray } from '@/components/featured/FeaturedSection';
 import {
   Pagination,
   PaginationContent,
@@ -37,28 +35,6 @@ import {
 
 const TRAINERS_PER_PAGE = 48;
 const MAX_FEATURED = 6;
-
-interface TrainerWithProfile {
-  id: string;
-  user_id: string;
-  slug: string | null;
-  experience_years: number | null;
-  certifications: string[] | null;
-  specializations: string[] | null;
-  is_verified: boolean;
-  subscription_status: string | null;
-  profile: {
-    full_name: string | null;
-    avatar_url: string | null;
-    bio: string | null;
-    location: string | null;
-    skill_rating: number | null;
-    rating_system: string | null;
-  } | null;
-  averageRating: number;
-  reviewCount: number;
-  hasAvailability: boolean;
-}
 
 type SortOption = 'rating' | 'experience';
 
@@ -196,10 +172,6 @@ export default function Trainers() {
     setSearchParams(newParams, { replace: true });
   };
 
-  const clearFilters = () => {
-    setSearchParams({}, { replace: true });
-  };
-
   // Fetch rating systems
   const { data: ratingSystems = [] } = useQuery({
     queryKey: ['rating-systems'],
@@ -214,8 +186,8 @@ export default function Trainers() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch popular cities
-  const { data: popularCities = [] } = useQuery({
+  // Fetch popular cities (result not rendered here; query kept so the fetch/cache behavior is unchanged)
+  useQuery({
     queryKey: ['popular-cities'],
     queryFn: () => getPopularCities(8),
     staleTime: 10 * 60 * 1000,
@@ -225,7 +197,6 @@ export default function Trainers() {
   const { data: trainersData, isLoading: loading } = useQuery({
     queryKey: ['trainers-page-data'],
     queryFn: async () => {
-      const now = new Date().toISOString();
       const { data: allPublicTrainers, error: trainerError } = await supabase
         .from('trainer_profiles_safe')
         .select('id, user_id, slug, experience_years, certifications, specializations, is_verified, is_public, is_active_subscription')

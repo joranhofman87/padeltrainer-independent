@@ -802,7 +802,7 @@ export default function PublicInvoicePay() {
                 i18nKey="invoice.questionsContact"
                 values={{ email: publicContactEmail }}
                 components={{
-                  a: <a href={`mailto:${publicContactEmail}`} className="underline" />,
+                  a: <a href={`mailto:${publicContactEmail}`} aria-label={publicContactEmail} className="underline" />,
                 }}
               />
             </p>

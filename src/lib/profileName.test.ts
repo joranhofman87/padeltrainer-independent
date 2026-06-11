@@ -6,8 +6,6 @@ import {
   getFirstName,
   prefillGuestNameFields,
   resolveGuestNameForInvoice,
-  resolveRegistrationNameFields,
-  prefillProfileNameFields,
   splitFullName,
 } from './profileName';
 

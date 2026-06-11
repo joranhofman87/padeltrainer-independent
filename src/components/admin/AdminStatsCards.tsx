@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield, UserPlus, ClipboardList } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, UserPlus, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { AdminStats } from "@/lib/admin";
@@ -9,7 +9,7 @@ interface AdminStatsCardsProps {
   stats: AdminStats;
 }
 
-function TrendBadge({ trend, thisMonth, lastMonth }: { trend: number; thisMonth: number; lastMonth: number }) {
+function TrendBadge({ trend, thisMonth, lastMonth: _lastMonth }: { trend: number; thisMonth: number; lastMonth: number }) {
   const isPositive = trend >= 0;
   return (
     <div className="flex items-center gap-1">

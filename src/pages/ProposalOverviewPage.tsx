@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { format, differenceInWeeks, parseISO, getDay, eachWeekOfInterval, addDays, isSameDay } from 'date-fns';
+import { format, differenceInWeeks, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
@@ -53,7 +53,7 @@ import {
   Plus,
   X,
 } from 'lucide-react';
-import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, updateCycleSettings, type SlotWithOccupancy, type Cycle, type CycleSettings } from '@/lib/cycles';
+import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, updateCycleSettings, type SlotWithOccupancy, type Cycle } from '@/lib/cycles';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -155,7 +155,7 @@ export default function ProposalOverviewPage() {
         const table = cycle.owner_type === 'academy' ? 'academy_profiles' : 'trainer_profiles';
         const { data } = await supabase.from(table).select('timezone').eq('id', cycle.owner_id).maybeSingle();
         if ((data as any)?.timezone) setTz((data as any).timezone);
-      } catch {}
+      } catch { /* non-fatal: timezone lookup is best-effort, fall back to default */ }
     })();
   }, [cycleId, tz]);
 

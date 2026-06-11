@@ -55,7 +55,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Loader2, UserPlus, Clock, MapPin, Calendar, Repeat, X, Check, Users, Percent, ChevronDown, Euro } from "lucide-react";
+import { Loader2, UserPlus, Clock, Calendar, Repeat, X, Check, Users, Percent, ChevronDown, Euro } from "lucide-react";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
 import { Badge } from "@/components/ui/badge";

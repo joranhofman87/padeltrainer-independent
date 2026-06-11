@@ -11,17 +11,16 @@ import { useTranslation } from 'react-i18next';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
-import { getTrialDaysRemaining, canBeVisible } from '@/lib/subscription';
+import { canBeVisible } from '@/lib/subscription';
 import { isTrainerInPaidAcademy, getTrainerAcademy } from '@/lib/academy';
 import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 
 export default function TrainerSettings() {
-  const { user, role, roles, loading, subscription, refreshSubscription, session, refreshAuth } = useAuth();
+  const { user, roles, loading, subscription, refreshSubscription, session, refreshAuth } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('trainer');
   const localizePath = useLocalizedPathFn();
@@ -125,7 +124,7 @@ export default function TrainerSettings() {
               },
             },
           });
-        } catch (slackErr) {
+        } catch {
           logger.warn('Slack notification failed (non-fatal)', { component: 'TrainerSettings' });
         }
       }
@@ -147,7 +146,7 @@ export default function TrainerSettings() {
 
     setUpdatingPlayerMode(true);
     try {
-      const { data, error } = await supabase.functions.invoke('toggle-player-role', {
+      const { error } = await supabase.functions.invoke('toggle-player-role', {
         body: { enable: checked },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -178,9 +177,6 @@ export default function TrainerSettings() {
     );
   }
 
-  const trialDaysRemaining = subscription?.trialEndsAt 
-    ? getTrialDaysRemaining(subscription.trialEndsAt) 
-    : 0;
   const canToggleVisibility = subscription ? (canBeVisible(subscription) || inPaidAcademy) : false;
   const isTrialActive = subscription?.isInTrial;
   const isSubscribed = subscription?.isSubscribed && !subscription?.isInTrial;

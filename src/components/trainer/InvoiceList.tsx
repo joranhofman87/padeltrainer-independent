@@ -18,9 +18,7 @@ import {
   Clock, 
   AlertCircle,
   Loader2,
-  Euro,
   Trash2,
-  Eye,
   Mail,
   Pencil,
   Users
@@ -81,7 +79,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
 };
 
 export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isAdmin = false }: InvoiceListProps) {
-  const { t, i18n } = useTranslation('trainer');
+  const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,7 +201,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         });
         fetchInvoices();
       }
-    } catch (err) {
+    } catch {
       toast({
         title: t('invoices.sendError'),
         description: t('invoices.sendError'),

@@ -11,6 +11,7 @@ vi.mock('react-i18next', () => ({
 
 describe('SignupValuePanel', () => {
   it('renders three benefit bullets per role', () => {
+    // eslint-disable-next-line jsx-a11y/aria-role -- `role` is SignupValuePanel's domain prop (user role), not an ARIA role
     render(<SignupValuePanel role="player" />);
     expect(screen.getByTestId('signup-value-panel-player')).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(3);

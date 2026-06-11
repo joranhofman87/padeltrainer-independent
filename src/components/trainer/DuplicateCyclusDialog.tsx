@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { format, addWeeks, parseISO, setHours, setMinutes } from "date-fns";
+import { format, addWeeks, parseISO } from "date-fns";
 import { Clock } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";

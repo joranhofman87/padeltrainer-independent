@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { updateIntakeRequest, type IntakeRequestWithProposal, type TimeWindow } from '@/lib/cycles';
-import DayAvailabilityPicker, { type DayAvailability, type TimeBlock } from './DayAvailabilityPicker';
+import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 
 interface EditIntakeRequestDialogProps {
   open: boolean;

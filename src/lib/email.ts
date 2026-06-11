@@ -110,7 +110,7 @@ export const sendEmail = async (
       return { success: false, error: "Authentication required" };
     }
 
-    const { data: response, error } = await supabase.functions.invoke("send-email", {
+    const { error } = await supabase.functions.invoke("send-email", {
       body: { type, to, data, language: data.language },
       headers: {
         Authorization: `Bearer ${session.access_token}`,

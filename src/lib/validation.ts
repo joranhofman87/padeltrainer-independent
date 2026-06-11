@@ -111,7 +111,7 @@ export function calculatePasswordStrength(password: string): PasswordStrength {
     hasUppercase: /[A-Z]/.test(password),
     hasLowercase: /[a-z]/.test(password),
     hasNumber: /\d/.test(password),
-    hasSpecial: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+    hasSpecial: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
   };
   
   // Calculate score based on checks

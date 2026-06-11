@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
   Check, TrendingUp, BookOpen, Target, Newspaper,
-  Share2, RotateCcw, Copy, ExternalLink,
+  RotateCcw, Copy, ExternalLink,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import posthog from 'posthog-js';

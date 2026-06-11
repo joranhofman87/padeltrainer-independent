@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { getAdminStats, isUserAdmin, type AdminStats } from "@/lib/admin";
+import { getAdminStats, isUserAdmin } from "@/lib/admin";
 import { supabase } from "@/lib/supabaseClient";
 
 // Cache times

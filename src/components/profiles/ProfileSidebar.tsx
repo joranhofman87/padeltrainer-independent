@@ -2,11 +2,9 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { 
-  Users, Calendar, Star, Target, LayoutGrid, 
+import {
   Instagram, Youtube, Linkedin, Facebook, Mail, Phone
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 interface StatItem {
   icon: React.ReactNode;

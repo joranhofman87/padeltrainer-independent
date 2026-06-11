@@ -3,7 +3,6 @@ import {
   mapCampaignEmailEvents,
   mergePlayerEmailHistory,
   type AcademyPlayerEmailHistoryItem,
-  type CampaignEmailSourceRow,
   type InvoiceEmailSourceRow,
 } from '@/lib/academyPlayerEmailHistory';
 import { buildTrainerInvoiceEditPath } from '@/lib/trainerPlayerDetailNavigation';

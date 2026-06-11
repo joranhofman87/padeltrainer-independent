@@ -19,7 +19,7 @@ interface AcademyOpenCyclesProps {
   academySlug: string;
 }
 
-export function AcademyOpenCycles({ academyId, academyName, academySlug }: AcademyOpenCyclesProps) {
+export function AcademyOpenCycles({ academyId, academyName: _academyName, academySlug }: AcademyOpenCyclesProps) {
   const { t, i18n } = useTranslation(['cycles', 'common']);
   const { user } = useAuth();
   const navigate = useNavigate();

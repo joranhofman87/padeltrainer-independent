@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { CycleSettings, ScoringWeights, IntakeRequestWithProposal, Cycle, CycleInput } from './cycles';
+import type { CycleSettings, ScoringWeights, CycleInput } from './cycles';
 import { DEFAULT_SCORING_WEIGHTS } from './cycles';
 
 describe('CycleSettings type and defaults', () => {

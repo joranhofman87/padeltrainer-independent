@@ -8,7 +8,6 @@ import {
   Eye,
   Clock,
   AlertTriangle,
-  ExternalLink,
   EyeOff,
   Receipt,
 } from 'lucide-react';
@@ -21,7 +20,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainers, getAcademyLocations, getAcademyViewStats, getAcademyTrainersWithProfiles } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
-import { logger } from '@/lib/logger';
 import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
@@ -41,9 +39,9 @@ const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 export default function AcademyDashboard() {
   const { t, i18n } = useTranslation('academy');
   const { t: tTrainer } = useTranslation('trainer');
-  const { t: tCycles } = useTranslation('cycles');
+  useTranslation('cycles'); // keep hook call: loads the 'cycles' i18n namespace
   const navigate = useNavigate();
-  const { activeAcademy, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useAcademyContext();
+  const { activeAcademy, isTrialing, trialDaysRemaining, subscription } = useAcademyContext();
 
   const academyId = activeAcademy?.id;
 

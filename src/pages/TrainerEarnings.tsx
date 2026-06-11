@@ -102,7 +102,7 @@ export default function TrainerEarnings() {
   const [connectLoading, setConnectLoading] = useState(false);
   const [trainerInfo, setTrainerInfo] = useState<TrainerBusinessInfo | null>(null);
   // invoiceDialogOpen removed — using page navigation now
-  const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
+  const [invoiceRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [academyPaymentInfo, setAcademyPaymentInfo] = useState<AcademyPaymentInfo | null>(null);
   const [connectStatusLoading, setConnectStatusLoading] = useState(true);
@@ -152,7 +152,7 @@ export default function TrainerEarnings() {
   }, [searchParams]);
 
   const fetchTrainerInfo = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('trainer_profiles_owner' as any)
       .select('id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, use_manual_invoicing, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_banner_color, invoice_reply_to_email, invoice_prefix, invoice_next_number, invoice_include_year, invoice_language')
       .eq('user_id', user!.id)

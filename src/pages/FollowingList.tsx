@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Users, Bell, BellOff, UserMinus, MapPin } from 'lucide-react';
+import { Users, Bell, BellOff, UserMinus, MapPin } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { AppPage, surfaceCardClass } from '@/components/ui/app-page';

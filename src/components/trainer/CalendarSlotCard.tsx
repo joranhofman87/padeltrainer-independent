@@ -18,7 +18,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 
 export interface BookedPlayer {
   id: string;
@@ -115,7 +114,6 @@ function calculateAverageRating(players: BookedPlayer[]): { average: number | nu
 export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTrainerInfo, onSlotClick, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
   const { t, i18n } = useTranslation("trainer");
   const dfLocale = dateFnsLocales[i18n.language] || enUS;
-  const navigate = useNavigate();
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
   const endTime = format(new Date(slot.end_time), "HH:mm");

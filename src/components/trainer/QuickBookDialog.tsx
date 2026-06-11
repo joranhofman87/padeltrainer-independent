@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addDays, differenceInMinutes } from "date-fns";
-import { Loader2, Calendar, Clock, MapPin, Euro, Repeat, Percent, ChevronDown } from "lucide-react";
+import { Loader2, Calendar, Clock, Repeat, Percent, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';

@@ -11,9 +11,8 @@ import { SeoFaq } from '@/components/seo/SeoFaq';
 import { trainerFaqs } from '@/lib/seoFaqs';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   DropdownMenu,
@@ -21,11 +20,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { 
-  ArrowLeft, MapPin, Star, Clock, Award, Mail,
-  Calendar, Users, CheckCircle, UserPlus, UserCheck,
-  Share2, Copy, Check, MessageCircle, Quote, Play,
-  Target, Sparkles, Linkedin, GraduationCap, Eye, EyeOff,
+import {
+  MapPin, Star, Award, Mail,
+  Calendar, CheckCircle, UserPlus, UserCheck,
+  Share2, Copy, Check, MessageCircle,
+  Target, Sparkles, Linkedin, GraduationCap, EyeOff,
   Building2, TreePine
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
@@ -37,12 +36,11 @@ import { PROVINCES } from '@/lib/provinces';
 import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
-import { getTrainerAcademy, isTrainerInPaidAcademy, type AcademyProfile } from '@/lib/academy';
+import { getTrainerAcademy, isTrainerInPaidAcademy } from '@/lib/academy';
 import { canBeVisible } from '@/lib/subscription';
 import { toast } from 'sonner';
 import { getMarketingUrl, getAppUrl } from '@/lib/domains';
 import { SEO } from '@/components/SEO';
-import { logger } from '@/lib/logger';
 import { trackEvent } from '@/lib/tracking';
 import {
   ProfileLayout,
@@ -52,7 +50,6 @@ import {
   ProfileFullWidthSection,
   ProfileHeroCard,
   ProfileQuickStatsCard,
-  ProfileContactCard,
   ProfileSocialCard,
   VideoGallery,
 } from '@/components/profiles';
@@ -142,7 +139,6 @@ async function fetchTrainerData(trainerId: string, currentUserId?: string) {
   );
 
   const isOwnProfile = currentUserId === trainerData.user_id;
-  const now = new Date().toISOString();
   const hasActiveSubscription = trainerData.subscription_status === 'active';
   const inPaidAcademy = await isTrainerInPaidAcademy(trainerData.id);
   const hasSubscriptionAccess = hasActiveSubscription || inPaidAcademy;
@@ -196,7 +192,7 @@ export default function TrainerProfile() {
   const [copied, setCopied] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const navigate = useNavigate();
-  const { user, role, subscription } = useAuth();
+  const { user, subscription } = useAuth();
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
 
@@ -222,8 +218,8 @@ export default function TrainerProfile() {
   const profileUrl = getMarketingUrl(`trainer/${trainerSlug}`, currentLang);
   const trainerName = profile?.full_name || 'Trainer';
 
-  // Rating system name
-  const { data: preferredRatingSystemName = '' } = useQuery({
+  // Rating system name (query kept to preserve prefetch/caching behavior; result currently unused)
+  useQuery({
     queryKey: ['rating-system', trainer?.preferred_rating_system],
     queryFn: async () => {
       const system = await getRatingSystemByCode(trainer!.preferred_rating_system!);
@@ -247,7 +243,7 @@ export default function TrainerProfile() {
       setCopied(true);
       toast.success(t('profile.linkCopied'));
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch {
       toast.error('Failed to copy link');
     }
   };
@@ -290,6 +286,15 @@ export default function TrainerProfile() {
     });
   }
 
+  // Fetch top public reviews to embed as Review[] schema (rich-result eligible).
+  // Must be called before the early returns below — hooks may not be conditional.
+  const { data: topReviewsData } = useQuery({
+    queryKey: ['trainer-top-reviews', trainer?.id],
+    queryFn: () => getTrainerReviews(trainer!.id),
+    enabled: !!trainer?.id,
+    staleTime: 10 * 60 * 1000,
+  });
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -325,13 +330,6 @@ export default function TrainerProfile() {
     ? province.cities.filter(c => c !== trainerCitySlug).slice(0, 6)
     : [];
 
-  // Fetch top public reviews to embed as Review[] schema (rich-result eligible)
-  const { data: topReviewsData } = useQuery({
-    queryKey: ['trainer-top-reviews', trainer?.id],
-    queryFn: () => getTrainerReviews(trainer!.id),
-    enabled: !!trainer?.id,
-    staleTime: 10 * 60 * 1000,
-  });
   const topReviews = (topReviewsData?.data || [])
     .filter((r: any) => r.is_public && r.comment && r.comment.trim().length > 0)
     .slice(0, 5);

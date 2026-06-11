@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trash2, Plus, Euro } from 'lucide-react';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
-import type { ExtraCost, CycleSettings } from '@/lib/cycles';
+import type { ExtraCost } from '@/lib/cycles';
 
 interface CyclePricingCardProps {
   pricePerSession: number | null;

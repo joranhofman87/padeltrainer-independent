@@ -13,13 +13,6 @@ vi.mock('@/lib/logger', () => ({
 import { supabase } from '@/lib/supabaseClient';
 import { getCitiesWithTrainers, getPopularCities, getAllCitySlugs } from './cities';
 
-function mockFrom(table: string) {
-  const chain: any = {};
-  chain.select = vi.fn().mockReturnValue(chain);
-  chain.eq = vi.fn().mockReturnValue(chain);
-  return chain;
-}
-
 describe('getCitiesWithTrainers', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -56,7 +49,6 @@ describe('getCitiesWithTrainers', () => {
       error: null,
     });
 
-    const callCount = 0;
     (supabase.from as any).mockImplementation((table: string) => {
       if (table === 'locations') return locChain;
       if (table === 'trainer_locations') return tlChain;

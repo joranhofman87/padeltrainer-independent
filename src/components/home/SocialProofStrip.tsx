@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { Star, Clock, CalendarPlus, TrendingDown } from 'lucide-react';
+import { Star } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 

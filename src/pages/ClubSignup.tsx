@@ -75,7 +75,7 @@ export default function ClubSignup() {
     if (!validateForm()) return;
     if (isSuspicious()) return;
     
-    try { trackEvent('signup_started', { role: 'club', method: 'email', ...getUtmParams() }); } catch {}
+    try { trackEvent('signup_started', { role: 'club', method: 'email', ...getUtmParams() }); } catch { /* non-fatal: analytics must not block signup */ }
     setIsLoading(true);
 
     try {
@@ -87,7 +87,7 @@ export default function ClubSignup() {
           action: 'signUp',
         });
       } else if (data?.session) {
-        try { trackEvent('signup_completed', { role: 'club', method: 'email' }); } catch {}
+        try { trackEvent('signup_completed', { role: 'club', method: 'email' }); } catch { /* non-fatal: analytics must not block signup */ }
         localStorage.setItem('pendingRole', 'club');
         if (data.user?.id) {
           supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
@@ -98,7 +98,7 @@ export default function ClubSignup() {
         });
         navigate('/app/onboarding/club');
       } else {
-        try { trackEvent('signup_completed', { role: 'club', method: 'email' }); } catch {}
+        try { trackEvent('signup_completed', { role: 'club', method: 'email' }); } catch { /* non-fatal: analytics must not block signup */ }
         localStorage.setItem('pendingRole', 'club');
         setShowVerification(true);
       }
@@ -117,7 +117,7 @@ export default function ClubSignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      try { trackEvent('signup_started', { role: 'club', method: 'google', ...getUtmParams() }); } catch {}
+      try { trackEvent('signup_started', { role: 'club', method: 'google', ...getUtmParams() }); } catch { /* non-fatal: analytics must not block signup */ }
       localStorage.setItem('pendingRole', 'club');
       
       const { error } = await signInWithGoogle();

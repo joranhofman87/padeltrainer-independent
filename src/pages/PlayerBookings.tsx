@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Calendar, Clock, MapPin, User, Star, FileText, CalendarPlus } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Star, FileText, CalendarPlus } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { cancelBooking } from '@/lib/lessons';
@@ -126,7 +126,6 @@ export default function PlayerBookings() {
       }
 
       // Cross-reference invoices to get accurate payment status for bookings
-      const bookingIds = rawBookings.map(b => b.id);
       const { data: paidInvoices } = await supabase
         .from('invoices')
         .select('booking_ids, status, paid_at')

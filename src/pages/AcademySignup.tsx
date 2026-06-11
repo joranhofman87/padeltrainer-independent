@@ -69,7 +69,7 @@ export default function AcademySignup() {
     if (!validateForm()) return;
     if (isSuspicious()) return;
     
-    try { trackEvent('signup_started', { role: 'academy', method: 'email', ...getUtmParams() }); } catch {}
+    try { trackEvent('signup_started', { role: 'academy', method: 'email', ...getUtmParams() }); } catch { /* non-fatal: analytics is best-effort */ }
     setIsLoading(true);
 
     try {
@@ -81,7 +81,7 @@ export default function AcademySignup() {
           action: 'signUp',
         });
       } else if (data?.session) {
-        try { trackEvent('signup_completed', { role: 'academy', method: 'email' }); } catch {}
+        try { trackEvent('signup_completed', { role: 'academy', method: 'email' }); } catch { /* non-fatal: analytics is best-effort */ }
         localStorage.setItem('pendingRole', 'academy');
         if (data.user?.id) {
           supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
@@ -92,7 +92,7 @@ export default function AcademySignup() {
         });
         navigate('/academy/onboarding');
       } else {
-        try { trackEvent('signup_completed', { role: 'academy', method: 'email' }); } catch {}
+        try { trackEvent('signup_completed', { role: 'academy', method: 'email' }); } catch { /* non-fatal: analytics is best-effort */ }
         localStorage.setItem('pendingRole', 'academy');
         setShowVerification(true);
       }
@@ -111,7 +111,7 @@ export default function AcademySignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      try { trackEvent('signup_started', { role: 'academy', method: 'google', ...getUtmParams() }); } catch {}
+      try { trackEvent('signup_started', { role: 'academy', method: 'google', ...getUtmParams() }); } catch { /* non-fatal: analytics is best-effort */ }
       localStorage.setItem('pendingRole', 'academy');
       
       const { error } = await signInWithGoogle();

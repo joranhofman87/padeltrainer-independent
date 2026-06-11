@@ -35,7 +35,7 @@ export default function BookingCancelled() {
             .maybeSingle();
           if (trainer?.slug) setTrainerSlug(trainer.slug);
         }
-      } catch (err) {
+      } catch {
         logger.warn('Could not fetch trainer for cancelled booking', { bookingId });
       }
     };

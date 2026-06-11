@@ -40,7 +40,6 @@ import {
 import {
   LayoutDashboard,
   Users,
-  UserCircle,
   Calendar,
   BookOpen,
   Building2,
@@ -93,9 +92,6 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
   const [peopleOpen, setPeopleOpen] = useState(
     location.pathname.includes("/app/club/trainers") ||
     location.pathname.includes("/app/club/players")
-  );
-  const [scheduleOpen, setScheduleOpen] = useState(
-    location.pathname.includes("/app/club/calendar")
   );
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/club/subscription") ||

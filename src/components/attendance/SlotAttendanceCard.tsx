@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ClipboardCheck, AlertTriangle, Check, X, MessageSquare, Eye, EyeOff } from 'lucide-react';
+import { ClipboardCheck, AlertTriangle, Check, X, Eye, EyeOff } from 'lucide-react';
 
 interface SessionReport {
   id: string;

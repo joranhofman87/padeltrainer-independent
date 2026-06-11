@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // We test the interface and type definitions since the actual functions
 // require Supabase connection which we don't mock in unit tests

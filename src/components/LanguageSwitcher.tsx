@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Globe, Check } from 'lucide-react';
-import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
+import { SUPPORTED_LANGUAGES } from '@/components/LanguageRouter';
 import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 const languages = [
@@ -22,8 +22,6 @@ export function LanguageSwitcher() {
   const location = useLocation();
   const { lang } = useParams<{ lang: string }>();
   const { translations, pathPrefix } = useTranslationsContext();
-
-  const currentLanguage = languages.find(l => l.code === i18n.language) || languages[0];
 
   const handleLanguageChange = (newLang: string) => {
     // If we have CMS translations, link to the translated slug

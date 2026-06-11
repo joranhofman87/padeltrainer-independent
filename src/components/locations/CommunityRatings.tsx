@@ -1,4 +1,4 @@
-import { useLocationReviews, useLocationReviewStats, type ReviewStats } from '@/hooks/useCourtReviews';
+import { useLocationReviews, useLocationReviewStats } from '@/hooks/useCourtReviews';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

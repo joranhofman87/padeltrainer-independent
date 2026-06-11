@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocationReviewStats } from '@/hooks/useCourtReviews';
-import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award, Home, Sun } from 'lucide-react';
+import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Share2, Copy, Check, MessageCircle, GraduationCap, Home, Sun } from 'lucide-react';
 import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
 import { WaitingListCard } from '@/components/waitingList';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
@@ -11,10 +11,9 @@ import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath
 import { SeoFaq } from '@/components/seo/SeoFaq';
 import { clubFaqs } from '@/lib/seoFaqs';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -252,7 +251,7 @@ export default function LocationDetail() {
       setCopied(true);
       toast.success(t('common:linkCopied', 'Link copied!'));
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch {
       toast.error('Failed to copy link');
     }
   };

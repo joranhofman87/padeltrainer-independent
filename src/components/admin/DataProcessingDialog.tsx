@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Loader2, Zap, Image, RotateCcw, AlertTriangle, Clock, Play, Square,
-  CheckCircle2, XCircle, AlertCircle, RefreshCw,
+  Loader2, Zap, Image, RotateCcw, AlertTriangle, Play, Square,
+  CheckCircle2, XCircle, RefreshCw,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -223,8 +223,6 @@ export function DataProcessingDialog({ open, onOpenChange, onSuccess }: DataProc
     toast({ title: 'Scraping complete', description: `Found ${successCount} logos out of ${allResults.length} processed` });
     if (successCount > 0) onSuccess?.();
   }
-
-  const activeJobCount = (enrichmentRunning ? 1 : 0) + (logoStatus?.isEnabled ? 1 : 0);
 
   const successResults = results.filter(r => r.status === 'success' && r.logo_url);
   const failedResults = results.filter(r => r.status === 'error' || (r.status === 'success' && !r.logo_url));

@@ -47,7 +47,7 @@ export function AddTrainerDialog({
 
   // Result state
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
-  const [isNewUser, setIsNewUser] = useState(false);
+  const [, setIsNewUser] = useState(false);
 
   const resetForm = () => {
     setFullName("");

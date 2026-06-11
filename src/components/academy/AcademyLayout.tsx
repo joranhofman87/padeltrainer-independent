@@ -76,7 +76,7 @@ export default function AcademyLayout() {
   const location = useLocation();
   const { user, loading: authLoading, profileReady } = useAuth();
   const authResolving = authLoading || (!!user && !profileReady);
-  const { toast } = useToast();
+  useToast(); // keep hook call: subscribes component to toast state
   const [academies, setAcademies] = useState<AcademyWithRole[]>([]);
   const [activeAcademy, setActiveAcademy] = useState<AcademyWithRole | null>(null);
   const [loading, setLoading] = useState(true);

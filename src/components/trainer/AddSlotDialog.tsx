@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { type ExtraCost } from "@/lib/cycles";
@@ -39,7 +39,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -135,10 +134,10 @@ export function AddSlotDialog({
   defaultDate,
   defaultTime,
   defaultDuration,
-  defaultWeeks,
+  defaultWeeks: _defaultWeeks,
   onSlotsCreated,
   availableLocations,
-  academyId,
+  academyId: _academyId,
 }: AddSlotDialogProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
@@ -155,7 +154,7 @@ export function AddSlotDialog({
   const [slotMaxRating, setSlotMaxRating] = useState<number | null>(null);
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
+  const [pricesIncludeVat] = useState(true);
 
   // Sync date/time when dialog opens with new defaults (e.g. clicking a calendar cell)
   useEffect(() => {
@@ -1149,7 +1148,7 @@ export function BulkCreateContent({
               Authorization: `Bearer ${session?.access_token}`,
             },
           });
-        } catch (notifyError) {
+        } catch {
           logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });
         }
       }

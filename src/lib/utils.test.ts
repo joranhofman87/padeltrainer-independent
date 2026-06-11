@@ -7,7 +7,9 @@ describe('cn utility', () => {
   });
 
   it('handles conditional classes', () => {
-    expect(cn('base', true && 'active', false && 'disabled')).toBe('base active');
+    const isActive = true as boolean;
+    const isDisabled = false as boolean;
+    expect(cn('base', isActive && 'active', isDisabled && 'disabled')).toBe('base active');
   });
 
   it('handles undefined and null', () => {
@@ -34,11 +36,13 @@ describe('cn utility', () => {
   });
 
   it('handles complex tailwind class combinations', () => {
+    const hasPadding = true as boolean;
+    const isHidden = false as boolean;
     expect(cn(
       'flex items-center',
       'justify-between',
-      true && 'p-4',
-      false && 'hidden'
+      hasPadding && 'p-4',
+      isHidden && 'hidden'
     )).toBe('flex items-center justify-between p-4');
   });
 

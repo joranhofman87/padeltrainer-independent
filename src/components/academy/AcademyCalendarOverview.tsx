@@ -178,7 +178,7 @@ function TrainerDayBlock({
           <button
             aria-label={t('calendar.overview.toggleTrainerSlots', 'Toggle slots for {{name}}', { name: firstName })}
             className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-accent/50 rounded-t-lg transition-colors"
-            onClick={(e) => {
+            onClick={(_e) => {
               // Allow collapsible toggle; double-click navigates
             }}
           >

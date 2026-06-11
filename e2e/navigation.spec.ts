@@ -31,7 +31,6 @@ test.describe('Navigation & Marketing Pages', () => {
       await page.goto('/en/');
       
       // Look for language switcher
-      const languageSwitcher = page.locator('[data-language-switcher], button:has-text("EN"), button:has-text("NL")');
       // May not always be visible depending on screen size
     });
   });
@@ -51,7 +50,6 @@ test.describe('Navigation & Marketing Pages', () => {
       await page.goto(ROUTES.trainers);
       
       // Look for filter elements
-      const filterElements = page.locator('input[placeholder*="search" i], input[placeholder*="zoek" i], [data-filter]');
       // Filters may or may not be present
     });
 
@@ -88,7 +86,6 @@ test.describe('Navigation & Marketing Pages', () => {
       await waitForNavigation(page);
       
       // Look for map container
-      const mapContainer = page.locator('[class*="leaflet"], [data-map], .map-container');
       // Map may take time to load
     });
 
@@ -119,7 +116,6 @@ test.describe('Navigation & Marketing Pages', () => {
       await expect(page.locator('h1, h2').first()).toBeVisible();
       
       // Look for pricing cards or plan sections
-      const pricingCards = page.locator('[data-pricing-card], [class*="pricing"], [class*="plan"]');
     });
 
     test('should have CTA buttons on pricing cards', async ({ page }) => {
@@ -128,7 +124,6 @@ test.describe('Navigation & Marketing Pages', () => {
       await waitForNavigation(page);
       
       // Look for signup/action buttons
-      const ctaButtons = page.locator('button, a').filter({ hasText: /start|begin|aanmelden|signup/i });
     });
   });
 
@@ -138,7 +133,6 @@ test.describe('Navigation & Marketing Pages', () => {
       await page.goto(ROUTES.home);
       
       // Look for hamburger menu
-      const mobileMenuButton = page.locator('button[aria-label*="menu" i], button:has([class*="hamburger"]), [data-mobile-menu]');
       // Mobile menu behavior varies
     });
   });
@@ -161,8 +155,6 @@ test.describe('Navigation & Marketing Pages', () => {
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       
       // Look for privacy and terms links
-      const privacyLink = page.locator('a[href*="privacy"]');
-      const termsLink = page.locator('a[href*="terms"]');
     });
   });
 });

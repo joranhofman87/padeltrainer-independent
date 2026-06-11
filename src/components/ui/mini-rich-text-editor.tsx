@@ -91,7 +91,7 @@ export function MiniRichTextEditor({
     if (!/^(https?:|mailto:|tel:|\/|#)/i.test(href)) {
       href = `https://${href}`;
     }
-    const { from, to, empty } = editor.state.selection;
+    const { empty } = editor.state.selection;
     if (empty) {
       // No selection — insert the URL as link text
       editor

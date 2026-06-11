@@ -63,14 +63,14 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
     try { return localStorage.getItem('founding-banner-dismissed') === 'true'; } catch { return false; }
   });
   const { t } = useTranslation('marketing');
-  const { user, role, loading: authLoading } = useAuth();
+  const { user, role } = useAuth();
   const { lang } = useParams<{ lang: string }>();
   const currentLang = lang || 'en';
   const dashboardUrl = getAppUrl(getDashboardPath(role));
 
   const dismissBanner = () => {
     setBannerDismissed(true);
-    try { localStorage.setItem('founding-banner-dismissed', 'true'); } catch {}
+    try { localStorage.setItem('founding-banner-dismissed', 'true'); } catch { /* non-fatal: localStorage may be unavailable (private mode) */ }
   };
 
   useEffect(() => {

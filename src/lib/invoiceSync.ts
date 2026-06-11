@@ -4,15 +4,7 @@
  */
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
-import {
-  detectSplitCount,
-  buildCycleLineItems,
-  calculateVatTotals,
-  applySplit,
-  round2,
-  type InvoiceLineItem,
-  type ExtraCostInput,
-} from "@/lib/invoiceCalc";
+import { detectSplitCount } from "@/lib/invoiceCalc";
 
 interface InvoiceRecord {
   id: string;
@@ -576,7 +568,7 @@ export async function syncSplitCountForCycle(
  */
 export async function syncInvoicesAfterBookingRemoval(
   removedBookingIds: string[],
-  options?: { addCreditNoteToPaid?: boolean },
+  _options?: { addCreditNoteToPaid?: boolean },
 ): Promise<void> {
   if (removedBookingIds.length === 0) return;
 

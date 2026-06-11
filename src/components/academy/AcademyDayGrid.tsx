@@ -19,8 +19,6 @@ import {
   UserPlus, AlertTriangle, X, Pencil, Trash2,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { type SlotWithBookings, type BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 
@@ -406,14 +404,14 @@ function DroppableSidebarPool({ children }: { children: React.ReactNode }) {
 
 export default function AcademyDayGrid({
   slots, currentDate, allKnownPlayers, trainers,
-  onMovePlayer, onRemovePlayer, onAddPlayerToSlot, onEditBooking,
-  onEditSlot, onDeleteSlot, onBookForPlayer, onCellClick,
+  onMovePlayer, onRemovePlayer, onAddPlayerToSlot: _onAddPlayerToSlot, onEditBooking,
+  onEditSlot, onDeleteSlot, onBookForPlayer, onCellClick: _onCellClick,
 }: AcademyDayGridProps) {
   const { t, i18n } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [activeData, setActiveData] = useState<{
     type: 'booked-player' | 'sidebar-player';

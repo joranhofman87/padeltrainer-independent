@@ -1261,7 +1261,7 @@ export async function generateProposals(
         };
         await updateCycle(cycleId, { settings: updatedSettings });
       }
-    } catch (e) {
+    } catch {
       // Non-critical — don't block generation
       logger.warn('Failed to persist trainer availability windows', { cycleId });
     }

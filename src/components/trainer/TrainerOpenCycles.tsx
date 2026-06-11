@@ -17,7 +17,7 @@ interface TrainerOpenCyclesProps {
   trainerName: string;
 }
 
-export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesProps) {
+export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: TrainerOpenCyclesProps) {
   const { t, i18n } = useTranslation(['cycles', 'common']);
   const { user } = useAuth();
   const navigate = useNavigate();

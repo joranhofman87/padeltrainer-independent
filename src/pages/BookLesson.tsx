@@ -14,7 +14,6 @@ import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { getApplicableTerms } from '@/lib/terms';
-import { formatPrice } from '@/lib/pricing';
 import { useTranslation } from 'react-i18next';
 import { BookingConfirmation } from '@/components/booking/BookingConfirmation';
 import { BookingTrainerCard } from '@/components/booking/BookingTrainerCard';
@@ -147,10 +146,6 @@ export default function BookLesson() {
         email: profileWithEmail?.email || null
       }
     } as unknown as TrainerWithProfile);
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const claimToken = urlParams.get('claim');
-    const claimSlotId = urlParams.get('slot');
 
     const { data: slotsData } = await supabase
       .from('availability_slots')
@@ -314,7 +309,7 @@ export default function BookLesson() {
           paid_externally: paymentTiming === 'manual' ? true : undefined,
         }));
 
-        const { data: insertedBookings, error } = await supabase.from('bookings').insert(bookings).select('id');
+        const { error } = await supabase.from('bookings').insert(bookings).select('id');
         if (error) throw error;
 
         try {

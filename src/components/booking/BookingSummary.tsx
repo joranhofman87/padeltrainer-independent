@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, Euro, MapPin, Minus, Plus, Repeat, Users } from 'lucide-react';
+import { Calendar, Clock, MapPin, Minus, Plus, Repeat, Users } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatPrice } from '@/lib/pricing';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';

@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Save, User, Camera, Loader2, MapPin, Quote, Video, Instagram, Youtube, Linkedin, Sparkles, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Save, User, Camera, Loader2, MapPin, Quote, Instagram, Youtube, Linkedin, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratingSystems';
 import { LocationPicker } from '@/components/locations/LocationPicker';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
@@ -24,7 +24,6 @@ import { getPlayerLocations, updatePlayerLocations, getTrainerLocations, updateT
 import { CertificationsPicker } from '@/components/trainer/CertificationsPicker';
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
 import { getTrainerCountry } from '@/lib/certifications';
-import { isValidVideoUrl, getVideoThumbnail } from '@/lib/videoEmbed';
 import { logger } from '@/lib/logger';
 import { VideoManager } from '@/components/profiles/VideoManager';
 import { canBeVisible } from '@/lib/subscription';
@@ -206,7 +205,7 @@ export default function EditProfile() {
   };
 
   const fetchTrainerProfile = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('trainer_profiles')
       .select('id, is_public, hourly_rate, coaching_since_year, certifications, specializations, coaching_method, favourite_quote, video_url, website_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
       .eq('user_id', user!.id)

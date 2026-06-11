@@ -31,7 +31,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   MoreHorizontal,
-  Plus,
   Copy,
   Edit,
   Trash,
@@ -44,7 +43,6 @@ import {
 } from 'lucide-react';
 import { type Cycle, updateCycle, deleteCycle } from '@/lib/cycles';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/format';
 
 interface CyclesTableProps {
@@ -62,7 +60,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function CyclesTable({
   cycles,
-  locations = [],
+  locations: _locations = [],
   onEdit,
   onDuplicate,
   onDeleted,

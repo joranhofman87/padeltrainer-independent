@@ -30,7 +30,7 @@ export function buildQuizShareSvg(data: QuizShareCardData): string {
   <image href="${LOGO_DATA_URI}" x="340" y="30" width="400" height="60" preserveAspectRatio="xMidYMid meet"/>
 
   <!-- Subtitle -->
-  <text x="540" y="120" fill="#94A3B8" font-size="20" font-weight="500" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">What\'s Your Padel Red Flag?</text>
+  <text x="540" y="120" fill="#94A3B8" font-size="20" font-weight="500" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">What's Your Padel Red Flag?</text>
 
   <!-- Accent line -->
   <rect x="440" y="150" width="200" height="4" rx="2" fill="${accentHex}" opacity="0.6"/>

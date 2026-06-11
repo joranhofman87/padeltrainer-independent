@@ -22,9 +22,6 @@ test.describe('Booking Flows', () => {
         
         // Check for trainer profile elements
         await expect(page.locator('h1, h2').first()).toBeVisible();
-        
-        // Look for booking button or availability
-        const bookButton = page.locator('button:has-text("Book"), button:has-text("Boek"), a:has-text("Book"), a:has-text("Boek")');
       }
     });
 
@@ -37,9 +34,6 @@ test.describe('Booking Flows', () => {
       if (await trainerLink.isVisible({ timeout: 5000 }).catch(() => false)) {
         await trainerLink.click();
         await waitForNavigation(page);
-        
-        // Look for availability calendar or slots
-        const availabilitySection = page.locator('[data-availability], [class*="calendar"], [class*="slots"]');
       }
     });
 
@@ -78,17 +72,11 @@ test.describe('Booking Flows', () => {
     test('should have date filter', async ({ page }) => {
       await page.goto('/en/open-slots');
       await waitForNavigation(page);
-      
-      // Look for date picker or filter
-      const dateFilter = page.locator('input[type="date"], [data-date-picker], button:has-text("Date")');
     });
 
     test('should have location filter', async ({ page }) => {
       await page.goto('/en/open-slots');
       await waitForNavigation(page);
-      
-      // Look for location filter
-      const locationFilter = page.locator('select, [data-location-filter], button:has-text("Location"), button:has-text("Locatie")');
     });
   });
 
@@ -104,9 +92,6 @@ test.describe('Booking Flows', () => {
       if (await locationLink.isVisible({ timeout: 5000 }).catch(() => false)) {
         await locationLink.click();
         await waitForNavigation(page);
-        
-        // Look for cycles section
-        const cyclesSection = page.locator('[data-cycles], text=/cycle/i, text=/cyclus/i');
       }
     });
   });
@@ -141,9 +126,6 @@ test.describe('Location Detail & Club Features', () => {
     if (await locationLink.isVisible({ timeout: 5000 }).catch(() => false)) {
       await locationLink.click();
       await waitForNavigation(page);
-      
-      // Look for trainers section
-      const trainersSection = page.locator('[data-trainers], text=/trainer/i');
     }
   });
 
@@ -156,9 +138,6 @@ test.describe('Location Detail & Club Features', () => {
     if (await locationLink.isVisible({ timeout: 5000 }).catch(() => false)) {
       await locationLink.click();
       await waitForNavigation(page);
-      
-      // Look for follow button
-      const followButton = page.locator('button:has-text("Follow"), button:has-text("Volg")');
     }
   });
 });

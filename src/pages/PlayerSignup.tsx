@@ -128,7 +128,7 @@ export default function PlayerSignup() {
           action: 'signUp',
         });
       } else if (data?.session) {
-        try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch {}
+        try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch { /* analytics must not block signup */ }
         localStorage.setItem('pendingRole', 'player');
         if (data.user?.id) {
           supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
@@ -140,7 +140,7 @@ export default function PlayerSignup() {
         });
         navigate('/app/onboarding/player');
       } else {
-        try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch {}
+        try { trackEvent('signup_completed', { role: 'player', method: 'email' }); } catch { /* analytics must not block signup */ }
         localStorage.setItem('pendingRole', 'player');
         storeRedirectAfterOnboarding();
         setShowVerification(true);
@@ -160,7 +160,7 @@ export default function PlayerSignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      try { trackEvent('signup_started', { role: 'player', method: 'google', ...getUtmParams() }); } catch {}
+      try { trackEvent('signup_started', { role: 'player', method: 'google', ...getUtmParams() }); } catch { /* analytics must not block signup */ }
       localStorage.setItem('pendingRole', 'player');
       storeRedirectAfterOnboarding();
 

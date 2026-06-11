@@ -114,7 +114,7 @@ function loadColumns(): Set<string> {
       ALL_COLUMNS.filter(c => c.alwaysVisible).forEach(c => set.add(c.key));
       return set;
     }
-  } catch {}
+  } catch { /* non-fatal: corrupt/unavailable localStorage — fall back to defaults */ }
   return getDefaultColumns();
 }
 

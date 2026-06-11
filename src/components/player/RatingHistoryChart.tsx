@@ -139,7 +139,7 @@ export function RatingHistoryChart({
           text: `Check out my padel rating progress on PadelTrainer.ai! ${shareUrl}`,
           files: [file],
         });
-      } catch (err) {
+      } catch {
         // User cancelled
       }
     } else if (navigator.share) {
@@ -148,7 +148,7 @@ export function RatingHistoryChart({
           title: `${playerName || 'My'} Padel Rating Progress`,
           text: `Check out my padel rating progress on PadelTrainer.ai! ${shareUrl}`,
         });
-      } catch (err) {
+      } catch {
         // User cancelled
       }
     }

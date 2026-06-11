@@ -16,7 +16,6 @@ import { MyWaitingListEntries } from '@/components/waitingList';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { PlayerRebookCard } from '@/components/dashboard/PlayerRebookCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { logger } from '@/lib/logger';
 
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';

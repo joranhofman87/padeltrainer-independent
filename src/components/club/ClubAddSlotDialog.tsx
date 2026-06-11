@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus } from "lucide-react";
+import { CalendarIcon, Plus, Repeat } from "lucide-react";
 import { SlotRatingPicker } from "@/components/trainer/SlotRatingPicker";
 import { Input } from "@/components/ui/input";
 import {

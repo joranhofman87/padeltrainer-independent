@@ -116,8 +116,6 @@ test.describe('Performance Tests', () => {
       for (let i = 0; i < Math.min(count, 5); i++) {
         const img = images.nth(i);
         if (await img.isVisible()) {
-          const width = await img.getAttribute('width');
-          const height = await img.getAttribute('height');
           // Many images use CSS sizing, so we check naturalWidth
           const naturalWidth = await img.evaluate((el: HTMLImageElement) => el.naturalWidth);
           expect(naturalWidth).toBeGreaterThan(0);
@@ -129,7 +127,7 @@ test.describe('Performance Tests', () => {
       await page.goto(ROUTES.home);
       await waitForNavigation(page);
       
-      const lazyImages = page.locator('img[loading="lazy"]');
+      page.locator('img[loading="lazy"]');
       // Just verify the selector works - lazy loading is optional
     });
   });
@@ -144,7 +142,7 @@ test.describe('Performance Tests', () => {
           try {
             const body = await response.body();
             scriptSizes.push(body.length);
-          } catch (e) {
+          } catch {
             // Ignore errors from non-cacheable responses
           }
         }

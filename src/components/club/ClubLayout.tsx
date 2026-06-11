@@ -11,7 +11,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, type ClubProfile } from '@/lib/club';
 import { ClubSidebar } from '@/components/club/ClubSidebar';
 import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
-import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
 
 import { ReferralWidget } from '@/components/ReferralWidget';
@@ -83,7 +82,6 @@ export default function ClubLayout() {
   const localizePath = useLocalizedPathFn();
   const { user, loading: authLoading, profileReady } = useAuth();
   const authResolving = authLoading || (!!user && !profileReady);
-  const { toast } = useToast();
   const [clubs, setClubs] = useState<ClubWithLocation[]>([]);
   const [activeClub, setActiveClub] = useState<ClubWithLocation | null>(null);
   const [loading, setLoading] = useState(true);

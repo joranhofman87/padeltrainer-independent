@@ -62,7 +62,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
   const [cyclusSessions, setCyclusSessions] = useState(0);
   const [creatingCyclus, setCreatingCyclus] = useState(false);
 
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
 
   useEffect(() => {
     if (user) {

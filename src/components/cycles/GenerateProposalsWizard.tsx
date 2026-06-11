@@ -108,7 +108,7 @@ export function GenerateProposalsWizard({
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { /* non-fatal: corrupt or inaccessible draft — fall through to null */ }
     return null;
   }, [STORAGE_KEY]);
 
@@ -160,7 +160,7 @@ export function GenerateProposalsWizard({
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {}
+    } catch { /* non-fatal: best-effort draft persistence (storage full/unavailable) */ }
   }, [step, startDate, trainerConfigs, weights, additionalCriteria, linkStrategy, fillIncompleteGroups, maxGroupSize, STORAGE_KEY]);
 
   // Load trainers
@@ -313,7 +313,7 @@ export function GenerateProposalsWizard({
         const { data } = await supabase.from('trainer_profiles').select('timezone').eq('id', ownerId).maybeSingle();
         if ((data as any)?.timezone) tz = (data as any).timezone;
       }
-    } catch {}
+    } catch { /* non-fatal: keep browser-detected timezone fallback */ }
 
     await onGenerate({
       startDate: format(startDate, 'yyyy-MM-dd'),

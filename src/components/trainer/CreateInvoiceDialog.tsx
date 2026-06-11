@@ -15,7 +15,6 @@ import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { formatCurrency } from '@/lib/format';
 import { Loader2, Plus, Trash2, FileText, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import { nl } from 'date-fns/locale';
 
 interface LineItem {
   description: string;
@@ -207,7 +206,7 @@ export function CreateInvoiceDialog({
       if (!saveAsDraft && invoice) {
         setGenerating(true);
         try {
-          const { data: pdfData, error: pdfError } = await supabase.functions.invoke('generate-invoice', {
+          const { error: pdfError } = await supabase.functions.invoke('generate-invoice', {
             body: { invoiceId: invoice.id },
           });
           

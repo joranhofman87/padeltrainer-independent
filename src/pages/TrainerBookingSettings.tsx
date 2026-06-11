@@ -144,7 +144,7 @@ export default function TrainerBookingSettings() {
           invoices: result.invoicesUpdated,
         }),
       });
-    } catch (err: any) {
+    } catch {
       toast({
         title: t('common:error'),
         description: t('bookingSettings.vatBulkUpdateError'),

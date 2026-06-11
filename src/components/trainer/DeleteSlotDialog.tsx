@@ -42,7 +42,7 @@ export function DeleteSlotDialog({
   open,
   onOpenChange,
   slot,
-  trainerId,
+  trainerId: _trainerId,
   onSlotDeleted,
 }: DeleteSlotDialogProps) {
   const { t } = useTranslation("trainer");

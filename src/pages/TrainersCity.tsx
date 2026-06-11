@@ -64,7 +64,7 @@ export default function TrainersCity() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('rating');
   const navigate = useNavigate();
-  const { user } = useAuth();
+  useAuth(); // keep hook call: preserves context subscription + provider guard
   const { t } = useTranslation('marketing');
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
@@ -133,7 +133,6 @@ export default function TrainersCity() {
     }
 
     // Fetch all public trainers, then filter by subscription/academy
-    const now = new Date().toISOString();
     const { data: allPublicTrainers, error: trainerError } = await supabase
       .from('trainer_profiles_safe')
       .select('id, user_id, slug, experience_years, certifications, specializations, is_verified, is_public, is_active_subscription')

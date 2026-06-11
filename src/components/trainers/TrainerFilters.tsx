@@ -1,8 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
@@ -160,7 +158,7 @@ export function TrainerFilters({
   // Generate rating options based on selected system
   const ratingOptions = useMemo(() => {
     if (!selectedRatingSystem) return [];
-    const { min_rating, max_rating, lower_is_better, step } = selectedRatingSystem;
+    const { min_rating, max_rating, lower_is_better } = selectedRatingSystem;
     const options: number[] = [0]; // 0 = Any
     
     if (lower_is_better) {

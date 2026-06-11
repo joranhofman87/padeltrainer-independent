@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useTranslation } from 'react-i18next';
@@ -32,7 +32,6 @@ import {
   UserPlus,
   Download,
   Settings,
-  Sparkles,
   RotateCcw,
   Eye,
   Clock,
@@ -52,7 +51,6 @@ import {
   exportIntakeRequestsToCsv,
   updateCycle,
   createProposalSlot,
-  type Cycle,
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
 } from '@/lib/cycles';
@@ -69,9 +67,8 @@ import CycleForm from '@/components/cycles/CycleForm';
 import WaitingListTable from '@/components/waitingList/WaitingListTable';
 import PreGenerationReview from '@/components/cycles/PreGenerationReview';
 import CyclePricingCard from '@/components/cycles/CyclePricingCard';
-import { getSuggestedLinks, getLinkedIdsForRequest, getDismissedSuggestions, getUnmatchedMentions, getDismissedUnmatched } from '@/lib/suggestLinks';
+import { getSuggestedLinks, getLinkedIdsForRequest, getDismissedSuggestions } from '@/lib/suggestLinks';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { logger } from '@/lib/logger';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useCycleDetailQuery,
@@ -117,7 +114,7 @@ export default function AcademyCycleDetail() {
 
   // TanStack Query — cached data
   const { data: cycle = null, isLoading: cycleLoading } = useCycleDetailQuery(cycleId);
-  const { data: requests = [], isLoading: requestsLoading } = useCycleRequestsQuery('academy', academyId, cycleId);
+  const { data: requests = [] } = useCycleRequestsQuery('academy', academyId, cycleId);
   const { data: playerLinksData = [] } = useCyclePlayerLinksQuery(cycleId);
 
   const { invalidateAll, invalidateRequests, invalidateSlots } = useInvalidateProposalData();
@@ -201,7 +198,6 @@ export default function AcademyCycleDetail() {
 
   // Local state
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
-  const [showWizard, setShowWizard] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);

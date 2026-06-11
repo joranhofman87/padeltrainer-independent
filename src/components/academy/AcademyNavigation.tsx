@@ -9,7 +9,6 @@ import {
   Settings,
   CreditCard,
   CalendarDays,
-  FileText,
   ChevronDown,
   
 } from "lucide-react";

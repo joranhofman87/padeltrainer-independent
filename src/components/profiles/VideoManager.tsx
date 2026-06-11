@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, GripVertical, Video } from 'lucide-react';
+import { Plus, Trash2, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,7 +25,7 @@ export function VideoManager({ trainerProfileId, academyProfileId }: VideoManage
   const { t } = useTranslation('common');
   const { toast } = useToast();
   const [videos, setVideos] = useState<ProfileVideo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [newUrl, setNewUrl] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [adding, setAdding] = useState(false);

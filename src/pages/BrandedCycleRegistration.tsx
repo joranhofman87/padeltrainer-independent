@@ -38,7 +38,7 @@ interface BrandedCycleRegistrationProps {
 export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegistrationProps) {
   const { slug, cycleId } = useParams<{ slug: string; cycleId: string }>();
   const { t, i18n } = useTranslation(['cycles', 'common']);
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
 
@@ -187,7 +187,6 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
   const canApply = cycle && !isEnrollmentClosed && !hasApplied;
   const isWaitlistMode = !!(canApply && isDeadlinePassed);
 
-  const ownerTypeLabel = ownerType === 'academy' ? t('common:academy', 'Academy') : t('common:club', 'Club');
   const directoryPath = ownerType === 'academy' ? 'academies' : 'clubs';
 
   const breadcrumbs = [

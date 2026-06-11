@@ -1,4 +1,4 @@
-import { useMemo, lazy, Suspense } from 'react';
+import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Star, MapPin, CheckCircle, ArrowRight, Building2, Home, Sun } from 'lucide-react';

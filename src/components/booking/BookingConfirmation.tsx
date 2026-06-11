@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useTranslation, Trans } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Check, SendHorizontal, FileText } from 'lucide-react';

@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home, X, Map, List, Star } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home, X, Map, List } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -37,13 +36,12 @@ import { searchLocationsPage, searchLocationsAll, getLocationTrainerCounts, getU
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { FeaturedSection, FeaturedBadge, shuffleArray } from '@/components/featured/FeaturedSection';
+import { FeaturedSection, shuffleArray } from '@/components/featured/FeaturedSection';
 
 const MAX_FEATURED = 8;
 const PAGE_SIZE = 48;
 
 export default function Locations() {
-  const navigate = useNavigate();
   const { t } = useTranslation('common');
   const [locations, setLocations] = useState<LocationListItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -65,7 +63,7 @@ export default function Locations() {
   const [cityOpen, setCityOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [allMapLocations, setAllMapLocations] = useState<LocationListItem[]>([]);
-  const [mapLoading, setMapLoading] = useState(false);
+  const [, setMapLoading] = useState(false);
 
   // Debounce search input
   useEffect(() => {

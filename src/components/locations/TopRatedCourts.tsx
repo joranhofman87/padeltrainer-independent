@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Star, ArrowRight } from 'lucide-react';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useTranslation } from 'react-i18next';

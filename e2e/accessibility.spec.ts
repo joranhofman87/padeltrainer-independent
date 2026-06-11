@@ -28,7 +28,7 @@ test.describe('Accessibility Tests', () => {
       await page.keyboard.press('Tab');
       
       // Check for focus-visible styles (this is a basic check)
-      const hasFocusStyles = await page.evaluate(() => {
+      await page.evaluate(() => {
         const el = document.activeElement;
         if (!el) return false;
         const styles = window.getComputedStyle(el);

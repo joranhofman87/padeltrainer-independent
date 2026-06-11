@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
-import type { UserRole, UserProfile, TrainerProfile } from './auth';
+import type { UserRole, UserProfile } from './auth';
 
 // Mock the supabase client
 vi.mock('@/lib/supabaseClient', () => ({
@@ -42,8 +42,6 @@ import {
   getUserRoles,
   setUserRole,
   getProfile,
-  updateProfile,
-  getTrainerProfile,
   sendPasswordResetEmail,
   updatePassword,
   completeOAuthSignup,

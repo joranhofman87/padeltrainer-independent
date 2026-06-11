@@ -54,7 +54,6 @@ import {
   type EnrichedProposedAssignment,
   type PlayerLink,
   updateIntakeRequestStatus,
-  updateProposedAssignmentStatus,
   getProposedAssignmentForRequest,
   deleteIntakeRequest,
   linkPlayers,
@@ -162,7 +161,6 @@ export default function IntakeRequestDetailSheet({
   }, [linkedRequestIds, allRequests]);
 
   // Auto-suggest links from notes (using shared utility)
-  const dismissed = useMemo(() => getDismissedSuggestions(), []);
   const [dismissVersion, setDismissVersion] = useState(0);
   const suggestedLinks = useMemo(() => {
     if (!request) return [];
@@ -197,21 +195,6 @@ export default function IntakeRequestDetailSheet({
     try {
       await updateIntakeRequestStatus(request.id, newStatus);
       toast.success(`Status updated to ${newStatus}`);
-      onStatusChange?.();
-    } catch (error: any) {
-      toast.error(error.message);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleRemoveProposal = async () => {
-    if (!proposal) return;
-    setIsUpdating(true);
-    try {
-      await updateProposedAssignmentStatus(proposal.id, 'rejected');
-      toast.success(t('proposals.reassign.removed', { defaultValue: 'Proposal removed — player moved to unplaced' }));
-      setProposal(null);
       onStatusChange?.();
     } catch (error: any) {
       toast.error(error.message);
@@ -256,10 +239,6 @@ export default function IntakeRequestDetailSheet({
 
   const getDayLabel = (day: string) => {
     return t(`application.form.days.${day}`);
-  };
-
-  const formatTimeWindow = (window: { start: string; end: string }) => {
-    return `${window.start} - ${window.end}`;
   };
 
   if (!request) return null;

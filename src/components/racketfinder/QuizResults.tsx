@@ -5,7 +5,6 @@ import { ExternalLink, BookOpen, RotateCcw, Copy, Check, Trophy, Zap, Gem, Eye, 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { RacketImage } from '@/components/gear/RacketImage';
 import type { RacketResult, QuizAnswers } from '@/hooks/useRacketFinderQuery';
 import { trackEvent } from '@/lib/tracking';
 import { useState } from 'react';

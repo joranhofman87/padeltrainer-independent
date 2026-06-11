@@ -90,9 +90,6 @@ test.describe('Error Handling', () => {
       const passwordInput = page.locator('input[type="password"]');
       if (await passwordInput.isVisible()) {
         await passwordInput.fill('weak');
-        
-        // Look for password strength indicator or validation message
-        const strengthIndicator = page.locator('[class*="password"], [data-password-strength]');
       }
     });
   });

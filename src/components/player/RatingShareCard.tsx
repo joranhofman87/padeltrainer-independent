@@ -32,7 +32,7 @@ function getMilestoneBadges(improvement: number, historyMonths: number, isAtBest
 }
 
 export const RatingShareCard = forwardRef<HTMLDivElement, RatingShareCardProps>(
-  ({ playerName, history, ratingSystem, systemName, lowerIsBetter }, ref) => {
+  ({ playerName, history, ratingSystem: _ratingSystem, systemName, lowerIsBetter }, ref) => {
     if (history.length === 0) return null;
 
     const firstRating = history[0].rating;

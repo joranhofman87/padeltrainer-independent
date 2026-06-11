@@ -1,4 +1,4 @@
-import { useEffect, useCallback, Suspense } from 'react';
+import { useEffect, Suspense } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
-import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/subscription';
 import { getTrainerAcademy } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
@@ -43,10 +42,11 @@ function TrainerMobileHeader() {
 }
 
 export default function TrainerLayout() {
-  const { t } = useTranslation('trainer');
+  // Hook call kept for its side effects (i18n namespace subscription); `t` itself is unused here
+  useTranslation('trainer');
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, role, roles, loading, profileReady, subscription, refreshSubscription } = useAuth();
+  const { user, roles, loading, profileReady, subscription, refreshSubscription } = useAuth();
   const authResolving = loading || (!!user && !profileReady);
 
   // Check academy membership with caching
@@ -90,11 +90,6 @@ export default function TrainerLayout() {
 
   // Calculate subscription status
   const subscriptionLoaded = subscription !== null;
-  const hasActiveSubscription = subscription?.isSubscribed || subscription?.isInTrial || false;
-  const isTrialing = subscription?.isInTrial || false;
-  const trialDaysRemaining = subscription?.trialEndsAt 
-    ? getTrialDaysRemaining(subscription.trialEndsAt) 
-    : 0;
   const isSubscriptionExpired = subscriptionLoaded && !subscription?.isSubscribed && !subscription?.isInTrial;
   const isOnSubscriptionPage = location.pathname.endsWith('/subscription');
   const isOnTrainerOnboarding = location.pathname === '/app/onboarding/trainer';

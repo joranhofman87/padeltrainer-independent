@@ -3,11 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, CheckCircle2, CreditCard, Banknote, Calculator, Info } from 'lucide-react';
-import { formatPrice } from '@/lib/pricing';
+import { Loader2, CheckCircle2, CreditCard, Banknote, Info } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { createOptionalPhoneSchema } from '@/lib/validation';
-import { buildFullName, buildGuestPlayerDbFields, prefillProfileNameFields } from '@/lib/profileName';
+import { buildGuestPlayerDbFields, prefillProfileNameFields } from '@/lib/profileName';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import { logger } from '@/lib/logger';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
@@ -70,7 +69,6 @@ interface CycleApplicationFormProps {
   onCancel?: () => void;
 }
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 const STANDARD_LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
 const DEFAULT_DURATIONS = [30, 45, 60, 90, 120] as const;
 
@@ -313,7 +311,7 @@ export default function CycleApplicationForm({
               ownerName = prof?.full_name || undefined;
             }
           }
-        } catch {}
+        } catch { /* non-fatal: owner name lookup is best-effort for the email */ }
         // Resolve location name for the email
         let locationName: string | undefined;
         try {
@@ -322,7 +320,7 @@ export default function CycleApplicationForm({
             const { data: locData } = await supabase.from('locations').select('name').eq('id', locId).single();
             locationName = locData?.name || undefined;
           }
-        } catch {}
+        } catch { /* non-fatal: location name lookup is best-effort for the email */ }
         // Compute price lines for the email (mirrors price calculator logic)
         const emailCurrency = cycle.currency || 'EUR';
         const emailFmt = (v: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: emailCurrency }).format(v);
@@ -1023,8 +1021,6 @@ export default function CycleApplicationForm({
             const total = perLesson && effectiveWeeks ? perLesson * effectiveWeeks : null;
             priceLines.push({ label: displayLabel, perLesson, total });
           }
-
-          const hasAnyPrice = priceLines.some(l => l.perLesson != null && l.perLesson > 0);
 
           return (
             <Card className="border-muted bg-muted/30">

@@ -144,7 +144,6 @@ export const logger = {
    * Track a user action for analytics/debugging
    */
   track(action: string, context?: LogContext): void {
-    const entry = createLogEntry('info', `Action: ${action}`, { action, ...context });
     if (isDev) {
       console.log(`[TRACK] ${action}`, context);
     }

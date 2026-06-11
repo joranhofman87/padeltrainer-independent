@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -17,13 +17,10 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
-import { 
-  ArrowLeft, 
-  Calendar, 
-  Clock, 
-  User, 
-  MapPin, 
-  Euro,
+import {
+  Calendar,
+  Clock,
+  MapPin,
   CheckCircle2,
   XCircle,
   MessageSquare,
@@ -495,7 +492,7 @@ function BookingCard({
   onConfirm, 
   onCancel,
   onComplete,
-  onMarkCancelled,
+  onMarkCancelled: _onMarkCancelled,
   getStatusBadge,
   getPaymentBadge,
   showActions,

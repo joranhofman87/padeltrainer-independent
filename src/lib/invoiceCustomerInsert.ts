@@ -62,7 +62,7 @@ export type ResolveInvoiceGuestPlayerArgs = {
 export async function resolveInvoiceGuestPlayerId(
   args: ResolveInvoiceGuestPlayerArgs,
 ): Promise<string | null> {
-  const { playerLink, oneTimeMode, receiver, scope, academyProfileId, trainerId } = args;
+  const { playerLink, receiver, scope, academyProfileId, trainerId } = args;
 
   if (playerLink.guestPlayerId) {
     return playerLink.guestPlayerId;

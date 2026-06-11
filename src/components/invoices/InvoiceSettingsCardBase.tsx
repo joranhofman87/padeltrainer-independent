@@ -248,7 +248,9 @@ export function InvoiceSettingsCardBase({
     try {
       const paths = logoCleanupExtensions.map((ext) => buildLogoPath(ext));
       await supabase.storage.from('avatars').remove(paths);
-    } catch {}
+    } catch {
+      /* non-fatal: best-effort storage cleanup; logo is cleared locally regardless */
+    }
     setLogoUrl(null);
   };
 

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Locale } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { format, isPast, isFuture, parseISO, differenceInCalendarDays, addDays } from "date-fns";
+import { format, isPast, parseISO, differenceInCalendarDays, addDays } from "date-fns";
 import { nl, enUS, de, fr, es, it as itLocale } from "date-fns/locale";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -614,7 +614,7 @@ export default function TrainerScheduleOverview() {
                         const currentIds = (inv.booking_ids as string[]) || [];
                         // Find which players this invoice covers
                         const invExistingBookings = existingBookings.filter((eb) => {
-                          const ebId = allCycleBookings?.find((ab) =>
+                          const ebId = allCycleBookings?.find((_ab) =>
                             existingBookings.some((x) => (x.player_id === eb.player_id && x.guest_player_id === eb.guest_player_id))
                           )?.id;
                           return ebId && currentIds.includes(ebId);

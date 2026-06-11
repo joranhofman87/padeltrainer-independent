@@ -149,7 +149,7 @@ export default function TrainerPlayers() {
         const valid = parsed.filter((k) => ALL_COLUMNS.some((c) => c.key === k));
         if (valid.length) setVisibleColumns(valid);
       }
-    } catch {}
+    } catch { /* non-fatal: ignore corrupt/unavailable localStorage and keep defaults */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
@@ -157,7 +157,7 @@ export default function TrainerPlayers() {
     setVisibleColumns((prev) => {
       const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
       if (storageKey) {
-        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
+        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* non-fatal: persisting column prefs is best-effort */ }
       }
       return next;
     });

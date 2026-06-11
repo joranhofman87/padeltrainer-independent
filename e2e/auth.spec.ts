@@ -1,10 +1,9 @@
 import { test, expect } from '../playwright-fixture';
 import { ROUTES } from './fixtures/test-data';
-import { 
-  dismissCookieConsent, 
+import {
+  dismissCookieConsent,
   waitForNavigation,
-  generateTestEmail,
-  fillSignupForm
+  generateTestEmail
 } from './fixtures/helpers';
 
 test.describe('Authentication Flows', () => {

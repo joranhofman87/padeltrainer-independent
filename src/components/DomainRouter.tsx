@@ -96,7 +96,6 @@ const PlayerSettings = lazy(() => import('@/pages/PlayerSettings'));
 const EditProfile = lazy(() => import('@/pages/EditProfile'));
 const FollowingList = lazy(() => import('@/pages/FollowingList'));
 const NotificationSettings = lazy(() => import('@/pages/NotificationSettings'));
-const CalendarSettings = lazy(() => import('@/pages/CalendarSettings'));
 
 // Trainer pages
 const TrainerDashboard = lazy(() => import('@/pages/TrainerDashboard'));

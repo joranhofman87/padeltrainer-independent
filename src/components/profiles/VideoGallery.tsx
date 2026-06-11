@@ -21,7 +21,6 @@ export function VideoGallery({ trainerProfileId, academyProfileId }: VideoGaller
   const { t } = useTranslation('common');
   const [videos, setVideos] = useState<ProfileVideo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeVideo, setActiveVideo] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchVideos() {

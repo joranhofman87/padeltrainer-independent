@@ -90,7 +90,6 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   const [filterTrainer, setFilterTrainer] = useState('all');
   const [filterLocation, setFilterLocation] = useState('all');
   const [filterLevel, setFilterLevel] = useState('all');
-  const [filterWaitingList, setFilterWaitingList] = useState('all');
   const [filterCyclus, setFilterCyclus] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
 

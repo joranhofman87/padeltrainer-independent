@@ -39,7 +39,7 @@ export default function AdminDashboard() {
         title: t("dashboard.refreshed"),
         description: t("dashboard.refreshedDesc"),
       });
-    } catch (error) {
+    } catch {
       toast({
         title: t("dashboard.refreshError"),
         description: t("dashboard.refreshError"),

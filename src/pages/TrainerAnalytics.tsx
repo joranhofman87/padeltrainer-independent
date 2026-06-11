@@ -26,7 +26,7 @@ interface RatingTrend {
 }
 
 export default function TrainerAnalytics() {
-  const { user, profile, role, loading } = useAuth();
+  const { user, role, loading } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('trainer');
   const [trainerId, setTrainerId] = useState<string | null>(null);
@@ -86,12 +86,10 @@ export default function TrainerAnalytics() {
     const months = eachMonthOfInterval({ start: startOfMonth(sixMonthsAgo), end: endOfMonth(now) });
 
     // Fetch all bookings for this trainer
-    const { data: slots } = await supabase
+    await supabase
       .from('availability_slots')
       .select('id')
       .eq('trainer_id', trainerId);
-
-    const slotIds = slots?.map(s => s.id) || [];
 
     const { data: bookings } = await supabase
       .from('bookings')

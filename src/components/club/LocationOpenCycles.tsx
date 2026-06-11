@@ -18,7 +18,7 @@ interface LocationOpenCyclesProps {
   clubSlug?: string;
 }
 
-export function LocationOpenCycles({ locationId, locationName, clubSlug }: LocationOpenCyclesProps) {
+export function LocationOpenCycles({ locationId, locationName: _locationName, clubSlug }: LocationOpenCyclesProps) {
   const { t, i18n } = useTranslation(['cycles', 'common']);
   const { user } = useAuth();
   const navigate = useNavigate();

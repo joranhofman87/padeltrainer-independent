@@ -460,8 +460,8 @@ function DayView({
   onToggleMarkedFull,
   onNavigatePrevious,
   onNavigateNext,
-  showTrainerInfo,
-  onSlotClick,
+  showTrainerInfo: _showTrainerInfo,
+  onSlotClick: _onSlotClick,
 }: DayViewProps) {
   const { t, i18n } = useTranslation("trainer");
   const dfLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split('-')[0]] || enUS;
@@ -596,7 +596,7 @@ interface MonthViewProps {
 }
 
 function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onDeleteSlot, onEditBooking, onToggleMarkedFull, showTrainerInfo, onSlotClick }: MonthViewProps) {
-  const { t, i18n } = useTranslation("trainer");
+  const { i18n } = useTranslation("trainer");
   const dfLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split('-')[0]] || enUS;
 
   const monthDays = useMemo(() => {

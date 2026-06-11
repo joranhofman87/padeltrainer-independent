@@ -51,7 +51,6 @@ import {
   ShieldCheck,
   Star,
   Tags,
-  FileCheck,
   PanelLeftClose,
   PanelLeft,
   Mail,

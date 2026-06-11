@@ -16,7 +16,7 @@ interface PlayerAttendanceFormProps {
   onSaved?: () => void;
 }
 
-export function PlayerAttendanceForm({ slotId, bookingId, onSaved }: PlayerAttendanceFormProps) {
+export function PlayerAttendanceForm({ slotId, bookingId: _bookingId, onSaved }: PlayerAttendanceFormProps) {
   const { t } = useTranslation('player');
   const { profile } = useAuth();
   const { toast } = useToast();

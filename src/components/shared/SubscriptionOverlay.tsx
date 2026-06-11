@@ -17,7 +17,7 @@ export interface SubscriptionOverlayProps {
 }
 
 export function SubscriptionOverlay({
-  roleName,
+  roleName: _roleName,
   subscriptionPath,
   pricing,
   features,

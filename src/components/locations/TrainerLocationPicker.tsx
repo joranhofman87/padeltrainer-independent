@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Check, ChevronsUpDown, MapPin, X, Building2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { logger } from '@/lib/logger';
 import {
   Command,
@@ -216,7 +215,6 @@ export function TrainerLocationPicker({
                 <CommandGroup key={city} heading={city}>
                   {cityLocations.map(location => {
                     const isSelected = selectedLocationIds.includes(location.id);
-                    const selection = selectedLocations.find(s => s.locationId === location.id);
                     const canSelect = !maxSelections || selectedLocations.length < maxSelections || isSelected;
 
                     return (
@@ -273,7 +271,7 @@ export function TrainerLocationPicker({
           </div>
 
           <div className="space-y-2">
-            {selectedLocationDetails.map(({ locationId, isPrimary, relationshipType, location }) => (
+            {selectedLocationDetails.map(({ locationId, isPrimary: _isPrimary, relationshipType, location }) => (
               <div
                 key={locationId}
                 className="flex items-center gap-3 p-3 rounded-lg border"

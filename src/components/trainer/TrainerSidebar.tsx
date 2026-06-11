@@ -41,11 +41,8 @@ import {
   LayoutDashboard,
   Users,
   User,
-  FileText,
   Calendar,
-  Clock,
   CalendarDays,
-  Building2,
   Settings,
   CreditCard,
   ChevronRight,
@@ -84,9 +81,6 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
   const [hasAcademy, setHasAcademy] = useState<boolean>(false);
 
   // Track which groups are open
-  const [playersOpen, setPlayersOpen] = useState(
-    location.pathname.startsWith("/app/trainer/players")
-  );
   const [scheduleOpen, setScheduleOpen] = useState(
     location.pathname.startsWith("/app/trainer/calendar") ||
     location.pathname.startsWith("/app/trainer/open-slots") ||

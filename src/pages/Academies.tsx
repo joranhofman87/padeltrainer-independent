@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { buildBreadcrumbList } from '@/lib/structuredData';
 import { useTranslation } from 'react-i18next';
-import { Building2, MapPin, Users, Search, CheckCircle, Star } from 'lucide-react';
+import { Building2, Search, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import { SEO } from '@/components/SEO';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getPublicAcademies, type AcademyProfile } from '@/lib/academy';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { FeaturedSection, FeaturedBadge, shuffleArray } from '@/components/featured/FeaturedSection';
+import { FeaturedSection, shuffleArray } from '@/components/featured/FeaturedSection';
 import { logger } from '@/lib/logger';
 
 const MAX_FEATURED = 8;

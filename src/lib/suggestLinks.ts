@@ -15,7 +15,7 @@ export function getDismissedSuggestions(): Set<string> {
       const arr = JSON.parse(stored) as string[];
       return new Set(arr);
     }
-  } catch {}
+  } catch { /* non-fatal: corrupt/unavailable localStorage — fall back to empty set */ }
   return new Set();
 }
 
@@ -101,7 +101,7 @@ export function getDismissedUnmatched(): Set<string> {
     if (stored) {
       return new Set(JSON.parse(stored) as string[]);
     }
-  } catch {}
+  } catch { /* non-fatal: corrupt/unavailable localStorage — fall back to empty set */ }
   return new Set();
 }
 

@@ -57,7 +57,7 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
         description: `${formData.name} has been updated successfully.`,
       });
       onOpenChange(false);
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to update plan.",

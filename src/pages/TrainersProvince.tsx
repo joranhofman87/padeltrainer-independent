@@ -8,7 +8,7 @@ import { ChevronRight, MapPin, Users, Globe } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
-import { getProvinceBySlug, PROVINCES, type Province } from '@/lib/provinces';
+import { getProvinceBySlug, PROVINCES } from '@/lib/provinces';
 import { getCitiesWithTrainers, type CityWithTrainerCount } from '@/lib/cities';
 import { SeoFaq } from '@/components/seo/SeoFaq';
 import { regionFaqs } from '@/lib/seoFaqs';

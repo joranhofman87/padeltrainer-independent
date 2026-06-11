@@ -5,7 +5,6 @@ import {
   FileText,
   User,
   Users,
-  Gamepad2,
 } from 'lucide-react';
 
 export type PlayerNavItemId =

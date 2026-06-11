@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import {
   Lock, MapPin, Users, Calendar, Pencil, Trash2, UserPlus,
-  DollarSign, X, Loader2,
+  DollarSign, Loader2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';

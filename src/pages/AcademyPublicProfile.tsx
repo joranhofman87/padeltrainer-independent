@@ -1,41 +1,27 @@
 import { buildDynamicOgUrl } from '@/lib/dynamicOgImage';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { 
-  MapPin, Users, Star, ExternalLink, Calendar, Share2, Copy, Check, 
-  MessageCircle, CheckCircle
+import {
+  MapPin, Users, Star, CheckCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { SEO } from '@/components/SEO';
-import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import {
   ProfileLayout,
-  ProfileContentGrid,
-  ProfileMainColumn,
-  ProfileSidebarColumn,
   ProfileFullWidthSection,
   ProfileHeroCard,
-  VideoGallery,
 } from '@/components/profiles';
-import { 
-  getAcademyBySlug, 
-  getPublicAcademyTrainers, 
+import {
+  getAcademyBySlug,
+  getPublicAcademyTrainers,
   getPublicAcademyLocations,
-  recordAcademyProfileView,
-  type AcademyProfile 
+  recordAcademyProfileView
 } from '@/lib/academy';
 import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
 import { getActiveCycles } from '@/lib/cycles';
@@ -48,7 +34,6 @@ import { academyFaqs } from '@/lib/seoFaqs';
 import { useAuth } from '@/hooks/useAuth';
 import { getMarketingUrl, MARKETING_DOMAIN } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
-import { logger } from '@/lib/logger';
 
 interface TrainerData {
   id: string;
@@ -93,8 +78,6 @@ export default function AcademyPublicProfile() {
   const { user } = useAuth();
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
-
-  const [copied, setCopied] = useState(false);
 
   const profileUrl = getMarketingUrl(`academies/${slug}`, currentLang);
 
@@ -150,22 +133,6 @@ export default function AcademyPublicProfile() {
       navigate(localizePath('/academies'));
     }
   }, [academyLoading, academy, slug]);
-
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(profileUrl);
-      setCopied(true);
-      toast.success(t('common:linkCopied', 'Link copied!'));
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      toast.error('Failed to copy link');
-    }
-  };
-
-  const handleShareWhatsApp = () => {
-    const message = encodeURIComponent(`${academy?.name} - ${profileUrl}`);
-    window.open(`https://wa.me/?text=${message}`, '_blank');
-  };
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return 'A';

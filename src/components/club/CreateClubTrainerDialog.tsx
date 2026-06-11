@@ -50,7 +50,7 @@ export function CreateClubTrainerDialog({
     setResult(null);
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
+      await supabase.auth.getSession();
       const response = await supabase.functions.invoke('create-club-trainer', {
         body: { email, fullName, phone, clubProfileId, locationId },
       });

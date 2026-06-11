@@ -48,7 +48,7 @@ import { useQuery } from '@tanstack/react-query';
 
 export default function TrainerIntakeRequests() {
   const { t } = useTranslation('cycles');
-  const { user, role, loading } = useAuth();
+  const { user, loading } = useAuth();
   
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -73,11 +73,6 @@ export default function TrainerIntakeRequests() {
   const statusFilter = searchParams.get('status') || 'all';
   const viewMode = searchParams.get('view') || 'list';
 
-  const setSelectedCycleId = (value: string) => {
-    const params = new URLSearchParams(searchParams);
-    if (value === 'all') params.delete('cycle'); else params.set('cycle', value);
-    setSearchParams(params, { replace: true });
-  };
   const setStatusFilter = (value: string) => {
     const params = new URLSearchParams(searchParams);
     if (value === 'all') params.delete('status'); else params.set('status', value);
@@ -91,7 +86,7 @@ export default function TrainerIntakeRequests() {
 
   // TanStack Query — cached
   const { data: cycles = [], isLoading: cyclesLoading } = useCyclesQuery('trainer', trainerId);
-  const { data: requests = [], isLoading: requestsLoading } = useIntakeRequestsQuery('trainer', trainerId);
+  const { data: requests = [] } = useIntakeRequestsQuery('trainer', trainerId);
   const cycleIds = useMemo(() => cycles.map(c => c.id), [cycles]);
   const { data: playerLinksData = [] } = usePlayerLinksQuery(cycleIds);
 
@@ -203,10 +198,6 @@ export default function TrainerIntakeRequests() {
 
   const refreshData = () => {
     if (trainerId) invalidateRequests('trainer', trainerId);
-  };
-
-  const handleCycleChange = (value: string) => {
-    setSelectedCycleId(value);
   };
 
   const handleGenerateProposals = async (config: GenerateProposalsConfig) => {
