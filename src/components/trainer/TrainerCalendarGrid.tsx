@@ -362,6 +362,7 @@ function MobileDayView({
         {weekDays.map((day) => (
           <button
             key={day.toISOString()}
+            aria-label={`Select ${format(day, "EEEE d MMMM", { locale: dfLocale })}`}
             onClick={() => onDateChange(day)}
             className={cn(
               "flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-lg transition-colors",

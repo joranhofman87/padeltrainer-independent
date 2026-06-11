@@ -61,7 +61,7 @@ export function UpcomingTournaments({ clubProfileId }: UpcomingTournamentsProps)
               )}
             </div>
             {tournament.registration_url && (
-              <Button variant="outline" size="sm" asChild className="shrink-0">
+              <Button variant="outline" size="sm" asChild className="shrink-0" aria-label={t('locations.register')}>
                 <a href={tournament.registration_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4 mr-2" />
                   {t('locations.register')}

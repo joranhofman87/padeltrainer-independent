@@ -657,7 +657,7 @@ export default function AcademyInvoices() {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="ghost">
+          <Button size="sm" variant="ghost" aria-label={t("invoices.shareActions", "Share invoice")}>
             <Share2 className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>

@@ -844,7 +844,7 @@ export default function AcademyCalendar() {
           </Button>
           <h1 className="text-xl font-display font-semibold">{t("calendar.title", "Agenda")}</h1>
           <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" className="h-9 gap-1.5" onClick={() => navigate("/app/academy/slot/new")}>
+            <Button size="sm" className="h-9 gap-1.5" aria-label={t("calendar.new", "New session")} onClick={() => navigate("/app/academy/slot/new")}>
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.new", "New session")}</span>
               <span className="sm:hidden">{t("calendar.new", "New")}</span>

@@ -109,6 +109,7 @@ export function CertificationsPicker({
                 <button
                   type="button"
                   onClick={() => removeCertification(certName)}
+                  aria-label={`Remove ${certName}`}
                   className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5"
                   disabled={disabled}
                 >

@@ -176,6 +176,7 @@ function TrainerDayBlock({
         {/* Header — always visible */}
         <CollapsibleTrigger asChild>
           <button
+            aria-label={t('calendar.overview.toggleTrainerSlots', 'Toggle slots for {{name}}', { name: firstName })}
             className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-accent/50 rounded-t-lg transition-colors"
             onClick={(e) => {
               // Allow collapsible toggle; double-click navigates
@@ -205,6 +206,7 @@ function TrainerDayBlock({
               return (
                 <button
                   key={slot.id}
+                  aria-label={t('calendar.overview.viewSlot', 'View session at {{time}}', { time: format(parseISO(slot.start_time), 'HH:mm') })}
                   className="w-full flex items-center justify-between gap-1 py-0.5 text-left hover:bg-accent/30 rounded px-1 transition-colors"
                   onClick={() => onSlotClick?.(slot.id)}
                 >
@@ -363,6 +365,7 @@ export default function AcademyCalendarOverview({
                     <div key={dayKey} className="min-w-0">
                       {/* Day header */}
                       <button
+                        aria-label={t('calendar.overview.viewDay', 'View {{date}}', { date: format(day, 'EEEE d MMMM', { locale: dateFnsLocale }) })}
                         onClick={() => onDayClick?.(day)}
                         className={cn(
                           'w-full text-center py-2 rounded-lg transition-colors hover:bg-accent mb-1.5',

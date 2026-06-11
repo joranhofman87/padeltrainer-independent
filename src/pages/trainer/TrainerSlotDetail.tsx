@@ -367,7 +367,7 @@ export default function TrainerSlotDetail() {
 
       <main className="container mx-auto px-4 py-6">
         <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
-          <Button variant="outline" className="gap-1.5 text-destructive hover:text-destructive" onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}>
+          <Button variant="outline" aria-label={t('calendar.deleteSlot', 'Sessie verwijderen')} className="gap-1.5 text-destructive hover:text-destructive" onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>

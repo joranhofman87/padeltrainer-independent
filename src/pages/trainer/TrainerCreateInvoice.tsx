@@ -318,7 +318,7 @@ export default function TrainerCreateInvoice() {
                     <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                   </div>
                   <div className="text-right text-sm font-medium py-2">€{(li.quantity * li.unit_price).toFixed(2)}</div>
-                  <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t('invoiceForm.lineItems.removeRow', 'Remove row')} onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                     <Trash2 className="h-3 w-3 text-muted-foreground" />
                   </Button>
                 </div>
@@ -330,7 +330,7 @@ export default function TrainerCreateInvoice() {
                 <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/30">
                   <div className="flex items-center gap-2">
                     <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder={t('invoiceForm.lineItems.descriptionPlaceholder')} className="text-sm flex-1" />
-                    <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" aria-label={t('invoiceForm.lineItems.removeRow', 'Remove row')} onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                       <Trash2 className="h-3 w-3 text-muted-foreground" />
                     </Button>
                   </div>

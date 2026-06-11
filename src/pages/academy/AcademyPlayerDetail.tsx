@@ -507,7 +507,7 @@ export default function AcademyPlayerDetail() {
           </div>
           {playerId && (
             <div className="shrink-0 md:self-start">
-              <Button asChild data-testid="academy-player-create-invoice">
+              <Button asChild data-testid="academy-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
                 <Link to={getAcademyCreateInvoiceUrl(playerId)}>
                   <FileText className="h-4 w-4 mr-2" />
                   {t('players.detail.createInvoice', 'Create invoice')}

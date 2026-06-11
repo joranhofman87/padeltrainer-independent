@@ -672,16 +672,16 @@ export default function AcademyPlayers() {
         countLabel={{ one: 'player', other: 'players' }}
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)}>
+            <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)} aria-label={tTrainer('players.tags.manageButton', 'Tags')}>
               <Tags className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)}>
+            <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)} aria-label={tTrainer('players.import.button', 'Import')}>
               <Upload className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
               <span className="sm:hidden">Import</span>
             </Button>
-            <Button size="sm" onClick={() => setShowAddPlayer(true)}>
+            <Button size="sm" onClick={() => setShowAddPlayer(true)} aria-label={tTrainer('players.addPlayer', 'Add Player')}>
               <UserPlus className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.addPlayer')}</span>
               <span className="sm:hidden">Add</span>

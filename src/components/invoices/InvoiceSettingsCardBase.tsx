@@ -776,6 +776,7 @@ export function InvoiceSettingsCardBase({
                   {email}
                   <button
                     type="button"
+                    aria-label="Remove"
                     onClick={() =>
                       setForwardEmails(forwardEmails.filter((_, idx) => idx !== i))
                     }

@@ -122,7 +122,7 @@ export function SlotLocationPicker({
 
   if (locations.length === 0) {
     return (
-      <Button variant="outline" disabled className={cn("w-full justify-start", compact && "h-8")}>
+      <Button variant="outline" disabled aria-label={t("calendar.noLocations", "No locations configured")} className={cn("w-full justify-start", compact && "h-8")}>
         <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
         <span className="text-muted-foreground">
           {t("calendar.noLocations", "No locations configured")}
@@ -139,6 +139,7 @@ export function SlotLocationPicker({
             variant="outline"
             role="combobox"
             aria-expanded={open}
+            aria-label={t("calendar.selectLocation", "Select location")}
             disabled={disabled}
             className={cn(
               "w-full justify-between",
@@ -191,6 +192,7 @@ export function SlotLocationPicker({
           <button
             type="button"
             onClick={clearSelection}
+            aria-label={t("calendar.clearLocation", "Remove location")}
             className="ml-1 rounded-full hover:bg-muted-foreground/20"
             disabled={disabled}
           >

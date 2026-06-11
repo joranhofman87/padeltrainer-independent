@@ -100,7 +100,7 @@ export default function PressKit() {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs text-muted-foreground">{a.type}</span>
-                    <Button asChild size="sm" variant="outline">
+                    <Button asChild size="sm" variant="outline" aria-label="Download">
                       <a href={a.file} download>
                         <Download className="h-3.5 w-3.5 mr-1.5" /> Download
                       </a>
@@ -149,10 +149,10 @@ export default function PressKit() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button asChild variant="outline">
+                <Button asChild variant="outline" aria-label="Email press team">
                   <a href="mailto:press@padeltrainer.ai">Email press team</a>
                 </Button>
-                <Button asChild>
+                <Button asChild aria-label="Learn more">
                   <LocalizedLink to="/about">
                     <Globe className="h-4 w-4 mr-2" /> Learn more
                   </LocalizedLink>

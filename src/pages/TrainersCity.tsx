@@ -380,10 +380,10 @@ export default function TrainersCity() {
             <CardContent>
               <p className="text-muted-foreground mb-4">{t('cityPage.noTrainersFound', { city: displayCity })}</p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Button variant="outline" asChild>
+                <Button variant="outline" asChild aria-label={t('cityPage.viewAllTrainers')}>
                   <LocalizedLink to="/trainers">{t('cityPage.viewAllTrainers')}</LocalizedLink>
                 </Button>
-                <Button asChild>
+                <Button asChild aria-label={t('cityPage.becomeTrainer')}>
                   <Link to="/app/signup/trainer">{t('cityPage.becomeTrainer')}</Link>
                 </Button>
               </div>

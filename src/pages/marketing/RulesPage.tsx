@@ -88,7 +88,7 @@ export default function RulesPage() {
     return (
       <MarketingLayout>
         <div className="container mx-auto px-4 pt-8">
-          <Button variant="ghost" asChild>
+          <Button variant="ghost" asChild aria-label={t('rules.backToRules', 'Back to Rules')}>
             <LocalizedLink to="/padel-rules" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               {t('rules.backToRules', 'Back to Rules')}
@@ -106,7 +106,7 @@ export default function RulesPage() {
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">{t('rules.notFound', 'Rule not found')}</h1>
           <p className="text-muted-foreground mb-6">{t('rules.notFoundDescription', 'This rules page could not be found.')}</p>
-          <Button asChild>
+          <Button asChild aria-label={t('rules.backToRules', 'Back to Rules')}>
             <LocalizedLink to="/padel-rules">{t('rules.backToRules', 'Back to Rules')}</LocalizedLink>
           </Button>
         </div>
@@ -165,7 +165,7 @@ export default function RulesPage() {
 
       {/* Back Button */}
       <div className="container mx-auto px-4 pt-8">
-        <Button variant="ghost" asChild>
+        <Button variant="ghost" asChild aria-label={t('rules.backToRules', 'Back to Rules')}>
           <LocalizedLink to="/padel-rules" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             {t('rules.backToRules', 'Back to Rules')}
@@ -318,7 +318,7 @@ export default function RulesPage() {
             {article.cta?.label || t('rules.ctaTitle', 'Ready to play by the rules?')}
           </h3>
           <p className="text-muted-foreground mb-4">{t('rules.ctaDescription', 'Find a certified padel trainer near you.')}</p>
-          <Button asChild>
+          <Button asChild aria-label={t('blog.findTrainers', 'Find Trainers')}>
             <LocalizedLink to={article.cta?.url || '/trainers'}>
               {t('blog.findTrainers', 'Find Trainers')} <ArrowRight className="h-4 w-4 ml-2" />
             </LocalizedLink>

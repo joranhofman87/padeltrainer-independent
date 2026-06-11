@@ -42,6 +42,7 @@ export function LevelQuizQuestion({
           <button
             key={i}
             onClick={() => onSelect(i)}
+            aria-label={`${optionLetters[i]}: ${option.text}`}
             className={cn(
               'w-full text-left p-4 rounded-lg border-2 transition-all duration-150',
               'hover:border-primary/50 hover:shadow-sm',

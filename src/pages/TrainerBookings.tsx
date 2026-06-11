@@ -435,6 +435,7 @@ export default function TrainerBookings() {
                   className="w-full justify-start gap-3 h-auto py-3"
                   onClick={handleCancelAndClose}
                   disabled={isCancelling}
+                  aria-label={t('manageBookings.cancelAndClose')}
                 >
                   <XCircle className="h-5 w-5 text-destructive" />
                    <div className="text-left">
@@ -450,6 +451,7 @@ export default function TrainerBookings() {
                   className="w-full justify-start gap-3 h-auto py-3 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
                   onClick={handleCancelAndReopen}
                   disabled={isCancelling}
+                  aria-label={t('manageBookings.cancelAndReopen')}
                 >
                   <RefreshCw className="h-5 w-5 text-green-600" />
                    <div className="text-left">

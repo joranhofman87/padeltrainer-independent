@@ -93,7 +93,7 @@ export default function StrokePage() {
     return (
       <MarketingLayout>
         <div className="container mx-auto px-4 pt-8">
-          <Button variant="ghost" asChild>
+          <Button variant="ghost" asChild aria-label={t('strokes.backToStrokes', 'Back to Strokes')}>
             <LocalizedLink to="/padel-strokes" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" /> Back to Strokes
             </LocalizedLink>
@@ -114,7 +114,7 @@ export default function StrokePage() {
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">Stroke not found</h1>
           <p className="text-muted-foreground mb-6">This stroke page could not be found.</p>
-          <Button asChild>
+          <Button asChild aria-label={t('strokes.backToStrokes', 'Back to Strokes')}>
             <LocalizedLink to="/padel-strokes">Back to Strokes</LocalizedLink>
           </Button>
         </div>
@@ -185,7 +185,7 @@ export default function StrokePage() {
       />
 
       <div className="container mx-auto px-4 pt-8">
-        <Button variant="ghost" asChild>
+        <Button variant="ghost" asChild aria-label={t('strokes.backToStrokes', 'Back to Strokes')}>
           <LocalizedLink to="/padel-strokes" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" /> Back to Strokes
           </LocalizedLink>

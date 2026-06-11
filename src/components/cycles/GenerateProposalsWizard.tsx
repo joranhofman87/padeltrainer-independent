@@ -348,6 +348,7 @@ export function GenerateProposalsWizard({
             return (
               <button
                 key={idx}
+                aria-label={label}
                 onClick={() => {
                   if (isCompleted || isActive) setStep(stepNum);
                 }}

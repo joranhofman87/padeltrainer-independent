@@ -338,7 +338,7 @@ function LocationCard({
           )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm">
+              <Button variant="destructive" size="sm" aria-label={t('locations.remove')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </AlertDialogTrigger>

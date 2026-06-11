@@ -83,7 +83,7 @@ export default function VideoTipPage() {
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">Video not found</h1>
           <p className="text-muted-foreground mb-6">This video could not be found.</p>
-          <Button asChild>
+          <Button asChild aria-label="Browse Strokes">
             <LocalizedLink to="/padel-strokes">Browse Strokes</LocalizedLink>
           </Button>
         </div>
@@ -177,7 +177,7 @@ export default function VideoTipPage() {
           })()}
 
           {video.videoUrl && (
-            <Button variant="outline" className="mb-6" asChild>
+            <Button variant="outline" className="mb-6" asChild aria-label={`Watch on ${video.platform || 'external site'}`}>
               <a href={video.videoUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Watch on {video.platform || 'external site'}
@@ -217,7 +217,7 @@ export default function VideoTipPage() {
               <h2 className="text-xl font-bold mb-3">Related Strokes</h2>
               <div className="flex flex-wrap gap-2">
                 {video.strokes.map(s => (
-                  <Button key={s._id} variant="outline" size="sm" asChild>
+                  <Button key={s._id} variant="outline" size="sm" asChild aria-label={s.title}>
                     <LocalizedLink to={`/padel-strokes/${s.slug}`}>{s.title}</LocalizedLink>
                   </Button>
                 ))}

@@ -169,7 +169,7 @@ export default function LearningArticlePage() {
     return (
       <MarketingLayout>
         <div className="container mx-auto px-4 pt-8">
-          <Button variant="ghost" asChild>
+          <Button variant="ghost" asChild aria-label={t('learn.backToLearn', 'Back to Learn')}>
             <LocalizedLink to="/learn" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               {t('learn.backToLearn', 'Back to Learn')}
@@ -187,7 +187,7 @@ export default function LearningArticlePage() {
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">{t('learn.notFound', 'Article not found')}</h1>
           <p className="text-muted-foreground mb-6">{t('learn.notFoundDesc', 'This article could not be found.')}</p>
-          <Button asChild>
+          <Button asChild aria-label={t('learn.backToLearn', 'Back to Learn')}>
             <LocalizedLink to="/learn">{t('learn.backToLearn', 'Back to Learn')}</LocalizedLink>
           </Button>
         </div>
@@ -235,7 +235,7 @@ export default function LearningArticlePage() {
 
       {/* Back Button */}
       <div className="container mx-auto px-4 pt-8">
-        <Button variant="ghost" asChild>
+        <Button variant="ghost" asChild aria-label={parentHub ? parentHub.h1 : t('learn.backToLearn', 'Back to Learn')}>
           <LocalizedLink
             to={parentHub ? `/learn/${parentHub.slug}` : '/learn'}
             className="flex items-center gap-2"

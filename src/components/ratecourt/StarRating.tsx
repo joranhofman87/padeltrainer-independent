@@ -18,6 +18,7 @@ export function StarRating({ value, onChange, readOnly = false, size = 'md' }: S
           key={star}
           type="button"
           disabled={readOnly}
+          aria-label={`Rate ${star} star${star === 1 ? '' : 's'}`}
           onClick={() => onChange?.(star)}
           className={cn(
             'transition-colors',

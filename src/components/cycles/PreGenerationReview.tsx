@@ -215,6 +215,7 @@ export default function PreGenerationReview({
                       variant="ghost"
                       className="h-7 w-7 p-0"
                       onClick={() => handleDismissSuggestion(item)}
+                      aria-label={t('suggestions.dismiss', { defaultValue: 'Dismiss suggestion' })}
                     >
                       <X className="h-3.5 w-3.5" />
                     </Button>
@@ -260,6 +261,7 @@ export default function PreGenerationReview({
                   variant="ghost"
                   className="h-7 w-7 p-0 shrink-0"
                   onClick={() => handleDismissUnmatched(item)}
+                  aria-label={t('preReview.dismissUnmatched', { defaultValue: 'Dismiss unmatched mention' })}
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>

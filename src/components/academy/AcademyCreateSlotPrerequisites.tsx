@@ -27,7 +27,7 @@ function PrerequisiteCard({
         <AlertTitle>{t("createSlot.noTrainerTitle")}</AlertTitle>
         <AlertDescription className="space-y-3">
           <p>{t("createSlot.noTrainerDescription")}</p>
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" size="sm" asChild aria-label={t("createSlot.addTrainerCta")}>
             <Link to="/app/academy/trainers">{t("createSlot.addTrainerCta")}</Link>
           </Button>
         </AlertDescription>
@@ -41,7 +41,7 @@ function PrerequisiteCard({
       <AlertTitle>{t("createSlot.noLocationTitle")}</AlertTitle>
       <AlertDescription className="space-y-3">
         <p>{t("createSlot.noLocationDescription")}</p>
-        <Button variant="outline" size="sm" asChild>
+        <Button variant="outline" size="sm" asChild aria-label={t("createSlot.addLocationCta")}>
           <Link to="/app/academy/locations">{t("createSlot.addLocationCta")}</Link>
         </Button>
       </AlertDescription>

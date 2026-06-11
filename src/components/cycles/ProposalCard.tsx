@@ -163,7 +163,7 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
           {proposal.rationale && proposal.rationale.length > 0 && !isManualOverride && (
             <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
               <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="w-full justify-between">
+                <Button variant="ghost" size="sm" className="w-full justify-between" aria-label={t('proposals.card.rationale')}>
                   <span className="flex items-center gap-2">
                     <Target className="h-4 w-4" />
                     {t('proposals.card.rationale')}

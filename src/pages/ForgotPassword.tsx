@@ -54,7 +54,7 @@ export default function ForgotPassword() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild className="w-full">
+            <Button asChild className="w-full" aria-label={t('forgotPassword.backToLogin', 'Back to login')}>
               <Link to="/app/auth">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 {t('forgotPassword.backToLogin', 'Back to login')}

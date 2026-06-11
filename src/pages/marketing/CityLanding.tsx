@@ -316,10 +316,10 @@ export default function CityLanding() {
             {heroSubtitle}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button size="lg" asChild>
+            <Button size="lg" asChild aria-label={t('cityLanding.findCourt')}>
               <a href="#clubs">{t('cityLanding.findCourt')}</a>
             </Button>
-            <Button size="lg" variant="outline" asChild>
+            <Button size="lg" variant="outline" asChild aria-label={t('cityLanding.bookCoach')}>
               <a href="#trainers">{t('cityLanding.bookCoach')}</a>
             </Button>
           </div>
@@ -457,7 +457,7 @@ export default function CityLanding() {
                 ))}
               </div>
               <div className="mt-6 text-center">
-                <Button variant="outline" asChild>
+                <Button variant="outline" asChild aria-label={t('cityLanding.viewAllTrainers', { city: displayCity })}>
                   <LocalizedLink to={`/trainers/${city}`}>
                     {t('cityLanding.viewAllTrainers', { city: displayCity })}
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -470,7 +470,7 @@ export default function CityLanding() {
               <p className="text-muted-foreground mb-4">
                 {t('cityLanding.noTrainersMessage', { city: displayCity })}
               </p>
-              <Button asChild>
+              <Button asChild aria-label={t('cityLanding.becomeTrainer')}>
                 <LocalizedLink to="/for-trainers">
                   {t('cityLanding.becomeTrainer')}
                   <ArrowRight className="ml-2 h-4 w-4" />
@@ -488,7 +488,7 @@ export default function CityLanding() {
             {t('cityLanding.lessonsHeading', { city: displayCity })}
           </h2>
           <p className="text-base leading-relaxed text-muted-foreground mb-8">{lessonsText}</p>
-          <Button size="lg" asChild>
+          <Button size="lg" asChild aria-label={t('cityLanding.startTrial')}>
             <LocalizedLink to="/pricing">
               {t('cityLanding.startTrial')}
               <ArrowRight className="ml-2 h-4 w-4" />

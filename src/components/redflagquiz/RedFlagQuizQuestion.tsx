@@ -55,6 +55,7 @@ export function RedFlagQuizQuestion({ question, questionIndex, total, onAnswer }
           <button
             key={idx}
             onClick={() => handleSelect(idx)}
+            aria-label={t(option.textKey)}
             className={`text-left p-4 rounded-xl border-2 transition-all duration-200 ${
               selected === idx
                 ? 'border-primary bg-primary/10 scale-[1.02]'

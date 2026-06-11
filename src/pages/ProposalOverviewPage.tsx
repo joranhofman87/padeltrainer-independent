@@ -549,6 +549,7 @@ export default function ProposalOverviewPage() {
                     <button
                       onClick={() => handleRemoveHoliday(d)}
                       className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                      aria-label={t('overview.removeHolidayDate', { defaultValue: 'Remove holiday date' })}
                     >
                       <X className="h-3 w-3" />
                     </button>

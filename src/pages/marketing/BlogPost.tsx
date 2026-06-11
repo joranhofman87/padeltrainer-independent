@@ -85,7 +85,7 @@ export default function BlogPost() {
     return (
       <MarketingLayout>
         <div className="container mx-auto px-4 pt-8">
-          <Button variant="ghost" asChild>
+          <Button variant="ghost" asChild aria-label={t('blog.backToBlog')}>
             <LocalizedLink to="/blog" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               {t('blog.backToBlog')}
@@ -103,7 +103,7 @@ export default function BlogPost() {
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">{t('blog.notFound.title')}</h1>
           <p className="text-muted-foreground mb-6">{t('blog.notFound.description')}</p>
-          <Button asChild>
+          <Button asChild aria-label={t('blog.notFound.backToBlog')}>
             <LocalizedLink to="/blog">{t('blog.notFound.backToBlog')}</LocalizedLink>
           </Button>
         </div>
@@ -201,7 +201,7 @@ export default function BlogPost() {
 
         {/* Back Button */}
         <div className="container mx-auto px-4 pt-8">
-          <Button variant="ghost" asChild>
+          <Button variant="ghost" asChild aria-label={t('blog.backToBlog')}>
             <LocalizedLink to="/blog" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               {t('blog.backToBlog')}
@@ -275,7 +275,7 @@ export default function BlogPost() {
 
       {/* Back Button */}
       <div className="container mx-auto px-4 pt-8">
-        <Button variant="ghost" asChild>
+        <Button variant="ghost" asChild aria-label={t('blog.backToBlog')}>
           <LocalizedLink to="/blog" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             {t('blog.backToBlog')}

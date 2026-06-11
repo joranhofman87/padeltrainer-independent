@@ -216,7 +216,7 @@ function FeaturedTrainersSection({ trainers, getInitials, localizePath, navigate
               <p className="text-muted-foreground text-sm">{t('featured.trainersDescription')}</p>
             </div>
           </div>
-          <Button variant="ghost" asChild className="hidden sm:flex">
+          <Button variant="ghost" asChild className="hidden sm:flex" aria-label={t('viewAll')}>
             <Link to={localizePath('/trainers')}>
               {t('viewAll')}
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -283,7 +283,7 @@ function FeaturedTrainersSection({ trainers, getInitials, localizePath, navigate
         </div>
 
         <div className="sm:hidden mt-4 text-center">
-          <Button variant="outline" asChild>
+          <Button variant="outline" asChild aria-label={t('viewAll')}>
             <Link to={localizePath('/trainers')}>
               {t('viewAll')}
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -317,7 +317,7 @@ function FeaturedAcademiesSection({ academies, getInitials, localizePath, naviga
               <p className="text-muted-foreground text-sm">{t('featured.academiesDescription')}</p>
             </div>
           </div>
-          <Button variant="ghost" asChild className="hidden sm:flex">
+          <Button variant="ghost" asChild className="hidden sm:flex" aria-label={t('viewAll')}>
             <Link to={localizePath('/academies')}>
               {t('viewAll')}
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -365,7 +365,7 @@ function FeaturedAcademiesSection({ academies, getInitials, localizePath, naviga
         </div>
 
         <div className="sm:hidden mt-4 text-center">
-          <Button variant="outline" asChild>
+          <Button variant="outline" asChild aria-label={t('viewAll')}>
             <Link to={localizePath('/academies')}>
               {t('viewAll')}
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -401,7 +401,7 @@ function FeaturedLocationsSection({ locations, claimedIds, clubLogos, getInitial
               <p className="text-muted-foreground text-sm">{t('featured.locationsDescription')}</p>
             </div>
           </div>
-          <Button variant="ghost" asChild className="hidden sm:flex">
+          <Button variant="ghost" asChild className="hidden sm:flex" aria-label={t('viewAll')}>
             <Link to={localizePath('/locations')}>
               {t('viewAll')}
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -464,7 +464,7 @@ function FeaturedLocationsSection({ locations, claimedIds, clubLogos, getInitial
         </div>
 
         <div className="sm:hidden mt-4 text-center">
-          <Button variant="outline" asChild>
+          <Button variant="outline" asChild aria-label={t('viewAll')}>
             <Link to={localizePath('/locations')}>
               {t('viewAll')}
               <ArrowRight className="ml-2 h-4 w-4" />

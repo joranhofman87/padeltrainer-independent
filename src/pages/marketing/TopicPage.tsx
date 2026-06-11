@@ -192,7 +192,7 @@ export default function TopicPage() {
     return (
       <MarketingLayout>
         <div className="container mx-auto px-4 pt-8">
-          <Button variant="ghost" asChild>
+          <Button variant="ghost" asChild aria-label={t('topics.backToTopics', 'Back to Topics')}>
             <LocalizedLink to="/topics" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               {t('topics.backToTopics', 'Back to Topics')}
@@ -219,7 +219,7 @@ export default function TopicPage() {
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">{t('topics.notFound', 'Topic not found')}</h1>
           <p className="text-muted-foreground mb-6">{t('topics.notFoundDesc', 'This topic page could not be found.')}</p>
-          <Button asChild>
+          <Button asChild aria-label={t('topics.backToTopics', 'Back to Topics')}>
             <LocalizedLink to="/topics">{t('topics.backToTopics', 'Back to Topics')}</LocalizedLink>
           </Button>
         </div>
@@ -268,7 +268,7 @@ export default function TopicPage() {
 
       {/* Back Button */}
       <div className="container mx-auto px-4 pt-8">
-        <Button variant="ghost" asChild>
+        <Button variant="ghost" asChild aria-label={t('topics.backToTopics', 'Back to Topics')}>
           <LocalizedLink to="/topics" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             {t('topics.backToTopics', 'Back to Topics')}

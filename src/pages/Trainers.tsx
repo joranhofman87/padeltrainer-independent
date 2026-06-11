@@ -488,7 +488,7 @@ export default function Trainers() {
           <Collapsible open={featuredOpen} onOpenChange={setFeaturedOpen} className="mb-8">
             <section className="py-6 px-4 bg-muted/30 rounded-xl border border-border">
               <CollapsibleTrigger asChild>
-                <button className="w-full flex items-center justify-between gap-2 cursor-pointer group">
+                <button className="w-full flex items-center justify-between gap-2 cursor-pointer group" aria-label={t('common:featured.toggleTrainers', 'Toggle featured trainers')}>
                   <div className="flex items-center gap-2">
                     <Star className="h-5 w-5 text-primary fill-primary/50" />
                     <h2 className="text-lg font-semibold">{t('common:featured.trainers')}</h2>

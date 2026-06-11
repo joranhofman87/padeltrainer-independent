@@ -493,6 +493,7 @@ export default function Locations() {
                       <Search className="h-3 w-3" />
                       <span className="max-w-[150px] truncate">"{searchQuery}"</span>
                       <button
+                        aria-label={t('locations.removeSearchFilter', 'Remove search filter')}
                         className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                         onClick={() => setSearchQuery('')}
                       >
@@ -505,6 +506,7 @@ export default function Locations() {
                     <Badge variant="secondary" className="flex items-center gap-1 pr-1">
                       <span>{selectedCountry}</span>
                       <button
+                        aria-label={t('locations.removeCountryFilter', 'Remove country filter')}
                         className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                         onClick={() => {
                           setSelectedCountry('all');
@@ -521,6 +523,7 @@ export default function Locations() {
                       <MapPin className="h-3 w-3" />
                       <span>{selectedCity}</span>
                       <button
+                        aria-label={t('locations.removeCityFilter', 'Remove city filter')}
                         className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                         onClick={() => setSelectedCity('all')}
                       >
@@ -533,6 +536,7 @@ export default function Locations() {
                     <Badge variant="secondary" className="flex items-center gap-1 pr-1">
                       <span>{t('locations.trainersAvailableFilter')}</span>
                       <button
+                        aria-label={t('locations.removeTrainersFilter', 'Remove trainers available filter')}
                         className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                         onClick={() => setTrainersAvailable(false)}
                       >
@@ -546,6 +550,7 @@ export default function Locations() {
                       <Home className="h-3 w-3" />
                       <span>{t('locations.indoorCourtsFilter')}</span>
                       <button
+                        aria-label={t('locations.removeIndoorFilter', 'Remove indoor courts filter')}
                         className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                         onClick={() => setIndoorCourtsOnly(false)}
                       >

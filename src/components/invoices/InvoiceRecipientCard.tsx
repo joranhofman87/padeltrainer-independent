@@ -113,7 +113,7 @@ export function InvoiceRecipientCard({
         </div>
 
         {profilePath && (
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" size="sm" asChild aria-label={profileButtonLabel}>
             <Link to={profilePath}>{profileButtonLabel}</Link>
           </Button>
         )}

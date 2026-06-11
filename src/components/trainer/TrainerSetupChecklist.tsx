@@ -90,6 +90,7 @@ export function TrainerSetupChecklist({
             <button
               key={step.key}
               onClick={() => onNavigate(step.route)}
+              aria-label={step.label}
               className="w-full flex items-center justify-between gap-3 p-3 bg-background rounded-lg hover:bg-muted/50 transition-colors text-left group"
             >
               <div className="flex items-center gap-3">

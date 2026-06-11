@@ -315,7 +315,7 @@ export default function OpenSlots() {
                   <span className="hidden sm:inline">{allPublic ? t('openSlots.hideAll') : t('openSlots.showAll')}</span>
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/calendar')}>
+              <Button variant="outline" size="sm" aria-label={t('openSlots.calendar', 'Calendar')} onClick={() => navigate('/app/trainer/calendar')}>
                 <Calendar className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">{t('openSlots.calendar', 'Calendar')}</span>
               </Button>
@@ -369,7 +369,14 @@ export default function OpenSlots() {
                       <Card className="overflow-hidden">
                         <div className="flex items-center">
                           <CollapsibleTrigger asChild>
-                            <button className="flex-1 text-left">
+                            <button
+                              className="flex-1 text-left"
+                              aria-label={
+                                expandedCycluses.has(cyclus.cyclus_id)
+                                  ? t('openSlots.collapseCyclus', 'Collapse {{name}}', { name: cyclus.cyclus_name })
+                                  : t('openSlots.expandCyclus', 'Expand {{name}}', { name: cyclus.cyclus_name })
+                              }
+                            >
                               <CardContent className="p-4 flex items-center justify-between hover:bg-accent/50 transition-colors">
                                 <div className="flex items-center gap-3">
                                   {expandedCycluses.has(cyclus.cyclus_id) ? (

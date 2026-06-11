@@ -219,6 +219,7 @@ export function LocationPicker({
             variant="outline"
             role="combobox"
             aria-expanded={open}
+            aria-label={t('locations.selectLocations', 'Select clubs...')}
             className="w-full justify-between"
             disabled={disabled || loading}
           >
@@ -341,6 +342,7 @@ export function LocationPicker({
                     variant="ghost"
                     size="sm"
                     className="h-4 w-4 p-0 hover:bg-transparent"
+                    aria-label={t('locations.removeClub', 'Remove club')}
                     onClick={(e) => {
                       e.stopPropagation();
                       removeLocation(location.id);

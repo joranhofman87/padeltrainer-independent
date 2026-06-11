@@ -339,6 +339,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
             <div className="grid grid-cols-2 gap-4">
               <Button
                 variant="outline"
+                aria-label="Single Slots"
                 className="h-28 flex flex-col items-center justify-center gap-2 hover:border-primary hover:bg-primary/5"
                 onClick={() => setSlotMode('single')}
               >
@@ -350,6 +351,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
               </Button>
               <Button
                 variant="outline"
+                aria-label="Training Cycle"
                 className="h-28 flex flex-col items-center justify-center gap-2 hover:border-primary hover:bg-primary/5"
                 onClick={() => setSlotMode('cyclus')}
               >

@@ -137,6 +137,7 @@ export function LessonLocationPicker({
               variant="outline"
               role="combobox"
               aria-expanded={open}
+              aria-label={t('locations.selectClub', 'Select a club...')}
               className="flex-1 justify-between"
               disabled={disabled || loading}
             >
@@ -200,6 +201,7 @@ export function LessonLocationPicker({
           size="icon"
           onClick={onRequestNewClub}
           title={t('locations.requestNewClub', 'Request new club')}
+          aria-label={t('locations.requestNewClub', 'Request new club')}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -218,6 +220,7 @@ export function LessonLocationPicker({
               size="sm"
               className="h-4 w-4 p-0 hover:bg-transparent"
               onClick={clearSelection}
+              aria-label={t('locations.clearSelection', 'Clear selected club')}
             >
               <X className="h-3 w-3" />
             </Button>

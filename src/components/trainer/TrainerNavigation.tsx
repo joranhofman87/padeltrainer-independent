@@ -87,6 +87,7 @@ export function TrainerNavigation() {
         variant={isActive("/trainer") ? "secondary" : "ghost"}
         size="sm"
         onClick={() => navigate("/trainer")}
+        aria-label={t("nav.dashboard")}
         className={cn(
           "flex items-center gap-2 whitespace-nowrap",
           isActive("/trainer") && "bg-secondary"
@@ -107,6 +108,7 @@ export function TrainerNavigation() {
               <Button
                 variant={groupIsActive ? "secondary" : "ghost"}
                 size="sm"
+                aria-label={t(`nav.${group.key}`)}
                 className={cn(
                   "flex items-center gap-2 whitespace-nowrap",
                   groupIsActive && "bg-secondary"

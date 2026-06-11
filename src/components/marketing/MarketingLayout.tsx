@@ -190,15 +190,15 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               <LanguageSwitcher />
               <ThemeToggle />
               {user ? (
-                <Button asChild className="bg-primary hover:bg-primary/90">
+                <Button asChild className="bg-primary hover:bg-primary/90" aria-label={t('nav.dashboard', 'Dashboard')}>
                   <Link to={dashboardUrl}>{t('nav.dashboard', 'Dashboard')}</Link>
                 </Button>
               ) : (
                 <>
-                  <Button variant="ghost" asChild>
+                  <Button variant="ghost" asChild aria-label={t('nav.signIn')}>
                     <Link to={getAppUrl('/auth')}>{t('nav.signIn')}</Link>
                   </Button>
-                  <Button asChild className="bg-primary hover:bg-primary/90">
+                  <Button asChild className="bg-primary hover:bg-primary/90" aria-label={t('homev2.cta.startTrial', 'Start free trial')}>
                     <Link to={getAppUrl('/signup/trainer')}>{t('homev2.cta.startTrial', 'Start free trial')}</Link>
                   </Button>
                 </>
@@ -244,15 +244,15 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                     <ThemeToggle />
                   </div>
                   {user ? (
-                    <Button asChild className="bg-primary hover:bg-primary/90">
+                    <Button asChild className="bg-primary hover:bg-primary/90" aria-label={t('nav.dashboard', 'Dashboard')}>
                       <Link to={dashboardUrl}>{t('nav.dashboard', 'Dashboard')}</Link>
                     </Button>
                   ) : (
                     <>
-                      <Button variant="ghost" asChild>
+                      <Button variant="ghost" asChild aria-label={t('nav.signIn')}>
                         <Link to={getAppUrl('/auth')}>{t('nav.signIn')}</Link>
                       </Button>
-                      <Button asChild className="bg-primary hover:bg-primary/90">
+                      <Button asChild className="bg-primary hover:bg-primary/90" aria-label={t('homev2.cta.startTrial', 'Start free trial')}>
                         <Link to={getAppUrl('/signup/trainer')}>{t('homev2.cta.startTrial', 'Start free trial')}</Link>
                       </Button>
                     </>

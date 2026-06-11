@@ -108,7 +108,7 @@ export default function FoundingTrainers() {
           <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto mb-10">
             {t('foundingTrainers.subheadline')}
           </p>
-          <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 h-auto">
+          <Button asChild size="lg" aria-label={t('foundingTrainers.cta')} className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 h-auto">
             <Link to={signupUrl}>
               {t('foundingTrainers.cta')} <ArrowRight className="ml-2 h-5 w-5" />
             </Link>
@@ -240,7 +240,7 @@ export default function FoundingTrainers() {
           <p className="text-gray-300 mb-8 text-lg">
             {t('foundingTrainers.finalCtaSub', { count: SPOTS_REMAINING })}
           </p>
-          <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 h-auto">
+          <Button asChild size="lg" aria-label={t('foundingTrainers.finalCtaButton')} className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 h-auto">
             <Link to={signupUrl}>
               {t('foundingTrainers.finalCtaButton')} <ArrowRight className="ml-2 h-5 w-5" />
             </Link>

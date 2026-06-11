@@ -21,7 +21,7 @@ export function CTASection({ cta, fallbackLabel, fallbackUrl = '/trainers', fall
     <div className="mt-12 p-8 bg-accent/30 rounded-xl text-center">
       <h3 className="text-xl font-bold mb-2">{label}</h3>
       <p className="text-muted-foreground mb-4">{description}</p>
-      <Button asChild>
+      <Button asChild aria-label={label}>
         <LocalizedLink to={url} className="flex items-center gap-2">
           {label} <ArrowRight className="h-4 w-4" />
         </LocalizedLink>

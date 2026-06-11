@@ -452,6 +452,7 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
               variant="ghost"
               size="icon"
               onClick={showReferralWidget}
+              aria-label={t("nav.referFriends", "Refer friends")}
             >
               <Gift className="h-4 w-4 text-primary" />
             </Button>
@@ -460,6 +461,7 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
               size="icon"
               onClick={handleLogout}
               className="h-9 w-9"
+              aria-label={t("nav.logout", "Log out")}
             >
               <LogOut className="h-4 w-4" />
             </Button>

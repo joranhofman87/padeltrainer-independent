@@ -595,7 +595,7 @@ export function InlineBookPlayer({
                       onValueChange={(v) => handlePlayerSelect(selectionIndex, v)}
                     />
                     {currentPlayerId && <Button type="button" variant="ghost" size="icon" aria-label="Close" className="h-8 w-8 shrink-0" onClick={() => clearPlayerSlot(selectionIndex)}><X className="h-4 w-4" /></Button>}
-                    {!currentPlayerId && isFirst && <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => setShowAddPlayer(true)}><UserPlus className="h-4 w-4" /></Button>}
+                    {!currentPlayerId && isFirst && <Button type="button" variant="outline" size="icon" aria-label={t("players.addPlayer", "Add Player")} className="h-8 w-8 shrink-0" onClick={() => setShowAddPlayer(true)}><UserPlus className="h-4 w-4" /></Button>}
                   </div>
                 );
               })}

@@ -73,6 +73,7 @@ export function ExtraCostPresetPicker({ trainerId, academyProfileId, onSelect }:
               <button
                 key={preset.id}
                 type="button"
+                aria-label={`Preset ${preset.description} kiezen`}
                 className="w-full text-left px-3 py-2 rounded-md hover:bg-accent hover:text-accent-foreground text-sm transition-colors"
                 onClick={() => {
                   onSelect({

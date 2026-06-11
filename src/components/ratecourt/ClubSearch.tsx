@@ -41,6 +41,7 @@ export function ClubSearch({ onSelect }: ClubSearchProps) {
           <button
             key={loc.id}
             onClick={() => onSelect({ id: loc.id, name: loc.name, city: loc.city, country: loc.country, slug: loc.slug })}
+            aria-label={t('rateMyCourtPage.selectClub', 'Select {{name}}', { name: loc.name })}
             className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent transition-colors text-left w-full"
           >
             <MapPin className="h-4 w-4 text-primary shrink-0" />

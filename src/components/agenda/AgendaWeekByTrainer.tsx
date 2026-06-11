@@ -258,6 +258,7 @@ export default function AgendaWeekByTrainer({
                   key={day.toISOString()}
                   type="button"
                   onClick={() => onDayHeaderClick?.(day)}
+                  aria-label={t('calendar.viewDay', 'View {{day}}', { day: format(day, 'EEEE d MMM', { locale: dateFnsLocale }) })}
                   className={cn(
                     'px-2 py-2 text-center transition-colors hover:bg-accent/40',
                     today && 'bg-primary/5',
@@ -305,6 +306,7 @@ export default function AgendaWeekByTrainer({
                     <button
                       type="button"
                       onClick={() => onTrainerClick?.(tr.id)}
+                      aria-label={t('calendar.viewTrainer', 'View {{name}}', { name: tr.name })}
                       className="flex items-center gap-2 px-1.5 py-1 text-left rounded-md hover:bg-accent/40 transition-colors min-w-0 flex-1"
                     >
                       <span className={cn('h-7 w-1 rounded-full shrink-0', hue.ring)} />
@@ -470,6 +472,7 @@ export default function AgendaWeekByTrainer({
                               <button
                                 type="button"
                                 onClick={() => onSlotClick?.(s.id)}
+                                aria-label={t('calendar.viewSession', 'View session at {{time}}', { time: format(parseISO(s.start_time), 'HH:mm') })}
                                 className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-accent/30 transition-colors"
                               >
                                 <div className="min-w-0">

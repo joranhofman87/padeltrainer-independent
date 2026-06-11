@@ -65,6 +65,7 @@ export function GuestPlayerSlotCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={selectedPlayer?.full_name ?? placeholder}
           data-testid={testId}
           className={cn(
             "h-8 min-w-0 flex-1 justify-between font-normal",

@@ -74,6 +74,7 @@ export function OnboardingStep1Goal({ initialData, onNext }: OnboardingStep1Goal
             <button
               key={g.value}
               type="button"
+              aria-label={g.label}
               onClick={() => handleGoalChange(g.value)}
               className={cn(
                 'flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all',

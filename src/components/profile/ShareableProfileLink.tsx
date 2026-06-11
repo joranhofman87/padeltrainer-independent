@@ -123,7 +123,7 @@ export function ShareableProfileLink({
         <Button type="button" variant="outline" size="sm" onClick={copy}>
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={share}>
+        <Button type="button" variant="outline" size="sm" onClick={share} aria-label="Share link">
           <Share2 className="h-4 w-4" />
         </Button>
       </div>

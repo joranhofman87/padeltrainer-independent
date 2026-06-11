@@ -89,7 +89,7 @@ export default function CoachPage() {
     return (
       <MarketingLayout>
         <div className="container mx-auto px-4 pt-8">
-          <Button variant="ghost" asChild>
+          <Button variant="ghost" asChild aria-label={t('coach:backToCoaches', 'Back to Coaches')}>
             <LocalizedLink to="/padel-coaches" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" /> Back to Coaches
             </LocalizedLink>
@@ -115,7 +115,7 @@ export default function CoachPage() {
         <div className="container mx-auto px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">Coach not found</h1>
           <p className="text-muted-foreground mb-6">This coach page could not be found.</p>
-          <Button asChild>
+          <Button asChild aria-label={t('coach:backToCoaches', 'Back to Coaches')}>
             <LocalizedLink to="/padel-coaches">Back to Coaches</LocalizedLink>
           </Button>
         </div>
@@ -172,7 +172,7 @@ export default function CoachPage() {
       />
 
       <div className="container mx-auto px-4 pt-8">
-        <Button variant="ghost" asChild>
+        <Button variant="ghost" asChild aria-label={t('coach:backToCoaches', 'Back to Coaches')}>
           <LocalizedLink to="/padel-coaches" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" /> Back to Coaches
           </LocalizedLink>
@@ -234,7 +234,7 @@ export default function CoachPage() {
               {socialLinks.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-4">
                   {socialLinks.map(({ href, icon: Icon, label }) => (
-                    <Button key={label} variant="outline" size="sm" asChild>
+                    <Button key={label} variant="outline" size="sm" asChild aria-label={label}>
                       <a href={href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
                         <Icon className="h-4 w-4" />
                         {label}
@@ -309,7 +309,7 @@ export default function CoachPage() {
             transition={{ delay: 0.15 }}
             className="mb-8"
           >
-            <Button variant="outline" asChild>
+            <Button variant="outline" asChild aria-label={t('coach:viewOnPlatform', 'View on PadelTrainer.ai')}>
               <a href={coach.platformProfileUrl} className="flex items-center gap-2">
                 <ExternalLink className="h-4 w-4" />
                 View on PadelTrainer.ai

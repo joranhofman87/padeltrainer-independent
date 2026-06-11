@@ -207,7 +207,7 @@ export default function TrainerOnboarding() {
           <p className="text-destructive text-sm">{initError}</p>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
             <Button onClick={() => initOnboarding()}>{t('signIn.button', 'Try again')}</Button>
-            <Button variant="outline" asChild>
+            <Button variant="outline" asChild aria-label={t('signupPicker.title', 'Choose account type')}>
               <Link to="/app/signup">{t('signupPicker.title', 'Choose account type')}</Link>
             </Button>
           </div>

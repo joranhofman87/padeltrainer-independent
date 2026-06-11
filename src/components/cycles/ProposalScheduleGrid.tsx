@@ -497,7 +497,10 @@ function SlotEditPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="flex items-center gap-1 group cursor-pointer hover:text-primary transition-colors">
+        <button
+          className="flex items-center gap-1 group cursor-pointer hover:text-primary transition-colors"
+          aria-label={t('proposals.editSlot', { defaultValue: 'Edit slot' })}
+        >
           <span className="text-xs font-semibold">
             {getTimeRange(slot.start_time, slot.end_time)}
           </span>
@@ -577,6 +580,7 @@ function SlotEditPopover({
                   <button
                     key={a.id}
                     onClick={() => { onPlayerClick?.(a.intake_request_id); setOpen(false); }}
+                    aria-label={t('proposals.viewPlayer', { defaultValue: 'View {{name}}', name: a.player_name })}
                     className={cn(
                       'flex items-center justify-between w-full rounded-md px-2 py-1.5 text-xs hover:bg-accent transition-colors',
                       oor && 'bg-amber-50 dark:bg-amber-950/30',
@@ -727,6 +731,7 @@ function AddPlayerToSlotPopover({
           variant="ghost"
           size="sm"
           className="h-5 w-5 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover/slot:opacity-100 transition-opacity"
+          aria-label={t('proposals.addPlayerToSlot', { defaultValue: 'Add player to slot' })}
         >
           <UserPlus className="h-3 w-3" />
         </Button>
@@ -1872,6 +1877,7 @@ export default function ProposalScheduleGrid({
                         size="icon"
                         className="h-6 w-6"
                         onClick={() => setSidebarOpen(false)}
+                        aria-label={t('proposals.hideUnplaced', { defaultValue: 'Hide unplaced players' })}
                       >
                         <PanelRightClose className="h-3.5 w-3.5" />
                       </Button>
@@ -1890,6 +1896,7 @@ export default function ProposalScheduleGrid({
                         <button
                           onClick={() => setUnplacedSearch('')}
                           className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          aria-label={t('proposals.clearSearch', { defaultValue: 'Clear search' })}
                         >
                           <span className="text-xs">✕</span>
                         </button>

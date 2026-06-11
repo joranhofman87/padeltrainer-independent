@@ -57,7 +57,7 @@ export function LanguageSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative" aria-label="Change language">
           <Globe className="h-5 w-5" />
           <span className="sr-only">Change language</span>
         </Button>

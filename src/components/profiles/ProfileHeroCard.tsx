@@ -115,6 +115,7 @@ export function ProfileHeroCard({
               {videoUrl && onVideoPlay && (
                 <button
                   onClick={onVideoPlay}
+                  aria-label={t('playVideo', 'Play video')}
                   className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full opacity-0 hover:opacity-100 transition-opacity"
                 >
                   <div className="bg-white/90 rounded-full p-3">

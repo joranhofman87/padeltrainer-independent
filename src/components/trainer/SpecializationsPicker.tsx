@@ -72,6 +72,7 @@ export function SpecializationsPicker({
                 onClick={() => removeSpecialization(specName)}
                 className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5"
                 disabled={disabled}
+                aria-label={`Remove ${specName}`}
               >
                 <X className="h-3 w-3" />
               </button>

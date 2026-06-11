@@ -575,6 +575,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
               variant="ghost"
               size="icon"
               onClick={showReferralWidget}
+              aria-label={t("nav.referral", "Refer a friend")}
             >
               <Gift className="h-4 w-4 text-primary" />
             </Button>

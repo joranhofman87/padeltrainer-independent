@@ -190,6 +190,7 @@ export function TrainerLocationPicker({
             variant="outline"
             role="combobox"
             aria-expanded={open}
+            aria-label={t('locations.selectLocations', 'Select clubs...')}
             className="w-full justify-between"
             disabled={disabled || loading}
           >
@@ -293,6 +294,7 @@ export function TrainerLocationPicker({
                           variant={relationshipType === 'independent' ? 'default' : 'outline'}
                           size="sm"
                           className="h-8 w-8 p-0"
+                          aria-label={t('locations.independent', 'Independent trainer')}
                           onClick={() => setRelationshipType(locationId, 'independent')}
                         >
                           <User className="h-4 w-4" />
@@ -310,6 +312,7 @@ export function TrainerLocationPicker({
                           variant={relationshipType === 'club_trainer' ? 'default' : 'outline'}
                           size="sm"
                           className="h-8 w-8 p-0"
+                          aria-label={t('locations.clubTrainer', 'Club trainer')}
                           onClick={() => setRelationshipType(locationId, 'club_trainer')}
                         >
                           <Building2 className="h-4 w-4" />
@@ -328,6 +331,7 @@ export function TrainerLocationPicker({
                   variant="ghost"
                   size="sm"
                   className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                  aria-label={t('locations.removeClub', 'Remove club')}
                   onClick={() => removeLocation(locationId)}
                 >
                   <X className="h-4 w-4" />

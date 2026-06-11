@@ -541,6 +541,7 @@ export default function IntakeRequestDetailSheet({
                         onClick={() => handleLinkPlayer(sl.id)}
                         disabled={isLinking}
                         className="ml-1 rounded-full hover:bg-accent p-0.5"
+                        aria-label={t('intakeRequests.links.addLink', { defaultValue: 'Koppelen' })}
                       >
                         <Plus className="h-3 w-3" />
                       </button>
@@ -551,6 +552,7 @@ export default function IntakeRequestDetailSheet({
                         }}
                         className="rounded-full hover:bg-destructive/20 p-0.5"
                         title={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss suggestion' })}
+                        aria-label={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss suggestion' })}
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -611,6 +613,7 @@ export default function IntakeRequestDetailSheet({
                         }}
                         className="rounded-full hover:bg-destructive/20 p-0.5"
                         title={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss' })}
+                        aria-label={t('intakeRequests.links.dismissSuggestion', { defaultValue: 'Dismiss' })}
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -637,6 +640,7 @@ export default function IntakeRequestDetailSheet({
                       <button
                         onClick={() => handleUnlinkPlayer(lr.id)}
                         className="ml-1 rounded-full hover:bg-muted p-0.5"
+                        aria-label={t('intakeRequests.links.unlink', { defaultValue: 'Unlink player' })}
                       >
                         <X className="h-3 w-3" />
                       </button>

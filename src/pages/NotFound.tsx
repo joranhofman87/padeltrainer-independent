@@ -83,6 +83,7 @@ const NotFound = () => {
                   key={s.to}
                   variant="outline"
                   className="w-full justify-start gap-2"
+                  aria-label={t(s.labelKey, s.labelFallback)}
                   asChild
                 >
                   <LocalizedLink to={s.to}>
@@ -101,7 +102,7 @@ const NotFound = () => {
             <ArrowLeft className="mr-1.5 h-4 w-4" />
             {t("back")}
           </Button>
-          <Button variant="ghost" size="sm" asChild>
+          <Button variant="ghost" size="sm" aria-label={t("notFound.goHome")} asChild>
             <LocalizedLink to="/">
               <Home className="mr-1.5 h-4 w-4" />
               {t("notFound.goHome")}

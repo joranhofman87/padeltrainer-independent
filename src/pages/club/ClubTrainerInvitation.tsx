@@ -202,12 +202,12 @@ export default function ClubTrainerInvitation() {
               )}
             </div>
             <div className="flex flex-col gap-2">
-              <Button asChild>
+              <Button asChild aria-label={t('common:signIn')}>
                 <Link to={`/auth?redirect=/club/invitation/${token}`}>
                   {t('common:signIn')}
                 </Link>
               </Button>
-              <Button variant="outline" asChild>
+              <Button variant="outline" asChild aria-label={t('common:signUp')}>
                 <Link to={`/signup/trainer?redirect=/club/invitation/${token}`}>
                   {t('common:signUp')}
                 </Link>
@@ -242,7 +242,7 @@ export default function ClubTrainerInvitation() {
                 {t('trainerInvitation.invitedBy')}: {invitation.inviter_name}
               </p>
             </div>
-            <Button asChild className="w-full">
+            <Button asChild className="w-full" aria-label={t('trainerInvitation.becomeTrainer')}>
               <Link to="/signup/trainer">
                 {t('trainerInvitation.becomeTrainer')}
               </Link>

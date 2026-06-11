@@ -236,6 +236,7 @@ export default function WaitingListTable({
                               variant="ghost"
                               size="icon"
                               asChild
+                              aria-label={t('management.contactPlayer', 'Contact Player')}
                             >
                               <a href={`tel:${player.phone}`}>
                                 <Phone className="h-4 w-4" />
@@ -265,6 +266,7 @@ export default function WaitingListTable({
                               size="icon"
                               onClick={() => handleStatusUpdate(entry.id, 'archived')}
                               disabled={isUpdating}
+                              aria-label={t('management.archive', 'Archive')}
                             >
                               <Archive className="h-4 w-4" />
                             </Button>

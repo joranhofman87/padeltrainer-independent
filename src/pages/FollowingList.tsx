@@ -248,6 +248,7 @@ export default function FollowingList() {
                         variant="ghost"
                         size="icon"
                         className="text-destructive hover:text-destructive"
+                        aria-label={t('followingList.unfollow', 'Unfollow')}
                         onClick={() => unfollow(trainer.id, trainer.full_name)}
                       >
                         <UserMinus className="h-4 w-4" />

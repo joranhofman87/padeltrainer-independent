@@ -36,7 +36,7 @@ export default function AdminBlog() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Blog Articles</h1>
-        <Button asChild>
+        <Button asChild aria-label="Open Sanity Studio">
           <a href={SANITY_STUDIO_URL} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-4 w-4 mr-2" /> Open Sanity Studio
           </a>
@@ -81,7 +81,7 @@ export default function AdminBlog() {
                       </a>
                     </Button>
                     {article.datePublished && (
-                      <Button variant="ghost" size="icon" asChild>
+                      <Button variant="ghost" size="icon" aria-label="View" asChild>
                         <a href={`/en/blog/${article.slug}`} target="_blank" rel="noopener noreferrer">
                           <Eye className="h-4 w-4" />
                         </a>

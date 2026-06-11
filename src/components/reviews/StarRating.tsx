@@ -40,6 +40,7 @@ export function StarRating({
           <button
             key={index}
             type="button"
+            aria-label={`Rate ${index + 1} ${index + 1 === 1 ? 'star' : 'stars'}`}
             onClick={() => handleClick(index)}
             disabled={!interactive}
             className={cn(

@@ -38,7 +38,7 @@ export function CommunityRatings({ locationId, locationSlug }: CommunityRatingsP
           <p className="text-muted-foreground mb-4">
             {t('communityRatings.noReviews', 'No community reviews yet. Be the first!')}
           </p>
-          <Button asChild>
+          <Button asChild aria-label={t('communityRatings.rateThisClub', 'Rate This Club')}>
             <LocalizedLink to={`/playground/rate-my-court?club=${locationSlug}`}>
               {t('communityRatings.rateThisClub', 'Rate This Club')}
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -127,7 +127,7 @@ export function CommunityRatings({ locationId, locationSlug }: CommunityRatingsP
 
         {/* CTA */}
         <div className="pt-2">
-          <Button variant="outline" className="w-full" asChild>
+          <Button variant="outline" className="w-full" asChild aria-label={t('communityRatings.rateThisClub', 'Rate This Club')}>
             <LocalizedLink to={`/playground/rate-my-court?club=${locationSlug}`}>
               {t('communityRatings.rateThisClub', 'Rate This Club')}
               <ArrowRight className="ml-2 h-4 w-4" />

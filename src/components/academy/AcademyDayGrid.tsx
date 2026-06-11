@@ -167,6 +167,7 @@ function DraggableBookedPlayer({
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(player.bookingId); }}
           className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover/chip:opacity-100"
+          aria-label="Remove player"
         >
           <X className="h-3 w-3" />
         </button>
@@ -222,6 +223,7 @@ function SlotCard({
                 size="sm"
                 className="h-5 w-5 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover/slot:opacity-100 transition-opacity"
                 onClick={() => onEditSlot(slot)}
+                aria-label="Edit slot"
               >
                 <Pencil className="h-3 w-3" />
               </Button>
@@ -232,6 +234,7 @@ function SlotCard({
                 size="sm"
                 className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/slot:opacity-100 transition-opacity"
                 onClick={() => onDeleteSlot(slot)}
+                aria-label="Delete slot"
               >
                 <Trash2 className="h-3 w-3" />
               </Button>
@@ -242,6 +245,7 @@ function SlotCard({
                 size="sm"
                 className="h-5 w-5 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover/slot:opacity-100 transition-opacity"
                 onClick={() => onBookForPlayer(slot)}
+                aria-label="Add player to slot"
               >
                 <UserPlus className="h-3 w-3" />
               </Button>

@@ -56,7 +56,7 @@ export function ProfileLayout({
         <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0 overflow-x-auto">
             {showBackButton && (
-              <Button variant="ghost" size="sm" className="shrink-0" onClick={() => navigate(-1)}>
+              <Button variant="ghost" size="sm" className="shrink-0" onClick={() => navigate(-1)} aria-label={t('common:breadcrumbs.back', 'Back')}>
                 <ArrowLeft className="h-4 w-4 mr-1 sm:mr-2" />
                 <span className="hidden sm:inline">{t('common:breadcrumbs.back', 'Back')}</span>
               </Button>

@@ -38,7 +38,7 @@ export function FeatureErrorFallback({
           )}
         </div>
         {onRetry && (
-          <Button size="sm" variant="outline" onClick={onRetry}>
+          <Button size="sm" variant="outline" onClick={onRetry} aria-label="Try again">
             <RefreshCw className="h-4 w-4" />
           </Button>
         )}

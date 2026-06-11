@@ -130,6 +130,7 @@ export default function ChallengeModePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
             <button
               onClick={() => setMode('practice')}
+              aria-label={t('challengeMode.selectPractice', 'Practice')}
               className="group rounded-2xl border bg-card p-8 hover:shadow-lg transition-all duration-200 hover:-translate-y-1 text-left"
             >
               <span className="text-5xl block mb-4">🎯</span>
@@ -146,6 +147,7 @@ export default function ChallengeModePage() {
 
             <button
               onClick={() => setMode('game')}
+              aria-label={t('challengeMode.selectGame', 'Game')}
               className="group rounded-2xl border bg-card p-8 hover:shadow-lg transition-all duration-200 hover:-translate-y-1 text-left"
             >
               <span className="text-5xl block mb-4">🏆</span>

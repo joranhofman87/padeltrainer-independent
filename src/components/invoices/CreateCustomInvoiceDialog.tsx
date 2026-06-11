@@ -376,6 +376,7 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
                     className="h-7 w-7 p-0"
                     onClick={() => removeLineItem(i)}
                     disabled={lineItems.length <= 1}
+                    aria-label={t('invoiceForm.lineItems.removeRow', 'Remove line item')}
                   >
                     <Trash2 className="h-3 w-3 text-muted-foreground" />
                   </Button>

@@ -430,7 +430,7 @@ export default function TrainerInvoices() {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="ghost"><Share2 className="h-4 w-4" /></Button>
+          <Button size="sm" variant="ghost" aria-label={t("invoices.shareOptions", "Share options")}><Share2 className="h-4 w-4" /></Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {shareable ? (

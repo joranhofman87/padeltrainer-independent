@@ -81,6 +81,7 @@ export function AcademyNavigation() {
             variant={isActive(item.path) ? "secondary" : "ghost"}
             size="sm"
             onClick={() => navigate(item.path)}
+            aria-label={t(`nav.${item.key}`)}
             className={cn(
               "flex items-center gap-2 whitespace-nowrap",
               isActive(item.path) && "bg-secondary"
@@ -107,6 +108,7 @@ export function AcademyNavigation() {
               variant={isActive(item.path) ? "secondary" : "ghost"}
               size="sm"
               onClick={() => navigate(item.path)}
+              aria-label={t(`nav.${item.key}`)}
               className={cn(
                 "flex items-center gap-2 whitespace-nowrap",
                 isActive(item.path) && "bg-secondary"
@@ -124,6 +126,7 @@ export function AcademyNavigation() {
               <Button
                 variant={groupIsActive ? "secondary" : "ghost"}
                 size="sm"
+                aria-label={t(`nav.${group.key}`)}
                 className={cn(
                   "flex items-center gap-2 whitespace-nowrap",
                   groupIsActive && "bg-secondary"

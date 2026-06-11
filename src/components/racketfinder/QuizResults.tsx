@@ -191,6 +191,7 @@ export default function QuizResults({ rackets, isLoading, answers, onRetake }: Q
                     size="sm"
                     className="rounded-full"
                     asChild
+                    aria-label={t('quiz.results.readReview', 'Read Review')}
                     onClick={() => trackEvent('quiz_result_click', { racket_name: racket.name, action: 'read_review' })}
                   >
                     <a href={`/${lang}/blog/best-padel-rackets-2026`}>

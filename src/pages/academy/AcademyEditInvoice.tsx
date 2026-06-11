@@ -450,7 +450,7 @@ export default function AcademyEditInvoice() {
                 <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/30">
                   <div className="flex items-center gap-2">
                     <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder={t('invoiceEdit.description')} className="text-sm flex-1" />
-                    <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
+                    <Button type="button" variant="ghost" size="sm" aria-label={t('invoiceEdit.removeLineItem', 'Remove line item')} className="h-7 w-7 p-0 shrink-0" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                       <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   </div>

@@ -687,6 +687,7 @@ export default function AcademySlotDetail() {
         <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
           <Button
             variant="outline"
+            aria-label={tTrainer('calendar.deleteSlot', 'Delete slot')}
             className="gap-1.5 text-destructive hover:text-destructive"
             onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}
           >

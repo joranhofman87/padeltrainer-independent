@@ -118,7 +118,7 @@ export function InvoiceSourceCard({ owner, bookingIds }: InvoiceSourceCardProps)
     labelContent = <span className="font-medium">{resolved.label}</span>;
     if (owner === 'academy' && academyCycleHref) {
       action = (
-        <Button variant="outline" size="sm" asChild>
+        <Button variant="outline" size="sm" asChild aria-label={t('invoiceEdit.source.viewCycle', 'View Cycle')}>
           <Link to={academyCycleHref}>
             <ExternalLink className="h-3.5 w-3.5 mr-2" />
             {t('invoiceEdit.source.viewCycle', 'View Cycle')}
@@ -140,7 +140,7 @@ export function InvoiceSourceCard({ owner, bookingIds }: InvoiceSourceCardProps)
         ? `/app/academy/slot/${resolved.slotId}`
         : `/app/trainer/slot/${resolved.slotId}`;
     action = (
-      <Button variant="outline" size="sm" asChild>
+      <Button variant="outline" size="sm" asChild aria-label={t('invoiceEdit.source.viewSession', 'View Session')}>
         <Link to={sessionPath}>
           <ExternalLink className="h-3.5 w-3.5 mr-2" />
           {t('invoiceEdit.source.viewSession', 'View Session')}
