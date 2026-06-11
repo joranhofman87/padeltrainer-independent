@@ -75,8 +75,13 @@ CREATE UNIQUE INDEX uq_meta_academy_guest ON public.academy_player_metadata (aca
   WHERE guest_player_id IS NOT NULL AND academy_profile_id IS NOT NULL;
 `);
 
-await db.exec(readFileSync(join(process.cwd(), 'supabase/migrations/20260611200000_merge_guest_players.sql'), 'utf8'));
-console.log('migration applied OK');
+for (const f of [
+  'supabase/migrations/20260611200000_merge_guest_players.sql',
+  'supabase/migrations/20260611210000_merge_guest_players_email_conflict.sql',
+]) {
+  await db.exec(readFileSync(join(process.cwd(), f), 'utf8'));
+}
+console.log('migrations applied OK');
 
 const A1 = '11111111-1111-1111-1111-111111111111';
 const MGR = '99999999-9999-9999-9999-999999999991';
@@ -203,6 +208,28 @@ const q = async (sql: string) => (await db.query(sql)).rows as Record<string, un
   try { await rpc(T1_USER, `'trainer','${T1}','${OTHER}'::uuid,'cccccccc-0000-0000-0000-000000000002'::uuid`); }
   catch (e) { rejected = String(e).includes('belong to the trainer'); }
   check('out-of-scope source rejected for trainer', rejected);
+}
+
+// kept-email collision with a THIRD player (the production Sander case):
+// keeping the source's email while another trainer guest already holds it
+{
+  await db.exec(`
+    INSERT INTO public.guest_players (id, trainer_id, full_name, email) VALUES
+      ('dddddddd-0000-0000-0000-000000000001', '${T1}', 'Sander', null),
+      ('dddddddd-0000-0000-0000-000000000002', '${T1}', 'Sander van Oss', null),
+      ('dddddddd-0000-0000-0000-000000000003', '${T1}', 'Third Holder', 'sander@test.com');
+  `);
+  let friendly = false;
+  try {
+    await rpc(T1_USER,
+      `'trainer','${T1}','dddddddd-0000-0000-0000-000000000001'::uuid,'dddddddd-0000-0000-0000-000000000002'::uuid,` +
+      `'{"email":"sander@test.com"}'::jsonb`);
+  } catch (e) {
+    friendly = String(e).includes('already used by another player: Third Holder');
+  }
+  check('kept-email collision with third player -> friendly error naming the holder', friendly);
+  const both = await q(`SELECT count(*)::int AS n FROM public.guest_players WHERE id::text LIKE 'dddddddd%'`);
+  check('collision aborts atomically (all three rows intact)', both[0].n === 3, both);
 }
 
 console.log(failures ? `\n*** REHEARSAL FAILED (${failures}) ***` : '\n*** REHEARSAL PASSED ***');

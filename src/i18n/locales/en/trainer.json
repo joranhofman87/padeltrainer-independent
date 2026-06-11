@@ -560,7 +560,8 @@
       "successDescription": "Merged into {{name}}: {{bookings}} trainings and {{invoices}} invoices moved.",
       "errorTitle": "Merge failed",
       "errors": {
-        "linkedAccounts": "These players are linked to two different accounts and cannot be merged."
+        "linkedAccounts": "These players are linked to two different accounts and cannot be merged.",
+        "emailConflict": "That email address is already used by another player: {{name}}. Merge or update that player first."
       },
       "fields": {
         "fullName": "Name",
@@ -634,12 +635,30 @@
     "toastCheckoutError": "Failed to start checkout. Please try again.",
     "toastPortalError": "Failed to open subscription management. Please try again.",
     "features": {
-      "lowerFees": { "title": "Lower fees", "description": "Keep more of what you earn with reduced platform fees" },
-      "visibility": { "title": "More visibility", "description": "Get priority placement in search results" },
-      "analytics": { "title": "Advanced analytics", "description": "Track your performance with detailed insights" },
-      "scheduling": { "title": "Flexible scheduling", "description": "Advanced availability and booking controls" },
-      "support": { "title": "Priority support", "description": "Get help faster when you need it" },
-      "verified": { "title": "Verified badge", "description": "Build trust with a verified trainer badge" }
+      "lowerFees": {
+        "title": "Lower fees",
+        "description": "Keep more of what you earn with reduced platform fees"
+      },
+      "visibility": {
+        "title": "More visibility",
+        "description": "Get priority placement in search results"
+      },
+      "analytics": {
+        "title": "Advanced analytics",
+        "description": "Track your performance with detailed insights"
+      },
+      "scheduling": {
+        "title": "Flexible scheduling",
+        "description": "Advanced availability and booking controls"
+      },
+      "support": {
+        "title": "Priority support",
+        "description": "Get help faster when you need it"
+      },
+      "verified": {
+        "title": "Verified badge",
+        "description": "Build trust with a verified trainer badge"
+      }
     }
   },
   "subscription": {

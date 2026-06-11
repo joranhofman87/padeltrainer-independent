@@ -563,7 +563,8 @@
       "successDescription": "Samengevoegd in {{name}}: {{bookings}} trainingen en {{invoices}} facturen verplaatst.",
       "errorTitle": "Samenvoegen mislukt",
       "errors": {
-        "linkedAccounts": "Deze spelers zijn gekoppeld aan twee verschillende accounts en kunnen niet worden samengevoegd."
+        "linkedAccounts": "Deze spelers zijn gekoppeld aan twee verschillende accounts en kunnen niet worden samengevoegd.",
+        "emailConflict": "Dat e-mailadres is al in gebruik bij een andere speler: {{name}}. Voeg die speler eerst samen of pas die eerst aan."
       },
       "fields": {
         "fullName": "Naam",
