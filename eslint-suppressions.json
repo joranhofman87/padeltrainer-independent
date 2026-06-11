@@ -1100,7 +1100,7 @@
   },
   "src/pages/academy/AcademyInvoices.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 20
+      "count": 19
     }
   },
   "src/pages/academy/AcademyLocations.tsx": {

@@ -3,6 +3,7 @@ import {
   buildInvoicePlayerAddress,
   findExistingGuestPlayerIdForInvoice,
   resolveInvoiceGuestPlayerId,
+  resolveOrCreateAcademyInvoiceGuest,
 } from './invoiceCustomerInsert';
 
 const insertMock = vi.fn();
@@ -182,5 +183,47 @@ describe('resolveInvoiceGuestPlayerId', () => {
     });
     expect(id).toBeNull();
     expect(fromMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveOrCreateAcademyInvoiceGuest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    guestLookupResult = null;
+    insertMock.mockReturnValue({
+      select: () => ({
+        single: () => Promise.resolve({ data: { id: 'new-guest' }, error: null }),
+      }),
+    });
+  });
+
+  it('returns null when no name is given (nothing to create)', async () => {
+    const id = await resolveOrCreateAcademyInvoiceGuest('   ', 'x@test.com', 'a1');
+    expect(id).toBeNull();
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('dedupes by email within academy scope instead of inserting', async () => {
+    guestLookupResult = { id: 'existing-by-email' };
+    const id = await resolveOrCreateAcademyInvoiceGuest('Jan', 'jan@test.com', 'a1');
+    expect(id).toBe('existing-by-email');
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('creates an academy guest with email when none exists', async () => {
+    guestLookupResult = null;
+    const id = await resolveOrCreateAcademyInvoiceGuest('Jan', 'jan@test.com', 'a1');
+    expect(id).toBe('new-guest');
+    expect(insertMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('still creates an emailless player so invoice-only people appear in the list', async () => {
+    const id = await resolveOrCreateAcademyInvoiceGuest('Walk-in Wendy', '', 'a1');
+    expect(id).toBe('new-guest');
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    const insertArg = insertMock.mock.calls[0][0];
+    expect(insertArg.academy_profile_id).toBe('a1');
+    expect(insertArg.full_name).toBe('Walk-in Wendy');
+    expect(insertArg.email).toBeUndefined();
   });
 });

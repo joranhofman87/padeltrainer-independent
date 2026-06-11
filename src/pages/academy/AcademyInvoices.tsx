@@ -205,49 +205,27 @@ export default function AcademyInvoices() {
       if (!activeAcademy?.id) return [];
       const { data, error } = await supabase
         .from("invoices")
-        .select("*")
+        // Pull the linked player's email from the same query so the "no email"
+        // indicator always reflects the player record (single source of truth)
+        // and never goes stale against a separate cache.
+        .select("*, guest_players(email), profiles(email)")
         .eq("academy_profile_id", activeAcademy.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data || []) as Invoice[];
+      return (data || []) as unknown as Invoice[];
     },
     enabled: !!activeAcademy?.id,
   });
 
-  // Build a set of player/guest IDs that have an email, purely for display
-  const { data: playerEmailSet = new Set<string>() } = useQuery({
-    queryKey: ["invoice-player-emails", invoices.map(i => i.guest_player_id ?? i.player_id).join(",")],
-    queryFn: async () => {
-      const guestIds = invoices.map(i => i.guest_player_id).filter(Boolean) as string[];
-      const profileIds = invoices.map(i => i.player_id).filter(Boolean) as string[];
-      const results = new Set<string>();
-
-      if (guestIds.length) {
-        const { data } = await supabase
-          .from("guest_players")
-          .select("id, email")
-          .in("id", guestIds);
-        for (const row of data || []) {
-          if (row.email) results.add(row.id);
-        }
-      }
-      if (profileIds.length) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("id, email")
-          .in("id", profileIds);
-        for (const row of data || []) {
-          if ((row as any).email) results.add(row.id);
-        }
-      }
-      return results;
-    },
-    enabled: invoices.length > 0,
-  });
-
+  // Email is read from the linked player record (guest_players / profiles) in
+  // the main invoices query above — one source, so it stays correct after an
+  // email is added or edited instead of lingering as a false "no email".
   const invoiceHasEmail = (inv: Invoice) => {
-    const id = inv.guest_player_id ?? inv.player_id;
-    return id ? playerEmailSet.has(id) : false;
+    const linked = inv as Invoice & {
+      guest_players?: { email?: string | null } | null;
+      profiles?: { email?: string | null } | null;
+    };
+    return Boolean(linked.guest_players?.email || linked.profiles?.email);
   };
 
   // Build invoice → location map from booking_ids → bookings → slots

@@ -17,7 +17,7 @@ import { formatCurrency } from '@/lib/format';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
-import { buildAcademyInvoiceGuestInsert } from '@/lib/invoiceGuestPlayerInsert';
+import { resolveOrCreateAcademyInvoiceGuest } from '@/lib/invoiceCustomerInsert';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 
 interface LineItem {
@@ -164,19 +164,17 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
       const includeYear = (academy as any).invoice_include_year ?? true;
       const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber, includeYear);
 
-      let guestPlayerId: string | null = null;
-      if (playerEmail.trim()) {
-        const { data: guestPlayer, error: guestError } = await supabase
-          .from('guest_players')
-          .insert(buildAcademyInvoiceGuestInsert(playerName, playerEmail, academyProfileId))
-          .select('id')
-          .single();
-
-        if (guestError) {
-          logger.error('Guest player creation failed:', guestError);
-        } else {
-          guestPlayerId = guestPlayer.id;
-        }
+      // Always create/link a player so every invoice recipient appears in the
+      // academy players list — even without an email. Dedupes by email so we
+      // don't create a second player for someone already known. The players
+      // table stays the single source of truth.
+      const guestPlayerId = await resolveOrCreateAcademyInvoiceGuest(
+        playerName,
+        playerEmail,
+        academyProfileId,
+      );
+      if (!guestPlayerId) {
+        logger.error('Guest player resolve/create failed for invoice', undefined, { playerName });
       }
 
       const primaryVatRate = lineItems[0]?.vat_rate ?? 21;

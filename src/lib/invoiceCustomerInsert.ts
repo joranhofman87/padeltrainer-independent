@@ -1,4 +1,4 @@
-import { buildAcademyInvoiceGuestInsert, buildTrainerInvoiceGuestInsert } from '@/lib/invoiceGuestPlayerInsert';
+import { buildAcademyInvoiceGuestInsert, buildTrainerInvoiceGuestInsert, invoiceGuestNameFields } from '@/lib/invoiceGuestPlayerInsert';
 import { joinBillingAddress } from '@/lib/invoiceCustomer';
 import type { InvoicePlayerLink, InvoiceReceiverFormFields } from '@/lib/invoiceCustomer';
 import { supabase } from '@/lib/supabaseClient';
@@ -105,4 +105,44 @@ export async function resolveInvoiceGuestPlayerId(
 
 export function buildInvoicePlayerAddress(receiver: InvoiceReceiverFormFields): string | null {
   return joinBillingAddress(receiver.playerStreet, receiver.playerZipCode, receiver.playerCity);
+}
+
+/**
+ * Resolve-or-create an academy guest player for a manual/custom invoice.
+ *
+ * Unlike resolveInvoiceGuestPlayerId (which only links when an email is given),
+ * this ALWAYS yields a player record when a name is present — creating an
+ * emailless guest when no email is provided — so every invoice recipient becomes
+ * a player visible in the academy players list (the players table is the single
+ * source of truth). Dedupes by email within academy scope to avoid duplicates
+ * and to respect the unique (academy_profile_id, email) index.
+ *
+ * Returns the guest_players id, or null if no name was given / the insert failed.
+ */
+export async function resolveOrCreateAcademyInvoiceGuest(
+  playerName: string,
+  playerEmail: string,
+  academyProfileId: string,
+): Promise<string | null> {
+  const name = playerName.trim();
+  if (!name) return null;
+  const email = playerEmail.trim();
+
+  if (email) {
+    const existingId = await findExistingGuestPlayerIdForInvoice(email, 'academy', academyProfileId);
+    if (existingId) return existingId;
+  }
+
+  const insert = email
+    ? buildAcademyInvoiceGuestInsert(name, email, academyProfileId)
+    : { ...invoiceGuestNameFields(name), academy_profile_id: academyProfileId };
+
+  const { data, error } = await supabase
+    .from('guest_players')
+    .insert(insert)
+    .select('id')
+    .single();
+
+  if (error || !data) return null;
+  return data.id;
 }
