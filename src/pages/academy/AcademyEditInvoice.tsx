@@ -201,6 +201,14 @@ export default function AcademyEditInvoice() {
 
   const handleSave = async () => {
     if (!invoice) return;
+    // Paid/cancelled invoices are terminal: editing amounts makes the ledger and
+    // the archived PDF disagree. Correct a paid invoice with a credit note.
+    if (isPaid || isCancelled) {
+      toast.error(t('invoiceEdit.lockedTerminal', isPaid
+        ? 'Betaalde facturen kunnen niet meer worden gewijzigd. Maak een creditfactuur.'
+        : 'Geannuleerde facturen kunnen niet meer worden gewijzigd.'));
+      return;
+    }
     setSaving(true);
 
     try {

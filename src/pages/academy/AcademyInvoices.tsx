@@ -497,11 +497,22 @@ export default function AcademyInvoices() {
 
   const handleBulkReset = async () => {
     setBulkRunning(true);
-    const ids = [...selectedIds];
+    // Never reset a PAID invoice to draft — that erases paid_at and the record of
+    // received money (preserved only at Mollie). Skip paid rows + DB-level guard.
+    const resettable = selectedInvoices.filter((i) => i.status !== "paid");
+    const skipped = selectedInvoices.length - resettable.length;
+    const ids = resettable.map((i) => i.id);
+    if (ids.length === 0) {
+      setBulkRunning(false);
+      setConfirmBulk(null);
+      toast.error(t("invoices.bulk.resetAllPaid", "Paid invoices cannot be reset"));
+      return;
+    }
     const { error } = await supabase
       .from("invoices")
       .update({ status: "draft", sent_at: null, paid_at: null })
-      .in("id", ids);
+      .in("id", ids)
+      .neq("status", "paid");
     setBulkRunning(false);
     setConfirmBulk(null);
     if (error) {
@@ -510,7 +521,11 @@ export default function AcademyInvoices() {
     }
     setSelectedIds(new Set());
     invalidateInvoicesAndPlayers();
-    toast.success(t("invoices.bulk.resetDone", "{{count}} invoices reset to draft", { count: ids.length }));
+    toast.success(
+      skipped > 0
+        ? t("invoices.bulk.resetDonePartial", "{{count}} reset, {{skipped}} paid skipped", { count: ids.length, skipped })
+        : t("invoices.bulk.resetDone", "{{count}} invoices reset to draft", { count: ids.length }),
+    );
   };
 
   const handleBulkDelete = async () => {

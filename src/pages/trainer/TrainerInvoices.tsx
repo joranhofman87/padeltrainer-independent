@@ -306,11 +306,23 @@ export default function TrainerInvoices() {
 
   const handleBulkReset = async () => {
     setBulkRunning(true);
-    const ids = [...selectedIds];
+    // Never reset a PAID invoice to draft: it erases paid_at and the record that
+    // money was received (which then survives only at Mollie), and re-sending
+    // renumbers + emails a dead pay link. Skip paid rows; back it with a DB guard.
+    const resettable = selectedInvoices.filter((i) => i.status !== "paid");
+    const skipped = selectedInvoices.length - resettable.length;
+    const ids = resettable.map((i) => i.id);
+    if (ids.length === 0) {
+      setBulkRunning(false);
+      setConfirmBulk(null);
+      toast.error(t("invoices.bulk.resetAllPaid", "Betaalde facturen kunnen niet worden gereset"));
+      return;
+    }
     const { error } = await supabase
       .from("invoices")
       .update({ status: "draft", sent_at: null, paid_at: null })
-      .in("id", ids);
+      .in("id", ids)
+      .neq("status", "paid");
     setBulkRunning(false);
     setConfirmBulk(null);
     if (error) {
@@ -319,7 +331,11 @@ export default function TrainerInvoices() {
     }
     setSelectedIds(new Set());
     invalidateInvoicesAndPlayers();
-    toast.success(t("invoices.bulk.resetDone", "{{count}} facturen gereset", { count: ids.length }));
+    toast.success(
+      skipped > 0
+        ? t("invoices.bulk.resetDonePartial", "{{count}} gereset, {{skipped}} betaalde overgeslagen", { count: ids.length, skipped })
+        : t("invoices.bulk.resetDone", "{{count}} facturen gereset", { count: ids.length }),
+    );
   };
 
   const handleBulkDelete = async () => {

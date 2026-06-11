@@ -159,6 +159,15 @@ export default function TrainerEditInvoice() {
 
   const handleSave = async () => {
     if (!invoice) return;
+    // Paid/cancelled invoices are terminal: editing amounts makes the ledger and
+    // the archived PDF disagree (and clears nothing that proves payment). Correct
+    // a paid invoice with a credit note, not by overwriting it.
+    if (isPaid || isCancelled) {
+      toast.error(t('invoiceEdit.lockedTerminal', isPaid
+        ? 'Betaalde facturen kunnen niet meer worden gewijzigd. Maak een creditfactuur.'
+        : 'Geannuleerde facturen kunnen niet meer worden gewijzigd.'));
+      return;
+    }
     setSaving(true);
     try {
       const updatedItems = lineItems.map(li => ({ ...li, amount: Math.round(li.quantity * li.unit_price * 100) / 100 }));
