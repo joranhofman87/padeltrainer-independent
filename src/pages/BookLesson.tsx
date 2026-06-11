@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { trackEvent } from '@/lib/tracking';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
 import { Button } from '@/components/ui/button';
@@ -354,7 +355,7 @@ export default function BookLesson() {
         } else {
           const paymentSetup = await hasValidPaymentSetup(trainerId!, trainer.id, false);
           if (!paymentSetup.valid) {
-            toast({ title: t('bookLesson.paymentNotAvailable'), description: paymentSetup.message || t('bookLesson.paymentNotAvailable'), variant: 'destructive' });
+            toast({ title: t('bookLesson.paymentNotAvailable'), description: t('bookLesson.paymentNotAvailablePlayer', 'Deze trainer kan nog geen online betalingen ontvangen. Neem contact op met de trainer.'), variant: 'destructive' });
             setBooking(false);
             return;
           }
@@ -432,7 +433,7 @@ export default function BookLesson() {
       } else {
         const paymentSetup = await hasValidPaymentSetup(trainerId!, trainer.id, trainer.use_manual_invoicing ?? false);
         if (!paymentSetup.valid) {
-          toast({ title: t('bookLesson.paymentNotAvailable'), description: paymentSetup.message || t('bookLesson.paymentNotAvailable'), variant: 'destructive' });
+          toast({ title: t('bookLesson.paymentNotAvailable'), description: t('bookLesson.paymentNotAvailablePlayer', 'Deze trainer kan nog geen online betalingen ontvangen. Neem contact op met de trainer.'), variant: 'destructive' });
           setBooking(false);
           return;
         }
@@ -448,7 +449,7 @@ export default function BookLesson() {
       }
     } catch (error: any) {
       logger.error('Booking failed', error instanceof Error ? error : new Error(error?.message || 'Unknown booking error'), { component: 'BookLesson', action: 'handleBooking' });
-      toast({ title: t('bookLesson.bookingFailed'), description: error.message || t('bookLesson.bookingFailed'), variant: 'destructive' });
+      toast({ title: t('bookLesson.bookingFailed'), description: getFriendlyErrorMessage(error, t('bookLesson.bookingFailed')), variant: 'destructive' });
       setBooking(false);
     }
   };

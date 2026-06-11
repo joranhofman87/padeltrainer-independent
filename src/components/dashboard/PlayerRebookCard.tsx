@@ -12,6 +12,7 @@ import {
   declineClaimWithToken,
 } from '@/lib/priorityClaims';
 import { formatCurrency } from '@/lib/format';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 /**
  * In-app surface so a player can keep or release their priority spot for the
@@ -52,7 +53,7 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
         toast.error(t('rebooking.errorGeneric', 'Something went wrong. Please try again.'));
       }
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(getFriendlyErrorMessage(e, t('rebooking.errorGeneric', 'Something went wrong. Please try again.')));
     } finally {
       setBusyId(null);
     }
@@ -65,7 +66,7 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
       toast.success(t('rebooking.toastReleased', 'Your spot has been released. Thanks for your response.'));
       refresh();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(getFriendlyErrorMessage(e, t('rebooking.errorGeneric', 'Something went wrong. Please try again.')));
     } finally {
       setBusyId(null);
     }

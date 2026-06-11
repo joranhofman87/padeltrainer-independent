@@ -17,6 +17,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { trackEvent } from '@/lib/tracking';
 import { logger } from '@/lib/logger';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
@@ -259,10 +260,15 @@ export default function Auth() {
 
       if (error) {
         logger.error('Sign in failed', error, { component: 'Auth', action: 'signIn' });
-        const errorMessage = error.message || error.msg || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+        const raw = (error.message || error.msg || '').toLowerCase();
+        const description = raw.includes('invalid login') || raw.includes('invalid credentials')
+          ? t('signIn.invalidCredentials', 'E-mailadres of wachtwoord is onjuist.')
+          : raw.includes('email not confirmed')
+            ? t('signIn.emailNotConfirmed', 'Bevestig eerst je e-mailadres via de link in je inbox.')
+            : getFriendlyErrorMessage(error, t('signIn.genericError', 'Er ging iets mis. Probeer het opnieuw.'));
         toast({
           title: t('signIn.error', 'Error'),
-          description: errorMessage || t('signIn.genericError', 'Something went wrong. Please try again.'),
+          description,
           variant: 'destructive',
         });
       } else {
@@ -289,7 +295,7 @@ export default function Auth() {
       if (error) {
         toast({
           title: t('signIn.error', 'Error'),
-          description: error.message,
+          description: getFriendlyErrorMessage(error, t('signIn.genericError', 'Er ging iets mis. Probeer het opnieuw.')),
           variant: 'destructive',
         });
         setIsLoading(false);

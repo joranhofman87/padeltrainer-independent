@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote, Info } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { createOptionalPhoneSchema } from '@/lib/validation';
 import { buildGuestPlayerDbFields, prefillProfileNameFields } from '@/lib/profileName';
 import { getTermsForCycleOwner } from '@/lib/terms';
@@ -426,7 +427,7 @@ export default function CycleApplicationForm({
       }).catch(() => {});
     } catch (error: any) {
       logger.error('Error submitting application', error instanceof Error ? error : new Error(String(error)), { component: 'CycleApplicationForm' });
-      toast.error(error.message || t('application.form.submitError'));
+      toast.error(getFriendlyErrorMessage(error, t('application.form.submitError')));
 
       // Non-blocking Slack error alert
       supabase.functions.invoke('slack-notify', {

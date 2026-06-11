@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { CalendarClock, MapPin, CheckCircle2, XCircle } from 'lucide-react';
 import { fetchClaimByToken, declineClaimWithToken, acceptClaimWithToken } from '@/lib/priorityClaims';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatCurrency } from '@/lib/format';
 
 interface ClaimData {
@@ -70,7 +71,7 @@ export default function PriorityClaimPage() {
         toast.error(t('rebooking.errorGeneric', 'Something went wrong. Please try again.'));
       }
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(getFriendlyErrorMessage(e, t('rebooking.errorGeneric', 'Something went wrong. Please try again.')));
     } finally {
       setActing(false);
     }
@@ -84,7 +85,7 @@ export default function PriorityClaimPage() {
       setDeclined(true);
       toast.success(t('rebooking.toastReleased', 'Your spot has been released. Thanks for your response.'));
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(getFriendlyErrorMessage(e, t('rebooking.errorGeneric', 'Something went wrong. Please try again.')));
     } finally {
       setActing(false);
     }
