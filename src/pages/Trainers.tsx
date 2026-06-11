@@ -319,7 +319,7 @@ export default function Trainers() {
   }, [filters]);
 
   const filteredAndSortedTrainers = useMemo(() => {
-    let result = trainers.filter(trainer => {
+    const result = trainers.filter(trainer => {
       // Search query
       const matchesSearch = !searchQuery || 
         trainer.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||

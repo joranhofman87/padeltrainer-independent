@@ -114,7 +114,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
       const slotTrainerIds = [...new Set(slotsData.map(s => s.trainer_id).filter(Boolean))];
 
       // Fetch trainer slugs + user_ids
-      let trainerMap: Record<string, { slug: string | null; user_id: string | null }> = {};
+      const trainerMap: Record<string, { slug: string | null; user_id: string | null }> = {};
       if (slotTrainerIds.length > 0) {
         const { data: trainerProfiles } = await supabase
           .from('trainer_profiles' as any)
@@ -127,7 +127,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
 
       // Fetch trainer names from profiles
       const userIds = [...new Set(Object.values(trainerMap).map(t => t.user_id).filter(Boolean))] as string[];
-      let nameMap: Record<string, string> = {};
+      const nameMap: Record<string, string> = {};
       if (userIds.length > 0) {
         const { data: profiles } = await supabase
           .from('profiles' as any)

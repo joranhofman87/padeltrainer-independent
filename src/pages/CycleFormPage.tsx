@@ -58,14 +58,14 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   let activeAcademy: { id: string } | null = null;
   let activeClub: { id: string; location_id: string } | null = null;
   try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
+     
     const ctx = useAcademyContext();
     activeAcademy = ctx.activeAcademy;
   } catch {
     // Not inside AcademyLayout
   }
   try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
+     
     const ctx = useClubContext();
     activeClub = ctx.activeClub;
   } catch {
@@ -116,7 +116,7 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
           ]);
 
           const trainerIds = academyTrainers.map(t => t.trainer_profile_id);
-          let tlMap: Record<string, string[]> = {};
+          const tlMap: Record<string, string[]> = {};
           if (trainerIds.length > 0) {
             const { data: trainerLocs } = await supabase
               .from('trainer_locations')
@@ -180,7 +180,7 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
           }
 
           // Trainer-location map
-          let tlMap: Record<string, string[]> = {};
+          const tlMap: Record<string, string[]> = {};
           if (trainerIds.length > 0) {
             const { data: trainerLocs } = await supabase
               .from('trainer_locations')

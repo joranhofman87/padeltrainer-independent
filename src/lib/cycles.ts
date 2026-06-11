@@ -521,7 +521,7 @@ export async function getIntakeRequestsByOwner(
   status?: string
 ): Promise<IntakeRequest[]> {
   // First get cycles for this owner
-  let cyclesQuery = supabase
+  const cyclesQuery = supabase
     .from('cycles')
     .select('id')
     .eq('owner_type', ownerType)

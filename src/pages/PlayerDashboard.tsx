@@ -82,7 +82,7 @@ async function fetchPlayerBookings(profileId: string): Promise<UpcomingBooking[]
   const upcomingSlice = upcoming.slice(0, 10);
   const trainerIds = [...new Set(upcomingSlice.map(b => (b.availability_slots as any)?.trainer_id).filter(Boolean))];
 
-  let trainerNameMap = new Map<string, string>();
+  const trainerNameMap = new Map<string, string>();
   if (trainerIds.length > 0) {
     const { data: trainers } = await supabase
       .from('trainer_profiles')

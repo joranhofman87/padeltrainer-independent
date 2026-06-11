@@ -198,7 +198,7 @@ export default function TrainersCity() {
   };
 
   const filteredAndSortedTrainers = useMemo(() => {
-    let result = trainers.filter(trainer => {
+    const result = trainers.filter(trainer => {
       if (!searchQuery) return true;
       return (
         trainer.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||

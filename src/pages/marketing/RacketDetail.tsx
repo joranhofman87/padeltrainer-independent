@@ -53,7 +53,7 @@ function parsePriceRange(priceRange?: string): { low?: string; high?: string } {
   return { low: match[1], high: match[2] };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 interface RacketDetailData {
   _id: string;
   name: string;

@@ -761,7 +761,7 @@ export default function TrainerScheduleOverview() {
                 let subtotal = 0;
                 let vatAmount = 0;
                 let total = 0;
-                let vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
+                const vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
 
                 for (const item of updatedItems) {
                   const lineTotal = item.quantity * item.unit_price;

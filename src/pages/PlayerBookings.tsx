@@ -100,7 +100,7 @@ export default function PlayerBookings() {
       }>;
 
       const trainerIds = [...new Set(rawBookings.map(b => b.availability_slots?.trainer_id).filter(Boolean))];
-      let trainerInfoMap = new Map<string, { name: string; email: string | null; profileId: string }>();
+      const trainerInfoMap = new Map<string, { name: string; email: string | null; profileId: string }>();
 
       if (trainerIds.length > 0) {
         const { data: trainers } = await supabase

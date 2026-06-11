@@ -578,7 +578,7 @@ Deno.serve(async (req) => {
           // Treat 00:00 as end-of-day (midnight wrap)
           if (windowEndMinutes === 0) windowEndMinutes = 1440;
 
-          let current = new Date(effectiveStartDate);
+          const current = new Date(effectiveStartDate);
           while (current.getDay() !== dayIndex) {
             current.setDate(current.getDate() + 1);
           }

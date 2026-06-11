@@ -953,7 +953,7 @@ export function BulkCreateContent({
         if (!slotTrainerId) continue;
         
         const [startH, startM] = config.startTime.split(":").map(Number);
-        let slotStart = setMinutes(setHours(config.startDate, startH), startM);
+        const slotStart = setMinutes(setHours(config.startDate, startH), startM);
 
         // Generate a unique cyclus ID for this recurring slot configuration
         const cyclusId = crypto.randomUUID();

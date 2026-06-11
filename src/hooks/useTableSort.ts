@@ -43,8 +43,8 @@ export function useTableSort<T>(data: T[], defaultSortKey?: keyof T, defaultDire
       if (bValue == null) return sortConfig.direction === "asc" ? -1 : 1;
 
       // Handle nested objects (for things like profile.full_name)
-      let compareA = aValue;
-      let compareB = bValue;
+      const compareA = aValue;
+      const compareB = bValue;
 
       // Handle dates
       if (typeof compareA === "string" && typeof compareB === "string") {

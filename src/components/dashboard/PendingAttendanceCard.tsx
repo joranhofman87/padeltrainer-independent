@@ -141,7 +141,7 @@ async function fetchPendingPlayerSlots(profileId: string): Promise<PendingSlot[]
 
   // Fetch trainer summaries for unreported slots
   const unreportedSlotIds = slotIds.filter(id => !reportedSlotIds.has(id));
-  let trainerSummaryMap = new Map<string, string>();
+  const trainerSummaryMap = new Map<string, string>();
   if (unreportedSlotIds.length > 0) {
     const { data: trainerReports } = await supabase
       .from('session_reports')

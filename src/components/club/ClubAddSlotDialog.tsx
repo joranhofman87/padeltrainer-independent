@@ -406,7 +406,7 @@ export function ClubBulkCreateSheet({
         if (!config.trainerId) continue;
         
         const [startH, startM] = config.startTime.split(":").map(Number);
-        let slotStart = setMinutes(setHours(config.startDate, startH), startM);
+        const slotStart = setMinutes(setHours(config.startDate, startH), startM);
         const cyclusId = crypto.randomUUID();
 
         for (let week = 0; week < config.recurrenceWeeks; week++) {

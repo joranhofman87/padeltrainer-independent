@@ -222,7 +222,7 @@ export async function recalculateInvoiceAfterRemoval(
   let subtotal: number;
   let vatAmount: number;
   let totalInclusive: number;
-  let vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
+  const vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
 
   if (hasMultipleVatRates) {
     let totalSub = 0;
@@ -496,7 +496,7 @@ export async function syncSplitCountForCycle(
     let subtotal: number;
     let vatAmount: number;
     let totalInclusive: number;
-    let vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
+    const vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
 
     if (hasMultipleVatRates) {
       let totalSub = 0;

@@ -34,7 +34,7 @@ Deno.serve((req) => {
   let type = (params.get('type') || 'generic').toLowerCase();
   let title = params.get('title') || '';
   let subtitle = params.get('subtitle') || '';
-  let eyebrow = params.get('eyebrow') || '';
+  const eyebrow = params.get('eyebrow') || '';
 
   if (params.get('city')) {
     type = 'city';

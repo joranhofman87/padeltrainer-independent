@@ -226,7 +226,7 @@ export default function AcademyCalendar() {
 
       // Build trainer-location map
       const trainerIds = trainerList.map(t => t.id);
-      let tlMap: Record<string, string[]> = {};
+      const tlMap: Record<string, string[]> = {};
       if (trainerIds.length > 0) {
         const { data: trainerLocs } = await supabase
           .from('trainer_locations')

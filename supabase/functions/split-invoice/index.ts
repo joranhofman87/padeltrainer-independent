@@ -204,8 +204,8 @@ serve(async (req) => {
 
     let newSubtotal: number;
     let newVatAmount: number;
-    let newTotal: number = firstPlayerTotal;
-    let newVatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
+    const newTotal: number = firstPlayerTotal;
+    const newVatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
 
     const invoicePricesIncludeVat = invoice.prices_include_vat ?? true;
 

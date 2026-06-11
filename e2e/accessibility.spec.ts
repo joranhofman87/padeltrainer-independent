@@ -170,7 +170,7 @@ test.describe('Accessibility Tests', () => {
           (v) => v.impact !== 'serious' && v.impact !== 'critical'
         );
         if (advisory.length > 0) {
-          // eslint-disable-next-line no-console
+           
           console.warn(
             `[axe:${route.name}] ${advisory.length} non-blocking issue(s):`,
             advisory.map((v) => `${v.id} (${v.impact})`).join(', ')

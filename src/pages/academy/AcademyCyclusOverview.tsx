@@ -125,7 +125,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
           .in('id', trainerIds);
 
         const userIds = (trainerProfiles || []).map((tp: any) => tp.user_id).filter(Boolean);
-        let nameMap: Record<string, string> = {};
+        const nameMap: Record<string, string> = {};
         if (userIds.length > 0) {
           const { data: profiles } = await supabase
             .from('profiles' as any)
@@ -167,7 +167,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
 
       // 2. Fetch all slots that belong to any of these cycles OR have a cyclus_id (orphans)
       // Paginate to avoid Supabase 1000-row default limit
-      let allSlots: any[] = [];
+      const allSlots: any[] = [];
       if (trainerIds.length > 0) {
         let page = 0;
         const pageSize = 1000;
@@ -200,8 +200,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
 
       // 3. Fetch booking data for player names and payment status
       const slotIds = allSlots.map(s => s.id);
-      let playerNamesMap: Record<string, string[]> = {};
-      let bookingCountMap: Record<string, number> = {};
+      const playerNamesMap: Record<string, string[]> = {};
+      const bookingCountMap: Record<string, number> = {};
       const bookingsBySlot: Record<string, { status: string; payment_status: string | null; paid_externally: boolean | null }[]> = {};
 
       const paymentSummaryForSlots = (ids: string[]): CyclusGroupPaymentStatus => {
@@ -219,7 +219,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             .in('status', ['confirmed', 'pending']);
 
           const playerIds = [...new Set((bookings || []).map(b => b.player_id).filter(Boolean))] as string[];
-          let playerNameLookup: Record<string, string> = {};
+          const playerNameLookup: Record<string, string> = {};
           if (playerIds.length > 0) {
             const { data: playerProfiles } = await supabase
               .from('profiles' as any)
@@ -231,7 +231,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
           }
 
           const guestIds = [...new Set((bookings || []).map(b => b.guest_player_id).filter(Boolean))] as string[];
-          let guestNameLookup: Record<string, string> = {};
+          const guestNameLookup: Record<string, string> = {};
           if (guestIds.length > 0) {
             const { data: guestPlayers } = await supabase
               .from('guest_players' as any)
@@ -260,7 +260,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       }
 
       // 4. Also fetch intake requests for cycles without slots (to show registered players)
-      let intakePlayerMap: Record<string, string[]> = {};
+      const intakePlayerMap: Record<string, string[]> = {};
       if (cycleIds.length > 0) {
         for (let i = 0; i < cycleIds.length; i += 500) {
           const chunk = cycleIds.slice(i, i + 500);
@@ -272,7 +272,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
 
           if (intakes && intakes.length > 0) {
             const intakePlayerIds = [...new Set(intakes.map((ir: any) => ir.player_id).filter(Boolean))] as string[];
-            let intakePlayerLookup: Record<string, string> = {};
+            const intakePlayerLookup: Record<string, string> = {};
             if (intakePlayerIds.length > 0) {
               const { data: pp } = await supabase
                 .from('profiles' as any)
@@ -284,7 +284,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             }
 
             const intakeGuestIds = [...new Set(intakes.map((ir: any) => ir.guest_player_id).filter(Boolean))] as string[];
-            let intakeGuestLookup: Record<string, string> = {};
+            const intakeGuestLookup: Record<string, string> = {};
             if (intakeGuestIds.length > 0) {
               const { data: gp } = await supabase
                 .from('guest_players' as any)

@@ -210,7 +210,7 @@ export function QuickBookDialog({
 
     setIsLoading(true);
     try {
-      let slotsToBook = bookScope === "cyclus" && selectedSlot.cyclus_id && cyclusSlots.length > 0
+      const slotsToBook = bookScope === "cyclus" && selectedSlot.cyclus_id && cyclusSlots.length > 0
         ? cyclusSlots
         : [{ id: selectedSlot.id, start_time: selectedSlot.start_time, end_time: selectedSlot.end_time }];
 

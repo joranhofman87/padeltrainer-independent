@@ -144,7 +144,7 @@ describe('SEO length limits (marketing locales)', () => {
     const stale = [...KNOWN_LONG_KEYS].filter(k => !offending.has(k));
     if (stale.length > 0) {
       // Soft warn — do not fail; cleanup is beneficial but not blocking.
-      // eslint-disable-next-line no-console
+       
       console.warn(`[seo-lengths] KNOWN_LONG_KEYS has ${stale.length} stale entries that can be removed:\n${stale.join('\n')}`);
     }
     expect(true).toBe(true);

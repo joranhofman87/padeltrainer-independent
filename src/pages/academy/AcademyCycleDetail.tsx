@@ -135,7 +135,7 @@ export default function AcademyCycleDetail() {
       const timezone = (tzData.data as any)?.timezone || 'Europe/Amsterdam';
 
       const trainerIds = academyTrainers.map(t => t.trainer_profile_id);
-      let tlMap: Record<string, string[]> = {};
+      const tlMap: Record<string, string[]> = {};
       if (trainerIds.length > 0) {
         const { data: trainerLocs } = await supabase
           .from('trainer_locations')

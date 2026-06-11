@@ -346,7 +346,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
             <CardHeader><CardTitle>{t('bulkCopy.publicRelease', 'Public release')}</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <label className="flex items-start gap-3 cursor-pointer">
-                <Checkbox checked={!requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(!Boolean(v))} />
+                <Checkbox checked={!requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(!v)} />
                 <div>
                   <div className="text-sm font-medium">{t('bulkCopy.autoRelease', 'Auto-release after member window')}</div>
                   <div className="text-xs text-muted-foreground">{t('bulkCopy.autoReleaseHint', 'Slots open to the public automatically when the member window ends.')}</div>

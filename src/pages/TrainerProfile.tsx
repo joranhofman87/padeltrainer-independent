@@ -164,7 +164,7 @@ async function fetchTrainerData(trainerId: string, currentUserId?: string) {
   let trainerLocations: TrainerLocationData[] = [];
   if (locationsResult.data) {
     const locationIds = locationsResult.data.map(l => (l.location as any)?.id).filter(Boolean);
-    let clubsMap: Record<string, any> = {};
+    const clubsMap: Record<string, any> = {};
     if (locationIds.length > 0) {
       const { data: clubs } = await supabase
         .from('club_profiles')

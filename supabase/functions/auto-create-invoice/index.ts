@@ -402,7 +402,7 @@ serve(async (req) => {
     let subtotal: number;
     let vatAmount: number;
     let totalInclusive: number;
-    let vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
+    const vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
 
     if (hasMultipleVatRates) {
       // Per-line-item VAT calculation

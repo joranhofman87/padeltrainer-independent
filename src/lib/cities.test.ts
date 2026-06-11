@@ -56,7 +56,7 @@ describe('getCitiesWithTrainers', () => {
       error: null,
     });
 
-    let callCount = 0;
+    const callCount = 0;
     (supabase.from as any).mockImplementation((table: string) => {
       if (table === 'locations') return locChain;
       if (table === 'trainer_locations') return tlChain;
