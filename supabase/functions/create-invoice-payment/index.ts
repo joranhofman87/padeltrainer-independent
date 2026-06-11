@@ -247,15 +247,38 @@ serve(async (req) => {
         if (checkResp.ok) {
           const existing = await checkResp.json();
           if (existing.status === "open") {
-            logStep("Reusing existing open payment", { paymentId: invoice.mollie_payment_id });
-            return new Response(JSON.stringify({ paymentUrl: invoice.mollie_payment_url, existing: true }), {
-              status: 200,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            // M-11: only reuse the live payment if its amount STILL matches the
+            // current invoice total. Editing a sent invoice, removing a session, or
+            // a split rebalance changes the total while the pay link is alive —
+            // reusing then charges the OLD amount and the webhook refuses to mark
+            // it paid (amount mismatch), stranding the invoice as unpaid.
+            const openValue = Number(existing.amount?.value);
+            const invoiceTotal = Number(invoice.total);
+            if (Number.isFinite(openValue) && Math.abs(openValue - invoiceTotal) <= 0.01) {
+              logStep("Reusing existing open payment", { paymentId: invoice.mollie_payment_id });
+              return new Response(JSON.stringify({ paymentUrl: invoice.mollie_payment_url, existing: true }), {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+            // Amount drifted — cancel the stale open payment so the customer can no
+            // longer pay the wrong total, then fall through to create a fresh one.
+            logStep("Open payment amount mismatch — cancelling stale payment", {
+              paymentId: invoice.mollie_payment_id, openValue, invoiceTotal,
             });
+            try {
+              await fetch(`https://api.mollie.com/v2/payments/${invoice.mollie_payment_id}${testParam}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${accessToken}` },
+              });
+            } catch (cancelErr) {
+              logStep("Failed to cancel stale payment", { error: String(cancelErr) });
+            }
+          } else {
+            logStep("Existing payment no longer open", { paymentId: invoice.mollie_payment_id, status: existing.status });
           }
-          logStep("Existing payment no longer open", { paymentId: invoice.mollie_payment_id, status: existing.status });
         }
-        // Stale — clear stored URL so a fresh payment is created
+        // Stale / cancelled / amount-drifted — clear stored URL so a fresh payment is created
         await supabase.from("invoices")
           .update({ mollie_payment_url: null, mollie_payment_id: null })
           .eq("id", invoice.id);

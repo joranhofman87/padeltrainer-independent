@@ -466,6 +466,68 @@ serve(async (req) => {
       bookingId = allBookingIds[0];
       logStep("Using existing bookings", { bookingIds: allBookingIds });
 
+      // M-15: before minting a payment, reuse/refuse based on the bookings' current
+      // payment. A sequential retry (user clicks "pay" again) or a paid-but-not-yet-
+      // webhooked state otherwise creates a SECOND payment; the DB keeps only the
+      // newest id, so the webhook can't route the first — real money taken, booking
+      // stays unpaid, and a duplicate payable checkout exists.
+      const { data: priorState } = await supabase
+        .from("bookings")
+        .select("mollie_payment_id, payment_status")
+        .eq("id", bookingId)
+        .maybeSingle();
+
+      const probeTestParam = mollieApiKey.startsWith("test_") ? "?testmode=true" : "";
+
+      if (priorState?.payment_status === "paid") {
+        logStep("Booking already paid — refusing new payment", { bookingId });
+        return new Response(
+          JSON.stringify({ error: "already_paid", message: "Deze boeking is al betaald." }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (priorState?.mollie_payment_id) {
+        try {
+          const probe = await fetch(
+            `https://api.mollie.com/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`,
+            { headers: { Authorization: `Bearer ${recipientAccessToken}` } }
+          );
+          if (probe.ok) {
+            const prior = await probe.json();
+            const priorValue = Number(prior.amount?.value);
+            if (prior.status === "paid") {
+              logStep("Prior payment already paid — refusing new payment", { paymentId: prior.id });
+              return new Response(
+                JSON.stringify({ error: "already_paid", message: "Deze boeking is al betaald." }),
+                { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+            if (prior.status === "open" && Number.isFinite(priorValue) && Math.abs(priorValue - expectedAmount) <= 0.01) {
+              logStep("Reusing existing open payment for bookings", { paymentId: prior.id });
+              return new Response(
+                JSON.stringify({ paymentId: prior.id, bookingId, checkoutUrl: prior._links?.checkout?.href, existing: true }),
+                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+            if (prior.status === "open") {
+              // Amount drifted — cancel the stale checkout before issuing a fresh one.
+              try {
+                await fetch(`https://api.mollie.com/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`, {
+                  method: "DELETE",
+                  headers: { Authorization: `Bearer ${recipientAccessToken}` },
+                });
+                logStep("Cancelled stale open payment (amount drift)", { paymentId: prior.id });
+              } catch (cancelErr) {
+                logStep("Failed to cancel stale payment", { error: String(cancelErr) });
+              }
+            }
+          }
+        } catch (probeErr) {
+          logStep("Error probing prior payment, will create new", { error: String(probeErr) });
+        }
+      }
+
       // Distribute the charged total across the bookings to the cent so their
       // sum equals exactly what Mollie is charged. The webhook verifies
       // sum(payment_amount) == amount paid; naive round(total/N) per row drifts
