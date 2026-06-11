@@ -7,6 +7,7 @@ import {
   usesConfiguredSlotSessionPrice,
   getRebalanceBookingIds,
   buildGuestBookingInsertRow,
+  applyFirstPayerDiscount,
 } from "@/lib/bookingPricing";
 
 describe("normalizeSessionPrice", () => {
@@ -188,5 +189,20 @@ describe("buildGuestBookingInsertRow", () => {
       notes: null,
     });
     expect(row.payment_amount).toBe(0);
+  });
+});
+
+describe("applyFirstPayerDiscount — discount targets the payer, not index 0", () => {
+  it("applies the discount whenever discountAmount > 0, regardless of playerIndex", () => {
+    // The payer is the 2nd selected player (index 1) — the caller passes the
+    // discount on that row. The discount MUST still apply (M-03 regression).
+    expect(applyFirstPayerDiscount({ playerIndex: 1, paymentAmount: 50, discountAmount: 10 })).toBe(40);
+    expect(applyFirstPayerDiscount({ playerIndex: 0, paymentAmount: 50, discountAmount: 10 })).toBe(40);
+  });
+  it("leaves non-payer rows untouched (caller passes 0)", () => {
+    expect(applyFirstPayerDiscount({ playerIndex: 2, paymentAmount: 50, discountAmount: 0 })).toBe(50);
+  });
+  it("never goes below zero", () => {
+    expect(applyFirstPayerDiscount({ playerIndex: 1, paymentAmount: 8, discountAmount: 10 })).toBe(0);
   });
 });

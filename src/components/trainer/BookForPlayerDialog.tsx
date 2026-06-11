@@ -300,7 +300,12 @@ export function BookForPlayerDialog({
         original_amount: sessionPriceForOriginal,
         discount_amount: 0,
       })
-      .in("id", rebalanceIds);
+      .in("id", rebalanceIds)
+      // The calendar passes booked_players WITHOUT payment status, so the
+      // client filter can't exclude paid rows — enforce it at the DB so a paid
+      // (or externally-paid) booking is never silently rewritten to a new share.
+      .neq("payment_status", "paid")
+      .neq("paid_externally", true);
 
     if (error) {
       logger.error("Failed to rebalance booking amounts", error, {

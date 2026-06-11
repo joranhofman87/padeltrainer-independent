@@ -165,14 +165,19 @@ export function resolveSlotSessionPrice(
 }
 
 export type ApplyFirstPayerDiscountInput = {
+  /** Kept for call-site clarity; targeting is decided by discountAmount. */
   playerIndex: number;
   paymentAmount: number;
-  /** Discount applied only to the first selected player (index 0). */
+  /** Discount to subtract; the CALLER passes 0 for non-payer rows. */
   discountAmount: number;
 };
 
 export function applyFirstPayerDiscount(input: ApplyFirstPayerDiscountInput): number {
-  if (input.playerIndex !== 0 || input.discountAmount <= 0) {
+  // The caller decides WHO is discounted (it passes discountAmount only for the
+  // payer's row). Gating on playerIndex===0 here silently dropped the discount
+  // whenever the chosen payer wasn't the first-selected player — overcharging
+  // the customer while the books recorded a phantom discount.
+  if (input.discountAmount <= 0) {
     return input.paymentAmount;
   }
   return Math.max(0, round2(input.paymentAmount - input.discountAmount));

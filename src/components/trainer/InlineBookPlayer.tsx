@@ -186,7 +186,11 @@ export function InlineBookPlayer({
         original_amount: sessionPriceForOriginal,
         discount_amount: 0,
       })
-      .in("id", rebalanceIds);
+      .in("id", rebalanceIds)
+      // Never rewrite an already-settled booking's amount when rebalancing a
+      // split — a paid player must keep what they paid.
+      .neq("payment_status", "paid")
+      .neq("paid_externally", true);
 
     if (error) {
       logger.error("Failed to rebalance booking amounts", error, {
