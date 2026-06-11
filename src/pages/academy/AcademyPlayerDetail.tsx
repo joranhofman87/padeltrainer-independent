@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { resolveAcademyCyclusPricingRoute } from '@/lib/cyclusPricingRoute';
 import { buildAcademyInvoiceEditPath } from '@/lib/academyPlayerDetailNavigation';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +18,7 @@ import {
   Send,
   ExternalLink,
   Download,
+  Merge,
 } from 'lucide-react';
 import { downloadInvoicePdf } from '@/lib/downloadInvoicePdf';
 import { getAcademyCreateInvoiceUrl } from '@/lib/invoiceCustomer';
@@ -32,6 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { PlayerTag } from '@/components/players/playerTagColors';
 import { TagPicker } from '@/components/players/TagPicker';
+import { MergePlayersDialog } from '@/components/players/MergePlayersDialog';
 import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDetailsCard';
 import { AcademyPlayerRemoveCard } from '@/components/academy/AcademyPlayerRemoveCard';
 import { getAcademyLocations } from '@/lib/academy';
@@ -112,7 +114,9 @@ export default function AcademyPlayerDetail() {
   const { playerId } = useParams<{ playerId: string }>();
   const { activeAcademy } = useAcademyContext();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   const parsed = useMemo(() => {
     if (!playerId) return { kind: null as null | 'guest' | 'profile', id: '' };
@@ -524,13 +528,23 @@ export default function AcademyPlayerDetail() {
             )}
           </div>
           {playerId && (
-            <div className="shrink-0 md:self-start">
+            <div className="shrink-0 md:self-start flex flex-col items-stretch gap-2">
               <Button asChild data-testid="academy-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
                 <Link to={getAcademyCreateInvoiceUrl(playerId)}>
                   <FileText className="h-4 w-4 mr-2" />
                   {t('players.detail.createInvoice', 'Create invoice')}
                 </Link>
               </Button>
+              {player.type === 'guest' && player.guest_player_id && (
+                <Button
+                  variant="outline"
+                  data-testid="academy-player-merge-button"
+                  onClick={() => setMergeOpen(true)}
+                >
+                  <Merge className="h-4 w-4 mr-2" />
+                  {t('players.merge.action', 'Merge with another player…')}
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
@@ -768,6 +782,24 @@ export default function AcademyPlayerDetail() {
           profileId={player.profile_id}
           playerName={player.full_name}
           removedAt={removedAt}
+        />
+      )}
+
+      {activeAcademy && player.guest_player_id && (
+        <MergePlayersDialog
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          scope={{ kind: 'academy', id: activeAcademy.id }}
+          currentPlayer={{ guestPlayerId: player.guest_player_id, full_name: player.full_name }}
+          onMerged={(targetGuestId) => {
+            if (targetGuestId === player.guest_player_id) {
+              // Current player survived as the target — refresh in place.
+              void loadAll();
+            } else {
+              // Current player was the deleted source — go to the survivor.
+              navigate(`/app/academy/players/g_${targetGuestId}`);
+            }
+          }}
         />
       )}
     </div>

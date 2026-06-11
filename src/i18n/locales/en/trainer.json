@@ -537,6 +537,42 @@
       "complete": "Import Complete!",
       "importedCount": "{{count}} players have been added",
       "failedCount": "{{count}} failed to import"
+    },
+    "merge": {
+      "action": "Merge with another player…",
+      "title": "Merge players",
+      "pickDescription": "Search the duplicate player to merge with {{name}}. Only guest players can be merged.",
+      "searchPlaceholder": "Search by name or email…",
+      "noResults": "No mergeable guest players found",
+      "noContactInfo": "No contact info",
+      "compareDescription": "Check the result before merging. This cannot be undone.",
+      "keptLabel": "Kept",
+      "deletedLabel": "Will be deleted",
+      "swap": "Swap which player is kept",
+      "back": "Back",
+      "chooseValues": "Choose which details to keep",
+      "fromPlayer": "From {{name}}",
+      "autoCarried": "Carried over automatically",
+      "combinedInfo": "Trainings/cycluses, invoices, emails, tags and notes from both players will be combined.",
+      "emailHistoryNote": "Email history follows the email address you keep.",
+      "confirm": "Merge and delete {{name}}",
+      "success": "Players merged",
+      "successDescription": "Merged into {{name}}: {{bookings}} trainings and {{invoices}} invoices moved.",
+      "errorTitle": "Merge failed",
+      "errors": {
+        "linkedAccounts": "These players are linked to two different accounts and cannot be merged."
+      },
+      "fields": {
+        "fullName": "Name",
+        "email": "Email",
+        "phone": "Phone",
+        "skill": "Level",
+        "birthDate": "Date of birth",
+        "notes": "Notes",
+        "billingBusinessName": "Billing business name",
+        "billingAddress": "Billing address",
+        "billingBtwNumber": "VAT number"
+      }
     }
   },
   "earnings": {

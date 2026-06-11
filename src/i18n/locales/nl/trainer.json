@@ -540,6 +540,42 @@
       "complete": "Import voltooid!",
       "importedCount": "{{count}} spelers zijn toegevoegd",
       "failedCount": "{{count}} kon niet worden geïmporteerd"
+    },
+    "merge": {
+      "action": "Samenvoegen met andere speler…",
+      "title": "Spelers samenvoegen",
+      "pickDescription": "Zoek de dubbele speler die je met {{name}} wilt samenvoegen. Alleen gastspelers kunnen worden samengevoegd.",
+      "searchPlaceholder": "Zoek op naam of e-mail…",
+      "noResults": "Geen samenvoegbare gastspelers gevonden",
+      "noContactInfo": "Geen contactgegevens",
+      "compareDescription": "Controleer het resultaat voordat je samenvoegt. Dit kan niet ongedaan worden gemaakt.",
+      "keptLabel": "Blijft behouden",
+      "deletedLabel": "Wordt verwijderd",
+      "swap": "Wissel om welke speler behouden blijft",
+      "back": "Terug",
+      "chooseValues": "Kies welke gegevens je wilt behouden",
+      "fromPlayer": "Van {{name}}",
+      "autoCarried": "Automatisch overgenomen",
+      "combinedInfo": "Trainingen/cycli, facturen, e-mails, tags en notities van beide spelers worden samengevoegd.",
+      "emailHistoryNote": "E-mailgeschiedenis volgt het e-mailadres dat je behoudt.",
+      "confirm": "Samenvoegen en {{name}} verwijderen",
+      "success": "Spelers samengevoegd",
+      "successDescription": "Samengevoegd in {{name}}: {{bookings}} trainingen en {{invoices}} facturen verplaatst.",
+      "errorTitle": "Samenvoegen mislukt",
+      "errors": {
+        "linkedAccounts": "Deze spelers zijn gekoppeld aan twee verschillende accounts en kunnen niet worden samengevoegd."
+      },
+      "fields": {
+        "fullName": "Naam",
+        "email": "E-mail",
+        "phone": "Telefoon",
+        "skill": "Niveau",
+        "birthDate": "Geboortedatum",
+        "notes": "Notities",
+        "billingBusinessName": "Bedrijfsnaam (facturatie)",
+        "billingAddress": "Factuuradres",
+        "billingBtwNumber": "Btw-nummer"
+      }
     }
   },
   "earnings": {

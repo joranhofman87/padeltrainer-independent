@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import {
@@ -16,6 +16,7 @@ import {
   Send,
   ExternalLink,
   Download,
+  Merge,
   TrendingUp,
   TrendingDown,
   Minus,
@@ -49,6 +50,7 @@ import {
 } from '@/lib/trainerPlayerEmailHistory';
 import { TrainerPlayerDetailsCard } from '@/components/trainer/TrainerPlayerDetailsCard';
 import { TrainerPlayerRemoveCard } from '@/components/trainer/TrainerPlayerRemoveCard';
+import { MergePlayersDialog } from '@/components/players/MergePlayersDialog';
 import { TagPicker } from '@/components/players/TagPicker';
 import { PlayerTag } from '@/components/players/playerTagColors';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -116,7 +118,9 @@ export default function TrainerPlayerDetail() {
   const { playerId } = useParams<{ playerId: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   const parsed = useMemo(() => {
     if (!playerId) return { kind: null as null | 'guest' | 'profile', id: '' };
@@ -572,13 +576,23 @@ export default function TrainerPlayerDetail() {
               </div>
             )}
           </div>
-          <div className="shrink-0 md:self-start">
+          <div className="shrink-0 md:self-start flex flex-col items-stretch gap-2">
             <Button asChild data-testid="trainer-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
               <Link to={getTrainerCreateInvoiceUrl(playerId)}>
                 <FileText className="h-4 w-4 mr-2" />
                 {t('players.detail.createInvoice', 'Create invoice')}
               </Link>
             </Button>
+            {player.type === 'guest' && player.guest_player_id && (
+              <Button
+                variant="outline"
+                data-testid="trainer-player-merge-button"
+                onClick={() => setMergeOpen(true)}
+              >
+                <Merge className="h-4 w-4 mr-2" />
+                {t('players.merge.action', 'Merge with another player…')}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -810,6 +824,24 @@ export default function TrainerPlayerDetail() {
           profileId={player.profile_id}
           playerName={player.full_name}
           removedAt={removedAt}
+        />
+      )}
+
+      {trainerId && player.guest_player_id && (
+        <MergePlayersDialog
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          scope={{ kind: 'trainer', id: trainerId }}
+          currentPlayer={{ guestPlayerId: player.guest_player_id, full_name: player.full_name }}
+          onMerged={(targetGuestId) => {
+            if (targetGuestId === player.guest_player_id) {
+              // Current player survived as the target — refresh in place.
+              void loadAll();
+            } else {
+              // Current player was the deleted source — go to the survivor.
+              navigate(`/app/trainer/players/g_${targetGuestId}`);
+            }
+          }}
         />
       )}
     </div>

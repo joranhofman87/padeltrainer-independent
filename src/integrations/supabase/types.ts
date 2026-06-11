@@ -6944,6 +6944,16 @@ export type Database = {
         Args: { _profile_id: string }
         Returns: Json
       }
+      merge_guest_players: {
+        Args: {
+          p_fields?: Json
+          p_scope: string
+          p_scope_id: string
+          p_source_guest_id: string
+          p_target_guest_id: string
+        }
+        Returns: Json
+      }
       queue_onboarding_emails: {
         Args: {
           p_email: string
