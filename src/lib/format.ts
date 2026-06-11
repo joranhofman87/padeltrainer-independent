@@ -6,27 +6,31 @@ import { getDateFnsLocale } from '@/lib/dateFnsLocale';
  * Canonical money + date formatters. The app historically rendered currency in
  * three different ways (`€50.00`, `EUR 50.00`, ad-hoc Intl.NumberFormat) and
  * dates with a mix of date-fns patterns and toLocaleDateString. These helpers
- * give one consistent source of truth — especially important on payment /
+ * give one consistent, LOCALE-AWARE source of truth — important on payment /
  * invoice screens, where mixed money formatting reads as unpolished.
  *
- * The canonical currency format is `€50.00` (the app's dominant existing
- * style), so routing the legacy formatPrice through formatCurrency does not
- * change any displayed amounts.
+ * Currency is formatted per the active i18n language: `€ 50,00` for Dutch,
+ * `€50.00` for English (Intl, EUR, 2 decimals, with thousands separators).
  */
 
-/** `€50.00`. Non-finite input renders as `€0.00`. */
-export function formatCurrency(amount: number): string {
-  if (!Number.isFinite(amount)) return '€0.00';
-  return `€${amount.toFixed(2)}`;
+/**
+ * Locale-aware EUR, e.g. `€ 50,00` (nl) / `€50.00` (en). Non-finite → 0.
+ * @param locale optional BCP-47 override; defaults to the active i18n language.
+ */
+export function formatCurrency(amount: number, locale?: string): string {
+  const value = Number.isFinite(amount) ? amount : 0;
+  const lng = locale || i18next.language || 'en';
+  return new Intl.NumberFormat(lng, { style: 'currency', currency: 'EUR' }).format(value);
 }
 
 /** Currency for possibly-missing values: returns `fallback` (default `—`) when null/undefined. */
 export function formatCurrencyMaybe(
   amount: number | null | undefined,
   fallback = '—',
+  locale?: string,
 ): string {
   if (amount == null || !Number.isFinite(amount)) return fallback;
-  return formatCurrency(amount);
+  return formatCurrency(amount, locale);
 }
 
 /**

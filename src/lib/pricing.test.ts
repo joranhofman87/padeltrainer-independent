@@ -147,7 +147,9 @@ describe('formatPrice', () => {
   });
 
   it('handles large amounts', () => {
-    expect(formatPrice(1234.56)).toBe('€1234.56');
+    // formatPrice now delegates to the locale-aware formatCurrency, which adds
+    // a thousands separator (English default in tests).
+    expect(formatPrice(1234.56)).toBe('€1,234.56');
   });
 });
 
