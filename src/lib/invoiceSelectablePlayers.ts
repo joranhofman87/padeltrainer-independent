@@ -1,9 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
-import {
-  fetchRemovedPlayerKeys,
-  filterGuestRowsByRemoval,
-  filterProfileIdsByRemoval,
-} from '@/lib/playerRemovalVisibility';
+import { fetchUnifiedPlayersCore, type CorePlayer } from '@/lib/unifiedPlayers';
 
 export type InvoiceSelectablePlayer = {
   comboboxId: string;
@@ -18,165 +14,33 @@ export type InvoiceSelectablePlayer = {
   billing_btw_number: string | null;
 };
 
-const PLAYER_SELECT =
-  'id, full_name, email, phone, billing_business_name, billing_address, billing_btw_number';
+function coreToInvoiceSelectablePlayer(core: CorePlayer): InvoiceSelectablePlayer {
+  return {
+    comboboxId: core.key,
+    full_name: core.full_name,
+    email: core.email,
+    phone: core.phone,
+    type: core.type,
+    profileId: core.profileId,
+    guestPlayerId: core.guestPlayerId,
+    billing_business_name: core.billing_business_name,
+    billing_address: core.billing_address,
+    billing_btw_number: core.billing_btw_number,
+  };
+}
 
 export async function fetchAcademyInvoiceSelectablePlayers(
   academyProfileId: string,
 ): Promise<InvoiceSelectablePlayer[]> {
-  const { data: academyTrainers } = await supabase
-    .from('academy_trainers')
-    .select('trainer_profile_id')
-    .eq('academy_profile_id', academyProfileId)
-    .eq('status', 'active');
-
-  const trainerIds = (academyTrainers || []).map((t) => t.trainer_profile_id).filter(Boolean);
-
-  let guestQuery = supabase.from('guest_players').select(PLAYER_SELECT).order('full_name');
-  if (trainerIds.length > 0) {
-    guestQuery = guestQuery.or(
-      `academy_profile_id.eq.${academyProfileId},trainer_id.in.(${trainerIds.join(',')})`,
-    );
-  } else {
-    guestQuery = guestQuery.eq('academy_profile_id', academyProfileId);
-  }
-
-  const { data: guests } = await guestQuery;
-  const removedKeys = await fetchRemovedPlayerKeys({
-    kind: 'academy',
-    academyProfileId,
-  });
-  const activeGuests = filterGuestRowsByRemoval(guests || [], removedKeys);
-
-  const profileIdSet = new Set<string>();
-  if (trainerIds.length > 0) {
-    const { data: slots } = await supabase
-      .from('availability_slots')
-      .select('id')
-      .eq('academy_profile_id', academyProfileId);
-    const slotIds = (slots || []).map((s) => s.id);
-    if (slotIds.length > 0) {
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select('player_id')
-        .in('slot_id', slotIds)
-        .not('player_id', 'is', null);
-      (bookings || []).forEach((b) => {
-        if (b.player_id) profileIdSet.add(b.player_id);
-      });
-    }
-  }
-
-  let profiles: InvoiceSelectablePlayer[] = [];
-  if (profileIdSet.size > 0) {
-    const ids = filterProfileIdsByRemoval(Array.from(profileIdSet), removedKeys);
-    if (ids.length > 0) {
-      const { data: profileRows } = await supabase
-        .from('profiles')
-        .select(PLAYER_SELECT)
-        .in('id', ids);
-      profiles = (profileRows || []).map((p) => ({
-        comboboxId: `p_${p.id}`,
-        full_name: p.full_name || 'Unknown',
-        email: p.email || '',
-        phone: p.phone || '',
-        type: 'registered' as const,
-        profileId: p.id,
-        guestPlayerId: null,
-        billing_business_name: p.billing_business_name,
-        billing_address: p.billing_address,
-        billing_btw_number: p.billing_btw_number,
-      }));
-    }
-  }
-
-  const guestPlayers: InvoiceSelectablePlayer[] = activeGuests.map((g) => ({
-    comboboxId: `g_${g.id}`,
-    full_name: g.full_name,
-    email: g.email || '',
-    phone: g.phone || '',
-    type: 'guest' as const,
-    profileId: null,
-    guestPlayerId: g.id,
-    billing_business_name: g.billing_business_name,
-    billing_address: g.billing_address,
-    billing_btw_number: g.billing_btw_number,
-  }));
-
-  return [...guestPlayers, ...profiles].sort((a, b) => a.full_name.localeCompare(b.full_name));
+  const { players } = await fetchUnifiedPlayersCore({ kind: 'academy', academyProfileId });
+  return players.map(coreToInvoiceSelectablePlayer);
 }
 
 export async function fetchTrainerInvoiceSelectablePlayers(
   trainerId: string,
 ): Promise<InvoiceSelectablePlayer[]> {
-  const { data: guests } = await supabase
-    .from('guest_players')
-    .select(PLAYER_SELECT)
-    .eq('trainer_id', trainerId)
-    .order('full_name');
-
-  const removedKeys = await fetchRemovedPlayerKeys({
-    kind: 'trainer',
-    trainerProfileId: trainerId,
-  });
-  const activeGuests = filterGuestRowsByRemoval(guests || [], removedKeys);
-
-  const { data: slots } = await supabase
-    .from('availability_slots')
-    .select('id')
-    .eq('trainer_id', trainerId);
-
-  const slotIds = (slots || []).map((s) => s.id);
-  const profileIdSet = new Set<string>();
-
-  if (slotIds.length > 0) {
-    const { data: bookings } = await supabase
-      .from('bookings')
-      .select('player_id')
-      .in('slot_id', slotIds)
-      .not('player_id', 'is', null);
-    (bookings || []).forEach((b) => {
-      if (b.player_id) profileIdSet.add(b.player_id);
-    });
-  }
-
-  let profiles: InvoiceSelectablePlayer[] = [];
-  if (profileIdSet.size > 0) {
-    const ids = filterProfileIdsByRemoval(Array.from(profileIdSet), removedKeys);
-    if (ids.length > 0) {
-      const { data: profileRows } = await supabase
-        .from('profiles')
-        .select(PLAYER_SELECT)
-        .in('id', ids);
-      profiles = (profileRows || []).map((p) => ({
-        comboboxId: `p_${p.id}`,
-        full_name: p.full_name || 'Unknown',
-        email: p.email || '',
-        phone: p.phone || '',
-        type: 'registered' as const,
-        profileId: p.id,
-        guestPlayerId: null,
-        billing_business_name: p.billing_business_name,
-        billing_address: p.billing_address,
-        billing_btw_number: p.billing_btw_number,
-      }));
-    }
-  }
-
-  const guestPlayers: InvoiceSelectablePlayer[] = activeGuests.map((g) => ({
-    comboboxId: `g_${g.id}`,
-    full_name: g.full_name,
-    email: g.email || '',
-    phone: g.phone || '',
-    type: 'guest' as const,
-    profileId: null,
-    guestPlayerId: g.id,
-    billing_business_name: g.billing_business_name,
-    billing_address: g.billing_address,
-    billing_btw_number: g.billing_btw_number,
-  }));
-
-  return [...guestPlayers, ...profiles].sort((a, b) => a.full_name.localeCompare(b.full_name));
+  const { players } = await fetchUnifiedPlayersCore({ kind: 'trainer', trainerId });
+  return players.map(coreToInvoiceSelectablePlayer);
 }
 
 export type InvoicePrefillScope =

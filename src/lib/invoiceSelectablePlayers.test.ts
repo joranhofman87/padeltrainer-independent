@@ -32,13 +32,14 @@ const sampleRegistered: InvoiceSelectablePlayer = {
   billing_btw_number: null,
 };
 
-describe('invoice selectable players removal filtering', () => {
-  it('filters academy and trainer guests and profiles by removal keys', () => {
-    expect(source).toContain('fetchRemovedPlayerKeys');
-    expect(source).toContain('filterGuestRowsByRemoval');
-    expect(source).toContain('filterProfileIdsByRemoval');
-    expect(source).toContain("kind: 'academy'");
-    expect(source).toContain("kind: 'trainer'");
+describe('invoice selectable players unified core delegation', () => {
+  it('builds both fetchers on fetchUnifiedPlayersCore (removal filtering lives in the core)', () => {
+    expect(source).toContain('fetchUnifiedPlayersCore');
+    expect(source).toContain("fetchUnifiedPlayersCore({ kind: 'academy', academyProfileId })");
+    expect(source).toContain("fetchUnifiedPlayersCore({ kind: 'trainer', trainerId })");
+    // Removal filtering moved into the shared core; no local filtering remains.
+    expect(source).not.toContain('filterGuestRowsByRemoval');
+    expect(source).not.toContain('filterProfileIdsByRemoval');
   });
 });
 

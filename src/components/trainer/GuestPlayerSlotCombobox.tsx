@@ -11,10 +11,20 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { playerComboboxSearchValue } from "@/lib/playerSearch";
 import type { GuestPlayer } from "./AddPlayerDialog";
 
+/**
+ * GuestPlayer plus optional billing fields: callers that have them (e.g. rows
+ * from select('*')) make the business name searchable; callers without them
+ * still satisfy the prop type.
+ */
+export type GuestPlayerSlotComboboxPlayer = GuestPlayer & {
+  billing_business_name?: string | null;
+};
+
 export type GuestPlayerSlotComboboxProps = {
-  players: GuestPlayer[];
+  players: GuestPlayerSlotComboboxPlayer[];
   value: string;
   onValueChange: (playerId: string) => void;
   placeholder: string;
@@ -101,7 +111,7 @@ export function GuestPlayerSlotCombobox({
                 return (
                   <CommandItem
                     key={player.id}
-                    value={`${player.full_name} ${player.email ?? ""}`.trim()}
+                    value={playerComboboxSearchValue(player)}
                     disabled={isDisabled}
                     onSelect={() => {
                       if (!isDisabled) closeAndSelect(player.id);

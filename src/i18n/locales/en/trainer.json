@@ -391,7 +391,7 @@
     "addPlayerDescription": "Add a new guest player to book sessions for",
     "guestPlayers": "Guest Players",
     "guestPlayersDescription": "{{count}} players managed by you",
-    "searchPlayers": "Search players...",
+    "searchPlayers": "Search by name, email or business name…",
     "noPlayers": "No players added yet",
     "noPlayersFound": "No players found",
     "tryDifferentSearch": "Try a different search term",
@@ -1227,6 +1227,7 @@
       "templates": "Templates",
       "history": "History"
     },
+    "searchRecipients": "Search by name, email or business name",
     "recipients": {
       "title": "Recipients",
       "description": "Filter players to select who receives the email.",

@@ -66,6 +66,15 @@ import { logger } from "@/lib/logger";
 
 // Lesson interface removed - pricing now on slots
 
+/**
+ * loadActiveGuestPlayersForBooking selects '*', so rows carry the billing
+ * fields; declaring billing_business_name here lets the player combobox
+ * search on business name.
+ */
+type BookableGuestPlayer = GuestPlayer & {
+  billing_business_name?: string | null;
+};
+
 interface Slot {
   id: string;
   start_time: string;
@@ -119,7 +128,7 @@ export function BookForPlayerDialog({
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
-  const [players, setPlayers] = useState<GuestPlayer[]>([]);
+  const [players, setPlayers] = useState<BookableGuestPlayer[]>([]);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>(EMPTY_PLAYER_SLOTS);
   const [notes, setNotes] = useState("");
   const [showAddPlayer, setShowAddPlayer] = useState(false);
@@ -205,7 +214,7 @@ export function BookForPlayerDialog({
     try {
       const { data, error } = await loadActiveGuestPlayersForBooking(trainerId, academyProfileId);
       if (error) throw error;
-      setPlayers(data as GuestPlayer[]);
+      setPlayers(data as BookableGuestPlayer[]);
     } catch (error: any) {
       logger.error("Error fetching players", error as Error, { component: "BookForPlayerDialog" });
     } finally {

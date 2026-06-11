@@ -21,8 +21,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Send, Save, FileText, History, Loader2, Users, Eye,
-  Trash2, Pencil, X, Plus, FlaskConical,
+  Trash2, Pencil, X, Plus, FlaskConical, Search,
 } from 'lucide-react';
+import { filterPlayersByQuery } from '@/lib/playerSearch';
 import { format } from 'date-fns';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
@@ -45,6 +46,8 @@ interface EmailCampaignTabProps {
     has_active_cyclus?: boolean;
     type: 'guest' | 'registered';
     tag_ids?: string[];
+    billing_business_name?: string | null;
+    phone?: string | null;
   }[];
 }
 
@@ -92,6 +95,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterCyclus, setFilterCyclus] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Templates
   const [templates, setTemplates] = useState<CampaignTemplate[]>([]);
@@ -161,22 +165,25 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   };
 
   // Filter players
-  const filteredRecipients = players.filter((p) => {
-    if (!p.email) return false;
-    if (filterTrainer !== 'all' && !p.trainer_ids?.includes(filterTrainer)) return false;
-    if (filterLocation !== 'all' && !p.location_names?.includes(filterLocation)) return false;
-    if (filterLevel !== 'all' && getLevelBand(p.skill_rating) !== filterLevel) return false;
-    if (filterCyclus === 'yes' && !p.has_active_cyclus) return false;
-    if (filterCyclus === 'no' && p.has_active_cyclus) return false;
-    if (filterTag !== 'all') {
-      if (filterTag === 'untagged') {
-        if (p.tag_ids && p.tag_ids.length > 0) return false;
-      } else {
-        if (!p.tag_ids?.includes(filterTag)) return false;
+  const filteredRecipients = filterPlayersByQuery(
+    players.filter((p) => {
+      if (!p.email) return false;
+      if (filterTrainer !== 'all' && !p.trainer_ids?.includes(filterTrainer)) return false;
+      if (filterLocation !== 'all' && !p.location_names?.includes(filterLocation)) return false;
+      if (filterLevel !== 'all' && getLevelBand(p.skill_rating) !== filterLevel) return false;
+      if (filterCyclus === 'yes' && !p.has_active_cyclus) return false;
+      if (filterCyclus === 'no' && p.has_active_cyclus) return false;
+      if (filterTag !== 'all') {
+        if (filterTag === 'untagged') {
+          if (p.tag_ids && p.tag_ids.length > 0) return false;
+        } else {
+          if (!p.tag_ids?.includes(filterTag)) return false;
+        }
       }
-    }
-    return true;
-  });
+      return true;
+    }),
+    searchQuery,
+  );
 
   // Sync recipients when filters change (skipped while loading a draft)
   const skipNextRecipientSync = useRef(false);
@@ -186,7 +193,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       return;
     }
     setRecipients(filteredRecipients.map((p) => ({ id: p.id, full_name: p.full_name, email: p.email })));
-  }, [filterTrainer, filterLocation, filterLevel, filterCyclus, filterTag, players]);
+  }, [filterTrainer, filterLocation, filterLevel, filterCyclus, filterTag, searchQuery, players]);
 
   const handleRemoveRecipient = (id: string) => {
     setRecipients((prev) => prev.filter((r) => r.id !== id));
@@ -631,6 +638,16 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                 </div>
 
                 <Separator />
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t('emailCampaign.searchRecipients', 'Search by name, email or business name')}
+                    className="h-8 pl-9 text-sm"
+                  />
+                </div>
 
                 <div className="flex items-center justify-between py-2">
                   <span className="text-sm font-medium">{t('emailCampaign.recipients.selected')}</span>

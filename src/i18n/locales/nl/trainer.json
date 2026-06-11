@@ -392,7 +392,7 @@
     "addPlayerDescription": "Voeg een nieuwe gastspeler toe om sessies voor te boeken",
     "guestPlayers": "Gastspelers",
     "guestPlayersDescription": "{{count}} spelers beheerd door jou",
-    "searchPlayers": "Zoek spelers...",
+    "searchPlayers": "Zoek op naam, e-mail of bedrijfsnaam…",
     "noPlayers": "Nog geen spelers toegevoegd",
     "empty": "Nog geen spelers",
     "emptyDescription": "Spelers verschijnen hier zodra ze boeken bij je trainers.",
@@ -1248,6 +1248,7 @@
       "templates": "Sjablonen",
       "history": "Geschiedenis"
     },
+    "searchRecipients": "Zoek op naam, e-mail of bedrijfsnaam",
     "recipients": {
       "title": "Ontvangers",
       "description": "Filter spelers om te selecteren wie de e-mail ontvangt.",

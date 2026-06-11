@@ -26,7 +26,8 @@ import {
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
 import { TRAINING_BOOKING_STATUSES } from '@/lib/academyPlayerTrainingLocations';
-import { loadGuestPlayersForAcademy } from '@/lib/guestPlayers';
+import { fetchUnifiedPlayersCore } from '@/lib/unifiedPlayers';
+import { filterPlayersByQuery } from '@/lib/playerSearch';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { format } from 'date-fns';
@@ -62,6 +63,7 @@ type UnifiedPlayer = {
   full_name: string;
   email: string;
   phone: string;
+  billing_business_name: string | null;
   skill_rating: number | null;
   rating_system: string;
   has_trained: boolean;
@@ -291,7 +293,7 @@ export default function AcademyPlayers() {
       const meta = p.type === 'guest'
         ? metaByGuest.get(p.id)
         : metaByProfile.get(p.id.replace(/^reg-/, ''));
-      return shouldShowPlayerInAcademyOverview(meta);
+      return shouldShowPlayerInAcademyOverview(meta ? { removed_at: meta.removed_at ?? null } : undefined);
     });
 
     if (selectedTrainerId && selectedTrainerId !== 'all') {
@@ -326,15 +328,7 @@ export default function AcademyPlayers() {
       result = result.filter((p) => !p.has_overdue_payment);
     }
 
-    const query = searchQuery.toLowerCase().trim();
-    if (query) {
-      result = result.filter(
-        (p) =>
-          p.full_name.toLowerCase().includes(query) ||
-          p.email.toLowerCase().includes(query) ||
-          p.phone.includes(query)
-      );
-    }
+    result = filterPlayersByQuery(result, searchQuery);
 
     setFilteredPlayers(result);
   }, [searchQuery, players, metadata, selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus, overdueGuestIds, overdueProfileIds]);
@@ -352,7 +346,7 @@ export default function AcademyPlayers() {
       const meta = p.type === 'guest'
         ? metaByGuest.get(p.id)
         : metaByProfile.get(p.id.replace(/^reg-/, ''));
-      return shouldShowPlayerInAcademyOverview(meta);
+      return shouldShowPlayerInAcademyOverview(meta ? { removed_at: meta.removed_at ?? null } : undefined);
     }).length;
   }, [players, metadata]);
 
@@ -422,35 +416,18 @@ export default function AcademyPlayers() {
           .sort((a, b) => a.name.localeCompare(b.name)),
       );
 
-      // Fetch guest players: trainer-owned (for academy trainers) + academy-level
-      let allGuestPlayers: any[] = [];
-
-      if (trainerIds.length > 0) {
-        const { data: trainerPlayers } = await supabase
-          .from('guest_players')
-          .select('*')
-          .in('trainer_id', trainerIds)
-          .order('full_name');
-        if (trainerPlayers) allGuestPlayers.push(...trainerPlayers);
-      }
-
-      const { data: academyPlayers, error: academyPlayersError } =
-        await loadGuestPlayersForAcademy(activeAcademy.id);
-      if (academyPlayersError) {
-        throw academyPlayersError;
-      }
-      if (academyPlayers) allGuestPlayers.push(...academyPlayers);
-
-      // Deduplicate by id
-      const seenIds = new Set<string>();
-      allGuestPlayers = allGuestPlayers.filter((g) => {
-        if (seenIds.has(g.id)) return false;
-        seenIds.add(g.id);
-        return true;
+      // Single source of truth for who counts as a player (guests + registered)
+      const core = await fetchUnifiedPlayersCore({
+        kind: 'academy',
+        academyProfileId: activeAcademy.id,
+        trainerIds,
       });
+      const coreGuests = core.players.filter((p) => p.type === 'guest');
 
       // --- Enrich guest players with location + cyclus data ---
-      const guestPlayerIds = allGuestPlayers.map((g) => g.id);
+      const guestPlayerIds = coreGuests
+        .map((p) => p.guestPlayerId)
+        .filter((id): id is string => Boolean(id));
       const guestLocationMap = new Map<string, Set<string>>();
       const guestCyclusMap = new Map<string, boolean>();
       const guestTrainerMap = new Map<string, Set<string>>();
@@ -516,122 +493,95 @@ export default function AcademyPlayers() {
         }
       }
 
-      const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => {
-        const bookingTrainerIds = guestTrainerMap.has(g.id) ? Array.from(guestTrainerMap.get(g.id)!) : [];
-        const allTrainerIds = g.trainer_id
-          ? [...new Set([g.trainer_id, ...bookingTrainerIds])]
+      const guests: UnifiedPlayer[] = coreGuests.map((p) => {
+        const guestId = p.guestPlayerId || '';
+        const ownerTrainerId = p.guestRow?.trainer_id || undefined;
+        const bookingTrainerIds = guestTrainerMap.has(guestId) ? Array.from(guestTrainerMap.get(guestId)!) : [];
+        const allTrainerIds = ownerTrainerId
+          ? [...new Set([ownerTrainerId, ...bookingTrainerIds])]
           : bookingTrainerIds;
         return {
-          id: g.id,
-          full_name: g.full_name,
-          email: g.email || '',
-          phone: g.phone || '',
-          skill_rating: g.skill_rating ?? null,
-          rating_system: g.rating_system || 'knltb',
-          has_trained: g.has_trained ?? false,
-          notes: g.notes || null,
-          created_at: g.created_at,
+          id: guestId,
+          full_name: p.full_name,
+          email: p.email,
+          phone: p.phone,
+          billing_business_name: p.billing_business_name,
+          skill_rating: p.skill_rating,
+          rating_system: p.rating_system,
+          has_trained: p.has_trained,
+          notes: p.notes,
+          created_at: p.created_at,
           type: 'guest' as const,
-          trainer_id: g.trainer_id,
+          trainer_id: ownerTrainerId,
           trainer_ids: allTrainerIds,
-          trainer_name: g.trainer_id ? (trainerNameMap.get(g.trainer_id) || '—') : t('nav.academy', 'Academy'),
-          originalGuest: g as GuestPlayer,
-          training_location_ids: guestLocationMap.has(g.id) ? Array.from(guestLocationMap.get(g.id)!) : [],
-          location_names: guestLocationMap.has(g.id)
-            ? Array.from(guestLocationMap.get(g.id)!)
+          trainer_name: ownerTrainerId ? (trainerNameMap.get(ownerTrainerId) || '—') : t('nav.academy', 'Academy'),
+          originalGuest: (p.guestRow || undefined) as GuestPlayer | undefined,
+          training_location_ids: guestLocationMap.has(guestId) ? Array.from(guestLocationMap.get(guestId)!) : [],
+          location_names: guestLocationMap.has(guestId)
+            ? Array.from(guestLocationMap.get(guestId)!)
                 .map((id) => locationNameMap.get(id))
                 .filter((name): name is string => Boolean(name))
             : [],
-          has_active_cyclus: guestCyclusMap.get(g.id) || false,
-          source: g.source ?? null,
-          birth_date: g.birth_date ?? null,
+          has_active_cyclus: guestCyclusMap.get(guestId) || false,
+          source: p.source,
+          birth_date: p.birth_date,
         };
       });
 
-      // Fetch registered players from bookings
-      const { data: slotIds } = await supabase
-        .from('availability_slots')
-        .select('id, trainer_id, location_id, cyclus_id, end_time, academy_profile_id')
-        .in('trainer_id', trainerIds);
+      // Registered players come from the core; enrich with slot details from core.slots
+      const slotTrainerMap = new Map(core.slots.map((s) => [s.id, s.trainer_id]));
+      const slotDetailMap = new Map(core.slots.map((s) => [s.id, s]));
 
-      let regPlayers: UnifiedPlayer[] = [];
-      if (slotIds && slotIds.length > 0) {
-        const slotTrainerMap = new Map(slotIds.map((s) => [s.id, s.trainer_id]));
-        const slotDetailMap = new Map(slotIds.map((s) => [s.id, s]));
-
-        const { data: bookings } = await supabase
-          .from('bookings')
-          .select('player_id, created_at, slot_id')
-          .in('slot_id', slotIds.map((s) => s.id))
-          .not('player_id', 'is', null)
-          .in('status', [...TRAINING_BOOKING_STATUSES]);
-
-        if (bookings && bookings.length > 0) {
-          const playerMap = new Map<string, { created_at: string; trainer_ids: Set<string>; location_ids: Set<string>; has_active_cyclus: boolean }>();
-          bookings.forEach((b) => {
-            if (!b.player_id) return;
-            const slot = slotDetailMap.get(b.slot_id);
-            const trainerId = slotTrainerMap.get(b.slot_id) || '';
-            if (!playerMap.has(b.player_id)) {
-              playerMap.set(b.player_id, {
-                created_at: b.created_at,
-                trainer_ids: new Set(),
-                location_ids: new Set(),
-                has_active_cyclus: false,
-              });
-            }
-            const entry = playerMap.get(b.player_id)!;
-            if (trainerId) entry.trainer_ids.add(trainerId);
-            if (slot?.location_id && academyLocationIds.has(slot.location_id)) {
-              entry.location_ids.add(slot.location_id);
-            }
-            if (slot?.cyclus_id && slot?.end_time && slot.end_time >= now) {
-              entry.has_active_cyclus = true;
-            }
+      const playerMap = new Map<string, { created_at: string; trainer_ids: Set<string>; location_ids: Set<string>; has_active_cyclus: boolean }>();
+      core.registeredBookings.forEach((b) => {
+        if (!b.player_id) return;
+        const slot = slotDetailMap.get(b.slot_id);
+        const trainerId = slotTrainerMap.get(b.slot_id) || '';
+        if (!playerMap.has(b.player_id)) {
+          playerMap.set(b.player_id, {
+            created_at: b.created_at,
+            trainer_ids: new Set(),
+            location_ids: new Set(),
+            has_active_cyclus: false,
           });
-
-          const playerIds = Array.from(playerMap.keys());
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, email, phone, skill_rating, rating_system')
-            .in('id', playerIds);
-
-          if (profiles) {
-            const linkedIds = new Set(
-              allGuestPlayers
-                .filter((g: any) => g.linked_profile_id)
-                .map((g: any) => g.linked_profile_id)
-            );
-
-            regPlayers = profiles
-              .filter((p) => !linkedIds.has(p.id))
-              .map((p) => {
-                const info = playerMap.get(p.id);
-                return {
-                  id: `reg-${p.id}`,
-                  full_name: p.full_name || 'Unknown',
-                  email: p.email || '',
-                  phone: (p as any).phone || '',
-                  skill_rating: (p as any).skill_rating ?? null,
-                  rating_system: (p as any).rating_system || 'knltb',
-                  has_trained: true,
-                  notes: null,
-                  created_at: info?.created_at || new Date().toISOString(),
-                  type: 'registered' as const,
-                  trainer_ids: info ? Array.from(info.trainer_ids) : [],
-                  trainer_name: info?.trainer_ids.size ? trainerNameMap.get(Array.from(info.trainer_ids)[0]) || '—' : '—',
-                  training_location_ids: info ? Array.from(info.location_ids) : [],
-                  location_names: info
-                    ? Array.from(info.location_ids)
-                        .map((id) => locationNameMap.get(id))
-                        .filter((name): name is string => Boolean(name))
-                    : [],
-                  has_active_cyclus: info?.has_active_cyclus || false,
-                };
-              });
-          }
         }
-      }
+        const entry = playerMap.get(b.player_id)!;
+        if (trainerId) entry.trainer_ids.add(trainerId);
+        if (slot?.location_id && academyLocationIds.has(slot.location_id)) {
+          entry.location_ids.add(slot.location_id);
+        }
+        if (slot?.cyclus_id && slot?.end_time && slot.end_time >= now) {
+          entry.has_active_cyclus = true;
+        }
+      });
+
+      const regPlayers: UnifiedPlayer[] = core.players
+        .filter((p) => p.type === 'registered')
+        .map((p) => {
+          const info = p.profileId ? playerMap.get(p.profileId) : undefined;
+          return {
+            id: `reg-${p.profileId}`,
+            full_name: p.full_name,
+            email: p.email,
+            phone: p.phone,
+            billing_business_name: p.billing_business_name,
+            skill_rating: p.skill_rating,
+            rating_system: p.rating_system,
+            has_trained: true,
+            notes: null,
+            created_at: info?.created_at || p.created_at,
+            type: 'registered' as const,
+            trainer_ids: info ? Array.from(info.trainer_ids) : [],
+            trainer_name: info?.trainer_ids.size ? trainerNameMap.get(Array.from(info.trainer_ids)[0]) || '—' : '—',
+            training_location_ids: info ? Array.from(info.location_ids) : [],
+            location_names: info
+              ? Array.from(info.location_ids)
+                  .map((id) => locationNameMap.get(id))
+                  .filter((name): name is string => Boolean(name))
+              : [],
+            has_active_cyclus: info?.has_active_cyclus || false,
+          };
+        });
 
       const allPlayers = [...guests, ...regPlayers].sort((a, b) =>
         a.full_name.localeCompare(b.full_name)
