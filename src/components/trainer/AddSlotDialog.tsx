@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
 import { CalendarIcon, Plus, Repeat, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
@@ -76,6 +77,7 @@ import {
   shouldShowBulkPlayersAddedToast,
 } from "@/lib/bulkCreateSlot";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
+import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
@@ -451,6 +453,7 @@ export function BulkCreateContent({
   const { t } = useTranslation("trainer");
   const { t: tAcademy } = useTranslation("academy");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { trainerRatingSystem } = useTrainerRatingSystem(trainerId || undefined);
 
   const [bulkSlots, setBulkSlots] = useState<BulkSlotConfig[]>([]);
@@ -1103,6 +1106,11 @@ export function BulkCreateContent({
             }
           }
         }
+      }
+
+      if (totalBookingsCreated > 0) {
+        if (trainerId) invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerId });
+        if (academyId) invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyId });
       }
 
       const bookingOutcome = getBulkGenerateBookingOutcome({

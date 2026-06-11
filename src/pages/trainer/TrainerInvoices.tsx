@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { nl, enUS } from "date-fns/locale";
 import { canSharePublicPaymentLink } from "@/lib/invoiceSettingsComplete";
 import { formatCurrency } from "@/lib/format";
+import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import {
   buildTrainerInvoiceSettingsLabels,
   checkInvoiceSettingsGate,
@@ -124,6 +125,14 @@ export default function TrainerInvoices() {
   });
 
   const trainerId = trainerProfile?.id;
+
+  /** Refresh invoices + all player views (overdue flag, guest email edits). */
+  const invalidateInvoicesAndPlayers = () => {
+    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    if (trainerId) {
+      invalidateAllPlayerData(queryClient, { kind: "trainer", id: trainerId });
+    }
+  };
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["trainer-invoices", trainerId],
@@ -226,7 +235,7 @@ export default function TrainerInvoices() {
         });
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+      invalidateInvoicesAndPlayers();
       toast.success(result.email
         ? t("invoices.sentSuccessTo", { email: result.email })
         : t("invoices.sentSuccess"));
@@ -253,7 +262,7 @@ export default function TrainerInvoices() {
         await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", inv.id);
       }
     }
-    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    invalidateInvoicesAndPlayers();
     const parts = [];
     if (sent > 0) parts.push(t("invoices.bulkSent", { count: sent }));
     if (noEmail > 0) parts.push(t("invoices.bulkNoEmail", { count: noEmail }));
@@ -269,7 +278,7 @@ export default function TrainerInvoices() {
     }
     await supabase.functions.invoke("send-invoice-email", { body: { invoiceId } });
     await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", invoiceId);
-    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    invalidateInvoicesAndPlayers();
     toast.success(t("invoices.sentSuccessTo", { email }));
   };
 
@@ -279,7 +288,7 @@ export default function TrainerInvoices() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+      invalidateInvoicesAndPlayers();
       toast.success(t("invoices.markedAsSent", "Gemarkeerd als verstuurd"));
     },
   });
@@ -309,7 +318,7 @@ export default function TrainerInvoices() {
       return;
     }
     setSelectedIds(new Set());
-    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    invalidateInvoicesAndPlayers();
     toast.success(t("invoices.bulk.resetDone", "{{count}} facturen gereset", { count: ids.length }));
   };
 
@@ -329,7 +338,7 @@ export default function TrainerInvoices() {
     setBulkRunning(false);
     setConfirmBulk(null);
     setSelectedIds(new Set());
-    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    invalidateInvoicesAndPlayers();
     if (fail > 0) toast.error(t("invoices.bulk.deletePartial", "{{ok}} verwerkt, {{fail}} mislukt", { ok, fail }));
     else toast.success(t("invoices.bulk.deleteDone", "{{count}} facturen verwijderd", { count: ok }));
   };
@@ -351,7 +360,7 @@ export default function TrainerInvoices() {
     setBulkDueOpen(false);
     setBulkDueDate(undefined);
     setSelectedIds(new Set());
-    queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+    invalidateInvoicesAndPlayers();
     toast.success(t("invoices.bulk.dueDateDone", "Vervaldatum bijgewerkt voor {{count}} facturen", { count: ids.length }));
   };
 
@@ -692,7 +701,7 @@ export default function TrainerInvoices() {
         language={i18n.language || "nl"}
         onSent={() => {
           setSelectedIds(new Set());
-          queryClient.invalidateQueries({ queryKey: ["trainer-invoices"] });
+          invalidateInvoicesAndPlayers();
         }}
       />
 

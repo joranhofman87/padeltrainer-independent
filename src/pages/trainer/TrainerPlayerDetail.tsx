@@ -35,6 +35,7 @@ import {
 } from '@/lib/trainerPlayerDetails';
 import { fetchTrainerPlayerTrainingLocations } from '@/lib/trainerPlayerTrainingLocations';
 import { trainerPlayersQueryKey } from '@/lib/trainerPlayersQuery';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import {
   buildTrainerInvoiceEmailEvents,
   filterInvoicesForTrainer,
@@ -549,6 +550,9 @@ export default function TrainerPlayerDetail() {
                   selectedTagIds={tagIds}
                   onTagsChange={setTags}
                   onSelectedTagIdsChange={setTagIds}
+                  onChanged={() =>
+                    invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerId })
+                  }
                   variant="detail"
                 />
               </div>

@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
+import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceSettingsCard";
@@ -75,6 +76,14 @@ export default function AcademyInvoices() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeAcademy } = useAcademyContext();
   const queryClient = useQueryClient();
+
+  /** Refresh invoices + all player views (overdue flag, guest email edits). */
+  const invalidateInvoicesAndPlayers = () => {
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    if (activeAcademy?.id) {
+      invalidateAllPlayerData(queryClient, { kind: "academy", id: activeAcademy.id });
+    }
+  };
   const pageTab = searchParams.get("tab") === "settings" ? "settings" : "overview";
   const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
@@ -366,7 +375,7 @@ export default function AcademyInvoices() {
         });
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+      invalidateInvoicesAndPlayers();
       toast.success(result.email
         ? t("invoices.sentSuccessTo", { email: result.email })
         : t("invoices.sentSuccess"));
@@ -411,7 +420,7 @@ export default function AcademyInvoices() {
       }
     }
 
-    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    invalidateInvoicesAndPlayers();
     
     const parts = [];
     if (sent > 0) parts.push(t("invoices.bulkSent", { count: sent }));
@@ -438,7 +447,7 @@ export default function AcademyInvoices() {
       status: "sent" 
     }).eq("id", invoiceId);
 
-    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    invalidateInvoicesAndPlayers();
     toast.success(t("invoices.sentSuccessTo", { email }));
   };
 
@@ -452,7 +461,7 @@ export default function AcademyInvoices() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+      invalidateInvoicesAndPlayers();
       toast.success(t("invoices.markedAsSent", "Invoice marked as sent"));
     },
   });
@@ -500,7 +509,7 @@ export default function AcademyInvoices() {
       return;
     }
     setSelectedIds(new Set());
-    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    invalidateInvoicesAndPlayers();
     toast.success(t("invoices.bulk.resetDone", "{{count}} invoices reset to draft", { count: ids.length }));
   };
 
@@ -520,7 +529,7 @@ export default function AcademyInvoices() {
     setBulkRunning(false);
     setConfirmBulk(null);
     setSelectedIds(new Set());
-    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    invalidateInvoicesAndPlayers();
     if (fail > 0) {
       toast.error(t("invoices.bulk.deletePartial", "{{ok}} processed, {{fail}} failed", { ok, fail }));
     } else {
@@ -549,7 +558,7 @@ export default function AcademyInvoices() {
     setBulkDueOpen(false);
     setBulkDueDate(undefined);
     setSelectedIds(new Set());
-    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    invalidateInvoicesAndPlayers();
     toast.success(t("invoices.bulk.dueDateDone", "Due date updated for {{count}} invoices", { count: ids.length }));
   };
 
@@ -1013,7 +1022,7 @@ export default function AcademyInvoices() {
         language={i18n.language || "nl"}
         onSent={() => {
           setSelectedIds(new Set());
-          queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+          invalidateInvoicesAndPlayers();
         }}
       />
 

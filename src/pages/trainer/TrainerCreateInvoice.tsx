@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { InvoiceCustomerSection } from '@/components/invoices/InvoiceCustomerSection';
 import {
@@ -243,6 +244,7 @@ export default function TrainerCreateInvoice() {
 
       toast.success(t('invoiceForm.create.createdToast', { number: invoiceNumber }));
       queryClient.invalidateQueries({ queryKey: ['trainer-invoices'] });
+      invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerId });
       navigate('/app/trainer/invoices');
     } catch (err) {
       logger.error('Failed to create invoice:', err);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Loader2, UserPlus, X, Users, Repeat } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
@@ -32,6 +33,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
+import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { Check, Clock } from "lucide-react";
@@ -77,6 +79,7 @@ export function InlineBookPlayer({
   const { t } = useTranslation("trainer");
   const { t: tCommon } = useTranslation("common");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
@@ -403,6 +406,8 @@ export function InlineBookPlayer({
         const guestIds = selectedPlayers.map(p => p.id);
         if (guestIds.length > 0) {
           await supabase.from("guest_players").update({ has_trained: true }).in("id", guestIds);
+          invalidateAllPlayerData(queryClient, { kind: "trainer", id: trainerId });
+          if (academyProfileId) invalidateAllPlayerData(queryClient, { kind: "academy", id: academyProfileId });
         }
 
         if (!rebalanceFailed) {
@@ -481,6 +486,8 @@ export function InlineBookPlayer({
         const guestIds = selectedPlayers.map(p => p.id);
         if (guestIds.length > 0) {
           await supabase.from("guest_players").update({ has_trained: true }).in("id", guestIds);
+          invalidateAllPlayerData(queryClient, { kind: "trainer", id: trainerId });
+          if (academyProfileId) invalidateAllPlayerData(queryClient, { kind: "academy", id: academyProfileId });
         }
 
         if (!rebalanceFailed) {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { InvoiceEmailDialog } from './InvoiceEmailDialog';
 import { EditInvoiceDialog } from '@/components/invoices/EditInvoiceDialog';
 import { 
@@ -81,6 +83,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
 export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isAdmin = false }: InvoiceListProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -123,6 +126,12 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     setLoading(false);
   };
 
+  /** After any invoice/guest write: refresh list + all player views (overdue flag, email). */
+  const refreshAfterInvoiceWrite = () => {
+    invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerId });
+    fetchInvoices();
+  };
+
   const handleMarkPaid = async (invoiceId: string) => {
     setActionLoading(invoiceId);
     const { error } = await supabase
@@ -144,7 +153,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
       if (forwardEmails.length > 0) {
         supabase.functions.invoke('forward-invoice', { body: { invoiceId } }).catch(err => logger.error('Forward invoice failed', err instanceof Error ? err : new Error(String(err)), { component: 'InvoiceList' }));
       }
-      fetchInvoices();
+      refreshAfterInvoiceWrite();
     }
     setActionLoading(null);
   };
@@ -199,7 +208,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
             ? t('invoices.sentSuccessTo', { email: data.email })
             : t('invoices.sentSuccess'),
         });
-        fetchInvoices();
+        refreshAfterInvoiceWrite();
       }
     } catch {
       toast({
@@ -235,7 +244,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
 
     const emailMsg = data?.email ? ` naar ${data.email}` : ` naar ${email}`;
     toast({ title: 'Factuur verzonden', description: `De factuur is verzonden${emailMsg}` });
-    fetchInvoices();
+    refreshAfterInvoiceWrite();
   };
 
   const handleDownload = async (invoice: Invoice) => {
@@ -275,7 +284,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         toast({ title: 'Fout', description: 'Kon factuur niet verwijderen', variant: 'destructive' });
       } else {
         toast({ title: 'Factuur verwijderd' });
-        fetchInvoices();
+        refreshAfterInvoiceWrite();
       }
     } else {
       const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
@@ -283,7 +292,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         toast({ title: 'Fout', description: 'Kon factuur niet annuleren', variant: 'destructive' });
       } else {
         toast({ title: 'Factuur geannuleerd' });
-        fetchInvoices();
+        refreshAfterInvoiceWrite();
       }
     }
     setActionLoading(null);
@@ -300,7 +309,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         toast({ title: 'Fout', description: 'Kon factuur niet verwijderen', variant: 'destructive' });
       } else {
         toast({ title: 'Factuur verwijderd' });
-        fetchInvoices();
+        refreshAfterInvoiceWrite();
       }
     } else {
       // Cancel sent/overdue/paid invoices for audit trail
@@ -309,7 +318,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         toast({ title: 'Fout', description: 'Kon factuur niet annuleren', variant: 'destructive' });
       } else {
         toast({ title: 'Factuur geannuleerd' });
-        fetchInvoices();
+        refreshAfterInvoiceWrite();
       }
     }
     setActionLoading(null);
@@ -330,9 +339,9 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
       } else {
         toast({ 
           title: 'Factuur gesplitst', 
-          description: `Gesplitst over ${data.totalPlayers} spelers. ${data.createdInvoices?.length || 0} nieuwe facturen aangemaakt.` 
+          description: `Gesplitst over ${data.totalPlayers} spelers. ${data.createdInvoices?.length || 0} nieuwe facturen aangemaakt.`
         });
-        fetchInvoices();
+        refreshAfterInvoiceWrite();
       }
     } catch {
       toast({ title: 'Fout', description: 'Kon factuur niet splitsen', variant: 'destructive' });

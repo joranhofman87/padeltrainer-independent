@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -25,12 +27,22 @@ interface ManagePlayerTagsDialogProps {
 export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerId, tags, onChanged }: ManagePlayerTagsDialogProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState<string>('blue');
   const [busy, setBusy] = useState(false);
 
   const ownerCol = academyId ? 'academy_profile_id' : 'trainer_profile_id';
   const ownerId = academyId ?? trainerId;
+
+  const notifyChanged = () => {
+    if (academyId) {
+      invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyId });
+    } else if (trainerId) {
+      invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerId });
+    }
+    onChanged();
+  };
 
   const handleCreate = async () => {
     const name = newName.trim();
@@ -42,7 +54,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
         .insert({ [ownerCol]: ownerId, name, color: newColor } as any);
       if (error) throw error;
       setNewName('');
-      onChanged();
+      notifyChanged();
     } catch (err: any) {
       logger.error('Error creating tag', err);
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -56,7 +68,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
     try {
       const { error } = await supabase.from('academy_player_tags').delete().eq('id', id);
       if (error) throw error;
-      onChanged();
+      notifyChanged();
     } catch (err: any) {
       logger.error('Error deleting tag', err);
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -68,7 +80,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
   const handleColorChange = async (id: string, color: string) => {
     try {
       await supabase.from('academy_player_tags').update({ color }).eq('id', id);
-      onChanged();
+      notifyChanged();
     } catch (err) {
       logger.error('Error updating tag color', err as Error);
     }

@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { AcademyPlayerRemoveCard } from './AcademyPlayerRemoveCard';
+
+const renderWithClient = (ui: ReactElement) =>
+  render(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 
 const removeMock = vi.fn();
 const navigateMock = vi.fn();
@@ -45,7 +50,7 @@ describe('AcademyPlayerRemoveCard', () => {
   });
 
   it('shows remove from academy action with safe confirmation copy', async () => {
-    render(
+    renderWithClient(
       <AcademyPlayerRemoveCard
         kind="registered"
         academyProfileId="academy-1"
@@ -69,7 +74,7 @@ describe('AcademyPlayerRemoveCard', () => {
   });
 
   it('calls academy-scoped removal and navigates back', async () => {
-    render(
+    renderWithClient(
       <AcademyPlayerRemoveCard
         kind="guest"
         academyProfileId="academy-1"
@@ -96,7 +101,7 @@ describe('AcademyPlayerRemoveCard', () => {
   });
 
   it('shows removed banner when player already removed', () => {
-    render(
+    renderWithClient(
       <AcademyPlayerRemoveCard
         kind="registered"
         academyProfileId="academy-1"

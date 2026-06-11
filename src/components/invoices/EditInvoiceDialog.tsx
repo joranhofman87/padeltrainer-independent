@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { Loader2, CalendarIcon, Plus, Trash2, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
@@ -77,6 +79,7 @@ function parseAddress(address?: string | null): { street: string; zipCode: strin
 export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId, onDownloadPdf, onMarkPaid, onDelete, invoiceStatus }: EditInvoiceDialogProps) {
   const { t, i18n } = useTranslation('common');
   const dateFnsLocale = getDateFnsLocale(i18n.language);
+  const queryClient = useQueryClient();
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [vatRate, setVatRate] = useState(21);
@@ -249,6 +252,12 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
       }
 
       toast.success(t('invoiceForm.edit.savedToast'));
+      if (academyProfileId) {
+        invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyProfileId });
+      }
+      if (trainerId) {
+        invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerId });
+      }
       onSaved();
       onClose();
     } catch (err) {

@@ -46,6 +46,7 @@ import {
 } from '@/lib/academyPlayerEmailHistory';
 import { cn } from '@/lib/utils';
 import { academyPlayersQueryKey } from '@/lib/academyPlayersQuery';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import {
   LineChart,
   Line,
@@ -500,6 +501,9 @@ export default function AcademyPlayerDetail() {
                   selectedTagIds={tagIds}
                   onTagsChange={setTags}
                   onSelectedTagIdsChange={setTagIds}
+                  onChanged={() =>
+                    invalidateAllPlayerData(queryClient, { kind: 'academy', id: activeAcademy.id })
+                  }
                   variant="detail"
                 />
               </div>

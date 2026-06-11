@@ -14,9 +14,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabaseClient';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { removePlayerFromTrainer } from '@/lib/trainerPlayerRemoval';
 import type { AcademyPlayerKind } from '@/lib/academyPlayerDetails';
 import { format } from 'date-fns';
@@ -42,6 +44,7 @@ export function TrainerPlayerRemoveCard({
   const { t: tCommon } = useTranslation('common');
   const { toast } = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
 
@@ -91,6 +94,7 @@ export function TrainerPlayerRemoveCard({
         ),
       });
       setConfirmOpen(false);
+      invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerProfileId });
       navigate('/app/trainer/players');
     } catch (err: unknown) {
       logger.error(

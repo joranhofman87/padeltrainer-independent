@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { resolveOrCreateInvoiceGuest } from '@/lib/invoiceCustomerInsert';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { formatCurrency } from '@/lib/format';
 import { Loader2, Plus, Trash2, FileText, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -73,6 +75,7 @@ export function CreateInvoiceDialog({
 }: CreateInvoiceDialogProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   
@@ -257,6 +260,7 @@ export function CreateInvoiceDialog({
           : `Factuur ${invoiceNumber} is aangemaakt.`,
       });
 
+      invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerId });
       onInvoiceCreated();
       onOpenChange(false);
       

@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useQueryClient } from '@tanstack/react-query';
@@ -269,6 +270,7 @@ export default function AcademyCreateInvoice() {
 
       toast.success(t('invoiceForm.create.createdToast', { number: invoiceNumber }));
       queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
+      invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyProfileId });
       navigate('/app/academy/invoices');
     } catch (err) {
       logger.error('Failed to create invoice:', err);

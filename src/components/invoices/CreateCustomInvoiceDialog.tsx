@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { resolveOrCreateAcademyInvoiceGuest } from '@/lib/invoiceCustomerInsert';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 
 interface LineItem {
@@ -38,6 +40,7 @@ interface CreateCustomInvoiceDialogProps {
 export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onCreated }: CreateCustomInvoiceDialogProps) {
   const { t, i18n } = useTranslation('common');
   const dateFnsLocale = getDateFnsLocale(i18n.language);
+  const queryClient = useQueryClient();
 
   const [playerName, setPlayerName] = useState('');
   const [playerBusinessName, setPlayerBusinessName] = useState('');
@@ -216,6 +219,7 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
         .eq('id', academyProfileId);
 
       toast.success(t('invoiceForm.create.createdToast', { number: invoiceNumber }));
+      invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyProfileId });
       resetForm();
       onCreated();
       onClose();

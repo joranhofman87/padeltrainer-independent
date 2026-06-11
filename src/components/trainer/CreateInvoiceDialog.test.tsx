@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -67,16 +68,18 @@ const defaultBooking = {
 
 const renderDialog = (props = {}) =>
   render(
-    <CreateInvoiceDialog
-      open={true}
-      onOpenChange={() => {}}
-      booking={defaultBooking}
-      trainerId="trainer-1"
-      trainerBusinessInfo={defaultBusinessInfo}
-      defaultVatRate={21}
-      onInvoiceCreated={vi.fn()}
-      {...props}
-    />
+    <QueryClientProvider client={new QueryClient()}>
+      <CreateInvoiceDialog
+        open={true}
+        onOpenChange={() => {}}
+        booking={defaultBooking}
+        trainerId="trainer-1"
+        trainerBusinessInfo={defaultBusinessInfo}
+        defaultVatRate={21}
+        onInvoiceCreated={vi.fn()}
+        {...props}
+      />
+    </QueryClientProvider>
   );
 
 describe('CreateInvoiceDialog', () => {

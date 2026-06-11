@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getTrainerProfile } from "@/lib/auth";
 import { loadGuestPlayersForTrainer } from "@/lib/guestPlayers";
 import { logger } from "@/lib/logger";
+import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -991,6 +992,9 @@ export default function TrainerScheduleOverview() {
 
         // Mark player as has_trained
         await supabase.from("guest_players").update({ has_trained: true }).eq("id", guestPlayerId);
+        if (trainerProfileId) {
+          invalidateAllPlayerData(queryClient, { kind: "trainer", id: trainerProfileId });
+        }
       }
 
       // Update local player list

@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { format, differenceInMinutes } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import {
   syncInvoicesAfterAddPlayer,
   applyAddPlayerInvoiceChoice,
@@ -125,6 +127,7 @@ export function BookForPlayerDialog({
 }: BookForPlayerDialogProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
@@ -578,6 +581,8 @@ export function BookForPlayerDialog({
         const guestIds = selectedPlayers.map((p) => p.id);
         if (guestIds.length > 0) {
           await supabase.from("guest_players").update({ has_trained: true }).in("id", guestIds);
+          invalidateAllPlayerData(queryClient, { kind: "trainer", id: trainerId });
+          if (academyProfileId) invalidateAllPlayerData(queryClient, { kind: "academy", id: academyProfileId });
         }
 
         let invoiceResult: InvoiceAfterAddPlayerResult | null = null;
@@ -685,6 +690,8 @@ export function BookForPlayerDialog({
         const singleGuestIds = selectedPlayers.map((p) => p.id);
         if (singleGuestIds.length > 0) {
           await supabase.from("guest_players").update({ has_trained: true }).in("id", singleGuestIds);
+          invalidateAllPlayerData(queryClient, { kind: "trainer", id: trainerId });
+          if (academyProfileId) invalidateAllPlayerData(queryClient, { kind: "academy", id: academyProfileId });
         }
 
         let invoiceResult: InvoiceAfterAddPlayerResult | null = null;
