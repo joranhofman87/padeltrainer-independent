@@ -75,7 +75,7 @@
     "days": "Tage",
     "minRead": "{{count}} Min. Lesezeit"
   },
-  "currency": "€{{amount}}",
+  "currency": "{{amount}}",
   "perHour": "/Stunde",
   "perMonth": "/Monat",
   "yearsExperience": "{{count}} J. Erf.",
@@ -322,7 +322,7 @@
     "vatLine": "MwSt. ({{rate}}%)",
     "total": "Gesamt",
     "pay": "Bezahlen",
-    "payAmount": "Zahle €{{amount}}",
+    "payAmount": "Zahle {{amount}}",
     "redirecting": "Weiterleitung...",
     "transferInstruction": "Bitte überweise den Betrag auf das folgende Bankkonto",
     "bankDetails": "Bankverbindung",

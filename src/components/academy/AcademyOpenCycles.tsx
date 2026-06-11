@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { getActiveCycles, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { formatCurrency } from '@/lib/format';
 
 interface AcademyOpenCyclesProps {
   academyId: string;
@@ -137,7 +138,7 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
                     )}
                     {cycle.type === 'event' && cycle.total_price && (
                       <span className="font-medium text-foreground">
-                        {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(cycle.total_price)}
+                        {formatCurrency(cycle.total_price, { currency: cycle.currency || 'EUR' })}
                       </span>
                     )}
                     {cycle.type === 'event' && (() => {

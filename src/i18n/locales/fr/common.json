@@ -75,7 +75,7 @@
     "days": "jours",
     "minRead": "{{count}} min de lecture"
   },
-  "currency": "€{{amount}}",
+  "currency": "{{amount}}",
   "perHour": "/heure",
   "perMonth": "/mois",
   "yearsExperience": "{{count}} ans d'exp.",
@@ -322,7 +322,7 @@
     "vatLine": "TVA ({{rate}}%)",
     "total": "Total",
     "pay": "Payer",
-    "payAmount": "Payer €{{amount}}",
+    "payAmount": "Payer {{amount}}",
     "redirecting": "Redirection...",
     "transferInstruction": "Veuillez virer le montant sur le compte bancaire ci-dessous",
     "bankDetails": "Coordonnées bancaires",

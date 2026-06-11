@@ -45,6 +45,7 @@ import {
 import { type Cycle, updateCycle, deleteCycle } from '@/lib/cycles';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/lib/format';
 
 interface CyclesTableProps {
   cycles: Cycle[];
@@ -203,16 +204,10 @@ export default function CyclesTable({
 
   const formatPrice = (cycle: Cycle) => {
     if (cycle.total_price) {
-      return new Intl.NumberFormat(i18n.language, {
-        style: 'currency',
-        currency: cycle.currency || 'EUR',
-      }).format(cycle.total_price);
+      return formatCurrency(cycle.total_price, { currency: cycle.currency || 'EUR' });
     }
     if (cycle.price_per_session) {
-      return `${new Intl.NumberFormat(i18n.language, {
-        style: 'currency',
-        currency: cycle.currency || 'EUR',
-      }).format(cycle.price_per_session)}/les`;
+      return `${formatCurrency(cycle.price_per_session, { currency: cycle.currency || 'EUR' })}/les`;
     }
     return '-';
   };

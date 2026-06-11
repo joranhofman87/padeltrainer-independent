@@ -75,7 +75,7 @@
     "days": "dagen",
     "minRead": "{{count}} min lezen"
   },
-  "currency": "€{{amount}}",
+  "currency": "{{amount}}",
   "perHour": "/uur",
   "perMonth": "/maand",
   "yearsExperience": "{{count}}j ervaring",
@@ -347,7 +347,7 @@
     "vatLine": "BTW ({{rate}}%)",
     "total": "Totaal",
     "pay": "Betalen",
-    "payAmount": "Betaal €{{amount}}",
+    "payAmount": "Betaal {{amount}}",
     "redirecting": "Bezig met doorsturen...",
     "transferInstruction": "Maak het bedrag over naar onderstaande rekening",
     "bankDetails": "Bankgegevens",

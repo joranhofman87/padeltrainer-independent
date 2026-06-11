@@ -75,7 +75,7 @@
     "days": "giorni",
     "minRead": "{{count}} min read"
   },
-  "currency": "€{{amount}}",
+  "currency": "{{amount}}",
   "perHour": "/hour",
   "perMonth": "/month",
   "yearsExperience": "{{count}}y exp.",
@@ -333,7 +333,7 @@
     "vatLine": "IVA ({{rate}}%)",
     "total": "Totale",
     "pay": "Paga",
-    "payAmount": "Paga €{{amount}}",
+    "payAmount": "Paga {{amount}}",
     "redirecting": "Reindirizzamento...",
     "transferInstruction": "Trasferisci l'importo sul conto bancario qui sotto",
     "bankDetails": "Dati bancari",

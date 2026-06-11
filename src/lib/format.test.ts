@@ -16,6 +16,10 @@ describe('formatCurrency', () => {
     expect(formatCurrency(45.999, 'en')).toBe('€46.00');
     expect(formatCurrency(45.994, 'en')).toBe('€45.99');
   });
+  it('supports a non-EUR currency via options', () => {
+    expect(formatCurrency(50, { locale: 'en', currency: 'USD' })).toBe('$50.00');
+    expect(formatCurrency(50, { locale: 'en', currency: 'GBP' })).toBe('£50.00');
+  });
   it('falls back to €0.00 for non-finite input', () => {
     expect(formatCurrency(NaN, 'en')).toBe('€0.00');
     expect(formatCurrency(Infinity, 'en')).toBe('€0.00');

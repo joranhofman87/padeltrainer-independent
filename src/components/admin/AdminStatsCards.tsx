@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clo
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { AdminStats } from "@/lib/admin";
+import { formatCurrency } from "@/lib/format";
 
 interface AdminStatsCardsProps {
   stats: AdminStats;
@@ -24,13 +25,6 @@ function TrendBadge({ trend, thisMonth, lastMonth }: { trend: number; thisMonth:
 export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
   const navigate = useNavigate();
   const { t } = useTranslation("admin");
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("nl-NL", {
-      style: "currency",
-      currency: "EUR",
-    }).format(amount);
-  };
 
   const signupTrends = stats.signupTrends || {
     trainersThisMonth: 0,

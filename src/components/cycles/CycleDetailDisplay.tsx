@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { differenceInWeeks } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import type { Cycle, PriceTableRow, CyclusOption } from '@/lib/cycles';
+import { formatCurrency } from '@/lib/format';
 
 import { SafeHtml } from '@/components/ui/SafeHtml';
 
@@ -13,7 +14,7 @@ interface CycleDetailDisplayProps {
 }
 
 export default function CycleDetailDisplay({ cycle, hideLocation = false }: CycleDetailDisplayProps) {
-  const { t, i18n } = useTranslation('cycles');
+  const { t } = useTranslation('cycles');
   const [showTerms, setShowTerms] = useState(false);
 
   const priceTable = cycle.price_table as PriceTableRow[] | null;
@@ -38,10 +39,7 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
     return null;
   }
 
-  const currencyFormatter = new Intl.NumberFormat(i18n.language, {
-    style: 'currency',
-    currency: cycle.currency || 'EUR',
-  });
+  const fmtPrice = (n: number) => formatCurrency(n, { currency: cycle.currency || 'EUR' });
 
   return (
     <div className="space-y-3 mt-3">
@@ -83,8 +81,8 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
                   <td className="px-3 py-2">{opt.label}</td>
                   <td className="px-3 py-2 text-right">{opt.number_of_sessions}</td>
                   <td className="px-3 py-2 text-right">{opt.number_of_weeks || '–'}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">{currencyFormatter.format(opt.price_per_session)}</td>
-                  <td className="px-3 py-2 text-right font-medium whitespace-nowrap">{currencyFormatter.format(opt.total_price)}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{fmtPrice(opt.price_per_session)}</td>
+                  <td className="px-3 py-2 text-right font-medium whitespace-nowrap">{fmtPrice(opt.total_price)}</td>
                 </tr>
               ))}
             </tbody>
@@ -122,24 +120,24 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
               {priceTable!.map((row, i) => (
                 <tr key={i} className="border-t">
                   <td className="px-3 py-2">{row.label}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">{currencyFormatter.format(row.price)}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{fmtPrice(row.price)}</td>
                   {priceColumns.map(col => {
                     const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
                     return (
                       <td key={`per-${col}`} className="px-3 py-2 text-right whitespace-nowrap">
-                        {ep ? currencyFormatter.format(ep.price) : '–'}
+                        {ep ? fmtPrice(ep.price) : '–'}
                       </td>
                     );
                   })}
                   {[...durationOptions].sort((a, b) => a - b).flatMap(weeks => [
                     <td key={`w-${weeks}`} className="px-3 py-2 text-right font-medium whitespace-nowrap">
-                      {currencyFormatter.format(row.price * weeks)}
+                      {fmtPrice(row.price * weeks)}
                     </td>,
                     ...priceColumns.map(col => {
                       const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
                       return (
                         <td key={`w-${weeks}-${col}`} className="px-3 py-2 text-right font-medium whitespace-nowrap">
-                          {ep ? currencyFormatter.format(ep.price * weeks) : '–'}
+                          {ep ? fmtPrice(ep.price * weeks) : '–'}
                         </td>
                       );
                     }),
@@ -184,26 +182,26 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
                 <tr key={i} className="border-t">
                   <td className="px-3 py-2">{row.label}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    {currencyFormatter.format(row.price)}
+                    {fmtPrice(row.price)}
                   </td>
                   {priceColumns.map(col => {
                     const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
                     return (
                       <td key={`per-${col}`} className="px-3 py-2 text-right whitespace-nowrap">
-                        {ep ? currencyFormatter.format(ep.price) : '–'}
+                        {ep ? fmtPrice(ep.price) : '–'}
                       </td>
                     );
                   })}
                   {numberOfWeeks > 0 && (
                     <>
                       <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
-                        {currencyFormatter.format(row.price * numberOfWeeks)}
+                        {fmtPrice(row.price * numberOfWeeks)}
                       </td>
                       {priceColumns.map(col => {
                         const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
                         return (
                           <td key={`tot-${col}`} className="px-3 py-2 text-right font-medium whitespace-nowrap">
-                            {ep ? currencyFormatter.format(ep.price * numberOfWeeks) : '–'}
+                            {ep ? fmtPrice(ep.price * numberOfWeeks) : '–'}
                           </td>
                         );
                       })}

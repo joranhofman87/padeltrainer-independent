@@ -14,23 +14,29 @@ import { getDateFnsLocale } from '@/lib/dateFnsLocale';
  */
 
 /**
- * Locale-aware EUR, e.g. `€ 50,00` (nl) / `€50.00` (en). Non-finite → 0.
- * @param locale optional BCP-47 override; defaults to the active i18n language.
+ * Locale-aware currency, e.g. `€ 50,00` (nl) / `€50.00` (en). Non-finite → 0.
+ * @param localeOrOpts a BCP-47 locale string, or `{ locale?, currency? }`.
+ *   Locale defaults to the active i18n language; currency defaults to EUR.
  */
-export function formatCurrency(amount: number, locale?: string): string {
+export function formatCurrency(
+  amount: number,
+  localeOrOpts?: string | { locale?: string; currency?: string },
+): string {
   const value = Number.isFinite(amount) ? amount : 0;
-  const lng = locale || i18next.language || 'en';
-  return new Intl.NumberFormat(lng, { style: 'currency', currency: 'EUR' }).format(value);
+  const opts = typeof localeOrOpts === 'string' ? { locale: localeOrOpts } : (localeOrOpts || {});
+  const lng = opts.locale || i18next.language || 'en';
+  const currency = opts.currency || 'EUR';
+  return new Intl.NumberFormat(lng, { style: 'currency', currency }).format(value);
 }
 
 /** Currency for possibly-missing values: returns `fallback` (default `—`) when null/undefined. */
 export function formatCurrencyMaybe(
   amount: number | null | undefined,
   fallback = '—',
-  locale?: string,
+  localeOrOpts?: string | { locale?: string; currency?: string },
 ): string {
   if (amount == null || !Number.isFinite(amount)) return fallback;
-  return formatCurrency(amount, locale);
+  return formatCurrency(amount, localeOrOpts);
 }
 
 /**

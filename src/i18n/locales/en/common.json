@@ -75,7 +75,7 @@
     "days": "days",
     "minRead": "{{count}} min read"
   },
-  "currency": "€{{amount}}",
+  "currency": "{{amount}}",
   "perHour": "/hour",
   "perMonth": "/month",
   "yearsExperience": "{{count}}y exp.",
@@ -342,7 +342,7 @@
     "vatLine": "VAT ({{rate}}%)",
     "total": "Total",
     "pay": "Pay",
-    "payAmount": "Pay €{{amount}}",
+    "payAmount": "Pay {{amount}}",
     "redirecting": "Redirecting...",
     "transferInstruction": "Please transfer the amount to the bank account below",
     "bankDetails": "Bank details",

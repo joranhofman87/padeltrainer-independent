@@ -67,10 +67,6 @@ function useNoReferrerMeta() {
   }, []);
 }
 
-
-const formatEuro = (amount: number | null | undefined) =>
-  (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
 interface LineItem {
   description: string;
   quantity: number;
@@ -774,7 +770,7 @@ export default function PublicInvoicePay() {
                 ) : (
                   <CreditCard className="h-5 w-5 mr-2" />
                 )}
-                {payLoading ? t("invoice.redirecting") : t("invoice.payAmount", { amount: formatEuro(invoice.total) })}
+                {payLoading ? t("invoice.redirecting") : t("invoice.payAmount", { amount: formatCurrency(invoice.total) })}
               </Button>
             </div>
           ) : null}
