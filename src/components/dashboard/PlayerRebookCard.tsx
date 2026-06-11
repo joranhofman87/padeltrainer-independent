@@ -11,6 +11,7 @@ import {
   acceptClaimWithToken,
   declineClaimWithToken,
 } from '@/lib/priorityClaims';
+import { formatCurrency } from '@/lib/format';
 
 /**
  * In-app surface so a player can keep or release their priority spot for the
@@ -100,7 +101,7 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
                   </div>
                   <div className="text-muted-foreground">
                     {format(start, 'HH:mm')} - {format(end, 'HH:mm')}
-                    {c.price_per_session ? ` · €${Number(c.price_per_session).toFixed(2)} p.s.` : ''}
+                    {c.price_per_session ? ` · ${formatCurrency(Number(c.price_per_session))} p.s.` : ''}
                   </div>
                   {c.priority_window_ends_at && (
                     <div className="text-xs text-muted-foreground">

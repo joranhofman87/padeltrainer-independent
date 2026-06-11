@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { CalendarClock, MapPin, CheckCircle2, XCircle } from 'lucide-react';
 import { fetchClaimByToken, declineClaimWithToken, acceptClaimWithToken } from '@/lib/priorityClaims';
+import { formatCurrency } from '@/lib/format';
 
 interface ClaimData {
   claim: {
@@ -138,7 +139,7 @@ export default function PriorityClaimPage() {
             <div className="flex items-start gap-3">
               <MapPin className="h-5 w-5 mt-0.5 text-muted-foreground" />
               <div className="text-sm">
-                {t('rebooking.perSession', '{{amount}} per session', { amount: `€${Number(data.slot.price_per_session).toFixed(2)}` })}
+                {t('rebooking.perSession', '{{amount}} per session', { amount: formatCurrency(Number(data.slot.price_per_session)) })}
               </div>
             </div>
           )}

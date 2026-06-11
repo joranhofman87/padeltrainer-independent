@@ -1,4 +1,5 @@
 import { differenceInMinutes } from "date-fns";
+import { formatCurrency } from "@/lib/format";
 
 /**
  * Calculate price for a slot based on hourly rate and duration
@@ -63,10 +64,11 @@ export function applyDiscount(
 }
 
 /**
- * Format price with euro symbol
+ * Format price with euro symbol.
+ * @deprecated Prefer formatCurrency from '@/lib/format' (this now delegates to it).
  */
 export function formatPrice(amount: number): string {
-  return `€${amount.toFixed(2)}`;
+  return formatCurrency(amount);
 }
 
 /**
