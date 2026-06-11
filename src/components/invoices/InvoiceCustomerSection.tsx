@@ -21,6 +21,13 @@ export type InvoiceCustomerSectionProps = {
   hidePlayerSearch?: boolean;
   oneTimeMode: boolean;
   onOneTimeModeChange: (oneTime: boolean) => void;
+  /**
+   * Server-search mode: provide both to make the picker input controlled and
+   * have `players` server-filtered for the (debounced) search; cmdk's
+   * client-side filtering is disabled. Omit for client-side filtering.
+   */
+  searchValue?: string;
+  onSearchValueChange?: (search: string) => void;
 };
 
 function toComboboxPlayers(players: InvoiceSelectablePlayer[]): GuestPlayer[] {
@@ -52,6 +59,8 @@ export function InvoiceCustomerSection({
   hidePlayerSearch = false,
   oneTimeMode,
   onOneTimeModeChange,
+  searchValue,
+  onSearchValueChange,
 }: InvoiceCustomerSectionProps) {
   const { t } = useTranslation('common');
 
@@ -110,6 +119,9 @@ export function InvoiceCustomerSection({
               className="h-10 w-full"
               data-testid="invoice-customer-search"
               onValueChange={handleSelectPlayer}
+              searchValue={searchValue}
+              onSearchValueChange={onSearchValueChange}
+              selectedLabel={playerLink.linkedDisplayName ?? undefined}
             />
           </div>
         )}

@@ -4,6 +4,7 @@ import {
   AcademyPlayerKind,
   AcademyPlayerDetailsValues,
   buildGuestPlayerUpdatePayload,
+  buildLinkedGuestMirrorPayload,
   buildRegisteredProfileUpdatePayload,
   validatePlayerDetailsForm,
 } from '@/lib/academyPlayerDetails';
@@ -99,6 +100,27 @@ export async function saveTrainerPlayerDetails(params: {
   );
 
   if (params.kind === 'guest' && params.guestPlayerId) {
+    if (params.profileId) {
+      // Linked guest: the profile is canonical for identity (same restricted
+      // payload as registered players — no email, no location).
+      const profilePayload = buildRegisteredProfileUpdatePayload(params.form);
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update(profilePayload)
+        .eq('id', params.profileId);
+      if (profileError) throw profileError;
+
+      // Mirror identity + relationship fields on the guest row; email untouched.
+      const guestPayload = buildLinkedGuestMirrorPayload(params.form, params.allowedLocationIds);
+      const { error: guestError } = await supabase
+        .from('guest_players')
+        .update(guestPayload)
+        .eq('id', params.guestPlayerId)
+        .eq('trainer_id', params.trainerProfileId);
+      if (guestError) throw guestError;
+      return { profilePayload, guestPayload };
+    }
+
     const payload = buildGuestPlayerUpdatePayload(params.form, params.allowedLocationIds);
     const { error } = await supabase
       .from('guest_players')

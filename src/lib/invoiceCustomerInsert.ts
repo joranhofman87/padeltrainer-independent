@@ -1,7 +1,17 @@
-import { invoiceGuestNameFields } from '@/lib/invoiceGuestPlayerInsert';
 import { joinBillingAddress } from '@/lib/invoiceCustomer';
 import type { InvoicePlayerLink, InvoiceReceiverFormFields } from '@/lib/invoiceCustomer';
-import { supabase } from '@/lib/supabaseClient';
+import { findExistingGuestPlayerIdByEmail, resolveOrCreateGuestPlayer } from '@/lib/playerResolve';
+import type { GuestResolveScope } from '@/lib/playerResolve';
+
+function toGuestResolveScope(
+  scope: 'academy' | 'trainer',
+  academyProfileId?: string,
+  trainerId?: string,
+): GuestResolveScope | null {
+  if (scope === 'trainer' && trainerId) return { kind: 'trainer', trainerId };
+  if (scope === 'academy' && academyProfileId) return { kind: 'academy', academyProfileId };
+  return null;
+}
 
 /** Reuse an existing guest row by email within academy/trainer scope before inserting. */
 export async function findExistingGuestPlayerIdForInvoice(
@@ -10,43 +20,9 @@ export async function findExistingGuestPlayerIdForInvoice(
   academyProfileId?: string,
   trainerId?: string,
 ): Promise<string | null> {
-  const trimmed = email.trim();
-  if (!trimmed) return null;
-
-  if (scope === 'trainer' && trainerId) {
-    const { data } = await supabase
-      .from('guest_players')
-      .select('id')
-      .eq('trainer_id', trainerId)
-      .eq('email', trimmed)
-      .limit(1)
-      .maybeSingle();
-    return data?.id ?? null;
-  }
-
-  if (scope === 'academy' && academyProfileId) {
-    const { data: academyTrainers } = await supabase
-      .from('academy_trainers')
-      .select('trainer_profile_id')
-      .eq('academy_profile_id', academyProfileId)
-      .eq('status', 'active');
-
-    const trainerIds = (academyTrainers || []).map((t) => t.trainer_profile_id).filter(Boolean);
-
-    let query = supabase.from('guest_players').select('id').eq('email', trimmed);
-    if (trainerIds.length > 0) {
-      query = query.or(
-        `academy_profile_id.eq.${academyProfileId},trainer_id.in.(${trainerIds.join(',')})`,
-      );
-    } else {
-      query = query.eq('academy_profile_id', academyProfileId);
-    }
-
-    const { data } = await query.limit(1).maybeSingle();
-    return data?.id ?? null;
-  }
-
-  return null;
+  const resolveScope = toGuestResolveScope(scope, academyProfileId, trainerId);
+  if (!resolveScope) return null;
+  return findExistingGuestPlayerIdByEmail(email, resolveScope);
 }
 
 export type ResolveInvoiceGuestPlayerArgs = {
@@ -79,41 +55,13 @@ export type ResolveOrCreateInvoiceGuestArgs = {
 export async function resolveOrCreateInvoiceGuest(
   args: ResolveOrCreateInvoiceGuestArgs,
 ): Promise<string | null> {
-  const { scope, academyProfileId, trainerId } = args;
-  const name = args.playerName.trim();
-  if (!name) return null;
-  const email = args.playerEmail.trim();
-
-  const ownerFields =
-    scope === 'academy' && academyProfileId
-      ? { academy_profile_id: academyProfileId }
-      : scope === 'trainer' && trainerId
-        ? { trainer_id: trainerId }
-        : null;
-  if (!ownerFields) return null;
-
-  if (email) {
-    const existingId = await findExistingGuestPlayerIdForInvoice(
-      email,
-      scope,
-      academyProfileId,
-      trainerId,
-    );
-    if (existingId) return existingId;
-  }
-
-  const insert = email
-    ? { ...invoiceGuestNameFields(name), email, ...ownerFields }
-    : { ...invoiceGuestNameFields(name), ...ownerFields };
-
-  const { data, error } = await supabase
-    .from('guest_players')
-    .insert(insert)
-    .select('id')
-    .single();
-
-  if (error || !data) return null;
-  return data.id;
+  const resolveScope = toGuestResolveScope(args.scope, args.academyProfileId, args.trainerId);
+  if (!resolveScope) return null;
+  return resolveOrCreateGuestPlayer({
+    scope: resolveScope,
+    fullName: args.playerName,
+    email: args.playerEmail,
+  });
 }
 
 /** Resolves guest_player_id for insert; never overwrites an existing linked guest. */

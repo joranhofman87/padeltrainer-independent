@@ -19,6 +19,7 @@ import {
   AcademyPlayerKind,
   canEditRegisteredPlayerEmail,
   formFromValues,
+  isLinkedGuest,
   validatePlayerDetailsForm,
 } from '@/lib/academyPlayerDetails';
 import {
@@ -58,7 +59,10 @@ export function TrainerPlayerDetailsCard({
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() => formFromValues(values));
 
-  const emailReadOnly = kind === 'registered' && !canEditRegisteredPlayerEmail();
+  // Linked guests behave like registered players: their profile owns the email.
+  const emailReadOnly =
+    (kind === 'registered' || isLinkedGuest(kind, guestPlayerId, profileId)) &&
+    !canEditRegisteredPlayerEmail();
   const allowedLocationIds = useMemo(() => new Set(locations.map((l) => l.id)), [locations]);
 
   useEffect(() => {

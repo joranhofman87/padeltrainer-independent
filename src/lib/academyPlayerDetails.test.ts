@@ -3,6 +3,9 @@ import {
   buildGuestPlayerUpdatePayload,
   buildRegisteredProfileUpdatePayload,
   canEditRegisteredPlayerEmail,
+  coalesceLinkedGuestIdentity,
+  fetchLinkedProfileIdentity,
+  isLinkedGuest,
   saveAcademyPlayerDetails,
   validatePlayerDetailsForm,
 } from './academyPlayerDetails';
@@ -157,6 +160,138 @@ describe('academyPlayerDetails', () => {
         preferred_location_id: LOC_A,
       }),
     );
+    // Unlinked guests never touch profiles.
+    expect(updateMock).not.toHaveBeenCalledWith('profiles', expect.anything());
+  });
+
+  it('flags linked guests so email becomes read-only', () => {
+    expect(isLinkedGuest('guest', 'guest-1', 'profile-1')).toBe(true);
+    expect(isLinkedGuest('guest', 'guest-1', null)).toBe(false);
+    expect(isLinkedGuest('registered', null, 'profile-1')).toBe(false);
+  });
+
+  it('coalesces linked guest identity with profile-first precedence', () => {
+    const guest = {
+      full_name: 'Guest Name',
+      email: 'guest@example.com',
+      phone: '0611111111',
+      skill_rating: 4,
+      rating_system: 'knltb',
+      birth_date: '1990-01-01',
+    };
+
+    expect(
+      coalesceLinkedGuestIdentity(guest, {
+        full_name: 'Profile Name',
+        email: 'profile@example.com',
+        phone: '0622222222',
+        skill_rating: 6.5,
+        rating_system: 'dupr',
+        birth_date: '1991-02-02',
+      }),
+    ).toEqual({
+      full_name: 'Profile Name',
+      email: 'profile@example.com',
+      phone: '0622222222',
+      skill_rating: 6.5,
+      rating_system: 'dupr',
+      // birth_date is relationship data: guest-first, profile fallback.
+      birth_date: '1990-01-01',
+    });
+
+    // Empty/blank profile values fall back to the guest copy.
+    expect(
+      coalesceLinkedGuestIdentity(guest, {
+        full_name: '  ',
+        email: null,
+        phone: '',
+        skill_rating: null,
+        rating_system: '',
+        birth_date: '1991-02-02',
+      }),
+    ).toEqual(guest);
+
+    // Guest without birth_date falls back to the profile's.
+    expect(
+      coalesceLinkedGuestIdentity(
+        { ...guest, birth_date: null },
+        { full_name: null, email: null, phone: null, skill_rating: null, rating_system: null, birth_date: '1991-02-02' },
+      ).birth_date,
+    ).toBe('1991-02-02');
+
+    // No linked profile row: guest values pass through.
+    expect(coalesceLinkedGuestIdentity(guest, null)).toEqual(guest);
+  });
+
+  it('fetches linked profile identity from profiles', async () => {
+    maybeSingleMock.mockImplementation((table: string) =>
+      Promise.resolve(
+        table === 'profiles'
+          ? {
+              data: {
+                full_name: 'Profile Name',
+                email: 'profile@example.com',
+                phone: null,
+                skill_rating: 6,
+                rating_system: 'knltb',
+                birth_date: null,
+              },
+              error: null,
+            }
+          : { data: null, error: null },
+      ),
+    );
+
+    const profile = await fetchLinkedProfileIdentity('profile-1');
+
+    expect(eqMock).toHaveBeenCalledWith('profiles', 'id', 'profile-1');
+    expect(profile).toMatchObject({ full_name: 'Profile Name', email: 'profile@example.com' });
+  });
+
+  it('writes identity to profiles and mirrors the guest row (email untouched) for linked guests', async () => {
+    await saveAcademyPlayerDetails({
+      kind: 'guest',
+      academyProfileId: 'academy-1',
+      guestPlayerId: 'guest-1',
+      profileId: 'profile-1',
+      allowedLocationIds,
+      form: {
+        name: 'Jane Linked',
+        email: 'tampered@example.com',
+        phone: '0612345678',
+        locationId: LOC_A,
+        skillRating: '5.5',
+        ratingSystem: 'knltb',
+        notes: 'Intake note',
+      },
+    });
+
+    const profileUpdate = updateMock.mock.calls.find(([table]) => table === 'profiles')?.[1];
+    expect(profileUpdate).toMatchObject({
+      first_name: 'Jane',
+      last_name: 'Linked',
+      full_name: 'Jane Linked',
+      phone: '0612345678',
+      skill_rating: 5.5,
+      rating_system: 'knltb',
+    });
+    expect(profileUpdate).not.toHaveProperty('email');
+    expect(profileUpdate).not.toHaveProperty('location');
+    expect(eqMock).toHaveBeenCalledWith('profiles', 'id', 'profile-1');
+
+    const guestUpdate = updateMock.mock.calls.find(([table]) => table === 'guest_players')?.[1];
+    expect(guestUpdate).toMatchObject({
+      first_name: 'Jane',
+      last_name: 'Linked',
+      full_name: 'Jane Linked',
+      phone: '0612345678',
+      skill_rating: 5.5,
+      rating_system: 'knltb',
+      notes: 'Intake note',
+      preferred_location_id: LOC_A,
+    });
+    expect(guestUpdate).not.toHaveProperty('email');
+    expect(eqMock).toHaveBeenCalledWith('guest_players', 'id', 'guest-1');
   });
 
   it('never sends email or location in registered profile update', async () => {

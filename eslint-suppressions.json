@@ -1102,7 +1102,7 @@
   },
   "src/pages/academy/AcademyPlayerDetail.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 17
+      "count": 16
     }
   },
   "src/pages/academy/AcademyProfile.tsx": {

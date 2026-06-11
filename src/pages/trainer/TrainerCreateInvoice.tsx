@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,7 +21,8 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
-import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
+import { invalidateAllPlayerData, playerKeys } from '@/lib/playerQueryKeys';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { InvoiceCustomerSection } from '@/components/invoices/InvoiceCustomerSection';
 import {
@@ -36,7 +37,7 @@ import {
 } from '@/lib/invoiceCustomerInsert';
 import {
   fetchInvoicePlayerForPrefill,
-  fetchTrainerInvoiceSelectablePlayers,
+  searchInvoiceSelectablePlayers,
 } from '@/lib/invoiceSelectablePlayers';
 interface LineItem {
   description: string;
@@ -97,10 +98,15 @@ export default function TrainerCreateInvoice() {
 
   const trainerId = trainerProfile?.id;
 
+  const [playerSearch, setPlayerSearch] = useState('');
+  const debouncedPlayerSearch = useDebouncedValue(playerSearch);
+
   const { data: selectablePlayers = [], isLoading: playersLoading } = useQuery({
-    queryKey: ['trainer-invoice-selectable-players', trainerId],
-    queryFn: () => fetchTrainerInvoiceSelectablePlayers(trainerId!),
+    queryKey: playerKeys.picker('trainer', trainerId, debouncedPlayerSearch),
+    queryFn: () =>
+      searchInvoiceSelectablePlayers({ kind: 'trainer', id: trainerId! }, debouncedPlayerSearch),
     enabled: !!trainerId,
+    placeholderData: keepPreviousData,
   });
 
   useEffect(() => {
@@ -278,6 +284,8 @@ export default function TrainerCreateInvoice() {
         hidePlayerSearch={prefilledFromProfile}
         oneTimeMode={oneTimeMode}
         onOneTimeModeChange={setOneTimeMode}
+        searchValue={playerSearch}
+        onSearchValueChange={setPlayerSearch}
       />
 
       {/* Line items */}

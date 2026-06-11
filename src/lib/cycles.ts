@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabaseClient';
 import type { Json } from '@/integrations/supabase/types';
 import { format } from 'date-fns';
 import { logger } from '@/lib/logger';
+import { resolveOrCreateGuestPlayer } from '@/lib/playerResolve';
+import type { GuestResolveScope } from '@/lib/playerResolve';
 
 // Types
 export interface PriceTableRow {
@@ -765,67 +767,106 @@ async function autoFollowOwner(
   }
 }
 
-// Add player to student list as a prospect
+// Add player to student list as a prospect (non-blocking — registration never fails on this).
+//
+// NEVER upsert here: the guest_players/club_players unique email indexes are
+// PARTIAL (WHERE email <> '' ..., migrations 20260224171306 / 20260126164841)
+// and PostgREST upserts cannot target partial indexes (Postgres 42P10), which
+// silently broke applicant -> player creation. Use select-then-insert instead.
+//
+// RLS note: submitIntakeRequest only runs for logged-in players (the anonymous
+// guest flow goes through the submit-guest-intake edge function, which uses the
+// service-role client). The INSERT policies from migration 20260126164841 allow
+// this because we set linked_profile_id = the player's own profile id AND
+// source = 'cycle_registration'. Players have no SELECT/UPDATE policy on these
+// tables though, so when a row with the same email already exists (e.g. added
+// manually by the trainer) the dedup select misses, the insert hits the unique
+// index (23505) and resolution yields null — acceptable, since the player
+// already exists in the list. A SECURITY DEFINER RPC would be needed to dedup
+// across rows the player cannot see; deliberately not built now.
 async function addToStudentList(
   ownerType: 'trainer' | 'club' | 'academy',
   ownerId: string,
   input: IntakeRequestInput
 ): Promise<void> {
   try {
-    if (ownerType === 'trainer') {
-      await supabase
-        .from('guest_players')
-        .upsert({
-          trainer_id: ownerId,
-          full_name: input.full_name,
-          email: input.email,
-          phone: input.phone || null,
-          skill_rating: input.rating || null,
-          rating_system: input.rating_system || 'knltb',
-          linked_profile_id: input.player_id,
-          source: 'cycle_registration',
-          has_trained: false,
-        }, { 
-          onConflict: 'trainer_id,email',
-          ignoreDuplicates: false 
+    if (ownerType === 'trainer' || ownerType === 'academy') {
+      const scope: GuestResolveScope =
+        ownerType === 'trainer'
+          ? { kind: 'trainer', trainerId: ownerId }
+          : { kind: 'academy', academyProfileId: ownerId };
+      const guestPlayerId = await resolveOrCreateGuestPlayer({
+        scope,
+        fullName: input.full_name,
+        email: input.email,
+        phone: input.phone || null,
+        skillRating: input.rating ?? null,
+        ratingSystem: input.rating_system || 'knltb',
+        birthDate: input.birth_date || null,
+        linkedProfileId: input.player_id,
+        source: 'cycle_registration',
+        hasTrained: false,
+        patchExistingEmptyFields: true,
+      });
+      if (!guestPlayerId) {
+        logger.error('Add to student list failed (non-blocking)', undefined, {
+          ownerType,
+          ownerId,
+          cycleId: input.cycle_id,
         });
+      }
     } else if (ownerType === 'club') {
-      await supabase
-        .from('club_players')
-        .upsert({
-          club_profile_id: ownerId,
-          full_name: input.full_name,
-          email: input.email,
-          phone: input.phone || null,
-          skill_rating: input.rating || null,
-          rating_system: input.rating_system || 'knltb',
-          linked_profile_id: input.player_id,
-          source: 'cycle_registration',
-          has_trained: false,
-        }, { 
-          onConflict: 'club_profile_id,email',
-          ignoreDuplicates: false 
-        });
-    } else if (ownerType === 'academy') {
-      await supabase
-        .from('guest_players')
-        .upsert({
-          academy_profile_id: ownerId,
-          full_name: input.full_name,
-          email: input.email || null,
-          phone: input.phone || null,
-          skill_rating: input.rating || null,
-          rating_system: input.rating_system || 'knltb',
-          linked_profile_id: input.player_id,
-          source: 'cycle_registration',
-          has_trained: false,
-        }, { 
-          onConflict: 'academy_profile_id,email',
-          ignoreDuplicates: false 
-        });
+      await addToClubStudentList(ownerId, input);
     }
   } catch (error) {
-    logger.warn('Add to student list failed (non-blocking)', { error });
+    logger.error(
+      'Add to student list failed (non-blocking)',
+      error instanceof Error ? error : new Error(String(error)),
+      { ownerType, ownerId, cycleId: input.cycle_id },
+    );
+  }
+}
+
+// club_players variant: select-by-email-then-insert (unique_club_player_email is
+// also a PARTIAL index — WHERE email IS NOT NULL AND email != '' — so upsert
+// with onConflict fails with 42P10 exactly like guest_players did).
+async function addToClubStudentList(
+  clubProfileId: string,
+  input: IntakeRequestInput
+): Promise<void> {
+  const email = input.email.trim();
+
+  if (email) {
+    const { data: existing } = await supabase
+      .from('club_players')
+      .select('id')
+      .eq('club_profile_id', clubProfileId)
+      .eq('email', email)
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) return;
+  }
+
+  const { error } = await supabase.from('club_players').insert({
+    club_profile_id: clubProfileId,
+    full_name: input.full_name,
+    email, // NOT NULL column on club_players
+    phone: input.phone || null,
+    skill_rating: input.rating ?? null,
+    rating_system: input.rating_system || 'knltb',
+    linked_profile_id: input.player_id,
+    source: 'cycle_registration',
+    has_trained: false,
+  });
+
+  // 23505 = a concurrent writer (or an RLS-invisible row) already holds this
+  // email for the club — the player exists in the list, nothing to do.
+  if (error && error.code !== '23505') {
+    logger.error('Add to club student list failed (non-blocking)', new Error(error.message), {
+      clubProfileId,
+      cycleId: input.cycle_id,
+      errorCode: error.code,
+    });
   }
 }
 

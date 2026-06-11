@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { fetchUnifiedPlayersCore, type CorePlayer } from '@/lib/unifiedPlayers';
+import { fetchPlayersOverview, type PlayersOverviewRow } from '@/lib/playersOverview';
+import type { PlayerScope } from '@/lib/playerQueryKeys';
 
 export type InvoiceSelectablePlayer = {
   comboboxId: string;
@@ -27,6 +29,34 @@ function coreToInvoiceSelectablePlayer(core: CorePlayer): InvoiceSelectablePlaye
     billing_address: core.billing_address,
     billing_btw_number: core.billing_btw_number,
   };
+}
+
+export function overviewRowToInvoiceSelectablePlayer(row: PlayersOverviewRow): InvoiceSelectablePlayer {
+  return {
+    comboboxId: row.player_key,
+    full_name: row.full_name,
+    email: row.email,
+    phone: row.phone,
+    type: row.player_type as 'guest' | 'registered',
+    profileId: row.profile_id ?? null,
+    guestPlayerId: row.guest_player_id ?? null,
+    billing_business_name: row.billing_business_name ?? null,
+    billing_address: row.billing_address ?? null,
+    billing_btw_number: row.billing_btw_number ?? null,
+  };
+}
+
+/**
+ * Server-side picker search via the get_players_overview RPC (name/email/
+ * business/phone-digit matching, removal filtering and linked-player dedupe
+ * all happen in the database). Returns the first page of matches.
+ */
+export async function searchInvoiceSelectablePlayers(
+  scope: PlayerScope,
+  search: string,
+): Promise<InvoiceSelectablePlayer[]> {
+  const { rows } = await fetchPlayersOverview(scope, { search, pageSize: 50 });
+  return rows.map(overviewRowToInvoiceSelectablePlayer);
 }
 
 export async function fetchAcademyInvoiceSelectablePlayers(

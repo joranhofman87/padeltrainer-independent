@@ -79,6 +79,54 @@ describe('trainerPlayerDetails save', () => {
       }),
     );
     expect(eqMock).toHaveBeenCalledWith('guest_players', 'trainer_id', 'trainer-1');
+    // Unlinked guests never touch profiles.
+    expect(updateMock).not.toHaveBeenCalledWith('profiles', expect.anything());
+  });
+
+  it('writes identity to profiles and mirrors the guest row (email untouched) for linked guests', async () => {
+    await saveTrainerDetails({
+      kind: 'guest',
+      trainerProfileId: 'trainer-1',
+      guestPlayerId: 'guest-1',
+      profileId: 'profile-1',
+      form: {
+        name: 'Jane Linked',
+        email: 'tampered@example.com',
+        phone: '0612345678',
+        locationId: LOC_A,
+        skillRating: '5.5',
+        ratingSystem: 'knltb',
+        notes: 'Intake note',
+      },
+      allowedLocationIds,
+    });
+
+    const profileUpdate = updateMock.mock.calls.find(([table]) => table === 'profiles')?.[1];
+    expect(profileUpdate).toMatchObject({
+      first_name: 'Jane',
+      last_name: 'Linked',
+      full_name: 'Jane Linked',
+      phone: '0612345678',
+      skill_rating: 5.5,
+      rating_system: 'knltb',
+    });
+    expect(profileUpdate).not.toHaveProperty('email');
+    expect(eqMock).toHaveBeenCalledWith('profiles', 'id', 'profile-1');
+
+    const guestUpdate = updateMock.mock.calls.find(([table]) => table === 'guest_players')?.[1];
+    expect(guestUpdate).toMatchObject({
+      first_name: 'Jane',
+      last_name: 'Linked',
+      full_name: 'Jane Linked',
+      phone: '0612345678',
+      skill_rating: 5.5,
+      rating_system: 'knltb',
+      notes: 'Intake note',
+      preferred_location_id: LOC_A,
+    });
+    expect(guestUpdate).not.toHaveProperty('email');
+    expect(eqMock).toHaveBeenCalledWith('guest_players', 'id', 'guest-1');
+    expect(eqMock).toHaveBeenCalledWith('guest_players', 'trainer_id', 'trainer-1');
   });
 
   it('does not include email in registered profile payload', async () => {

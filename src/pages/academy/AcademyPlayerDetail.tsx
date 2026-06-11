@@ -35,7 +35,11 @@ import { TagPicker } from '@/components/players/TagPicker';
 import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDetailsCard';
 import { AcademyPlayerRemoveCard } from '@/components/academy/AcademyPlayerRemoveCard';
 import { getAcademyLocations } from '@/lib/academy';
-import type { AcademyPlayerDetailsValues } from '@/lib/academyPlayerDetails';
+import {
+  coalesceLinkedGuestIdentity,
+  fetchLinkedProfileIdentity,
+  type AcademyPlayerDetailsValues,
+} from '@/lib/academyPlayerDetails';
 import { fetchPlayerTrainingLocations } from '@/lib/academyPlayerTrainingLocations';
 import {
   buildInvoiceEmailEvents,
@@ -160,15 +164,25 @@ export default function AcademyPlayerDetail() {
           .maybeSingle();
         if (data) {
           guestPreferredLocationId = data.preferred_location_id ?? null;
+          // Linked guests: the profile is canonical for identity (same
+          // precedence as the get_players_overview RPC the list view uses).
+          const identity = coalesceLinkedGuestIdentity(
+            {
+              full_name: data.full_name,
+              email: data.email,
+              phone: data.phone,
+              skill_rating: data.skill_rating as number | null,
+              rating_system: data.rating_system,
+              birth_date: data.birth_date,
+            },
+            data.linked_profile_id
+              ? await fetchLinkedProfileIdentity(data.linked_profile_id)
+              : null,
+          );
           core = {
-            full_name: data.full_name,
-            email: data.email,
-            phone: data.phone,
-            skill_rating: data.skill_rating as any,
-            rating_system: data.rating_system,
+            ...identity,
             notes: data.notes,
             source: data.source,
-            birth_date: data.birth_date,
             created_at: data.created_at,
             type: 'guest',
             guest_player_id: data.id,

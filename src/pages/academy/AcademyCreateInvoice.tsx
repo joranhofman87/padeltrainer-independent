@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +20,8 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
-import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
+import { invalidateAllPlayerData, playerKeys } from '@/lib/playerQueryKeys';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,8 +37,8 @@ import {
   resolveInvoiceGuestPlayerId,
 } from '@/lib/invoiceCustomerInsert';
 import {
-  fetchAcademyInvoiceSelectablePlayers,
   fetchInvoicePlayerForPrefill,
+  searchInvoiceSelectablePlayers,
 } from '@/lib/invoiceSelectablePlayers';
 
 interface LineItem {
@@ -84,10 +85,18 @@ export default function AcademyCreateInvoice() {
 
   const academyProfileId = activeAcademy?.id;
 
+  const [playerSearch, setPlayerSearch] = useState('');
+  const debouncedPlayerSearch = useDebouncedValue(playerSearch);
+
   const { data: selectablePlayers = [], isLoading: playersLoading } = useQuery({
-    queryKey: ['academy-invoice-selectable-players', academyProfileId],
-    queryFn: () => fetchAcademyInvoiceSelectablePlayers(academyProfileId!),
+    queryKey: playerKeys.picker('academy', academyProfileId, debouncedPlayerSearch),
+    queryFn: () =>
+      searchInvoiceSelectablePlayers(
+        { kind: 'academy', id: academyProfileId! },
+        debouncedPlayerSearch,
+      ),
     enabled: !!academyProfileId,
+    placeholderData: keepPreviousData,
   });
 
   useEffect(() => {
@@ -305,6 +314,8 @@ export default function AcademyCreateInvoice() {
         hidePlayerSearch={prefilledFromProfile}
         oneTimeMode={oneTimeMode}
         onOneTimeModeChange={setOneTimeMode}
+        searchValue={playerSearch}
+        onSearchValueChange={setPlayerSearch}
       />
 
       {/* Line items */}
