@@ -594,5 +594,6 @@
   "aria": {
     "listView": "List view",
     "scheduleView": "Schedule view"
-  }
+  },
+  "saving": "Saving…"
 }

@@ -596,5 +596,6 @@
   "aria": {
     "listView": "Lijstweergave",
     "scheduleView": "Roosterweergave"
-  }
+  },
+  "saving": "Bezig…"
 }

@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Copy, ChevronDown, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
-import { formatDate } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { getCycles, createCycle, type Cycle } from '@/lib/cycles';
 import { bulkCopySlotsToCycle, getBookingsBySlotIds, notifyPriorityClaimsForSlots } from '@/lib/priorityClaims';
 
@@ -93,7 +93,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
   // Suggest a name for the new cycle once a source is chosen.
   useEffect(() => {
     if (sourceCycle && !newCycleName) {
-      setNewCycleName(`${sourceCycle.name} (volgende ronde)`);
+      setNewCycleName(`${sourceCycle.name} ${t('bulkCopy.nextRoundSuffix', '(next round)')}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceCycle?.id]);
@@ -119,15 +119,15 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
 
   const handleSubmit = async () => {
     if (!sourceCycleId) {
-      toast.error('Kies eerst een cyclus om van te kopiëren');
+      toast.error(t('bulkCopy.errSelectSource', 'Choose a cycle to copy from first'));
       return;
     }
     if (targetMode === 'new' && !newCycleStart) {
-      toast.error('Kies een startdatum voor de nieuwe cyclus');
+      toast.error(t('bulkCopy.errSelectStart', 'Choose a start date for the new cycle'));
       return;
     }
     if (targetMode === 'existing' && (!targetCycleId || targetCycleId === sourceCycleId)) {
-      toast.error('Kies een andere doelcyclus');
+      toast.error(t('bulkCopy.errSelectTarget', 'Choose a different target cycle'));
       return;
     }
     setSubmitting(true);
@@ -137,7 +137,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       let effectiveTargetId = targetCycleId;
       if (targetMode === 'new') {
         if (!sourceCycle) {
-          toast.error('Broncyclus niet gevonden');
+          toast.error(t('bulkCopy.errSourceNotFound', 'Source cycle not found'));
           setSubmitting(false);
           return;
         }
@@ -149,7 +149,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
         const created = await createCycle({
           owner_type: ownerType,
           owner_id: ownerId,
-          name: newCycleName.trim() || `${sourceCycle.name} (volgende ronde)`,
+          name: newCycleName.trim() || `${sourceCycle.name} ${t('bulkCopy.nextRoundSuffix', '(next round)')}`,
           description: sourceCycle.description ?? undefined,
           start_date: newCycleStart,
           end_date: endDate,
@@ -182,9 +182,9 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
         notified = await notifyPriorityClaimsForSlots(result.notifiableSlotIds);
       }
 
-      const parts = [`${result.copiedSlots} trainingen gekopieerd`];
-      if (createPriorityClaims) parts.push(`${result.createdClaims} spelers uitgenodigd`);
-      if (notified > 0) parts.push(`${notified} e-mails verstuurd`);
+      const parts = [t('bulkCopy.successSlots', { count: result.copiedSlots, defaultValue: '{{count}} trainings copied' })];
+      if (createPriorityClaims) parts.push(t('bulkCopy.successInvited', { count: result.createdClaims, defaultValue: '{{count}} players invited' }));
+      if (notified > 0) parts.push(t('bulkCopy.successEmails', { count: notified, defaultValue: '{{count}} emails sent' }));
       toast.success(parts.join(' · '));
       navigate(backHref);
     } catch (e) {
@@ -278,7 +278,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
                         {start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                       </div>
                       <div className="text-muted-foreground text-xs">
-                        {count} {count === 1 ? 'player' : 'players'}{s.price_per_session ? ` - EUR ${Number(s.price_per_session).toFixed(2)}` : ''}
+                        {t('bulkCopy.playerCount', { count, defaultValue: '{{count}} players' })}{s.price_per_session ? ` · ${formatCurrency(Number(s.price_per_session))}` : ''}
                       </div>
                     </div>
                   </label>
