@@ -186,7 +186,7 @@ export default function AcademyIntakeRequests() {
 
   const handleGenerateProposals = async (config: GenerateProposalsConfig) => {
     if (selectedCycleId === 'all') {
-      toast.error('Please select a specific cycle first');
+      toast.error(t('proposals.selectCycleFirst', { defaultValue: 'Please select a specific cycle first' }));
       return;
     }
     setIsGenerating(true);
@@ -268,7 +268,7 @@ export default function AcademyIntakeRequests() {
               disabled={filteredRequests.length === 0}
             >
               <Download className="h-4 w-4 mr-2" />
-              CSV
+              {t('intakeRequests.exportCsvShort', 'CSV')}
             </Button>
           </>
         }
@@ -313,10 +313,10 @@ export default function AcademyIntakeRequests() {
         </Tabs>
 
         <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
-          <ToggleGroupItem value="list" aria-label="List view">
+          <ToggleGroupItem value="list" aria-label={t('common:aria.listView', 'List view')}>
             <List className="h-4 w-4" />
           </ToggleGroupItem>
-          <ToggleGroupItem value="schedule" aria-label="Schedule view">
+          <ToggleGroupItem value="schedule" aria-label={t('common:aria.scheduleView', 'Schedule view')}>
             <CalendarDays className="h-4 w-4" />
           </ToggleGroupItem>
         </ToggleGroup>

@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     // Fetch unpaid invoices
     let query = supabaseAdmin
       .from("invoices")
-      .select("id, invoice_number, line_items, subtotal, vat_amount, total, vat_rate, prices_include_vat, status, booking_ids")
+      .select("id, invoice_number, line_items, subtotal, vat_amount, total, vat_rate, prices_include_vat, status, booking_ids, split_count")
       .in("status", ["draft", "sent", "pending"]);
 
     if (invoiceIds && invoiceIds.length > 0) {
@@ -108,11 +108,14 @@ Deno.serve(async (req) => {
             b.payment_amount != null && Number(b.payment_amount) > 0;
           const allHaveExplicitAmount = bookings.every(bookingHasExplicitAmount);
 
-          // Detect split count from existing line items
-          let splitCount = 1;
-          for (const item of lineItems) {
-            const match = item.description?.match(/\(1\/(\d+)\)/);
-            if (match) { splitCount = parseInt(match[1], 10); break; }
+          // M-33: prefer the structural split_count; legacy invoices (NULL)
+          // fall back to the "(1/N)" marker in line-item descriptions.
+          let splitCount = (inv.split_count as number | null) ?? 1;
+          if (!inv.split_count) {
+            for (const item of lineItems) {
+              const match = item.description?.match(/\(1\/(\d+)\)/);
+              if (match) { splitCount = parseInt(match[1], 10); break; }
+            }
           }
 
           const firstSlot = bookings[0].availability_slots as any;

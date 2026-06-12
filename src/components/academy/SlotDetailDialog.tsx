@@ -281,10 +281,10 @@ export function SlotDetailDialog({
                     </div>
                     <span className="text-sm truncate flex-1">{player.name}</span>
                     {player.isGuest && (
-                      <Badge variant="outline" className="text-[10px] h-4 px-1">Guest</Badge>
+                      <Badge variant="outline" className="text-[10px] h-4 px-1">{t('calendar.guest', 'Guest')}</Badge>
                     )}
                     {player.status === 'pending' && (
-                      <Badge variant="outline" className="text-[10px] h-4 px-1 text-amber-600">Pending</Badge>
+                      <Badge variant="outline" className="text-[10px] h-4 px-1 text-amber-600">{t('calendar.pending', 'Pending')}</Badge>
                     )}
                     <Pencil className="h-3 w-3 text-muted-foreground shrink-0" />
                   </button>

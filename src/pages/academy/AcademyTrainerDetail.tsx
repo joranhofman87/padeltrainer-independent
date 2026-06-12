@@ -198,11 +198,11 @@ export default function AcademyTrainerDetail() {
     if (!file || !userId) return;
 
     if (!file.type.startsWith('image/')) {
-      toast({ title: t('common.error'), description: 'Please select an image file', variant: 'destructive' });
+      toast({ title: t('common.error'), description: t('trainers.selectImageFile', 'Please select an image file'), variant: 'destructive' });
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast({ title: t('common.error'), description: 'Please select an image smaller than 5MB', variant: 'destructive' });
+      toast({ title: t('common.error'), description: t('trainers.selectImageSizeLimit', 'Please select an image smaller than 5MB'), variant: 'destructive' });
       return;
     }
 
@@ -221,10 +221,10 @@ export default function AcademyTrainerDetail() {
       if (updateError) throw updateError;
 
       setProfileData(prev => ({ ...prev, avatar_url: urlWithTimestamp }));
-      toast({ title: 'Avatar updated', description: "The trainer's profile picture has been updated." });
+      toast({ title: t('trainers.avatarUpdated', 'Avatar updated'), description: t('trainers.avatarUpdatedDescription', "The trainer's profile picture has been updated.") });
     } catch (error: any) {
       logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainerDetail' });
-      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, 'Failed to upload avatar'), variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('trainers.failedUploadAvatar', 'Failed to upload avatar')), variant: 'destructive' });
     } finally {
       setUploadingAvatar(false);
     }
@@ -312,7 +312,7 @@ export default function AcademyTrainerDetail() {
       navigate('/app/academy/trainers');
     } catch (error: any) {
       logger.error('Error updating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainerDetail' });
-      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, 'Failed to update trainer profile'), variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('trainers.failedUpdateProfile', 'Failed to update trainer profile')), variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -325,7 +325,7 @@ export default function AcademyTrainerDetail() {
       sonnerToast.success(t('trainers.removed'));
       navigate('/app/academy/trainers');
     } else {
-      sonnerToast.error('Failed to remove trainer');
+      sonnerToast.error(t('trainers.failedRemove', 'Failed to remove trainer'));
     }
   };
 
@@ -405,14 +405,14 @@ export default function AcademyTrainerDetail() {
                 />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">{profileData.full_name || 'Trainer'}</h2>
+                <h2 className="text-xl font-semibold">{profileData.full_name || t('trainers.trainerFallback', 'Trainer')}</h2>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="text-sm text-primary hover:underline"
                   disabled={uploadingAvatar}
                 >
-                  {uploadingAvatar ? 'Uploading...' : 'Change photo'}
+                  {uploadingAvatar ? t('common.uploading', 'Uploading...') : t('trainers.changePhoto', 'Change photo')}
                 </button>
               </div>
             </div>
@@ -427,16 +427,16 @@ export default function AcademyTrainerDetail() {
           <CardContent className="space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="full_name">Full Name</Label>
+                <Label htmlFor="full_name">{t('trainers.fullName', 'Full Name')}</Label>
                 <Input
                   id="full_name"
                   value={profileData.full_name}
                   onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
-                  placeholder="John Doe"
+                  placeholder={t('trainers.fullNamePlaceholder', 'John Doe')}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">{t('trainers.phone', 'Phone')}</Label>
                 <Input
                   id="phone"
                   type="tel"
@@ -447,16 +447,16 @@ export default function AcademyTrainerDetail() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t('trainers.email', 'Email')}</Label>
               <Input id="email" type="email" value={profileData.email} disabled className="bg-muted" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bio">Bio</Label>
+              <Label htmlFor="bio">{t('trainers.bio', 'Bio')}</Label>
               <Textarea
                 id="bio"
                 value={profileData.bio}
                 onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
-                placeholder="Write a short bio about the trainer..."
+                placeholder={t('trainers.bioPlaceholder', 'Write a short bio about the trainer...')}
                 rows={3}
               />
             </div>
@@ -471,7 +471,7 @@ export default function AcademyTrainerDetail() {
           <CardContent className="space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="hourly_rate">Hourly Rate (€)</Label>
+                <Label htmlFor="hourly_rate">{t('trainers.hourlyRate', 'Hourly Rate (€)')}</Label>
                 <Input
                   id="hourly_rate"
                   type="number"
@@ -483,7 +483,7 @@ export default function AcademyTrainerDetail() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="experience">Coaching Since (year)</Label>
+                <Label htmlFor="experience">{t('trainers.coachingSince', 'Coaching Since (year)')}</Label>
                 <Input
                   id="experience"
                   type="number"
@@ -491,20 +491,20 @@ export default function AcademyTrainerDetail() {
                   max={new Date().getFullYear()}
                   value={trainerData.coaching_since_year ?? ''}
                   onChange={(e) => setTrainerData({ ...trainerData, coaching_since_year: e.target.value ? parseInt(e.target.value) : null })}
-                  placeholder={`e.g. ${new Date().getFullYear() - 5}`}
+                  placeholder={t('trainers.coachingSincePlaceholder', 'e.g. {{year}}', { year: new Date().getFullYear() - 5 })}
                 />
               </div>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="rating_system">Rating System</Label>
+                <Label htmlFor="rating_system">{t('trainers.ratingSystem', 'Rating System')}</Label>
                 <Select
                   value={profileData.rating_system || ''}
                   onValueChange={(value) => setProfileData({ ...profileData, rating_system: value })}
                 >
                   <SelectTrigger id="rating_system">
-                    <SelectValue placeholder="Select rating system" />
+                    <SelectValue placeholder={t('trainers.selectRatingSystem', 'Select rating system')} />
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(groupedSystems).map(([country, systems]) => (
@@ -523,7 +523,7 @@ export default function AcademyTrainerDetail() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="rating">Rating</Label>
+                <Label htmlFor="rating">{t('trainers.rating', 'Rating')}</Label>
                 <Input
                   id="rating"
                   type="number"
@@ -536,7 +536,7 @@ export default function AcademyTrainerDetail() {
             </div>
 
             <div className="space-y-2">
-              <Label>Certifications</Label>
+              <Label>{t('trainers.certifications', 'Certifications')}</Label>
               <CertificationsPicker
                 selectedCertifications={trainerData.certifications}
                 onChange={(certs) => setTrainerData({ ...trainerData, certifications: certs })}
@@ -545,7 +545,7 @@ export default function AcademyTrainerDetail() {
             </div>
 
             <div className="space-y-2">
-              <Label>Specializations</Label>
+              <Label>{t('trainers.specializations', 'Specializations')}</Label>
               <SpecializationsPicker
                 selectedSpecializations={trainerData.specializations}
                 onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
@@ -596,28 +596,28 @@ export default function AcademyTrainerDetail() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="coaching_method">Coaching Method</Label>
+              <Label htmlFor="coaching_method">{t('trainers.coachingMethod', 'Coaching Method')}</Label>
               <Textarea
                 id="coaching_method"
                 value={trainerData.coaching_method}
                 onChange={(e) => setTrainerData({ ...trainerData, coaching_method: e.target.value })}
-                placeholder="Describe coaching methodology..."
+                placeholder={t('trainers.coachingMethodPlaceholder', 'Describe coaching methodology...')}
                 rows={2}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="favourite_quote">Favourite Quote</Label>
+              <Label htmlFor="favourite_quote">{t('trainers.favouriteQuote', 'Favourite Quote')}</Label>
               <Input
                 id="favourite_quote"
                 value={trainerData.favourite_quote}
                 onChange={(e) => setTrainerData({ ...trainerData, favourite_quote: e.target.value })}
-                placeholder="A motivational quote..."
+                placeholder={t('trainers.favouriteQuotePlaceholder', 'A motivational quote...')}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="video_url">Video URL</Label>
+              <Label htmlFor="video_url">{t('trainers.videoUrl', 'Video URL')}</Label>
               <Input
                 id="video_url"
                 value={trainerData.video_url}
@@ -633,7 +633,7 @@ export default function AcademyTrainerDetail() {
                   id="social_instagram"
                   value={trainerData.social_instagram}
                   onChange={(e) => setTrainerData({ ...trainerData, social_instagram: e.target.value })}
-                  placeholder="@username"
+                  placeholder={t('trainers.instagramPlaceholder', '@username')}
                 />
               </div>
               <div className="space-y-2">
@@ -642,7 +642,7 @@ export default function AcademyTrainerDetail() {
                   id="social_youtube"
                   value={trainerData.social_youtube}
                   onChange={(e) => setTrainerData({ ...trainerData, social_youtube: e.target.value })}
-                  placeholder="Channel URL"
+                  placeholder={t('trainers.youtubePlaceholder', 'Channel URL')}
                 />
               </div>
               <div className="space-y-2">
@@ -651,7 +651,7 @@ export default function AcademyTrainerDetail() {
                   id="social_linkedin"
                   value={trainerData.social_linkedin}
                   onChange={(e) => setTrainerData({ ...trainerData, social_linkedin: e.target.value })}
-                  placeholder="Profile URL"
+                  placeholder={t('trainers.linkedinPlaceholder', 'Profile URL')}
                 />
               </div>
             </div>

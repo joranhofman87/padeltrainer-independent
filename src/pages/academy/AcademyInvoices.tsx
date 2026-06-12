@@ -884,7 +884,7 @@ export default function AcademyInvoices() {
                           <Checkbox
                             checked={filteredInvoices.length > 0 && filteredInvoices.every((i) => selectedIds.has(i.id))}
                             onCheckedChange={() => toggleSelectAllVisible(filteredInvoices)}
-                            aria-label="Select all"
+                            aria-label={t("invoices.selectAll", "Select all")}
                           />
                         </TableHead>
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
@@ -941,7 +941,7 @@ export default function AcademyInvoices() {
                             <Checkbox
                               checked={selectedIds.has(inv.id)}
                               onCheckedChange={() => toggleSelect(inv.id)}
-                              aria-label={`Select ${inv.invoice_number}`}
+                              aria-label={t("invoices.selectInvoice", "Select {{number}}", { number: inv.invoice_number })}
                             />
                           </TableCell>
                           <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
@@ -970,7 +970,7 @@ export default function AcademyInvoices() {
                                     <Mail className="h-3.5 w-3.5 text-muted-foreground" />
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    Doorgestuurd op {format(new Date(inv.forwarded_at), "dd MMM yyyy HH:mm", { locale: dateFnsLocale })}
+                                    {t("invoices.forwardedOn", "Doorgestuurd op {{date}}", { date: format(new Date(inv.forwarded_at), "dd MMM yyyy HH:mm", { locale: dateFnsLocale }) })}
                                   </TooltipContent>
                                 </Tooltip>
                               )}
@@ -1016,7 +1016,7 @@ export default function AcademyInvoices() {
                             <Checkbox
                               checked={selectedIds.has(inv.id)}
                               onCheckedChange={() => toggleSelect(inv.id)}
-                              aria-label={`Select ${inv.invoice_number}`}
+                              aria-label={t("invoices.selectInvoice", "Select {{number}}", { number: inv.invoice_number })}
                             />
                           </div>
                           <div className="min-w-0">

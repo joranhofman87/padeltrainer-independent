@@ -765,7 +765,7 @@ export default function AcademyCalendar() {
       {/* Sub-page Header */}
       <div className="border-b bg-background">
         <div className="container mx-auto px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate("/app/academy")}>
+          <Button variant="ghost" size="icon" aria-label={t("calendar.goBack", "Go back")} onClick={() => navigate("/app/academy")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-xl font-display font-semibold">{t("calendar.title", "Agenda")}</h1>

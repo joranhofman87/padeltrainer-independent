@@ -204,9 +204,9 @@ export default function AcademyEditInvoice() {
     // Paid/cancelled invoices are terminal: editing amounts makes the ledger and
     // the archived PDF disagree. Correct a paid invoice with a credit note.
     if (isPaid || isCancelled) {
-      toast.error(t('invoiceEdit.lockedTerminal', isPaid
-        ? 'Betaalde facturen kunnen niet meer worden gewijzigd. Maak een creditfactuur.'
-        : 'Geannuleerde facturen kunnen niet meer worden gewijzigd.'));
+      toast.error(isPaid
+        ? t('invoiceEdit.lockedPaid', 'Betaalde facturen kunnen niet meer worden gewijzigd. Maak een creditfactuur.')
+        : t('invoiceEdit.lockedCancelled', 'Geannuleerde facturen kunnen niet meer worden gewijzigd.'));
       return;
     }
     setSaving(true);
@@ -328,7 +328,7 @@ export default function AcademyEditInvoice() {
       <div className="container mx-auto px-4 py-6 max-w-3xl space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/academy/invoices')}>
+          <Button variant="ghost" size="icon" aria-label={t('invoiceEdit.goBack', 'Go back')} onClick={() => navigate('/app/academy/invoices')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">
@@ -433,7 +433,7 @@ export default function AcademyEditInvoice() {
                 <span>{t('invoiceEdit.description')}</span>
                 <span>{t('invoiceEdit.quantity')}</span>
                 <span>{t('invoiceEdit.price')}</span>
-                <span>BTW %</span>
+                <span>{t('invoiceEdit.vatPercent', 'BTW %')}</span>
                 <span>{t('invoiceEdit.total')}</span>
                 <span></span>
               </div>
@@ -447,7 +447,7 @@ export default function AcademyEditInvoice() {
                     <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                   </div>
                   <div className="text-right text-sm font-medium py-2">{formatCurrency(li.quantity * li.unit_price)}</div>
-                  <Button type="button" variant="ghost" size="icon" aria-label="Delete" className="h-7 w-7" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
+                  <Button type="button" variant="ghost" size="icon" aria-label={t('delete')} className="h-7 w-7" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
                     <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 </div>
@@ -473,7 +473,7 @@ export default function AcademyEditInvoice() {
                       <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
                     </div>
                     <div>
-                      <Label className="text-xs text-muted-foreground">BTW %</Label>
+                      <Label className="text-xs text-muted-foreground">{t('invoiceEdit.vatPercent', 'BTW %')}</Label>
                       <div className="relative">
                         <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
                         <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
@@ -508,14 +508,14 @@ export default function AcademyEditInvoice() {
                   .sort(([a], [b]) => Number(a) - Number(b))
                   .map(([rate, data]) => (
                     <div key={rate} className="flex justify-between">
-                      <span className="text-muted-foreground">BTW {rate}%</span>
+                      <span className="text-muted-foreground">{t('invoiceEdit.vatWithRate', 'BTW {{rate}}%', { rate })}</span>
                       <span>{formatCurrency(data.vat)}</span>
                     </div>
                   ))
               ) : (
                 <div className="flex justify-between items-center gap-2">
                   <span className="text-muted-foreground flex items-center gap-2">
-                    BTW
+                    {t('invoiceEdit.vat', 'BTW')}
                     <Input
                       type="number"
                       value={vatRate}

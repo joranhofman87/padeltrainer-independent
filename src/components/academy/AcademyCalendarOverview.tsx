@@ -303,13 +303,13 @@ export default function AcademyCalendarOverview({
         {/* Navigation + Filters Row */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" aria-label="Previous" className="h-8 w-8" onClick={onNavigatePrevious}>
+            <Button variant="outline" size="icon" aria-label={t('calendar.previous', 'Previous')} className="h-8 w-8" onClick={onNavigatePrevious}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <div className="min-w-[140px] text-center font-medium text-sm">
               {dateRangeLabel}
             </div>
-            <Button variant="outline" size="icon" aria-label="Next" className="h-8 w-8" onClick={onNavigateNext}>
+            <Button variant="outline" size="icon" aria-label={t('calendar.next', 'Next')} className="h-8 w-8" onClick={onNavigateNext}>
               <ChevronRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" className="h-8" onClick={onGoToday}>

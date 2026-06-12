@@ -65,7 +65,7 @@ export default function AcademyTrainerInvitation() {
 
       if (!result.success) {
         toast({
-          title: 'Error',
+          title: t('common:error', 'Error'),
           description: result.error,
           variant: 'destructive',
         });
@@ -111,8 +111,8 @@ export default function AcademyTrainerInvitation() {
     } catch (error) {
       logger.error('Error responding to invitation', error as Error, { component: 'AcademyTrainerInvitation', token });
       toast({
-        title: 'Error',
-        description: 'Failed to respond to invitation',
+        title: t('common:error', 'Error'),
+        description: t('trainerInvitation.respondError', 'Failed to respond to invitation'),
         variant: 'destructive',
       });
     } finally {

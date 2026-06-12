@@ -106,6 +106,7 @@ function DraggableBookedPlayer({
   onRemove?: (bookingId: string) => void;
   onEditBooking?: (bookingId: string) => void;
 }) {
+  const { t } = useTranslation('academy');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `booked-${player.bookingId}`,
     data: { type: 'booked-player', bookingId: player.bookingId, sourceSlotId: slotId, player },
@@ -128,7 +129,7 @@ function DraggableBookedPlayer({
         {...listeners}
         {...attributes}
         className="cursor-grab active:cursor-grabbing p-0.5 touch-none"
-        aria-label="Drag player"
+        aria-label={t('calendar.dragPlayer', { defaultValue: 'Drag player' })}
       >
         <GripVertical className="h-3 w-3 text-muted-foreground" />
       </button>
@@ -149,13 +150,13 @@ function DraggableBookedPlayer({
                 <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs max-w-[200px]">
-                Rating {formatRating(player.skillRating!)} outside slot range
+                {t('calendar.ratingOutsideRange', { defaultValue: 'Rating {{rating}} outside slot range', rating: formatRating(player.skillRating!) })}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
         {player.isGuest && (
-          <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0">Guest</Badge>
+          <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0">{t('calendar.guest', { defaultValue: 'Guest' })}</Badge>
         )}
         <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', getStatusColor(player.status))}>
           {player.status === 'confirmed' ? '✓' : '⏳'}
@@ -165,7 +166,7 @@ function DraggableBookedPlayer({
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(player.bookingId); }}
           className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover/chip:opacity-100"
-          aria-label="Remove player"
+          aria-label={t('calendar.removePlayer', { defaultValue: 'Remove player' })}
         >
           <X className="h-3 w-3" />
         </button>
@@ -187,6 +188,7 @@ function SlotCard({
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
 }) {
+  const { t } = useTranslation('academy');
   const { setNodeRef, isOver } = useDroppable({
     id: `slot-drop-${slot.id}`,
     data: { type: 'slot-drop', slotId: slot.id },
@@ -221,7 +223,7 @@ function SlotCard({
                 size="sm"
                 className="h-5 w-5 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover/slot:opacity-100 transition-opacity"
                 onClick={() => onEditSlot(slot)}
-                aria-label="Edit slot"
+                aria-label={t('calendar.editSlotLabel', { defaultValue: 'Edit slot' })}
               >
                 <Pencil className="h-3 w-3" />
               </Button>
@@ -232,7 +234,7 @@ function SlotCard({
                 size="sm"
                 className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/slot:opacity-100 transition-opacity"
                 onClick={() => onDeleteSlot(slot)}
-                aria-label="Delete slot"
+                aria-label={t('calendar.deleteSlotLabel', { defaultValue: 'Delete slot' })}
               >
                 <Trash2 className="h-3 w-3" />
               </Button>
@@ -243,7 +245,7 @@ function SlotCard({
                 size="sm"
                 className="h-5 w-5 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover/slot:opacity-100 transition-opacity"
                 onClick={() => onBookForPlayer(slot)}
-                aria-label="Add player to slot"
+                aria-label={t('calendar.addPlayerToSlot', { defaultValue: 'Add player to slot' })}
               >
                 <UserPlus className="h-3 w-3" />
               </Button>
@@ -261,7 +263,7 @@ function SlotCard({
             <Users className="h-3 w-3" />
             {currentP}/{maxP}
             {isFull && (
-              <Badge variant="default" className="text-[9px] px-1 py-0 h-3.5 ml-1">FULL</Badge>
+              <Badge variant="default" className="text-[9px] px-1 py-0 h-3.5 ml-1">{t('calendar.fullBadge', { defaultValue: 'FULL' })}</Badge>
             )}
           </span>
           {slot.location_name && (
@@ -281,7 +283,7 @@ function SlotCard({
         {ratingSpread != null && ratingSpread > 2.0 && (
           <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
             <AlertTriangle className="h-3 w-3 shrink-0" />
-            <span>Spread: {ratingSpread.toFixed(1)} pts</span>
+            <span>{t('calendar.ratingSpread', { defaultValue: 'Spread: {{spread}} pts', spread: ratingSpread.toFixed(1) })}</span>
           </div>
         )}
 
@@ -304,7 +306,7 @@ function SlotCard({
         )}
 
         {currentP === 0 && (
-          <p className="text-[10px] text-muted-foreground italic">No players</p>
+          <p className="text-[10px] text-muted-foreground italic">{t('calendar.noPlayers', { defaultValue: 'No players' })}</p>
         )}
       </CardContent>
     </Card>
@@ -343,6 +345,7 @@ function SidebarPlayerDragOverlay({ player }: { player: KnownPlayer }) {
 // ── Draggable Sidebar Player ──
 
 function DraggableSidebarPlayer({ player }: { player: KnownPlayer }) {
+  const { t } = useTranslation('academy');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${player.id}`,
     data: { type: 'sidebar-player', player },
@@ -360,7 +363,7 @@ function DraggableSidebarPlayer({ player }: { player: KnownPlayer }) {
         {...listeners}
         {...attributes}
         className="cursor-grab active:cursor-grabbing p-0.5 touch-none shrink-0"
-        aria-label="Drag player"
+        aria-label={t('calendar.dragPlayer', { defaultValue: 'Drag player' })}
       >
         <GripVertical className="h-3 w-3 text-muted-foreground" />
       </button>
@@ -372,7 +375,7 @@ function DraggableSidebarPlayer({ player }: { player: KnownPlayer }) {
           </Badge>
         )}
         {player.is_guest && (
-          <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5 shrink-0">Guest</Badge>
+          <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5 shrink-0">{t('calendar.guest', { defaultValue: 'Guest' })}</Badge>
         )}
       </div>
     </div>
@@ -603,7 +606,7 @@ export default function AcademyDayGrid({
                   >
                     <span className="text-xs font-semibold capitalize">{day.label}</span>
                     <span className="text-[10px] text-muted-foreground">
-                      {slotCount} slots · {count} players
+                      {t('calendar.slotsPlayersCount', { defaultValue: '{{slots}} slots · {{players}} players', slots: slotCount, players: count })}
                     </span>
                   </TabsTrigger>
                 );
@@ -647,7 +650,7 @@ export default function AcademyDayGrid({
                           <div className="min-w-0">
                             <p className="text-sm font-semibold truncate">{trainer.name}</p>
                             <p className="text-[10px] text-muted-foreground">
-                              {trainerSlots.length} slots · {trainerSlots.reduce((s, sl) => s + sl.booked_players.length, 0)} players
+                              {t('calendar.slotsPlayersCount', { defaultValue: '{{slots}} slots · {{players}} players', slots: trainerSlots.length, players: trainerSlots.reduce((s, sl) => s + sl.booked_players.length, 0) })}
                             </p>
                           </div>
                         </div>

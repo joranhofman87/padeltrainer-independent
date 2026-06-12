@@ -667,6 +667,11 @@ serve(async (req) => {
           prices_include_vat: slotPricesIncludeVat,
           status: invoiceStatus,
           booking_ids: bookingIds,
+          // M-33: structural split divisor (forward-only; legacy invoices stay
+          // NULL and readers fall back to the "(1/N)" description marker).
+          ...((requestedSplitAmongPlayers ?? splitAmongPlayers ?? 1) > 1
+            ? { split_count: requestedSplitAmongPlayers ?? splitAmongPlayers }
+            : {}),
           ...(allPaid ? { paid_at: new Date().toISOString(), sent_at: new Date().toISOString() } : {}),
         })
         .select()

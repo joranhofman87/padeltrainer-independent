@@ -82,7 +82,7 @@ export default function AcademyProfile() {
           description: t('profile.savedDescription', 'Your profile has been updated.'),
         });
       } else {
-        throw new Error('Failed to update profile');
+        throw new Error(t('profile.updateFailed', 'Failed to update profile'));
       }
     } catch (error: any) {
       toast({
@@ -254,7 +254,7 @@ export default function AcademyProfile() {
             <div className="flex items-center gap-4">
               {activeAcademy.logo_url ? (
                 <div className="w-16 h-16 rounded-full overflow-hidden bg-muted flex-shrink-0 ring-1 ring-border/50">
-                  <img src={activeAcademy.logo_url} alt="Academy logo" className="object-cover w-full h-full" loading="lazy" />
+                  <img src={activeAcademy.logo_url} alt={t('profile.logoAlt', 'Academy logo')} className="object-cover w-full h-full" loading="lazy" />
                 </div>
               ) : (
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center flex-shrink-0 ring-1 ring-border/50">
@@ -282,7 +282,7 @@ export default function AcademyProfile() {
                 <div className="w-32 h-12 rounded-md overflow-hidden bg-muted flex-shrink-0">
                   <img
                     src={activeAcademy.banner_url}
-                    alt="Academy banner"
+                    alt={t('profile.bannerAlt', 'Academy banner')}
                     className="object-cover w-full h-full"
                     loading="lazy"
                   />
@@ -448,7 +448,7 @@ export default function AcademyProfile() {
                 id="instagram"
                 value={formData.social_instagram}
                 onChange={(e) => setFormData({ ...formData, social_instagram: e.target.value })}
-                placeholder="yourusername or full URL"
+                placeholder={t('profile.socialUsernamePlaceholder', 'yourusername or full URL')}
               />
             </div>
 
@@ -460,7 +460,7 @@ export default function AcademyProfile() {
                 id="facebook"
                 value={formData.social_facebook}
                 onChange={(e) => setFormData({ ...formData, social_facebook: e.target.value })}
-                placeholder="yourusername or full URL"
+                placeholder={t('profile.socialUsernamePlaceholder', 'yourusername or full URL')}
               />
             </div>
 
@@ -472,7 +472,7 @@ export default function AcademyProfile() {
                 id="youtube"
                 value={formData.social_youtube}
                 onChange={(e) => setFormData({ ...formData, social_youtube: e.target.value })}
-                placeholder="@yourchannel or full URL"
+                placeholder={t('profile.socialChannelPlaceholder', '@yourchannel or full URL')}
               />
             </div>
 
@@ -484,7 +484,7 @@ export default function AcademyProfile() {
                 id="linkedin"
                 value={formData.social_linkedin}
                 onChange={(e) => setFormData({ ...formData, social_linkedin: e.target.value })}
-                placeholder="company/yourcompany or full URL"
+                placeholder={t('profile.socialCompanyPlaceholder', 'company/yourcompany or full URL')}
               />
             </div>
           </CardContent>

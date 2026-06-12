@@ -3004,6 +3004,7 @@ export type Database = {
           public_token: string
           public_token_revoked_at: string | null
           sent_at: string | null
+          split_count: number | null
           status: string
           subtotal: number
           total: number
@@ -3038,6 +3039,7 @@ export type Database = {
           public_token?: string
           public_token_revoked_at?: string | null
           sent_at?: string | null
+          split_count?: number | null
           status?: string
           subtotal?: number
           total?: number
@@ -3072,6 +3074,7 @@ export type Database = {
           public_token?: string
           public_token_revoked_at?: string | null
           sent_at?: string | null
+          split_count?: number | null
           status?: string
           subtotal?: number
           total?: number

@@ -104,13 +104,13 @@ type UnifiedPlayer = {
   has_overdue_payment?: boolean;
 };
 
-function getLevelLabel(band: string): string {
+function getLevelLabel(band: string, t: (key: string, defaultValue: string) => string): string {
   switch (band) {
-    case 'beginner': return 'Beginner (1-3)';
-    case 'intermediate': return 'Intermediate (4-6)';
-    case 'advanced': return 'Advanced (7-9)';
-    case 'pro': return 'Pro (9+)';
-    case 'unrated': return 'Unrated';
+    case 'beginner': return t('players.levels.beginner', 'Beginner (1-3)');
+    case 'intermediate': return t('players.levels.intermediate', 'Intermediate (4-6)');
+    case 'advanced': return t('players.levels.advanced', 'Advanced (7-9)');
+    case 'pro': return t('players.levels.pro', 'Pro (9+)');
+    case 'unrated': return t('players.levels.unrated', 'Unrated');
     default: return band;
   }
 }
@@ -391,7 +391,7 @@ export default function AcademyPlayers() {
       <PageHeader
         title={t('nav.players')}
         count={activePlayerCount}
-        countLabel={{ one: 'player', other: 'players' }}
+        countLabel={{ one: tTrainer('players.countOne', 'player'), other: tTrainer('players.countOther', 'players') }}
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)} aria-label={tTrainer('players.tags.manageButton', 'Tags')}>
@@ -401,12 +401,12 @@ export default function AcademyPlayers() {
             <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)} aria-label={tTrainer('players.import.button', 'Import')}>
               <Upload className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
-              <span className="sm:hidden">Import</span>
+              <span className="sm:hidden">{tTrainer('players.import.shortLabel', 'Import')}</span>
             </Button>
             <Button size="sm" onClick={() => setShowAddPlayer(true)} aria-label={tTrainer('players.addPlayer', 'Add Player')}>
               <UserPlus className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.addPlayer')}</span>
-              <span className="sm:hidden">Add</span>
+              <span className="sm:hidden">{tTrainer('players.addShort', 'Add')}</span>
             </Button>
           </>
         }
@@ -510,11 +510,11 @@ export default function AcademyPlayers() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{tTrainer('players.allLevels', 'All Levels')}</SelectItem>
-                <SelectItem value="beginner">{getLevelLabel('beginner')}</SelectItem>
-                <SelectItem value="intermediate">{getLevelLabel('intermediate')}</SelectItem>
-                <SelectItem value="advanced">{getLevelLabel('advanced')}</SelectItem>
-                <SelectItem value="pro">{getLevelLabel('pro')}</SelectItem>
-                <SelectItem value="unrated">{getLevelLabel('unrated')}</SelectItem>
+                <SelectItem value="beginner">{getLevelLabel('beginner', tTrainer)}</SelectItem>
+                <SelectItem value="intermediate">{getLevelLabel('intermediate', tTrainer)}</SelectItem>
+                <SelectItem value="advanced">{getLevelLabel('advanced', tTrainer)}</SelectItem>
+                <SelectItem value="pro">{getLevelLabel('pro', tTrainer)}</SelectItem>
+                <SelectItem value="unrated">{getLevelLabel('unrated', tTrainer)}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -623,7 +623,7 @@ export default function AcademyPlayers() {
                         {player.has_active_cyclus && (
                           <Badge variant="outline" className="text-xs border-primary/30 text-primary">
                             <RefreshCw className="h-3 w-3 mr-1" />
-                            Cyclus
+                            {tTrainer('players.cyclusBadge', 'Cyclus')}
                           </Badge>
                         )}
                         <span>{format(new Date(player.created_at), 'MMM d, yyyy')}</span>

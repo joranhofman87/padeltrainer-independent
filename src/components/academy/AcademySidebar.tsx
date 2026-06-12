@@ -108,7 +108,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
     const { error } = await signOut();
     if (error) {
       toast({
-        title: "Error",
+        title: t("common:error", "Error"),
         description: getFriendlyErrorMessage(error, t("nav.logoutError", "Failed to log out. Please try again.")),
         variant: "destructive",
       });
@@ -160,7 +160,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                   padeltrainer
                 </p>
                 <p className="truncate text-[11px] text-slate-500">
-                  {academy?.name || "Academy"}
+                  {academy?.name || t("nav.academy", "Academy")}
                 </p>
               </div>
             )}

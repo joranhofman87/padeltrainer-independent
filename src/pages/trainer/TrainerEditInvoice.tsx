@@ -163,9 +163,9 @@ export default function TrainerEditInvoice() {
     // the archived PDF disagree (and clears nothing that proves payment). Correct
     // a paid invoice with a credit note, not by overwriting it.
     if (isPaid || isCancelled) {
-      toast.error(t('invoiceEdit.lockedTerminal', isPaid
-        ? 'Betaalde facturen kunnen niet meer worden gewijzigd. Maak een creditfactuur.'
-        : 'Geannuleerde facturen kunnen niet meer worden gewijzigd.'));
+      toast.error(isPaid
+        ? t('invoiceEdit.lockedPaid', 'Betaalde facturen kunnen niet meer worden gewijzigd. Maak een creditfactuur.')
+        : t('invoiceEdit.lockedCancelled', 'Geannuleerde facturen kunnen niet meer worden gewijzigd.'));
       return;
     }
     setSaving(true);

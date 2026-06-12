@@ -136,7 +136,7 @@ export default function AcademyTrainers() {
       );
       toast.success(show ? t('trainers.visibilityPublic') : t('trainers.visibilityHidden'));
     } else {
-      toast.error('Failed to update visibility');
+      toast.error(t('trainers.visibilityUpdateFailed', 'Failed to update visibility'));
     }
     setUpdatingVisibility(null);
   };
@@ -147,7 +147,7 @@ export default function AcademyTrainers() {
       setPendingInvitations((prev) => prev.filter((i) => i.id !== invitationId));
       toast.success(t('trainerInvitation.canceled'));
     } else {
-      toast.error('Failed to cancel invitation');
+      toast.error(t('trainerInvitation.cancelFailed', 'Failed to cancel invitation'));
     }
   };
 
@@ -187,7 +187,7 @@ export default function AcademyTrainers() {
               academyProfileId={activeAcademy.id}
               academyName={activeAcademy.name}
               inviterId={user.id}
-              inviterName={profile.full_name || 'Academy Manager'}
+              inviterName={profile.full_name || t('badge')}
               onInviteSent={fetchData}
             />
           </div>
@@ -264,7 +264,7 @@ export default function AcademyTrainers() {
                               </AvatarFallback>
                             </Avatar>
                             <span className="font-medium truncate">
-                              {trainer.profile?.full_name || 'Trainer'}
+                              {trainer.profile?.full_name || t('common:trainer')}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
@@ -277,7 +277,7 @@ export default function AcademyTrainers() {
                             />
                             <Button
                               variant="ghost"
-                              size="icon" aria-label="Next"
+                              size="icon" aria-label={t('common:next')}
                               className="h-8 w-8"
                               onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
                             >
@@ -329,7 +329,7 @@ export default function AcademyTrainers() {
                               </AvatarFallback>
                             </Avatar>
                             <span className="font-medium truncate">
-                              {trainer.profile?.full_name || 'Trainer'}
+                              {trainer.profile?.full_name || t('common:trainer')}
                             </span>
                           </div>
                         </TableCell>
@@ -380,7 +380,7 @@ export default function AcademyTrainers() {
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
-                                    size="icon" aria-label="Open in new tab"
+                                    size="icon" aria-label={t('trainers.openInNewTab', 'Open in new tab')}
                                     onClick={() =>
                                       navigate(
                                         localizePath(
@@ -399,7 +399,7 @@ export default function AcademyTrainers() {
                             </TooltipProvider>
                             <Button
                               variant="ghost"
-                              size="icon" aria-label="Next"
+                              size="icon" aria-label={t('common:next')}
                               onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
                             >
                               <ChevronRight className="h-4 w-4" />

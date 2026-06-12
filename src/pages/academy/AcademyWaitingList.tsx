@@ -51,7 +51,7 @@ export default function AcademyWaitingList() {
       .eq('id', activeAcademy.id);
 
     if (error) {
-      toast({ title: t('common.error'), description: 'Failed to update setting', variant: 'destructive' });
+      toast({ title: t('common.error'), description: t('waitingList.updateError', 'Failed to update setting'), variant: 'destructive' });
     } else {
       setEnabled(value);
       toast({
@@ -78,7 +78,7 @@ export default function AcademyWaitingList() {
         title={t('waitingList.settingsTitle', 'Waiting List')}
         description={t('waitingList.settingsSubtitle', 'Let players join a waiting list when no spots are available')}
         actions={
-          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/academy/cycles')}>
+          <Button variant="ghost" size="icon" aria-label={t('common:goBack', 'Go back')} onClick={() => navigate('/app/academy/cycles')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
         }

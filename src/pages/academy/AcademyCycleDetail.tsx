@@ -239,7 +239,7 @@ export default function AcademyCycleDetail() {
         state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone },
       });
     } catch (error: any) {
-      toast.error(getFriendlyErrorMessage(error, 'Failed to save pricing'));
+      toast.error(getFriendlyErrorMessage(error, t('pricing.saveError', 'Failed to save pricing')));
     } finally {
       setIsSavingPricing(false);
     }
@@ -609,7 +609,7 @@ export default function AcademyCycleDetail() {
   if (!cycle) {
     return (
       <div className="container mx-auto px-4 py-6 space-y-4">
-        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/academy/cycles')}>
+        <Button variant="ghost" size="icon" aria-label={tCommon('aria.goBack', 'Go back')} onClick={() => navigate('/app/academy/cycles')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="space-y-2">
@@ -627,7 +627,7 @@ export default function AcademyCycleDetail() {
       {/* Header */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/academy/cycles')}>
+          <Button variant="ghost" size="icon" aria-label={tCommon('aria.goBack', 'Go back')} onClick={() => navigate('/app/academy/cycles')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1 min-w-0">
@@ -650,12 +650,12 @@ export default function AcademyCycleDetail() {
               <ExternalLink className="h-4 w-4 mr-1" />
               {t('actions.shareLink')}
             </Button>
-            <Button variant="outline" size="icon" aria-label="Settings" className="h-9 w-9" onClick={() => setShowSettings(true)}>
+            <Button variant="outline" size="icon" aria-label={tCommon('aria.settings', 'Settings')} className="h-9 w-9" onClick={() => setShowSettings(true)}>
               <Settings className="h-4 w-4" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="Open actions menu" className="h-9 w-9">
+                <Button variant="outline" size="icon" aria-label={tCommon('aria.openActionsMenu', 'Open actions menu')} className="h-9 w-9">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -755,7 +755,7 @@ export default function AcademyCycleDetail() {
                 className="h-8 text-xs"
               >
                 <Download className="h-3 w-3 mr-1" />
-                CSV
+                {t('intakeRequests.exportCsvShort', 'CSV')}
               </Button>
             </div>
 

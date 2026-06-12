@@ -197,7 +197,7 @@ export default function AcademySubscription() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  {plan?.name ?? "Academy Plan"}
+                  {plan?.name ?? t("subscription.defaultPlanName", "Academy Plan")}
                   {isActive && (
                     <Badge className="bg-emerald-500">
                       <CheckCircle2 className="h-3 w-3 mr-1" />

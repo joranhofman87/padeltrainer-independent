@@ -241,9 +241,11 @@ serve(async (req) => {
       );
     }
 
-    // Already split? Skip (detect "(1/N)" in line items)
+    // Already split? Prefer the structural column (M-33); legacy invoices
+    // fall back to the "(1/N)" marker in line items.
     const existingLineItems = (invoice.line_items as InvoiceLineItem[]) || [];
-    const alreadySplit = existingLineItems.some((li) => /\(1\/\d+\)/.test(li.description || ""));
+    const alreadySplit = (invoice.split_count ?? 1) > 1 ||
+      existingLineItems.some((li) => /\(1\/\d+\)/.test(li.description || ""));
     if (alreadySplit) {
       logStep("Invoice already split, skipping", { invoiceId });
       return new Response(

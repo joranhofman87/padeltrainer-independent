@@ -56,7 +56,7 @@ export function RequestLocationDialog({
     if (!formData.name || !formData.city) {
       toast({
         title: t('common.error'),
-        description: 'Name and city are required',
+        description: t('locations.nameAndCityRequired', 'Name and city are required'),
         variant: 'destructive',
       });
       return;
@@ -65,7 +65,7 @@ export function RequestLocationDialog({
     if (!user) {
       toast({
         title: t('common.error'),
-        description: 'You must be logged in',
+        description: t('locations.mustBeLoggedIn', 'You must be logged in'),
         variant: 'destructive',
       });
       return;
@@ -115,7 +115,7 @@ export function RequestLocationDialog({
       logger.error('Error submitting location request', error instanceof Error ? error : new Error(String(error)), { component: 'RequestLocationDialog' });
       toast({
         title: t('common.error'),
-        description: getFriendlyErrorMessage(error, 'Failed to submit location request'),
+        description: getFriendlyErrorMessage(error, t('locations.submitFailed', 'Failed to submit location request')),
         variant: 'destructive',
       });
     } finally {
@@ -143,7 +143,7 @@ export function RequestLocationDialog({
           <div className="grid gap-4 py-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="location-name">Location Name *</Label>
+                <Label htmlFor="location-name">{t('locations.locationName', 'Location Name')} *</Label>
                 <Input
                   id="location-name"
                   value={formData.name}
@@ -153,7 +153,7 @@ export function RequestLocationDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="location-city">City *</Label>
+                <Label htmlFor="location-city">{t('locations.city', 'City')} *</Label>
                 <Input
                   id="location-city"
                   value={formData.city}
@@ -165,13 +165,13 @@ export function RequestLocationDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="location-country">Country</Label>
+              <Label htmlFor="location-country">{t('locations.country', 'Country')}</Label>
               <Select
                 value={formData.country}
                 onValueChange={(value) => setFormData({ ...formData, country: value })}
               >
                 <SelectTrigger id="location-country">
-                  <SelectValue placeholder="Select country" />
+                  <SelectValue placeholder={t('locations.selectCountry', 'Select country')} />
                 </SelectTrigger>
                 <SelectContent>
                   {getCountrySelectOptions(i18n.language).map((country) => (
@@ -185,7 +185,7 @@ export function RequestLocationDialog({
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="location-address">Street Address</Label>
+                <Label htmlFor="location-address">{t('locations.streetAddress', 'Street Address')}</Label>
                 <Input
                   id="location-address"
                   value={formData.street_address}
@@ -194,7 +194,7 @@ export function RequestLocationDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="location-postal">Postal Code</Label>
+                <Label htmlFor="location-postal">{t('locations.postalCode', 'Postal Code')}</Label>
                 <Input
                   id="location-postal"
                   value={formData.postal_code}
@@ -205,7 +205,7 @@ export function RequestLocationDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="location-website">Website</Label>
+              <Label htmlFor="location-website">{t('locations.website', 'Website')}</Label>
               <Input
                 id="location-website"
                 type="url"
@@ -217,7 +217,7 @@ export function RequestLocationDialog({
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="location-phone">Phone</Label>
+                <Label htmlFor="location-phone">{t('locations.phone', 'Phone')}</Label>
                 <Input
                   id="location-phone"
                   type="tel"
@@ -227,7 +227,7 @@ export function RequestLocationDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="location-email">Email</Label>
+                <Label htmlFor="location-email">{t('locations.email', 'Email')}</Label>
                 <Input
                   id="location-email"
                   type="email"
@@ -239,12 +239,12 @@ export function RequestLocationDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="location-notes">Additional Notes</Label>
+              <Label htmlFor="location-notes">{t('locations.additionalNotes', 'Additional Notes')}</Label>
               <Textarea
                 id="location-notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Any additional information about this location..."
+                placeholder={t('locations.notesPlaceholder', 'Any additional information about this location...')}
                 rows={2}
               />
             </div>
@@ -256,7 +256,7 @@ export function RequestLocationDialog({
             </Button>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Submit Request
+              {t('locations.submitRequest', 'Submit Request')}
             </Button>
           </DialogFooter>
         </form>

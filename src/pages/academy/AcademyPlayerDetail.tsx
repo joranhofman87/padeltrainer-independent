@@ -384,7 +384,7 @@ export default function AcademyPlayerDetail() {
       setEmails(mergePlayerEmailHistory(campaignEmails, invoiceEmailEvents));
     } catch (err: any) {
       logger.error('Error loading player detail', err);
-      toast({ title: 'Error', description: getFriendlyErrorMessage(err, t('players.detail.loadError', 'Could not load player details. Please try again.')), variant: 'destructive' });
+      toast({ title: t('common:error', 'Error'), description: getFriendlyErrorMessage(err, t('players.detail.loadError', 'Could not load player details. Please try again.')), variant: 'destructive' });
     } finally {
       setLoading(false);
     }

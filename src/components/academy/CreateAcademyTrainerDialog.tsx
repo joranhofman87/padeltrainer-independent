@@ -52,7 +52,7 @@ export function CreateAcademyTrainerDialog({
     if (!email || !fullName) {
       toast({
         title: t('common.error'),
-        description: 'Name and email are required',
+        description: t('trainers.nameEmailRequired', 'Name and email are required'),
         variant: 'destructive',
       });
       return;
@@ -97,7 +97,7 @@ export function CreateAcademyTrainerDialog({
       logger.error('Error creating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'CreateAcademyTrainerDialog' });
       toast({
         title: t('common.error'),
-        description: getFriendlyErrorMessage(error, 'Failed to create trainer'),
+        description: getFriendlyErrorMessage(error, t('trainers.failedCreate', 'Failed to create trainer')),
         variant: 'destructive',
       });
     } finally {
@@ -148,18 +148,18 @@ export function CreateAcademyTrainerDialog({
             {result.isNewUser && result.temporaryPassword && (
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>Email</Label>
+                  <Label>{t('trainers.email', 'Email')}</Label>
                   <div className="p-2 bg-muted rounded-md text-sm">{email}</div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Temporary Password</Label>
+                  <Label>{t('trainers.temporaryPassword', 'Temporary Password')}</Label>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 p-2 bg-muted rounded-md font-mono text-sm">
                       {result.temporaryPassword}
                     </div>
                     <Button
                       variant="outline"
-                      size="icon" aria-label="Copy"
+                      size="icon" aria-label={t('common.copy', 'Copy')}
                       onClick={handleCopyPassword}
                     >
                       {copied ? (
@@ -170,14 +170,14 @@ export function CreateAcademyTrainerDialog({
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Share these credentials securely with the trainer.
+                    {t('trainers.shareCredentials', 'Share these credentials securely with the trainer.')}
                   </p>
                 </div>
               </div>
             )}
             
             <DialogFooter>
-              <Button onClick={handleClose}>Done</Button>
+              <Button onClick={handleClose}>{t('common.done', 'Done')}</Button>
             </DialogFooter>
           </>
         ) : (
@@ -191,28 +191,28 @@ export function CreateAcademyTrainerDialog({
             
             <div className="grid gap-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name *</Label>
+                <Label htmlFor="fullName">{t('trainers.fullNameRequired', 'Full Name *')}</Label>
                 <Input
                   id="fullName"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="John Doe"
+                  placeholder={t('trainers.fullNamePlaceholder', 'John Doe')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="email">{t('trainers.emailRequired', 'Email *')}</Label>
                 <Input
                   id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="trainer@example.com"
+                  placeholder={t('trainers.emailPlaceholder', 'trainer@example.com')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone (optional)</Label>
+                <Label htmlFor="phone">{t('trainers.phoneOptional', 'Phone (optional)')}</Label>
                 <Input
                   id="phone"
                   type="tel"

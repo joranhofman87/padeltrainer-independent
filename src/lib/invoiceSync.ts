@@ -51,6 +51,8 @@ interface InvoiceState {
   line_items: { description?: string }[];
   status: string;
   updated_at: string;
+  /** M-33 structural divisor; NULL on legacy invoices (regex fallback). */
+  split_count: number | null;
 }
 
 interface SlotJoin {
@@ -130,7 +132,7 @@ export function resolveFinalBookingPrices(
 async function fetchInvoiceState(invoiceId: string): Promise<InvoiceState | null> {
   const { data, error } = await supabase
     .from("invoices")
-    .select("id, booking_ids, vat_rate, line_items, status, updated_at")
+    .select("id, booking_ids, vat_rate, line_items, status, updated_at, split_count")
     .eq("id", invoiceId)
     .maybeSingle();
 
@@ -145,6 +147,7 @@ async function fetchInvoiceState(invoiceId: string): Promise<InvoiceState | null
       (data.line_items as unknown as { description?: string }[]) || [],
     status: data.status as string,
     updated_at: data.updated_at as string,
+    split_count: (data.split_count as number | null) ?? null,
   };
 }
 
@@ -294,7 +297,9 @@ async function applyRemovalRecalculation(
   const remainingBookings = (bookingRows ?? []) as unknown as BookingWithSlot[];
   if (remainingBookings.length === 0) return "noop";
 
-  const splitCount = detectSplitCount(state.line_items);
+  // M-33: structural divisor on new invoices; legacy invoices (NULL) fall
+  // back to the "(1/N)" marker in line-item descriptions.
+  const splitCount = state.split_count ?? detectSplitCount(state.line_items);
   const firstSlot = remainingBookings[0].availability_slots;
   const sharedCyclusId = firstSlot.cyclus_id;
   const allSameCyclus =
