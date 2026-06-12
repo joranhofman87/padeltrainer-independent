@@ -295,7 +295,7 @@
   },
   "src/components/invoices/InvoiceSettingsCardBase.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 5
+      "count": 7
     }
   },
   "src/components/locations/CommunityRatings.tsx": {
@@ -712,6 +712,11 @@
     }
   },
   "src/lib/playerTagService.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "src/lib/renumberDraftInvoices.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
