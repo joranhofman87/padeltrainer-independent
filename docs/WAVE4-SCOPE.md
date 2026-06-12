@@ -147,7 +147,7 @@ commits e6689c52 (batch 1), 7971c64c (B3), 9b34b833 (A2 + M-33), 413ecad9
 | A3/A4 | DONE — supportedLngs fix (the path detector accepted "app" as a language!), LanguageSwitcher in all four sidebars + /auth with profile persistence, settings Selects en/nl-only |
 | B1/B2/B5 | DONE — countries lib (Intl.DisplayNames), backfill live (12,737/12,738 → ISO, 1 ZZ row, CHECK constraint; hidden-606-Dutch-clubs bug fixed), public-api name→code alias deployed |
 | B3 | DONE — 111 city spellings canonicalized, 0 mixed groups remain |
-| B4 | **AWAITING REVIEW** — docs/W06-DEDUPE-DRYRUN.md (101 auto groups / 105 rows; 197 same-address different-name groups untouched; 0 claimed conflicts) |
+| B4 | DONE (approved 'all 101') — 106 rows soft-retired live (104 main pass + 2 identical-name pairs), 229 junction rows deduped, slug redirect in client, prevention index live. The first prod attempt aborted safely on an unknown unique table (location_translations) — allow-listed and re-run. |
 | C1-C6 | DONE — empty-state actions, de-jargoned copy, create-vs-invite explainer + email copy button, registration-choice explainers, sonner toast rewire, mobile table fix |
 | M-33 | DONE forward-only — split_count column live; writers auto-create/split-invoice; readers column-else-regex; existing invoices untouched |
 | M-38 | DEFERRED per decision |
