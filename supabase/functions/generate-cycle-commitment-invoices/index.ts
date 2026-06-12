@@ -50,7 +50,7 @@ serve(async (req) => {
 
     let cyclesQuery = supabase
       .from("cycles")
-      .select("id, name, start_date, status")
+      .select("id, name, start_date, status, settings")
       .in("status", ["open", "closed"]);
     if (onlyCycleId) cyclesQuery = cyclesQuery.eq("id", onlyCycleId);
 
@@ -62,6 +62,23 @@ serve(async (req) => {
 
     for (const cycle of cycles || []) {
       if (!isCycleDueForInvoicing(cycle.start_date, now)) continue;
+
+      // Upfront cycles are paid at accept (Mollie checkout when the player
+      // says yes), so the deferred split-by-headcount drafting must not run.
+      // They are still surfaced in the report: unpaid stragglers are the
+      // academy's manual follow-up.
+      const settings = (cycle.settings ?? {}) as Record<string, unknown>;
+      if (settings.rebook_payment_mode === "upfront") {
+        report.push({
+          cycleId: cycle.id,
+          cycleName: cycle.name,
+          committerCount: 0,
+          batches: [],
+          invoiced: 0,
+          note: "upfront_mode_skipped",
+        });
+        continue;
+      }
 
       // Slots in this cycle.
       const { data: slots } = await supabase

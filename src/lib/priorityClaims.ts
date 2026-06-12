@@ -1,6 +1,44 @@
 import { supabase } from '@/lib/supabaseClient';
+import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 
 export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'released';
+
+/**
+ * How a player pays when keeping their spot for the next cycle:
+ * - 'deferred_split' (default, absent = this): Yes = commitment; invoiced at
+ *   cycle start, split by final headcount.
+ * - 'upfront': the player checks out online (Mollie) immediately on Yes.
+ * Stored on cycles.settings.rebook_payment_mode.
+ */
+export type RebookPaymentMode = 'deferred_split' | 'upfront';
+
+/** Read a cycle's settings JSON. Returns null when unavailable (e.g. RLS). */
+async function fetchCycleSettings(cyclusId: string): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabase
+    .from('cycles')
+    .select('settings')
+    .eq('id', cyclusId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return (data.settings ?? {}) as Record<string, unknown>;
+}
+
+/**
+ * Resolve the rebook payment mode for a cycle. Absent settings, an unreadable
+ * cycle (cycles SELECT is public only for status='open'), or any error all
+ * fall back to the default 'deferred_split'.
+ */
+export async function getCycleRebookPaymentMode(
+  cyclusId: string | null | undefined,
+): Promise<RebookPaymentMode> {
+  if (!cyclusId) return 'deferred_split';
+  try {
+    const settings = await fetchCycleSettings(cyclusId);
+    return settings?.rebook_payment_mode === 'upfront' ? 'upfront' : 'deferred_split';
+  } catch {
+    return 'deferred_split';
+  }
+}
 
 /** Compute when the priority window ends, given a start time and number of days. */
 export function computePriorityWindowEnd(now: Date, days: number): Date {
@@ -302,9 +340,12 @@ export interface MyPendingClaim {
   slot_id: string;
   start_time: string;
   end_time: string;
+  cyclus_id: string | null;
   cyclus_name: string | null;
   price_per_session: number | null;
   priority_window_ends_at: string | null;
+  /** Payment mode of the slot's cycle ('deferred_split' when unknown). */
+  rebook_payment_mode: RebookPaymentMode;
 }
 
 /**
@@ -315,13 +356,13 @@ export interface MyPendingClaim {
 export async function getMyPendingPriorityClaims(profileId: string): Promise<MyPendingClaim[]> {
   const { data, error } = await supabase
     .from('slot_priority_claims')
-    .select('id, claim_token, slot_id, availability_slots:slot_id(start_time, end_time, cyclus_name, price_per_session, priority_window_ends_at)')
+    .select('id, claim_token, slot_id, availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at)')
     .eq('player_id', profileId)
     .eq('status', 'pending');
   if (error) throw error;
   const now = Date.now();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data || []).flatMap((c: any) => {
+  const claims = (data || []).flatMap((c: any) => {
     const s = c.availability_slots;
     if (!s) return [];
     if (s.priority_window_ends_at && new Date(s.priority_window_ends_at).getTime() <= now) return [];
@@ -331,11 +372,35 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
       slot_id: c.slot_id,
       start_time: s.start_time,
       end_time: s.end_time,
+      cyclus_id: s.cyclus_id ?? null,
       cyclus_name: s.cyclus_name,
       price_per_session: s.price_per_session,
       priority_window_ends_at: s.priority_window_ends_at,
+      rebook_payment_mode: 'deferred_split' as RebookPaymentMode,
     }];
   });
+
+  // Resolve each cycle's payment mode so the card copy can be mode-aware.
+  const cyclusIds = [...new Set(claims.map((c) => c.cyclus_id).filter((id): id is string => !!id))];
+  if (cyclusIds.length > 0) {
+    const { data: cycleRows } = await supabase
+      .from('cycles')
+      .select('id, settings')
+      .in('id', cyclusIds);
+    const modeByCycle = new Map<string, RebookPaymentMode>(
+      (cycleRows || []).map((row) => {
+        const settings = (row.settings ?? {}) as Record<string, unknown>;
+        return [row.id, settings.rebook_payment_mode === 'upfront' ? 'upfront' : 'deferred_split'];
+      }),
+    );
+    for (const claim of claims) {
+      if (claim.cyclus_id) {
+        claim.rebook_payment_mode = modeByCycle.get(claim.cyclus_id) ?? 'deferred_split';
+      }
+    }
+  }
+
+  return claims;
 }
 
 export async function getPriorityClaimsForSlot(slotId: string) {
@@ -422,6 +487,157 @@ export async function acceptClaimWithToken(token: string) {
   });
   if (error) throw error;
   return data as { ok: boolean; status?: string; reason?: string; booking_id?: string } | null;
+}
+
+export interface AcceptAndPayResult {
+  ok: boolean;
+  status?: string;
+  reason?: string;
+  booking_id?: string;
+  /**
+   * - 'deferred': commitment captured; invoiced at cycle start (default flow).
+   * - 'upfront': commitment captured AND a Mollie checkout was created —
+   *   redirect the player to `checkoutUrl`.
+   * - 'upfront_unavailable': commitment captured, but online checkout could
+   *   not be started (no payment setup / guest claim / payment error). The
+   *   spot is reserved; the academy follows up with an invoice.
+   */
+  mode?: 'deferred' | 'upfront' | 'upfront_unavailable';
+  checkoutUrl?: string;
+}
+
+interface ClaimSlotInfo {
+  id: string;
+  cyclus_id: string | null;
+  cyclus_name: string | null;
+  trainer_id: string;
+}
+
+/**
+ * Accept a priority claim and, when the cycle's rebook_payment_mode is
+ * 'upfront', immediately create a Mollie checkout for the player's accepted
+ * bookings in that cycle. This only CREATES a checkout link (the
+ * create-mollie-payment edge function recomputes the authoritative amount
+ * server-side); it never executes a payment.
+ *
+ * The accept itself is never rolled back: any failure after a successful
+ * accept degrades to 'deferred' (mode unknown) or 'upfront_unavailable'
+ * (checkout could not be started) instead of surfacing an error.
+ */
+export async function acceptClaimAndStartPayment(token: string): Promise<AcceptAndPayResult | null> {
+  const accept = await acceptClaimWithToken(token);
+  if (!accept?.ok) return accept;
+
+  let slot: ClaimSlotInfo | null = null;
+  let mode: RebookPaymentMode = 'deferred_split';
+  try {
+    const claimData = await fetchClaimByToken(token);
+    slot = (claimData?.slot ?? null) as ClaimSlotInfo | null;
+    mode = await getCycleRebookPaymentMode(slot?.cyclus_id);
+  } catch {
+    // Mode lookup failed — the commitment stands; fall back to the default.
+    return { ...accept, mode: 'deferred' };
+  }
+  if (mode !== 'upfront' || !slot?.cyclus_id) return { ...accept, mode: 'deferred' };
+
+  try {
+    // Online checkout needs an authenticated player: create-mollie-payment
+    // verifies every booking belongs to the caller's profile. Guest/email-only
+    // accepts keep the spot and fall back to manual invoicing.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { ...accept, mode: 'upfront_unavailable' };
+
+    const cyclusId = slot.cyclus_id;
+    const settings = await fetchCycleSettings(cyclusId);
+    const splitPayment = settings?.split_payment === true;
+
+    // All slots of the target cycle (price + trainer for the checkout call).
+    const { data: cycleSlots } = await supabase
+      .from('availability_slots')
+      .select('id, price_per_session, trainer_id')
+      .eq('cyclus_id', cyclusId);
+    const priceBySlot = new Map<string, number>(
+      (cycleSlots || []).map((s) => [s.id, Number(s.price_per_session) || 0]),
+    );
+    const cycleSlotIds = (cycleSlots || []).map((s) => s.id);
+
+    // Multi-slot cycles: the player may hold one claim per slot. Accept the
+    // remaining pending ones first so a single checkout covers the whole
+    // cycle. RLS scopes this select to the player's own claims; previously
+    // accepted ('claimed') siblings are picked up via their booking_id.
+    const bookingIds = accept.booking_id ? [accept.booking_id] : [];
+    if (cycleSlotIds.length > 0) {
+      const { data: myClaims } = await supabase
+        .from('slot_priority_claims')
+        .select('claim_token, slot_id, status, booking_id')
+        .in('slot_id', cycleSlotIds);
+      for (const mc of myClaims || []) {
+        if (mc.claim_token === token) continue;
+        if (mc.status === 'pending') {
+          try {
+            const sibling = await acceptClaimWithToken(mc.claim_token);
+            if (sibling?.ok && sibling.booking_id) bookingIds.push(sibling.booking_id);
+          } catch {
+            // One failed sibling (e.g. slot_full) must not block the checkout.
+          }
+        } else if (mc.status === 'claimed' && mc.booking_id) {
+          bookingIds.push(mc.booking_id);
+        }
+      }
+    }
+
+    // Keep only this player's still-payable bookings — a paid or cancelled
+    // sibling booking would make create-mollie-payment reject the batch.
+    const { data: payable } = await supabase
+      .from('bookings')
+      .select('id, slot_id')
+      .in('id', [...new Set(bookingIds)])
+      .eq('payment_status', 'pending')
+      .in('status', ['pending', 'confirmed']);
+    const payableBookingIds = (payable || []).map((b) => b.id);
+    const payableSlotIds = [...new Set((payable || []).map((b) => b.slot_id))];
+    if (payableBookingIds.length === 0) return { ...accept, mode: 'upfront_unavailable' };
+
+    // Amount, mirroring BookLesson's cycle branch: sum of price_per_session
+    // over the player's booked slots; with split_payment, divided by the
+    // distinct committed players (pending+confirmed) on those slots. This is
+    // indicative only — the edge function recomputes it with service role.
+    const total = payableSlotIds.reduce((sum, id) => sum + (priceBySlot.get(id) ?? 0), 0);
+    let amount = total;
+    if (splitPayment) {
+      const { data: participantRows } = await supabase
+        .from('bookings')
+        .select('player_id, guest_player_id')
+        .in('slot_id', payableSlotIds)
+        .in('status', ['pending', 'confirmed']);
+      const distinctPlayers = new Set(
+        (participantRows || [])
+          .map((b) => b.player_id ?? b.guest_player_id)
+          .filter(Boolean),
+      ).size;
+      amount = Math.round((total / Math.max(distinctPlayers, 1)) * 100) / 100;
+    }
+
+    const paymentSetup = await hasValidPaymentSetup(slot.trainer_id, slot.trainer_id, false);
+    if (!paymentSetup.valid) return { ...accept, mode: 'upfront_unavailable' };
+
+    const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
+      body: {
+        slotId: payableSlotIds[0],
+        amount,
+        description: slot.cyclus_name ?? 'Cyclus',
+        trainerId: slot.trainer_id,
+        bookingIds: payableBookingIds,
+      },
+    });
+    if (paymentError || !paymentData?.checkoutUrl) {
+      return { ...accept, mode: 'upfront_unavailable' };
+    }
+    return { ...accept, mode: 'upfront', checkoutUrl: paymentData.checkoutUrl as string };
+  } catch {
+    // The spot is reserved; only the checkout failed.
+    return { ...accept, mode: 'upfront_unavailable' };
+  }
 }
 
 // === Tier overrides ===

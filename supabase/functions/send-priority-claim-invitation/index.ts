@@ -31,6 +31,7 @@ interface SlotRow {
   id: string;
   start_time: string;
   end_time: string;
+  cyclus_id: string | null;
   cyclus_name: string | null;
   price_per_session: number | null;
   priority_window_ends_at: string | null;
@@ -152,11 +153,30 @@ const handler = async (req: Request): Promise<Response> => {
     const slotIds = [...new Set(eligible.map((c) => c.slot_id))];
     const { data: slots } = await supabase
       .from("availability_slots")
-      .select("id, start_time, end_time, cyclus_name, price_per_session, priority_window_ends_at")
+      .select("id, start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at")
       .in("id", slotIds);
     const slotMap = new Map<string, SlotRow>(
       ((slots || []) as SlotRow[]).map((s) => [s.id, s])
     );
+
+    // Payment-mode per cycle (cycles.settings.rebook_payment_mode): 'upfront'
+    // means the player checks out online on accept; the default
+    // 'deferred_split' is invoiced at cycle start. Drives the email copy.
+    const cyclusIds = [
+      ...new Set(
+        ((slots || []) as SlotRow[]).map((s) => s.cyclus_id).filter((id): id is string => !!id)
+      ),
+    ];
+    const upfrontCycleIds = new Set<string>();
+    if (cyclusIds.length > 0) {
+      const { data: cycleRows } = await supabase
+        .from("cycles")
+        .select("id, settings")
+        .in("id", cyclusIds);
+      for (const row of (cycleRows || []) as Array<{ id: string; settings: Record<string, unknown> | null }>) {
+        if ((row.settings || {}).rebook_payment_mode === "upfront") upfrontCycleIds.add(row.id);
+      }
+    }
 
     const resendClient = new Resend(resendApiKey);
     let sent = 0;
@@ -185,6 +205,10 @@ const handler = async (req: Request): Promise<Response> => {
       const deadline = slot.priority_window_ends_at
         ? new Date(slot.priority_window_ends_at).toLocaleDateString("nl-NL", { day: "numeric", month: "long" })
         : null;
+      const isUpfront = !!slot.cyclus_id && upfrontCycleIds.has(slot.cyclus_id);
+      const paymentLine = isUpfront
+        ? "Je rekent direct online af wanneer je je plek bevestigt."
+        : "Je betaalt pas wanneer de cyclus start; de prijs wordt verdeeld over de spelers die meedoen.";
 
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color:#1a1a1a;">
@@ -196,7 +220,7 @@ const handler = async (req: Request): Promise<Response> => {
             <div style="color:#6b7280;">${fmtTime}</div>
             ${slot.price_per_session ? `<div style="margin-top:6px;">EUR ${Number(slot.price_per_session).toFixed(2)} per sessie</div>` : ""}
           </div>
-          <p style="color:#6b7280;font-size:13px;">Je betaalt pas wanneer de cyclus start; de prijs wordt verdeeld over de spelers die meedoen.</p>
+          <p style="color:#6b7280;font-size:13px;">${paymentLine}</p>
           ${deadline ? `<p style="color:#6b7280;font-size:13px;">Reageer voor <strong>${deadline}</strong>, daarna komt je plek vrij voor anderen.</p>` : ""}
           <div style="text-align:center;margin:28px 0;">
             <a href="${acceptUrl}" style="display:inline-block;background:#16a34a;color:white;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Ja, ik hou mijn plek</a>

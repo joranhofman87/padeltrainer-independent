@@ -14,8 +14,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatCurrency, formatDate } from '@/lib/format';
-import { getCycles, createCycle, type Cycle } from '@/lib/cycles';
-import { bulkCopySlotsToCycle, getBookingsBySlotIds, notifyPriorityClaimsForSlots } from '@/lib/priorityClaims';
+import { getCycles, getCycle, createCycle, updateCycleSettings, type Cycle } from '@/lib/cycles';
+import { bulkCopySlotsToCycle, getBookingsBySlotIds, notifyPriorityClaimsForSlots, type RebookPaymentMode } from '@/lib/priorityClaims';
 
 interface Props {
   ownerType: 'trainer' | 'club' | 'academy';
@@ -49,6 +49,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
   const [bookingCounts, setBookingCounts] = useState<Map<string, number>>(new Map());
   const [priorityWindowDays, setPriorityWindowDays] = useState(14);
   const [createPriorityClaims, setCreatePriorityClaims] = useState(true);
+  const [rebookPaymentMode, setRebookPaymentMode] = useState<RebookPaymentMode>('deferred_split');
   const [notifyPlayers, setNotifyPlayers] = useState(true);
   const [memberWindowDays, setMemberWindowDays] = useState(7);
   const [enableMemberWindow, setEnableMemberWindow] = useState(true);
@@ -154,7 +155,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
           description: sourceCycle.description ?? undefined,
           start_date: newCycleStart,
           end_date: endDate,
-          settings: sourceCycle.settings,
+          settings: { ...sourceCycle.settings, rebook_payment_mode: rebookPaymentMode },
           status: 'open',
           type: sourceCycle.type,
           location_id: sourceCycle.location_id,
@@ -165,6 +166,15 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
           price_table: sourceCycle.price_table,
         });
         effectiveTargetId = created.id;
+      } else if (createPriorityClaims) {
+        // Existing target cycle: persist the chosen payment mode on its
+        // settings (read-modify-write so other settings keys are preserved).
+        // Must happen BEFORE the invitation emails read the cycle settings.
+        const targetCycle = await getCycle(effectiveTargetId);
+        await updateCycleSettings(effectiveTargetId, {
+          ...(targetCycle?.settings ?? {}),
+          rebook_payment_mode: rebookPaymentMode,
+        });
       }
 
       const result = await bulkCopySlotsToCycle({
@@ -305,6 +315,32 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
                 <p className="text-xs text-muted-foreground mt-1">
                   {t('bulkCopy.windowHint', 'De plek blijft gereserveerd voor de speler totdat die nee zegt of deze periode voorbij is.')}
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label>{t('bulkCopy.paymentModeLabel', 'How do players pay when they keep their spot?')}</Label>
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    className="mt-1"
+                    checked={rebookPaymentMode === 'deferred_split'}
+                    onChange={() => setRebookPaymentMode('deferred_split')}
+                  />
+                  <span>{t('bulkCopy.paymentModeDeferred', 'Invoice at cycle start — the price is split between everyone who joins')}</span>
+                </label>
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    className="mt-1"
+                    checked={rebookPaymentMode === 'upfront'}
+                    onChange={() => setRebookPaymentMode('upfront')}
+                  />
+                  <span>{t('bulkCopy.paymentModeUpfront', 'Pay immediately — the player checks out online when they say yes')}</span>
+                </label>
+                {rebookPaymentMode === 'upfront' && (
+                  <p className="text-xs text-muted-foreground pl-6">
+                    {t('bulkCopy.paymentModeUpfrontHint', 'Requires online payments (Mollie) for the trainer or academy.')}
+                  </p>
+                )}
               </div>
               <label className="flex items-center gap-3 cursor-pointer">
                 <Checkbox checked={notifyPlayers} onCheckedChange={(v) => setNotifyPlayers(Boolean(v))} />

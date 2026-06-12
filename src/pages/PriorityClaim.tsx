@@ -2,15 +2,20 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { CalendarClock, MapPin, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchClaimByToken, declineClaimWithToken, acceptClaimWithToken } from '@/lib/priorityClaims';
+import {
+  fetchClaimByToken,
+  declineClaimWithToken,
+  acceptClaimAndStartPayment,
+  getCycleRebookPaymentMode,
+  type RebookPaymentMode,
+} from '@/lib/priorityClaims';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 interface ClaimData {
@@ -23,6 +28,7 @@ interface ClaimData {
     id: string;
     start_time: string;
     end_time: string;
+    cyclus_id: string | null;
     cyclus_name: string | null;
     location_id: string | null;
     price_per_session: number | null;
@@ -45,6 +51,7 @@ export default function PriorityClaimPage() {
   const [acting, setActing] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
 
   const loadClaim = useCallback(() => {
     if (!token) return;
@@ -53,7 +60,13 @@ export default function PriorityClaimPage() {
     fetchClaimByToken(token)
       // A null result is a definitive "no such claim"; a throw is a failed
       // request (network/5xx) — the link may still be valid, so offer a retry.
-      .then((res) => setData(res as unknown as ClaimData | null))
+      .then(async (res) => {
+        const claim = res as unknown as ClaimData | null;
+        setData(claim);
+        // Mode-aware copy: read the cycle's rebook payment mode (cycles with
+        // status 'open' are publicly readable; falls back to deferred).
+        setPaymentMode(await getCycleRebookPaymentMode(claim?.slot?.cyclus_id));
+      })
       .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
   }, [token]);
@@ -66,10 +79,19 @@ export default function PriorityClaimPage() {
     if (!token) return;
     setActing(true);
     try {
-      const res = await acceptClaimWithToken(token);
+      const res = await acceptClaimAndStartPayment(token);
       if (res?.ok) {
+        if (res.mode === 'upfront' && res.checkoutUrl) {
+          toast.success(t('rebooking.redirectingToPayment', 'Taking you to the payment page…'));
+          window.location.href = res.checkoutUrl;
+          return;
+        }
         setAccepted(true);
-        toast.success(t('rebooking.toastReserved', 'Great! Your spot is reserved for the next cycle.'));
+        if (res.mode === 'upfront_unavailable') {
+          toast.success(t('rebooking.upfrontUnavailable', 'Your spot is reserved. Online payment is not available yet — you will receive an invoice.'));
+        } else {
+          toast.success(t('rebooking.toastReserved', 'Great! Your spot is reserved for the next cycle.'));
+        }
       } else if (res?.reason === 'slot_full') {
         toast.error(t('rebooking.errorFull', 'This spot was just filled.'));
       } else if (res?.reason === 'window_expired') {
@@ -155,8 +177,8 @@ export default function PriorityClaimPage() {
           <div className="flex items-start gap-3">
             <CalendarClock className="h-5 w-5 mt-0.5 text-muted-foreground" />
             <div>
-              <div className="font-medium">{format(start, 'EEEE d MMMM yyyy')}</div>
-              <div className="text-sm text-muted-foreground">{format(start, 'HH:mm')} - {format(end, 'HH:mm')}</div>
+              <div className="font-medium">{formatDate(start, 'EEEE d MMMM yyyy')}</div>
+              <div className="text-sm text-muted-foreground">{formatDate(start, 'HH:mm')} - {formatDate(end, 'HH:mm')}</div>
             </div>
           </div>
           {data.slot.price_per_session && (
@@ -169,12 +191,14 @@ export default function PriorityClaimPage() {
           )}
           {data.slot.price_per_session && (
             <p className="text-xs text-muted-foreground">
-              {t('rebooking.payLater', 'You only pay when the cycle starts; the price is split between the players who join.')}
+              {paymentMode === 'upfront'
+                ? t('rebooking.payNow', 'You pay for the new cycle right away when you confirm your spot.')
+                : t('rebooking.payLater', 'You only pay when the cycle starts; the price is split between the players who join.')}
             </p>
           )}
           {data.slot.priority_window_ends_at && !windowEnded && (
             <p className="text-sm text-muted-foreground">
-              {t('rebooking.respondBefore', 'Respond before {{date}}.', { date: format(new Date(data.slot.priority_window_ends_at), 'd MMM yyyy HH:mm') })}
+              {t('rebooking.respondBefore', 'Respond before {{date}}.', { date: formatDate(data.slot.priority_window_ends_at, 'd MMM yyyy HH:mm') })}
             </p>
           )}
 
