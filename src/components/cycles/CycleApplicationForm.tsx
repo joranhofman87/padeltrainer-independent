@@ -234,7 +234,17 @@ export default function CycleApplicationForm({
       const combinedNotes = [values.notes, values.group_notes].filter(Boolean).join('\n\n');
       const notesWithFlag = combinedNotes ? `${waitlistPrefix}${combinedNotes}` : (waitlistPrefix || undefined);
 
-      if (isGuest) {
+      // A logged-in user can fill the form for someone else (a parent
+      // registering their child). That submission must NOT be attributed to the
+      // submitter's account: it previously overwrote the submitter's profile
+      // name and linked the registrant's guest record to the submitter's
+      // profile. Treat "form name differs from the account's profile name" as
+      // registering someone else and route it through the guest edge function.
+      const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+      const registeringForSelf =
+        !isGuest && (!playerName || normalize(fullName) === normalize(playerName));
+
+      if (isGuest || !registeringForSelf) {
         // Guest flow: edge function handles account creation + intake
         const { data: result, error: fnError } = await supabase.functions.invoke('submit-guest-intake', {
           body: {

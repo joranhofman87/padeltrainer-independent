@@ -201,11 +201,21 @@ Deno.serve(async (req) => {
 
     const { data: existingProfile } = await adminClient
       .from("profiles")
-      .select("id")
+      .select("id, full_name")
       .eq("email", email.toLowerCase())
       .maybeSingle();
 
-    if (existingProfile) {
+    // Family rule: an email can be shared (a parent registering a child uses
+    // the parent's address). Only attribute the intake to the existing account
+    // when the NAME matches that account; a different name is a different
+    // person and gets their own guest record instead.
+    const normalizeName = (s: string | null | undefined) =>
+      (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+    const matchesExistingProfile = existingProfile &&
+      (!existingProfile.full_name ||
+        normalizeName(existingProfile.full_name) === normalizeName(nameFields.full_name));
+
+    if (existingProfile && matchesExistingProfile) {
       // Existing user with profile — use their profile ID
       playerId = existingProfile.id;
     } else {
@@ -237,34 +247,25 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Try to find existing guest by email + owner context
-      let existingGuest = null;
+      // Try to find existing guest by email + owner context. Emails are shared
+      // within families (unique indexes were dropped for that), so there can be
+      // several guests on one address — only reuse the one whose NAME matches;
+      // a different name (sibling) gets a new record instead of overwriting.
+      let guestQuery = adminClient
+        .from("guest_players")
+        .select("id, full_name")
+        .eq("email", email.toLowerCase());
       if (guestData.academy_profile_id) {
-        const { data } = await adminClient
-          .from("guest_players")
-          .select("id")
-          .eq("email", email.toLowerCase())
-          .eq("academy_profile_id", guestData.academy_profile_id as string)
-          .maybeSingle();
-        existingGuest = data;
+        guestQuery = guestQuery.eq("academy_profile_id", guestData.academy_profile_id as string);
       } else if (guestData.trainer_id) {
-        const { data } = await adminClient
-          .from("guest_players")
-          .select("id")
-          .eq("email", email.toLowerCase())
-          .eq("trainer_id", guestData.trainer_id as string)
-          .maybeSingle();
-        existingGuest = data;
+        guestQuery = guestQuery.eq("trainer_id", guestData.trainer_id as string);
       } else {
-        const { data } = await adminClient
-          .from("guest_players")
-          .select("id")
-          .eq("email", email.toLowerCase())
-          .is("academy_profile_id", null)
-          .is("trainer_id", null)
-          .maybeSingle();
-        existingGuest = data;
+        guestQuery = guestQuery.is("academy_profile_id", null).is("trainer_id", null);
       }
+      const { data: guestCandidates } = await guestQuery;
+      const existingGuest = (guestCandidates ?? []).find((g) =>
+        normalizeName(g.full_name) === normalizeName(nameFields.full_name)
+      ) ?? null;
 
       if (existingGuest) {
         guestPlayerId = existingGuest.id;
