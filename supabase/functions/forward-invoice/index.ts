@@ -237,11 +237,21 @@ const handler = async (req: Request): Promise<Response> => {
       if (guest?.email) playerReplyTo = guest.email;
     }
     if (!playerReplyTo && invoice.player_id) {
-      const { data: profile } = await supabase
+      // invoices.player_id references profiles.id; fall back to user_id for
+      // any historic rows that stored it.
+      let { data: profile } = await supabase
         .from("profiles")
         .select("email")
-        .eq("user_id", invoice.player_id)
-        .single();
+        .eq("id", invoice.player_id)
+        .maybeSingle();
+      if (!profile?.email) {
+        const { data: byUserId } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("user_id", invoice.player_id)
+          .maybeSingle();
+        profile = byUserId;
+      }
       if (profile?.email) playerReplyTo = profile.email;
     }
 
