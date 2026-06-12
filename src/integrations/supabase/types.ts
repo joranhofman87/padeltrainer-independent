@@ -3401,6 +3401,7 @@ export type Database = {
           logo_fetched_at: string | null
           logo_url: string | null
           longitude: number | null
+          merged_into: string | null
           name: string
           number_of_courts: number | null
           opening_hours: string | null
@@ -3432,6 +3433,7 @@ export type Database = {
           logo_fetched_at?: string | null
           logo_url?: string | null
           longitude?: number | null
+          merged_into?: string | null
           name: string
           number_of_courts?: number | null
           opening_hours?: string | null
@@ -3463,6 +3465,7 @@ export type Database = {
           logo_fetched_at?: string | null
           logo_url?: string | null
           longitude?: number | null
+          merged_into?: string | null
           name?: string
           number_of_courts?: number | null
           opening_hours?: string | null

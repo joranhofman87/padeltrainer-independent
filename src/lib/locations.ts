@@ -144,7 +144,8 @@ export async function getAllLocations(): Promise<Location[]> {
   return allLocations;
 }
 
-// Fetch a single location by slug
+// Fetch a single location by slug. Retired duplicates (W-06 dedupe) carry
+// merged_into — follow it so old links/SEO slugs resolve to the survivor.
 export async function getLocationBySlug(slug: string): Promise<Location | null> {
   const { data, error } = await supabase
     .from('locations')
@@ -154,7 +155,25 @@ export async function getLocationBySlug(slug: string): Promise<Location | null> 
     .single();
 
   if (error) {
-    if (error.code === 'PGRST116') return null;
+    if (error.code === 'PGRST116') {
+      const { data: retired } = await supabase
+        .from('locations')
+        .select('merged_into')
+        .eq('slug', slug)
+        .not('merged_into', 'is', null)
+        .maybeSingle();
+      const survivorId = (retired as { merged_into?: string | null } | null)?.merged_into;
+      if (survivorId) {
+        const { data: survivor } = await supabase
+          .from('locations')
+          .select('*')
+          .eq('id', survivorId)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (survivor) return survivor as Location;
+      }
+      return null;
+    }
     logger.error('Error fetching location', undefined, { error });
     throw error;
   }
