@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, MapPin, Minus, Plus, Repeat, Users } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { formatDate } from '@/lib/format';
 import { formatPrice } from '@/lib/pricing';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
 
@@ -95,7 +95,11 @@ export function BookingSummary({
                   {selectedCyclus.slots.map((slot) => (
                     <p key={slot.id} className="flex items-center gap-2">
                       <Calendar className="h-3 w-3" />
-                      {format(parseISO(slot.start_time), 'EEE, MMM d')} at {format(parseISO(slot.start_time), 'HH:mm')}
+                      {t('booking.dateAtTime', {
+                        date: formatDate(slot.start_time, 'EEE d MMM'),
+                        time: formatDate(slot.start_time, 'HH:mm'),
+                        defaultValue: '{{date}} at {{time}}',
+                      })}
                     </p>
                   ))}
                 </div>
@@ -159,12 +163,12 @@ export function BookingSummary({
                 <div className="text-sm text-muted-foreground space-y-1">
                   <p className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
-                    {format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy')}
+                    {formatDate(selectedSlot.start_time, 'EEEE d MMMM yyyy')}
                   </p>
                   <p className="flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    {format(parseISO(selectedSlot.start_time), 'HH:mm')} -{' '}
-                    {format(parseISO(selectedSlot.end_time), 'HH:mm')}
+                    {formatDate(selectedSlot.start_time, 'HH:mm')} -{' '}
+                    {formatDate(selectedSlot.end_time, 'HH:mm')}
                   </p>
                   {selectedSlot.location && (
                     <p className="flex items-center gap-2">

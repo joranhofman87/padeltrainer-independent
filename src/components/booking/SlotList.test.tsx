@@ -38,7 +38,7 @@ describe('SlotList', () => {
       />,
     );
 
-    expect(screen.getByText(/Fri, Apr 10/)).toBeInTheDocument();
+    expect(screen.getByText(/Fri 10 Apr/)).toBeInTheDocument();
     expect(screen.getByText(/10:00/)).toBeInTheDocument();
     expect(screen.getByText(/11:00/)).toBeInTheDocument();
     expect(screen.getByText(/Padel City, Amsterdam/)).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('SlotList', () => {
     renderWithI18n(
       <SlotList slots={[baseSlot]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={onSelect} />,
     );
-    fireEvent.click(screen.getByText(/Fri, Apr 10/));
+    fireEvent.click(screen.getByText(/Fri 10 Apr/));
     expect(onSelect).toHaveBeenCalledWith(baseSlot);
   });
 
@@ -129,7 +129,7 @@ describe('SlotList', () => {
     renderWithI18n(
       <SlotList slots={[baseSlot, slot2]} selectedSlotId={null} hasCycles={false} getSlotPrice={getSlotPrice} onSelect={() => {}} />,
     );
-    expect(screen.getByText(/Fri, Apr 10/)).toBeInTheDocument();
-    expect(screen.getByText(/Sat, Apr 11/)).toBeInTheDocument();
+    expect(screen.getByText(/Fri 10 Apr/)).toBeInTheDocument();
+    expect(screen.getByText(/Sat 11 Apr/)).toBeInTheDocument();
   });
 });

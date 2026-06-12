@@ -167,7 +167,10 @@
     "terms": "Terms (Voorwaarden)",
     "termsHelp": "These terms are shown to players before they apply. Separate from your general terms.",
     "termsPlaceholder": "Add specific terms and conditions for this registration...",
-    "unlimited": "Unlimited"
+    "unlimited": "Unlimited",
+    "cycleCreated": "Cycle created",
+    "cycleUpdated": "Cycle updated",
+    "saveFailed": "Failed to save cycle"
   },
   "detail": {
     "pricesIncludeVat": "All prices include VAT",
@@ -669,7 +672,11 @@
     "successEmails_other": "{{count}} emails sent",
     "errLoadCycles": "Could not load your cycles. Please try again.",
     "errLoadSlots": "Could not load the trainings for this cycle. Please try again.",
-    "errSubmit": "Could not copy the cycle. Please try again."
+    "errSubmit": "Could not copy the cycle. Please try again.",
+    "paymentModeLabel": "How do players pay when they keep their spot?",
+    "paymentModeDeferred": "Invoice at cycle start — the price is split between everyone who joins",
+    "paymentModeUpfront": "Pay immediately — the player checks out online when they say yes",
+    "paymentModeUpfrontHint": "Requires online payments (Mollie) for the trainer or academy."
   },
   "tierControl": {
     "title": "Visibility & rebooking",
@@ -685,7 +692,13 @@
     "openMembers": "Open to members now",
     "openPublic": "Open to public now",
     "hold": "Hold for review",
-    "unhold": "Move to review"
+    "unhold": "Move to review",
+    "releaseStatusValue": {
+      "pending_admin_review": "Awaiting review",
+      "auto_release_scheduled": "Automatic release scheduled",
+      "released": "Released",
+      "held": "Held for review"
+    }
   },
   "priorityClaims": {
     "title": "Priority rebooking",
@@ -704,7 +717,15 @@
     "nothingToInvite": "Everyone has already been invited or responded.",
     "extended": "Extended by 7 days",
     "alreadyExtended": "The window was just extended — no extra days added.",
-    "extendError": "Could not extend the window. Please try again."
+    "extendError": "Could not extend the window. Please try again.",
+    "status": {
+      "pending": "Pending",
+      "claimed": "Claimed",
+      "declined": "Declined",
+      "expired": "Expired",
+      "released": "Released"
+    },
+    "openedToPublic": "Opened to public"
   },
   "fillRate": {
     "title": "Fill rate",
@@ -744,7 +765,10 @@
     "linkInvalid": "Link not found",
     "linkInvalidDescription": "This claim link is invalid or has expired.",
     "loadFailedTitle": "Could not load this page",
-    "loadFailedDescription": "Something went wrong while loading your invitation. Your link is still valid and your spot has not been released — check your connection and try again."
+    "loadFailedDescription": "Something went wrong while loading your invitation. Your link is still valid and your spot has not been released — check your connection and try again.",
+    "payNow": "You pay for the new cycle right away when you confirm your spot.",
+    "redirectingToPayment": "Taking you to the payment page…",
+    "upfrontUnavailable": "Your spot is reserved. Online payment is not available yet — you will receive an invoice."
   },
   "genericError": "Something went wrong. Please try again.",
   "loadCyclesError": "Could not load your registrations. Please try again.",

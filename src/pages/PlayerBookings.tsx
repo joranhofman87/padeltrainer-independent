@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, Clock, MapPin, User, Star, FileText, CalendarPlus } from 'lucide-react';
-import { format, parseISO, isPast } from 'date-fns';
+import { isPast, parseISO } from 'date-fns';
+import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
 import { cancelBooking } from '@/lib/lessons';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -320,12 +321,12 @@ export default function PlayerBookings() {
                           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              {format(parseISO(booking.availability_slots.start_time), 'EEEE, MMM d, yyyy')}
+                              {formatDate(booking.availability_slots.start_time, 'EEEE d MMM yyyy')}
                             </div>
                             <div className="flex items-center gap-1">
                               <Clock className="h-4 w-4" />
-                              {format(parseISO(booking.availability_slots.start_time), 'HH:mm')} -
-                              {format(parseISO(booking.availability_slots.end_time), 'HH:mm')}
+                              {formatDate(booking.availability_slots.start_time, 'HH:mm')} -
+                              {formatDate(booking.availability_slots.end_time, 'HH:mm')}
                             </div>
                             {booking.availability_slots.locations?.name && (
                               <div className="flex items-center gap-1">
@@ -395,12 +396,12 @@ export default function PlayerBookings() {
                             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                               <div className="flex items-center gap-1">
                                 <Calendar className="h-4 w-4" />
-                                {format(parseISO(booking.availability_slots.start_time), 'EEEE, MMM d, yyyy')}
+                                {formatDate(booking.availability_slots.start_time, 'EEEE d MMM yyyy')}
                               </div>
                               <div className="flex items-center gap-1">
                                 <Clock className="h-4 w-4" />
-                                {format(parseISO(booking.availability_slots.start_time), 'HH:mm')} -
-                                {format(parseISO(booking.availability_slots.end_time), 'HH:mm')}
+                                {formatDate(booking.availability_slots.start_time, 'HH:mm')} -
+                                {formatDate(booking.availability_slots.end_time, 'HH:mm')}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">

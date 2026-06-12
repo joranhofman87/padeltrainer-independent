@@ -605,12 +605,12 @@ export default function CycleForm({
       }
 
       clearDraft();
-      toast.success(isEdit ? 'Cycle updated' : 'Cycle created');
+      toast.success(isEdit ? t('form.cycleUpdated', 'Cycle updated') : t('form.cycleCreated', 'Cycle created'));
       onSuccess?.(result);
       // Navigation handled by onSuccess callback
     } catch (error: any) {
       logger.error('Error saving cycle', error instanceof Error ? error : new Error(String(error)), { component: 'CycleForm' });
-      toast.error(getFriendlyErrorMessage(error, 'Failed to save cycle'));
+      toast.error(getFriendlyErrorMessage(error, t('form.saveFailed', 'Failed to save cycle')));
     } finally {
       setIsSubmitting(false);
     }

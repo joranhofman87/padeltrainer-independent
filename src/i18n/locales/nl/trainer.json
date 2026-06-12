@@ -1073,7 +1073,11 @@
     "trainerRequiredDescription": "Selecteer een trainer voor elk tijdslot.",
     "unpaidInvoiceAffected": "Onbetaalde factuur wordt opnieuw berekend",
     "unpaidInvoiceRecalculate": "Factuur {{number}} wordt automatisch aangepast aan de verwijderde sessie(s).",
-    "you": "Jij"
+    "you": "Jij",
+    "recurringSummary_one": "Maakt {{count}} sessie op {{day}} {{startDate}} om {{time}}",
+    "recurringSummary_other": "Maakt {{count}} sessies elke {{day}} om {{time}}, van {{startDate}} tot {{endDate}}",
+    "generateCycleDescription_one": "Dit maakt {{count}} terugkerend slot met {{sessionCount}} sessies in totaal",
+    "generateCycleDescription_other": "Dit maakt {{count}} terugkerende slots met {{sessionCount}} sessies in totaal"
   },
   "openSlots": {
     "title": "Open trainingsslots",
@@ -1255,7 +1259,9 @@
     "vatExempt": "Vrijgesteld / KOR",
     "vatInclusiveNote": "Lesprijzen zijn inclusief BTW. Dit tarief wordt gebruikt voor automatische facturen.",
     "vatReduced": "Laag tarief",
-    "vatStandard": "Standaard tarief"
+    "vatStandard": "Standaard tarief",
+    "sendErrorNotConfigured": "E-mailverzending is nog niet ingesteld — neem contact op met support.",
+    "sendErrorWithHint": "Het versturen van de factuur is mislukt. Controleer het e-mailadres van de ontvanger en probeer het opnieuw."
   },
   "profileVisibility": {
     "title": "Zichtbaarheid marktplaats",

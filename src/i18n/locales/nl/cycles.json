@@ -177,7 +177,10 @@
     "terms": "Voorwaarden",
     "termsHelp": "Deze voorwaarden worden aan spelers getoond voordat ze zich aanmelden. Los van je algemene voorwaarden.",
     "termsPlaceholder": "Voeg specifieke voorwaarden toe voor deze aanmelding...",
-    "unlimited": "Onbeperkt"
+    "unlimited": "Onbeperkt",
+    "cycleCreated": "Inschrijving aangemaakt",
+    "cycleUpdated": "Inschrijving bijgewerkt",
+    "saveFailed": "Opslaan mislukt. Probeer het opnieuw."
   },
   "detail": {
     "priceTable": "Tarieven",
@@ -817,7 +820,11 @@
     "successEmails_other": "{{count}} e-mails verstuurd",
     "errLoadCycles": "Kon je cycli niet laden. Probeer het opnieuw.",
     "errLoadSlots": "Kon de trainingen van deze cyclus niet laden. Probeer het opnieuw.",
-    "errSubmit": "Kon de cyclus niet kopiëren. Probeer het opnieuw."
+    "errSubmit": "Kon de cyclus niet kopiëren. Probeer het opnieuw.",
+    "paymentModeLabel": "Hoe betalen spelers als ze hun plek houden?",
+    "paymentModeDeferred": "Factuur bij de start van de cyclus — de prijs wordt verdeeld over iedereen die meedoet",
+    "paymentModeUpfront": "Direct betalen — de speler rekent online af wanneer die ja zegt",
+    "paymentModeUpfrontHint": "Vereist online betalingen (Mollie) voor de trainer of academy."
   },
   "priorityClaims": {
     "title": "Voorrangs-herboeking",
@@ -836,7 +843,15 @@
     "nothingToInvite": "Iedereen is al uitgenodigd of heeft gereageerd.",
     "extended": "Met 7 dagen verlengd",
     "alreadyExtended": "De periode is zojuist al verlengd — geen extra dagen toegevoegd.",
-    "extendError": "Kon de periode niet verlengen. Probeer het opnieuw."
+    "extendError": "Kon de periode niet verlengen. Probeer het opnieuw.",
+    "status": {
+      "pending": "In afwachting",
+      "claimed": "Geclaimd",
+      "declined": "Afgewezen",
+      "expired": "Verlopen",
+      "released": "Vrijgegeven"
+    },
+    "openedToPublic": "Opengesteld voor iedereen"
   },
   "fillRate": {
     "title": "Bezettingsgraad",
@@ -876,7 +891,10 @@
     "linkInvalid": "Link niet gevonden",
     "linkInvalidDescription": "Deze link is ongeldig of verlopen.",
     "loadFailedTitle": "Pagina kon niet geladen worden",
-    "loadFailedDescription": "Er ging iets mis bij het laden van je uitnodiging. Je link is nog geldig en je plek is niet vrijgegeven — controleer je internetverbinding en probeer het opnieuw."
+    "loadFailedDescription": "Er ging iets mis bij het laden van je uitnodiging. Je link is nog geldig en je plek is niet vrijgegeven — controleer je internetverbinding en probeer het opnieuw.",
+    "payNow": "Je betaalt direct voor de nieuwe cyclus wanneer je je plek bevestigt.",
+    "redirectingToPayment": "We sturen je door naar de betaalpagina…",
+    "upfrontUnavailable": "Je plek is gereserveerd. Online betalen is nog niet beschikbaar — je ontvangt een factuur."
   },
   "tierControl": {
     "title": "Zichtbaarheid & herboeking",
@@ -892,7 +910,13 @@
     "openMembers": "Nu openstellen voor leden",
     "openPublic": "Nu openbaar maken",
     "hold": "Vasthouden voor controle",
-    "unhold": "Naar controle"
+    "unhold": "Naar controle",
+    "releaseStatusValue": {
+      "pending_admin_review": "Wacht op controle",
+      "auto_release_scheduled": "Automatische vrijgave ingepland",
+      "released": "Vrijgegeven",
+      "held": "Vastgehouden voor controle"
+    }
   },
   "genericError": "Er ging iets mis. Probeer het opnieuw.",
   "loadCyclesError": "Kon je aanmeldingen niet laden. Probeer het opnieuw.",

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Clock, X, Globe, Loader2, Mail, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { formatDate } from '@/lib/format';
 import {
   getPriorityClaimsForSlot,
   declineClaimAsManager,
@@ -35,6 +36,15 @@ const statusVariant: Record<ClaimStatus, 'default' | 'secondary' | 'outline' | '
   declined: 'outline',
   expired: 'outline',
   released: 'outline',
+};
+
+// Humanized labels for the raw DB claim status — never render the enum value.
+const statusLabel: Record<ClaimStatus, { key: string; defaultValue: string }> = {
+  pending: { key: 'priorityClaims.status.pending', defaultValue: 'Pending' },
+  claimed: { key: 'priorityClaims.status.claimed', defaultValue: 'Claimed' },
+  declined: { key: 'priorityClaims.status.declined', defaultValue: 'Declined' },
+  expired: { key: 'priorityClaims.status.expired', defaultValue: 'Expired' },
+  released: { key: 'priorityClaims.status.released', defaultValue: 'Released' },
 };
 
 export default function PriorityClaimsSection({ slotId, onChange }: Props) {
@@ -81,7 +91,7 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
               <Clock className="h-3 w-3" />
               {windowEnded
                 ? t('priorityClaims.ended', 'Window ended')
-                : t('priorityClaims.endsAt', { date: new Date(priorityWindowEndsAt).toLocaleString(), defaultValue: 'Ends {{date}}' })}
+                : t('priorityClaims.endsAt', { date: formatDate(priorityWindowEndsAt, 'd MMM yyyy HH:mm'), defaultValue: 'Ends {{date}}' })}
             </Badge>
           )}
         </div>
@@ -100,7 +110,7 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
                     <div className="text-xs text-muted-foreground">{c.profiles?.email || c.guest_players?.email}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={statusVariant[c.status]}>{c.status}</Badge>
+                    <Badge variant={statusVariant[c.status]}>{t(statusLabel[c.status].key, statusLabel[c.status].defaultValue)}</Badge>
                     {c.status === 'pending' && (
                       <>
                         <Button
@@ -217,7 +227,7 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
               size="sm"
               variant="outline"
               onClick={async () => {
-                try { await endPriorityWindowNow(slotId); toast.success('Opened to public'); onChange?.(); }
+                try { await endPriorityWindowNow(slotId); toast.success(t('priorityClaims.openedToPublic', 'Opened to public')); onChange?.(); }
                 catch (e) { toast.error((e as Error).message); }
               }}
             >

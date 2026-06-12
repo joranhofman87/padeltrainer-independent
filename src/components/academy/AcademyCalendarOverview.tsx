@@ -313,7 +313,7 @@ export default function AcademyCalendarOverview({
               <ChevronRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" className="h-8" onClick={onGoToday}>
-              {t('calendar.today', 'Today')}
+              {t('common:today', 'Today')}
             </Button>
           </div>
 

@@ -1748,5 +1748,9 @@
     "specializations": "Specializations",
     "certifications": "Certifications",
     "and": "and"
+  },
+  "trainerProfile": {
+    "noReviews": "No reviews yet",
+    "beFirstReview": "Be the first to review this trainer!"
   }
 }

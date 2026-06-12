@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Users, Globe, Lock, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { formatDate } from '@/lib/format';
 import {
   openSlotToMembersNow,
   releaseSlotToPublic,
@@ -34,6 +35,14 @@ const tierVariant: Record<SlotTier, 'default' | 'secondary' | 'outline'> = {
   members: 'secondary',
   public: 'default',
   hidden: 'outline',
+};
+
+// Humanized labels for the raw public_release_status enum — never render the DB value.
+const releaseStatusLabel: Record<PublicReleaseStatus, { key: string; defaultValue: string }> = {
+  pending_admin_review: { key: 'tierControl.releaseStatusValue.pending_admin_review', defaultValue: 'Awaiting review' },
+  auto_release_scheduled: { key: 'tierControl.releaseStatusValue.auto_release_scheduled', defaultValue: 'Automatic release scheduled' },
+  released: { key: 'tierControl.releaseStatusValue.released', defaultValue: 'Released' },
+  held: { key: 'tierControl.releaseStatusValue.held', defaultValue: 'Held for review' },
 };
 
 export default function SlotTierControlCard({ slotId, onChange }: Props) {
@@ -89,12 +98,15 @@ export default function SlotTierControlCard({ slotId, onChange }: Props) {
       <CardContent className="space-y-3">
         <div className="text-xs text-muted-foreground space-y-1">
           {slot.priority_window_ends_at && (
-            <div>{t('tierControl.priorityEnds', 'Priority window ends')}: {new Date(slot.priority_window_ends_at).toLocaleString()}</div>
+            <div>{t('tierControl.priorityEnds', 'Priority window ends')}: {formatDate(slot.priority_window_ends_at, 'd MMM yyyy HH:mm')}</div>
           )}
           {slot.member_window_ends_at && (
-            <div>{t('tierControl.memberEnds', 'Member window ends')}: {new Date(slot.member_window_ends_at).toLocaleString()}</div>
+            <div>{t('tierControl.memberEnds', 'Member window ends')}: {formatDate(slot.member_window_ends_at, 'd MMM yyyy HH:mm')}</div>
           )}
-          <div>{t('tierControl.releaseStatus', 'Release status')}: {slot.public_release_status ?? 'auto_release_scheduled'}</div>
+          {(() => {
+            const status = releaseStatusLabel[slot.public_release_status ?? 'auto_release_scheduled'];
+            return <div>{t('tierControl.releaseStatus', 'Release status')}: {t(status.key, status.defaultValue)}</div>;
+          })()}
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1">

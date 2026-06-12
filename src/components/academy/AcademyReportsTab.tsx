@@ -233,7 +233,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
             <ChevronRight className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={goToday}>
-            {t('calendar.today', 'Today')}
+            {t('common:today', 'Today')}
           </Button>
         </div>
 

@@ -252,7 +252,18 @@
     "availableTimeSlots": "Beschikbare tijdsloten",
     "noSlotsAvailable": "Momenteel geen beschikbare slots",
     "noIndividualSessions": "Geen losse sessies beschikbaar",
-    "trainingCyclesHeading": "Trainingscycli"
+    "trainingCyclesHeading": "Trainingscycli",
+    "sessionsCount_one": "{{count}} sessie",
+    "sessionsCount_other": "{{count}} sessies",
+    "totalSessions_one": "Totaal ({{count}} sessie)",
+    "totalSessions_other": "Totaal ({{count}} sessies)",
+    "bookEntireCycle_one": "Hele cyclus boeken ({{count}} sessie)",
+    "bookEntireCycle_other": "Hele cyclus boeken ({{count}} sessies)",
+    "dateAtTime": "{{date}} om {{time}}",
+    "perSpotShort": "{{price}}/plek",
+    "spotsLeft": "{{available}}/{{total}} plekken vrij",
+    "avgRating": "Gem. {{rating}}",
+    "trainingCycleFallback": "Trainingscyclus"
   },
   "bookings": {
     "title": "Mijn trainingen",

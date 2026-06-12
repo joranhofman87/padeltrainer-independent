@@ -252,7 +252,18 @@
     "availableTimeSlots": "Available Time Slots",
     "noSlotsAvailable": "No available slots at the moment",
     "noIndividualSessions": "No individual sessions available",
-    "trainingCyclesHeading": "Training Cycles"
+    "trainingCyclesHeading": "Training Cycles",
+    "sessionsCount_one": "{{count}} session",
+    "sessionsCount_other": "{{count}} sessions",
+    "totalSessions_one": "Total ({{count}} session)",
+    "totalSessions_other": "Total ({{count}} sessions)",
+    "bookEntireCycle_one": "Book Entire Cycle ({{count}} session)",
+    "bookEntireCycle_other": "Book Entire Cycle ({{count}} sessions)",
+    "dateAtTime": "{{date}} at {{time}}",
+    "perSpotShort": "{{price}}/spot",
+    "spotsLeft": "{{available}}/{{total}} spots left",
+    "avgRating": "Avg: {{rating}}",
+    "trainingCycleFallback": "Training cycle"
   },
   "bookings": {
     "title": "My trainings",

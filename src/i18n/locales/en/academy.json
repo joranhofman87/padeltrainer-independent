@@ -673,7 +673,9 @@
     "settingsTab": "Settings",
     "forwardedOn": "Forwarded on {{date}}",
     "selectAll": "Select all",
-    "selectInvoice": "Select {{number}}"
+    "selectInvoice": "Select {{number}}",
+    "sendErrorNotConfigured": "Email sending is not configured yet — contact support.",
+    "sendErrorWithHint": "Failed to send the invoice. Check the recipient email and try again."
   },
   "warnings": {
     "ratingSpread": "Rating spread: {{spread}}",
@@ -826,7 +828,10 @@
     "ratingOutsideRange": "Rating {{rating}} outside slot range",
     "ratingSpread": "Spread: {{spread}} pts",
     "removePlayer": "Remove player",
-    "slotsPlayersCount": "{{slots}} slots · {{players}} players"
+    "slotsPlayersCount": "{{slots}} slots · {{players}} players",
+    "players": "Players",
+    "date": "Date",
+    "time": "Time"
   },
   "invoiceEdit": {
     "removeLineItem": "Remove line item",

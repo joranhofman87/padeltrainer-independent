@@ -1748,5 +1748,9 @@
     "specializations": "Specialisaties",
     "certifications": "Certificeringen",
     "and": "en"
+  },
+  "trainerProfile": {
+    "noReviews": "Nog geen reviews",
+    "beFirstReview": "Schrijf als eerste een review over deze trainer!"
   }
 }

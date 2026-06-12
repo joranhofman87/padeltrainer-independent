@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Check, Clock, Euro, MapPin, Users } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { formatDate } from '@/lib/format';
 import { formatPrice } from '@/lib/pricing';
 
 interface SlotWithDetails {
@@ -64,7 +64,7 @@ export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSel
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium">
-                        {format(parseISO(slot.start_time), 'EEE, MMM d')}
+                        {formatDate(slot.start_time, 'EEE d MMM')}
                       </span>
                     </div>
                     {selectedSlotId === slot.id && (
@@ -73,8 +73,8 @@ export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSel
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
                     <Clock className="h-4 w-4" />
-                    {format(parseISO(slot.start_time), 'HH:mm')} -{' '}
-                    {format(parseISO(slot.end_time), 'HH:mm')}
+                    {formatDate(slot.start_time, 'HH:mm')} -{' '}
+                    {formatDate(slot.end_time, 'HH:mm')}
                   </div>
                   {slot.location && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
@@ -93,7 +93,7 @@ export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSel
                       <Euro className="h-4 w-4 text-primary" />
                       <span className="font-semibold text-primary">
                         {slot.allow_single_booking && (slot.max_participants || 1) > 1
-                          ? `${formatPrice(slotPrice / (slot.max_participants || 1))}/spot`
+                          ? t('booking.perSpotShort', { price: formatPrice(slotPrice / (slot.max_participants || 1)), defaultValue: '{{price}}/spot' })
                           : formatPrice(slotPrice)}
                       </span>
                     </div>
@@ -103,12 +103,18 @@ export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSel
                   <div className="flex items-center justify-between mt-2 pt-2 border-t">
                     <div className="flex items-center gap-1 text-sm text-muted-foreground">
                       <Users className="h-4 w-4" />
-                      <span>{slot.spotsLeft || (slot.max_participants || 4)}/{slot.max_participants || 4} spots left</span>
+                      <span>
+                        {t('booking.spotsLeft', {
+                          available: slot.spotsLeft || (slot.max_participants || 4),
+                          total: slot.max_participants || 4,
+                          defaultValue: '{{available}}/{{total}} spots left',
+                        })}
+                      </span>
                     </div>
                     {slot.averageRating !== null && slot.averageRating !== undefined && (
                       <div className="flex items-center gap-1">
                         <Badge variant="secondary" className="text-xs">
-                          Avg: {slot.averageRating.toFixed(1)}
+                          {t('booking.avgRating', { rating: slot.averageRating.toFixed(1), defaultValue: 'Avg: {{rating}}' })}
                         </Badge>
                         <span className="text-xs text-muted-foreground uppercase">
                           {slot.ratingSystem || 'knltb'}

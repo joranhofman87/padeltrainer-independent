@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
@@ -286,7 +286,7 @@ export default function BookLesson() {
           const sortedSlots = cyclusSlots.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
           const totalPrice = sortedSlots.reduce((sum, s) => sum + (s.price_per_session || 0), 0);
           bundles.push({
-            cyclus_id: cyclusId, cyclus_name: sortedSlots[0].cyclus_name || 'Training Cycle',
+            cyclus_id: cyclusId, cyclus_name: sortedSlots[0].cyclus_name || t('booking.trainingCycleFallback', 'Training cycle'),
             slots: sortedSlots, totalPrice,
             firstDate: sortedSlots[0].start_time, lastDate: sortedSlots[sortedSlots.length - 1].start_time,
             location: sortedSlots[0].location, min_group_size: newCycleSettingsMap[cyclusId]?.min_group_size,
@@ -303,8 +303,19 @@ export default function BookLesson() {
               }
             });
           }
-        } else {
+        } else if (newCycleSettingsMap[cyclusId]?.split_payment) {
+          // Split-payment cycles keep their original slots: the per-player
+          // amount depends on the cycle headcount, so a fixed single-session
+          // price would distort the split.
           partialCyclusSlots.push(...cyclusSlots);
+        } else {
+          // P-04: like the cycleSingleSessionSlots copies above — cycle prices
+          // are per player, so a partially-available cycle slot offered as an
+          // individual session must charge the full price_per_session, never
+          // the per-spot divided price.
+          cyclusSlots.forEach((slot) => {
+            partialCyclusSlots.push({ ...slot, allow_single_booking: false, fromCycle: true });
+          });
         }
       });
 
@@ -381,14 +392,15 @@ export default function BookLesson() {
 
 
         const firstSlot = selectedCyclus.slots[0];
-        const firstDate = format(parseISO(firstSlot.start_time), 'EEE, MMM d, yyyy');
-        const firstTime = format(parseISO(firstSlot.start_time), 'HH:mm');
+        const firstDate = formatDate(firstSlot.start_time, 'EEE d MMM yyyy');
+        const firstTime = formatDate(firstSlot.start_time, 'HH:mm');
+        const cyclusLessonTitle = `${selectedCyclus.cyclus_name} (${t('booking.sessionsCount', { count: selectedCyclus.slots.length })})`;
 
         if (requiresApproval) {
           await supabase.functions.invoke('send-email', {
             body: { type: 'booking_request', to: trainer.profiles.email, data: {
               trainerName: trainer.profiles.full_name, playerName: profile.full_name, playerEmail: profile.email,
-              lessonTitle: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`,
+              lessonTitle: cyclusLessonTitle,
               lessonDate: firstDate, lessonTime: firstTime,
               location: selectedCyclus.location ? `${selectedCyclus.location.name}, ${selectedCyclus.location.city}` : null,
               price: selectedCyclus.totalPrice,
@@ -405,7 +417,7 @@ export default function BookLesson() {
           await supabase.functions.invoke('send-email', {
             body: { type: 'manual_booking_confirmation', to: profile.email, data: {
               playerName: profile.full_name, trainerName: trainer.profiles.full_name,
-              lessonTitle: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`,
+              lessonTitle: cyclusLessonTitle,
               lessonDate: firstDate, lessonTime: firstTime,
               location: selectedCyclus.location ? `${selectedCyclus.location.name}, ${selectedCyclus.location.city}` : null,
               price: selectedCyclus.totalPrice,
@@ -432,7 +444,7 @@ export default function BookLesson() {
             paymentAmount = Math.round((selectedCyclus.totalPrice / totalPlayers) * 100) / 100;
           }
           const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
-            body: { slotId: selectedCyclus.slots[0].id, amount: paymentAmount, description: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`, trainerId: trainer.id, bookingIds },
+            body: { slotId: selectedCyclus.slots[0].id, amount: paymentAmount, description: cyclusLessonTitle, trainerId: trainer.id, bookingIds },
           });
           if (paymentError) throw paymentError;
           if (paymentData?.checkoutUrl) { window.location.href = paymentData.checkoutUrl; } else { throw new Error('No checkout URL received'); }
@@ -460,12 +472,12 @@ export default function BookLesson() {
           player_id: profile.id, slot_id: selectedSlot.id, notes: notes || null, status: 'pending_approval', payment_status: 'pending',
         }).select().single();
         if (error) throw error;
-        const lessonDate = format(parseISO(selectedSlot.start_time), 'EEE, MMM d, yyyy');
-        const lessonTime = format(parseISO(selectedSlot.start_time), 'HH:mm');
+        const lessonDate = formatDate(selectedSlot.start_time, 'EEE d MMM yyyy');
+        const lessonTime = formatDate(selectedSlot.start_time, 'HH:mm');
         await supabase.functions.invoke('send-email', {
           body: { type: 'booking_request', to: trainer.profiles.email, data: {
             trainerName: trainer.profiles.full_name, playerName: profile.full_name, playerEmail: profile.email,
-            lessonTitle: selectedSlot.cyclus_name || 'Training Session', lessonDate, lessonTime,
+            lessonTitle: selectedSlot.cyclus_name || t('booking.trainingSession', 'Training Session'), lessonDate, lessonTime,
             location: selectedSlot.location ? `${selectedSlot.location.name}, ${selectedSlot.location.city}` : null, price,
           }},
         });
@@ -480,12 +492,12 @@ export default function BookLesson() {
           try { await supabase.functions.invoke('auto-create-invoice', { body: { bookingIds: [bookingData.id] } }); }
           catch (invoiceErr) { logger.error('Auto-create invoice failed (non-fatal)', invoiceErr as Error, { component: 'BookLesson', action: 'auto-invoice-single' }); }
         }
-        const lessonDate = format(parseISO(selectedSlot.start_time), 'EEE, MMM d, yyyy');
-        const lessonTime = format(parseISO(selectedSlot.start_time), 'HH:mm');
+        const lessonDate = formatDate(selectedSlot.start_time, 'EEE d MMM yyyy');
+        const lessonTime = formatDate(selectedSlot.start_time, 'HH:mm');
         await supabase.functions.invoke('send-email', {
           body: { type: 'manual_booking_confirmation', to: profile.email, data: {
             playerName: profile.full_name, trainerName: trainer.profiles.full_name,
-            lessonTitle: selectedSlot.cyclus_name || 'Training Session', lessonDate, lessonTime,
+            lessonTitle: selectedSlot.cyclus_name || t('booking.trainingSession', 'Training Session'), lessonDate, lessonTime,
             location: selectedSlot.location ? `${selectedSlot.location.name}, ${selectedSlot.location.city}` : null, price,
           }},
         });
@@ -502,7 +514,7 @@ export default function BookLesson() {
         }).select().single();
         if (error) throw error;
         const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
-          body: { slotId: selectedSlot.id, amount: price, description: selectedSlot.cyclus_name || 'Training Session', trainerId: trainer.id },
+          body: { slotId: selectedSlot.id, amount: price, description: selectedSlot.cyclus_name || t('booking.trainingSession', 'Training Session'), trainerId: trainer.id },
         });
         if (paymentError) throw paymentError;
         if (paymentData?.checkoutUrl) { window.location.href = paymentData.checkoutUrl; } else { throw new Error('No checkout URL received'); }

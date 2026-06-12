@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Check, Euro, MapPin, Repeat } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { formatDate } from '@/lib/format';
 import { formatPrice } from '@/lib/pricing';
 
 interface CyclusBundle {
@@ -54,10 +54,10 @@ export function CycleBundleList({ bundles, selectedCyclusId, onSelect }: CycleBu
                 )}
               </div>
               <Badge variant="secondary" className="mb-2">
-                {cyclus.slots.length} sessions
+                {t('booking.sessionsCount', { count: cyclus.slots.length })}
               </Badge>
               <p className="text-sm text-muted-foreground mb-2">
-                {format(parseISO(cyclus.firstDate), 'MMM d')} - {format(parseISO(cyclus.lastDate), 'MMM d, yyyy')}
+                {formatDate(cyclus.firstDate, 'd MMM')} - {formatDate(cyclus.lastDate, 'd MMM yyyy')}
               </p>
               {cyclus.location && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
@@ -70,7 +70,7 @@ export function CycleBundleList({ bundles, selectedCyclusId, onSelect }: CycleBu
                 <span className="font-semibold text-primary">
                   {formatPrice(cyclus.totalPrice)}
                 </span>
-                <span className="text-xs text-muted-foreground">total</span>
+                <span className="text-xs text-muted-foreground lowercase">{t('booking.total')}</span>
               </div>
             </CardContent>
           </Card>

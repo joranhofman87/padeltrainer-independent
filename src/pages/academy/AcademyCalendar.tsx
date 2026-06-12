@@ -823,7 +823,7 @@ export default function AcademyCalendar() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
                 <Button variant="outline" size="sm" className="h-9" onClick={goToToday}>
-                  {t("calendar.today", "Today")}
+                  {t("common:today", "Today")}
                 </Button>
 
                 {/* Filters popover */}

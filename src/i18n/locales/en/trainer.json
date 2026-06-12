@@ -1070,7 +1070,11 @@
     "trainerRequiredDescription": "Please select a trainer for each slot.",
     "unpaidInvoiceAffected": "Unpaid invoice will be recalculated",
     "unpaidInvoiceRecalculate": "Invoice {{number}} will be automatically updated to reflect the removed session(s).",
-    "you": "You"
+    "you": "You",
+    "recurringSummary_one": "Creates {{count}} session on {{day}} {{startDate}} at {{time}}",
+    "recurringSummary_other": "Creates {{count}} sessions every {{day}} at {{time}}, from {{startDate}} to {{endDate}}",
+    "generateCycleDescription_one": "This will create {{count}} recurring slot with {{sessionCount}} total sessions",
+    "generateCycleDescription_other": "This will create {{count}} recurring slots with {{sessionCount}} total sessions"
   },
   "openSlots": {
     "title": "Open Training Slots",
@@ -1252,7 +1256,9 @@
     "vatExempt": "Exempt / KOR",
     "vatInclusiveNote": "Lesson prices include VAT. This rate is used for automatic invoices.",
     "vatReduced": "Reduced rate",
-    "vatStandard": "Standard rate"
+    "vatStandard": "Standard rate",
+    "sendErrorNotConfigured": "Email sending is not configured yet — contact support.",
+    "sendErrorWithHint": "Failed to send the invoice. Check the recipient email and try again."
   },
   "profileVisibility": {
     "title": "Marketplace visibility",

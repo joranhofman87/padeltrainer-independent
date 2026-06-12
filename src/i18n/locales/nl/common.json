@@ -462,7 +462,8 @@
       "sessionCount": "{{count}} sessies",
       "viewCycle": "Cyclus bekijken",
       "viewSession": "Sessie bekijken"
-    }
+    },
+    "emailResolvedAtSend": "Wordt automatisch opgehaald bij het versturen"
   },
   "mollieCallback": {
     "connecting": "Mollie-account verbinden...",
@@ -701,5 +702,6 @@
   "type": {
     "event": "Evenement"
   },
-  "trainerNotFound": "Trainer niet gevonden"
+  "trainerNotFound": "Trainer niet gevonden",
+  "today": "Vandaag"
 }

@@ -457,7 +457,8 @@
       "sessionCount": "{{count}} sessions",
       "viewCycle": "View Cycle",
       "viewSession": "View Session"
-    }
+    },
+    "emailResolvedAtSend": "Retrieved automatically when sending"
   },
   "mollieCallback": {
     "connecting": "Connecting your Mollie account...",
@@ -690,5 +691,6 @@
   "type": {
     "event": "Event"
   },
-  "trainerNotFound": "Trainer Not Found"
+  "trainerNotFound": "Trainer Not Found",
+  "today": "Today"
 }
