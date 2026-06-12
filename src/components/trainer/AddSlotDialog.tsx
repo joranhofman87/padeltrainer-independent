@@ -6,7 +6,8 @@ import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeek
 import { CalendarIcon, Plus, Repeat, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
-import { type ExtraCost } from "@/lib/cycles";
+import { createCycle, type CycleSettings, type ExtraCost } from "@/lib/cycles";
+import { formatDate } from "@/lib/format";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 import type { Json } from "@/integrations/supabase/types";
 import { Input } from "@/components/ui/input";
@@ -913,6 +914,11 @@ export function BulkCreateContent({
 
     setIsGenerating(true);
 
+    // REBOOK-01: cycles rows created in this run, so an aborted generation can
+    // clean them up again (no empty cycli without slots).
+    const createdCycleIds: string[] = [];
+    let slotsInserted = false;
+
     try {
       const today = startOfDay(new Date());
       const slotsToInsert: {
@@ -966,13 +972,11 @@ export function BulkCreateContent({
         const [startH, startM] = config.startTime.split(":").map(Number);
         const slotStart = setMinutes(setHours(config.startDate, startH), startM);
 
-        // Generate a unique cyclus ID for this recurring slot configuration
-        const cyclusId = crypto.randomUUID();
-        configCyclusMap.set(configIndex, cyclusId);
-
         const trainerExistingTimes = existingTimesByTrainer.get(slotTrainerId) || new Set();
 
-        // Generate slots for each week in the recurrence period
+        // Collect this config's session times first (skipping duplicates), so the
+        // cycles row below can use the real first/last generated session dates.
+        const configSessions: { start: Date; end: Date }[] = [];
         for (let week = 0; week < config.recurrenceWeeks; week++) {
           const currentSlotStart = addWeeks(slotStart, week);
           const currentSlotEnd = addMinutes(currentSlotStart, config.durationMinutes);
@@ -982,10 +986,47 @@ export function BulkCreateContent({
             continue;
           }
 
+          configSessions.push({ start: currentSlotStart, end: currentSlotEnd });
+
+          // Add to existing times to prevent duplicates within same batch
+          trainerExistingTimes.add(currentSlotStart.toISOString());
+        }
+
+        if (configSessions.length === 0) continue;
+
+        // REBOOK-01: create a real cycles row FIRST so calendar-created cycli are
+        // visible to the "Set up next round" rebooking wizard and the
+        // registrations list (both read from the cycles table); its id becomes
+        // the slots' cyclus_id. status 'closed' so it never renders as an open
+        // public registration form. Ownership: on the academy calendar
+        // (academyId prop) the cycle is academy-owned; on the trainer calendar
+        // it is trainer-owned even when "working as" an academy, because cycles
+        // RLS only lets academy MANAGERS insert academy-owned rows.
+        const cycleSettings: CycleSettings = { split_payment: config.splitPayment };
+        if (config.minParticipants != null) cycleSettings.min_group_size = config.minParticipants;
+        if (config.maxParticipants != null) cycleSettings.max_group_size = config.maxParticipants;
+        const cycle = await createCycle({
+          owner_type: academyId ? "academy" : "trainer",
+          owner_id: academyId ? (config.academyProfileId || academyId) : slotTrainerId,
+          name: config.cyclusName,
+          start_date: format(configSessions[0].start, "yyyy-MM-dd"),
+          end_date: format(configSessions[configSessions.length - 1].start, "yyyy-MM-dd"),
+          type: "cyclus",
+          status: "closed",
+          location_id: config.locationId,
+          price_per_session: config.pricePerSession,
+          total_price: config.totalPrice,
+          settings: cycleSettings,
+        });
+        const cyclusId = cycle.id;
+        createdCycleIds.push(cyclusId);
+        configCyclusMap.set(configIndex, cyclusId);
+
+        for (const session of configSessions) {
           slotsToInsert.push({
             trainer_id: slotTrainerId,
-            start_time: currentSlotStart.toISOString(),
-            end_time: currentSlotEnd.toISOString(),
+            start_time: session.start.toISOString(),
+            end_time: session.end.toISOString(),
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
             court_type: config.courtType,
@@ -1007,9 +1048,6 @@ export function BulkCreateContent({
             prices_include_vat: pricesIncludeVat,
             split_payment: config.splitPayment,
           } as any);
-
-          // Add to existing times to prevent duplicates within same batch
-          trainerExistingTimes.add(currentSlotStart.toISOString());
         }
       }
 
@@ -1027,6 +1065,7 @@ export function BulkCreateContent({
         .insert(slotsToInsert)
         .select("id, cyclus_id");
       if (error) throw error;
+      slotsInserted = true;
 
       // Create bookings for selected players using the config-to-cyclus mapping
       let totalBookingsCreated = 0;
@@ -1182,6 +1221,11 @@ export function BulkCreateContent({
       onSlotsCreated();
       onClose?.();
     } catch (error: any) {
+      // Best-effort cleanup: remove cycles rows whose slots never got inserted,
+      // so an aborted generation leaves no empty cycli behind.
+      if (!slotsInserted && createdCycleIds.length > 0) {
+        await supabase.from("cycles").delete().in("id", createdCycleIds);
+      }
       toast({
         title: "Error",
         description: getFriendlyErrorMessage(error, t("calendar.slotsGenerateError", "Could not create the slots. Please try again.")),
@@ -1316,7 +1360,7 @@ export function BulkCreateContent({
                         <span className="text-sm text-muted-foreground">{t("calendar.weeks")}</span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 font-medium">
-                        📅 {t("cycles:form.endsOn", { date: format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "PPP") })}
+                        📅 {t("cycles:form.endsOn", { date: formatDate(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "PPP") })}
                       </p>
                     </div>
                   </div>
@@ -1862,12 +1906,12 @@ export function BulkCreateContent({
                   <p className="text-xs text-muted-foreground">
                     {t("calendar.recurringSummary", {
                       count: slot.recurrenceWeeks,
-                      day: format(slot.startDate, "EEEE"),
+                      day: formatDate(slot.startDate, "EEEE"),
                       time: slot.startTime,
-                      startDate: format(slot.startDate, "MMM d"),
-                      endDate: format(
+                      startDate: formatDate(slot.startDate, "d MMM"),
+                      endDate: formatDate(
                         addWeeks(slot.startDate, slot.recurrenceWeeks - 1),
-                        "MMM d, yyyy"
+                        "d MMM yyyy"
                       ),
                     })}
                   </p>
@@ -1891,6 +1935,9 @@ export function BulkCreateContent({
                 <h4 className="font-semibold">{t("calendar.generateCycle")}</h4>
                 <p className="text-sm text-muted-foreground">
                   {t("calendar.generateCycleDescription", {
+                    // count drives the _one/_other plural; slotCount keeps the
+                    // legacy "slot(s)" key working until the plural keys land.
+                    count: bulkSlots.length,
                     slotCount: bulkSlots.length,
                     sessionCount: totalSessions,
                   })}

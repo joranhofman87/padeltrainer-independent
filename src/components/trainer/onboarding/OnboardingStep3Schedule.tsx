@@ -14,6 +14,7 @@ import { format, addMinutes, isBefore, startOfToday, startOfDay, addWeeks, setHo
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
+import { createCycle } from '@/lib/cycles';
 
 import { toast } from 'sonner';
 
@@ -156,17 +157,38 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
     if (!trainerId || !sessionId || !cyclusDate || !cyclusTime) return;
 
     setCreatingCyclus(true);
+    // REBOOK-01: track the cycles row created in this run, so a failed slot
+    // insert can clean it up again (no empty cyclus without slots).
+    let createdCycleId: string | null = null;
     try {
       const weeks = parseInt(cyclusWeeks);
       const [startH, startM] = cyclusTime.split(':').map(Number);
       const durationMin = parseInt(duration);
-      const cyclusId = crypto.randomUUID();
       const dayName = format(cyclusDate, 'EEEE');
       const name = cyclusName.trim() || `${title} - ${dayName} ${cyclusTime}`;
 
       const slotsToInsert = [];
       const baseStart = setMinutes(setHours(startOfDay(cyclusDate), startH), startM);
       const slotPrice = Math.round(parseFloat(price) * (durationMin / 60) * 100) / 100;
+
+      // REBOOK-01: create a real cycles row FIRST so this cyclus is visible to
+      // the rebooking wizard and registrations list (both read from the cycles
+      // table); its id becomes the slots' cyclus_id. status 'closed' so it
+      // never renders as an open public registration form.
+      const cycle = await createCycle({
+        owner_type: 'trainer',
+        owner_id: trainerId,
+        name,
+        start_date: format(baseStart, 'yyyy-MM-dd'),
+        end_date: format(addWeeks(baseStart, weeks - 1), 'yyyy-MM-dd'),
+        type: 'cyclus',
+        status: 'closed',
+        price_per_session: slotPrice,
+        total_price: Math.round(slotPrice * weeks * 100) / 100,
+        settings: {},
+      });
+      createdCycleId = cycle.id;
+      const cyclusId = cycle.id;
 
       for (let week = 0; week < weeks; week++) {
         const slotStart = addWeeks(baseStart, week);
@@ -194,6 +216,11 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       setCyclusSessions(slotsToInsert.length);
       toast.success(`Training cycle created with ${slotsToInsert.length} sessions!`);
     } catch (error: any) {
+      // Best-effort cleanup: the slot insert failed, so remove the cycles row
+      // again instead of leaving an empty cyclus behind.
+      if (createdCycleId) {
+        await supabase.from('cycles').delete().eq('id', createdCycleId);
+      }
       logger.error('Error creating cyclus', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
       toast.error('Failed to create training cycle');
     } finally {

@@ -37,6 +37,9 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
+import { createCycle } from "@/lib/cycles";
+import { getUserClubProfiles } from "@/lib/club";
+import { formatDate } from "@/lib/format";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
@@ -271,6 +274,8 @@ interface ClubBulkCreateSheetProps {
   defaultDuration: number;
   defaultWeeks: number;
   clubLocationId?: string;
+  /** Club profile id owning the generated cycles; resolved from the signed-in manager when omitted. */
+  clubProfileId?: string;
   onSlotsCreated: () => void;
 }
 
@@ -296,6 +301,7 @@ export function ClubBulkCreateSheet({
   defaultDuration,
   defaultWeeks,
   clubLocationId,
+  clubProfileId,
   onSlotsCreated,
 }: ClubBulkCreateSheetProps) {
   const { t } = useTranslation("club");
@@ -390,7 +396,23 @@ export function ClubBulkCreateSheet({
     if (bulkSlots.length === 0) return;
     setIsGenerating(true);
 
+    // REBOOK-01: cycles rows created in this run, so an aborted generation can
+    // clean them up again (no empty cycli without slots).
+    const createdCycleIds: string[] = [];
+    let slotsInserted = false;
+
     try {
+      // Resolve the owning club profile for the cycles rows.
+      let ownerClubId: string | null = clubProfileId ?? null;
+      if (!ownerClubId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const clubs = user ? await getUserClubProfiles(user.id) : [];
+        ownerClubId = clubs[0]?.id ?? null;
+      }
+      if (!ownerClubId) {
+        throw new Error("No club profile found for the signed-in user");
+      }
+
       const slotsToInsert: {
         trainer_id: string;
         start_time: string;
@@ -405,10 +427,27 @@ export function ClubBulkCreateSheet({
 
       for (const config of bulkSlots) {
         if (!config.trainerId) continue;
-        
+
         const [startH, startM] = config.startTime.split(":").map(Number);
         const slotStart = setMinutes(setHours(config.startDate, startH), startM);
-        const cyclusId = crypto.randomUUID();
+
+        // REBOOK-01: create a real cycles row FIRST so calendar-created cycli
+        // are visible to the rebooking wizard and registrations list (both read
+        // from the cycles table); its id becomes the slots' cyclus_id.
+        // status 'closed' so it never renders as an open public registration form.
+        const cycle = await createCycle({
+          owner_type: "club",
+          owner_id: ownerClubId,
+          name: config.cyclusName,
+          start_date: format(slotStart, "yyyy-MM-dd"),
+          end_date: format(addWeeks(slotStart, config.recurrenceWeeks - 1), "yyyy-MM-dd"),
+          type: "cyclus",
+          status: "closed",
+          location_id: clubLocationId || null,
+          settings: {},
+        });
+        const cyclusId = cycle.id;
+        createdCycleIds.push(cyclusId);
 
         for (let week = 0; week < config.recurrenceWeeks; week++) {
           const currentSlotStart = addWeeks(slotStart, week);
@@ -439,6 +478,7 @@ export function ClubBulkCreateSheet({
 
       const { error } = await supabase.from("availability_slots").insert(slotsToInsert);
       if (error) throw error;
+      slotsInserted = true;
 
       toast({
         title: t("calendar.slotsGenerated", "Slots Generated"),
@@ -449,6 +489,11 @@ export function ClubBulkCreateSheet({
       onSlotsCreated();
       onOpenChange(false);
     } catch (error: any) {
+      // Best-effort cleanup: remove cycles rows whose slots never got inserted,
+      // so an aborted generation leaves no empty cycli behind.
+      if (!slotsInserted && createdCycleIds.length > 0) {
+        await supabase.from("cycles").delete().in("id", createdCycleIds);
+      }
       toast({
         title: "Error",
         description: getFriendlyErrorMessage(error, t("calendar.slotsGenerateError", "Could not create the slots. Please try again.")),
@@ -601,7 +646,7 @@ export function ClubBulkCreateSheet({
                         <span className="text-sm text-muted-foreground">{tTrainer("calendar.weeks")}</span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        → {format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "MMM d, yyyy")}
+                        → {formatDate(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "d MMM yyyy")}
                       </p>
                     </div>
                   </div>
@@ -629,10 +674,10 @@ export function ClubBulkCreateSheet({
                   <p className="text-xs text-muted-foreground">
                     {tTrainer("calendar.recurringSummary", {
                       count: slot.recurrenceWeeks,
-                      day: format(slot.startDate, "EEEE"),
+                      day: formatDate(slot.startDate, "EEEE"),
                       time: slot.startTime,
-                      startDate: format(slot.startDate, "MMM d"),
-                      endDate: format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "MMM d, yyyy"),
+                      startDate: formatDate(slot.startDate, "d MMM"),
+                      endDate: formatDate(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "d MMM yyyy"),
                     })}
                   </p>
                 </div>

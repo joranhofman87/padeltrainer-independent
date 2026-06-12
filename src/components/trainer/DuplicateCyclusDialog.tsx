@@ -27,6 +27,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { createCycle, getCycle, type Cycle } from "@/lib/cycles";
 import { CalendarIcon } from "lucide-react";
 
 interface CyclusInfo {
@@ -149,6 +150,10 @@ export function DuplicateCyclusDialog({
     }
 
     setIsLoading(true);
+    // REBOOK-01: track the cycles row created in this run, so a failed slot
+    // insert can clean it up again (no empty cyclus without slots).
+    let createdCycleId: string | null = null;
+    let slotsInserted = false;
     try {
       // Fetch original cyclus slots with their bookings
       const { data: originalSlots, error: slotsError } = await supabase
@@ -185,12 +190,58 @@ export function DuplicateCyclusDialog({
       const newFirstMinutes = newH * 60 + newM;
       const timeOfDayOffsetMs = (newFirstMinutes - originalFirstMinutes) * 60000;
 
-      // Generate new cyclus ID and name
-      const newCyclusId = crypto.randomUUID();
       const newCyclusName = `${selectedCyclus?.cyclus_name || "Cyclus"} (${format(newStartDate, "MMM d")})`;
 
+      // REBOOK-01: carry the SOURCE cycle row's fields when one exists. Legacy
+      // calendar-created groups may have no cycles row — fall back to
+      // slot-derived values then.
+      let sourceCycle: Cycle | null = null;
+      try {
+        sourceCycle = await getCycle(selectedCyclusId);
+      } catch {
+        sourceCycle = null;
+      }
+
+      const sessionsToCopy = originalSlots.slice(0, numberOfSessions);
+      const firstSourceSlot = sessionsToCopy[0];
+      const newFirstStart = new Date(
+        parseISO(firstSourceSlot.start_time).getTime() + dateOffsetMs + timeOfDayOffsetMs
+      );
+      const newLastStart = new Date(
+        parseISO(sessionsToCopy[sessionsToCopy.length - 1].start_time).getTime() +
+          dateOffsetMs +
+          timeOfDayOffsetMs
+      );
+
+      // REBOOK-01: create a real cycles row FIRST so the duplicated cyclus is
+      // visible to the rebooking wizard and registrations list (both read from
+      // the cycles table); its id becomes the slots' cyclus_id. status 'closed'
+      // so it never renders as an open public registration form. The duplicate
+      // is owned by the duplicating trainer (the new slots get this trainer_id;
+      // cycles RLS only allows trainer-owned inserts here anyway).
+      const newCycle = await createCycle({
+        owner_type: "trainer",
+        owner_id: trainerId,
+        name: newCyclusName,
+        description: sourceCycle?.description ?? undefined,
+        start_date: format(newFirstStart, "yyyy-MM-dd"),
+        end_date: format(newLastStart, "yyyy-MM-dd"),
+        type: "cyclus",
+        status: "closed",
+        location_id: sourceCycle?.location_id ?? firstSourceSlot.location_id ?? null,
+        price_per_session: sourceCycle?.price_per_session ?? firstSourceSlot.price_per_session ?? null,
+        total_price: sourceCycle?.total_price ?? firstSourceSlot.total_price ?? null,
+        currency: sourceCycle?.currency,
+        terms: sourceCycle?.terms ?? undefined,
+        settings: sourceCycle
+          ? { ...sourceCycle.settings }
+          : { split_payment: firstSourceSlot.split_payment ?? false },
+      });
+      createdCycleId = newCycle.id;
+      const newCyclusId = newCycle.id;
+
       // Create new slots (limited to numberOfSessions)
-      const slotsToCreate = originalSlots.slice(0, numberOfSessions).map((slot) => {
+      const slotsToCreate = sessionsToCopy.map((slot) => {
         const originalStart = parseISO(slot.start_time);
         const originalEnd = parseISO(slot.end_time);
         
@@ -210,6 +261,7 @@ export function DuplicateCyclusDialog({
         .select();
 
       if (insertError) throw insertError;
+      slotsInserted = true;
 
       // If including existing players, create bookings
       if (includeExistingPlayers && newSlots) {
@@ -265,6 +317,11 @@ export function DuplicateCyclusDialog({
       setIncludeExistingPlayers(true);
       setMarkAsPaid(false);
     } catch (error) {
+      // Best-effort cleanup: remove the cycles row when its slots never got
+      // inserted, so an aborted duplicate leaves no empty cyclus behind.
+      if (!slotsInserted && createdCycleId) {
+        await supabase.from("cycles").delete().eq("id", createdCycleId);
+      }
       logger.error("Error duplicating cyclus", error instanceof Error ? error : new Error(String(error)), { component: 'DuplicateCyclusDialog' });
       toast.error("Failed to duplicate cycle");
     } finally {
