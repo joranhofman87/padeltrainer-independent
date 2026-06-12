@@ -20,6 +20,9 @@ const MIGRATIONS = [
   'supabase/migrations/20260612130000_p01_players_overview_split_meta_join.sql',
   // P-03 revision: filter facts pre-aggregated; same contract suite must pass.
   'supabase/migrations/20260612142000_p03_players_overview_filter_aggregates.sql',
+  // FAM-02 revision: person identity (name/rating/system) is guest-first —
+  // a linked profile can be the PARENT's account on a shared family email.
+  'supabase/migrations/20260613100000_fam02_guest_identity_first.sql',
 ];
 
 const db = new PGlite();
@@ -189,15 +192,16 @@ const names = (rows: Row[]) => rows.map((r) => r.full_name);
   check('membership: 4 players (3 guests + 1 registered), removed excluded',
     rows.length === 4 && Number(rows[0].total_count) === 4, names(rows));
   check('sorted by name', JSON.stringify(names(rows)) ===
-    JSON.stringify(['Anna Academy', 'Bart Trainerguest', 'Reg Player', 'Émilie Fresh-Profile'])
-    || JSON.stringify(names(rows)) ===
-    JSON.stringify(['Anna Academy', 'Bart Trainerguest', 'Émilie Fresh-Profile', 'Reg Player']), names(rows));
+    JSON.stringify(['Anna Academy', 'Bart Trainerguest', 'Emilie Stale-Guest', 'Reg Player']), names(rows));
 
   const linked = rows.find((r) => r.guest_player_id === G_LINKED) as Row;
-  check('linked-canonical: profile name/email/phone/skill win over stale guest copy',
-    !!linked && linked.full_name === 'Émilie Fresh-Profile'
+  // FAM-02: the linked profile can be a DIFFERENT person (parent account on a
+  // shared family email) — the guest row's own name/rating win, while
+  // account-level contact/billing still come from the profile.
+  check('FAM-02 person-first: guest name/rating win; profile email/billing still canonical',
+    !!linked && linked.full_name === 'Emilie Stale-Guest'
     && linked.email === 'emilie.new@test.com'
-    && Number(linked.skill_rating) === 7.5
+    && Number(linked.skill_rating) === 2
     && linked.billing_business_name === 'Émilie BV', linked);
   check('linked-canonical: guest relationship fields survive (notes)',
     !!linked && linked.notes === 'guest intake note', linked?.notes);
@@ -232,8 +236,10 @@ const names = (rows: Row[]) => rows.map((r) => r.full_name);
 {
   check('filter: tag', names(await rpc({ filters: { tag_id: TAG1 } })).length === 1);
   check('filter: untagged', (await rpc({ filters: { tag_id: 'untagged' } })).length === 3);
-  check('filter: level band beginner (null,3]', (await rpc({ filters: { level_max: 3 } })).length === 1);
-  check('filter: level band advanced (6,9]', (await rpc({ filters: { level_gt: 6, level_max: 9 } })).length === 1);
+  // FAM-02: Émilie's effective rating is her guest row's 2 (person-first),
+  // not the linked profile's 7.5 — she joins Anna (2.5) in the beginner band.
+  check('filter: level band beginner (null,3]', (await rpc({ filters: { level_max: 3 } })).length === 2);
+  check('filter: level band advanced (6,9]', (await rpc({ filters: { level_gt: 6, level_max: 9 } })).length === 0);
   check('filter: unrated', (await rpc({ filters: { level_unrated: true } })).length === 1);
   check('filter: active cyclus true (incl. linked guest via profile booking)', (await rpc({ filters: { has_active_cyclus: true } })).length === 2);
   check('filter: payment overdue', (await rpc({ filters: { payment: 'overdue' } })).length === 1);

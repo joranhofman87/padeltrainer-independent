@@ -170,7 +170,7 @@ describe('academyPlayerDetails', () => {
     expect(isLinkedGuest('registered', null, 'profile-1')).toBe(false);
   });
 
-  it('coalesces linked guest identity with profile-first precedence', () => {
+  it('coalesces linked guest identity person-first (FAM-02: kids keep their own name)', () => {
     const guest = {
       full_name: 'Guest Name',
       email: 'guest@example.com',
@@ -180,6 +180,10 @@ describe('academyPlayerDetails', () => {
       birth_date: '1990-01-01',
     };
 
+    // A linked profile can belong to a DIFFERENT person (a child's guest
+    // record linked to the parent's account via the shared family email):
+    // person fields (name/rating/system/birth_date) stay guest-first, while
+    // account contact fields (email/phone) are profile-first.
     expect(
       coalesceLinkedGuestIdentity(guest, {
         full_name: 'Profile Name',
@@ -190,26 +194,35 @@ describe('academyPlayerDetails', () => {
         birth_date: '1991-02-02',
       }),
     ).toEqual({
+      full_name: 'Guest Name',
+      email: 'profile@example.com',
+      phone: '0622222222',
+      skill_rating: 4,
+      rating_system: 'knltb',
+      birth_date: '1990-01-01',
+    });
+
+    // Empty/blank guest person fields fall back to the profile copy.
+    expect(
+      coalesceLinkedGuestIdentity(
+        { full_name: '  ', email: null, phone: null, skill_rating: null, rating_system: '', birth_date: null },
+        {
+          full_name: 'Profile Name',
+          email: 'profile@example.com',
+          phone: '0622222222',
+          skill_rating: 6.5,
+          rating_system: 'dupr',
+          birth_date: '1991-02-02',
+        },
+      ),
+    ).toEqual({
       full_name: 'Profile Name',
       email: 'profile@example.com',
       phone: '0622222222',
       skill_rating: 6.5,
       rating_system: 'dupr',
-      // birth_date is relationship data: guest-first, profile fallback.
-      birth_date: '1990-01-01',
+      birth_date: '1991-02-02',
     });
-
-    // Empty/blank profile values fall back to the guest copy.
-    expect(
-      coalesceLinkedGuestIdentity(guest, {
-        full_name: '  ',
-        email: null,
-        phone: '',
-        skill_rating: null,
-        rating_system: '',
-        birth_date: '1991-02-02',
-      }),
-    ).toEqual(guest);
 
     // Guest without birth_date falls back to the profile's.
     expect(
@@ -248,7 +261,7 @@ describe('academyPlayerDetails', () => {
     expect(profile).toMatchObject({ full_name: 'Profile Name', email: 'profile@example.com' });
   });
 
-  it('writes identity to profiles and mirrors the guest row (email untouched) for linked guests', async () => {
+  it('writes ONLY the guest row for linked guests (FAM-02: never rename the linked account)', async () => {
     await saveAcademyPlayerDetails({
       kind: 'guest',
       academyProfileId: 'academy-1',
@@ -266,18 +279,10 @@ describe('academyPlayerDetails', () => {
       },
     });
 
+    // The linked profile may belong to a different person (parent account on
+    // a shared family email) — it must never receive the form's identity.
     const profileUpdate = updateMock.mock.calls.find(([table]) => table === 'profiles')?.[1];
-    expect(profileUpdate).toMatchObject({
-      first_name: 'Jane',
-      last_name: 'Linked',
-      full_name: 'Jane Linked',
-      phone: '0612345678',
-      skill_rating: 5.5,
-      rating_system: 'knltb',
-    });
-    expect(profileUpdate).not.toHaveProperty('email');
-    expect(profileUpdate).not.toHaveProperty('location');
-    expect(eqMock).toHaveBeenCalledWith('profiles', 'id', 'profile-1');
+    expect(profileUpdate).toBeUndefined();
 
     const guestUpdate = updateMock.mock.calls.find(([table]) => table === 'guest_players')?.[1];
     expect(guestUpdate).toMatchObject({

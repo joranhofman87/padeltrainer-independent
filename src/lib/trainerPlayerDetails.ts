@@ -101,16 +101,11 @@ export async function saveTrainerPlayerDetails(params: {
 
   if (params.kind === 'guest' && params.guestPlayerId) {
     if (params.profileId) {
-      // Linked guest: the profile is canonical for identity (same restricted
-      // payload as registered players — no email, no location).
-      const profilePayload = buildRegisteredProfileUpdatePayload(params.form);
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update(profilePayload)
-        .eq('id', params.profileId);
-      if (profileError) throw profileError;
-
-      // Mirror identity + relationship fields on the guest row; email untouched.
+      // Linked guest: the GUEST row is canonical for person identity (FAM-02
+      // owner decision). A linked profile can belong to a different person —
+      // a child's record linked to the parent's account via the shared family
+      // email — so writing the form's identity to the profile would rename
+      // the account holder. Only the guest row is written; email untouched.
       const guestPayload = buildLinkedGuestMirrorPayload(params.form, params.allowedLocationIds);
       const { error: guestError } = await supabase
         .from('guest_players')
@@ -118,7 +113,7 @@ export async function saveTrainerPlayerDetails(params: {
         .eq('id', params.guestPlayerId)
         .eq('trainer_id', params.trainerProfileId);
       if (guestError) throw guestError;
-      return { profilePayload, guestPayload };
+      return { guestPayload };
     }
 
     const payload = buildGuestPlayerUpdatePayload(params.form, params.allowedLocationIds);

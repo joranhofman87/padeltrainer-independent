@@ -83,7 +83,7 @@ describe('trainerPlayerDetails save', () => {
     expect(updateMock).not.toHaveBeenCalledWith('profiles', expect.anything());
   });
 
-  it('writes identity to profiles and mirrors the guest row (email untouched) for linked guests', async () => {
+  it('writes ONLY the guest row for linked guests (FAM-02: never rename the linked account)', async () => {
     await saveTrainerDetails({
       kind: 'guest',
       trainerProfileId: 'trainer-1',
@@ -101,17 +101,10 @@ describe('trainerPlayerDetails save', () => {
       allowedLocationIds,
     });
 
+    // The linked profile may belong to a different person (parent account on
+    // a shared family email) — it must never receive the form's identity.
     const profileUpdate = updateMock.mock.calls.find(([table]) => table === 'profiles')?.[1];
-    expect(profileUpdate).toMatchObject({
-      first_name: 'Jane',
-      last_name: 'Linked',
-      full_name: 'Jane Linked',
-      phone: '0612345678',
-      skill_rating: 5.5,
-      rating_system: 'knltb',
-    });
-    expect(profileUpdate).not.toHaveProperty('email');
-    expect(eqMock).toHaveBeenCalledWith('profiles', 'id', 'profile-1');
+    expect(profileUpdate).toBeUndefined();
 
     const guestUpdate = updateMock.mock.calls.find(([table]) => table === 'guest_players')?.[1];
     expect(guestUpdate).toMatchObject({

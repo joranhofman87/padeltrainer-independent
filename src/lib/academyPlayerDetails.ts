@@ -73,9 +73,12 @@ export async function fetchLinkedProfileIdentity(
 
 /**
  * Canonical read for linked guests — same precedence as the get_players_overview
- * RPC: a non-empty/non-null profile value wins for identity fields; birth_date
- * stays guest-first with profile fallback. Relationship fields (notes, source,
- * preferred location) are not handled here and stay on the guest row.
+ * RPC. Families share one email, so a linked profile can belong to a DIFFERENT
+ * person (a child's guest record linked to the parent's account); person
+ * identity (name, rating, rating system, birth date) is therefore guest-first
+ * with profile fallback, while account-level contact fields (email, phone)
+ * stay profile-first. Relationship fields (notes, source, preferred location)
+ * are not handled here and stay on the guest row.
  */
 export function coalesceLinkedGuestIdentity(
   guest: GuestIdentityFields,
@@ -83,11 +86,11 @@ export function coalesceLinkedGuestIdentity(
 ): GuestIdentityFields {
   if (!profile) return guest;
   return {
-    full_name: profile.full_name?.trim() || guest.full_name,
+    full_name: guest.full_name?.trim() || profile.full_name || guest.full_name,
     email: profile.email?.trim() || guest.email,
     phone: profile.phone?.trim() || guest.phone,
-    skill_rating: profile.skill_rating ?? guest.skill_rating,
-    rating_system: profile.rating_system?.trim() || guest.rating_system,
+    skill_rating: guest.skill_rating ?? profile.skill_rating,
+    rating_system: guest.rating_system?.trim() || profile.rating_system,
     birth_date: guest.birth_date ?? profile.birth_date,
   };
 }
@@ -259,23 +262,18 @@ export async function saveAcademyPlayerDetails(params: {
 
   if (params.kind === 'guest' && params.guestPlayerId) {
     if (params.profileId) {
-      // Linked guest: the profile is canonical for identity (same restricted
-      // payload as registered players — no email, no location).
-      const profilePayload = buildRegisteredProfileUpdatePayload(params.form);
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update(profilePayload)
-        .eq('id', params.profileId);
-      if (profileError) throw profileError;
-
-      // Mirror identity + relationship fields on the guest row; email untouched.
+      // Linked guest: the GUEST row is canonical for person identity (FAM-02
+      // owner decision). A linked profile can belong to a different person —
+      // a child's record linked to the parent's account via the shared family
+      // email — so writing the form's identity to the profile would rename
+      // the account holder. Only the guest row is written; email untouched.
       const guestPayload = buildLinkedGuestMirrorPayload(params.form, params.allowedLocationIds);
       const { error: guestError } = await supabase
         .from('guest_players')
         .update(guestPayload)
         .eq('id', params.guestPlayerId);
       if (guestError) throw guestError;
-      return { profilePayload, guestPayload };
+      return { guestPayload };
     }
 
     const payload = buildGuestPlayerUpdatePayload(params.form, params.allowedLocationIds);
