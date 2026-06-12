@@ -181,7 +181,7 @@
     "club": "Club",
     "clubs": "Clubs",
     "followClub": "Follow Club",
-    "followingClub": "Following",
+    "followingClub": "Following this club",
     "learnPadel": "Learn to Play Padel",
     "topArticles": "Popular Guides",
     "topStrokes": "Essential Strokes",
@@ -190,7 +190,35 @@
     "viewAllStrokes": "View all strokes",
     "viewAllVideos": "View all videos",
     "learnPadelSubtitle": "Improve your game with guides, techniques and video tips",
-    "followError": "Could not update your follow status. Please try again."
+    "followError": "Could not update your follow status. Please try again.",
+    "additionalNotes": "Additional notes",
+    "additionalNotesPlaceholder": "Any other information about this club...",
+    "city": "City",
+    "cityPlaceholder": "e.g., Amsterdam",
+    "clearSelection": "Clear selected club",
+    "clubName": "Club name",
+    "clubNamePlaceholder": "e.g., Padel Club Amsterdam",
+    "fillRequiredFields": "Please fill in the required fields.",
+    "notifyClubUpdates": "You'll be notified when they add new availability",
+    "removeCityFilter": "Remove city filter",
+    "removeClub": "Remove club",
+    "removeCountryFilter": "Remove country filter",
+    "removeIndoorFilter": "Remove indoor courts filter",
+    "removeSearchFilter": "Remove search filter",
+    "removeTrainersFilter": "Remove trainers available filter",
+    "requestClubError": "Error",
+    "requestClubErrorDesc": "Failed to submit request. Please try again.",
+    "requestNewClub": "Request new club",
+    "requestNewClubDesc": "Can't find your club? Submit a request and we'll add it to the platform.",
+    "requestSubmittedDesc": "We will review your request and add the club soon.",
+    "selectClub": "Select a club...",
+    "signInRequired": "Sign in required",
+    "signInToFollowClub": "Please sign in as a player to follow clubs",
+    "streetAddress": "Street address",
+    "streetAddressPlaceholder": "e.g., Sportlaan 123",
+    "submitRequest": "Submit request",
+    "unfollowedClub": "Unfollowed club",
+    "website": "Website"
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",
@@ -439,7 +467,10 @@
     "connectedGeneric": "Your Mollie account has been connected successfully.",
     "redirecting": "Redirecting you back...",
     "failed": "Connection failed",
-    "tryAgain": "Try again"
+    "tryAgain": "Try again",
+    "genericError": "Something went wrong while connecting your Mollie account.",
+    "missingParams": "Missing connection parameters. Please try again.",
+    "unexpectedRedirect": "The connection flow encountered an unexpected redirect. Please try again."
   },
   "calendarSettings": {
     "title": "Calendar Settings",
@@ -572,7 +603,8 @@
       "vatPercent": "VAT %",
       "total": "Total",
       "totalLabel": "Total: {{amount}}",
-      "minimumOneItemError": "Add at least one line item"
+      "minimumOneItemError": "Add at least one line item",
+      "removeRow": "Remove row"
     },
     "totals": {
       "subtotal": "Subtotal",
@@ -626,8 +658,36 @@
   },
   "subscription": {
     "checkoutError": "Failed to start checkout. Please try again.",
-    "portalError": "Failed to open subscription management. Please try again."
+    "portalError": "Failed to open subscription management. Please try again.",
+    "defaultPlanName": "Academy Plan"
   },
   "videoAddError": "Could not add the video. Please try again.",
-  "videoRemoveError": "Could not remove the video. Please try again."
+  "videoRemoveError": "Could not remove the video. Please try again.",
+  "application": {
+    "alreadyAppliedDesc": "You have already submitted an application for this cycle."
+  },
+  "common": {
+    "searching": "Searching..."
+  },
+  "contactInfo": "Contact Info",
+  "followUs": "Follow Us",
+  "invoices": {
+    "businessAddress": "Business address",
+    "businessName": "Business name",
+    "iban": "IBAN",
+    "kvkNumber": "KvK number"
+  },
+  "paymentBadge": {
+    "both": "Online or at Location",
+    "cash": "Pay at Location",
+    "online": "Pay Online"
+  },
+  "playVideo": "Play video",
+  "registration": {
+    "moreInfo": "More info",
+    "notFoundDesc": "This registration could not be found or is no longer available."
+  },
+  "type": {
+    "event": "Event"
+  }
 }

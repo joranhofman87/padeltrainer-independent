@@ -143,7 +143,41 @@
     },
     "draftFound": "Niet-opgeslagen concept gevonden. Wil je verdergaan waar je gebleven was?",
     "draftRestore": "Herstellen",
-    "draftDismiss": "Verwijderen"
+    "draftDismiss": "Verwijderen",
+    "addLocationsHint": "Voeg locaties toe in je instellingen om ze aan aanmeldingen te koppelen.",
+    "addLocationsHintTrainer": "Voeg locaties toe in je profiel om te tonen waar lessen plaatsvinden.",
+    "addPriceRow": "Prijsregel toevoegen",
+    "endDateHelp": "Laat leeg voor een eendaags evenement",
+    "endDateHint": "Automatisch ingesteld op basis van weken. Pas aan om een specifieke einddatum in te stellen (bijv. de laatste vrijdag van de cyclus).",
+    "exclVatShort": "(excl.)",
+    "inclVatShort": "(incl.)",
+    "locationHelpTrainer": "Je kunt meer locaties toevoegen in je profielinstellingen.",
+    "maxParticipants": "Max. deelnemers",
+    "noLocations": "Nog geen locaties gekoppeld aan je profiel.",
+    "noTrainersAtLocation": "Geen trainers toegewezen aan deze locatie",
+    "payAtLocation": "Betalen op locatie",
+    "payAtLocationHelp": "Speler betaalt contant of met pin bij aankomst",
+    "payBoth": "Speler kiest",
+    "payBothHelp": "Speler kan kiezen om online of op locatie te betalen",
+    "payOnline": "Online betalen",
+    "payOnlineHelp": "Speler betaalt via het platform bij het aanmelden",
+    "paymentMethod": "Betaalmethode",
+    "paymentMethodHelp": "Hoe moeten spelers voor dit evenement betalen?",
+    "pickDate": "Kies datum",
+    "priceLabel": "bijv. Groepsles (4 spelers)",
+    "priceTable": "Tarieven",
+    "priceTableHelp": "Voeg prijsregels toe die spelers kunnen zien voordat ze zich aanmelden",
+    "pricesExcludeVat": "Prijzen zijn exclusief BTW",
+    "pricingNote": "Opmerking bij tarieven",
+    "pricingNoteHelp": "Wordt aan spelers getoond onder de tarieventabel. Laat leeg om te verbergen.",
+    "pricingNotePlaceholder": "bijv. \"Gezinskorting op aanvraag\"",
+    "sameAsStart": "Zelfde als start",
+    "splitPayment": "Split betaling over spelers",
+    "splitPaymentHelp": "De totaalprijs (inclusief extra kosten) wordt gelijk verdeeld over alle ingeschreven spelers. Elke speler ontvangt een eigen factuur.",
+    "terms": "Voorwaarden",
+    "termsHelp": "Deze voorwaarden worden aan spelers getoond voordat ze zich aanmelden. Los van je algemene voorwaarden.",
+    "termsPlaceholder": "Voeg specifieke voorwaarden toe voor deze aanmelding...",
+    "unlimited": "Onbeperkt"
   },
   "detail": {
     "priceTable": "Tarieven",
@@ -173,7 +207,10 @@
   "paymentBadge": {
     "upfront": "Vooraf betalen",
     "invoice_after_weeks": "Factuur na {{count}} wk",
-    "manual": "Handmatige betaling"
+    "manual": "Handmatige betaling",
+    "both": "Online / contant",
+    "cash": "Contant",
+    "online": "Online"
   },
   "stats": {
     "applications": "Aanmeldingen",
@@ -286,7 +323,15 @@
       "submitError": "Aanmelding kon niet worden verzonden",
       "submit": "Aanmelding indienen",
       "submitting": "Bezig met indienen...",
-      "validationSummary": "Controleer de volgende velden:"
+      "validationSummary": "Controleer de volgende velden:",
+      "choosePayment": "Hoe wil je betalen?",
+      "duration": "Duur (min)",
+      "eventPrice": "Prijs",
+      "payAtLocation": "Betalen op locatie",
+      "payAtLocationDesc": "Betaal contant of met pin bij aankomst",
+      "payOnline": "Online betalen",
+      "payOnlineDesc": "Betaal veilig via het platform",
+      "paymentMethod": "Betaalmethode"
     },
     "summary": {
       "title": "Jouw keuze",
@@ -309,8 +354,12 @@
       "step2": "Je wordt gekoppeld aan een passend trainingsmoment",
       "step3": "Je ontvangt een e-mail met je bevestigde schema",
       "backToProfile": "Terug naar profiel",
-      "backToForm": "Terug naar formulier"
-    }
+      "backToForm": "Terug naar formulier",
+      "guestMessage": "Je aanmelding is ingediend! Check je e-mail om je account te verifiëren."
+    },
+    "alreadyAppliedDesc": "Je hebt al een aanmelding ingediend voor deze cyclus.",
+    "deadline": "Deadline",
+    "pricing": "Prijzen"
   },
   "intakeRequests": {
     "title": "Aanmeldingen",
@@ -417,7 +466,14 @@
       "cancel": "Annuleren",
       "confirm": "Verwijderen"
     },
-    "statusUpdateError": "Kon de status niet bijwerken"
+    "statusUpdateError": "Kon de status niet bijwerken",
+    "exportCsv": "CSV exporteren",
+    "searchPlaceholder": "Zoek op spelersnaam...",
+    "statusBadges": {
+      "rejected": "Afgewezen"
+    },
+    "subtitleShort": "Beoordeel aanmeldingen en stel voorstellen samen",
+    "exportCsvShort": "CSV"
   },
   "proposals": {
     "title": "Voorgestelde toewijzingen",
@@ -589,7 +645,21 @@
       "dragSlot": "Sleep slot",
       "addSlot": "Slot toevoegen"
     },
-    "genericError": "Er ging iets mis. Probeer het opnieuw."
+    "genericError": "Er ging iets mis. Probeer het opnieuw.",
+    "addPlayerToSlot": "Speler aan tijdslot toevoegen",
+    "clearSearch": "Zoekopdracht wissen",
+    "durationMismatch": "Duur komt niet overeen: speler zit in een tijdslot van {{source}} min, het doel is {{target}} min",
+    "generate": "Voorstellen genereren",
+    "hideUnplaced": "Niet-geplaatste spelers verbergen",
+    "noProposalsHint": "Genereer eerst voorstellen om de roosterweergave te zien",
+    "playerMoved": "Speler succesvol verplaatst",
+    "schedulePreview": "Roostervoorbeeld",
+    "slotMoved": "Tijdslot succesvol verplaatst",
+    "slotPrivate": "Privé — niet openbaar zichtbaar",
+    "slotPublic": "Openbaar — klik om als privé te markeren",
+    "slotsSwapped": "Tijdsloten succesvol gewisseld",
+    "swapDurationMismatch": "Wisselen niet mogelijk — tijdsloten hebben verschillende duur ({{a}} min vs {{b}} min)",
+    "viewPlayer": "{{name}} bekijken"
   },
   "unplacedSidebar": {
     "title": "Niet ingedeeld",
@@ -643,15 +713,32 @@
     "reviewDesc": "{{count}} voorstellen",
     "approve": "Goedkeuren & inplannen",
     "approveDesc": "{{count}} bevestigd",
-    "continueToGenerate": "Doorgaan naar genereren"
+    "continueToGenerate": "Doorgaan naar genereren",
+    "alreadyGenerated": "De voorstellen zijn gegenereerd. Je kunt ze beoordelen of resetten om opnieuw te genereren.",
+    "approveIntro": "Bekijk het overzicht en keur voorstellen goed om boekingen aan te maken.",
+    "approvedSummary": "{{count}} boekingen bevestigd.",
+    "backToGenerate": "Terug naar Genereren",
+    "backToWorkflow": "Terug naar workflow",
+    "continueToOverview": "Verder naar Goedkeuren",
+    "continueToReview": "Voorstellen beoordelen",
+    "noNewRequests": "Geen nieuwe aanvragen om voorstellen voor te genereren.",
+    "noProposalsYet": "Nog geen voorstellen gegenereerd. Ga terug naar de stap Genereren.",
+    "viewOverview": "Overzicht bekijken"
   },
   "preReview": {
     "allClear": "Alles in orde — geen openstaande koppelacties",
-    "mentioned": "genoemd"
+    "mentioned": "genoemd",
+    "dismissUnmatched": "Niet-gematchte vermelding negeren",
+    "linkSuggestions": "{{count}} koppelsuggestie(s)",
+    "readyToContinue": "Alle koppelingen beoordeeld — klaar om voorstellen te genereren",
+    "resolveFirst": "Los eerst alle koppelsuggesties op voordat je verdergaat",
+    "unmatchedInfo": "{{count}} genoemde na(a)m(en) niet gevonden in aanmeldingen"
   },
   "suggestions": {
     "link": "Koppelen",
-    "linkError": "Kon de spelers niet koppelen. Probeer het opnieuw."
+    "linkError": "Kon de spelers niet koppelen. Probeer het opnieuw.",
+    "dismiss": "Suggestie negeren",
+    "linked": "Spelers gekoppeld"
   },
   "overview": {
     "period": "Periode",
@@ -660,7 +747,29 @@
     "addDate": "Datum toevoegen",
     "noHolidays": "Geen vakantiedagen ingesteld. Alle weken hebben lessen.",
     "sessions": "Lessen",
-    "loadError": "Kon de cycli niet laden. Probeer het opnieuw."
+    "loadError": "Kon de cycli niet laden. Probeer het opnieuw.",
+    "allDone": "Klaar!",
+    "approveTitle": "Alle voorstellen goedkeuren & boeken?",
+    "back": "Terug",
+    "bookedBanner": "Alle voorstellen zijn geboekt! Je kunt nu rooster-e-mails versturen om spelers op de hoogte te brengen.",
+    "cancel": "Annuleren",
+    "confirmApprove": "Goedkeuren & boeken",
+    "confirmSendEmails": "E-mails versturen",
+    "emptySlots": "Lege tijdsloten",
+    "noData": "Geen voorstellen om te tonen. Ga terug en genereer eerst voorstellen.",
+    "noPlayers": "Geen spelers",
+    "notifiedBanner": "Alle rooster-e-mails zijn verstuurd! Spelers kunnen hun account aanmaken om hun boekingen te bekijken.",
+    "players": "Spelers",
+    "playersAssigned": "Spelers toegewezen",
+    "removeHolidayDate": "Vakantiedatum verwijderen",
+    "sendEmails": "E-mails versturen",
+    "sendEmailsTitle": "Rooster-e-mails versturen?",
+    "size": "Grootte",
+    "subtitle": "Controleer de volledige planning voordat je bevestigt",
+    "time": "Tijd",
+    "title": "Voorsteloverzicht",
+    "totalSlots": "Totaal tijdsloten",
+    "trainers": "Trainers"
   },
   "bulkCopy": {
     "title": "Volgende ronde opzetten",
@@ -786,5 +895,38 @@
     "unhold": "Naar controle"
   },
   "genericError": "Er ging iets mis. Probeer het opnieuw.",
-  "loadCyclesError": "Kon je aanmeldingen niet laden. Probeer het opnieuw."
+  "loadCyclesError": "Kon je aanmeldingen niet laden. Probeer het opnieuw.",
+  "createEvent": "Evenement aanmaken",
+  "deleteDialog": {
+    "checkingRegistrations": "Aanmeldingen controleren...",
+    "confirm": "Definitief verwijderen",
+    "deleting": "Verwijderen...",
+    "error": "Verwijderen is niet gelukt. Probeer het opnieuw.",
+    "noRegistrations": "Er zijn geen aanmeldingen. Deze actie kan niet ongedaan worden gemaakt.",
+    "titleCycle": "Cyclus verwijderen?",
+    "titleRegistration": "Inschrijving verwijderen?",
+    "unknownRegistrations": "Het aantal aanmeldingen kon niet worden opgehaald. Alle bijbehorende spelersaanmeldingen worden ook definitief verwijderd. Dit kan niet ongedaan worden gemaakt."
+  },
+  "editEvent": "Evenement bewerken",
+  "pricing": {
+    "addCost": "Toevoegen",
+    "description": "Omschrijving",
+    "excludesVat": "Prijzen zijn exclusief btw",
+    "extraCosts": "Extra kosten",
+    "includesVat": "Prijzen zijn inclusief btw",
+    "oneTime": "Eenmalig",
+    "perSession": "Per sessie",
+    "pricePerSession": "Prijs per sessie",
+    "splitPayment": "Gespreid betalen",
+    "splitPaymentDesc": "Laat spelers per sessie betalen in plaats van het volledige bedrag",
+    "vatMode": "Btw-modus",
+    "saveError": "Prijzen opslaan mislukt"
+  },
+  "type": {
+    "event": "Evenement"
+  },
+  "actionExplainers": {
+    "event": "Een eenmalige activiteit, zoals een toernooi of clinic.",
+    "registration": "Een open formulier om aanmeldingen van spelers voor een trainingscyclus te verzamelen."
+  }
 }

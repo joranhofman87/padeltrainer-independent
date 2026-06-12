@@ -55,7 +55,8 @@
     "descriptionPlaceholder": "I am the owner/manager of this club...",
     "descriptionHelp": "This helps us verify your claim faster",
     "contactPhone": "Contact Phone",
-    "emailPlaceholder": "club@example.com"
+    "emailPlaceholder": "club@example.com",
+    "sessionExpired": "Your session has expired. Please refresh the page and try again."
   },
   "onboarding": {
     "title": "Find Your Club",
@@ -64,7 +65,10 @@
     "searchPlaceholder": "Search for your club...",
     "noClubFound": "No club found",
     "alreadyClaimed": "This club has already been claimed. Contact support if you believe this is an error.",
-    "hint": "Can't find your club? Contact us and we'll add it."
+    "hint": "Can't find your club? Contact us and we'll add it.",
+    "andWeWillAddIt": "and we'll add it.",
+    "cantFindClub": "Can't find your club?",
+    "contactUs": "Contact us"
   },
   "trainers": {
     "title": "Club Trainers",
@@ -98,7 +102,9 @@
     "specializations": "Specializations",
     "coachingMethod": "Coaching Method",
     "quote": "Favourite Quote",
-    "videoUrl": "Video URL"
+    "videoUrl": "Video URL",
+    "preferredLevels": "Preferred Player Levels",
+    "preferredLevelsDescription": "Which skill levels does this trainer most enjoy training?"
   },
   "trainerInvitation": {
     "invite": "Invite Trainer",
@@ -244,7 +250,8 @@
     "youtube": "YouTube",
     "youtubePlaceholder": "@yourchannel or full URL",
     "linkedin": "LinkedIn",
-    "linkedinPlaceholder": "company/yourcompany or full URL"
+    "linkedinPlaceholder": "company/yourcompany or full URL",
+    "websiteUrl": "Website URL"
   },
   "managers": {
     "title": "Club Managers",
@@ -268,7 +275,9 @@
     "welcomeMessageDescription": "This message is shown to players after they join your waiting list.",
     "welcomeMessagePlaceholder": "e.g. Thanks for signing up! Join our WhatsApp community: https://chat.whatsapp.com/...",
     "welcomeMessageSaved": "Welcome message saved",
-    "welcomeMessageError": "Failed to save welcome message"
+    "welcomeMessageError": "Failed to save welcome message",
+    "language": "Language",
+    "languageDescription": "Choose your preferred language for the app"
   },
   "calendar": {
     "description": "View all trainer schedules",
@@ -326,7 +335,12 @@
     "business": "Business",
     "club": "Club",
     "logout": "Log out",
-    "logoutError": "Could not sign out. Please try again."
+    "logoutError": "Could not sign out. Please try again.",
+    "closeMenu": "Close menu",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "openMenu": "Open menu",
+    "referFriends": "Refer friends"
   },
   "subscription": {
     "title": "Club Subscription",

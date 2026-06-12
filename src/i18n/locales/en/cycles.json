@@ -133,7 +133,41 @@
     },
     "draftFound": "Unsaved draft found. Continue where you left off?",
     "draftRestore": "Restore",
-    "draftDismiss": "Discard"
+    "draftDismiss": "Discard",
+    "addLocationsHint": "Add locations in your settings to associate them with registrations.",
+    "addLocationsHintTrainer": "Add locations in your profile to show where lessons take place.",
+    "addPriceRow": "Add price row",
+    "endDateHelp": "Leave empty for a single-day event",
+    "endDateHint": "Automatically set based on weeks. Override to set a specific end date (e.g. last Friday of the cycle).",
+    "exclVatShort": "(excl.)",
+    "inclVatShort": "(incl.)",
+    "locationHelpTrainer": "You can add more locations in your profile settings.",
+    "maxParticipants": "Max Participants",
+    "noLocations": "No locations connected to your profile yet.",
+    "noTrainersAtLocation": "No trainers assigned to this location",
+    "payAtLocation": "Pay at Location",
+    "payAtLocationHelp": "Player pays cash or pin on arrival",
+    "payBoth": "Player Chooses",
+    "payBothHelp": "Player can choose to pay online or at the location",
+    "payOnline": "Pay Online",
+    "payOnlineHelp": "Player pays via the platform when registering",
+    "paymentMethod": "Payment Method",
+    "paymentMethodHelp": "How should players pay for this event?",
+    "pickDate": "Pick date",
+    "priceLabel": "e.g. Group lesson (4 players)",
+    "priceTable": "Price List (Tarieven)",
+    "priceTableHelp": "Add price rows that players can see before applying",
+    "pricesExcludeVat": "Prices are excluding VAT (excl. BTW)",
+    "pricingNote": "Pricing comment",
+    "pricingNoteHelp": "Shown to players below the pricing table. Leave empty to hide.",
+    "pricingNotePlaceholder": "e.g. \"Family discount available on request\"",
+    "sameAsStart": "Same as start",
+    "splitPayment": "Split payment across players",
+    "splitPaymentHelp": "The total price (including extra costs) is split equally across all registered players. Each player receives their own invoice.",
+    "terms": "Terms (Voorwaarden)",
+    "termsHelp": "These terms are shown to players before they apply. Separate from your general terms.",
+    "termsPlaceholder": "Add specific terms and conditions for this registration...",
+    "unlimited": "Unlimited"
   },
   "detail": {
     "pricesIncludeVat": "All prices include VAT",
@@ -153,7 +187,10 @@
   "paymentBadge": {
     "upfront": "Pay upfront",
     "invoice_after_weeks": "Invoice after {{count}} wk",
-    "manual": "Manual payment"
+    "manual": "Manual payment",
+    "both": "Online / Cash",
+    "cash": "Cash",
+    "online": "Online"
   },
   "stats": {
     "applications": "Applications",
@@ -260,7 +297,15 @@
       "submitError": "Failed to submit application",
       "submit": "Submit Application",
       "submitting": "Submitting...",
-      "validationSummary": "Please fix the following:"
+      "validationSummary": "Please fix the following:",
+      "choosePayment": "How would you like to pay?",
+      "duration": "Duration (min)",
+      "eventPrice": "Price",
+      "payAtLocation": "Pay at Location",
+      "payAtLocationDesc": "Pay cash or pin on arrival",
+      "payOnline": "Pay Online",
+      "payOnlineDesc": "Pay securely via the platform",
+      "paymentMethod": "Payment Method"
     },
     "summary": {
       "title": "Your Selection",
@@ -283,8 +328,12 @@
       "step2": "You will be matched with an appropriate training slot",
       "step3": "You will receive an email with your confirmed schedule",
       "backToProfile": "Back to Profile",
-      "backToForm": "Back to form"
-    }
+      "backToForm": "Back to form",
+      "guestMessage": "Your application has been submitted! Please check your email to verify your account."
+    },
+    "alreadyAppliedDesc": "You have already submitted an application for this cycle.",
+    "deadline": "Deadline",
+    "pricing": "Pricing"
   },
   "intakeRequests": {
     "title": "Intake Requests",
@@ -356,7 +405,14 @@
       "unlink": "Unlink player",
       "unlinkError": "Failed to unlink player"
     },
-    "statusUpdateError": "Failed to update status"
+    "statusUpdateError": "Failed to update status",
+    "exportCsv": "Export CSV",
+    "searchPlaceholder": "Search by player name...",
+    "statusBadges": {
+      "rejected": "Rejected"
+    },
+    "subtitleShort": "Review registrations and build proposals",
+    "exportCsvShort": "CSV"
   },
   "proposals": {
     "title": "Proposed Assignments",
@@ -462,7 +518,21 @@
       "dragSlot": "Drag slot",
       "addSlot": "Add slot"
     },
-    "genericError": "Something went wrong. Please try again."
+    "genericError": "Something went wrong. Please try again.",
+    "addPlayerToSlot": "Add player to slot",
+    "clearSearch": "Clear search",
+    "durationMismatch": "Duration mismatch: player is in a {{source}}min slot, target is {{target}}min",
+    "generate": "Generate proposals",
+    "hideUnplaced": "Hide unplaced players",
+    "noProposalsHint": "Generate proposals first to see the schedule view",
+    "playerMoved": "Player moved successfully",
+    "schedulePreview": "Schedule Preview",
+    "slotMoved": "Slot moved successfully",
+    "slotPrivate": "Private — hidden from public",
+    "slotPublic": "Public — click to mark as private",
+    "slotsSwapped": "Slots swapped successfully",
+    "swapDurationMismatch": "Cannot swap — slots have different durations ({{a}}min vs {{b}}min)",
+    "viewPlayer": "View {{name}}"
   },
   "unplacedSidebar": {
     "title": "Unplaced",
@@ -510,7 +580,17 @@
     "review": "Review & Edit",
     "reviewDesc": "{{count}} proposals",
     "approve": "Approve & Book",
-    "approveDesc": "{{count}} confirmed"
+    "approveDesc": "{{count}} confirmed",
+    "alreadyGenerated": "Proposals have been generated. You can review them or reset to regenerate.",
+    "approveIntro": "Review the overview and approve proposals to create bookings.",
+    "approvedSummary": "{{count}} bookings confirmed.",
+    "backToGenerate": "Back to Generate",
+    "backToWorkflow": "Back to workflow",
+    "continueToOverview": "Continue to Approve",
+    "continueToReview": "Review proposals",
+    "noNewRequests": "No new requests to generate proposals for.",
+    "noProposalsYet": "No proposals generated yet. Go back to the Generate step.",
+    "viewOverview": "View overview"
   },
   "overview": {
     "period": "Period",
@@ -519,7 +599,29 @@
     "addDate": "Add date",
     "noHolidays": "No holiday dates set. All weeks will have sessions.",
     "sessions": "Sessions",
-    "loadError": "Could not load cycles. Please try again."
+    "loadError": "Could not load cycles. Please try again.",
+    "allDone": "Done!",
+    "approveTitle": "Approve & book all proposals?",
+    "back": "Back",
+    "bookedBanner": "All proposals have been booked! You can now send schedule emails to notify players.",
+    "cancel": "Cancel",
+    "confirmApprove": "Approve & Book",
+    "confirmSendEmails": "Send Emails",
+    "emptySlots": "Empty slots",
+    "noData": "No proposals to show. Go back and generate proposals first.",
+    "noPlayers": "No players",
+    "notifiedBanner": "All schedule emails have been sent! Players can create their accounts to view their bookings.",
+    "players": "Players",
+    "playersAssigned": "Players assigned",
+    "removeHolidayDate": "Remove holiday date",
+    "sendEmails": "Send Emails",
+    "sendEmailsTitle": "Send schedule emails?",
+    "size": "Size",
+    "subtitle": "Review the full planning before confirming",
+    "time": "Time",
+    "title": "Proposal Overview",
+    "totalSlots": "Total slots",
+    "trainers": "Trainers"
   },
   "bulkCopy": {
     "title": "Set up next round",
@@ -648,6 +750,48 @@
   "loadCyclesError": "Could not load your registrations. Please try again.",
   "suggestions": {
     "link": "Link",
-    "linkError": "Could not link the players. Please try again."
+    "linkError": "Could not link the players. Please try again.",
+    "dismiss": "Dismiss suggestion",
+    "linked": "Players linked"
+  },
+  "createEvent": "Create Event",
+  "deleteDialog": {
+    "checkingRegistrations": "Checking registrations...",
+    "confirm": "Delete permanently",
+    "deleting": "Deleting...",
+    "error": "Deletion failed. Please try again.",
+    "noRegistrations": "There are no registrations. This action cannot be undone.",
+    "titleCycle": "Delete cycle?",
+    "titleRegistration": "Delete registration?",
+    "unknownRegistrations": "The number of registrations could not be retrieved. All associated player registrations will also be permanently deleted. This cannot be undone."
+  },
+  "editEvent": "Edit Event",
+  "preReview": {
+    "dismissUnmatched": "Dismiss unmatched mention",
+    "linkSuggestions": "{{count}} link suggestion(s)",
+    "readyToContinue": "All links reviewed — ready to generate proposals",
+    "resolveFirst": "Resolve all link suggestions before continuing",
+    "unmatchedInfo": "{{count}} mentioned name(s) not found in registrations"
+  },
+  "pricing": {
+    "addCost": "Add",
+    "description": "Description",
+    "excludesVat": "Prices exclude VAT",
+    "extraCosts": "Extra costs",
+    "includesVat": "Prices include VAT",
+    "oneTime": "One-time",
+    "perSession": "Per session",
+    "pricePerSession": "Price per session",
+    "splitPayment": "Split payment",
+    "splitPaymentDesc": "Allow players to pay per session instead of the full amount",
+    "vatMode": "VAT mode",
+    "saveError": "Failed to save pricing"
+  },
+  "type": {
+    "event": "Event"
+  },
+  "actionExplainers": {
+    "event": "A one-off activity, such as a tournament or clinic.",
+    "registration": "An open form to collect player sign-ups for a training cycle."
   }
 }

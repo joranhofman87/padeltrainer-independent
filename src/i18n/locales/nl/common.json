@@ -181,7 +181,7 @@
     "club": "Club",
     "clubs": "Clubs",
     "followClub": "Volg club",
-    "followingClub": "Volgend",
+    "followingClub": "Je volgt deze club",
     "learnPadel": "Leer Padel Spelen",
     "topArticles": "Populaire Gidsen",
     "topStrokes": "Essentiële Slagen",
@@ -190,7 +190,35 @@
     "viewAllStrokes": "Bekijk alle slagen",
     "viewAllVideos": "Bekijk alle video's",
     "learnPadelSubtitle": "Verbeter je spel met gidsen, technieken en videotips",
-    "followError": "Kon je volgstatus niet bijwerken. Probeer het opnieuw."
+    "followError": "Kon je volgstatus niet bijwerken. Probeer het opnieuw.",
+    "additionalNotes": "Aanvullende opmerkingen",
+    "additionalNotesPlaceholder": "Overige informatie over deze club...",
+    "city": "Stad",
+    "cityPlaceholder": "bijv. Amsterdam",
+    "clearSelection": "Geselecteerde club wissen",
+    "clubName": "Clubnaam",
+    "clubNamePlaceholder": "bijv. Padel Club Amsterdam",
+    "fillRequiredFields": "Vul de verplichte velden in.",
+    "notifyClubUpdates": "Je krijgt een melding wanneer ze nieuwe beschikbaarheid toevoegen",
+    "removeCityFilter": "Stadsfilter verwijderen",
+    "removeClub": "Club verwijderen",
+    "removeCountryFilter": "Landfilter verwijderen",
+    "removeIndoorFilter": "Filter voor indoorbanen verwijderen",
+    "removeSearchFilter": "Zoekfilter verwijderen",
+    "removeTrainersFilter": "Filter voor beschikbare trainers verwijderen",
+    "requestClubError": "Fout",
+    "requestClubErrorDesc": "Verzoek indienen is niet gelukt. Probeer het opnieuw.",
+    "requestNewClub": "Nieuwe club aanvragen",
+    "requestNewClubDesc": "Kun je je club niet vinden? Dien een aanvraag in en we voegen hem toe aan het platform.",
+    "requestSubmittedDesc": "We bekijken je verzoek en voegen de club binnenkort toe.",
+    "selectClub": "Selecteer een club...",
+    "signInRequired": "Inloggen vereist",
+    "signInToFollowClub": "Log in als speler om clubs te volgen",
+    "streetAddress": "Straat en huisnummer",
+    "streetAddressPlaceholder": "bijv. Sportlaan 123",
+    "submitRequest": "Verzoek indienen",
+    "unfollowedClub": "Club ontvolgd",
+    "website": "Website"
   },
   "profile": {
     "preferredClubs": "Favoriete padelclubs",
@@ -444,7 +472,10 @@
     "connectedGeneric": "Je Mollie-account is succesvol verbonden.",
     "redirecting": "Je wordt teruggestuurd...",
     "failed": "Verbinding mislukt",
-    "tryAgain": "Probeer opnieuw"
+    "tryAgain": "Probeer opnieuw",
+    "genericError": "Er is iets misgegaan bij het koppelen van je Mollie-account.",
+    "missingParams": "Verbindingsparameters ontbreken. Probeer het opnieuw.",
+    "unexpectedRedirect": "Het koppelproces liep tegen een onverwachte omleiding aan. Probeer het opnieuw."
   },
   "calendarSettings": {
     "title": "Agenda-instellingen",
@@ -581,7 +612,8 @@
       "vatPercent": "BTW %",
       "total": "Totaal",
       "totalLabel": "Totaal: {{amount}}",
-      "minimumOneItemError": "Voeg minimaal één factuurregel toe"
+      "minimumOneItemError": "Voeg minimaal één factuurregel toe",
+      "removeRow": "Rij verwijderen"
     },
     "totals": {
       "subtotal": "Subtotaal",
@@ -637,8 +669,36 @@
   },
   "subscription": {
     "checkoutError": "Kon het afrekenen niet starten. Probeer het opnieuw.",
-    "portalError": "Kon abonnementsbeheer niet openen. Probeer het opnieuw."
+    "portalError": "Kon abonnementsbeheer niet openen. Probeer het opnieuw.",
+    "defaultPlanName": "Academy-abonnement"
   },
   "videoAddError": "Kon de video niet toevoegen. Probeer het opnieuw.",
-  "videoRemoveError": "Kon de video niet verwijderen. Probeer het opnieuw."
+  "videoRemoveError": "Kon de video niet verwijderen. Probeer het opnieuw.",
+  "application": {
+    "alreadyAppliedDesc": "Je hebt al een aanmelding ingediend voor deze cyclus."
+  },
+  "common": {
+    "searching": "Zoeken..."
+  },
+  "contactInfo": "Contactgegevens",
+  "followUs": "Volg ons",
+  "invoices": {
+    "businessAddress": "Bedrijfsadres",
+    "businessName": "Bedrijfsnaam",
+    "iban": "IBAN",
+    "kvkNumber": "KvK-nummer"
+  },
+  "paymentBadge": {
+    "both": "Online of op locatie",
+    "cash": "Betalen op locatie",
+    "online": "Online betalen"
+  },
+  "playVideo": "Video afspelen",
+  "registration": {
+    "moreInfo": "Meer info",
+    "notFoundDesc": "Deze aanmelding kon niet worden gevonden of is niet meer beschikbaar."
+  },
+  "type": {
+    "event": "Evenement"
+  }
 }

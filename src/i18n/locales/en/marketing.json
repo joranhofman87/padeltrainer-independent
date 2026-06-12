@@ -7,7 +7,9 @@
     "signIn": "Sign In",
     "getStarted": "Get Started",
     "language": "Language",
-    "playground": "Playground"
+    "playground": "Playground",
+    "rules": "Padel Rules",
+    "strokes": "Strokes"
   },
   "footer": {
     "tagline": "Everything you need to improve your padel game.",
@@ -25,7 +27,10 @@
     "legal": "Legal",
     "privacyPolicy": "Privacy Policy",
     "termsOfService": "Terms of Service",
-    "copyright": "© {{year}} PadelTrainer.ai. All rights reserved."
+    "copyright": "© {{year}} PadelTrainer.ai. All rights reserved.",
+    "brand": "Brand",
+    "coaches": "Coaches",
+    "videoTips": "Video Tips"
   },
   "home": {
     "badge": "From beginner to pro",
@@ -122,7 +127,8 @@
   "pricing": {
     "hero": {
       "title": "Simple, transparent pricing",
-      "subtitle": "Free for players. Flexible plans for trainers to grow their business."
+      "subtitle": "Free for players. Flexible plans for trainers to grow their business.",
+      "eyebrow": "Pricing"
     },
     "players": {
       "badge": "For Players",
@@ -282,14 +288,16 @@
           "q": "How does the club free trial work?",
           "a": "Clubs get a 14-day free trial with full access to all features. No credit card required to start. After the trial, you'll be billed annually at €2,388/year."
         }
-      }
+      },
+      "eyebrow": "Questions"
     }
   },
   "about": {
     "hero": {
       "title": "Making padel training",
       "titleHighlight": "accessible to everyone",
-      "subtitle": "We're on a mission to connect every padel player in the Netherlands with the perfect trainer to help them improve their game."
+      "subtitle": "We're on a mission to connect every padel player in the Netherlands with the perfect trainer to help them improve their game.",
+      "eyebrow": "About"
     },
     "story": {
       "title": "Our Story",
@@ -315,7 +323,8 @@
       "simplicity": {
         "title": "Simplicity",
         "description": "Booking a lesson should be as easy as sending a text message."
-      }
+      },
+      "eyebrow": "What we stand for"
     },
     "stats": {
       "founded": "Founded",
@@ -355,7 +364,10 @@
     "backToBlog": "Back to Blog",
     "readyToFind": "Ready to find your perfect trainer?",
     "browseTrainers": "Browse verified trainers matched to your skill level.",
-    "findTrainers": "Find Trainers"
+    "findTrainers": "Find Trainers",
+    "eyebrow": "Stories & insights",
+    "readGuide": "Read guide",
+    "relatedGuides": "Related Guides"
   },
   "privacy": {
     "title": "Privacy Policy",
@@ -652,7 +664,10 @@
     "cta": {
       "startTrial": "Start your free trial",
       "watchDemo": "See how it works",
-      "trustMicrocopy": "No credit card required. Set up in 10 minutes."
+      "trustMicrocopy": "No credit card required. Set up in 10 minutes.",
+      "trust_gdpr": "GDPR-ready",
+      "trust_nocard": "No credit card",
+      "trust_setup": "Set up in 10 minutes"
     },
     "socialProof": {
       "headline": "Trusted by padel coaches and academies across Europe.",
@@ -668,7 +683,8 @@
       "metric_slots_label": "filled from cancellations",
       "metric_noshows_value": "50%",
       "metric_noshows_label": "fewer no-shows",
-      "disclaimer": "Based on trainers using PadelTrainer.ai. Results vary."
+      "disclaimer": "Based on trainers using PadelTrainer.ai. Results vary.",
+      "marquee": "Trusted by padel coaches and academies across Europe"
     },
     "chaos": {
       "headline": "Most padel trainers run their business on chaos",
@@ -697,7 +713,8 @@
       "value_noshows_title": "Get paid before the lesson starts",
       "value_noshows_desc": "Online payments via iDEAL and card. Players who pay upfront actually show up. No more chasing Tikkies.",
       "value_player_title": "A booking page your players will actually use",
-      "value_player_desc": "Simple, fast, mobile-first. Players see your availability and book in seconds. Put the link in your WhatsApp bio, Instagram, or send it directly."
+      "value_player_desc": "Simple, fast, mobile-first. Players see your availability and book in seconds. Put the link in your WhatsApp bio, Instagram, or send it directly.",
+      "eyebrow": "The padel-shaped advantage"
     },
     "whyPadelTrainer": {
       "headline": "Why Padel Trainer wins for padel trainers",
@@ -798,7 +815,9 @@
       "club_b1": "Members book directly via your club page.",
       "club_b2": "Less admin for your front desk.",
       "club_b3": "Trainers manage their own availability.",
-      "club_b4": "Payments handled cleanly."
+      "club_b4": "Payments handled cleanly.",
+      "eyebrow": "Built for your role",
+      "popular": "Most popular"
     },
     "criticalEvents": {
       "headline": "When trainers switch to Padel Trainer",
@@ -821,7 +840,8 @@
       "trainers_desc": "Bookings, payments, calendar sync, and your own profile page. Everything you need.",
       "no_cc": "No credit card required. Try it free, upgrade from €9/month when you're ready.",
       "trainers_microcopy": "",
-      "seeAllPlans": "See all plans →"
+      "seeAllPlans": "See all plans →",
+      "eyebrow": "Simple pricing"
     },
     "faq": {
       "headline": "Got questions?",
@@ -842,11 +862,13 @@
       "europe_q": "Is this only for the Netherlands?",
       "europe_a": "No. We have trainers across Europe. The platform works in multiple languages.",
       "gdpr_q": "Is it GDPR compliant?",
-      "gdpr_a": "Yes."
+      "gdpr_a": "Yes.",
+      "eyebrow": "Questions"
     },
     "finalCta": {
       "headline": "Ready to stop doing admin between your lessons?",
-      "body": "Set up takes 10 minutes. Your first booking can come in today."
+      "body": "Set up takes 10 minutes. Your first booking can come in today.",
+      "eyebrow": "Ready when you are"
     },
     "playerBanner": {
       "headline": "Looking to play padel?",
@@ -857,7 +879,8 @@
       "rulesDesc": "Learn the official rules",
       "videoTips": "Video Tips",
       "videoTipsDesc": "Watch & improve",
-      "blogDesc": "Tips, guides & news"
+      "blogDesc": "Tips, guides & news",
+      "eyebrow": "For players"
     },
     "dualCta": {
       "headline": "Ready to stop doing admin between your lessons?",
@@ -873,7 +896,8 @@
       "cancellation_story": "A player cancels 2 hours before the session. The slot stays empty. You lose the income, and three other players who would've loved that spot never even knew it was available.",
       "cancellation_solution": "With PadelTrainer.ai: Followers get notified instantly. Empty slots fill themselves.",
       "payments_story": "End of the month: who's paid, who hasn't? You're scrolling through Tikkie requests, bank transfers, and \"I'll pay you next week\" messages. You feel like an accountant, not a coach.",
-      "payments_solution": "With PadelTrainer.ai: Players pay upfront when they book. Automatic. Done."
+      "payments_solution": "With PadelTrainer.ai: Players pay upfront when they book. Automatic. Done.",
+      "eyebrow": "The daily grind"
     }
   },
   "cityPage": {
@@ -970,7 +994,8 @@
     "back": "← Back",
     "seo": {
       "title": "Padel Racket Finder | Find Your Perfect Racket",
-      "description": "Answer 5 quick questions and we'll recommend the perfect padel racket for your level, playing style, and budget."
+      "description": "Answer 5 quick questions and we'll recommend the perfect padel racket for your level, playing style, and budget.",
+      "breadcrumb": "Racket Finder"
     },
     "q1": "What's your padel level?",
     "q2": "How would you describe your game?",
@@ -1016,9 +1041,24 @@
       "checkPrice": "Check Price",
       "readReview": "Read Review",
       "retake": "Not quite right? Retake Quiz",
-      "viewAll": "View Full Racket Catalogue →"
+      "viewAll": "View Full Racket Catalogue →",
+      "armFriendly": "Arm-friendly"
     },
-    "share": "Share your result"
+    "share": "Share your result",
+    "badge": "Free · 60 seconds · No signup",
+    "browseAll": "Browse All Rackets →",
+    "howItWorks": {
+      "title": "How It Works"
+    },
+    "relatedResources": {
+      "blog": "Read the Latest Padel Blog Posts",
+      "strokes": "Master Padel Strokes & Techniques",
+      "title": "Related Resources",
+      "videoTips": "Watch Video Tips & Tutorials"
+    },
+    "whyUse": {
+      "title": "Why Use Our Racket Finder?"
+    }
   },
   "gear": {
     "listing": {
@@ -1106,7 +1146,8 @@
     "noTrainersMessage": "No trainers available yet in {{city}}. Are you a padel trainer? Sign up and start coaching.",
     "becomeTrainer": "Become a trainer",
     "moreAboutPadel": "More about padel",
-    "viewProfile": "View profile"
+    "viewProfile": "View profile",
+    "topRatedCourts": "Top Rated Padel Courts"
   },
   "rules": {
     "title": "Padel Rules & Regulations",
@@ -1136,7 +1177,16 @@
       "a4": "Yes! The walls are in play in padel. After the ball bounces on the ground, it can hit the back or side walls, and you can still play it. This is one of the unique and exciting aspects of padel.",
       "q5": "How does scoring work in padel?",
       "a5": "Padel uses the same scoring system as tennis: 15, 30, 40, game. Matches are typically best of 3 sets, with each set played to 6 games. A tiebreak is played at 6-6."
-    }
+    },
+    "backToRules": "Back to Rules",
+    "breadcrumbRules": "Padel Rules",
+    "commonMistakes": "Common Mistakes",
+    "eyebrow": "Official rules",
+    "notFound": "Rule not found",
+    "notFoundDescription": "This rules page could not be found.",
+    "quickAnswer": "Quick Answer",
+    "relatedRules": "Related Rules",
+    "rule": "Rule"
   },
   "strokes": {
     "title": "Padel Strokes & Techniques",
@@ -1155,7 +1205,9 @@
     "viewFlat": "Flat view",
     "viewGrouped": "Group by category",
     "noResults": "No strokes found",
-    "noResultsDescription": "Try a different filter or check back soon."
+    "noResultsDescription": "Try a different filter or check back soon.",
+    "backToStrokes": "Back to Strokes",
+    "eyebrow": "Technique library"
   },
   "videoTips": {
     "title": "Padel Video Tips & Tutorials",
@@ -1232,7 +1284,26 @@
     "bannerText": "Founding 100 Trainers. Get a FREE premium racket worth €275+"
   },
   "megamenu": {
-    "playgroundDesc": "Quizzes, tools & fun"
+    "playgroundDesc": "Quizzes, tools & fun",
+    "academiesDesc": "Join an academy",
+    "blogDesc": "News & insights",
+    "coachesDesc": "Expert coaching guides",
+    "content": "Content",
+    "findAndPlay": "Find & Play",
+    "forAcademies": "For Academies",
+    "forTrainers": "For Trainers",
+    "forTrainersNav": "For Trainers",
+    "locationsDesc": "Discover padel clubs",
+    "manageTeams": "Manage Teams",
+    "partnerDesc": "Grow together",
+    "platformDesc": "How PadelTrainer.ai works",
+    "platformOverview": "Platform Overview",
+    "pricingDesc": "Plans & pricing",
+    "rulesDesc": "Official rules explained",
+    "strokesDesc": "Master every technique",
+    "teamsDesc": "Organize your trainers",
+    "trainersDesc": "Book a session near you",
+    "videoDesc": "Watch & learn"
   },
   "playground": {
     "title": "Padel Playground",
@@ -1261,7 +1332,8 @@
     "challengeMode": {
       "title": "Challenge Mode",
       "desc": "Random handicaps and training constraints for practice or matches. Spin and play."
-    }
+    },
+    "eyebrow": "Interactive tools"
   },
   "rateMyCourtPage": {
     "seo": {
@@ -1317,7 +1389,8 @@
     "thankYou": "Thank you for your review!",
     "pendingApproval": "Your review is pending approval and will be visible soon.",
     "rateAnother": "Rate another club",
-    "viewClub": "View Club Page"
+    "viewClub": "View Club Page",
+    "selectClub": "Select {{name}}"
   },
   "redFlagQuiz": {
     "seo": {
@@ -1519,7 +1592,10 @@
         ],
         "greenFlag": "You're the most entertaining person at the club. pure joy"
       }
-    }
+    },
+    "downloadImage": "Download Image",
+    "downloadSuccess": "Image downloaded!",
+    "shareImage": "Share"
   },
   "communityRatings": {
     "title": "Community Ratings",
@@ -1570,6 +1646,74 @@
       "submit": "Submit Challenge",
       "success": "Thanks! If we add your challenge, you'll see it in the generator.",
       "error": "Something went wrong. Please try again."
-    }
+    },
+    "howTo": {
+      "g1": "Pick \"Game\" mode",
+      "g2": "Choose your difficulty level",
+      "g3": "Tap \"Next Challenge\" to get a match modifier",
+      "g4": "Both teams play with the same constraint",
+      "g5": "Play a full set, then spin again",
+      "p1": "Pick \"Practice\" mode",
+      "p2": "Choose your difficulty level",
+      "p3": "Tap \"Next Challenge\" to get a random constraint",
+      "p4": "Play for the suggested duration (usually 10-15 minutes)",
+      "p5": "Spin again for the next drill",
+      "r1": "Both teams always play with the same constraint",
+      "r2": "If you forget the constraint mid-point, the point stands but your partner can roast you",
+      "r3": "Chaos mode is optional. Friendships may be tested."
+    },
+    "selectGame": "Game",
+    "selectPractice": "Practice"
+  },
+  "learn": {
+    "allArticles": "All Articles",
+    "backToHub": "Back to",
+    "backToLearn": "Back to Learn",
+    "clearFilter": "Clear",
+    "eyebrow": "Learn padel",
+    "featuredTrainers": "Featured Creators",
+    "filterAll": "All",
+    "filteringByTopic": "Filtering by topic:",
+    "guides": "Guides",
+    "inThisGuide": "In This Guide",
+    "noArticles": "No articles available yet.",
+    "notFound": "Article not found",
+    "notFoundDesc": "This article could not be found.",
+    "quickAnswer": "Quick Answer",
+    "relatedGuides": "Related Guides",
+    "relatedRules": "Related Rules",
+    "relatedStrokes": "Related Strokes",
+    "relatedVideos": "Video Tips",
+    "seoDescription": "Guides, tactics, drills, and everything you need to improve your padel game. From beginner to advanced.",
+    "seoTitle": "Learn Padel - Guides, Tactics & Drills",
+    "subtitle": "Guides, tactics, drills, and everything you need to improve your padel game.",
+    "title": "Learn Padel",
+    "updated": "Updated"
+  },
+  "seoFaq": {
+    "heading": "Frequently Asked Questions"
+  },
+  "topics": {
+    "backToParent": "Back to",
+    "backToTopics": "Back to Topics",
+    "ctaDescription": "Find a certified padel trainer to help you improve.",
+    "ctaLabel": "Work on",
+    "ctaWithTrainer": "with a trainer",
+    "eyebrow": "Topic hubs",
+    "featuredRules": "Related Rules",
+    "featuredStrokes": "Related Strokes",
+    "featuredTrainers": "Featured Creators",
+    "featuredVideos": "Video Tips",
+    "hubIntro": "Each topic page brings together our best articles, drills, video tips, and expert trainers so you can dive deep into any area of padel.",
+    "moreArticles": "More Articles",
+    "noTopics": "No topics available yet.",
+    "notFound": "Topic not found",
+    "notFoundDesc": "This topic page could not be found.",
+    "relatedTopics": "Related Topics",
+    "seoDescription": "Browse padel topics including serve, volley, tactics, drills, and more.",
+    "seoTitle": "Padel Topics - Explore All Topics",
+    "startHere": "Start Here",
+    "subtitle": "Explore padel topics to find guides, rules, strokes, video tips, and more.",
+    "title": "Topics"
   }
 }

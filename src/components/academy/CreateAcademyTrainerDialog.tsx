@@ -39,6 +39,7 @@ export function CreateAcademyTrainerDialog({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
   
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
@@ -113,6 +114,14 @@ export function CreateAcademyTrainerDialog({
     }
   };
 
+  const handleCopyEmail = async () => {
+    if (email) {
+      await navigator.clipboard.writeText(email);
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 2000);
+    }
+  };
+
   const handleClose = () => {
     setOpen(false);
     setEmail('');
@@ -120,6 +129,7 @@ export function CreateAcademyTrainerDialog({
     setPhone('');
     setResult(null);
     setCopied(false);
+    setEmailCopied(false);
   };
 
   return (
@@ -147,9 +157,28 @@ export function CreateAcademyTrainerDialog({
             
             {result.isNewUser && result.temporaryPassword && (
               <div className="space-y-4 py-4">
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'trainers.credentialsNotEmailed',
+                    'No email is sent automatically — share these login details with the trainer yourself.'
+                  )}
+                </p>
                 <div className="space-y-2">
                   <Label>{t('trainers.email', 'Email')}</Label>
-                  <div className="p-2 bg-muted rounded-md text-sm">{email}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2 bg-muted rounded-md text-sm">{email}</div>
+                    <Button
+                      variant="outline"
+                      size="icon" aria-label={t('common.copy', 'Copy')}
+                      onClick={handleCopyEmail}
+                    >
+                      {emailCopied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>{t('trainers.temporaryPassword', 'Temporary Password')}</Label>

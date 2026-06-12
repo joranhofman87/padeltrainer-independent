@@ -11,7 +11,12 @@
     "playground": "Speeltuin",
     "profile": "Mijn profiel",
     "invoices": "Facturen",
-    "logoutError": "Uitloggen mislukt. Probeer het opnieuw."
+    "logoutError": "Uitloggen mislukt. Probeer het opnieuw.",
+    "closeMenu": "Menu sluiten",
+    "collapseSidebar": "Zijbalk inklappen",
+    "expandSidebar": "Zijbalk uitklappen",
+    "openMenu": "Menu openen",
+    "primary": "Spelersnavigatie"
   },
   "invoices": {
     "title": "Facturen",
@@ -26,7 +31,9 @@
     "dangerZone": "Gevarenzone",
     "emailChangeVerification": "Er wordt een verificatie-e-mail naar je nieuwe adres gestuurd.",
     "emailChangeSent": "Verificatie-e-mail verzonden",
-    "emailChangeDescription": "Controleer je nieuwe e-mailadres om de wijziging te bevestigen."
+    "emailChangeDescription": "Controleer je nieuwe e-mailadres om de wijziging te bevestigen.",
+    "language": "Taal",
+    "languageDescription": "Kies je voorkeurstaal voor de app"
   },
   "badge": "Speler",
   "birthDate": "Geboortedatum",
@@ -152,7 +159,9 @@
       "confirmed": "Bevestigd",
       "pendingPayment": "Betaling in afwachting",
       "awaitingApproval": "Wacht op goedkeuring"
-    }
+    },
+    "viewLocation": "Bekijk locatie",
+    "viewTrainer": "Bekijk trainer"
   },
   "trainers": {
     "title": "Vind trainers",
@@ -290,7 +299,8 @@
       "keep": "Boeking behouden",
       "paidWarning": "Deze les is al betaald. Annuleren geeft niet automatisch je geld terug — neem contact op met je trainer om een eventuele terugbetaling af te stemmen."
     },
-    "cancelErrorRetry": "Probeer het later opnieuw of neem contact op met je trainer."
+    "cancelErrorRetry": "Probeer het later opnieuw of neem contact op met je trainer.",
+    "addToCalendar": "Toevoegen aan agenda"
   },
   "bookingSuccess": {
     "verifying": "Betaling verifiëren",
@@ -349,13 +359,16 @@
     "notificationsEnabledDescription": "Je ontvangt e-mails wanneer deze trainer beschikbaarheid toevoegt",
     "notificationsDisabledDescription": "Je ontvangt geen meldingen over beschikbaarheid",
     "unfollowConfirm": "{{name}} ontvolgen?",
-    "unfollowed": "Ontvolgd",
+    "unfollowed": "Trainer ontvolgd",
     "unfollowedDescription": "Je volgt {{name}} niet meer",
     "thisTrainer": "deze trainer",
     "unfollow": "Ontvolgen",
     "unfollowConfirmTitle": "Trainer ontvolgen?",
     "genericError": "Er ging iets mis. Probeer het opnieuw.",
-    "updateError": "Kon je volgstatus niet bijwerken. Probeer het opnieuw."
+    "updateError": "Kon je volgstatus niet bijwerken. Probeer het opnieuw.",
+    "followingTrainer": "Je volgt deze trainer!",
+    "signInRequired": "Inloggen vereist",
+    "signInToFollow": "Log in als speler om trainers te volgen"
   },
   "attendance": {
     "title": "Aanwezigheid",

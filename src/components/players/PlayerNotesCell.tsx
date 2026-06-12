@@ -90,20 +90,20 @@ export function PlayerNotesCell({ academyId, trainerId, playerKey, notes, onChan
           {preview ? (
             <span className="min-w-0 truncate">{preview}</span>
           ) : (
-            <span className="shrink-0">{t('players.notes.add', 'Add note')}</span>
+            <span className="shrink-0">{t('players.notesAdd', 'Add note')}</span>
           )}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-3 space-y-2" align="start" onClick={(e) => e.stopPropagation()}>
         <Label className="text-xs flex items-center justify-between">
-          {t('players.notes.label', 'Internal notes')}
+          {t('players.notesLabel', 'Internal notes')}
           {busy && <Loader2 className="h-3 w-3 animate-spin" />}
         </Label>
         <Textarea
           value={localNotes}
           onChange={(e) => setLocalNotes(e.target.value)}
           rows={5}
-          placeholder={t('players.notes.placeholder', 'Internal notes about this player...')}
+          placeholder={t('players.notesPlaceholder', 'Internal notes about this player...')}
           className="text-sm"
         />
         <div className="flex justify-end">

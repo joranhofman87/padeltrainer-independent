@@ -87,12 +87,30 @@ export default function TrainerCycles() {
             icon: PartyPopper,
           },
           {
-            label: t('bulkCopy.cta', 'Volgende ronde opzetten'),
+            label: t('bulkCopy.cta', 'Set up next round'),
             onClick: () => navigate('/app/trainer/cycles/bulk-copy'),
             icon: Copy,
           },
         ]}
       />
+
+      <div className="space-y-1 text-xs text-muted-foreground">
+        <p>
+          <span className="font-medium text-foreground">{t('createRegistration', 'Create Registration')}</span>
+          {' — '}
+          {t('actionExplainers.registration', 'An open form to collect player sign-ups for a training cycle.')}
+        </p>
+        <p>
+          <span className="font-medium text-foreground">{t('createEvent', 'Create Event')}</span>
+          {' — '}
+          {t('actionExplainers.event', 'A one-off activity, such as a tournament or clinic.')}
+        </p>
+        <p>
+          <span className="font-medium text-foreground">{t('bulkCopy.cta', 'Set up next round')}</span>
+          {' — '}
+          {t('bulkCopy.subtitle', "Reuse a previous cycle's trainings and let your current players keep their spot first.")}
+        </p>
+      </div>
 
       {cycles.length === 0 ? (
         <div className="rounded-lg border border-border/80 bg-card shadow-sm">

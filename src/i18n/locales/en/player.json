@@ -11,7 +11,12 @@
     "playground": "Playground",
     "profile": "My Profile",
     "invoices": "Invoices",
-    "logoutError": "Failed to log out. Please try again."
+    "logoutError": "Failed to log out. Please try again.",
+    "closeMenu": "Close menu",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "openMenu": "Open menu",
+    "primary": "Player navigation"
   },
   "invoices": {
     "title": "Invoices",
@@ -26,7 +31,9 @@
     "dangerZone": "Danger Zone",
     "emailChangeVerification": "A verification email will be sent to your new address.",
     "emailChangeSent": "Verification email sent",
-    "emailChangeDescription": "Please check your new email address to confirm the change."
+    "emailChangeDescription": "Please check your new email address to confirm the change.",
+    "language": "Language",
+    "languageDescription": "Choose your preferred language for the app"
   },
   "badge": "Player",
   "birthDate": "Date of birth",
@@ -152,7 +159,9 @@
       "confirmed": "Confirmed",
       "pendingPayment": "Pending Payment",
       "awaitingApproval": "Awaiting Approval"
-    }
+    },
+    "viewLocation": "View location",
+    "viewTrainer": "View trainer"
   },
   "trainers": {
     "title": "Find Trainers",
@@ -290,7 +299,8 @@
       "keep": "Keep booking",
       "paidWarning": "This lesson has already been paid. Cancelling does not automatically refund you — contact your trainer to arrange a possible refund."
     },
-    "cancelErrorRetry": "Please try again later or contact your trainer."
+    "cancelErrorRetry": "Please try again later or contact your trainer.",
+    "addToCalendar": "Add to Calendar"
   },
   "bookingSuccess": {
     "verifying": "Verifying Payment",
@@ -349,13 +359,16 @@
     "notificationsEnabledDescription": "You'll receive emails when this trainer adds availability",
     "notificationsDisabledDescription": "You won't receive availability notifications",
     "unfollowConfirm": "Unfollow {{name}}?",
-    "unfollowed": "Unfollowed",
+    "unfollowed": "Unfollowed trainer",
     "unfollowedDescription": "You unfollowed {{name}}",
     "thisTrainer": "this trainer",
     "unfollow": "Unfollow",
     "unfollowConfirmTitle": "Unfollow trainer?",
     "genericError": "Something went wrong. Please try again.",
-    "updateError": "Could not update your follow status. Please try again."
+    "updateError": "Could not update your follow status. Please try again.",
+    "followingTrainer": "Following trainer!",
+    "signInRequired": "Sign in required",
+    "signInToFollow": "Please sign in as a player to follow trainers"
   },
   "attendance": {
     "title": "Attendance",

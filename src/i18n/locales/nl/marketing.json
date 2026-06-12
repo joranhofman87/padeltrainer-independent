@@ -7,7 +7,9 @@
     "signIn": "Inloggen",
     "getStarted": "Aan de slag",
     "language": "Taal",
-    "playground": "Speeltuin"
+    "playground": "Speeltuin",
+    "rules": "Padelregels",
+    "strokes": "Slagen"
   },
   "footer": {
     "tagline": "Alles wat je nodig hebt om je padelspel te verbeteren.",
@@ -25,7 +27,10 @@
     "legal": "Juridisch",
     "privacyPolicy": "Privacybeleid",
     "termsOfService": "Algemene voorwaarden",
-    "copyright": "© {{year}} PadelTrainer.ai. alle rechten voorbehouden."
+    "copyright": "© {{year}} PadelTrainer.ai. alle rechten voorbehouden.",
+    "brand": "Merk",
+    "coaches": "Coaches",
+    "videoTips": "Videotips"
   },
   "home": {
     "badge": "Van beginner tot pro",
@@ -122,7 +127,8 @@
   "pricing": {
     "hero": {
       "title": "Eenvoudige, transparante prijzen",
-      "subtitle": "Gratis voor spelers. flexibele abonnementen voor trainers om hun bedrijf te laten groeien."
+      "subtitle": "Gratis voor spelers. flexibele abonnementen voor trainers om hun bedrijf te laten groeien.",
+      "eyebrow": "Prijzen"
     },
     "players": {
       "badge": "Voor spelers",
@@ -282,14 +288,16 @@
           "q": "Hoe werkt de gratis proefperiode voor clubs?",
           "a": "Clubs krijgen 14 dagen gratis toegang tot alle functies. geen creditcard nodig om te starten. na de proefperiode wordt je jaarlijks gefactureerd voor €2.388/jaar."
         }
-      }
+      },
+      "eyebrow": "Vragen"
     }
   },
   "about": {
     "hero": {
       "title": "Padeltraining",
       "titleHighlight": "toegankelijk voor iedereen",
-      "subtitle": "Onze missie is om elke padelspeler in Nederland te verbinden met de perfecte trainer om hun spel te verbeteren."
+      "subtitle": "Onze missie is om elke padelspeler in Nederland te verbinden met de perfecte trainer om hun spel te verbeteren.",
+      "eyebrow": "Over ons"
     },
     "story": {
       "title": "Ons verhaal",
@@ -315,7 +323,8 @@
       "simplicity": {
         "title": "Eenvoud",
         "description": "Een les boeken zou zo makkelijk moeten zijn als het sturen van een bericht."
-      }
+      },
+      "eyebrow": "Waar we voor staan"
     },
     "stats": {
       "founded": "Opgericht",
@@ -355,7 +364,10 @@
     "backToBlog": "Terug naar Blog",
     "readyToFind": "Klaar om je perfecte trainer te vinden?",
     "browseTrainers": "Bekijk geverifieerde trainers die passen bij jouw niveau.",
-    "findTrainers": "Vind trainers"
+    "findTrainers": "Vind trainers",
+    "eyebrow": "Verhalen & inzichten",
+    "readGuide": "Gids lezen",
+    "relatedGuides": "Gerelateerde gidsen"
   },
   "privacy": {
     "title": "Privacybeleid",
@@ -652,7 +664,10 @@
     "cta": {
       "startTrial": "Start je gratis proefperiode",
       "watchDemo": "Bekijk hoe het werkt",
-      "trustMicrocopy": "Geen creditcard nodig. In 10 minuten opgezet."
+      "trustMicrocopy": "Geen creditcard nodig. In 10 minuten opgezet.",
+      "trust_gdpr": "AVG-proof",
+      "trust_nocard": "Geen creditcard nodig",
+      "trust_setup": "In 10 minuten opgezet"
     },
     "socialProof": {
       "headline": "Vertrouwd door padelcoaches en academies in heel Europa.",
@@ -668,7 +683,8 @@
       "metric_slots_label": "gevuld na annuleringen",
       "metric_noshows_value": "50%",
       "metric_noshows_label": "minder no-shows",
-      "disclaimer": "Gebaseerd op trainers die PadelTrainer.ai gebruiken. Resultaten variëren."
+      "disclaimer": "Gebaseerd op trainers die PadelTrainer.ai gebruiken. Resultaten variëren.",
+      "marquee": "Vertrouwd door padelcoaches en academy's in heel Europa"
     },
     "chaos": {
       "headline": "De meeste padeltrainers runnen hun bedrijf in chaos",
@@ -697,7 +713,8 @@
       "value_noshows_title": "Betaald vóór de les begint",
       "value_noshows_desc": "Online betalingen via iDEAL en kaart. Spelers die vooraf betalen komen ook echt opdagen. Geen Tikkies meer najagen.",
       "value_player_title": "Een boekingspagina die spelers ook echt gebruiken",
-      "value_player_desc": "Simpel, snel, mobile-first. Spelers zien je beschikbaarheid en boeken in seconden. Zet de link in je WhatsApp-bio, Instagram, of stuur hem direct."
+      "value_player_desc": "Simpel, snel, mobile-first. Spelers zien je beschikbaarheid en boeken in seconden. Zet de link in je WhatsApp-bio, Instagram, of stuur hem direct.",
+      "eyebrow": "Het padelgerichte voordeel"
     },
     "whyPadelTrainer": {
       "headline": "Waarom Padel trainer wint voor padeltrainers",
@@ -798,7 +815,9 @@
       "club_b1": "Leden boeken direct via je clubpagina.",
       "club_b2": "Minder admin voor je balie.",
       "club_b3": "Trainers beheren hun eigen beschikbaarheid.",
-      "club_b4": "Betalingen netjes afgehandeld."
+      "club_b4": "Betalingen netjes afgehandeld.",
+      "eyebrow": "Gemaakt voor jouw rol",
+      "popular": "Meest gekozen"
     },
     "criticalEvents": {
       "headline": "Wanneer trainers overstappen naar Padel trainer",
@@ -821,7 +840,8 @@
       "trainers_desc": "Boekingen, betalingen, agenda sync en je eigen profielpagina. Alles wat je nodig hebt.",
       "no_cc": "Geen creditcard nodig. Probeer het gratis, upgrade vanaf €9/maand wanneer je klaar bent.",
       "trainers_microcopy": "",
-      "seeAllPlans": "Bekijk alle plannen →"
+      "seeAllPlans": "Bekijk alle plannen →",
+      "eyebrow": "Eenvoudige prijzen"
     },
     "faq": {
       "headline": "Heb je vragen?",
@@ -842,11 +862,13 @@
       "europe_q": "Is dit alleen voor Nederland?",
       "europe_a": "Nee. We hebben trainers door heel Europa. Het platform werkt in meerdere talen.",
       "gdpr_q": "Is het aVG-compliant?",
-      "gdpr_a": "Ja."
+      "gdpr_a": "Ja.",
+      "eyebrow": "Vragen"
     },
     "finalCta": {
       "headline": "Klaar om te stoppen met admin tussen je lessen?",
-      "body": "Opzetten duurt 10 minuten. Je eerste boeking kan vandaag nog binnenkomen."
+      "body": "Opzetten duurt 10 minuten. Je eerste boeking kan vandaag nog binnenkomen.",
+      "eyebrow": "Klaar wanneer jij dat bent"
     },
     "playerBanner": {
       "headline": "Wil je padel spelen?",
@@ -857,7 +879,8 @@
       "rulesDesc": "Leer de officiële regels",
       "videoTips": "Videotips",
       "videoTipsDesc": "Bekijk & verbeter",
-      "blogDesc": "Tips, gidsen & nieuws"
+      "blogDesc": "Tips, gidsen & nieuws",
+      "eyebrow": "Voor spelers"
     },
     "dualCta": {
       "headline": "Klaar om te stoppen met admin tussen je lessen?",
@@ -873,7 +896,8 @@
       "cancellation_story": "Een speler annuleert 2 uur voor de les. De plek blijft leeg. Je verliest het inkomen, en drie andere spelers die die plek graag hadden gewild wisten niet eens dat hij beschikbaar was.",
       "cancellation_solution": "Met PadelTrainer.ai: volgers krijgen direct een melding. Lege plekken vullen zichzelf.",
       "payments_story": "Einde van de maand: wie heeft betaald, wie niet? Je scrollt door Tikkie-verzoeken, bankoverschrijvingen en \"ik betaal je volgende week\"-berichten. Je voelt je een boekhouder, geen coach.",
-      "payments_solution": "Met PadelTrainer.ai: spelers betalen vooraf bij het boeken. Automatisch. Klaar."
+      "payments_solution": "Met PadelTrainer.ai: spelers betalen vooraf bij het boeken. Automatisch. Klaar.",
+      "eyebrow": "De dagelijkse sleur"
     }
   },
   "cityPage": {
@@ -970,7 +994,8 @@
     "back": "← terug",
     "seo": {
       "title": "Padel racket finder | vind jouw perfecte racket",
-      "description": "Beantwoord 5 snelle vragen en wij adviseren het perfecte padelracket voor jouw niveau, speelstijl en budget."
+      "description": "Beantwoord 5 snelle vragen en wij adviseren het perfecte padelracket voor jouw niveau, speelstijl en budget.",
+      "breadcrumb": "Racketkiezer"
     },
     "q1": "Wat is je padel niveau?",
     "q2": "Hoe zou je je speelstijl omschrijven?",
@@ -1016,9 +1041,24 @@
       "checkPrice": "Bekijk prijs",
       "readReview": "Lees review",
       "retake": "Niet helemaal goed? opnieuw proberen",
-      "viewAll": "Bekijk volledige racket catalogus →"
+      "viewAll": "Bekijk volledige racket catalogus →",
+      "armFriendly": "Armvriendelijk"
     },
-    "share": "Deel je resultaat"
+    "share": "Deel je resultaat",
+    "badge": "Gratis · 60 seconden · Geen account nodig",
+    "browseAll": "Bekijk alle rackets →",
+    "howItWorks": {
+      "title": "Hoe het werkt"
+    },
+    "relatedResources": {
+      "blog": "Lees de nieuwste padel-blogartikelen",
+      "strokes": "Beheers padelslagen & technieken",
+      "title": "Gerelateerde bronnen",
+      "videoTips": "Bekijk videotips & tutorials"
+    },
+    "whyUse": {
+      "title": "Waarom onze racketkiezer gebruiken?"
+    }
   },
   "gear": {
     "listing": {
@@ -1106,7 +1146,8 @@
     "noTrainersMessage": "Er zijn nog geen trainers beschikbaar in {{city}}. Ben jij padeltrainer? Meld je aan en begin met coachen.",
     "becomeTrainer": "Word trainer",
     "moreAboutPadel": "Meer over padel",
-    "viewProfile": "Bekijk profiel"
+    "viewProfile": "Bekijk profiel",
+    "topRatedCourts": "Best beoordeelde padelbanen"
   },
   "rules": {
     "title": "Padelregels & reglementen",
@@ -1136,7 +1177,16 @@
       "a4": "Ja! De muren zijn in het spel bij padel. Nadat de bal op de grond is gestuiterd, kan hij de achter- of zijmuren raken en kun je hem nog steeds spelen.",
       "q5": "Hoe werkt de scoring bij padel?",
       "a5": "Padel gebruikt hetzelfde scoresysteem als tennis: 15, 30, 40, game. Wedstrijden zijn meestal best of 3 sets, met elke set tot 6 games. Bij 6-6 wordt een tiebreak gespeeld."
-    }
+    },
+    "backToRules": "Terug naar regels",
+    "breadcrumbRules": "Padelregels",
+    "commonMistakes": "Veelgemaakte fouten",
+    "eyebrow": "Officiële regels",
+    "notFound": "Regel niet gevonden",
+    "notFoundDescription": "Deze regelpagina kon niet worden gevonden.",
+    "quickAnswer": "Snel antwoord",
+    "relatedRules": "Gerelateerde regels",
+    "rule": "Regel"
   },
   "strokes": {
     "title": "Padelstrokes & technieken",
@@ -1155,7 +1205,9 @@
     "viewFlat": "Platte weergave",
     "viewGrouped": "Groeperen op categorie",
     "noResults": "Geen slagen gevonden",
-    "noResultsDescription": "Probeer een ander filter of kom later terug."
+    "noResultsDescription": "Probeer een ander filter of kom later terug.",
+    "backToStrokes": "Terug naar slagen",
+    "eyebrow": "Techniekbibliotheek"
   },
   "videoTips": {
     "title": "Padel videotips & tutorials",
@@ -1232,7 +1284,26 @@
     "bannerText": "Founding 100 Trainers. ontvang een GRATIS premium racket t.w.v. €275+"
   },
   "megamenu": {
-    "playgroundDesc": "Quizzen, tools & fun"
+    "playgroundDesc": "Quizzen, tools & fun",
+    "academiesDesc": "Sluit je aan bij een academy",
+    "blogDesc": "Nieuws & inzichten",
+    "coachesDesc": "Coachinggidsen van experts",
+    "content": "Content",
+    "findAndPlay": "Vinden & spelen",
+    "forAcademies": "Voor academy's",
+    "forTrainers": "Voor trainers",
+    "forTrainersNav": "Voor trainers",
+    "locationsDesc": "Ontdek padelclubs",
+    "manageTeams": "Teams beheren",
+    "partnerDesc": "Samen groeien",
+    "platformDesc": "Hoe PadelTrainer.ai werkt",
+    "platformOverview": "Platformoverzicht",
+    "pricingDesc": "Abonnementen & prijzen",
+    "rulesDesc": "Officiële regels uitgelegd",
+    "strokesDesc": "Beheers elke techniek",
+    "teamsDesc": "Organiseer je trainers",
+    "trainersDesc": "Boek een sessie bij jou in de buurt",
+    "videoDesc": "Kijk & leer"
   },
   "playground": {
     "title": "Padel Speeltuin",
@@ -1261,7 +1332,8 @@
     "challengeMode": {
       "title": "Challenge Mode",
       "desc": "Willekeurige handicaps en trainingsuitdagingen voor oefening of wedstrijden."
-    }
+    },
+    "eyebrow": "Interactieve tools"
   },
   "rateMyCourtPage": {
     "seo": {
@@ -1317,7 +1389,8 @@
     "thankYou": "Bedankt voor je beoordeling!",
     "pendingApproval": "Je beoordeling wordt gecontroleerd en is binnenkort zichtbaar.",
     "rateAnother": "Nog een club beoordelen",
-    "viewClub": "Bekijk clubpagina"
+    "viewClub": "Bekijk clubpagina",
+    "selectClub": "Selecteer {{name}}"
   },
   "redFlagQuiz": {
     "seo": {
@@ -1519,7 +1592,10 @@
         ],
         "greenFlag": "Je bent de meest vermakelijke persoon in de club. pure vreugde"
       }
-    }
+    },
+    "downloadImage": "Afbeelding downloaden",
+    "downloadSuccess": "Afbeelding gedownload!",
+    "shareImage": "Delen"
   },
   "communityRatings": {
     "title": "Community beoordelingen",
@@ -1570,6 +1646,74 @@
       "submit": "Verstuur",
       "success": "Bedankt! Als we je uitdaging toevoegen, zie je het in de generator.",
       "error": "Er ging iets mis. Probeer het opnieuw."
-    }
+    },
+    "howTo": {
+      "g1": "Kies de \"Game\"-modus",
+      "g2": "Kies je moeilijkheidsgraad",
+      "g3": "Tik op \"Next Challenge\" voor een wedstrijdmodifier",
+      "g4": "Beide teams spelen met dezelfde beperking",
+      "g5": "Speel een volledige set en draai daarna opnieuw",
+      "p1": "Kies de \"Practice\"-modus",
+      "p2": "Kies je moeilijkheidsgraad",
+      "p3": "Tik op \"Next Challenge\" voor een willekeurige beperking",
+      "p4": "Speel gedurende de aanbevolen tijd (meestal 10-15 minuten)",
+      "p5": "Draai opnieuw voor de volgende oefening",
+      "r1": "Beide teams spelen altijd met dezelfde beperking",
+      "r2": "Vergeet je de beperking midden in een punt, dan telt het punt gewoon, maar mag je partner je ermee plagen",
+      "r3": "Chaosmodus is optioneel. Vriendschappen kunnen op de proef worden gesteld."
+    },
+    "selectGame": "Spel",
+    "selectPractice": "Oefening"
+  },
+  "learn": {
+    "allArticles": "Alle artikelen",
+    "backToHub": "Terug naar",
+    "backToLearn": "Terug naar Leren",
+    "clearFilter": "Wissen",
+    "eyebrow": "Leer padel",
+    "featuredTrainers": "Uitgelichte creators",
+    "filterAll": "Alle",
+    "filteringByTopic": "Gefilterd op onderwerp:",
+    "guides": "Gidsen",
+    "inThisGuide": "In deze gids",
+    "noArticles": "Nog geen artikelen beschikbaar.",
+    "notFound": "Artikel niet gevonden",
+    "notFoundDesc": "Dit artikel kon niet worden gevonden.",
+    "quickAnswer": "Kort antwoord",
+    "relatedGuides": "Gerelateerde gidsen",
+    "relatedRules": "Gerelateerde regels",
+    "relatedStrokes": "Gerelateerde slagen",
+    "relatedVideos": "Videotips",
+    "seoDescription": "Gidsen, tactieken, oefeningen en alles wat je nodig hebt om beter te worden in padel. Van beginner tot gevorderd.",
+    "seoTitle": "Leer padel - Gidsen, tactieken & oefeningen",
+    "subtitle": "Gidsen, tactieken, oefeningen en alles wat je nodig hebt om beter te worden in padel.",
+    "title": "Leer padel",
+    "updated": "Bijgewerkt"
+  },
+  "seoFaq": {
+    "heading": "Veelgestelde vragen"
+  },
+  "topics": {
+    "backToParent": "Terug naar",
+    "backToTopics": "Terug naar onderwerpen",
+    "ctaDescription": "Vind een gecertificeerde padeltrainer die je helpt beter te worden.",
+    "ctaLabel": "Werk aan",
+    "ctaWithTrainer": "met een trainer",
+    "eyebrow": "Onderwerphubs",
+    "featuredRules": "Gerelateerde regels",
+    "featuredStrokes": "Gerelateerde slagen",
+    "featuredTrainers": "Uitgelichte creators",
+    "featuredVideos": "Videotips",
+    "hubIntro": "Elke onderwerppagina bundelt onze beste artikelen, oefeningen, videotips en deskundige trainers, zodat je je in elk onderdeel van padel kunt verdiepen.",
+    "moreArticles": "Meer artikelen",
+    "noTopics": "Nog geen onderwerpen beschikbaar.",
+    "notFound": "Onderwerp niet gevonden",
+    "notFoundDesc": "Deze onderwerppagina kon niet worden gevonden.",
+    "relatedTopics": "Gerelateerde onderwerpen",
+    "seoDescription": "Blader door padelonderwerpen zoals service, volley, tactiek, oefeningen en meer.",
+    "seoTitle": "Padelonderwerpen - Ontdek alle onderwerpen",
+    "startHere": "Begin hier",
+    "subtitle": "Verken padelonderwerpen en vind gidsen, regels, slagen, videotips en meer.",
+    "title": "Onderwerpen"
   }
 }

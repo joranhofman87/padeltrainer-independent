@@ -55,7 +55,8 @@
     "descriptionPlaceholder": "Ik ben de eigenaar/beheerder van deze club...",
     "descriptionHelp": "Dit helpt ons je claim sneller te verifiëren",
     "contactPhone": "Contact telefoon",
-    "emailPlaceholder": "club@voorbeeld.nl"
+    "emailPlaceholder": "club@voorbeeld.nl",
+    "sessionExpired": "Je sessie is verlopen. Vernieuw de pagina en probeer het opnieuw."
   },
   "onboarding": {
     "title": "Vind je club",
@@ -64,7 +65,10 @@
     "searchPlaceholder": "Zoek naar je club...",
     "noClubFound": "Geen club gevonden",
     "alreadyClaimed": "Deze club is al geclaimd. neem contact op met support als je denkt dat dit een fout is.",
-    "hint": "Kun je je club niet vinden? neem contact met ons op en we voegen hem toe."
+    "hint": "Kun je je club niet vinden? neem contact met ons op en we voegen hem toe.",
+    "andWeWillAddIt": "en we voegen hem toe.",
+    "cantFindClub": "Kun je je club niet vinden?",
+    "contactUs": "Neem contact met ons op"
   },
   "trainers": {
     "title": "Clubtrainers",
@@ -98,7 +102,9 @@
     "specializations": "Specialisaties",
     "coachingMethod": "Coachingmethode",
     "quote": "Favoriete citaat",
-    "videoUrl": "Video URL"
+    "videoUrl": "Video URL",
+    "preferredLevels": "Voorkeursniveaus van spelers",
+    "preferredLevelsDescription": "Welke niveaus traint deze trainer het liefst?"
   },
   "trainerInvitation": {
     "invite": "Trainer uitnodigen",
@@ -244,7 +250,8 @@
     "youtube": "YouTube",
     "youtubePlaceholder": "@jouwkanaal of volledige URL",
     "linkedin": "LinkedIn",
-    "linkedinPlaceholder": "company/jouwbedrijf of volledige URL"
+    "linkedinPlaceholder": "company/jouwbedrijf of volledige URL",
+    "websiteUrl": "Website-URL"
   },
   "managers": {
     "title": "Clubbeheerders",
@@ -268,7 +275,9 @@
     "welcomeMessageDescription": "Dit bericht wordt getoond aan spelers nadat ze op je wachtlijst komen.",
     "welcomeMessagePlaceholder": "bijv. Bedankt voor je aanmelding! Neem deel aan onze WhatsApp community: https://chat.whatsapp.com/...",
     "welcomeMessageSaved": "Welkomstbericht opgeslagen",
-    "welcomeMessageError": "Kon het welkomstbericht niet opslaan"
+    "welcomeMessageError": "Kon het welkomstbericht niet opslaan",
+    "language": "Taal",
+    "languageDescription": "Kies je voorkeurstaal voor de app"
   },
   "calendar": {
     "description": "Bekijk alle trainersroosters",
@@ -326,7 +335,12 @@
     "business": "Zakelijk",
     "club": "Club",
     "logout": "Uitloggen",
-    "logoutError": "Uitloggen mislukt. Probeer het opnieuw."
+    "logoutError": "Uitloggen mislukt. Probeer het opnieuw.",
+    "closeMenu": "Menu sluiten",
+    "collapseSidebar": "Zijbalk inklappen",
+    "expandSidebar": "Zijbalk uitklappen",
+    "openMenu": "Menu openen",
+    "referFriends": "Vrienden doorverwijzen"
   },
   "lessons": {
     "title": "Sessies",

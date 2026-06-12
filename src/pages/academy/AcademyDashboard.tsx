@@ -359,7 +359,18 @@ export default function AcademyDashboard() {
             onViewAll={() => navigate('/app/academy/players')}
           />
           {recentPlayers.length === 0 ? (
-            <EmptyState icon={Users} title={t('dashboard.noData', 'No data yet')} />
+            <EmptyState
+              icon={Users}
+              title={t('dashboard.noData', 'No data yet')}
+              description={t('dashboard.emptyPlayersHint', 'Players appear here once they join your academy.')}
+              action={
+                <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/players')}>
+                  {t('dashboard.emptyPlayersAction', 'Add your first player')}
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              }
+              className="py-6"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table className={compactDataTableClass}>
@@ -395,7 +406,18 @@ export default function AcademyDashboard() {
             onViewAll={() => navigate('/app/academy/calendar')}
           />
           {recentBookings.length === 0 ? (
-            <EmptyState icon={Receipt} title={t('dashboard.noData', 'No data yet')} />
+            <EmptyState
+              icon={Receipt}
+              title={t('dashboard.noData', 'No data yet')}
+              description={t('dashboard.emptyBookingsHint', 'Bookings appear once your trainers have open slots.')}
+              action={
+                <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/calendar')}>
+                  {t('dashboard.emptyBookingsAction', 'Open the calendar')}
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              }
+              className="py-6"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table className={compactDataTableClass}>
@@ -443,7 +465,18 @@ export default function AcademyDashboard() {
             onViewAll={() => navigate('/app/academy/intake-requests')}
           />
           {recentRegistrations.length === 0 ? (
-            <EmptyState icon={Users} title={t('dashboard.noData', 'No data yet')} />
+            <EmptyState
+              icon={Users}
+              title={t('dashboard.noData', 'No data yet')}
+              description={t('dashboard.emptyRegistrationsHint', 'Registrations appear once players sign up for a cycle.')}
+              action={
+                <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/cycles')}>
+                  {t('dashboard.emptyRegistrationsAction', 'Create a registration')}
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              }
+              className="py-6"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table className={compactDataTableClass}>
@@ -478,7 +511,18 @@ export default function AcademyDashboard() {
             onViewAll={() => navigate('/app/academy/calendar?tab=cycles')}
           />
           {upcomingSlots.length === 0 ? (
-            <EmptyState icon={Clock} title={t('dashboard.noData', 'No data yet')} />
+            <EmptyState
+              icon={Clock}
+              title={t('dashboard.noData', 'No data yet')}
+              description={t('dashboard.emptySpotsHint', 'Open spots appear once cycles with free places are planned.')}
+              action={
+                <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/calendar')}>
+                  {t('dashboard.emptySpotsAction', 'Plan open spots')}
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              }
+              className="py-6"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table className={compactDataTableClass}>

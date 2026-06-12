@@ -173,27 +173,35 @@ export default function AcademyTrainers() {
 
   return (
     <AppPage>
-      <PageHeader
-        title={t('trainers.title')}
-        description={t('trainers.description')}
-        actions={
-          activeAcademy && user && profile ? (
-          <div className="flex items-center gap-2">
-            <CreateAcademyTrainerDialog
-              academyProfileId={activeAcademy.id}
-              onTrainerCreated={fetchData}
-            />
-            <InviteAcademyTrainerDialog
-              academyProfileId={activeAcademy.id}
-              academyName={activeAcademy.name}
-              inviterId={user.id}
-              inviterName={profile.full_name || t('badge')}
-              onInviteSent={fetchData}
-            />
-          </div>
-          ) : undefined
-        }
-      />
+      <div>
+        <PageHeader
+          title={t('trainers.title')}
+          description={t('trainers.description')}
+          actions={
+            activeAcademy && user && profile ? (
+            <div className="flex items-center gap-2">
+              <CreateAcademyTrainerDialog
+                academyProfileId={activeAcademy.id}
+                onTrainerCreated={fetchData}
+              />
+              <InviteAcademyTrainerDialog
+                academyProfileId={activeAcademy.id}
+                academyName={activeAcademy.name}
+                inviterId={user.id}
+                inviterName={profile.full_name || t('badge')}
+                onInviteSent={fetchData}
+              />
+            </div>
+            ) : undefined
+          }
+        />
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t(
+            'trainers.createOrInviteHint',
+            'Create Trainer: you set up the account and share the login details yourself. Invite Trainer: the trainer receives an email and signs up on their own.'
+          )}
+        </p>
+      </div>
 
       {/* Add yourself as trainer banner */}
       {canAddSelf.canAdd && (
