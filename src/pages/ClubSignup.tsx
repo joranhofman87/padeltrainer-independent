@@ -20,6 +20,7 @@ import { TrainerSignupLayout } from '@/components/auth/TrainerSignupLayout';
 import { createSignupSchema } from '@/lib/signupSchema';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { trackEvent } from '@/lib/tracking';
 import { getUtmParams } from '@/lib/utm';
@@ -125,7 +126,7 @@ export default function ClubSignup() {
       if (error) {
         toast({
           title: t('signUp.error', 'Error'),
-          description: error.message,
+          description: getFriendlyErrorMessage(error, t('signIn.genericError', 'Something went wrong. Please try again.')),
           variant: 'destructive',
         });
       }

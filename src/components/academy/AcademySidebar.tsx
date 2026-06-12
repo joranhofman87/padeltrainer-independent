@@ -30,6 +30,7 @@ import {
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { signOut } from "@/lib/auth";
 import { getMarketingUrl } from "@/lib/domains";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
@@ -107,7 +108,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
     if (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("nav.logoutError", "Failed to log out. Please try again.")),
         variant: "destructive",
       });
     } else {

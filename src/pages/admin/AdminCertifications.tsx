@@ -60,6 +60,7 @@ import {
   Target,
 } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export default function AdminCertifications() {
   const navigate = useNavigate();
@@ -164,7 +165,7 @@ export default function AdminCertifications() {
       logger.error('Error saving certification', error as Error, { component: 'AdminCertifications', certId: editingCert?.id });
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save certification',
+        description: getFriendlyErrorMessage(error, 'Failed to save certification'),
         variant: 'destructive',
       });
     } finally {
@@ -214,7 +215,7 @@ export default function AdminCertifications() {
       logger.error('Error saving specialization', error as Error, { component: 'AdminCertifications', specId: editingSpec?.id });
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save specialization',
+        description: getFriendlyErrorMessage(error, 'Failed to save specialization'),
         variant: 'destructive',
       });
     } finally {

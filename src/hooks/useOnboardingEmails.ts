@@ -16,6 +16,7 @@ import {
 } from "@/lib/onboardingEmails";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 
 const TEMPLATES_KEY = ["onboarding-email-templates"];
 const QUEUE_KEY = ["onboarding-email-queue"];
@@ -39,7 +40,7 @@ export function useCreateTemplate() {
       toast.success(t("onboardingEmails.templateCreated"));
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t("onboardingEmails.genericError", "Something went wrong. Please try again.")));
     },
   });
 }
@@ -55,7 +56,7 @@ export function useUpdateTemplate() {
       toast.success(t("onboardingEmails.templateUpdated"));
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t("onboardingEmails.genericError", "Something went wrong. Please try again.")));
     },
   });
 }
@@ -71,7 +72,7 @@ export function useDeleteTemplate() {
       toast.success(t("onboardingEmails.templateDeleted"));
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t("onboardingEmails.genericError", "Something went wrong. Please try again.")));
     },
   });
 }
@@ -92,7 +93,7 @@ export function useToggleTemplateActive() {
       );
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t("onboardingEmails.genericError", "Something went wrong. Please try again.")));
     },
   });
 }
@@ -122,7 +123,7 @@ export function useCancelQueuedEmail() {
       toast.success(t("onboardingEmails.emailCancelled"));
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t("onboardingEmails.genericError", "Something went wrong. Please try again.")));
     },
   });
 }
@@ -137,11 +138,11 @@ export function useSendTestEmail() {
       if (result.success) {
         toast.success(t("onboardingEmails.testEmailSent"));
       } else {
-        toast.error(result.error || t("onboardingEmails.testEmailFailed"));
+        toast.error(getFriendlyErrorMessage(result.error, t("onboardingEmails.testEmailFailed")));
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t("onboardingEmails.testEmailFailed")));
     },
   });
 }

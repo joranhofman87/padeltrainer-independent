@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 interface RequestLocationDialogProps {
   academyProfileId?: string;
@@ -125,7 +126,7 @@ export function RequestLocationDialog({
       logger.error('Error submitting location request', error instanceof Error ? error : new Error(String(error)), { component: 'RequestLocationDialog' });
       toast({
         title: t('common.error'),
-        description: error.message || 'Failed to submit location request',
+        description: getFriendlyErrorMessage(error, 'Failed to submit location request'),
         variant: 'destructive',
       });
     } finally {

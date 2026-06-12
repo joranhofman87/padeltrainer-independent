@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
@@ -45,7 +46,7 @@ export default function ClubCycles() {
       logger.error('Error fetching cycles', error as Error, { component: 'ClubCycles', clubId: activeClub?.id });
       toast({
         title: t('common:error'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('genericError', 'Something went wrong. Please try again.')),
         variant: 'destructive',
       });
     } finally {

@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { Mail, ArrowLeft, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 interface VerificationPendingProps {
   email: string;
@@ -28,7 +29,7 @@ export function VerificationPending({ email, onBack }: VerificationPendingProps)
     if (error) {
       toast({
         title: t('verification.error', 'Error'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('verification.resendError', 'Could not resend the verification email. Please try again.')),
         variant: 'destructive',
       });
     } else {

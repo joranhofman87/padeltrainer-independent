@@ -20,6 +20,7 @@ import { createAcademy, getUserAcademyProfiles } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { COUNTRIES, type CountryCode } from '@/lib/countries';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export default function AcademyOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
@@ -142,7 +143,7 @@ export default function AcademyOnboarding() {
       logger.error('Academy creation error', error as Error, { component: 'AcademyOnboarding', academyName });
       toast({
         title: t('onboarding.error', 'Error'),
-        description: error.message || t('onboarding.errorDescription', 'Failed to create academy'),
+        description: getFriendlyErrorMessage(error, t('onboarding.errorDescription', 'Failed to create academy')),
         variant: 'destructive',
       });
     }

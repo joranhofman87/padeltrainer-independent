@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Copy, ChevronDown, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { getCycles, createCycle, type Cycle } from '@/lib/cycles';
 import { bulkCopySlotsToCycle, getBookingsBySlotIds, notifyPriorityClaimsForSlots } from '@/lib/priorityClaims';
@@ -58,9 +59,9 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
   useEffect(() => {
     getCycles(ownerType, ownerId)
       .then((c) => setCycles(c))
-      .catch((e) => toast.error(e.message))
+      .catch((e) => toast.error(getFriendlyErrorMessage(e, t('bulkCopy.errLoadCycles', 'Could not load your cycles. Please try again.'))))
       .finally(() => setLoadingCycles(false));
-  }, [ownerType, ownerId]);
+  }, [ownerType, ownerId, t]);
 
   useEffect(() => {
     if (!sourceCycleId) {
@@ -74,7 +75,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
         .eq('cyclus_id', sourceCycleId)
         .order('start_time');
       if (error) {
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('bulkCopy.errLoadSlots', 'Could not load the trainings for this cycle. Please try again.')));
         return;
       }
       setSourceSlots(data || []);
@@ -83,7 +84,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       map.forEach((arr, k) => counts.set(k, arr.length));
       setBookingCounts(counts);
     })();
-  }, [sourceCycleId]);
+  }, [sourceCycleId, t]);
 
   const sourceCycle = useMemo(
     () => cycles.find((c) => c.id === sourceCycleId) ?? null,
@@ -188,7 +189,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       toast.success(parts.join(' · '));
       navigate(backHref);
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(getFriendlyErrorMessage(e, t('bulkCopy.errSubmit', 'Could not copy the cycle. Please try again.')));
     } finally {
       setSubmitting(false);
     }

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { LogOut, ShieldAlert } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { AppShellSkeleton } from "@/components/AppShellSkeleton";
 import { PageContentSkeleton } from "@/components/AppShellSkeleton";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
@@ -40,6 +41,7 @@ function AdminMobileHeader() {
 
 export default function AdminLayout() {
   const navigate = useNavigate();
+  const { t } = useTranslation("admin");
   const { user, roles, loading: authLoading, profileReady } = useAuth();
   const authResolving = authLoading || (!!user && !profileReady);
   const isAdmin = roles.includes('admin');
@@ -56,7 +58,7 @@ export default function AdminLayout() {
     if (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("signOutError", "Could not sign out. Please try again.")),
         variant: "destructive",
       });
     } else {

@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { updateIntakeRequest, type IntakeRequestWithProposal, type TimeWindow } from '@/lib/cycles';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 
 interface EditIntakeRequestDialogProps {
@@ -135,8 +136,8 @@ export default function EditIntakeRequestDialog({
       toast.success(t('intakeRequests.edit.success', { defaultValue: 'Registratie bijgewerkt' }));
       onSuccess();
       onOpenChange(false);
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      toast.error(getFriendlyErrorMessage(error, t('intakeRequests.edit.error', { defaultValue: 'Bijwerken van de registratie is mislukt. Probeer het opnieuw.' })));
     } finally {
       setIsSubmitting(false);
     }

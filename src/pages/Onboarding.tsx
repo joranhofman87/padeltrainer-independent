@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { setUserRole, updateProfile, UserRole } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
@@ -205,7 +206,7 @@ export default function Onboarding() {
     } catch (error: any) {
       toast({
         title: t('onboarding.error', 'Error'),
-        description: error.message || 'Failed to complete setup',
+        description: getFriendlyErrorMessage(error, t('onboarding.errorDescription', 'Failed to complete setup')),
         variant: 'destructive',
       });
     }

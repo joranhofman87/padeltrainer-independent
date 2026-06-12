@@ -22,7 +22,8 @@
     "notes": "Anything else we should know?",
     "notesPlaceholder": "e.g., preferred trainer, specific goals, schedule constraints...",
     "submit": "Add to Waiting List",
-    "submitting": "Adding..."
+    "submitting": "Adding...",
+    "submitError": "Failed to join the waiting list. Please try again."
   },
   "messageFrom": "Message from {{name}}",
   "success": {
@@ -37,7 +38,8 @@
     "archived": "Archived",
     "remove": "Remove",
     "removeConfirm": "Are you sure you want to remove yourself from this waiting list?",
-    "joinedOn": "Joined"
+    "joinedOn": "Joined",
+    "deleteError": "Could not remove you from the waiting list. Please try again."
   },
   "management": {
     "title": "Waiting List",
@@ -50,6 +52,7 @@
       "active": "Active",
       "contacted": "Contacted",
       "archived": "Archived"
-    }
+    },
+    "updateError": "Could not update the entry. Please try again."
   }
 }

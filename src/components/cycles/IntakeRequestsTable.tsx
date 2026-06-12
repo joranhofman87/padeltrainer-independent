@@ -51,6 +51,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getLinkedIdsForRequest, getUnmatchedMentions, getDismissedUnmatched, dismissUnmatchedMention } from '@/lib/suggestLinks';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { toast } from 'sonner';
 
 interface TrainerOption {
@@ -209,7 +210,7 @@ export default function IntakeRequestsTable({
       toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
       onLinkChanged?.();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('intakeRequests.links.linkError', { defaultValue: 'Could not link the players. Please try again.' })));
     } finally {
       setLinkingId(null);
     }
@@ -483,7 +484,7 @@ export default function IntakeRequestsTable({
                   toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
                   onLinkChanged?.();
                 } catch (error: any) {
-                  toast.error(error.message);
+                  toast.error(getFriendlyErrorMessage(error, t('intakeRequests.links.linkError', { defaultValue: 'Could not link the players. Please try again.' })));
                 } finally {
                   setLinkingId(null);
                 }

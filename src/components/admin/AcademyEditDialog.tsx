@@ -61,6 +61,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { useToast } from "@/hooks/use-toast";
 import { searchLocations, type Location } from "@/lib/locations";
 import { MollieDisconnectSection } from "./MollieDisconnectSection";
@@ -725,7 +726,7 @@ export function AcademyEditDialog({
       toast({ title: "Banner uploaded", description: "Banner image uploaded successfully." });
     } catch (error: any) {
       logger.error("Error uploading banner", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
-      toast({ title: "Error", description: error.message || "Failed to upload banner.", variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, "Failed to upload banner."), variant: "destructive" });
     } finally {
       setBannerUploading(false);
     }
@@ -765,7 +766,7 @@ export function AcademyEditDialog({
       toast({ title: "Logo uploaded", description: "Logo image uploaded successfully." });
     } catch (error: any) {
       logger.error("Error uploading logo", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
-      toast({ title: "Error", description: error.message || "Failed to upload logo.", variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, "Failed to upload logo."), variant: "destructive" });
     } finally {
       setLogoUploading(false);
     }

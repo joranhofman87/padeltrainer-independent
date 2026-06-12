@@ -4,6 +4,7 @@ import { format, addDays, differenceInMinutes } from "date-fns";
 import { Loader2, Calendar, Clock, Repeat, Percent, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { logger } from '@/lib/logger';
 import {
   Dialog,
@@ -249,7 +250,7 @@ export function QuickBookDialog({
       logger.error("Error creating booking", error as Error, { component: 'QuickBookDialog' });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("bookings.createBookingError", "Failed to create the booking. Please try again.")),
         variant: "destructive",
       });
     } finally {

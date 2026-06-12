@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { signUpWithEmail, signInWithGoogle, isTrainerOnboardingComplete } from '@/lib/auth';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { showSignupErrorToast } from '@/lib/signupToast';
 import type { SignupFailure } from '@/lib/signupErrors';
 import { useAuth } from '@/hooks/useAuth';
@@ -172,7 +173,7 @@ export default function TrainerSignup() {
       if (error) {
         toast({
           title: t('signUp.error', 'Error'),
-          description: error.message,
+          description: getFriendlyErrorMessage(error, t('signUp.googleError', 'Failed to sign up with Google. Please try again.')),
           variant: 'destructive',
         });
       }

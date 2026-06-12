@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { StickyNote, Loader2 } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 interface PlayerNotesCellProps {
   /** Owner: pass either academyId OR trainerId (one required). */
@@ -67,7 +68,7 @@ export function PlayerNotesCell({ academyId, trainerId, playerKey, notes, onChan
       onChanged();
     } catch (err: any) {
       logger.error('Error saving notes', err);
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: 'Error', description: getFriendlyErrorMessage(err, t('players.notesSaveError', 'Failed to save the note. Please try again.')), variant: 'destructive' });
     } finally {
       setBusy(false);
     }

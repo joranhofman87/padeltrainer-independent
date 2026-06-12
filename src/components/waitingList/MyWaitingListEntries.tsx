@@ -24,6 +24,7 @@ import {
   deleteWaitingListEntry,
   WaitingListEntry,
 } from '@/lib/waitingList';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export default function MyWaitingListEntries() {
   const { t } = useTranslation('waitingList');
@@ -57,7 +58,7 @@ export default function MyWaitingListEntries() {
     if (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('myEntries.deleteError', 'Could not remove you from the waiting list. Please try again.')),
         variant: 'destructive',
       });
       return;

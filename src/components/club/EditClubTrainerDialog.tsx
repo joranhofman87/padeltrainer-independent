@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
 import { CertificationsPicker } from '@/components/trainer/CertificationsPicker';
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
@@ -226,7 +227,7 @@ export function EditClubTrainerDialog({
       logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditClubTrainerDialog' });
       toast({
         title: t('createTrainer.error'),
-        description: error.message || 'Failed to upload avatar',
+        description: getFriendlyErrorMessage(error, 'Failed to upload avatar'),
         variant: 'destructive',
       });
     } finally {
@@ -290,7 +291,7 @@ export function EditClubTrainerDialog({
       logger.error('Error updating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'EditClubTrainerDialog' });
       toast({
         title: t('createTrainer.error'),
-        description: error.message || 'Failed to update trainer profile',
+        description: getFriendlyErrorMessage(error, 'Failed to update trainer profile'),
         variant: 'destructive',
       });
     } finally {

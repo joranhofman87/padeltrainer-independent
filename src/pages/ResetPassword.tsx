@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { updatePassword } from '@/lib/auth';
 import { useTranslation } from 'react-i18next';
 import { KeyRound, CheckCircle } from 'lucide-react';
@@ -72,7 +73,7 @@ export default function ResetPassword() {
       logger.error('Password update failed', error, { component: 'ResetPassword' });
       toast({
         title: t('signIn.error', 'Error'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('resetPassword.genericError', 'Could not update your password. Please try again.')),
         variant: 'destructive',
       });
       setIsLoading(false);

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Plus, Play, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 const LOCALES = ['en', 'nl', 'es', 'de', 'fr'];
 
@@ -56,7 +57,7 @@ export default function AdminBlogTopics() {
       queryClient.invalidateQueries({ queryKey: ['admin-topics'] });
       toast.success('Article generation started');
     },
-    onError: (err: any) => toast.error(err.message || 'Generation failed'),
+    onError: (err: unknown) => toast.error(getFriendlyErrorMessage(err, 'Generation failed')),
   });
 
   const statusColor = (s: string) => s === 'done' ? 'default' : s === 'in_progress' ? 'secondary' : s === 'failed' ? 'destructive' : 'outline';

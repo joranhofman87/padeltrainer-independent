@@ -24,6 +24,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
 import { CertificationsPicker } from '@/components/trainer/CertificationsPicker';
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
@@ -223,7 +224,7 @@ export default function AcademyTrainerDetail() {
       toast({ title: 'Avatar updated', description: "The trainer's profile picture has been updated." });
     } catch (error: any) {
       logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainerDetail' });
-      toast({ title: t('common.error'), description: error.message || 'Failed to upload avatar', variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, 'Failed to upload avatar'), variant: 'destructive' });
     } finally {
       setUploadingAvatar(false);
     }
@@ -311,7 +312,7 @@ export default function AcademyTrainerDetail() {
       navigate('/app/academy/trainers');
     } catch (error: any) {
       logger.error('Error updating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainerDetail' });
-      toast({ title: t('common.error'), description: error.message || 'Failed to update trainer profile', variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, 'Failed to update trainer profile'), variant: 'destructive' });
     } finally {
       setSaving(false);
     }

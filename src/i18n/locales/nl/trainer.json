@@ -89,7 +89,8 @@
     "morning": "Ochtend",
     "afternoon": "Middag",
     "evening": "Avond",
-    "clearFilters": "Filters wissen"
+    "clearFilters": "Filters wissen",
+    "genericError": "Er ging iets mis. Probeer het opnieuw."
   },
   "attendance": {
     "title": "Aanwezigheid",
@@ -387,7 +388,9 @@
     "deleteBookingError": "Kon de speler niet verwijderen. Probeer het opnieuw.",
     "deletePaidInvoiceWarning": "Deze boeking staat op betaalde factuur {{number}}. De speler verwijderen verandert niets aan het al betaalde bedrag — regel een eventuele vergoeding apart met de speler.",
     "deleteUnpaidInvoiceWarning": "Factuur {{number}} wordt na verwijdering automatisch herberekend.",
-    "invoiceSyncFailed": "De speler is verwijderd, maar een gekoppelde factuur kon niet worden bijgewerkt. Controleer de factuur."
+    "invoiceSyncFailed": "De speler is verwijderd, maar een gekoppelde factuur kon niet worden bijgewerkt. Controleer de factuur.",
+    "createBookingError": "Kon de boeking niet aanmaken. Probeer het opnieuw.",
+    "updateBookingError": "Kon de boeking niet bijwerken. Probeer het opnieuw."
   },
   "players": {
     "title": "Mijn spelers",
@@ -514,7 +517,8 @@
       "removedFromAcademyTitle": "Verwijderd uit academie",
       "removedFromAcademyDesc": "Deze speler is op {{date}} uit je academie verwijderd.",
       "removedFromAcademySuccess": "Speler verwijderd uit academie",
-      "removedFromAcademySuccessDesc": "Historische boekingen en facturen zijn ongewijzigd."
+      "removedFromAcademySuccessDesc": "Historische boekingen en facturen zijn ongewijzigd.",
+      "loadError": "Kon spelersgegevens niet laden. Probeer het opnieuw."
     },
     "import": {
       "button": "CSV importeren",
@@ -590,8 +594,13 @@
     "tags": {
       "deleteConfirmTitle": "Tag verwijderen?",
       "deleteConfirmDescription": "Dit verwijdert \"{{name}}\" permanent en haalt de tag bij alle spelers weg. Dit kan niet ongedaan worden gemaakt.",
-      "deleteConfirmAction": "Tag verwijderen"
-    }
+      "deleteConfirmAction": "Tag verwijderen",
+      "createError": "Kon de tag niet aanmaken. Probeer het opnieuw.",
+      "deleteError": "Kon de tag niet verwijderen. Probeer het opnieuw."
+    },
+    "createError": "Kon de speler niet toevoegen. Probeer het opnieuw.",
+    "notesSaveError": "Kon de notitie niet opslaan. Probeer het opnieuw.",
+    "updateError": "Kon de speler niet bijwerken"
   },
   "earnings": {
     "title": "Inkomsten",
@@ -862,7 +871,14 @@
     "notifyPlayers": "Getroffen spelers per e-mail informeren",
     "workingAs": "Werkend als",
     "independent": "Zelfstandig",
-    "changeInSettings": "Wijzigen in instellingen"
+    "changeInSettings": "Wijzigen in instellingen",
+    "deleteSlotError": "Kon het tijdslot niet verwijderen. Probeer het opnieuw.",
+    "guestPlayersLoadError": "Kon spelers niet laden",
+    "guestPlayersLoadErrorDescription": "Probeer het opnieuw.",
+    "slotCreateError": "Kon het tijdslot niet aanmaken. Probeer het opnieuw.",
+    "slotDeleteError": "Het verwijderen is niet gelukt. Probeer het opnieuw.",
+    "slotUpdateError": "De wijzigingen konden niet worden opgeslagen. Probeer het opnieuw.",
+    "slotsGenerateError": "Kon de tijdsloten niet aanmaken. Probeer het opnieuw."
   },
   "openSlots": {
     "title": "Open trainingsslots",
@@ -927,7 +943,8 @@
     "vatBulkUpdateConfirm": "Ja, alles bijwerken",
     "vatBulkUpdateCancel": "Nee, alleen nieuwe sessies",
     "vatBulkUpdateSuccess": "{{slots}} sessies en {{invoices}} facturen bijgewerkt",
-    "vatBulkUpdateError": "Fout bij het bijwerken van bestaande sessies en facturen"
+    "vatBulkUpdateError": "Fout bij het bijwerken van bestaande sessies en facturen",
+    "genericError": "Kon de instelling niet opslaan. Probeer het opnieuw."
   },
   "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. kom binnenkort terug!",
   "clearFilters": "Filters wissen",
@@ -1151,7 +1168,8 @@
     "markCancelledConfirmAction": "Markeer als geannuleerd",
     "markCancelledConfirmTitle": "Les als geannuleerd markeren?",
     "paidInvoiceNotUpdated": "Betaalde factuur niet bijgewerkt",
-    "paidInvoiceNotUpdatedDescription": "Factuur {{numbers}} is al betaald en is ongewijzigd gelaten. Controleer deze handmatig."
+    "paidInvoiceNotUpdatedDescription": "Factuur {{numbers}} is al betaald en is ongewijzigd gelaten. Controleer deze handmatig.",
+    "cancelError": "Kon de boeking niet annuleren"
   },
   "earningsPage": {
     "title": "Inkomsten",
@@ -1440,5 +1458,10 @@
       "draftDeleted": "Concept verwijderd",
       "draftLoaded": "Concept geladen"
     }
-  }
+  },
+  "cyclus": {
+    "deleteError": "Kon de cyclus niet verwijderen. Probeer het opnieuw.",
+    "loadError": "Kon je cycli niet laden. Probeer het opnieuw."
+  },
+  "logoutError": "Uitloggen mislukt. Probeer het opnieuw."
 }

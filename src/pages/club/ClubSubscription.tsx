@@ -18,6 +18,7 @@ import { getUserClubProfiles, type ClubProfile } from "@/lib/club";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatDate } from '@/lib/format';
 import { 
   CheckCircle2, 
@@ -113,7 +114,7 @@ export default function ClubSubscription() {
     } catch (error: any) {
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("subscription.checkoutError", "Could not start checkout. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -142,7 +143,7 @@ export default function ClubSubscription() {
     } catch (error: any) {
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("subscription.portalError", "Could not open subscription management. Please try again.")),
         variant: "destructive",
       });
     } finally {

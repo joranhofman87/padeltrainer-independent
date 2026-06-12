@@ -291,6 +291,8 @@
     "testEmailPlaceholder": "your@email.com",
     "sendTest": "Send Test",
     "sending": "Sending...",
-    "close": "Close"
-  }
+    "close": "Close",
+    "genericError": "Something went wrong. Please try again."
+  },
+  "signOutError": "Could not sign out. Please try again."
 }

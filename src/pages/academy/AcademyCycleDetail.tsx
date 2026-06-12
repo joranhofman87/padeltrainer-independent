@@ -57,6 +57,7 @@ import {
 import { updateCyclePricing, type ExtraCost } from '@/lib/cycles';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
@@ -238,7 +239,7 @@ export default function AcademyCycleDetail() {
         state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone },
       });
     } catch (error: any) {
-      toast.error(error.message || 'Failed to save pricing');
+      toast.error(getFriendlyErrorMessage(error, 'Failed to save pricing'));
     } finally {
       setIsSavingPricing(false);
     }
@@ -352,7 +353,7 @@ export default function AcademyCycleDetail() {
       setActiveStep('review-edit');
       if (academyId && cycleId) invalidateAll('academy', academyId, cycleId);
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
     } finally {
       setIsGenerating(false);
     }
@@ -368,7 +369,7 @@ export default function AcademyCycleDetail() {
       setActiveStep('generate');
       if (academyId && cycleId) invalidateAll('academy', academyId, cycleId);
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
     } finally {
       setIsResetting(false);
     }
@@ -393,7 +394,7 @@ export default function AcademyCycleDetail() {
       toast.success(t(`status.${newStatus}`));
       refreshCycle();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
     }
   };
 
@@ -438,7 +439,7 @@ export default function AcademyCycleDetail() {
         toast.success(t('proposals.playerMoved', 'Player moved successfully'));
       } catch (error: any) {
         setScheduleSlots(prev);
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
       } finally {
         pendingMutationsRef.current--;
         safeInvalidateSlots();
@@ -453,7 +454,7 @@ export default function AcademyCycleDetail() {
         toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
       } catch (error: any) {
         setScheduleSlots(prev);
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
       } finally {
         pendingMutationsRef.current--;
         safeInvalidateSlots();
@@ -472,7 +473,7 @@ export default function AcademyCycleDetail() {
         toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
       } catch (error: any) {
         setScheduleSlots(prev);
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
       } finally {
         pendingMutationsRef.current--;
         safeInvalidateSlots();
@@ -488,7 +489,7 @@ export default function AcademyCycleDetail() {
         refreshData();
       } catch (error: any) {
         setScheduleSlots(prev);
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
       } finally {
         pendingMutationsRef.current--;
         safeInvalidateSlots();
@@ -520,7 +521,7 @@ export default function AcademyCycleDetail() {
         refreshData();
       } catch (error: any) {
         setScheduleSlots(prev);
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
       } finally {
         pendingMutationsRef.current--;
         safeInvalidateSlots();
@@ -539,7 +540,7 @@ export default function AcademyCycleDetail() {
         refreshData();
       } catch (error: any) {
         setScheduleSlots(prev);
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
       } finally {
         pendingMutationsRef.current--;
         safeInvalidateSlots();
@@ -572,7 +573,7 @@ export default function AcademyCycleDetail() {
         toast.success(t('proposals.slotCreated', { defaultValue: 'Slot created' }));
       } catch (error: any) {
         setScheduleSlots(prev => prev.filter(s => s.id !== tempId));
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
       } finally {
         pendingMutationsRef.current--;
         safeInvalidateSlots();
@@ -590,7 +591,7 @@ export default function AcademyCycleDetail() {
       } catch (error: any) {
         // Revert
         setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_public: value } : s));
-        toast.error(error.message);
+        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
       }
     },
   };
@@ -800,7 +801,7 @@ export default function AcademyCycleDetail() {
                         if (academyId) invalidateAll('academy', academyId, cycleId);
                         setStatusFilter('new');
                       } catch (error: any) {
-                        toast.error(error.message);
+                        toast.error(getFriendlyErrorMessage(error, t('genericError', { defaultValue: 'Something went wrong. Please try again.' })));
                       } finally {
                         setIsResetting(false);
                       }

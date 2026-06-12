@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { ArrowLeft, Bell, Mail, Calendar, Star, Users, CreditCard, Clock, UserPlus } from 'lucide-react';
 import { logger } from '@/lib/logger';
 
@@ -247,7 +248,7 @@ export default function NotificationSettings() {
       } catch (error: any) {
         toast({
           title: t('notifications.saveError'),
-          description: error.message,
+          description: getFriendlyErrorMessage(error, t('notifications.saveErrorDescription', 'Failed to save your notification preferences. Please try again.')),
           variant: 'destructive',
         });
       } finally {

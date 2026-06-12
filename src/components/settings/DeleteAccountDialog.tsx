@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { useTranslation } from 'react-i18next';
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 
@@ -73,7 +74,7 @@ export function DeleteAccountDialog({ trigger }: DeleteAccountDialogProps) {
       logger.error('Delete account error', error instanceof Error ? error : new Error(String(error)), { component: 'DeleteAccountDialog' });
       toast({
         title: t('deleteAccount.error'),
-        description: error.message || t('deleteAccount.errorDescription', 'Failed to delete your account. Please try again.'),
+        description: getFriendlyErrorMessage(error, t('deleteAccount.errorDescription', 'Failed to delete your account. Please try again.')),
         variant: 'destructive',
       });
     } finally {

@@ -11,6 +11,7 @@ import {
 import { isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
@@ -431,7 +432,7 @@ export default function AcademySlotDetail() {
       fetchSlotDetail();
     } catch (error: any) {
       logger.error('Error updating slot', error, { slotId: detail.id });
-      toast({ title: tCommon('error'), description: error.message, variant: 'destructive' });
+      toast({ title: tCommon('error'), description: getFriendlyErrorMessage(error, tTrainer('calendar.slotUpdateError', 'Could not update the slot. Please try again.')), variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -537,7 +538,7 @@ export default function AcademySlotDetail() {
       navigate('/app/academy/calendar');
     } catch (error: any) {
       logger.error('Error deleting slot', error, { slotId: detail.id });
-      toast({ title: tCommon('error'), description: error.message, variant: 'destructive' });
+      toast({ title: tCommon('error'), description: getFriendlyErrorMessage(error, tTrainer('calendar.slotDeleteError', 'Could not delete the slot. Please try again.')), variant: 'destructive' });
     } finally {
       setDeleting(false);
       setDeleteOpen(false);

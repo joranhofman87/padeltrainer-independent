@@ -291,6 +291,8 @@
     "testEmailPlaceholder": "jouw@email.com",
     "sendTest": "Stuur test",
     "sending": "Verzenden...",
-    "close": "Sluiten"
-  }
+    "close": "Sluiten",
+    "genericError": "Er ging iets mis. Probeer het opnieuw."
+  },
+  "signOutError": "Uitloggen mislukt. Probeer het opnieuw."
 }

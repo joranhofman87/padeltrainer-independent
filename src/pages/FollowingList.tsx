@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
 import { Users, Bell, BellOff, UserMinus, MapPin } from 'lucide-react';
 import { logger } from '@/lib/logger';
@@ -111,7 +112,7 @@ export default function FollowingList() {
       logger.error('Error fetching following', error as Error, { component: 'FollowingList' });
       toast({
         title: t('followingList.notificationsDisabled'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('followingList.genericError', 'Something went wrong. Please try again.')),
         variant: 'destructive',
       });
     } finally {
@@ -143,7 +144,7 @@ export default function FollowingList() {
     } catch (error: any) {
       toast({
         title: t('followingList.notificationsDisabled'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('followingList.genericError', 'Something went wrong. Please try again.')),
         variant: 'destructive',
       });
     }
@@ -164,7 +165,7 @@ export default function FollowingList() {
     } catch (error: any) {
       toast({
         title: t('followingList.notificationsDisabled'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('followingList.genericError', 'Something went wrong. Please try again.')),
         variant: 'destructive',
       });
     } finally {

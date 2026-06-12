@@ -59,6 +59,7 @@ import { showReferralWidget } from "@/components/ReferralWidget";
 import { signOut } from "@/lib/auth";
 import { getMarketingUrl } from "@/lib/domains";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
 import type { ClubProfile } from "@/lib/club";
@@ -103,7 +104,7 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
     if (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("nav.logoutError", "Could not sign out. Please try again.")),
         variant: "destructive",
       });
     } else {

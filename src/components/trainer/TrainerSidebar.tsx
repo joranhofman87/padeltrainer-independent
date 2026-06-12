@@ -59,6 +59,7 @@ import { signOut, getTrainerProfile } from "@/lib/auth";
 import { getTrainerAcademy } from "@/lib/academy";
 import { getMarketingUrl } from "@/lib/domains";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
 
@@ -127,7 +128,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
     if (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("logoutError", "Could not sign out. Please try again.")),
         variant: "destructive",
       });
     } else {

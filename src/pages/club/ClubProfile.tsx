@@ -14,6 +14,7 @@ import { useClubContext } from '@/components/club/ClubLayout';
 import { updateClubProfile } from '@/lib/club';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export default function ClubProfile() {
   const { t } = useTranslation('club');
@@ -193,7 +194,7 @@ export default function ClubProfile() {
       logger.error(`${type} upload error`, error instanceof Error ? error : new Error(String(error)), { component: 'ClubProfile' });
       toast({
         title: t('common:error'),
-        description: error.message || `Failed to upload ${type}`,
+        description: getFriendlyErrorMessage(error, `Failed to upload ${type}`),
         variant: 'destructive',
       });
     } finally {
@@ -249,7 +250,7 @@ export default function ClubProfile() {
     } catch (error: any) {
       toast({
         title: t('common:error'),
-        description: error.message || 'Failed to update profile',
+        description: getFriendlyErrorMessage(error, 'Failed to update profile'),
         variant: 'destructive',
       });
     } finally {

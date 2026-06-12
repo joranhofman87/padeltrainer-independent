@@ -140,7 +140,8 @@
     "alreadyRespondedDescription": "Je hebt al gereageerd op deze uitnodiging.",
     "trainerRequiredTitle": "Trainer account vereist",
     "trainerRequiredDescription": "Je hebt een trainer account nodig om deze uitnodiging te accepteren.",
-    "becomeTrainer": "Word trainer"
+    "becomeTrainer": "Word trainer",
+    "genericError": "Kon de uitnodiging niet versturen. Probeer het opnieuw."
   },
   "createTrainer": {
     "button": "Trainer aanmaken",
@@ -161,7 +162,8 @@
     "successNewUser": "Het trainer account is aangemaakt. deel de inloggegevens hieronder.",
     "successExistingUser": "De bestaande gebruiker is als trainer gekoppeld aan je club.",
     "credentials": "Inloggegevens",
-    "shareNote": "Deel deze gegevens veilig met de trainer. ze moeten hun wachtwoord wijzigen na eerste login."
+    "shareNote": "Deel deze gegevens veilig met de trainer. ze moeten hun wachtwoord wijzigen na eerste login.",
+    "genericError": "Kon de trainer niet aanmaken. Probeer het opnieuw."
   },
   "players": {
     "title": "Clubspelers",
@@ -265,7 +267,8 @@
     "welcomeMessage": "Welkomstbericht",
     "welcomeMessageDescription": "Dit bericht wordt getoond aan spelers nadat ze op je wachtlijst komen.",
     "welcomeMessagePlaceholder": "bijv. Bedankt voor je aanmelding! Neem deel aan onze WhatsApp community: https://chat.whatsapp.com/...",
-    "welcomeMessageSaved": "Welkomstbericht opgeslagen"
+    "welcomeMessageSaved": "Welkomstbericht opgeslagen",
+    "welcomeMessageError": "Kon het welkomstbericht niet opslaan"
   },
   "calendar": {
     "description": "Bekijk alle trainersroosters",
@@ -301,7 +304,9 @@
     "slotsGenerated": "Slots aangemaakt",
     "slotsGeneratedDescription": "{{count}} slots succesvol aangemaakt",
     "noLessonsForTrainer": "Geen sessies geconfigureerd voor deze trainer",
-    "error": "Fout"
+    "error": "Fout",
+    "slotCreateError": "Kon het tijdslot niet aanmaken. Probeer het opnieuw.",
+    "slotsGenerateError": "Kon de tijdsloten niet aanmaken. Probeer het opnieuw."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -319,7 +324,9 @@
     "schedule": "Agenda",
     "registration": "Inschrijving",
     "business": "Zakelijk",
-    "club": "Club"
+    "club": "Club",
+    "logout": "Uitloggen",
+    "logoutError": "Uitloggen mislukt. Probeer het opnieuw."
   },
   "lessons": {
     "title": "Sessies",

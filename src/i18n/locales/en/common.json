@@ -189,7 +189,8 @@
     "viewAllArticles": "View all guides",
     "viewAllStrokes": "View all strokes",
     "viewAllVideos": "View all videos",
-    "learnPadelSubtitle": "Improve your game with guides, techniques and video tips"
+    "learnPadelSubtitle": "Improve your game with guides, techniques and video tips",
+    "followError": "Could not update your follow status. Please try again."
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",
@@ -619,5 +620,14 @@
     "urlLabel": "URL",
     "remove": "Remove link",
     "apply": "Apply"
-  }
+  },
+  "notifications": {
+    "saveErrorDescription": "Failed to save your notification preferences. Please try again."
+  },
+  "subscription": {
+    "checkoutError": "Failed to start checkout. Please try again.",
+    "portalError": "Failed to open subscription management. Please try again."
+  },
+  "videoAddError": "Could not add the video. Please try again.",
+  "videoRemoveError": "Could not remove the video. Please try again."
 }

@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { claimClub } from '@/lib/club';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { Loader2, Building2 } from 'lucide-react';
 import { validatePhone } from '@/lib/validation';
 
@@ -82,7 +83,7 @@ export function ClaimClubDialog({
       logger.error('Error claiming club', error as Error, { component: 'ClaimClubDialog' });
       toast({
         title: t('claim.error'),
-        description: error.message || t('claim.errorDescription'),
+        description: getFriendlyErrorMessage(error, t('claim.errorDescription')),
         variant: 'destructive',
       });
     } finally {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import {
   Sheet,
   SheetContent,
@@ -197,7 +198,7 @@ export default function IntakeRequestDetailSheet({
       toast.success(`Status updated to ${newStatus}`);
       onStatusChange?.();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('intakeRequests.statusUpdateError', { defaultValue: 'Failed to update status' })));
     } finally {
       setIsUpdating(false);
     }
@@ -219,7 +220,7 @@ export default function IntakeRequestDetailSheet({
       // Fire-and-forget background refresh
       onLinkChanged?.();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('intakeRequests.links.linkError', { defaultValue: 'Failed to link players' })));
     } finally {
       setIsLinking(false);
     }
@@ -233,7 +234,7 @@ export default function IntakeRequestDetailSheet({
       toast.success(t('intakeRequests.links.unlinked', { defaultValue: 'Player unlinked' }));
       onLinkChanged?.();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('intakeRequests.links.unlinkError', { defaultValue: 'Failed to unlink player' })));
     }
   };
 
@@ -332,7 +333,7 @@ export default function IntakeRequestDetailSheet({
                       onOpenChange(false);
                       onStatusChange?.();
                     } catch (error: any) {
-                      toast.error(error.message);
+                      toast.error(getFriendlyErrorMessage(error, t('intakeRequests.actions.deleteError', { defaultValue: 'Failed to delete registration' })));
                     } finally {
                       setIsDeleting(false);
                     }
@@ -554,7 +555,7 @@ export default function IntakeRequestDetailSheet({
                         toast.success(t('intakeRequests.links.linked', { defaultValue: 'Players linked' }));
                         onLinkChanged?.();
                       } catch (error: any) {
-                        toast.error(error.message);
+                        toast.error(getFriendlyErrorMessage(error, t('intakeRequests.links.linkError', { defaultValue: 'Failed to link players' })));
                       } finally {
                         setIsLinking(false);
                       }

@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { format, differenceInMinutes } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { supabase } from "@/lib/supabaseClient";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import {
@@ -817,7 +818,7 @@ export function BookForPlayerDialog({
       logger.error("Error creating booking", error as Error, { component: "BookForPlayerDialog" });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("bookings.createBookingError", "Failed to create the booking. Please try again.")),
         variant: "destructive",
       });
     } finally {

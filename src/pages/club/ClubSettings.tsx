@@ -42,6 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useClubContext } from "@/components/club/ClubLayout";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabaseClient";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import {
   getClubManagers,
   inviteClubManager,
@@ -157,7 +158,7 @@ export default function ClubSettings() {
       if (error) throw error;
       toast({ title: t('settings.welcomeMessageSaved') });
     } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      toast({ title: 'Error', description: getFriendlyErrorMessage(error, t('settings.welcomeMessageError', 'Failed to save welcome message')), variant: 'destructive' });
     } finally {
       setSavingWelcome(false);
     }

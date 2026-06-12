@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import type { ReviewWithDetails, ReviewTag } from "@/lib/reviews";
 
 interface AdminTrainerReviewsTabProps {
@@ -194,7 +195,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
       logger.error("Error adding review", error instanceof Error ? error : new Error(String(error)), { component: 'AdminTrainerReviewsTab' });
       toast({
         title: "Error",
-        description: error.message || "Failed to add review",
+        description: getFriendlyErrorMessage(error, "Failed to add review"),
         variant: "destructive",
       });
     } finally {
@@ -230,7 +231,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
       logger.error("Error deleting review", error instanceof Error ? error : new Error(String(error)), { component: 'AdminTrainerReviewsTab' });
       toast({
         title: "Error",
-        description: error.message || "Failed to delete review",
+        description: getFriendlyErrorMessage(error, "Failed to delete review"),
         variant: "destructive",
       });
     } finally {

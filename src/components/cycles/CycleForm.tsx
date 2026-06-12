@@ -45,6 +45,7 @@ import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettin
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
@@ -609,7 +610,7 @@ export default function CycleForm({
       // Navigation handled by onSuccess callback
     } catch (error: any) {
       logger.error('Error saving cycle', error instanceof Error ? error : new Error(String(error)), { component: 'CycleForm' });
-      toast.error(error.message || 'Failed to save cycle');
+      toast.error(getFriendlyErrorMessage(error, 'Failed to save cycle'));
     } finally {
       setIsSubmitting(false);
     }

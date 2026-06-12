@@ -147,7 +147,8 @@
     "archive": "Archive",
     "shareLink": "Share Registration Link",
     "linkCopied": "Registration link copied!",
-    "copyLink": "Copy Registration Link"
+    "copyLink": "Copy Registration Link",
+    "statusUpdateError": "Could not update the cycle status. Please try again."
   },
   "paymentBadge": {
     "upfront": "Pay upfront",
@@ -337,14 +338,25 @@
       "viewProposal": "View Proposal",
       "delete": "Delete",
       "deleteSuccess": "Application deleted",
-      "declineProposal": "Decline proposal"
+      "declineProposal": "Decline proposal",
+      "deleteError": "Failed to delete registration"
     },
     "delete": {
       "title": "Delete Application?",
       "description": "This will permanently delete this application. This action cannot be undone.",
       "cancel": "Cancel",
       "confirm": "Delete"
-    }
+    },
+    "edit": {
+      "error": "Could not update the registration. Please try again."
+    },
+    "links": {
+      "link": "Link",
+      "linkError": "Failed to link players",
+      "unlink": "Unlink player",
+      "unlinkError": "Failed to unlink player"
+    },
+    "statusUpdateError": "Failed to update status"
   },
   "proposals": {
     "title": "Proposed Assignments",
@@ -440,7 +452,8 @@
     },
     "toasts": {
       "approved": "Proposal approved",
-      "rejected": "Proposal rejected"
+      "rejected": "Proposal rejected",
+      "updateError": "Failed to update the proposal. Please try again."
     },
     "grid": {
       "full": "FULL",
@@ -448,7 +461,8 @@
       "dragPlayer": "Drag player",
       "dragSlot": "Drag slot",
       "addSlot": "Add slot"
-    }
+    },
+    "genericError": "Something went wrong. Please try again."
   },
   "unplacedSidebar": {
     "title": "Unplaced",
@@ -504,7 +518,8 @@
     "holidayDates": "Holiday dates",
     "addDate": "Add date",
     "noHolidays": "No holiday dates set. All weeks will have sessions.",
-    "sessions": "Sessions"
+    "sessions": "Sessions",
+    "loadError": "Could not load cycles. Please try again."
   },
   "bulkCopy": {
     "title": "Set up next round",
@@ -549,7 +564,10 @@
     "successInvited_one": "{{count}} player invited",
     "successInvited_other": "{{count}} players invited",
     "successEmails_one": "{{count}} email sent",
-    "successEmails_other": "{{count}} emails sent"
+    "successEmails_other": "{{count}} emails sent",
+    "errLoadCycles": "Could not load your cycles. Please try again.",
+    "errLoadSlots": "Could not load the trainings for this cycle. Please try again.",
+    "errSubmit": "Could not copy the cycle. Please try again."
   },
   "tierControl": {
     "title": "Visibility & rebooking",
@@ -625,5 +643,11 @@
     "linkInvalidDescription": "This claim link is invalid or has expired.",
     "loadFailedTitle": "Could not load this page",
     "loadFailedDescription": "Something went wrong while loading your invitation. Your link is still valid and your spot has not been released — check your connection and try again."
+  },
+  "genericError": "Something went wrong. Please try again.",
+  "loadCyclesError": "Could not load your registrations. Please try again.",
+  "suggestions": {
+    "link": "Link",
+    "linkError": "Could not link the players. Please try again."
   }
 }

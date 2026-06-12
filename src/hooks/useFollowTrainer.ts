@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export function useFollowTrainer(trainerProfileId: string | null) {
   const { user, role, profile } = useAuth();
@@ -87,7 +88,7 @@ export function useFollowTrainer(trainerProfileId: string | null) {
     } catch (error: any) {
       toast({
         title: t('common:error', 'Error'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('followingList.updateError', 'Could not update your follow status. Please try again.')),
         variant: 'destructive',
       });
     }

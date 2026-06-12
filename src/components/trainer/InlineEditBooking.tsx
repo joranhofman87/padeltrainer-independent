@@ -132,7 +132,7 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
       onClose();
     } catch (error: any) {
       logger.error("Error updating booking", error as Error, { component: "InlineEditBooking" });
-      toast({ title: tCommon("error"), description: error.message, variant: "destructive" });
+      toast({ title: tCommon("error"), description: getFriendlyErrorMessage(error, t("bookings.updateBookingError", "Could not update the booking. Please try again.")), variant: "destructive" });
     } finally {
       setIsLoading(false);
     }

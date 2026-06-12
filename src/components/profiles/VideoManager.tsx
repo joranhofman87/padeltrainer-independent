@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
 import { parseVideoUrl, isValidVideoUrl } from '@/lib/videoEmbed';
 
@@ -90,7 +91,7 @@ export function VideoManager({ trainerProfileId, academyProfileId }: VideoManage
     } catch (error: any) {
       toast({
         title: t('error', 'Error'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('videoAddError', 'Could not add the video. Please try again.')),
         variant: 'destructive',
       });
     } finally {
@@ -104,7 +105,7 @@ export function VideoManager({ trainerProfileId, academyProfileId }: VideoManage
     setDeleting(false);
     setVideoToDelete(null);
     if (error) {
-      toast({ title: t('error', 'Error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('error', 'Error'), description: getFriendlyErrorMessage(error, t('videoRemoveError', 'Could not remove the video. Please try again.')), variant: 'destructive' });
       return;
     }
     setVideos(videos.filter(v => v.id !== id));

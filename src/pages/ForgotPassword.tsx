@@ -9,6 +9,7 @@ import { sendPasswordResetEmail } from '@/lib/auth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Mail, CheckCircle } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export default function ForgotPassword() {
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +28,7 @@ export default function ForgotPassword() {
       logger.error('Password reset email failed', error, { component: 'ForgotPassword' });
       toast({
         title: t('signIn.error', 'Error'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('forgotPassword.error', 'Could not send the reset email. Please try again.')),
         variant: 'destructive',
       });
       setIsLoading(false);

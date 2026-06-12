@@ -44,6 +44,7 @@ import {
 import { type Cycle, updateCycle } from '@/lib/cycles';
 import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
 import { toast } from 'sonner';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatCurrency } from '@/lib/format';
 
 interface CyclesTableProps {
@@ -99,7 +100,7 @@ export default function CyclesTable({
       toast.success(t(`status.${newStatus}`));
       onDeleted(); // Refresh
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('genericError', 'Something went wrong. Please try again.')));
     }
   };
 

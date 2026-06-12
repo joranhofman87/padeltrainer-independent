@@ -3,6 +3,7 @@ import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -118,7 +119,7 @@ export default function WaitingListForm({
     if (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('form.submitError', 'Failed to join the waiting list. Please try again.')),
         variant: 'destructive',
       });
       return;

@@ -24,6 +24,7 @@ import { downloadInvoicePdf } from '@/lib/downloadInvoicePdf';
 import { getAcademyCreateInvoiceUrl } from '@/lib/invoiceCustomer';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -383,7 +384,7 @@ export default function AcademyPlayerDetail() {
       setEmails(mergePlayerEmailHistory(campaignEmails, invoiceEmailEvents));
     } catch (err: any) {
       logger.error('Error loading player detail', err);
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: 'Error', description: getFriendlyErrorMessage(err, t('players.detail.loadError', 'Could not load player details. Please try again.')), variant: 'destructive' });
     } finally {
       setLoading(false);
     }

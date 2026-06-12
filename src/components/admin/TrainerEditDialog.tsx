@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { getRatingSystems, type RatingSystemConfig } from "@/lib/ratingSystems";
 import { logger } from '@/lib/logger';
 
@@ -229,7 +230,7 @@ export function TrainerEditDialog({
       toast({ title: "Avatar uploaded", description: "Avatar image uploaded successfully." });
     } catch (error: any) {
       logger.error('Error uploading avatar', error as Error, { component: 'TrainerEditDialog' });
-      toast({ title: "Error", description: error.message || "Failed to upload avatar.", variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, "Failed to upload avatar."), variant: "destructive" });
     } finally {
       setAvatarUploading(false);
     }

@@ -24,11 +24,12 @@ import {
   Trophy,
   Box
 } from 'lucide-react';
-import { 
+import {
   type EnrichedProposedAssignment,
   type RationaleItem,
   updateProposedAssignmentStatus
 } from '@/lib/cycles';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import ReassignPlayerDialog from './ReassignPlayerDialog';
 
 interface ProposalCardProps {
@@ -60,7 +61,7 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
       toast.success(t('proposals.toasts.approved'));
       onStatusChange?.();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('proposals.toasts.updateError', 'Failed to update the proposal. Please try again.')));
     } finally {
       setIsUpdating(false);
     }
@@ -73,7 +74,7 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
       toast.success(t('proposals.toasts.rejected'));
       onStatusChange?.();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('proposals.toasts.updateError', 'Failed to update the proposal. Please try again.')));
     } finally {
       setIsUpdating(false);
     }

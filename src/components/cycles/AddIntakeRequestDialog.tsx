@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { createManualIntakeRequest, type Cycle, type TimeWindow } from '@/lib/cycles';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 
@@ -296,7 +297,7 @@ export default function AddIntakeRequestDialog({
       onSuccess();
     } catch (error: any) {
       logger.error('Error creating intake request', error as Error, { component: 'AddIntakeRequestDialog' });
-      toast.error(error.message || 'Failed to add registration');
+      toast.error(getFriendlyErrorMessage(error, 'Failed to add registration'));
     } finally {
       setIsSubmitting(false);
     }

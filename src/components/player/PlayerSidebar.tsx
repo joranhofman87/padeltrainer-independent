@@ -38,6 +38,7 @@ import {
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { useAuth } from "@/hooks/useAuth";
 import { signOut } from "@/lib/auth";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
@@ -114,7 +115,7 @@ export function PlayerSidebar() {
     if (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("nav.logoutError", "Failed to log out. Please try again.")),
         variant: "destructive",
       });
     } else {

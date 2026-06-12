@@ -22,6 +22,7 @@ import { trackEvent } from '@/lib/tracking';
 import { getUtmParams } from '@/lib/utm';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -169,7 +170,7 @@ export default function PlayerSignup() {
       if (error) {
         toast({
           title: t('signUp.error', 'Error'),
-          description: error.message,
+          description: getFriendlyErrorMessage(error, t('signIn.genericError', 'Something went wrong. Please try again.')),
           variant: 'destructive',
         });
       }

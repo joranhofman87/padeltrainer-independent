@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { buildGuestPlayerDbFields, prefillGuestNameFields } from "@/lib/profileName";
 import {
   Dialog,
@@ -119,7 +120,7 @@ export function EditPlayerDialog({
       logger.error("Error updating player", error instanceof Error ? error : new Error(String(error)), { component: 'EditPlayerDialog' });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("players.updateError", "Failed to update player")),
         variant: "destructive",
       });
     } finally {

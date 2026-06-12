@@ -15,6 +15,7 @@ import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { renumberDraftInvoices } from '@/lib/renumberDraftInvoices';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -233,8 +234,8 @@ export function InvoiceSettingsCardBase({
       if (error) throw error;
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
       setLogoUrl(data.publicUrl + '?t=' + Date.now());
-    } catch (err: any) {
-      toast({ title: labels.saveError, description: err.message, variant: 'destructive' });
+    } catch (err) {
+      toast({ title: labels.saveError, description: getFriendlyErrorMessage(err, labels.saveError), variant: 'destructive' });
     }
     setUploadingLogo(false);
   };
@@ -304,7 +305,7 @@ export function InvoiceSettingsCardBase({
       .eq(ownerColumn, ownerId);
 
     if (error) {
-      toast({ title: labels.saveError, description: error.message, variant: 'destructive' });
+      toast({ title: labels.saveError, description: getFriendlyErrorMessage(error, labels.saveError), variant: 'destructive' });
     } else {
       toast({ title: labels.saved });
       onSave?.();
@@ -354,7 +355,7 @@ export function InvoiceSettingsCardBase({
         includeYear: formData.invoice_include_year,
       });
       if (result.error) {
-        toast({ title: labels.renumberError, description: result.error, variant: 'destructive' });
+        toast({ title: labels.renumberError, description: getFriendlyErrorMessage(result.error, labels.renumberError), variant: 'destructive' });
       } else {
         // The next_invoice_sequence RPC already advanced the stored counter
         // (single source of truth) — only mirror it into the form so a later
@@ -367,7 +368,7 @@ export function InvoiceSettingsCardBase({
         if (result.failures.length > 0) {
           toast({
             title: labels.renumberPartial(result.updated, result.failures.length),
-            description: result.failures[0].message,
+            description: getFriendlyErrorMessage(result.failures[0].message, labels.renumberError),
             variant: 'destructive',
           });
         } else if (result.updated > 0) {

@@ -33,6 +33,7 @@ import {
 import { type Cycle, getIntakeRequestCounts, updateCycle } from '@/lib/cycles';
 import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
 import { toast } from 'sonner';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 interface CycleCardProps {
   cycle: Cycle;
@@ -87,7 +88,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
       toast.success(t(`status.${newStatus}`));
       onDeleted?.(); // Trigger refresh
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('actions.statusUpdateError', 'Could not update the cycle status. Please try again.')));
     } finally {
       setIsUpdating(false);
     }

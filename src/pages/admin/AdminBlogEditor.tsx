@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Save, Globe, Loader2, ImageIcon, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { SafeHtml } from '@/components/ui/SafeHtml';
 
 const LOCALES = ['en', 'nl', 'es', 'de', 'fr'];
@@ -173,7 +174,7 @@ export default function AdminBlogEditor() {
         }
       }
     },
-    onError: (err: any) => toast.error(err.message || 'Failed to save'),
+    onError: (err: any) => toast.error(getFriendlyErrorMessage(err, 'Failed to save')),
   });
 
   const translateMutation = useMutation({
@@ -187,7 +188,7 @@ export default function AdminBlogEditor() {
       queryClient.invalidateQueries({ queryKey: ['admin-article-translations'] });
       toast.success('Translation generated (status: review)');
     },
-    onError: (err: any) => toast.error(err.message || 'Translation failed'),
+    onError: (err: any) => toast.error(getFriendlyErrorMessage(err, 'Translation failed')),
   });
 
   if (!isNew && isLoading) {
@@ -373,7 +374,7 @@ function CoverImageCard({
       toast.success('Cover image generated');
       onImageGenerated();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to generate cover image');
+      toast.error(getFriendlyErrorMessage(err, 'Failed to generate cover image'));
     } finally {
       setGenerating(false);
     }
@@ -390,7 +391,7 @@ function CoverImageCard({
       toast.success(`Generated ${successes} cover image(s)`);
       onImageGenerated();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to generate cover images');
+      toast.error(getFriendlyErrorMessage(err, 'Failed to generate cover images'));
     } finally {
       setGeneratingAll(false);
     }

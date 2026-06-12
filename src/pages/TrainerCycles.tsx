@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
 import { getCycles, type Cycle } from '@/lib/cycles';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import CycleCard from '@/components/cycles/CycleCard';
 import { logger } from '@/lib/logger';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
@@ -44,7 +45,7 @@ export default function TrainerCycles() {
       setCycles(data);
     } catch (error: any) {
       logger.error('Error fetching cycles', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerCycles' });
-      toast({ title: t('common:error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common:error'), description: getFriendlyErrorMessage(error, t('loadCyclesError', 'Could not load your registrations. Please try again.')), variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }

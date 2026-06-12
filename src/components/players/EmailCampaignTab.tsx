@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { SafeHtml } from '@/components/ui/SafeHtml';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -222,7 +223,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       toast({ title: t('emailCampaign.toasts.testSent'), description: t('emailCampaign.toasts.testSentDesc', { email: testEmail.trim() }) });
     } catch (err: any) {
       logger.error('Error sending test email', err);
-      toast({ title: t('emailCampaign.toasts.error'), description: err.message || t('emailCampaign.toasts.testError'), variant: 'destructive' });
+      toast({ title: t('emailCampaign.toasts.error'), description: getFriendlyErrorMessage(err, t('emailCampaign.toasts.testError')), variant: 'destructive' });
     } finally {
       setIsSendingTest(false);
     }
@@ -361,7 +362,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       fetchCampaigns();
     } catch (err: any) {
       logger.error('Error sending campaign', err);
-      toast({ title: t('emailCampaign.toasts.error'), description: err.message || t('emailCampaign.toasts.campaignError'), variant: 'destructive' });
+      toast({ title: t('emailCampaign.toasts.error'), description: getFriendlyErrorMessage(err, t('emailCampaign.toasts.campaignError')), variant: 'destructive' });
     } finally {
       setIsSending(false);
     }
@@ -424,7 +425,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       fetchCampaigns();
     } catch (err: any) {
       logger.error('Error saving draft', err);
-      toast({ title: t('emailCampaign.toasts.error'), description: err.message || t('emailCampaign.toasts.draftError'), variant: 'destructive' });
+      toast({ title: t('emailCampaign.toasts.error'), description: getFriendlyErrorMessage(err, t('emailCampaign.toasts.draftError')), variant: 'destructive' });
     } finally {
       setIsSavingDraft(false);
     }

@@ -38,6 +38,7 @@ import { AcademyPriceDisplayCard } from '@/components/academy/AcademyPriceDispla
 
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -170,7 +171,7 @@ export default function AcademySettings() {
       toast({ title: t('terms.saved', 'Terms saved successfully') });
     } catch (error: any) {
       logger.error('Error saving academy terms', error, { component: 'AcademySettings' });
-      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('terms.saveError', 'Failed to save terms')), variant: 'destructive' });
     } finally {
       setSavingTerms(false);
     }
@@ -187,7 +188,7 @@ export default function AcademySettings() {
       if (error) throw error;
       toast({ title: t('welcomeMessage.saved') });
     } catch (error: any) {
-      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('welcomeMessage.saveError', 'Failed to save welcome message')), variant: 'destructive' });
     } finally {
       setSavingWelcome(false);
     }
@@ -220,7 +221,7 @@ export default function AcademySettings() {
     } catch (error: any) {
       toast({
         title: t("common.error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("settings.mollieConnectError", "Failed to connect your payment account. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -242,7 +243,7 @@ export default function AcademySettings() {
     } catch (error: any) {
       toast({
         title: t("common.error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("settings.statusRefreshError", "Failed to refresh connection status")),
         variant: "destructive",
       });
     } finally {
@@ -274,7 +275,7 @@ export default function AcademySettings() {
     } catch (error: any) {
       toast({
         title: t("common.error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("settings.disconnectError", "Failed to disconnect your payment account")),
         variant: "destructive",
       });
       throw error;
@@ -291,7 +292,7 @@ export default function AcademySettings() {
       setSelectedTrainerId('');
       await fetchManagersAndTrainers();
     } catch (error: any) {
-      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('managers.addError', 'Failed to add manager')), variant: 'destructive' });
     } finally {
       setAddingManager(false);
     }
@@ -310,7 +311,7 @@ export default function AcademySettings() {
       toast({ title: t('managers.removed', 'Manager removed') });
       await fetchManagersAndTrainers();
     } catch (error: any) {
-      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('managers.removeError', 'Failed to remove manager')), variant: 'destructive' });
     } finally {
       setRemovingManagerId(null);
       setManagerToRemove(null);
@@ -394,7 +395,7 @@ export default function AcademySettings() {
                     if (error) throw error;
                     toast({ title: t('settings.warningsSaved', 'Warning settings saved') });
                   } catch (error: any) {
-                    toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+                    toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('settings.warningsSaveError', 'Failed to save warning settings')), variant: 'destructive' });
                   } finally {
                     setSavingWarnings(false);
                   }
@@ -621,7 +622,7 @@ export default function AcademySettings() {
                     setAcademyTimezone(value);
                     toast({ title: t('settings.timezoneSaved', 'Timezone updated') });
                   } catch (error: any) {
-                    toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+                    toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('settings.timezoneSaveError', 'Failed to update timezone')), variant: 'destructive' });
                   } finally {
                     setUpdatingTimezone(false);
                   }

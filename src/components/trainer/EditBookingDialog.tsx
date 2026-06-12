@@ -177,7 +177,7 @@ export function EditBookingDialog({
       logger.error("Error updating booking", error as Error, { component: 'EditBookingDialog' });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("bookings.updateBookingError", "Could not update the booking. Please try again.")),
         variant: "destructive",
       });
     } finally {

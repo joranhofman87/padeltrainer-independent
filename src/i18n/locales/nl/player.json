@@ -10,7 +10,8 @@
     "calendarSync": "Kalender sync",
     "playground": "Speeltuin",
     "profile": "Mijn profiel",
-    "invoices": "Facturen"
+    "invoices": "Facturen",
+    "logoutError": "Uitloggen mislukt. Probeer het opnieuw."
   },
   "invoices": {
     "title": "Facturen",
@@ -352,7 +353,9 @@
     "unfollowedDescription": "Je volgt {{name}} niet meer",
     "thisTrainer": "deze trainer",
     "unfollow": "Ontvolgen",
-    "unfollowConfirmTitle": "Trainer ontvolgen?"
+    "unfollowConfirmTitle": "Trainer ontvolgen?",
+    "genericError": "Er ging iets mis. Probeer het opnieuw.",
+    "updateError": "Kon je volgstatus niet bijwerken. Probeer het opnieuw."
   },
   "attendance": {
     "title": "Aanwezigheid",

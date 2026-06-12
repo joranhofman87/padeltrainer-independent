@@ -33,7 +33,7 @@
   "claim": {
     "button": "Claim this Club",
     "title": "Claim Club Profile",
-    "description": "Request to manage {{clubName}}. You'll be able to manage trainers and players right away.",
+    "description": "Tell us about your role",
     "contactEmail": "Contact Email",
     "contactEmailPlaceholder": "club@example.com",
     "phone": "Phone Number",
@@ -52,11 +52,9 @@
     "selectLocation": "Please select a location",
     "submitting": "Submitting...",
     "submitClaim": "Claim This Club",
-    "description": "Tell us about your role",
     "descriptionPlaceholder": "I am the owner/manager of this club...",
     "descriptionHelp": "This helps us verify your claim faster",
     "contactPhone": "Contact Phone",
-    "phonePlaceholder": "+31 6 12345678",
     "emailPlaceholder": "club@example.com"
   },
   "onboarding": {
@@ -142,7 +140,8 @@
     "alreadyRespondedDescription": "You've already responded to this invitation.",
     "trainerRequiredTitle": "Trainer Account Required",
     "trainerRequiredDescription": "You need a trainer account to accept this invitation.",
-    "becomeTrainer": "Become a Trainer"
+    "becomeTrainer": "Become a Trainer",
+    "genericError": "Could not send the invitation. Please try again."
   },
   "createTrainer": {
     "button": "Create Trainer",
@@ -163,7 +162,8 @@
     "successNewUser": "The trainer account has been created. Share the login credentials below.",
     "successExistingUser": "The existing user has been linked to your club as a trainer.",
     "credentials": "Login Credentials",
-    "shareNote": "Share these credentials securely with the trainer. They should change their password after first login."
+    "shareNote": "Share these credentials securely with the trainer. They should change their password after first login.",
+    "genericError": "Failed to create the trainer. Please try again."
   },
   "players": {
     "title": "Club Players",
@@ -267,7 +267,8 @@
     "welcomeMessage": "Welcome Message",
     "welcomeMessageDescription": "This message is shown to players after they join your waiting list.",
     "welcomeMessagePlaceholder": "e.g. Thanks for signing up! Join our WhatsApp community: https://chat.whatsapp.com/...",
-    "welcomeMessageSaved": "Welcome message saved"
+    "welcomeMessageSaved": "Welcome message saved",
+    "welcomeMessageError": "Failed to save welcome message"
   },
   "calendar": {
     "description": "View all trainer schedules",
@@ -303,7 +304,9 @@
     "slotsGenerated": "Slots Generated",
     "slotsGeneratedDescription": "{{count}} slots created successfully",
     "noLessonsForTrainer": "No sessions configured for this trainer",
-    "error": "Error"
+    "error": "Error",
+    "slotCreateError": "Could not create the slot. Please try again.",
+    "slotsGenerateError": "Could not create the slots. Please try again."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -321,7 +324,9 @@
     "schedule": "Schedule",
     "registration": "Registration",
     "business": "Business",
-    "club": "Club"
+    "club": "Club",
+    "logout": "Log out",
+    "logoutError": "Could not sign out. Please try again."
   },
   "subscription": {
     "title": "Club Subscription",

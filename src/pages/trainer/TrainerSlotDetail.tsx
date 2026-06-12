@@ -37,6 +37,7 @@ import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
 import PriorityClaimsSection from '@/components/cycles/PriorityClaimsSection';
 import SlotTierControlCard from '@/components/cycles/SlotTierControlCard';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 
@@ -267,7 +268,7 @@ export default function TrainerSlotDetail() {
       fetchSlotDetail();
     } catch (error: any) {
       logger.error('Error updating slot', error, { slotId: detail.id });
-      toast({ title: tCommon('error'), description: error.message, variant: 'destructive' });
+      toast({ title: tCommon('error'), description: getFriendlyErrorMessage(error, t('calendar.slotUpdateError', 'De wijzigingen konden niet worden opgeslagen. Probeer het opnieuw.')), variant: 'destructive' });
     } finally { setSaving(false); }
   };
 
@@ -299,7 +300,7 @@ export default function TrainerSlotDetail() {
       navigate('/app/trainer/calendar');
     } catch (error: any) {
       logger.error('Error deleting slot', error, { slotId: detail.id });
-      toast({ title: tCommon('error'), description: error.message, variant: 'destructive' });
+      toast({ title: tCommon('error'), description: getFriendlyErrorMessage(error, t('calendar.slotDeleteError', 'Het verwijderen is niet gelukt. Probeer het opnieuw.')), variant: 'destructive' });
     } finally { setDeleting(false); setDeleteOpen(false); }
   };
 

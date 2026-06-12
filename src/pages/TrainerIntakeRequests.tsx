@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -224,7 +225,7 @@ export default function TrainerIntakeRequests() {
       setShowWizard(false);
       if (trainerId) invalidateAll('trainer', trainerId, selectedCycleId);
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
     } finally {
       setIsGenerating(false);
     }
@@ -242,7 +243,7 @@ export default function TrainerIntakeRequests() {
       setShowResetConfirm(false);
       if (trainerId) invalidateAll('trainer', trainerId, selectedCycleId);
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
     } finally {
       setIsResetting(false);
     }
@@ -394,7 +395,7 @@ export default function TrainerIntakeRequests() {
                     if (trainerId) invalidateAll('trainer', trainerId, selectedCycleId);
                     setStatusFilter('new');
                   } catch (error: any) {
-                    toast.error(error.message);
+                    toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
                   } finally {
                     setIsResetting(false);
                   }
@@ -454,7 +455,7 @@ export default function TrainerIntakeRequests() {
               toast.success(t('proposals.playerMoved', 'Player moved successfully'));
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
             }
           }}
           onMoveSlot={async (slotId, newTrainerId, newStartTime, newEndTime) => {
@@ -465,7 +466,7 @@ export default function TrainerIntakeRequests() {
               toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
             }
           }}
           onSwapSlots={async (slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd) => {
@@ -480,7 +481,7 @@ export default function TrainerIntakeRequests() {
               toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
             }
           }}
           onDeleteSlot={async (slotId) => {
@@ -492,7 +493,7 @@ export default function TrainerIntakeRequests() {
               refreshData();
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
             }
           }}
           onCreateSlot={async (trainerId, startTime, endTime) => {
@@ -520,7 +521,7 @@ export default function TrainerIntakeRequests() {
               toast.success(t('proposals.slotCreated', { defaultValue: 'Slot created' }));
             } catch (error: any) {
               setScheduleSlots(prev => prev.filter(s => s.id !== tempId));
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
             }
           }}
           onUndo={(previousSlots) => {
@@ -554,7 +555,7 @@ export default function TrainerIntakeRequests() {
               refreshData();
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
             }
           }}
           onUnassignPlayer={async (assignmentId) => {
@@ -569,7 +570,7 @@ export default function TrainerIntakeRequests() {
               refreshData();
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
             }
           }}
         />

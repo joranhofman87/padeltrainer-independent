@@ -55,6 +55,7 @@ import {
 } from 'lucide-react';
 import { getAvailableSlotsForCycle, finalizeProposals, sendScheduleNotifications, getCycle, updateCycleSettings, type SlotWithOccupancy, type Cycle } from '@/lib/cycles';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -352,7 +353,7 @@ export default function ProposalOverviewPage() {
       setPageStatus('booked');
     } catch (err: any) {
       logger.error('Error finalizing proposals:', err);
-      toast.error(err.message || 'Failed to finalize proposals');
+      toast.error(getFriendlyErrorMessage(err, 'Failed to finalize proposals'));
       setPageStatus('idle');
     } finally {
       finalizingRef.current = false;
@@ -383,7 +384,7 @@ export default function ProposalOverviewPage() {
       setPageStatus('notified');
     } catch (err: any) {
       logger.error('Error sending schedule emails:', err);
-      toast.error(err.message || 'Failed to send emails');
+      toast.error(getFriendlyErrorMessage(err, 'Failed to send emails'));
       setPageStatus('booked');
     }
   };

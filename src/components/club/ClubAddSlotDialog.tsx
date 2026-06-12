@@ -36,6 +36,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
@@ -130,7 +131,7 @@ export function ClubAddSlotDialog({
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("calendar.slotCreateError", "Could not create the slot. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -450,7 +451,7 @@ export function ClubBulkCreateSheet({
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("calendar.slotsGenerateError", "Could not create the slots. Please try again.")),
         variant: "destructive",
       });
     } finally {

@@ -18,6 +18,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2, Users, Clock, ArrowRight, Star } from 'lucide-react';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import {
   type SlotWithOccupancy,
   getAvailableSlotsForCycle,
@@ -88,7 +89,7 @@ export default function ReassignPlayerDialog({
       onReassigned?.();
       onOpenChange(false);
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
     } finally {
       setIsSubmitting(false);
     }

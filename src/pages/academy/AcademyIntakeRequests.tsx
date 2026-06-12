@@ -28,6 +28,7 @@ import {
   createProposalSlot,
   type SlotWithOccupancy,
 } from '@/lib/cycles';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
@@ -207,7 +208,7 @@ export default function AcademyIntakeRequests() {
       setShowWizard(false);
       if (academyId) invalidateAll('academy', academyId, selectedCycleId);
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
     } finally {
       setIsGenerating(false);
     }
@@ -225,7 +226,7 @@ export default function AcademyIntakeRequests() {
       setShowResetConfirm(false);
       if (academyId) invalidateAll('academy', academyId, selectedCycleId);
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
     } finally {
       setIsResetting(false);
     }
@@ -365,7 +366,7 @@ export default function AcademyIntakeRequests() {
                     if (academyId) invalidateAll('academy', academyId, selectedCycleId);
                     setStatusFilter('new');
                   } catch (error: any) {
-                    toast.error(error.message);
+                    toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
                   } finally {
                     setIsResetting(false);
                   }
@@ -417,7 +418,7 @@ export default function AcademyIntakeRequests() {
               toast.success(t('proposals.playerMoved', 'Player moved successfully'));
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
             }
           }}
           onMoveSlot={async (slotId, newTrainerId, newStartTime, newEndTime) => {
@@ -428,7 +429,7 @@ export default function AcademyIntakeRequests() {
               toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
             }
           }}
           onSwapSlots={async (slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd) => {
@@ -443,7 +444,7 @@ export default function AcademyIntakeRequests() {
               toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
             }
           }}
           onDeleteSlot={async (slotId) => {
@@ -455,7 +456,7 @@ export default function AcademyIntakeRequests() {
               refreshData();
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
             }
           }}
           onCreateSlot={async (trainerId, startTime, endTime) => {
@@ -483,7 +484,7 @@ export default function AcademyIntakeRequests() {
               toast.success(t('proposals.slotCreated', { defaultValue: 'Slot created' }));
             } catch (error: any) {
               setScheduleSlots(prev => prev.filter(s => s.id !== tempId));
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
             }
           }}
           onUndo={(previousSlots) => {
@@ -517,7 +518,7 @@ export default function AcademyIntakeRequests() {
               refreshData();
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
             }
           }}
           onUnassignPlayer={async (assignmentId) => {
@@ -532,7 +533,7 @@ export default function AcademyIntakeRequests() {
               refreshData();
             } catch (error: any) {
               setScheduleSlots(prev);
-              toast.error(error.message);
+              toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', 'Something went wrong. Please try again.')));
             }
           }}
         />

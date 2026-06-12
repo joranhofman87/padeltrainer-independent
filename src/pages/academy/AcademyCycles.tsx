@@ -10,6 +10,7 @@ import CyclesTable from '@/components/cycles/CyclesTable';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 
@@ -58,7 +59,7 @@ export default function AcademyCycles() {
       setCycles(data);
     } catch (error: any) {
       logger.error('Error fetching cycles', error as Error, { component: 'AcademyCycles' });
-      toast({ title: t('common:error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common:error'), description: getFriendlyErrorMessage(error, t('overview.loadError', 'Could not load cycles. Please try again.')), variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }

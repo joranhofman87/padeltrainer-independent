@@ -20,6 +20,7 @@ import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { updateAcademyProfile } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { COUNTRIES } from '@/lib/countries';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export default function AcademyProfile() {
   const { t } = useTranslation('academy');
@@ -86,7 +87,7 @@ export default function AcademyProfile() {
     } catch (error: any) {
       toast({
         title: t('common:error'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('profile.genericError', 'Something went wrong. Please try again.')),
         variant: 'destructive',
       });
     }
@@ -178,7 +179,7 @@ export default function AcademyProfile() {
       } catch (error: any) {
         toast({
           title: t('common.error'),
-          description: error.message,
+          description: getFriendlyErrorMessage(error, t('profile.genericError', 'Something went wrong. Please try again.')),
           variant: 'destructive',
         });
       } finally {
@@ -234,7 +235,7 @@ export default function AcademyProfile() {
         toast({ title: t('profile.logoUpdated', 'Logo updated'), description: t('profile.logoUpdatedDescription', 'Your logo has been updated.') });
       }
     } catch (error: any) {
-      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('profile.genericError', 'Something went wrong. Please try again.')), variant: 'destructive' });
     } finally {
       setLogoUploading(false);
     }

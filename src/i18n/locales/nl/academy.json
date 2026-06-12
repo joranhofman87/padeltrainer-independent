@@ -140,7 +140,8 @@
     "invalidLink": "Ongeldige uitnodigingslink",
     "notFoundOrExpired": "Deze uitnodiging is niet gevonden of verlopen",
     "loadFailedTitle": "Kon deze uitnodiging niet laden",
-    "loadFailedDescription": "Er ging iets mis bij het laden. Je uitnodigingslink is nog geldig — controleer je verbinding en probeer het opnieuw."
+    "loadFailedDescription": "Er ging iets mis bij het laden. Je uitnodigingslink is nog geldig — controleer je verbinding en probeer het opnieuw.",
+    "genericError": "Er ging iets mis. Probeer het opnieuw."
   },
   "locations": {
     "title": "Academy locaties",
@@ -180,7 +181,8 @@
     "requestNew": "Nieuwe locatie aanvragen",
     "requestNewDescription": "Locatie niet in onze database? dien het in ter beoordeling door een beheerder.",
     "requestSubmitted": "Aanvraag ingediend",
-    "requestSubmittedDescription": "Een beheerder zal je locatie-aanvraag beoordelen."
+    "requestSubmittedDescription": "Een beheerder zal je locatie-aanvraag beoordelen.",
+    "updateError": "Kon de locatie niet bijwerken. Probeer het opnieuw."
   },
   "profile": {
     "title": "Academy profiel",
@@ -214,7 +216,8 @@
     "bannerInvalidWidth": "Afbeeldingsbreedte moet tussen 800 en 2400 pixels zijn.",
     "bannerInvalidRatio": "Beeldverhouding moet tussen 2.5:1 en 5:1 zijn (brede banner).",
     "videos": "Video's",
-    "videosDescription": "Voeg YouTube, Vimeo, TikTok of Instagram video's toe aan je profiel"
+    "videosDescription": "Voeg YouTube, Vimeo, TikTok of Instagram video's toe aan je profiel",
+    "genericError": "Er ging iets mis. Probeer het opnieuw."
   },
   "managers": {
     "title": "Academy beheerders",
@@ -229,7 +232,9 @@
     "remove": "Verwijderen",
     "confirmRemove": "Weet je zeker dat je deze beheerder wilt verwijderen?",
     "noTrainersAvailable": "Geen trainers beschikbaar om toe te voegen",
-    "confirmRemoveTitle": "Beheerder verwijderen?"
+    "confirmRemoveTitle": "Beheerder verwijderen?",
+    "addError": "Kon beheerder niet toevoegen",
+    "removeError": "Kon beheerder niet verwijderen"
   },
   "settings": {
     "dangerZone": "Gevaarlijke zone",
@@ -279,18 +284,27 @@
       "help": "Dit bepaalt hoe prijzen worden getoond aan spelers in academy-roosters en boekingspagina's. Dit verandert niet je uitbetaling of belastingverplichtingen.",
       "saveSuccess": "Prijzenweergave opgeslagen",
       "saveError": "Prijzenweergave kon niet worden opgeslagen"
-    }
+    },
+    "disconnectError": "Kon je betaalaccount niet ontkoppelen",
+    "mollieConnectError": "Kon je betaalaccount niet koppelen. Probeer het opnieuw.",
+    "statusRefreshError": "Kon de verbindingsstatus niet vernieuwen",
+    "timezone": "Tijdzone",
+    "timezoneSaveError": "Kon de tijdzone niet bijwerken",
+    "warnings": "Waarschuwingen",
+    "warningsSaveError": "Kon de waarschuwingsinstellingen niet opslaan"
   },
   "terms": {
     "title": "Algemene voorwaarden",
     "description": "Voorwaarden die spelers moeten accepteren voor het boeken van lessen bij je trainers.",
-    "saved": "Voorwaarden opgeslagen"
+    "saved": "Voorwaarden opgeslagen",
+    "saveError": "Kon de voorwaarden niet opslaan"
   },
   "welcomeMessage": {
     "title": "Welkomstbericht",
     "description": "Dit bericht wordt getoond aan spelers nadat ze zich inschrijven voor een cyclus of op je wachtlijst komen.",
     "placeholder": "bijv. Bedankt voor je inschrijving! Neem deel aan onze WhatsApp community: https://chat.whatsapp.com/...",
-    "saved": "Welkomstbericht opgeslagen"
+    "saved": "Welkomstbericht opgeslagen",
+    "saveError": "Kon het welkomstbericht niet opslaan"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -311,7 +325,9 @@
     "academy": "Academy",
     "waitingList": "Wachtlijst",
     "openSlots": "Open plekken",
-    "invoices": "Facturen"
+    "invoices": "Facturen",
+    "logout": "Uitloggen",
+    "logoutError": "Uitloggen mislukt. Probeer het opnieuw."
   },
   "invoiceSettings": {
     "title": "Factuur instellingen",

@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { Trash2, AlertTriangle, Loader2, Bell, Calendar, Receipt, CreditCard } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { sendBookingCancellation } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import { recalculateInvoiceAfterRemoval } from "@/lib/invoiceSync";
@@ -371,7 +372,7 @@ export function DeleteSlotDialog({
       logger.error("Error deleting slot", error instanceof Error ? error : new Error(String(error)), { component: 'DeleteSlotDialog' });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("calendar.deleteSlotError", "Could not delete the time slot. Please try again.")),
         variant: "destructive",
       });
     } finally {

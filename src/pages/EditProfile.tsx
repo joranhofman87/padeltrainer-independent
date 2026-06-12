@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { ArrowLeft, Save, User, Camera, Loader2, MapPin, Quote, Instagram, Youtube, Linkedin, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratingSystems';
 import { LocationPicker } from '@/components/locations/LocationPicker';
@@ -265,7 +266,7 @@ export default function EditProfile() {
     } catch (error: any) {
       toast({
         title: tTrainer('profileVisibility.error'),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, tTrainer('profileVisibility.error')),
         variant: 'destructive',
       });
     } finally {
@@ -340,7 +341,7 @@ export default function EditProfile() {
       logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
       toast({
         title: t('editProfile.uploadFailed'),
-        description: error.message || t('editProfile.uploadFailed'),
+        description: getFriendlyErrorMessage(error, t('editProfile.uploadFailed')),
         variant: 'destructive',
       });
     } finally {
@@ -451,7 +452,7 @@ export default function EditProfile() {
     } catch (error: any) {
       toast({
         title: t('editProfile.error'),
-        description: error.message || t('editProfile.uploadFailed'),
+        description: getFriendlyErrorMessage(error, t('editProfile.uploadFailed')),
         variant: 'destructive',
       });
     }

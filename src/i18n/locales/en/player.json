@@ -10,7 +10,8 @@
     "calendarSync": "Calendar Sync",
     "playground": "Playground",
     "profile": "My Profile",
-    "invoices": "Invoices"
+    "invoices": "Invoices",
+    "logoutError": "Failed to log out. Please try again."
   },
   "invoices": {
     "title": "Invoices",
@@ -352,7 +353,9 @@
     "unfollowedDescription": "You unfollowed {{name}}",
     "thisTrainer": "this trainer",
     "unfollow": "Unfollow",
-    "unfollowConfirmTitle": "Unfollow trainer?"
+    "unfollowConfirmTitle": "Unfollow trainer?",
+    "genericError": "Something went wrong. Please try again.",
+    "updateError": "Could not update your follow status. Please try again."
   },
   "attendance": {
     "title": "Attendance",

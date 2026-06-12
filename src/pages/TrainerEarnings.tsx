@@ -253,7 +253,7 @@ export default function TrainerEarnings() {
     } catch (err: any) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to connect Mollie',
+        description: getFriendlyErrorMessage(err, 'Failed to connect Mollie'),
         variant: 'destructive',
       });
       setConnectLoading(false);

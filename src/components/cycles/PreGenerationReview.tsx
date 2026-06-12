@@ -21,6 +21,7 @@ import {
   dismissUnmatchedMention,
 } from '@/lib/suggestLinks';
 import { linkPlayers, type IntakeRequestWithProposal, type PlayerLink } from '@/lib/cycles';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 interface PreGenerationReviewProps {
   requests: IntakeRequestWithProposal[];
@@ -105,7 +106,7 @@ export default function PreGenerationReview({
       toast.success(t('suggestions.linked', { defaultValue: 'Players linked' }));
       onLinkChanged();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(getFriendlyErrorMessage(error, t('suggestions.linkError', { defaultValue: 'Could not link the players. Please try again.' })));
     } finally {
       setLinkingIds(prev => {
         const next = new Set(prev);

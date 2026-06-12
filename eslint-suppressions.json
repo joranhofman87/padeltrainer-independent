@@ -206,7 +206,7 @@
   },
   "src/components/cycles/EditIntakeRequestDialog.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 3
+      "count": 2
     },
     "react-hooks/exhaustive-deps": {
       "count": 1
@@ -295,7 +295,7 @@
   },
   "src/components/invoices/InvoiceSettingsCardBase.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 5
+      "count": 4
     }
   },
   "src/components/locations/CommunityRatings.tsx": {
@@ -1157,7 +1157,7 @@
   },
   "src/pages/admin/AdminBlogTopics.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 4
+      "count": 3
     }
   },
   "src/pages/admin/AdminCertifications.tsx": {

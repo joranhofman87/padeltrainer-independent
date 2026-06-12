@@ -14,6 +14,7 @@ import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { TAG_COLORS, getTagColorClass, PlayerTag } from './playerTagColors';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 interface ManagePlayerTagsDialogProps {
   open: boolean;
@@ -59,7 +60,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
       notifyChanged();
     } catch (err: any) {
       logger.error('Error creating tag', err);
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: 'Error', description: getFriendlyErrorMessage(err, t('players.tags.createError', 'Could not create the tag. Please try again.')), variant: 'destructive' });
     } finally {
       setBusy(false);
     }
@@ -73,7 +74,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
       notifyChanged();
     } catch (err: any) {
       logger.error('Error deleting tag', err);
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: 'Error', description: getFriendlyErrorMessage(err, t('players.tags.deleteError', 'Could not delete the tag. Please try again.')), variant: 'destructive' });
     } finally {
       setBusy(false);
       setTagToDelete(null);

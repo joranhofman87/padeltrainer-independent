@@ -11,6 +11,7 @@ import { getTrainerProfile } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -886,7 +887,7 @@ export default function TrainerScheduleOverview() {
       setEditDialogOpen(false);
       invalidate();
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(err, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
     } finally {
       setSavingEdit(false);
     }
@@ -904,7 +905,7 @@ export default function TrainerScheduleOverview() {
     const { error } = await supabase.from("bookings").update(updates).eq("id", bookingId);
     setTogglingPayment(null);
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
     } else {
       toast({ title: t("scheduleOverview.paymentUpdated", "Payment status updated") });
       invalidate();
@@ -921,7 +922,7 @@ export default function TrainerScheduleOverview() {
       .eq("id", removeBookingId);
     if (error) {
       setRemovingBooking(false);
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
       return;
     }
     // Sync affected invoices
@@ -945,7 +946,7 @@ export default function TrainerScheduleOverview() {
       .eq("id", slotId);
     setTogglingPrivacy(null);
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
     } else {
       toast({
         title: !currentValue
@@ -1016,7 +1017,7 @@ export default function TrainerScheduleOverview() {
       toast({ title: t("scheduleOverview.addedToCycle", "Player added to all sessions") });
       invalidate();
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(err, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
     } finally {
       setAddingPlayerToCycle(false);
     }
@@ -1072,7 +1073,7 @@ export default function TrainerScheduleOverview() {
       toast({ title: t("scheduleOverview.removedFromCycle", "Player removed from all sessions") });
       invalidate();
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(err, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
     } finally {
       setRemovingPlayerFromCycle(null);
       setConfirmRemoveCyclePlayer(null);

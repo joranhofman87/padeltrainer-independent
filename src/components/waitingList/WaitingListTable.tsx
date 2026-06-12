@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
@@ -111,7 +112,7 @@ export default function WaitingListTable({
     if (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t('management.updateError', 'Could not update the entry. Please try again.')),
         variant: 'destructive',
       });
       return;

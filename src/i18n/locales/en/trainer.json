@@ -89,7 +89,8 @@
     "morning": "Morning",
     "afternoon": "Afternoon",
     "evening": "Evening",
-    "clearFilters": "Clear filters"
+    "clearFilters": "Clear filters",
+    "genericError": "Something went wrong. Please try again."
   },
   "attendance": {
     "title": "Attendance",
@@ -386,7 +387,9 @@
     "deleteBookingError": "Could not remove the player. Please try again.",
     "deletePaidInvoiceWarning": "This booking is on paid invoice {{number}}. Removing the player will not change the amount already paid — arrange compensation with the player separately.",
     "deleteUnpaidInvoiceWarning": "Invoice {{number}} will be recalculated automatically after removal.",
-    "invoiceSyncFailed": "The player was removed, but a linked invoice could not be updated. Please check the invoice."
+    "invoiceSyncFailed": "The player was removed, but a linked invoice could not be updated. Please check the invoice.",
+    "createBookingError": "Failed to create the booking. Please try again.",
+    "updateBookingError": "Could not update the booking. Please try again."
   },
   "players": {
     "title": "My Players",
@@ -511,7 +514,8 @@
       "removedFromAcademyTitle": "Removed from academy",
       "removedFromAcademyDesc": "This player was removed from your academy on {{date}}.",
       "removedFromAcademySuccess": "Player removed from academy",
-      "removedFromAcademySuccessDesc": "Historical bookings and invoices are unchanged."
+      "removedFromAcademySuccessDesc": "Historical bookings and invoices are unchanged.",
+      "loadError": "Could not load player details. Please try again."
     },
     "import": {
       "button": "Import CSV",
@@ -587,8 +591,13 @@
     "tags": {
       "deleteConfirmTitle": "Delete tag?",
       "deleteConfirmDescription": "This permanently deletes \"{{name}}\" and removes it from all tagged players. This cannot be undone.",
-      "deleteConfirmAction": "Delete tag"
-    }
+      "deleteConfirmAction": "Delete tag",
+      "createError": "Could not create the tag. Please try again.",
+      "deleteError": "Could not delete the tag. Please try again."
+    },
+    "createError": "Could not add the player. Please try again.",
+    "notesSaveError": "Failed to save the note. Please try again.",
+    "updateError": "Failed to update player"
   },
   "earnings": {
     "title": "Earnings",
@@ -859,7 +868,14 @@
     "notifyPlayers": "Notify affected players by email",
     "workingAs": "Working as",
     "independent": "Independent",
-    "changeInSettings": "Change in settings"
+    "changeInSettings": "Change in settings",
+    "deleteSlotError": "Could not delete the time slot. Please try again.",
+    "guestPlayersLoadError": "Could not load players",
+    "guestPlayersLoadErrorDescription": "Please try again.",
+    "slotCreateError": "Could not create the slot. Please try again.",
+    "slotDeleteError": "Could not delete the slot. Please try again.",
+    "slotUpdateError": "Could not save the changes. Please try again.",
+    "slotsGenerateError": "Could not create the slots. Please try again."
   },
   "openSlots": {
     "title": "Open Training Slots",
@@ -924,7 +940,8 @@
     "vatBulkUpdateConfirm": "Yes, update all",
     "vatBulkUpdateCancel": "No, only new sessions",
     "vatBulkUpdateSuccess": "Updated {{slots}} sessions and {{invoices}} invoices",
-    "vatBulkUpdateError": "Failed to update existing sessions and invoices"
+    "vatBulkUpdateError": "Failed to update existing sessions and invoices",
+    "genericError": "Failed to save the setting. Please try again."
   },
   "noTrainersYet": "No trainers available in this area yet. Check back soon!",
   "clearFilters": "Clear Filters",
@@ -1148,7 +1165,8 @@
     "markCancelledConfirmAction": "Mark as cancelled",
     "markCancelledConfirmTitle": "Mark lesson as cancelled?",
     "paidInvoiceNotUpdated": "Paid invoice not updated",
-    "paidInvoiceNotUpdatedDescription": "Invoice {{numbers}} is already paid and was left unchanged. Please review it manually."
+    "paidInvoiceNotUpdatedDescription": "Invoice {{numbers}} is already paid and was left unchanged. Please review it manually.",
+    "cancelError": "Failed to cancel booking"
   },
   "earningsPage": {
     "title": "Earnings",
@@ -1437,5 +1455,10 @@
       "draftLoaded": "Draft loaded",
       "error": "Error"
     }
-  }
+  },
+  "cyclus": {
+    "deleteError": "Could not delete the cyclus. Please try again.",
+    "loadError": "Could not load your cycles. Please try again."
+  },
+  "logoutError": "Could not sign out. Please try again."
 }

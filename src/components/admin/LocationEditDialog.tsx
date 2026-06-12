@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { createLocation, updateLocation, type Location } from '@/lib/locations';
 
 interface LocationEditDialogProps {
@@ -234,7 +235,7 @@ export function LocationEditDialog({
       logger.error('Error saving location', error instanceof Error ? error : new Error(String(error)), { component: 'LocationEditDialog' });
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save location',
+        description: getFriendlyErrorMessage(error, 'Failed to save location'),
         variant: 'destructive',
       });
     } finally {
@@ -281,7 +282,7 @@ export function LocationEditDialog({
       toast({ title: "Logo uploaded", description: "Logo image uploaded successfully." });
     } catch (error: any) {
       logger.error("Error uploading logo", error instanceof Error ? error : new Error(String(error)), { component: 'LocationEditDialog' });
-      toast({ title: "Error", description: error.message || "Failed to upload logo.", variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, "Failed to upload logo."), variant: "destructive" });
     } finally {
       setLogoUploading(false);
     }

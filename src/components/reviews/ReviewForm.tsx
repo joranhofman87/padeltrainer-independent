@@ -8,6 +8,7 @@ import { StarRating } from './StarRating';
 import { ReviewTagSelector } from './ReviewTagSelector';
 import { createReviewWithTags } from '@/lib/reviews';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { sendReviewNotification } from '@/lib/email';
 
 interface ReviewFormProps {
@@ -66,7 +67,7 @@ export function ReviewForm({
     if (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: getFriendlyErrorMessage(error, 'Could not submit your review. Please try again.'),
         variant: 'destructive',
       });
     } else {

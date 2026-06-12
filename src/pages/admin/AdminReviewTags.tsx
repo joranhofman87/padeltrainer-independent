@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { ReviewTag } from "@/lib/reviews";
 import { logger } from "@/lib/logger";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 
 interface ReviewTagFormData {
   name: string;
@@ -195,7 +196,7 @@ export default function AdminReviewTags() {
       logger.error("Error saving review tag", error as Error, { component: "AdminReviewTags", tagId: editingTag?.id });
       toast({
         title: "Error",
-        description: error.message || "Failed to save tag",
+        description: getFriendlyErrorMessage(error, "Failed to save tag"),
         variant: "destructive",
       });
     } finally {
@@ -222,7 +223,7 @@ export default function AdminReviewTags() {
       logger.error("Error toggling review tag", error as Error, { component: "AdminReviewTags", tagId: tag.id });
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, "Failed to update tag"),
         variant: "destructive",
       });
     }
@@ -256,7 +257,7 @@ export default function AdminReviewTags() {
       logger.error("Error deleting review tag", error as Error, { component: "AdminReviewTags", tagId: tagToDelete?.id });
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, "Failed to delete tag"),
         variant: "destructive",
       });
     }

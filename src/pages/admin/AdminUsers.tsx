@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
@@ -206,7 +207,7 @@ export default function AdminUsers() {
       logger.error("Failed to update role", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
-        description: error.message || "Failed to update role",
+        description: getFriendlyErrorMessage(error, "Failed to update role"),
         variant: "destructive",
       });
     } finally {
@@ -238,11 +239,10 @@ export default function AdminUsers() {
       setImpersonateDialogOpen(false);
       setSelectedUser(null);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to generate impersonation link";
       logger.error("Failed to impersonate", error as Error, { component: "AdminUsers", targetUserId: selectedUser?.user_id });
       toast({
         title: "Error",
-        description: errorMessage,
+        description: getFriendlyErrorMessage(error, "Failed to generate impersonation link"),
         variant: "destructive",
       });
     } finally {
@@ -271,11 +271,10 @@ export default function AdminUsers() {
       setSelectedUser(null);
       setDeleteConfirmText("");
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to delete user";
       logger.error("Failed to delete user", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
-        description: errorMessage,
+        description: getFriendlyErrorMessage(error, "Failed to delete user"),
         variant: "destructive",
       });
     } finally {
@@ -376,11 +375,10 @@ export default function AdminUsers() {
       setEditDialogOpen(false);
       setSelectedUser(null);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to update user";
       logger.error("Failed to update user", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
-        description: errorMessage,
+        description: getFriendlyErrorMessage(error, "Failed to update user"),
         variant: "destructive",
       });
     } finally {
@@ -417,7 +415,7 @@ export default function AdminUsers() {
       setNewPassword("");
     } catch (error: unknown) {
       const rawMessage = error instanceof Error ? error.message : "Failed to update password";
-      const friendly = SERVER_PW_ERROR_MAP[rawMessage] ?? rawMessage;
+      const friendly = SERVER_PW_ERROR_MAP[rawMessage] ?? getFriendlyErrorMessage(error, "Failed to update password");
       logger.error("Failed to reset password", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
@@ -458,7 +456,7 @@ export default function AdminUsers() {
       await invalidateUsers();
       await invalidateUsers();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to save discount", variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, "Failed to save discount"), variant: "destructive" });
     } finally {
       setActionLoading(false);
     }
@@ -474,7 +472,7 @@ export default function AdminUsers() {
       await invalidateUsers();
       await invalidateUsers();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to remove discount", variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(error, "Failed to remove discount"), variant: "destructive" });
     } finally {
       setActionLoading(false);
     }

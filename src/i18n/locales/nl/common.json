@@ -189,7 +189,8 @@
     "viewAllArticles": "Bekijk alle gidsen",
     "viewAllStrokes": "Bekijk alle slagen",
     "viewAllVideos": "Bekijk alle video's",
-    "learnPadelSubtitle": "Verbeter je spel met gidsen, technieken en videotips"
+    "learnPadelSubtitle": "Verbeter je spel met gidsen, technieken en videotips",
+    "followError": "Kon je volgstatus niet bijwerken. Probeer het opnieuw."
   },
   "profile": {
     "preferredClubs": "Favoriete padelclubs",
@@ -630,5 +631,14 @@
     "urlLabel": "URL",
     "remove": "Link verwijderen",
     "apply": "Toepassen"
-  }
+  },
+  "notifications": {
+    "saveErrorDescription": "Kon je notificatievoorkeuren niet opslaan. Probeer het opnieuw."
+  },
+  "subscription": {
+    "checkoutError": "Kon het afrekenen niet starten. Probeer het opnieuw.",
+    "portalError": "Kon abonnementsbeheer niet openen. Probeer het opnieuw."
+  },
+  "videoAddError": "Kon de video niet toevoegen. Probeer het opnieuw.",
+  "videoRemoveError": "Kon de video niet verwijderen. Probeer het opnieuw."
 }

@@ -18,6 +18,7 @@ import {
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import {
   Calendar,
   Clock,
@@ -232,7 +233,7 @@ export default function TrainerBookings() {
       });
       fetchBookings();
     } catch (err: any) {
-      toast({ title: t('common:error'), description: err.message || t('manageBookings.cancelError', 'Failed to cancel and reopen'), variant: 'destructive' });
+      toast({ title: t('common:error'), description: getFriendlyErrorMessage(err, t('manageBookings.cancelError', 'Failed to cancel and reopen')), variant: 'destructive' });
     }
     
     setIsCancelling(false);

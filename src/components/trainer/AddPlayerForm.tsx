@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { buildGuestPlayerDbFields } from "@/lib/profileName";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -237,7 +238,7 @@ export function AddPlayerForm({
       logger.error('Error creating player', error as Error, { component: 'AddPlayerForm' });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("players.createError", "Could not add the player. Please try again.")),
         variant: "destructive",
       });
     } finally {

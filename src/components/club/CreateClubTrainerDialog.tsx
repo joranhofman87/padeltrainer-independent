@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
 
 interface CreateClubTrainerDialogProps {
@@ -82,7 +83,7 @@ export function CreateClubTrainerDialog({
       logger.error('Error creating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'CreateClubTrainerDialog' });
       toast({
         title: t('createTrainer.error', 'Error'),
-        description: String(error),
+        description: getFriendlyErrorMessage(error, t('createTrainer.genericError', 'Failed to create the trainer. Please try again.')),
         variant: 'destructive',
       });
     } finally {

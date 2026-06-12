@@ -30,6 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { RatingSystemConfig, COUNTRY_NAMES, clearRatingSystemsCache } from "@/lib/ratingSystems";
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 interface RatingSystemFormData {
   code: string;
@@ -207,7 +208,7 @@ export default function AdminRatingSystems() {
       logger.error("Error saving rating system", error instanceof Error ? error : new Error(String(error)), { component: 'AdminRatingSystems' });
       toast({
         title: t("common:toasts.errorTitle"),
-        description: error.message || t("common:toasts.errorDescription"),
+        description: getFriendlyErrorMessage(error, t("common:toasts.errorDescription", "Something went wrong. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -238,7 +239,7 @@ export default function AdminRatingSystems() {
       logger.error("Error toggling rating system", error instanceof Error ? error : new Error(String(error)), { component: 'AdminRatingSystems' });
       toast({
         title: t("common:toasts.errorTitle"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("common:toasts.errorDescription", "Something went wrong. Please try again.")),
         variant: "destructive",
       });
     }
@@ -273,7 +274,7 @@ export default function AdminRatingSystems() {
       logger.error("Error deleting rating system", error instanceof Error ? error : new Error(String(error)), { component: 'AdminRatingSystems' });
       toast({
         title: t("common:toasts.errorTitle"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("common:toasts.errorDescription", "Something went wrong. Please try again.")),
         variant: "destructive",
       });
     }

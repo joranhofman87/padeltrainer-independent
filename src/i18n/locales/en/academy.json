@@ -136,7 +136,8 @@
     "invalidLink": "Invalid invitation link",
     "notFoundOrExpired": "This invitation was not found or has expired",
     "loadFailedTitle": "Could not load this invitation",
-    "loadFailedDescription": "Something went wrong while loading. Your invitation link is still valid — check your connection and try again."
+    "loadFailedDescription": "Something went wrong while loading. Your invitation link is still valid — check your connection and try again.",
+    "genericError": "Something went wrong. Please try again."
   },
   "locations": {
     "title": "Academy Locations",
@@ -176,7 +177,8 @@
     "activeContract": "Active Contract",
     "activeContractHint": "Inactive contracts are hidden from public pages",
     "inactive": "Inactive",
-    "inactiveContracts": "Inactive Contracts"
+    "inactiveContracts": "Inactive Contracts",
+    "updateError": "Failed to update the location. Please try again."
   },
   "profile": {
     "title": "Academy Profile",
@@ -210,7 +212,8 @@
     "bannerInvalidWidth": "Image width must be between 800 and 2400 pixels.",
     "bannerInvalidRatio": "Image aspect ratio must be between 2.5:1 and 5:1 (wide banner).",
     "videos": "Videos",
-    "videosDescription": "Add YouTube, Vimeo, TikTok, or Instagram videos to your profile"
+    "videosDescription": "Add YouTube, Vimeo, TikTok, or Instagram videos to your profile",
+    "genericError": "Something went wrong. Please try again."
   },
   "managers": {
     "title": "Academy Managers",
@@ -225,7 +228,9 @@
     "remove": "Remove",
     "confirmRemove": "Are you sure you want to remove this manager?",
     "noTrainersAvailable": "No trainers available to add",
-    "confirmRemoveTitle": "Remove manager?"
+    "confirmRemoveTitle": "Remove manager?",
+    "addError": "Failed to add manager",
+    "removeError": "Failed to remove manager"
   },
   "settings": {
     "dangerZone": "Danger Zone",
@@ -275,18 +280,27 @@
       "help": "This controls how prices are shown to players in academy schedules and booking pages. It does not change your payout or tax obligations.",
       "saveSuccess": "Price display setting saved",
       "saveError": "Could not save price display setting"
-    }
+    },
+    "disconnectError": "Failed to disconnect your payment account",
+    "mollieConnectError": "Failed to connect your payment account. Please try again.",
+    "statusRefreshError": "Failed to refresh connection status",
+    "timezone": "Timezone",
+    "timezoneSaveError": "Failed to update timezone",
+    "warnings": "Warnings",
+    "warningsSaveError": "Failed to save warning settings"
   },
   "terms": {
     "title": "General Terms",
     "description": "Terms players must accept before booking lessons with your trainers.",
-    "saved": "Terms saved successfully"
+    "saved": "Terms saved successfully",
+    "saveError": "Failed to save terms"
   },
   "welcomeMessage": {
     "title": "Welcome Message",
     "description": "This message is shown to players after they register for a cycle or join your waiting list.",
     "placeholder": "e.g. Thanks for signing up! Join our WhatsApp community: https://chat.whatsapp.com/...",
-    "saved": "Welcome message saved"
+    "saved": "Welcome message saved",
+    "saveError": "Failed to save welcome message"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -307,7 +321,9 @@
     "academy": "Academy",
     "waitingList": "Waiting List",
     "openSlots": "Open Slots",
-    "invoices": "Invoices"
+    "invoices": "Invoices",
+    "logout": "Log out",
+    "logoutError": "Failed to log out. Please try again."
   },
   "invoiceSettings": {
     "title": "Invoice Settings",

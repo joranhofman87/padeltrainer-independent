@@ -15,6 +15,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { addAcademyLocation } from '@/lib/academy';
 import { LocationPicker } from '@/components/locations/LocationPicker';
 
@@ -81,7 +82,7 @@ export function AddAcademyLocationDialog({
       logger.error('Error adding location', error instanceof Error ? error : new Error(String(error)), { component: 'AddAcademyLocationDialog' });
       toast({
         title: t('common:error'),
-        description: String(error),
+        description: getFriendlyErrorMessage(error, t('locations.addError')),
         variant: 'destructive',
       });
     } finally {

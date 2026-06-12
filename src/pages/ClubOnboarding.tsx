@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { validatePhone } from '@/lib/validation';
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export default function ClubOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
@@ -162,7 +163,7 @@ export default function ClubOnboarding() {
       logger.error('Club claim error', error as Error, { component: 'ClubOnboarding', locationId: selectedLocation?.id });
       toast({
         title: t('claim.error', 'Error'),
-        description: error.message || t('claim.errorDescription', 'Failed to submit claim'),
+        description: getFriendlyErrorMessage(error, t('claim.errorDescription', 'Failed to submit claim')),
         variant: 'destructive',
       });
     }

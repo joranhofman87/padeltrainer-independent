@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export default function TrainerBookingSettings() {
   const { user, role, loading } = useAuth();
@@ -90,7 +91,7 @@ export default function TrainerBookingSettings() {
       .eq('user_id', user!.id);
 
     if (error) {
-      toast({ title: t('common:error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common:error'), description: getFriendlyErrorMessage(error, t('bookingSettings.genericError', 'Failed to save the setting. Please try again.')), variant: 'destructive' });
     } else {
       toast({ title: t('welcomeMessage.saved') });
     }
@@ -105,7 +106,7 @@ export default function TrainerBookingSettings() {
       .eq('user_id', user!.id);
 
     if (error) {
-      toast({ title: t('common:error'), description: error.message, variant: 'destructive' });
+      toast({ title: t('common:error'), description: getFriendlyErrorMessage(error, t('bookingSettings.genericError', 'Failed to save the setting. Please try again.')), variant: 'destructive' });
     } else {
       setPricesIncludeVat(value);
       toast({ title: t('common:success'), description: t('bookingSettings.vatSaved') });

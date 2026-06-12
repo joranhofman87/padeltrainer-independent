@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import { format, parseISO, isPast } from "date-fns";
 import { logger } from "@/lib/logger";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import CycleFillRateCard from "@/components/cycles/CycleFillRateCard";
 
 interface CyclusInfo {
@@ -238,7 +239,7 @@ export default function TrainerCyclus() {
       logger.error("Error fetching cyclus list", error as Error, { component: "TrainerCyclus", trainerId });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("cyclus.loadError", "Could not load your cycles. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -287,7 +288,7 @@ export default function TrainerCyclus() {
       logger.error("Error deleting cyclus", error as Error, { component: "TrainerCyclus", cyclusId: deletingCyclus?.cyclus_id });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("cyclus.deleteError", "Could not delete the cyclus. Please try again.")),
         variant: "destructive",
       });
     } finally {

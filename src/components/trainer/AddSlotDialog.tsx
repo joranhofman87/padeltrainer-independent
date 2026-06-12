@@ -43,6 +43,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
 import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
@@ -211,7 +212,7 @@ export function AddSlotDialog({
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("calendar.slotCreateError", "Could not create the slot. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -565,7 +566,7 @@ export function BulkCreateContent({
         const error = data;
         toast({
           title: t("calendar.guestPlayersLoadError", "Could not load players"),
-          description: error.message,
+          description: getFriendlyErrorMessage(error, t("calendar.guestPlayersLoadErrorDescription", "Please try again.")),
           variant: "destructive",
         });
         setPlayers([]);
@@ -581,7 +582,7 @@ export function BulkCreateContent({
       );
       toast({
         title: t("calendar.guestPlayersLoadError", "Could not load players"),
-        description: message,
+        description: getFriendlyErrorMessage(err, t("calendar.guestPlayersLoadErrorDescription", "Please try again.")),
         variant: "destructive",
       });
       setPlayers([]);
@@ -1183,7 +1184,7 @@ export function BulkCreateContent({
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("calendar.slotsGenerateError", "Could not create the slots. Please try again.")),
         variant: "destructive",
       });
     } finally {

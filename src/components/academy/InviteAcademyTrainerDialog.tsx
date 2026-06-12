@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { inviteAcademyTrainer } from '@/lib/academy';
 import { sendEmail } from '@/lib/email';
 import { getAppUrl } from '@/lib/domains';
@@ -58,7 +59,7 @@ export function InviteAcademyTrainerDialog({
       if (!result.success) {
         toast({
           title: t('trainerInvitation.error'),
-          description: result.error,
+          description: getFriendlyErrorMessage(result.error, t('trainerInvitation.genericError', 'Something went wrong. Please try again.')),
           variant: 'destructive',
         });
         return;
@@ -86,7 +87,7 @@ export function InviteAcademyTrainerDialog({
       logger.error('Error sending invitation', error as Error, { component: 'InviteAcademyTrainerDialog' });
       toast({
         title: t('trainerInvitation.error'),
-        description: String(error),
+        description: getFriendlyErrorMessage(error, t('trainerInvitation.genericError', 'Something went wrong. Please try again.')),
         variant: 'destructive',
       });
     } finally {

@@ -30,6 +30,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { logger } from "@/lib/logger";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 
 export default function AcademySubscription() {
   const { t } = useTranslation(["academy", "common"]);
@@ -90,7 +91,7 @@ export default function AcademySubscription() {
     } catch (error: any) {
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("subscription.checkoutError", "Failed to start checkout. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -119,7 +120,7 @@ export default function AcademySubscription() {
     } catch (error: any) {
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("subscription.portalError", "Failed to open subscription management. Please try again.")),
         variant: "destructive",
       });
     } finally {

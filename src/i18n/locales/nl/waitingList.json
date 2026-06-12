@@ -22,7 +22,8 @@
     "notes": "Is er nog iets dat we moeten weten?",
     "notesPlaceholder": "bijv. voorkeur trainer, specifieke doelen, schema beperkingen...",
     "submit": "Zet op wachtlijst",
-    "submitting": "Bezig met toevoegen..."
+    "submitting": "Bezig met toevoegen...",
+    "submitError": "Aanmelden voor de wachtlijst is mislukt. Probeer het opnieuw."
   },
   "messageFrom": "Bericht van {{name}}",
   "success": {
@@ -37,7 +38,8 @@
     "archived": "Gearchiveerd",
     "remove": "Verwijderen",
     "removeConfirm": "Weet je zeker dat je jezelf van deze wachtlijst wilt verwijderen?",
-    "joinedOn": "Aangemeld op"
+    "joinedOn": "Aangemeld op",
+    "deleteError": "Kon je niet van de wachtlijst verwijderen. Probeer het opnieuw."
   },
   "management": {
     "title": "Wachtlijst",
@@ -50,6 +52,7 @@
       "active": "Actief",
       "contacted": "Gecontacteerd",
       "archived": "Gearchiveerd"
-    }
+    },
+    "updateError": "Kon de inschrijving niet bijwerken. Probeer het opnieuw."
   }
 }

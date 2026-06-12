@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { updateAcademyLocation, type AcademyLocationWithDetails } from '@/lib/academy';
 
 interface EditAcademyLocationDialogProps {
@@ -64,7 +65,7 @@ export function EditAcademyLocationDialog({
       logger.error('Error updating location', error instanceof Error ? error : new Error(String(error)), { component: 'EditAcademyLocationDialog' });
       toast({
         title: t('common:error'),
-        description: String(error),
+        description: getFriendlyErrorMessage(error, t('locations.updateError', 'Failed to update the location. Please try again.')),
         variant: 'destructive',
       });
     } finally {

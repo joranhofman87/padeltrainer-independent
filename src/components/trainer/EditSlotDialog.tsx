@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { SlotRatingPicker } from "./SlotRatingPicker";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 import {
@@ -198,7 +199,7 @@ export function EditSlotDialog({
       logger.error('Error updating slot', error as Error, { component: 'EditSlotDialog' });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("calendar.slotUpdateError", "Could not update the slot. Please try again.")),
         variant: "destructive",
       });
     } finally {
