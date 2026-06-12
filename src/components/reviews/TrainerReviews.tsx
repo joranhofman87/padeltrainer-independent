@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StarRating } from './StarRating';
 import { ReviewCard } from './ReviewCard';
@@ -10,6 +11,7 @@ interface TrainerReviewsProps {
 }
 
 export function TrainerReviews({ trainerId }: TrainerReviewsProps) {
+  const { t } = useTranslation();
   const [reviews, setReviews] = useState<ReviewWithDetails[]>([]);
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
@@ -69,8 +71,10 @@ export function TrainerReviews({ trainerId }: TrainerReviewsProps) {
         {reviews.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>No reviews yet</p>
-            <p className="text-sm">Be the first to review this trainer!</p>
+            <p>{t('marketing:trainerProfile.noReviews', 'No reviews yet')}</p>
+            <p className="text-sm">
+              {t('marketing:trainerProfile.beFirstReview', 'Be the first to review this trainer!')}
+            </p>
           </div>
         ) : (
           <div className="space-y-4">

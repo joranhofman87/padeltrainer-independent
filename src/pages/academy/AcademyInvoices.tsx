@@ -347,6 +347,13 @@ export default function AcademyInvoices() {
 
   const totalUnpaid = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
 
+  // Map a known send-failure reason from the send-invoice-email function to
+  // actionable copy for the failure toast description.
+  const describeSendError = (reason?: string) =>
+    reason === "email_not_configured"
+      ? t("invoices.sendErrorNotConfigured", "Email sending is not configured yet — contact support.")
+      : t("invoices.sendErrorWithHint", "Failed to send the invoice. Check the recipient email and try again.");
+
   // Send single invoice (with email)
   type SendInvoiceResult = { noEmail: boolean; skipped?: boolean; email?: string; invoice?: Invoice };
   const sendInvoiceMutation = useMutation({
@@ -365,8 +372,9 @@ export default function AcademyInvoices() {
         return { noEmail: false, skipped: true, email: data?.email };
       }
 
-      // Only stamp sent_at after a confirmed delivery
-      if (!data?.success) throw new Error("send_failed");
+      // Only stamp sent_at after a confirmed delivery. Preserve the structured
+      // failure reason (e.g. "email_not_configured") so onError can surface it.
+      if (!data?.success) throw new Error(typeof data?.error === "string" ? data.error : "send_failed");
 
       const { error } = await supabase
         .from("invoices")
@@ -405,8 +413,10 @@ export default function AcademyInvoices() {
         ? t("invoices.sentSuccessTo", { email: result.email })
         : t("invoices.sentSuccess"));
     },
-    onError: () => {
-      toast.error(t("invoices.sendError", "Failed to send invoice"));
+    onError: (error) => {
+      toast.error(t("invoices.sendError", "Failed to send invoice"), {
+        description: describeSendError(error instanceof Error ? error.message : undefined),
+      });
     },
   });
 
@@ -481,7 +491,9 @@ export default function AcademyInvoices() {
 
     // Only mark sent after a confirmed delivery
     if (fnError || !data?.success) {
-      toast.error(t("invoices.sendError", "Failed to send invoice"));
+      toast.error(t("invoices.sendError", "Failed to send invoice"), {
+        description: describeSendError(typeof data?.error === "string" ? data.error : undefined),
+      });
       return;
     }
 

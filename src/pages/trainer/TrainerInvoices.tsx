@@ -210,6 +210,13 @@ export default function TrainerInvoices() {
     return true;
   };
 
+  // Map a known send-failure reason from the send-invoice-email function to
+  // actionable copy for the failure toast description.
+  const describeSendError = (reason?: string) =>
+    reason === "email_not_configured"
+      ? t("invoices.sendErrorNotConfigured", "Email sending is not configured yet — contact support.")
+      : t("invoices.sendErrorWithHint", "Failed to send the invoice. Check the recipient email and try again.");
+
   // Send single invoice
   type SendInvoiceResult = { noEmail: boolean; skipped?: boolean; email?: string; invoice?: Invoice };
   const sendInvoiceMutation = useMutation({
@@ -225,8 +232,9 @@ export default function TrainerInvoices() {
       if (data?.skipped === "recently_sent") {
         return { noEmail: false, skipped: true, email: data?.email };
       }
-      // Only stamp sent_at after a confirmed delivery
-      if (!data?.success) throw new Error("send_failed");
+      // Only stamp sent_at after a confirmed delivery. Preserve the structured
+      // failure reason (e.g. "email_not_configured") so onError can surface it.
+      if (!data?.success) throw new Error(typeof data?.error === "string" ? data.error : "send_failed");
       const { error } = await supabase
         .from("invoices")
         .update({ sent_at: new Date().toISOString(), status: "sent" })
@@ -263,8 +271,10 @@ export default function TrainerInvoices() {
         ? t("invoices.sentSuccessTo", { email: result.email })
         : t("invoices.sentSuccess"));
     },
-    onError: () => {
-      toast.error(t("invoices.sendError", "Verzenden mislukt"));
+    onError: (error) => {
+      toast.error(t("invoices.sendError", "Verzenden mislukt"), {
+        description: describeSendError(error instanceof Error ? error.message : undefined),
+      });
     },
   });
 
@@ -322,7 +332,9 @@ export default function TrainerInvoices() {
     const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId } });
     // Only mark sent after a confirmed delivery
     if (fnError || !data?.success) {
-      toast.error(t("invoices.sendError", "Verzenden mislukt"));
+      toast.error(t("invoices.sendError", "Verzenden mislukt"), {
+        description: describeSendError(typeof data?.error === "string" ? data.error : undefined),
+      });
       return;
     }
     await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", invoiceId);

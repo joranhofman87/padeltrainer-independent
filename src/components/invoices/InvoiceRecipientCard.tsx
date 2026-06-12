@@ -101,6 +101,12 @@ export function InvoiceRecipientCard({
                 <Mail className="h-3.5 w-3.5 shrink-0" />
                 {email}
               </a>
+            ) : playerId ? (
+              // Registered players' emails are not readable client-side (RLS);
+              // the send-invoice-email function resolves the address server-side.
+              <span className="text-muted-foreground">
+                {t('invoiceEdit.emailResolvedAtSend', 'Retrieved automatically when sending')}
+              </span>
             ) : (
               <span className="text-muted-foreground">—</span>
             )}

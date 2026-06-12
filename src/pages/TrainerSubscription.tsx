@@ -204,13 +204,17 @@ export default function TrainerSubscription() {
 
   const primaryHeaderAction =
     currentPlan !== 'starter'
-      ? {
-          label: t('subscriptionPage.manageSubscription'),
-          onClick: handleManageSubscription,
-          icon: ExternalLink,
-          disabled: loadingPortal,
-          loading: loadingPortal,
-        }
+      ? // Academy-managed trainers have no Stripe customer — opening the
+        // customer portal would always fail, so hide the manage action.
+        subscription?.managedByAcademy
+        ? undefined
+        : {
+            label: t('subscriptionPage.manageSubscription'),
+            onClick: handleManageSubscription,
+            icon: ExternalLink,
+            disabled: loadingPortal,
+            loading: loadingPortal,
+          }
       : highlightedPlan
         ? {
             label: t('subscriptionPage.upgrade'),

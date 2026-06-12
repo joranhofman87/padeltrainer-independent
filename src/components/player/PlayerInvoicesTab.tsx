@@ -258,7 +258,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                   <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
-                      size="icon" aria-label="Edit"
+                      size="icon" aria-label={t('playerInvoices.actions.editBilling', 'Edit billing details')}
                       onClick={() => openEditBilling(invoice)}
                       title={t('playerInvoices.actions.editBilling')}
                     >
@@ -266,7 +266,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                     </Button>
                     <Button
                       variant="ghost"
-                      size="icon" aria-label="Download"
+                      size="icon" aria-label={t('playerInvoices.actions.downloadPdf', 'Download PDF')}
                       onClick={() => handleDownload(invoice)}
                       disabled={downloadLoading === invoice.id}
                       title={t('playerInvoices.actions.downloadPdf')}
