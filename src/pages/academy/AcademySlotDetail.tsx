@@ -187,14 +187,26 @@ export default function AcademySlotDetail() {
         .from('bookings')
         .select(`
           id, status, player_id, guest_player_id, payment_status, payment_amount, paid_externally,
-          profiles:player_id(full_name, avatar_url, skill_rating, rating_system, birth_date),
           guest_players:guest_player_id(full_name, skill_rating, rating_system, birth_date)
         `)
         .eq('slot_id', slotId)
         .in('status', ['confirmed', 'pending']);
 
+      // Registered players resolve via profiles_public: the academy has no RLS
+      // access to other users' profiles rows, so an embedded profiles join
+      // silently returns null and every registered player rendered "Unknown".
+      const registeredIds = (bookings || []).map(b => b.player_id).filter(Boolean) as string[];
+      const profilesById = new Map<string, { full_name: string | null; avatar_url: string | null; skill_rating: number | null; rating_system: string | null }>();
+      if (registeredIds.length > 0) {
+        const { data: publicProfiles } = await supabase
+          .from('profiles_public')
+          .select('id, full_name, avatar_url, skill_rating, rating_system')
+          .in('id', registeredIds);
+        (publicProfiles || []).forEach(p => { if (p.id) profilesById.set(p.id, p); });
+      }
+
       const players: BookedPlayer[] = (bookings || []).map(b => {
-        const prof = b.profiles as any;
+        const prof = b.player_id ? profilesById.get(b.player_id) : null;
         const guest = b.guest_players as any;
         return {
           id: b.player_id || b.guest_player_id || b.id,
@@ -205,7 +217,9 @@ export default function AcademySlotDetail() {
           skillRating: prof?.skill_rating ?? guest?.skill_rating ?? null,
           ratingSystem: prof?.rating_system || guest?.rating_system || 'knltb',
           avatarUrl: prof?.avatar_url || null,
-          birthDate: prof?.birth_date || guest?.birth_date || null,
+          // profiles_public exposes no birth_date (PII); it was null for
+          // registered players under the old RLS-blocked join too.
+          birthDate: guest?.birth_date || null,
           paymentStatus: b.payment_status as string | undefined,
           paidExternally: Boolean(b.paid_externally),
         };
