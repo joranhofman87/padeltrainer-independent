@@ -499,36 +499,61 @@ serve(async (req) => {
       }
     }
 
-    // Generate invoice number using profile's custom prefix
+    // Generate invoice number using profile's custom prefix.
+    // M-10: allocation is ATOMIC via the next_invoice_sequence RPC (a single
+    // UPDATE ... RETURNING on the profile counter), replacing the old
+    // read-increment-write that advanced the counter only AFTER insert — two
+    // concurrent creators could mint the same legal number. The max-existing
+    // scan is scoped to the NUMBERING profile: academy invoices scan
+    // academy-wide (the old trainer-scoped scan missed siblings' numbers).
     const prefix = (invoiceProfile.invoice_prefix ?? "").trim();
     const year = new Date().getFullYear();
     const includeYear = invoiceProfile.invoice_include_year ?? true;
     const likePattern = prefix
       ? (includeYear ? `${prefix}-${year}-%` : `${prefix}-%`)
       : (includeYear ? `${year}-%` : '%');
-    const { data: lastInvoice } = await supabase
-      .from("invoices")
-      .select("invoice_number")
-      .eq("trainer_id", trainerId)
-      .like("invoice_number", likePattern)
-      .order("invoice_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const numberingType = invoiceProfileTable === "academy_profiles" ? "academy" : "trainer";
 
-    let sequence = invoiceProfile.invoice_next_number || 1;
-    if (lastInvoice?.invoice_number) {
-      const parts = lastInvoice.invoice_number.split("-");
-      const lastSeq = parseInt(parts[parts.length - 1] || "0");
-      if (lastSeq >= sequence) {
-        sequence = lastSeq + 1;
+    const buildInvoiceNumber = (sequence: number): string => {
+      const seq = String(sequence).padStart(4, "0");
+      const numParts: string[] = [];
+      if (prefix) numParts.push(prefix);
+      if (includeYear) numParts.push(String(year));
+      numParts.push(seq);
+      return numParts.join("-");
+    };
+
+    const allocateInvoiceNumber = async (): Promise<string> => {
+      let scanQuery = supabase
+        .from("invoices")
+        .select("invoice_number")
+        .like("invoice_number", likePattern)
+        .order("invoice_number", { ascending: false })
+        .limit(1);
+      scanQuery = numberingType === "academy"
+        ? scanQuery.eq("academy_profile_id", invoiceProfileId)
+        : scanQuery.eq("trainer_id", trainerId);
+      const { data: lastInvoice } = await scanQuery.maybeSingle();
+
+      let minSequence = 1;
+      if (lastInvoice?.invoice_number) {
+        const parts = lastInvoice.invoice_number.split("-");
+        const lastSeq = parseInt(parts[parts.length - 1] || "0");
+        if (Number.isFinite(lastSeq)) minSequence = lastSeq + 1;
       }
-    }
-    const seq = String(sequence).padStart(4, "0");
-    const numParts: string[] = [];
-    if (prefix) numParts.push(prefix);
-    if (includeYear) numParts.push(String(year));
-    numParts.push(seq);
-    const invoiceNumber = numParts.join("-");
+
+      const { data: allocated, error: allocError } = await supabase.rpc("next_invoice_sequence", {
+        p_profile_type: numberingType,
+        p_profile_id: invoiceProfileId,
+        p_min: minSequence,
+      });
+      if (allocError || typeof allocated !== "number") {
+        throw new Error(`Failed to allocate invoice number: ${allocError?.message ?? "no sequence returned"}`);
+      }
+      return buildInvoiceNumber(allocated);
+    };
+
+    let invoiceNumber = await allocateInvoiceNumber();
 
     // Calculate due date
     const paymentTermsDays = invoiceProfile.payment_terms_days || 14;
@@ -549,38 +574,55 @@ serve(async (req) => {
       invoiceStatus = "sent";
     }
 
-    // Insert invoice
-    const { data: invoice, error: insertError } = await supabase
-      .from("invoices")
-      .insert({
-        trainer_id: trainerId,
-        academy_profile_id: academyProfileId,
-        invoice_number: invoiceNumber,
-        invoice_date: invoiceDate.toISOString().split("T")[0],
-        due_date: dueDate.toISOString().split("T")[0],
-        player_id: playerId,
-        guest_player_id: guestPlayerId || null,
-        player_name: playerName,
-        player_business_name: playerBusinessName,
-        player_address: playerAddress,
-        player_btw_number: playerBtwNumber,
-        line_items: lineItems,
-        subtotal: Math.round(subtotal * 100) / 100,
-        vat_rate: vatRate,
-        vat_amount: Math.round(vatAmount * 100) / 100,
-        total: Math.round(totalInclusive * 100) / 100,
-        ...(Object.keys(vatBreakdown).length > 0 ? { vat_breakdown: vatBreakdown } : {}),
-        prices_include_vat: slotPricesIncludeVat,
-        status: invoiceStatus,
-        booking_ids: bookingIds,
-        ...(allPaid ? { paid_at: new Date().toISOString(), sent_at: new Date().toISOString() } : {}),
-      })
-      .select()
-      .single();
+    // Insert invoice. On a NUMBER collision (another creator won the same
+    // sequence in the window between scan and insert) re-allocate and retry —
+    // the RPC has already advanced the counter, so each retry gets a fresh
+    // number. Any other 23505 is the booking-set duplicate guard (handled below).
+    let invoice: { id: string } | null = null;
+    let insertError: { code?: string; message: string; details?: string } | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await supabase
+        .from("invoices")
+        .insert({
+          trainer_id: trainerId,
+          academy_profile_id: academyProfileId,
+          invoice_number: invoiceNumber,
+          invoice_date: invoiceDate.toISOString().split("T")[0],
+          due_date: dueDate.toISOString().split("T")[0],
+          player_id: playerId,
+          guest_player_id: guestPlayerId || null,
+          player_name: playerName,
+          player_business_name: playerBusinessName,
+          player_address: playerAddress,
+          player_btw_number: playerBtwNumber,
+          line_items: lineItems,
+          subtotal: Math.round(subtotal * 100) / 100,
+          vat_rate: vatRate,
+          vat_amount: Math.round(vatAmount * 100) / 100,
+          total: Math.round(totalInclusive * 100) / 100,
+          ...(Object.keys(vatBreakdown).length > 0 ? { vat_breakdown: vatBreakdown } : {}),
+          prices_include_vat: slotPricesIncludeVat,
+          status: invoiceStatus,
+          booking_ids: bookingIds,
+          ...(allPaid ? { paid_at: new Date().toISOString(), sent_at: new Date().toISOString() } : {}),
+        })
+        .select()
+        .single();
+      invoice = res.data;
+      insertError = res.error;
+      if (!insertError) break;
 
-    if (insertError) {
+      const errText = `${insertError.message ?? ""} ${insertError.details ?? ""}`;
+      const isNumberCollision = insertError.code === "23505" &&
+        /unique_invoice_number_per_(trainer|academy)/.test(errText);
+      if (!isNumberCollision) break;
+      logStep("Invoice number collision — reallocating", { invoiceNumber, attempt });
+      invoiceNumber = await allocateInvoiceNumber();
+    }
+
+    if (insertError || !invoice) {
       // Race condition lost: unique index rejected the duplicate. Return the winning invoice.
-      if ((insertError as any).code === "23505") {
+      if (insertError && insertError.code === "23505") {
         const dupeFetch = supabase
           .from("invoices")
           .select("id, invoice_number")
@@ -599,15 +641,9 @@ serve(async (req) => {
           );
         }
       }
-      logStep("Failed to insert invoice", { error: insertError.message });
-      throw new Error(`Failed to create invoice: ${insertError.message}`);
+      logStep("Failed to insert invoice", { error: insertError?.message ?? "unknown" });
+      throw new Error(`Failed to create invoice: ${insertError?.message ?? "unknown"}`);
     }
-
-    // Advance the next-number counter only after a successful insert
-    await supabase
-      .from(invoiceProfileTable)
-      .update({ invoice_next_number: sequence + 1 })
-      .eq("id", invoiceProfileId);
 
     logStep("Invoice created", { invoiceId: invoice.id, invoiceNumber, status: invoiceStatus });
 

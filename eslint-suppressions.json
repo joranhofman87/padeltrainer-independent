@@ -1364,7 +1364,7 @@
   },
   "supabase/functions/auto-create-invoice/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 20
+      "count": 19
     }
   },
   "supabase/functions/backfill-invoices/index.ts": {

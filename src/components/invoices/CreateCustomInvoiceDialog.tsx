@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/format';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
-import { formatInvoiceNumber } from '@/lib/invoiceNumber';
+import { allocateInvoiceNumber, isInvoiceNumberCollision } from '@/lib/invoiceNumber';
 import { resolveOrCreateAcademyInvoiceGuest } from '@/lib/invoiceCustomerInsert';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
@@ -163,9 +163,7 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
       if (academyError || !academy) throw new Error('Academy not found');
 
       const prefix = academy.invoice_prefix ?? '';
-      const nextNumber = academy.invoice_next_number || 1;
       const includeYear = (academy as any).invoice_include_year ?? true;
-      const invoiceNumber = formatInvoiceNumber(prefix, new Date().getFullYear(), nextNumber, includeYear);
 
       // Always create/link a player so every invoice recipient appears in the
       // academy players list — even without an email. Dedupes by email so we
@@ -187,36 +185,45 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
         amount: Math.round(li.quantity * li.unit_price * 100) / 100,
       }));
 
-      const { error: insertError } = await supabase
-        .from('invoices')
-        .insert({
-          invoice_number: invoiceNumber,
-          invoice_date: format(new Date(), 'yyyy-MM-dd'),
-          due_date: format(dueDate, 'yyyy-MM-dd'),
-          player_name: playerName.trim(),
-          player_business_name: playerBusinessName.trim() || null,
-          player_address: [playerStreet.trim(), playerZipCode.trim(), playerCity.trim()].filter(Boolean).join('\n') || null,
-          player_btw_number: playerBtwNumber.trim() || null,
-          guest_player_id: guestPlayerId,
-          academy_profile_id: academyProfileId,
-          trainer_id: null,
-          line_items: updatedItems,
-          subtotal,
-          vat_rate: primaryVatRate,
-          vat_amount: vatAmount,
-          vat_breakdown: vatBreakdown || null,
-          total,
-          status: 'draft',
-          prices_include_vat: pricesIncludeVat,
-          notes: notes.trim() || null,
+      // M-10: allocate the number atomically via the DB (no read-increment-write),
+      // and retry on the rare collision with a concurrent creator.
+      let invoiceNumber = '';
+      for (let attempt = 0; ; attempt++) {
+        const allocation = await allocateInvoiceNumber({
+          profileType: 'academy',
+          profileId: academyProfileId,
+          prefix,
+          includeYear,
         });
+        invoiceNumber = allocation.invoiceNumber;
 
-      if (insertError) throw insertError;
+        const { error: insertError } = await supabase
+          .from('invoices')
+          .insert({
+            invoice_number: invoiceNumber,
+            invoice_date: format(new Date(), 'yyyy-MM-dd'),
+            due_date: format(dueDate, 'yyyy-MM-dd'),
+            player_name: playerName.trim(),
+            player_business_name: playerBusinessName.trim() || null,
+            player_address: [playerStreet.trim(), playerZipCode.trim(), playerCity.trim()].filter(Boolean).join('\n') || null,
+            player_btw_number: playerBtwNumber.trim() || null,
+            guest_player_id: guestPlayerId,
+            academy_profile_id: academyProfileId,
+            trainer_id: null,
+            line_items: updatedItems,
+            subtotal,
+            vat_rate: primaryVatRate,
+            vat_amount: vatAmount,
+            vat_breakdown: vatBreakdown || null,
+            total,
+            status: 'draft',
+            prices_include_vat: pricesIncludeVat,
+            notes: notes.trim() || null,
+          });
 
-      await supabase
-        .from('academy_profiles')
-        .update({ invoice_next_number: nextNumber + 1 })
-        .eq('id', academyProfileId);
+        if (!insertError) break;
+        if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
+      }
 
       toast.success(t('invoiceForm.create.createdToast', { number: invoiceNumber }));
       invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyProfileId });
