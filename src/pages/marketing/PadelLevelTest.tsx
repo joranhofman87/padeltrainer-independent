@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
-import posthog from 'posthog-js';
+import { trackEvent } from '@/lib/tracking';
 
 import { SEO } from '@/components/SEO';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
@@ -49,7 +49,7 @@ export default function PadelLevelTest() {
   );
 
   const handleStart = () => {
-    posthog.capture('level_quiz_started', { country });
+    trackEvent('level_quiz_started', { country });
     setPhase('quiz');
   };
 
@@ -59,7 +59,7 @@ export default function PadelLevelTest() {
       next[currentQ] = optionIndex;
       return next;
     });
-    posthog.capture('level_quiz_answer', {
+    trackEvent('level_quiz_answer', {
       question: currentQ + 1,
       answer: ['A', 'B', 'C', 'D'][optionIndex],
       points: questions[currentQ].options[optionIndex].points,
@@ -78,7 +78,7 @@ export default function PadelLevelTest() {
       const level = calculateLevel(totalPoints);
       const info = getLevelInfo(level);
 
-      posthog.capture('level_quiz_completed', {
+      trackEvent('level_quiz_completed', {
         level,
         levelTitle: info.title,
         country,

@@ -2,6 +2,7 @@ import { buildDynamicOgUrl } from '@/lib/dynamicOgImage';
 import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useMarketingNamespace } from '@/hooks/useMarketingNamespace';
 import {
   MapPin, Users, Star, CheckCircle
 } from 'lucide-react';
@@ -75,6 +76,8 @@ export default function AcademyPublicProfile() {
   const [searchParams] = useSearchParams();
   const isPreview = searchParams.get('preview') === 'true';
   const { t } = useTranslation(['academy', 'common']);
+  // SEO strings below use the lazy 'marketing' namespace — trigger its load
+  useMarketingNamespace();
   const { user } = useAuth();
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();

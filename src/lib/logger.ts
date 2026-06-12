@@ -3,7 +3,7 @@
  * Sends errors and warnings to PostHog as $exception events.
  */
 
-import posthog from 'posthog-js';
+import { withPostHog } from '@/lib/posthog';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -66,22 +66,17 @@ function createLogEntry(
  * Falls back to sessionStorage in dev or when PostHog isn't active.
  */
 function sendToMonitoring(entry: LogEntry): void {
-  // Send to PostHog if available (production only)
-  try {
-    const ph = posthog;
-    if (ph && typeof ph.capture === 'function' && ph._isIdentified !== undefined) {
-      ph.capture('$exception', {
-        $exception_message: entry.error?.message || entry.message,
-        $exception_type: entry.error?.name || (entry.level === 'warn' ? 'Warning' : 'Error'),
-        $exception_stack_trace_raw: entry.error?.stack,
-        $exception_source: 'logger',
-        $exception_level: entry.level,
-        ...(entry.context || {}),
-      });
-    }
-  } catch {
-    // Silently ignore — PostHog may not be initialized
-  }
+  // Send to PostHog if available (lazily loaded, production hostnames only)
+  withPostHog((ph) => {
+    ph.capture('$exception', {
+      $exception_message: entry.error?.message || entry.message,
+      $exception_type: entry.error?.name || (entry.level === 'warn' ? 'Warning' : 'Error'),
+      $exception_stack_trace_raw: entry.error?.stack,
+      $exception_source: 'logger',
+      $exception_level: entry.level,
+      ...(entry.context || {}),
+    });
+  });
 
   // Keep sessionStorage fallback for dev debugging
   if (entry.level === 'error') {

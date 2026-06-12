@@ -2,12 +2,12 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-// Eagerly import NL + EN (fallback) for instant rendering
+// Eagerly import NL + EN (fallback) common for instant rendering.
+// The heavy marketing namespace (~80KB raw per language) is lazy-loaded
+// on demand via loadMarketingNamespace() — only marketing routes need it.
 import nlCommon from './locales/nl/common.json';
-import nlMarketing from './locales/nl/marketing.json';
 import nlNotifications from './locales/nl/notifications.json';
 import enCommon from './locales/en/common.json';
-import enMarketing from './locales/en/marketing.json';
 import enNotifications from './locales/en/notifications.json';
 
 // Shipping en + nl only. Other languages were dropped (incomplete translations).
@@ -22,13 +22,12 @@ async function loadOnboardingBundle(lang: string) {
   }
 }
 
-// Full lazy loader for all namespaces of a language
+// Full lazy loader for all namespaces of a language (marketing excluded — on demand only)
 function createLazyLoader(lang: string) {
   return async () => {
-    const [common, marketing, auth, player, trainer, club, cycles, admin, academy, waitingList, notifications, onboarding] =
+    const [common, auth, player, trainer, club, cycles, admin, academy, waitingList, notifications, onboarding] =
       await Promise.all([
       import(`./locales/${lang}/common.json`),
-      import(`./locales/${lang}/marketing.json`),
       import(`./locales/${lang}/auth.json`),
       import(`./locales/${lang}/player.json`),
       import(`./locales/${lang}/trainer.json`),
@@ -42,7 +41,6 @@ function createLazyLoader(lang: string) {
     ]);
     return {
       common: { ...common.default, ...notifications.default },
-      marketing: marketing.default,
       auth: auth.default,
       player: player.default,
       trainer: trainer.default,
@@ -85,8 +83,24 @@ const lazyLoaders: Record<string, () => Promise<Record<string, any>>> = {
   en: createLazyLoader('en'),
 };
 
+// Marketing namespace loads on demand (marketing routes only), one promise per language
+const marketingLoads: Record<string, Promise<void>> = {};
+
+export function loadMarketingNamespace(lng?: string): Promise<void> {
+  const base = (lng ?? i18n.language ?? 'en').split('-')[0];
+  const lang = (SUPPORTED_LANGS as readonly string[]).includes(base) ? base : 'en';
+  if (!marketingLoads[lang]) {
+    marketingLoads[lang] = import(`./locales/${lang}/marketing.json`)
+      .catch(() => import('./locales/en/marketing.json'))
+      .then((bundle) => {
+        i18n.addResourceBundle(lang, 'marketing', bundle.default, true, true);
+      });
+  }
+  return marketingLoads[lang];
+}
+
 // Track which languages have had ALL namespaces loaded
-// NL and EN start with only common+marketing eagerly loaded — extended namespaces are lazy
+// NL and EN start with only common eagerly loaded — extended namespaces are lazy
 const loadedLanguages = new Set<string>();
 let nlExtendedLoaded = false;
 let enExtendedLoaded = false;
@@ -134,15 +148,13 @@ const detectLanguage = (): string => {
 
 const initialLang = detectLanguage();
 
-// Only eagerly include NL common + marketing (landing page critical path)
+// Only eagerly include NL + EN common (critical path); marketing is on demand
 const resources = {
   nl: {
     common: { ...nlCommon, ...nlNotifications },
-    marketing: nlMarketing,
   },
   en: {
     common: { ...enCommon, ...enNotifications },
-    marketing: enMarketing,
   },
 };
 
@@ -161,6 +173,10 @@ i18n
     },
     interpolation: {
       escapeValue: false,
+    },
+    react: {
+      // Re-render translated components when lazy bundles arrive (addResourceBundle)
+      bindI18nStore: 'added',
     },
   });
 

@@ -12,6 +12,7 @@ import { getAppUrl } from '@/lib/domains';
 import { useAuth } from '@/hooks/useAuth';
 import { Logo } from '@/components/Logo';
 import { captureUtmParams } from '@/lib/utm';
+import { useMarketingNamespace } from '@/hooks/useMarketingNamespace';
 import { MegaMenu, MegaMenuMobile } from '@/components/marketing/MegaMenu';
 import { useQuery } from '@tanstack/react-query';
 import { getTopics } from '@/lib/topics';
@@ -63,6 +64,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
     try { return localStorage.getItem('founding-banner-dismissed') === 'true'; } catch { return false; }
   });
   const { t } = useTranslation('marketing');
+  const marketingReady = useMarketingNamespace();
   const { user, role } = useAuth();
   const { lang } = useParams<{ lang: string }>();
   const currentLang = lang || 'en';
@@ -139,6 +141,12 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
     const currentPath = location.pathname.replace(/^\/(en|nl|es|de|fr|it)/, '');
     return currentPath === path || (path === '/' && currentPath === '');
   };
+
+  // Hold first paint until the lazy marketing locale bundle is in —
+  // avoids a flash of untranslated defaults on localized marketing pages.
+  if (!marketingReady) {
+    return <div className="min-h-screen bg-background" />;
+  }
 
   return (
     <div className="min-h-screen bg-background">

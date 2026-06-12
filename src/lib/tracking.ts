@@ -1,21 +1,21 @@
 /**
  * Unified PostHog tracking helper.
- * All events silently no-op in non-production environments
- * because posthog.init() is only called on production domains.
+ * All events silently no-op in non-production environments because
+ * posthog-js is only lazily loaded + initialized on production domains.
  */
-import { posthog } from '@/lib/posthog';
+import { withPostHog } from '@/lib/posthog';
 
 /** Identify the authenticated user and link anonymous browsing history. */
 export function identifyUser(
   userId: string,
   traits?: Record<string, string | number | boolean | null>
 ) {
-  posthog.identify(userId, traits);
+  withPostHog((ph) => ph.identify(userId, traits));
 }
 
 /** Reset the PostHog identity on logout. */
 export function resetUser() {
-  posthog.reset();
+  withPostHog((ph) => ph.reset());
 }
 
 /** Capture a custom event with optional properties. Never throws. */
@@ -23,9 +23,5 @@ export function trackEvent(
   event: string,
   properties?: Record<string, string | number | boolean | null | undefined>
 ) {
-  try {
-    posthog.capture(event, properties);
-  } catch {
-    // Analytics must never break app functionality
-  }
+  withPostHog((ph) => ph.capture(event, properties));
 }

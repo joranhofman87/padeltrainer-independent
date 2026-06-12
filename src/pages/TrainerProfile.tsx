@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useTranslation } from 'react-i18next';
+import { useMarketingNamespace } from '@/hooks/useMarketingNamespace';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useFollowTrainer } from '@/hooks/useFollowTrainer';
@@ -189,6 +190,8 @@ async function fetchTrainerData(trainerId: string, currentUserId?: string) {
 export default function TrainerProfile() {
   const { trainerId } = useParams<{ trainerId: string }>();
   const { t } = useTranslation(['trainer', 'common']);
+  // SEO strings below use the lazy 'marketing' namespace — trigger its load
+  useMarketingNamespace();
   const [copied, setCopied] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const navigate = useNavigate();

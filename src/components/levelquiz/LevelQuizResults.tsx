@@ -10,7 +10,7 @@ import {
   RotateCcw, Copy, ExternalLink,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import posthog from 'posthog-js';
+import { trackEvent } from '@/lib/tracking';
 import {
   getLevelInfo, getNextLevel, getCountryRating, getCountryLabel,
   CONTENT_LINKS, QUIZ_COUNTRIES,
@@ -45,7 +45,7 @@ export function LevelQuizResults({ level, country, onCountryChange, onRetake }: 
   const handleShare = (method: string) => {
     const text = t('levelQuiz.shareText', { level: level.toFixed(1), title: info.title })
       .replace('🎾', '🎾');
-    posthog.capture('level_quiz_shared', { level, method });
+    trackEvent('level_quiz_shared', { level, method });
 
     if (method === 'copy') {
       navigator.clipboard.writeText(`${text}\n${shareUrl}`);
@@ -60,7 +60,7 @@ export function LevelQuizResults({ level, country, onCountryChange, onRetake }: 
   };
 
   const trackContentClick = (contentType: string, slug: string) => {
-    posthog.capture('level_quiz_content_click', { level, contentType, contentSlug: slug });
+    trackEvent('level_quiz_content_click', { level, contentType, contentSlug: slug });
   };
 
   const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };

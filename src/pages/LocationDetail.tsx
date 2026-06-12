@@ -34,6 +34,7 @@ import { LocationLearnSection } from '@/components/locations/LocationLearnSectio
 import { CommunityRatings } from '@/components/locations/CommunityRatings';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
+import { useMarketingNamespace } from '@/hooks/useMarketingNamespace';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
@@ -98,6 +99,8 @@ export default function LocationDetail() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation(['common', 'club']);
+  // SEO strings below use the lazy 'marketing' namespace — trigger its load
+  useMarketingNamespace();
   const { user } = useAuth();
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();

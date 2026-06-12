@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Columns3, Tags } from 'lucide-react';
@@ -56,12 +56,17 @@ import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDial
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { useSearchParams, Link } from 'react-router-dom';
-import { EmailCampaignTab } from '@/components/players/EmailCampaignTab';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
 import { PlayerNotesCell } from '@/components/players/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDialog';
 import { PlayerTag, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
+
+// Lazy: pulls in the heavy TipTap editor chunk — only load when the tab is opened
+const EmailCampaignTab = lazy(() =>
+  import('@/components/players/EmailCampaignTab').then((m) => ({ default: m.EmailCampaignTab }))
+);
 
 interface TrainerOption {
   id: string;
@@ -903,26 +908,35 @@ export default function AcademyPlayers() {
         {/* Email Campaign Tab */}
         <TabsContent value="email-campaign" className="mt-4">
           {activeAcademy && (
-            <EmailCampaignTab
-              academyId={activeAcademy.id}
-              trainers={trainers}
-              locations={allLocations}
-              tags={tags}
-              players={campaignPlayers.map((row) => ({
-                id: row.guest_player_id ?? `reg-${row.profile_id}`,
-                full_name: row.full_name,
-                email: row.email,
-                phone: row.phone,
-                billing_business_name: row.billing_business_name,
-                skill_rating: row.skill_rating,
-                trainer_id: row.owner_trainer_id ?? undefined,
-                trainer_ids: row.trainer_ids ?? [],
-                location_names: row.location_names ?? [],
-                has_active_cyclus: row.has_active_cyclus,
-                type: row.player_type as 'guest' | 'registered',
-                tag_ids: row.tag_ids ?? [],
-              }))}
-            />
+            <Suspense
+              fallback={
+                <div className="space-y-4">
+                  <Skeleton className="h-10 w-64" />
+                  <Skeleton className="h-[400px] w-full" />
+                </div>
+              }
+            >
+              <EmailCampaignTab
+                academyId={activeAcademy.id}
+                trainers={trainers}
+                locations={allLocations}
+                tags={tags}
+                players={campaignPlayers.map((row) => ({
+                  id: row.guest_player_id ?? `reg-${row.profile_id}`,
+                  full_name: row.full_name,
+                  email: row.email,
+                  phone: row.phone,
+                  billing_business_name: row.billing_business_name,
+                  skill_rating: row.skill_rating,
+                  trainer_id: row.owner_trainer_id ?? undefined,
+                  trainer_ids: row.trainer_ids ?? [],
+                  location_names: row.location_names ?? [],
+                  has_active_cyclus: row.has_active_cyclus,
+                  type: row.player_type as 'guest' | 'registered',
+                  tag_ids: row.tag_ids ?? [],
+                }))}
+              />
+            </Suspense>
           )}
         </TabsContent>
       </Tabs>
