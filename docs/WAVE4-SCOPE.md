@@ -130,3 +130,28 @@ Rough total: ~9 S, ~5 M, 2 L (B4 club-dedupe, M-38 credit notes).
 4. **B4 dedupe survivor policy**: claimed club wins, else oldest row keeps its
    slug; dry-run report reviewed by maintainer before any merge executes.
 5. **NL tone**: informal "je", consistent with the existing nl files.
+
+
+---
+
+## Wave 4 execution status (2026-06-12)
+
+Everything shipped except B4 (awaiting maintainer review of the dry-run) —
+commits e6689c52 (batch 1), 7971c64c (B3), 9b34b833 (A2 + M-33), 413ecad9
+(A1 + C1-C4). CI green on every commit; Vercel Production current.
+
+| Item | Status |
+|---|---|
+| A1 | DONE — 887 entries merged (779 enumerated + 108 from A2/C); 18 scanner-truncated entries repaired; **zero missing keys remain outside the admin app**; live preview verified fully Dutch |
+| A2 | DONE — 151 hardcoded literals extracted (5-agent sweep); plus the Wave-1 lockedTerminal one-key/two-defaults bug fixed in both edit-invoice pages |
+| A3/A4 | DONE — supportedLngs fix (the path detector accepted "app" as a language!), LanguageSwitcher in all four sidebars + /auth with profile persistence, settings Selects en/nl-only |
+| B1/B2/B5 | DONE — countries lib (Intl.DisplayNames), backfill live (12,737/12,738 → ISO, 1 ZZ row, CHECK constraint; hidden-606-Dutch-clubs bug fixed), public-api name→code alias deployed |
+| B3 | DONE — 111 city spellings canonicalized, 0 mixed groups remain |
+| B4 | **AWAITING REVIEW** — docs/W06-DEDUPE-DRYRUN.md (101 auto groups / 105 rows; 197 same-address different-name groups untouched; 0 claimed conflicts) |
+| C1-C6 | DONE — empty-state actions, de-jargoned copy, create-vs-invite explainer + email copy button, registration-choice explainers, sonner toast rewire, mobile table fix |
+| M-33 | DONE forward-only — split_count column live; writers auto-create/split-invoice; readers column-else-regex; existing invoices untouched |
+| M-38 | DEFERRED per decision |
+
+Wilma acceptance retest (preview, language=nl): login → dashboard → players →
+invoices → settings all render Dutch, including the formerly-English trial
+banner, stat cards and the new actionable empty states.
