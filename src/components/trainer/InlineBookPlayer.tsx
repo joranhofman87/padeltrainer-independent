@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { differenceInMinutes } from "date-fns";
 import { Loader2, UserPlus, X, Users, Repeat } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,10 +22,11 @@ import type { InvoiceAfterAddPlayerResult } from "@/lib/invoiceAfterAddPlayer";
 import { formatPrice } from "@/lib/pricing";
 import {
   buildGuestBookingInsertRow,
+  buildRebalanceAmountGroups,
   calculateSlotBookingPricing,
   countActiveBookings,
   getRebalanceBookingIds,
-  normalizeSessionPrice,
+  resolveSlotSessionPrice,
 } from "@/lib/bookingPricing";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -89,7 +91,10 @@ export function InlineBookPlayer({
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [bookingScope, setBookingScope] = useState<"single" | "cyclus">("single");
   const [cyclusSlotsCount, setCyclusSlotsCount] = useState(0);
-  const [cyclusSlots, setCyclusSlots] = useState<{ id: string; start_time: string; end_time: string }[]>([]);
+  const [cyclusSlots, setCyclusSlots] = useState<
+    { id: string; start_time: string; end_time: string; price_per_session?: number | null }[]
+  >([]);
+  const [hourlyRate, setHourlyRate] = useState<number>(50);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoiceDialogSummary, setInvoiceDialogSummary] = useState<AffectedInvoicesSummary | null>(null);
   const [pendingInvoiceSlotIds, setPendingInvoiceSlotIds] = useState<string[]>([]);
@@ -99,13 +104,49 @@ export function InlineBookPlayer({
   const [invoiceConfirmLoading, setInvoiceConfirmLoading] = useState(false);
   const closingInvoiceDialogFromChoiceRef = useRef(false);
 
-  const sessionPrice = normalizeSessionPrice(slot.price_per_session);
+  // Same fallback chain as BookForPlayerDialog: configured slot price, else
+  // hourly rate × duration — never €0 just because price_per_session is unset.
+  const slotDurationMinutes = differenceInMinutes(
+    new Date(slot.end_time),
+    new Date(slot.start_time),
+  );
+  const sessionPrice = resolveSlotSessionPrice(
+    slot.price_per_session,
+    hourlyRate,
+    slotDurationMinutes,
+  );
   const splitPayment = Boolean(slot.split_payment);
+
+  const resolveCyclusSlotPrice = (cyclusSlot: {
+    start_time: string;
+    end_time: string;
+    price_per_session?: number | null;
+  }) =>
+    resolveSlotSessionPrice(
+      cyclusSlot.price_per_session ?? slot.price_per_session,
+      hourlyRate,
+      differenceInMinutes(new Date(cyclusSlot.end_time), new Date(cyclusSlot.start_time)),
+    );
 
   useEffect(() => {
     fetchPlayers();
+    fetchHourlyRate();
     if (slot.cyclus_id) fetchCyclusSlots(slot.cyclus_id);
   }, [trainerId, academyProfileId, slot.cyclus_id]);
+
+  const fetchHourlyRate = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("trainer_profiles")
+        .select("hourly_rate")
+        .eq("id", trainerId)
+        .single();
+      if (error) throw error;
+      if (data?.hourly_rate) setHourlyRate(data.hourly_rate);
+    } catch (error) {
+      logger.error("Error fetching hourly rate", error as Error, { component: "InlineBookPlayer" });
+    }
+  };
 
   const fetchPlayers = async () => {
     setIsFetching(true);
@@ -125,7 +166,7 @@ export function InlineBookPlayer({
 
   const fetchCyclusSlots = async (cyclusId: string) => {
     try {
-      const { data, error } = await supabase.from("availability_slots").select("id, start_time, end_time")
+      const { data, error } = await supabase.from("availability_slots").select("id, start_time, end_time, price_per_session")
         .eq("cyclus_id", cyclusId).gte("start_time", new Date().toISOString()).order("start_time");
       if (error) throw error;
       setCyclusSlots(data || []);
@@ -179,27 +220,44 @@ export function InlineBookPlayer({
   ): Promise<void> => {
     if (rebalanceIds.length === 0) return;
 
-    const { error } = await supabase
+    // Re-read discounts so a negotiated discount survives the rebalance: each
+    // row keeps discount_amount/discount_reason and pays share − discount.
+    const { data: existingRows, error: fetchError } = await supabase
       .from("bookings")
-      .update({
-        payment_amount: amount,
-        original_amount: sessionPriceForOriginal,
-        discount_amount: 0,
-      })
-      .in("id", rebalanceIds)
-      // Never rewrite an already-settled booking's amount when rebalancing a
-      // split — a paid player must keep what they paid.
-      .neq("payment_status", "paid")
-      .neq("paid_externally", true);
+      .select("id, discount_amount")
+      .in("id", rebalanceIds);
 
-    if (error) {
-      logger.error("Failed to rebalance booking amounts", error, {
+    if (fetchError) {
+      logger.error("Failed to load bookings for rebalance", fetchError, {
         component: "InlineBookPlayer",
         slotId,
         rebalanceIds,
-        amount,
       });
-      throw error;
+      throw fetchError;
+    }
+
+    for (const group of buildRebalanceAmountGroups(existingRows ?? [], amount)) {
+      const { error } = await supabase
+        .from("bookings")
+        .update({
+          payment_amount: group.paymentAmount,
+          original_amount: sessionPriceForOriginal,
+        })
+        .in("id", group.bookingIds)
+        // Never rewrite an already-settled booking's amount when rebalancing a
+        // split — a paid player must keep what they paid.
+        .neq("payment_status", "paid")
+        .neq("paid_externally", true);
+
+      if (error) {
+        logger.error("Failed to rebalance booking amounts", error, {
+          component: "InlineBookPlayer",
+          slotId,
+          rebalanceIds: group.bookingIds,
+          amount: group.paymentAmount,
+        });
+        throw error;
+      }
     }
   };
 
@@ -351,8 +409,10 @@ export function InlineBookPlayer({
         const bySlot = await fetchExistingBookingsBySlot(cyclusSlots.map(s => s.id));
         const bookingsToInsert = cyclusSlots.flatMap((cyclusSlot) => {
           const existingOnSlot = (bySlot.get(cyclusSlot.id) || []).length;
+          // Each cyclus slot carries its own price/duration — never the
+          // clicked slot's price for the whole cycle.
           const pricing = calculateSlotBookingPricing({
-            sessionPrice,
+            sessionPrice: resolveCyclusSlotPrice(cyclusSlot),
             splitPayment,
             existingActiveBookingCount: existingOnSlot,
             newPlayerCount: selectedPlayers.length,
@@ -379,7 +439,7 @@ export function InlineBookPlayer({
         for (const cyclusSlot of cyclusSlots) {
           const existingOnSlot = (bySlot.get(cyclusSlot.id) || []).length;
           const pricing = calculateSlotBookingPricing({
-            sessionPrice,
+            sessionPrice: resolveCyclusSlotPrice(cyclusSlot),
             splitPayment,
             existingActiveBookingCount: existingOnSlot,
             newPlayerCount: selectedPlayers.length,

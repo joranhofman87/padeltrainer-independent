@@ -579,7 +579,12 @@
     "allInvited": "Invitations sent",
     "days": "days",
     "openNow": "Open to public now",
-    "inviteError": "Could not send the invitation. Please try again."
+    "inviteError": "Could not send the invitation. Please try again.",
+    "claimAlreadyResponded": "This player has already responded — no invitation sent.",
+    "nothingToInvite": "Everyone has already been invited or responded.",
+    "extended": "Extended by 7 days",
+    "alreadyExtended": "The window was just extended — no extra days added.",
+    "extendError": "Could not extend the window. Please try again."
   },
   "fillRate": {
     "title": "Fill rate",

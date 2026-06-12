@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +32,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState<string>('blue');
   const [busy, setBusy] = useState(false);
+  const [tagToDelete, setTagToDelete] = useState<PlayerTag | null>(null);
 
   const ownerCol = academyId ? 'academy_profile_id' : 'trainer_profile_id';
   const ownerId = academyId ?? trainerId;
@@ -74,6 +76,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
       setBusy(false);
+      setTagToDelete(null);
     }
   };
 
@@ -155,7 +158,7 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
                     variant="ghost"
                     size="icon" aria-label="Delete"
                     className="h-7 w-7 ml-1 text-destructive"
-                    onClick={() => handleDelete(tag.id)}
+                    onClick={() => setTagToDelete(tag)}
                     disabled={busy}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -165,6 +168,21 @@ export function ManagePlayerTagsDialog({ open, onOpenChange, academyId, trainerI
             ))}
           </div>
         </div>
+
+        <ConfirmDeleteDialog
+          open={!!tagToDelete}
+          onOpenChange={(next) => { if (!next) setTagToDelete(null); }}
+          title={t('players.tags.deleteConfirmTitle', 'Delete tag?')}
+          description={t(
+            'players.tags.deleteConfirmDescription',
+            'This permanently deletes "{{name}}" and removes it from all tagged players. This cannot be undone.',
+            { name: tagToDelete?.name ?? '' }
+          )}
+          confirmLabel={t('players.tags.deleteConfirmAction', 'Delete tag')}
+          cancelLabel={t('common:cancel', 'Cancel')}
+          loading={busy}
+          onConfirm={() => { if (tagToDelete) void handleDelete(tagToDelete.id); }}
+        />
       </DialogContent>
     </Dialog>
   );

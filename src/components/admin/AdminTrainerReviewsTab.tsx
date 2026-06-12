@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { StarRating } from "@/components/reviews/StarRating";
@@ -35,6 +36,8 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
   const [reviewerName, setReviewerName] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reviewToDelete, setReviewToDelete] = useState<string | null>(null);
+  const [isDeletingReview, setIsDeletingReview] = useState(false);
 
   // Fetch reviews
   const fetchReviews = async () => {
@@ -201,6 +204,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
   // Handle delete review
   const handleDeleteReview = async (reviewId: string) => {
+    setIsDeletingReview(true);
     try {
       // First delete tag selections
       await supabase
@@ -229,6 +233,9 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
         description: error.message || "Failed to delete review",
         variant: "destructive",
       });
+    } finally {
+      setIsDeletingReview(false);
+      setReviewToDelete(null);
     }
   };
 
@@ -389,7 +396,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
                       variant="ghost"
                       size="icon" aria-label="Delete"
                       className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => handleDeleteReview(review.id)}
+                      onClick={() => setReviewToDelete(review.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -400,6 +407,17 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
           </div>
         )}
       </ScrollArea>
+
+      <ConfirmDeleteDialog
+        open={!!reviewToDelete}
+        onOpenChange={(next) => { if (!next) setReviewToDelete(null); }}
+        title="Delete review?"
+        description="This permanently deletes the review and its tags. This cannot be undone."
+        confirmLabel="Delete review"
+        cancelLabel="Cancel"
+        loading={isDeletingReview}
+        onConfirm={() => { if (reviewToDelete) void handleDeleteReview(reviewToDelete); }}
+      />
     </div>
   );
 }

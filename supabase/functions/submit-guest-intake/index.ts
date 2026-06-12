@@ -1,11 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeadersFor } from "../_shared/cors.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -14,7 +9,7 @@ const MAX_SHORT_FIELD_LENGTH = 320;
 const MAX_ARRAY_ITEMS = 50;
 const MAX_NOTES_METADATA_BYTES = 10 * 1024;
 
-const invalidPayload = (message: string) =>
+const invalidPayload = (message: string, corsHeaders: Record<string, string>) =>
   new Response(
     JSON.stringify({ error: "invalid_payload", message }),
     { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -63,6 +58,11 @@ async function throttle(
 }
 
 Deno.serve(async (req) => {
+  // E-25: origin allow-list (defense in depth on this email-driving endpoint).
+  // The intake form is an SPA route on the main domains — no custom academy
+  // domains exist (DomainRouter: "No more hostname detection").
+  const corsHeaders = corsHeadersFor(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -102,10 +102,10 @@ Deno.serve(async (req) => {
     };
     for (const [field, value] of Object.entries(shortTextFields)) {
       if (value != null && typeof value !== "string") {
-        return invalidPayload(`Field '${field}' must be a string`);
+        return invalidPayload(`Field '${field}' must be a string`, corsHeaders);
       }
       if (typeof value === "string" && value.length > MAX_SHORT_FIELD_LENGTH) {
-        return invalidPayload(`Field '${field}' is too long`);
+        return invalidPayload(`Field '${field}' is too long`, corsHeaders);
       }
     }
 
@@ -114,22 +114,22 @@ Deno.serve(async (req) => {
     };
     for (const [field, value] of Object.entries(arrayFields)) {
       if (value != null && !Array.isArray(value)) {
-        return invalidPayload(`Field '${field}' must be an array`);
+        return invalidPayload(`Field '${field}' must be an array`, corsHeaders);
       }
       if (Array.isArray(value) && value.length > MAX_ARRAY_ITEMS) {
-        return invalidPayload(`Field '${field}' has too many items`);
+        return invalidPayload(`Field '${field}' has too many items`, corsHeaders);
       }
     }
 
     if (notes != null && typeof notes !== "string") {
-      return invalidPayload("Field 'notes' must be a string");
+      return invalidPayload("Field 'notes' must be a string", corsHeaders);
     }
     if (metadata != null && (typeof metadata !== "object" || Array.isArray(metadata))) {
-      return invalidPayload("Field 'metadata' must be an object");
+      return invalidPayload("Field 'metadata' must be an object", corsHeaders);
     }
     const notesMetadataBytes = JSON.stringify({ notes: notes ?? null, metadata: metadata ?? null }).length;
     if (notesMetadataBytes > MAX_NOTES_METADATA_BYTES) {
-      return invalidPayload("Notes/metadata payload is too large");
+      return invalidPayload("Notes/metadata payload is too large", corsHeaders);
     }
 
     const nameFields = resolveRegistrationNameFields({
@@ -288,7 +288,9 @@ Deno.serve(async (req) => {
           .single();
 
         if (guestError) {
-          console.error("Error creating guest player:", guestError);
+          // PII hygiene (E-22): Postgres error `details` can embed inserted values
+          // (e.g. the email in a unique-key violation) — log code + message only.
+          console.error("Error creating guest player:", guestError.code, guestError.message);
           return new Response(
             JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -354,7 +356,8 @@ Deno.serve(async (req) => {
       .single();
 
     if (intakeError) {
-      console.error("Intake insert error:", intakeError);
+      // PII hygiene (E-22): same as above — never log Postgres error `details`.
+      console.error("Intake insert error:", intakeError.code, intakeError.message);
       return new Response(
         JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -450,35 +453,59 @@ Deno.serve(async (req) => {
           cycleLocationName = locData?.name || '';
         }
 
-        // Compute price lines for the email
-        const cycleSettings = cycleData.settings || {};
-        const cyclePriceTable = (cycleSettings as any).price_table || [];
-        const cyclePricePerSession = (cycleData as any).price_per_session;
+        // Compute price lines for the email.
+        // E-21: `metadata` is caller-controlled JSON and cycle settings are free-form
+        // JSONB — coerce every price/duration to a finite number within sane bounds
+        // before any arithmetic or template interpolation; invalid values omit the
+        // price line instead of mailing NaN/Infinity.
+        const toBoundedNumber = (value: unknown, max = 10000): number | null => {
+          const num = typeof value === "number" ? value
+            : typeof value === "string" && value.trim() !== "" ? Number(value)
+            : NaN;
+          return Number.isFinite(num) && num >= 0 && num <= max ? num : null;
+        };
+
+        const settingsRecord = (cycleData.settings ?? {}) as Record<string, unknown>;
+        const cyclePriceTable: { price?: unknown }[] = Array.isArray(settingsRecord.price_table)
+          ? settingsRecord.price_table
+          : [];
+        const cyclePricePerSession = toBoundedNumber(cycleData.price_per_session);
         const selectedOption = metadata?.selected_cyclus_option;
-        const durationWeeks = metadata?.preferred_number_of_weeks || (() => {
+        const selectedOptionPrice = toBoundedNumber(selectedOption?.price_per_session);
+        const selectedOptionLabel = typeof selectedOption?.label === "string"
+          ? selectedOption.label.slice(0, MAX_SHORT_FIELD_LENGTH)
+          : undefined;
+        const durationWeeks = toBoundedNumber(metadata?.preferred_number_of_weeks, 520) || (() => {
           if (!cycleData.start_date || !cycleData.end_date) return null;
-          return Math.max(1, Math.round(
+          const weeks = Math.round(
             (new Date(cycleData.end_date).getTime() - new Date(cycleData.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
-          ));
+          );
+          return Number.isFinite(weeks) ? Math.max(1, weeks) : null;
         })();
 
-        const standardAllowed = ((cycleSettings as any).lesson_types as string[] | undefined) || ['private', 'duo', 'group', 'group3', 'group4', 'kids'];
-        const customLT = ((cycleSettings as any).custom_lesson_types as string[] | undefined) || [];
+        const standardAllowed = Array.isArray(settingsRecord.lesson_types)
+          ? (settingsRecord.lesson_types as string[])
+          : ['private', 'duo', 'group', 'group3', 'group4', 'kids'];
+        const customLT = Array.isArray(settingsRecord.custom_lesson_types)
+          ? (settingsRecord.custom_lesson_types as string[])
+          : [];
         const orderedLT = [...standardAllowed, ...customLT];
 
         const emailPriceLines: { label: string; perLesson: string; total: string }[] = [];
         const fmtPrice = (v: number) => `€${v.toFixed(2)}`;
         for (const lt of (lessonTypes || [])) {
+          // Array items are caller-controlled too; a non-string would throw on .charAt
+          if (typeof lt !== "string") continue;
           let perLesson: number | null = null;
           if (selectedOption) {
-            perLesson = selectedOption.price_per_session;
+            perLesson = selectedOptionPrice;
           } else if (cyclePriceTable.length > 0) {
             const idx = orderedLT.indexOf(lt);
             const row = idx >= 0 && idx < cyclePriceTable.length ? cyclePriceTable[idx] : null;
-            if (row) perLesson = row.price;
+            if (row) perLesson = toBoundedNumber(row.price);
           }
-          if (perLesson == null && cyclePricePerSession) perLesson = cyclePricePerSession;
-          const total = perLesson && durationWeeks ? perLesson * durationWeeks : null;
+          if (perLesson == null && cyclePricePerSession != null) perLesson = cyclePricePerSession;
+          const total = perLesson != null && durationWeeks ? perLesson * durationWeeks : null;
           if (perLesson != null && perLesson > 0) {
             emailPriceLines.push({
               label: lt.charAt(0).toUpperCase() + lt.slice(1),
@@ -515,8 +542,8 @@ Deno.serve(async (req) => {
               notes: notes || undefined,
               phone: phone || undefined,
               birthDate: birthDate || undefined,
-              selectedPackageLabel: selectedOption?.label || undefined,
-              selectedPackagePrice: selectedOption?.price_per_session || undefined,
+              selectedPackageLabel: selectedOptionLabel,
+              selectedPackagePrice: selectedOptionPrice || undefined,
               selectedDurationWeeks: durationWeeks || undefined,
               priceLines: emailPriceLines.length > 0 ? emailPriceLines : undefined,
             },
@@ -524,7 +551,9 @@ Deno.serve(async (req) => {
         });
 
         if (!sendRes.ok) {
-          console.error("Registration confirmation email failed:", await sendRes.text());
+          // PII hygiene (E-22): the send-email error body can echo the recipient
+          // address — log status + intake id only.
+          console.error(`Registration confirmation email failed (status ${sendRes.status}) for intake ${intakeData?.id}`);
         } else {
           console.log(`Registration confirmation email sent for intake ${intakeData?.id}`);
         }
@@ -584,7 +613,9 @@ Deno.serve(async (req) => {
               ? `/app/club/registrations/${cycleId}`
               : `/app/trainer/registrations/${cycleId}`;
 
-          await Promise.all(recipientList.map((to) =>
+          // E-22: allSettled so one failed send never drops the rest; log failures
+          // by position, never by recipient address (PII hygiene).
+          const sendResults = await Promise.allSettled(recipientList.map((to) =>
             fetch(`${supabaseUrl}/functions/v1/send-email`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseServiceKey}` },
@@ -608,9 +639,17 @@ Deno.serve(async (req) => {
                   detailUrl: detailPath,
                 },
               }),
-            }).catch((e) => console.error('admin notify send failed:', e))
+            }).then((res) => {
+              if (!res.ok) throw new Error(`send-email responded ${res.status}`);
+            })
           ));
-          console.log(`Admin notification email sent to ${recipientList.length} recipient(s)`);
+          sendResults.forEach((result, idx) => {
+            if (result.status === 'rejected') {
+              console.error(`Admin notify send failed (recipient ${idx + 1}/${recipientList.length}):`, result.reason);
+            }
+          });
+          const sentCount = sendResults.filter((r) => r.status === 'fulfilled').length;
+          console.log(`Admin notification email sent to ${sentCount}/${recipientList.length} recipient(s)`);
         }
       }
     } catch (notifyErr) {

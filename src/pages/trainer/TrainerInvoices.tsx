@@ -82,6 +82,7 @@ export default function TrainerInvoices() {
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
+  const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
@@ -210,20 +211,38 @@ export default function TrainerInvoices() {
   };
 
   // Send single invoice
+  type SendInvoiceResult = { noEmail: boolean; skipped?: boolean; email?: string; invoice?: Invoice };
   const sendInvoiceMutation = useMutation({
-    mutationFn: async (invoice: Invoice) => {
-      const { data } = await supabase.functions.invoke("send-invoice-email", {
+    mutationFn: async (invoice: Invoice): Promise<SendInvoiceResult> => {
+      const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", {
         body: { invoiceId: invoice.id },
       });
+      if (fnError) throw fnError;
       if (data?.error === "no_email") {
         return { noEmail: true, invoice };
       }
+      // Duplicate-send guard tripped server-side: already delivered moments ago.
+      if (data?.skipped === "recently_sent") {
+        return { noEmail: false, skipped: true, email: data?.email };
+      }
+      // Only stamp sent_at after a confirmed delivery
+      if (!data?.success) throw new Error("send_failed");
       const { error } = await supabase
         .from("invoices")
         .update({ sent_at: new Date().toISOString(), status: "sent" })
         .eq("id", invoice.id);
       if (error) throw error;
       return { noEmail: false, email: data?.email };
+    },
+    onMutate: (invoice) => {
+      setSendingInvoiceIds((prev) => new Set(prev).add(invoice.id));
+    },
+    onSettled: (_data, _error, invoice) => {
+      setSendingInvoiceIds((prev) => {
+        const next = new Set(prev);
+        next.delete(invoice.id);
+        return next;
+      });
     },
     onSuccess: (result) => {
       if (result.noEmail && result.invoice) {
@@ -233,6 +252,10 @@ export default function TrainerInvoices() {
           playerName: result.invoice.player_name,
           guestPlayerId: result.invoice.guest_player_id,
         });
+        return;
+      }
+      if (result.skipped) {
+        toast.info(t("invoices.recentlySentSkipped", "Deze factuur is zojuist al verzonden"));
         return;
       }
       invalidateInvoicesAndPlayers();
@@ -250,16 +273,26 @@ export default function TrainerInvoices() {
     if (!ensureInvoiceSettingsComplete()) return;
     setSendingAll(true);
     let sent = 0, noEmail = 0, failed = 0;
+    const undelivered: string[] = [];
     for (const inv of draftInvoices) {
+      const rowLabel = inv.player_name ? `${inv.invoice_number} (${inv.player_name})` : inv.invoice_number;
       try {
-        const { data } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id } });
-        if (data?.error === "no_email") noEmail++;
-        else if (data?.success) sent++;
-        else failed++;
-        await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", inv.id);
+        const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id } });
+        if (data?.error === "no_email") {
+          noEmail++;
+          undelivered.push(rowLabel);
+        } else if (!fnError && data?.success) {
+          sent++;
+          // Only stamp sent_at after a confirmed delivery — a failed or
+          // address-less send must not record the invoice as issued.
+          await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", inv.id);
+        } else {
+          failed++;
+          undelivered.push(rowLabel);
+        }
       } catch {
         failed++;
-        await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", inv.id);
+        undelivered.push(rowLabel);
       }
     }
     invalidateInvoicesAndPlayers();
@@ -267,7 +300,17 @@ export default function TrainerInvoices() {
     if (sent > 0) parts.push(t("invoices.bulkSent", { count: sent }));
     if (noEmail > 0) parts.push(t("invoices.bulkNoEmail", { count: noEmail }));
     if (failed > 0) parts.push(t("invoices.bulkFailed", { count: failed }));
-    toast.success(t("invoices.bulkProcessed", { total: draftInvoices.length, parts: parts.join(", ") }));
+    const summary = t("invoices.bulkProcessed", { total: draftInvoices.length, parts: parts.join(", ") });
+    if (undelivered.length > 0) {
+      const MAX_LISTED = 8;
+      const list = undelivered.slice(0, MAX_LISTED).join(", ") + (undelivered.length > MAX_LISTED ? ", …" : "");
+      toast.error(summary, {
+        description: t("invoices.bulkNotSentList", "Niet verzonden: {{list}}", { list }),
+        duration: 10000,
+      });
+    } else {
+      toast.success(summary);
+    }
     setSendingAll(false);
   };
 
@@ -276,7 +319,12 @@ export default function TrainerInvoices() {
     if (guestPlayerId) {
       await supabase.from("guest_players").update({ email }).eq("id", guestPlayerId);
     }
-    await supabase.functions.invoke("send-invoice-email", { body: { invoiceId } });
+    const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId } });
+    // Only mark sent after a confirmed delivery
+    if (fnError || !data?.success) {
+      toast.error(t("invoices.sendError", "Verzenden mislukt"));
+      return;
+    }
     await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", invoiceId);
     invalidateInvoicesAndPlayers();
     toast.success(t("invoices.sentSuccessTo", { email }));
@@ -405,11 +453,14 @@ export default function TrainerInvoices() {
   const ShareDropdown = ({ invoice }: { invoice: Invoice }) => {
     const shareable = canSharePublicPaymentLink(invoice);
     const isDraft = invoice.status === "draft";
+    const isSending = sendingInvoiceIds.has(invoice.id);
 
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="ghost" aria-label={t("invoices.shareOptions", "Share options")}><Share2 className="h-4 w-4" /></Button>
+          <Button size="sm" variant="ghost" disabled={isSending} aria-label={t("invoices.shareOptions", "Share options")}>
+            {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {shareable ? (
@@ -431,12 +482,14 @@ export default function TrainerInvoices() {
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem
+            disabled={isSending}
             onClick={() => {
+              if (isSending) return;
               if (!ensureInvoiceSettingsComplete()) return;
               sendInvoiceMutation.mutate(invoice);
             }}
           >
-            <Mail className="h-4 w-4 mr-2" />
+            {isSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mail className="h-4 w-4 mr-2" />}
             {t("invoices.sendViaEmail", "Verstuur via e-mail")}
           </DropdownMenuItem>
           {invoice.status !== "sent" && !invoice.sent_at && (

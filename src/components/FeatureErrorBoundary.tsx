@@ -64,20 +64,20 @@ export class FeatureErrorBoundary extends Component<Props, State> {
 
   render() {
     const { hasError, error } = this.state;
-    const { children, fallback, compact, featureName, onBack } = this.props;
+    const { children, fallback, compact, onBack } = this.props;
 
     if (hasError) {
       if (fallback) {
         return fallback;
       }
 
+      // featureName is for logging only — never shown to users (translated
+      // generic copy comes from FeatureErrorFallback's defaults).
       return (
         <FeatureErrorFallback
           error={error}
           onRetry={this.handleRetry}
           onBack={onBack}
-          title={`${featureName} Error`}
-          description={`There was a problem loading this section. Please try again.`}
           compact={compact}
         />
       );

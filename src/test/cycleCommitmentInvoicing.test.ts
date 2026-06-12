@@ -64,15 +64,35 @@ describe('buildCommitmentInvoicePlan', () => {
     expect(p1?.splitAmongPlayers).toBe(3);
   });
 
-  it('ignores paid/cancelled bookings and keyless rows', () => {
+  it('ignores cancelled bookings and keyless rows; paid committers still count toward N', () => {
     const plan = buildCommitmentInvoicePlan([
       booking({ id: 'b1', player_id: 'p1' }),
       booking({ id: 'b2', player_id: 'p2', payment_status: 'paid' }),
       booking({ id: 'b3', player_id: 'p3', status: 'cancelled' }),
       booking({ id: 'b4' }), // no key
     ]);
-    expect(plan.committerCount).toBe(1);
-    expect(plan.batches).toEqual([{ playerKey: 'p1', bookingIds: ['b1'], splitAmongPlayers: 1 }]);
+    // p1 + p2 committed (p2 already paid → no batch, but stays in the group);
+    // cancelled p3 and the keyless row are ignored entirely.
+    expect(plan.committerCount).toBe(2);
+    expect(plan.batches).toEqual([{ playerKey: 'p1', bookingIds: ['b1'], splitAmongPlayers: 2 }]);
+  });
+
+  it('M-19: a committer paying between runs does not shrink the divisor for the rest', () => {
+    const group = [
+      booking({ id: 'b1', slot_id: 's1', player_id: 'p1' }),
+      booking({ id: 'b2', slot_id: 's1', player_id: 'p2' }),
+      booking({ id: 'b3', slot_id: 's1', player_id: 'p3' }),
+    ];
+    const before = buildCommitmentInvoicePlan(group);
+    // p1 pays their commitment invoice; a later run must still bill p2/p3 at N=3.
+    const after = buildCommitmentInvoicePlan([
+      { ...group[0], payment_status: 'paid' },
+      group[1],
+      group[2],
+    ]);
+    expect(before.batches.find((b) => b.playerKey === 'p2')?.splitAmongPlayers).toBe(3);
+    expect(after.batches.map((b) => b.playerKey).sort()).toEqual(['p2', 'p3']);
+    expect(after.batches.every((b) => b.splitAmongPlayers === 3)).toBe(true);
   });
 
   it('splits PER GROUP, not per cycle: two groups in one cycle bill independently', () => {

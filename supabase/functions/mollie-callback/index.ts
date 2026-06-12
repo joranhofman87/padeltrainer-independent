@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
-const logStep = (step: string, details?: any) => {
+const logStep = (step: string, details?: unknown) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[MOLLIE-CALLBACK] ${step}${detailsStr}`);
 };
@@ -46,15 +46,18 @@ serve(async (req) => {
     const oauthError = url.searchParams.get('error');
     const errorDescription = url.searchParams.get('error_description');
 
-    // Handle OAuth error from Mollie
+    // Handle OAuth error from Mollie. Only stable short codes go into the browser
+    // redirect (visible in history/referrer); full detail stays in server logs.
     if (oauthError) {
       logStep("OAuth error received", { error: oauthError, description: errorDescription });
-      return redirectToFrontend('error', { message: errorDescription || oauthError });
+      return redirectToFrontend('error', {
+        reason: oauthError === 'access_denied' ? 'access_denied' : 'oauth_error',
+      });
     }
 
     if (!code || !state) {
       logStep("Missing parameters", { hasCode: !!code, hasState: !!state });
-      return redirectToFrontend('error', { message: 'Missing authorization code or state' });
+      return redirectToFrontend('error', { reason: 'missing_params' });
     }
 
     logStep("Callback received", { state: state.substring(0, 30) + '...' });
@@ -62,7 +65,8 @@ serve(async (req) => {
     const mollieClientId = Deno.env.get("MOLLIE_CLIENT_ID");
     const mollieClientSecret = Deno.env.get("MOLLIE_CLIENT_SECRET");
     if (!mollieClientId || !mollieClientSecret) {
-      return redirectToFrontend('error', { message: 'Mollie OAuth credentials not configured' });
+      logStep("Mollie OAuth credentials not configured");
+      return redirectToFrontend('error', { reason: 'not_configured' });
     }
 
     const supabaseClient = createClient(
@@ -74,7 +78,8 @@ serve(async (req) => {
     // Format: "trainer_{trainerId}_{randomState}" or "academy_{academyId}_{randomState}"
     const stateParts = state.split('_');
     if (stateParts.length < 3) {
-      return redirectToFrontend('error', { message: 'Invalid state format' });
+      logStep("Invalid state format");
+      return redirectToFrontend('error', { reason: 'invalid_state' });
     }
 
     const entityType = stateParts[0]; // 'trainer' or 'academy'
@@ -90,26 +95,26 @@ serve(async (req) => {
 
     if (stateLookupError) {
       logStep("State lookup failed", { error: stateLookupError });
-      return redirectToFrontend('error', { message: 'Failed to validate OAuth state' });
+      return redirectToFrontend('error', { reason: 'state_validation_failed' });
     }
     if (!storedState) {
       logStep("State not found in store");
-      return redirectToFrontend('error', { message: 'Invalid OAuth state' });
+      return redirectToFrontend('error', { reason: 'invalid_state' });
     }
     if (storedState.used_at) {
       logStep("State already used", { used_at: storedState.used_at });
-      return redirectToFrontend('error', { message: 'OAuth state already used' });
+      return redirectToFrontend('error', { reason: 'state_already_used' });
     }
     if (new Date(storedState.expires_at) < new Date()) {
       logStep("State expired", { expires_at: storedState.expires_at });
-      return redirectToFrontend('error', { message: 'OAuth state expired' });
+      return redirectToFrontend('error', { reason: 'state_expired' });
     }
     if (storedState.entity_type !== entityType || storedState.entity_id !== entityId) {
       logStep("State entity mismatch", {
         claimed: { entityType, entityId },
         stored: { entity_type: storedState.entity_type, entity_id: storedState.entity_id },
       });
-      return redirectToFrontend('error', { message: 'OAuth state mismatch' });
+      return redirectToFrontend('error', { reason: 'state_mismatch' });
     }
 
     // Atomically mark used to prevent replay/race.
@@ -123,7 +128,7 @@ serve(async (req) => {
 
     if (consumeError || !consumed) {
       logStep("Failed to consume state (likely race)", { error: consumeError });
-      return redirectToFrontend('error', { message: 'OAuth state already used' });
+      return redirectToFrontend('error', { reason: 'state_already_used' });
     }
 
     // The redirect URI must match exactly what was used when creating the authorization URL
@@ -145,11 +150,14 @@ serve(async (req) => {
     });
 
     if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.json();
-      logStep("Token exchange failed", errorData);
-      return redirectToFrontend('error', { 
-        message: errorData.error_description || 'Failed to exchange authorization code' 
+      // Never log the full token-endpoint payload; only status + standard error fields.
+      const errorData = await tokenResponse.json().catch(() => null);
+      logStep("Token exchange failed", {
+        status: tokenResponse.status,
+        error: errorData?.error,
+        description: errorData?.error_description,
       });
+      return redirectToFrontend('error', { reason: 'token_exchange_failed' });
     }
 
     const tokens: MollieTokenResponse = await tokenResponse.json();
@@ -161,9 +169,13 @@ serve(async (req) => {
     });
 
     if (!orgResponse.ok) {
-      const errorData = await orgResponse.json();
-      logStep("Failed to get organization", errorData);
-      return redirectToFrontend('error', { message: 'Failed to retrieve Mollie organization' });
+      const errorData = await orgResponse.json().catch(() => null);
+      logStep("Failed to get organization", {
+        status: orgResponse.status,
+        title: errorData?.title,
+        detail: errorData?.detail,
+      });
+      return redirectToFrontend('error', { reason: 'organization_fetch_failed' });
     }
 
     const organization: MollieOrganization = await orgResponse.json();
@@ -190,7 +202,7 @@ serve(async (req) => {
 
       if (updateError) {
         logStep("Error updating trainer account", { error: updateError });
-        return redirectToFrontend('error', { message: 'Failed to save Mollie connection' });
+        return redirectToFrontend('error', { reason: 'save_failed' });
       }
       logStep("Trainer account updated successfully");
     } else if (entityType === 'academy') {
@@ -210,11 +222,12 @@ serve(async (req) => {
 
       if (upsertError) {
         logStep("Error saving academy account", { error: upsertError });
-        return redirectToFrontend('error', { message: 'Failed to save Mollie connection' });
+        return redirectToFrontend('error', { reason: 'save_failed' });
       }
       logStep("Academy account saved successfully");
     } else {
-      return redirectToFrontend('error', { message: 'Invalid entity type' });
+      logStep("Invalid entity type", { entityType });
+      return redirectToFrontend('error', { reason: 'invalid_entity' });
     }
 
     return redirectToFrontend('success', {
@@ -224,6 +237,7 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
-    return redirectToFrontend('error', { message: errorMessage });
+    // Full detail stays in logs; the browser only sees a stable code.
+    return redirectToFrontend('error', { reason: 'unexpected_error' });
   }
 });

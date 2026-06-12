@@ -132,15 +132,27 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     fetchInvoices();
   };
 
-  const handleMarkPaid = async (invoiceId: string) => {
-    setActionLoading(invoiceId);
-    const { error } = await supabase
+  const handleMarkPaid = async (invoice: Invoice) => {
+    if (invoice.status === 'cancelled') {
+      toast({
+        title: t('invoices.markPaidBlockedTitle', 'Niet mogelijk'),
+        description: t('invoices.cancelledCannotBePaid', 'Een geannuleerde factuur kan niet als betaald worden gemarkeerd.'),
+        variant: 'destructive',
+      });
+      return;
+    }
+    setActionLoading(invoice.id);
+    const paidAt = new Date().toISOString();
+    // .neq guards the cancelled→paid transition against stale local state too.
+    const { data: updated, error } = await supabase
       .from('invoices')
-      .update({ 
-        status: 'paid', 
-        paid_at: new Date().toISOString() 
+      .update({
+        status: 'paid',
+        paid_at: paidAt
       })
-      .eq('id', invoiceId);
+      .eq('id', invoice.id)
+      .neq('status', 'cancelled')
+      .select('id');
 
     if (error) {
       toast({
@@ -148,10 +160,33 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         description: 'Kon status niet bijwerken',
         variant: 'destructive',
       });
+    } else if (!updated || updated.length === 0) {
+      toast({
+        title: t('invoices.markPaidBlockedTitle', 'Niet mogelijk'),
+        description: t('invoices.cancelledCannotBePaid', 'Een geannuleerde factuur kan niet als betaald worden gemarkeerd.'),
+        variant: 'destructive',
+      });
     } else {
+      // Propagate to the linked bookings so sessions stop showing/feeding as
+      // unpaid. Skip rows already paid to preserve their original paid_at.
+      if (invoice.booking_ids && invoice.booking_ids.length > 0) {
+        const { error: bookingsError } = await supabase
+          .from('bookings')
+          .update({ payment_status: 'paid', paid_at: paidAt })
+          .in('id', invoice.booking_ids)
+          .neq('payment_status', 'paid');
+        if (bookingsError) {
+          logger.error('Mark paid: booking sync failed', new Error(bookingsError.message), { component: 'InvoiceList' });
+          toast({
+            title: t('invoices.markPaidBookingSyncFailedTitle', 'Let op'),
+            description: t('invoices.markPaidBookingSyncFailed', 'Factuur is als betaald gemarkeerd, maar de gekoppelde boekingen konden niet worden bijgewerkt.'),
+            variant: 'destructive',
+          });
+        }
+      }
       toast({ title: 'Factuur gemarkeerd als betaald' });
       if (forwardEmails.length > 0) {
-        supabase.functions.invoke('forward-invoice', { body: { invoiceId } }).catch(err => logger.error('Forward invoice failed', err instanceof Error ? err : new Error(String(err)), { component: 'InvoiceList' }));
+        supabase.functions.invoke('forward-invoice', { body: { invoiceId: invoice.id } }).catch(err => logger.error('Forward invoice failed', err instanceof Error ? err : new Error(String(err)), { component: 'InvoiceList' }));
       }
       refreshAfterInvoiceWrite();
     }
@@ -174,6 +209,18 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
       if (data?.error === 'no_email') {
         // Show email dialog
         setEmailDialog({ open: true, invoiceId: invoice.id, playerName: invoice.player_name, guestPlayerId: invoice.guest_player_id });
+        setActionLoading(null);
+        return;
+      }
+
+      // Only stamp sent_at/status after a confirmed delivery — a failed send
+      // must not record the invoice as issued.
+      if (fnError || !data?.success) {
+        toast({
+          title: t('invoices.sendError'),
+          description: t('invoices.sendError'),
+          variant: 'destructive',
+        });
         setActionLoading(null);
         return;
       }
@@ -229,14 +276,23 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     }
 
     // Retry sending
-    const { data } = await supabase.functions.invoke('send-invoice-email', {
+    const { data, error: fnError } = await supabase.functions.invoke('send-invoice-email', {
       body: { invoiceId },
     });
 
-    // Mark as sent
-    await supabase.from('invoices').update({ 
-      status: 'sent', 
-      sent_at: new Date().toISOString() 
+    // Only mark sent after a confirmed delivery
+    if (fnError || !data?.success) {
+      toast({
+        title: t('invoices.sendError'),
+        description: t('invoices.sendError'),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    await supabase.from('invoices').update({
+      status: 'sent',
+      sent_at: new Date().toISOString()
     }).eq('id', invoiceId);
 
     // Generate PDF
@@ -479,7 +535,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleMarkPaid(invoice.id)}
+                          onClick={() => handleMarkPaid(invoice)}
                           disabled={actionLoading === invoice.id}
                           title="Markeer als betaald"
                         >

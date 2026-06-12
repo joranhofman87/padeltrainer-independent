@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/button';
 import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import { getTrainerAcademy } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 function TrainerMobileHeader() {
   const { t } = useTranslation('trainer');
@@ -46,7 +48,7 @@ export default function TrainerLayout() {
   useTranslation('trainer');
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, roles, loading, profileReady, subscription, refreshSubscription } = useAuth();
+  const { user, roles, loading, profileReady, profileFetchFailed, refreshAuth, subscription, refreshSubscription } = useAuth();
   const authResolving = loading || (!!user && !profileReady);
 
   // Check academy membership with caching
@@ -81,12 +83,14 @@ export default function TrainerLayout() {
       if (!user) {
         navigate('/app/auth');
       } else if (roles.length === 0) {
-        navigate('/app/auth');
+        // U-12: empty roles after a failed fetch means "couldn't load", not "no account" —
+        // show the retry state below instead of bouncing a logged-in user to the login form
+        if (!profileFetchFailed) navigate('/app/auth');
       } else if (!roles.includes('trainer') && !roles.includes('admin')) {
         navigate('/app/player');
       }
     }
-  }, [user, roles, authResolving, navigate]);
+  }, [user, roles, authResolving, profileFetchFailed, navigate]);
 
   // Calculate subscription status
   const subscriptionLoaded = subscription !== null;
@@ -204,6 +208,14 @@ export default function TrainerLayout() {
     );
   }
 
+  if (user && roles.length === 0 && profileFetchFailed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <QueryErrorState className="w-full max-w-md" onRetry={() => { void refreshAuth(); }} />
+      </div>
+    );
+  }
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
@@ -212,7 +224,9 @@ export default function TrainerLayout() {
           <TrainerMobileHeader />
           <main className="flex-1 overflow-auto p-4 md:p-6">
             <Suspense fallback={<PageContentSkeleton />}>
-              <Outlet />
+              <RouteErrorBoundary>
+                <Outlet />
+              </RouteErrorBoundary>
             </Suspense>
           </main>
         </SidebarInset>

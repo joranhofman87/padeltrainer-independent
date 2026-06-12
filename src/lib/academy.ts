@@ -613,7 +613,9 @@ export async function inviteAcademyTrainer(
   return { success: true, invitation: invitation as AcademyTrainerInvitation };
 }
 
-// Get invitation by token
+// Get invitation by token. Resolves null only for a definitive "no such
+// invitation" (no row); query failures throw so callers can offer a retry
+// instead of rendering "not found" on a network blip.
 export async function getAcademyInvitationByToken(token: string): Promise<any | null> {
   const { data, error } = await supabase
     .from('academy_trainer_invitations')
@@ -624,8 +626,11 @@ export async function getAcademyInvitationByToken(token: string): Promise<any | 
     .eq('token', token)
     .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
     logger.error('Error fetching academy invitation', undefined, { error });
+    throw error;
+  }
+  if (!data) {
     return null;
   }
 

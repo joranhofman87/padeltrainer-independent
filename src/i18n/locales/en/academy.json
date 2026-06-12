@@ -132,7 +132,11 @@
     "benefitsTitle": "Benefits of joining",
     "benefit1": "Get more visibility through the academy's network",
     "benefit2": "Access to academy's club partnerships",
-    "benefit3": "Automated payment splits and invoicing"
+    "benefit3": "Automated payment splits and invoicing",
+    "invalidLink": "Invalid invitation link",
+    "notFoundOrExpired": "This invitation was not found or has expired",
+    "loadFailedTitle": "Could not load this invitation",
+    "loadFailedDescription": "Something went wrong while loading. Your invitation link is still valid — check your connection and try again."
   },
   "locations": {
     "title": "Academy Locations",
@@ -220,7 +224,8 @@
     "removed": "Manager removed",
     "remove": "Remove",
     "confirmRemove": "Are you sure you want to remove this manager?",
-    "noTrainersAvailable": "No trainers available to add"
+    "noTrainersAvailable": "No trainers available to add",
+    "confirmRemoveTitle": "Remove manager?"
   },
   "settings": {
     "dangerZone": "Danger Zone",
@@ -338,7 +343,15 @@
     "bannerColor": "Invoice Banner Color",
     "bannerColorDescription": "Background color for the invoice header. Useful when your logo is white or transparent.",
     "noColor": "No banner",
-    "customColor": "Custom"
+    "customColor": "Custom",
+    "renumberTitle": "Renumber draft invoices?",
+    "renumberDescription": "The invoice numbering changed. Draft invoices automatically get a new number. Sent and paid invoices keep their number.",
+    "renumberConfirm": "Renumber",
+    "renumberCancel": "Cancel",
+    "renumberSuccess": "{{count}} invoices renumbered",
+    "renumberPartial": "{{updated}} invoices renumbered, {{failed}} failed",
+    "renumberNothing": "No draft invoices found to renumber",
+    "renumberError": "Renumbering failed"
   },
   "common": {
     "cancel": "Cancel",
@@ -503,7 +516,10 @@
       "resetDonePartial": "{{count}} reset, {{skipped}} paid skipped"
     },
     "open": "Open",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "recentlySentSkipped": "This invoice was already sent moments ago",
+    "bulkNotSentList": "Not sent: {{list}}",
+    "shareActions": "Share invoice"
   },
   "warnings": {
     "ratingSpread": "Rating spread: {{spread}}",

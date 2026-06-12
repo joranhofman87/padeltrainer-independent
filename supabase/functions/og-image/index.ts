@@ -24,9 +24,26 @@ const ACCENTS: Record<string, string> = {
   generic: '#F97316',
 };
 
+// Only bare hex digits are accepted for ?accent= — anything else (quotes, tags,
+// CSS functions) would otherwise be reflected verbatim into SVG attributes.
+const HEX_COLOR_RE = /^[0-9a-fA-F]{3,8}$/;
+
 Deno.serve((req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+  try {
+    return renderOgImage(req);
+  } catch (err) {
+    console.error('Error generating OG image:', err);
+    // Image endpoint: scrapers expect an image, so degrade to a branded fallback.
+    return new Response(renderFallbackSvg(), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'image/svg+xml' },
+    });
+  }
+});
+
+function renderOgImage(req: Request): Response {
   const url = new URL(req.url);
   const params = url.searchParams;
 
@@ -44,8 +61,10 @@ Deno.serve((req) => {
 
   if (!title) title = 'PadelTrainer.ai';
 
-  const accentParam = params.get('accent');
-  const accent = accentParam ? `#${accentParam.replace(/^#/, '')}` : (ACCENTS[type] || ACCENTS.generic);
+  const accentParam = (params.get('accent') || '').replace(/^#/, '');
+  const accent = HEX_COLOR_RE.test(accentParam)
+    ? `#${accentParam}`
+    : (ACCENTS[type] || ACCENTS.generic);
 
   const titleLines = wrapText(title, 26).slice(0, 2);
   const subtitleLines = wrapText(subtitle, 56).slice(0, 2);
@@ -92,7 +111,22 @@ Deno.serve((req) => {
       'Cache-Control': 'public, max-age=86400, s-maxage=604800',
     },
   });
-});
+}
+
+function renderFallbackSvg(): string {
+  return `<svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+  </defs>
+  <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#bg)"/>
+  <text x="60" y="320" font-family="Inter, Arial, Helvetica, sans-serif" font-size="84" font-weight="800" fill="white">PadelTrainer.ai</text>
+  <rect x="0" y="585" width="${WIDTH}" height="45" fill="#F97316"/>
+  <text x="60" y="616" font-family="Inter, Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="white">PadelTrainer.ai</text>
+</svg>`;
+}
 
 function escapeXml(str: string): string {
   return String(str)

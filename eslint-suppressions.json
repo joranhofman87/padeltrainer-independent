@@ -295,7 +295,7 @@
   },
   "src/components/invoices/InvoiceSettingsCardBase.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 7
+      "count": 5
     }
   },
   "src/components/locations/CommunityRatings.tsx": {
@@ -706,17 +706,7 @@
       "count": 1
     }
   },
-  "src/lib/invoiceSync.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 19
-    }
-  },
   "src/lib/playerTagService.test.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    }
-  },
-  "src/lib/renumberDraftInvoices.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
@@ -1399,7 +1389,7 @@
   },
   "supabase/functions/finalize-proposals/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 7
+      "count": 4
     }
   },
   "supabase/functions/generate-blog-cover/index.ts": {
@@ -1423,11 +1413,6 @@
     }
   },
   "supabase/functions/llms-full-txt/index.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    }
-  },
-  "supabase/functions/mollie-callback/index.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
@@ -1467,11 +1452,6 @@
       "count": 1
     }
   },
-  "supabase/functions/send-digest-emails/index.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    }
-  },
   "supabase/functions/send-email/index.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 9
@@ -1480,11 +1460,6 @@
   "supabase/functions/send-invoice-email/index.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 5
-    }
-  },
-  "supabase/functions/send-priority-claim-invitation/index.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 4
     }
   },
   "supabase/functions/send-push-bulk/index.ts": {
@@ -1499,7 +1474,7 @@
   },
   "supabase/functions/signup-user/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 2
+      "count": 1
     }
   },
   "supabase/functions/sitemap/index.ts": {
@@ -1507,14 +1482,9 @@
       "count": 4
     }
   },
-  "supabase/functions/split-invoice/index.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 8
-    }
-  },
   "supabase/functions/submit-guest-intake/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 8
+      "count": 4
     }
   },
   "supabase/functions/sync-invoice-to-bookings/index.ts": {

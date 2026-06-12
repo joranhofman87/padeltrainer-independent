@@ -28,6 +28,7 @@ import {
   shouldShowPayerSelector,
 } from "@/lib/cyclePayerSelection";
 import {
+  buildRebalanceAmountGroups,
   calculateAddPlayerPricingPreview,
   calculateSlotBookingPricing,
   countActiveBookings,
@@ -308,28 +309,45 @@ export function BookForPlayerDialog({
   ): Promise<void> => {
     if (rebalanceIds.length === 0) return;
 
-    const { error } = await supabase
+    // Re-read discounts so a negotiated discount survives the rebalance: each
+    // row keeps discount_amount/discount_reason and pays share − discount.
+    const { data: existingRows, error: fetchError } = await supabase
       .from("bookings")
-      .update({
-        payment_amount: amount,
-        original_amount: sessionPriceForOriginal,
-        discount_amount: 0,
-      })
-      .in("id", rebalanceIds)
-      // The calendar passes booked_players WITHOUT payment status, so the
-      // client filter can't exclude paid rows — enforce it at the DB so a paid
-      // (or externally-paid) booking is never silently rewritten to a new share.
-      .neq("payment_status", "paid")
-      .neq("paid_externally", true);
+      .select("id, discount_amount")
+      .in("id", rebalanceIds);
 
-    if (error) {
-      logger.error("Failed to rebalance booking amounts", error, {
+    if (fetchError) {
+      logger.error("Failed to load bookings for rebalance", fetchError, {
         component: "BookForPlayerDialog",
         slotId,
         rebalanceIds,
-        amount,
       });
-      throw error;
+      throw fetchError;
+    }
+
+    for (const group of buildRebalanceAmountGroups(existingRows ?? [], amount)) {
+      const { error } = await supabase
+        .from("bookings")
+        .update({
+          payment_amount: group.paymentAmount,
+          original_amount: sessionPriceForOriginal,
+        })
+        .in("id", group.bookingIds)
+        // The calendar passes booked_players WITHOUT payment status, so the
+        // client filter can't exclude paid rows — enforce it at the DB so a paid
+        // (or externally-paid) booking is never silently rewritten to a new share.
+        .neq("payment_status", "paid")
+        .neq("paid_externally", true);
+
+      if (error) {
+        logger.error("Failed to rebalance booking amounts", error, {
+          component: "BookForPlayerDialog",
+          slotId,
+          rebalanceIds: group.bookingIds,
+          amount: group.paymentAmount,
+        });
+        throw error;
+      }
     }
   };
 

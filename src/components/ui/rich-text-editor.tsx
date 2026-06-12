@@ -4,9 +4,10 @@ import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
 import { Separator } from "@/components/ui/separator";
+import { EditorLinkDialog } from "@/components/ui/editor-link-dialog";
 import {
   Bold,
   Italic,
@@ -36,14 +37,9 @@ interface ToolbarProps {
 }
 
 function Toolbar({ editor }: ToolbarProps) {
-  if (!editor) return null;
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
 
-  const addLink = () => {
-    const url = window.prompt("Enter URL:");
-    if (url) {
-      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
-    }
-  };
+  if (!editor) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-1 border-b border-input bg-muted/50 p-1 rounded-t-md">
@@ -155,7 +151,7 @@ function Toolbar({ editor }: ToolbarProps) {
       <Toggle
         size="sm"
         pressed={editor.isActive("link")}
-        onPressedChange={addLink}
+        onPressedChange={() => setLinkDialogOpen(true)}
         aria-label="Add Link"
       >
         <LinkIcon className="h-4 w-4" />
@@ -170,6 +166,20 @@ function Toolbar({ editor }: ToolbarProps) {
           <Unlink className="h-4 w-4" />
         </Toggle>
       )}
+
+      <EditorLinkDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        initialUrl={(editor.getAttributes("link").href as string | undefined) ?? ""}
+        onRemove={
+          editor.isActive("link")
+            ? () => editor.chain().focus().unsetLink().run()
+            : undefined
+        }
+        onSubmit={(url) =>
+          editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
+        }
+      />
     </div>
   );
 }

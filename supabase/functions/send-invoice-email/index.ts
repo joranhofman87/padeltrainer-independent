@@ -66,6 +66,8 @@ const handler = async (req: Request): Promise<Response> => {
       : null;
     const testEmail = typeof body.testEmail === "string" && body.testEmail.trim() ? body.testEmail.trim() : null;
     const previewOnly = body.previewOnly === true;
+    // Bypass for the duplicate-send guard below (deliberate immediate resends).
+    const force = body.force === true;
 
     // Security: a test send may only be delivered to the caller's own auth email.
     // Prevents using this endpoint to phish from our domain.
@@ -238,6 +240,21 @@ const handler = async (req: Request): Promise<Response> => {
         return new Response(
           JSON.stringify({ error: "Unauthorized" }),
           { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+    }
+
+    // Duplicate-send guard: rapid double-clicks/retries on an invoice that was
+    // just delivered are no-ops unless the caller explicitly passes force=true.
+    // Deliberate resends (after the window) keep working unchanged.
+    const RECENT_SEND_WINDOW_MS = 2 * 60 * 1000;
+    if (!previewOnly && !testEmail && !force && invoice.sent_at) {
+      const sentAtMs = Date.parse(invoice.sent_at);
+      if (Number.isFinite(sentAtMs) && Date.now() - sentAtMs < RECENT_SEND_WINDOW_MS) {
+        logStep("skipped_recently_sent", { invoiceId, invoiceNumber: invoice.invoice_number });
+        return new Response(
+          JSON.stringify({ success: true, skipped: "recently_sent", email: recipientEmail }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
     }

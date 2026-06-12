@@ -33,11 +33,14 @@ export function DeleteAccountDialog({ trigger }: DeleteAccountDialogProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('common');
 
+  // Locale-aware confirmation word (e.g. VERWIJDER in Dutch); uppercased to match the input normalization below.
+  const confirmWord = t('deleteAccount.confirmWord', 'DELETE').toUpperCase();
+
   const handleDelete = async () => {
-    if (confirmText !== 'DELETE') {
+    if (confirmText !== confirmWord) {
       toast({
         title: t('deleteAccount.error'),
-        description: t('deleteAccount.confirmTextError', 'Please type DELETE to confirm'),
+        description: t('deleteAccount.confirmTextError', 'Please type {{word}} to confirm', { word: confirmWord }),
         variant: 'destructive',
       });
       return;
@@ -105,11 +108,11 @@ export function DeleteAccountDialog({ trigger }: DeleteAccountDialogProps) {
             </ul>
             <div className="pt-4 space-y-2">
               <Label htmlFor="confirm-delete" className="text-sm font-medium">
-                {t('deleteAccount.confirmText')}
+                {t('deleteAccount.confirmText', 'Type {{word}} to confirm', { word: confirmWord })}
               </Label>
               <Input
                 id="confirm-delete"
-                placeholder="DELETE"
+                placeholder={confirmWord}
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
                 className="font-mono"
@@ -124,7 +127,7 @@ export function DeleteAccountDialog({ trigger }: DeleteAccountDialogProps) {
           <Button
             variant="destructive"
             onClick={handleDelete}
-            disabled={confirmText !== 'DELETE' || isDeleting}
+            disabled={confirmText !== confirmWord || isDeleting}
           >
             {isDeleting ? (
               <>

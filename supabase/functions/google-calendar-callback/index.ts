@@ -20,7 +20,9 @@ serve(async (req) => {
 
     if (error) {
       console.error('OAuth error:', error);
-      return Response.redirect(`${redirectUrl}?error=${encodeURIComponent(error)}`);
+      // Only reflect a known code into the browser redirect; anything else gets a stable generic code.
+      const errorCode = error === 'access_denied' ? 'access_denied' : 'oauth_error';
+      return Response.redirect(`${redirectUrl}?error=${errorCode}`);
     }
 
     if (!code || !stateData?.userId) {
@@ -53,8 +55,13 @@ serve(async (req) => {
     const tokenData = await tokenResponse.json();
 
     if (tokenData.error) {
-      console.error('Token exchange error:', tokenData);
-      return Response.redirect(`${redirectUrl}?error=${encodeURIComponent(tokenData.error)}`);
+      // Never log the full token-endpoint payload; only status + standard error fields.
+      console.error('Token exchange error:', {
+        status: tokenResponse.status,
+        error: tokenData.error,
+        error_description: tokenData.error_description,
+      });
+      return Response.redirect(`${redirectUrl}?error=token_exchange_failed`);
     }
 
     const { access_token, refresh_token, expires_in } = tokenData;
@@ -104,8 +111,8 @@ serve(async (req) => {
     // Redirect back to settings with success
     return Response.redirect(`${redirectUrl}?success=true`);
   } catch (error: unknown) {
+    // Full detail stays in logs; the browser only sees a stable code.
     console.error('Callback error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return Response.redirect(`/settings/calendar?error=${encodeURIComponent(message)}`);
+    return Response.redirect(`/settings/calendar?error=callback_failed`);
   }
 });

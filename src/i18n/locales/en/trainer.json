@@ -583,6 +583,11 @@
         "billingAddress": "Billing address",
         "billingBtwNumber": "VAT number"
       }
+    },
+    "tags": {
+      "deleteConfirmTitle": "Delete tag?",
+      "deleteConfirmDescription": "This permanently deletes \"{{name}}\" and removes it from all tagged players. This cannot be undone.",
+      "deleteConfirmAction": "Delete tag"
     }
   },
   "earnings": {
@@ -975,7 +980,22 @@
       "resetAllPaid": "Paid invoices cannot be reset",
       "resetDone": "{{count}} invoices reset to draft",
       "resetDonePartial": "{{count}} reset, {{skipped}} paid skipped"
-    }
+    },
+    "cancelledCannotBePaid": "A cancelled invoice cannot be marked as paid.",
+    "markPaidBlockedTitle": "Not allowed",
+    "markPaidBookingSyncFailed": "The invoice was marked as paid, but its linked bookings could not be updated.",
+    "markPaidBookingSyncFailedTitle": "Warning",
+    "recentlySentSkipped": "This invoice was already sent moments ago",
+    "bulkNotSentList": "Not sent: {{list}}",
+    "shareOptions": "Share options",
+    "renumberTitle": "Renumber draft invoices?",
+    "renumberDescription": "The invoice numbering changed. Draft invoices automatically get a new number. Sent and paid invoices keep their number.",
+    "renumberConfirm": "Renumber",
+    "renumberCancel": "Cancel",
+    "renumberSuccess": "{{count}} invoices renumbered",
+    "renumberPartial": "{{updated}} invoices renumbered, {{failed}} failed",
+    "renumberNothing": "No draft invoices found to renumber",
+    "renumberError": "Renumbering failed"
   },
   "profileVisibility": {
     "title": "Marketplace visibility",
@@ -1123,7 +1143,12 @@
     "paymentWaived": "Waived",
     "paymentNoCharge": "No Charge",
     "paymentDueAfter": "Due After",
-    "paymentPending": "Payment Pending"
+    "paymentPending": "Payment Pending",
+    "invoiceSyncFailed": "The booking was cancelled, but a linked invoice could not be updated. Please check the invoice.",
+    "markCancelledConfirmAction": "Mark as cancelled",
+    "markCancelledConfirmTitle": "Mark lesson as cancelled?",
+    "paidInvoiceNotUpdated": "Paid invoice not updated",
+    "paidInvoiceNotUpdatedDescription": "Invoice {{numbers}} is already paid and was left unchanged. Please review it manually."
   },
   "earningsPage": {
     "title": "Earnings",

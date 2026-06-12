@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { EditorLinkDialog } from "@/components/ui/editor-link-dialog";
 import {
   Bold,
   Italic,
@@ -38,6 +39,7 @@ export function MiniRichTextEditor({
   allowHtmlView = false,
 }: MiniRichTextEditorProps) {
   const [htmlMode, setHtmlMode] = useState(false);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -80,13 +82,11 @@ export function MiniRichTextEditor({
 
   const addLink = () => {
     if (!editor) return;
-    const previousUrl = editor.getAttributes("link").href as string | undefined;
-    const url = window.prompt("Enter URL (leave empty to remove):", previousUrl ?? "");
-    if (url === null) return; // cancelled
-    if (url === "") {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
-    }
+    setLinkDialogOpen(true);
+  };
+
+  const applyLink = (url: string) => {
+    if (!editor) return;
     let href = url.trim();
     if (!/^(https?:|mailto:|tel:|\/|#)/i.test(href)) {
       href = `https://${href}`;
@@ -106,6 +106,11 @@ export function MiniRichTextEditor({
     } else {
       editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
     }
+  };
+
+  const removeLink = () => {
+    if (!editor) return;
+    editor.chain().focus().extendMarkRange("link").unsetLink().run();
   };
 
   const toggleHtmlMode = () => {
@@ -213,6 +218,14 @@ export function MiniRichTextEditor({
       ) : (
         <EditorContent editor={editor} />
       )}
+
+      <EditorLinkDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        initialUrl={(editor?.getAttributes("link").href as string | undefined) ?? ""}
+        onRemove={editor?.isActive("link") ? removeLink : undefined}
+        onSubmit={applyLink}
+      />
     </div>
   );
 }

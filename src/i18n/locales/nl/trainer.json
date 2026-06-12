@@ -586,6 +586,11 @@
         "billingAddress": "Factuuradres",
         "billingBtwNumber": "Btw-nummer"
       }
+    },
+    "tags": {
+      "deleteConfirmTitle": "Tag verwijderen?",
+      "deleteConfirmDescription": "Dit verwijdert \"{{name}}\" permanent en haalt de tag bij alle spelers weg. Dit kan niet ongedaan worden gemaakt.",
+      "deleteConfirmAction": "Tag verwijderen"
     }
   },
   "earnings": {
@@ -978,7 +983,22 @@
       "resetAllPaid": "Betaalde facturen kunnen niet worden gereset",
       "resetDone": "{{count}} facturen gereset",
       "resetDonePartial": "{{count}} gereset, {{skipped}} betaalde overgeslagen"
-    }
+    },
+    "cancelledCannotBePaid": "Een geannuleerde factuur kan niet als betaald worden gemarkeerd.",
+    "markPaidBlockedTitle": "Niet mogelijk",
+    "markPaidBookingSyncFailed": "Factuur is als betaald gemarkeerd, maar de gekoppelde boekingen konden niet worden bijgewerkt.",
+    "markPaidBookingSyncFailedTitle": "Let op",
+    "recentlySentSkipped": "Deze factuur is zojuist al verzonden",
+    "bulkNotSentList": "Niet verzonden: {{list}}",
+    "shareOptions": "Deelopties",
+    "renumberTitle": "Conceptfacturen hernummeren?",
+    "renumberDescription": "De factuurnummering is gewijzigd. Conceptfacturen krijgen automatisch een nieuw nummer. Verzonden en betaalde facturen behouden hun nummer.",
+    "renumberConfirm": "Hernummeren",
+    "renumberCancel": "Annuleren",
+    "renumberSuccess": "{{count}} facturen hernummerd",
+    "renumberPartial": "{{updated}} facturen hernummerd, {{failed}} mislukt",
+    "renumberNothing": "Geen conceptfacturen gevonden om te hernummeren",
+    "renumberError": "Hernummeren mislukt"
   },
   "profileVisibility": {
     "title": "Zichtbaarheid marktplaats",
@@ -1126,7 +1146,12 @@
     "paymentWaived": "Kwijtgescholden",
     "paymentNoCharge": "Geen kosten",
     "paymentDueAfter": "Na afloop",
-    "paymentPending": "Betaling in afwachting"
+    "paymentPending": "Betaling in afwachting",
+    "invoiceSyncFailed": "De boeking is geannuleerd, maar een gekoppelde factuur kon niet worden bijgewerkt. Controleer de factuur.",
+    "markCancelledConfirmAction": "Markeer als geannuleerd",
+    "markCancelledConfirmTitle": "Les als geannuleerd markeren?",
+    "paidInvoiceNotUpdated": "Betaalde factuur niet bijgewerkt",
+    "paidInvoiceNotUpdatedDescription": "Factuur {{numbers}} is al betaald en is ongewijzigd gelaten. Controleer deze handmatig."
   },
   "earningsPage": {
     "title": "Inkomsten",

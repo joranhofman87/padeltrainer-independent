@@ -4,6 +4,7 @@ import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,8 @@ export default function FollowingList() {
 
   const [following, setFollowing] = useState<FollowedTrainer[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [unfollowTarget, setUnfollowTarget] = useState<{ id: string; name: string | null } | null>(null);
+  const [unfollowing, setUnfollowing] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -147,8 +150,7 @@ export default function FollowingList() {
   };
 
   const unfollow = async (followId: string, trainerName: string | null) => {
-    if (!confirm(t('followingList.unfollowConfirm', { name: trainerName || 'this trainer' }))) return;
-
+    setUnfollowing(true);
     try {
       const { error } = await supabase
         .from('trainer_followers')
@@ -165,6 +167,9 @@ export default function FollowingList() {
         description: error.message,
         variant: 'destructive',
       });
+    } finally {
+      setUnfollowing(false);
+      setUnfollowTarget(null);
     }
   };
 
@@ -249,7 +254,7 @@ export default function FollowingList() {
                         size="icon"
                         className="text-destructive hover:text-destructive"
                         aria-label={t('followingList.unfollow', 'Unfollow')}
-                        onClick={() => unfollow(trainer.id, trainer.full_name)}
+                        onClick={() => setUnfollowTarget({ id: trainer.id, name: trainer.full_name })}
                       >
                         <UserMinus className="h-4 w-4" />
                       </Button>
@@ -266,6 +271,17 @@ export default function FollowingList() {
           {t('followingList.findMore')}
         </Button>
       </div>
+
+      <ConfirmDeleteDialog
+        open={!!unfollowTarget}
+        onOpenChange={(next) => { if (!next) setUnfollowTarget(null); }}
+        title={t('followingList.unfollowConfirmTitle', 'Unfollow trainer?')}
+        description={t('followingList.unfollowConfirm', { name: unfollowTarget?.name || t('followingList.thisTrainer', 'this trainer') })}
+        confirmLabel={t('followingList.unfollow', 'Unfollow')}
+        cancelLabel={t('common:cancel', 'Cancel')}
+        loading={unfollowing}
+        onConfirm={() => { if (unfollowTarget) void unfollow(unfollowTarget.id, unfollowTarget.name); }}
+      />
     </AppPage>
   );
 }

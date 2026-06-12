@@ -67,13 +67,16 @@ export default function AcademyIntakeRequests() {
   // TanStack Query — cached data
   const academyId = activeAcademy?.id ?? null;
   const { data: cycles = [], isLoading: cyclesLoading } = useCyclesQuery('academy', academyId);
-  const { data: requests = [], isLoading: _requestsLoading } = useIntakeRequestsQuery('academy', academyId);
+  const { data: requests = [], isLoading: requestsLoading } = useIntakeRequestsQuery('academy', academyId);
   const cycleIds = useMemo(() => cycles.map(c => c.id), [cycles]);
   const { data: playerLinksData = [] } = usePlayerLinksQuery(cycleIds);
 
   const { invalidateAll, invalidateRequests } = useInvalidateProposalData();
 
-  const isFirstLoad = cyclesLoading && cycles.length === 0;
+  // Gate the first paint on both queries so the table never flashes its
+  // "no registrations" empty state (and 0-counts) while data is still loading.
+  const isFirstLoad =
+    (cyclesLoading && cycles.length === 0) || (requestsLoading && requests.length === 0);
 
   // Local schedule slots with optimistic updates
   const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);

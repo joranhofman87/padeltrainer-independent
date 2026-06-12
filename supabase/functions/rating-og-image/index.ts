@@ -5,6 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -14,8 +16,9 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const profileId = url.searchParams.get('profileId');
 
-    if (!profileId) {
-      return new Response('Missing profileId', { status: 400, headers: corsHeaders });
+    // Reject malformed IDs before they reach Postgres (invalid uuid casts error there).
+    if (!profileId || !UUID_RE.test(profileId)) {
+      return new Response('Invalid profileId', { status: 400, headers: corsHeaders });
     }
 
     const supabase = createClient(

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { parseVideoUrl, isValidVideoUrl } from '@/lib/videoEmbed';
@@ -29,6 +30,8 @@ export function VideoManager({ trainerProfileId, academyProfileId }: VideoManage
   const [newUrl, setNewUrl] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [adding, setAdding] = useState(false);
+  const [videoToDelete, setVideoToDelete] = useState<ProfileVideo | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchVideos = async () => {
     let query = supabase
@@ -96,7 +99,10 @@ export function VideoManager({ trainerProfileId, academyProfileId }: VideoManage
   };
 
   const handleDelete = async (id: string) => {
+    setDeleting(true);
     const { error } = await supabase.from('profile_videos').delete().eq('id', id);
+    setDeleting(false);
+    setVideoToDelete(null);
     if (error) {
       toast({ title: t('error', 'Error'), description: error.message, variant: 'destructive' });
       return;
@@ -147,7 +153,7 @@ export function VideoManager({ trainerProfileId, academyProfileId }: VideoManage
                     type="button"
                     variant="ghost"
                     size="icon" aria-label="Delete"
-                    onClick={() => handleDelete(video.id)}
+                    onClick={() => setVideoToDelete(video)}
                     className="text-destructive hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -210,6 +216,21 @@ export function VideoManager({ trainerProfileId, academyProfileId }: VideoManage
             {adding ? t('adding', 'Adding...') : t('addVideo', 'Add Video')}
           </Button>
         </div>
+
+        <ConfirmDeleteDialog
+          open={!!videoToDelete}
+          onOpenChange={(next) => { if (!next) setVideoToDelete(null); }}
+          title={t('deleteVideoConfirmTitle', 'Remove video?')}
+          description={t(
+            'deleteVideoConfirmDescription',
+            'This permanently removes "{{title}}" from your public profile. This cannot be undone.',
+            { title: videoToDelete?.title || videoToDelete?.video_url || '' }
+          )}
+          confirmLabel={t('deleteVideoConfirmAction', 'Remove video')}
+          cancelLabel={t('cancel', 'Cancel')}
+          loading={deleting}
+          onConfirm={() => { if (videoToDelete) void handleDelete(videoToDelete.id); }}
+        />
       </CardContent>
     </Card>
   );

@@ -17,6 +17,7 @@ import StarterKit from '@tiptap/starter-kit';
 import LinkExtension from '@tiptap/extension-link';
 import UnderlineExtension from '@tiptap/extension-underline';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { AppPage } from '@/components/ui/app-page';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -52,6 +53,7 @@ export default function AcademySettings() {
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>('');
   const [addingManager, setAddingManager] = useState(false);
   const [removingManagerId, setRemovingManagerId] = useState<string | null>(null);
+  const [managerToRemove, setManagerToRemove] = useState<string | null>(null);
   
   // Mollie Connect state
   const [connectStatus, setConnectStatus] = useState<AcademyConnectStatus | null>(null);
@@ -295,11 +297,15 @@ export default function AcademySettings() {
     }
   };
 
-  const handleRemoveManager = async (managerId: string) => {
-    if (!confirm(t('managers.confirmRemove', 'Are you sure you want to remove this manager?'))) return;
-    setRemovingManagerId(managerId);
+  const handleRemoveManager = (managerId: string) => {
+    setManagerToRemove(managerId);
+  };
+
+  const confirmRemoveManager = async () => {
+    if (!managerToRemove || removingManagerId) return;
+    setRemovingManagerId(managerToRemove);
     try {
-      const result = await removeAcademyManager(managerId);
+      const result = await removeAcademyManager(managerToRemove);
       if (!result.success) throw new Error(result.error);
       toast({ title: t('managers.removed', 'Manager removed') });
       await fetchManagersAndTrainers();
@@ -307,6 +313,7 @@ export default function AcademySettings() {
       toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
     } finally {
       setRemovingManagerId(null);
+      setManagerToRemove(null);
     }
   };
 
@@ -639,6 +646,17 @@ export default function AcademySettings() {
           <h3 className="mb-4 text-lg font-semibold text-destructive">{t('settings.dangerZone', 'Danger Zone')}</h3>
           <DeleteAccountDialog />
         </div>
+
+        <ConfirmDeleteDialog
+          open={!!managerToRemove}
+          onOpenChange={(next) => { if (!next) setManagerToRemove(null); }}
+          title={t('managers.confirmRemoveTitle', 'Remove manager?')}
+          description={t('managers.confirmRemove', 'Are you sure you want to remove this manager?')}
+          confirmLabel={t('managers.remove', 'Remove')}
+          cancelLabel={t('common:cancel', 'Cancel')}
+          loading={!!removingManagerId}
+          onConfirm={() => { void confirmRemoveManager(); }}
+        />
     </AppPage>
   );
 }

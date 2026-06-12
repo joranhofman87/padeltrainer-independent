@@ -6,6 +6,7 @@ import {
   metadataReferencesBooking,
 } from "../_shared/booking-access.ts";
 import { amountsMatch, parseMollieAmountValue } from "../_shared/booking-pricing.ts";
+import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[VERIFY-MOLLIE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
@@ -303,7 +304,14 @@ serve(async (req) => {
     }
 
     if (isPaid) {
-      const { error: updateError } = await supabase
+      // M-26: mark EVERY booking covered by this payment paid (the amount
+      // check above already verified the sum across all of them), mirroring
+      // the webhook. The `.neq` + `.select` make this UPDATE an atomic
+      // idempotency claim shared with the webhook (E-15): whichever request
+      // transitions the rows first runs the paid side effects (invoice
+      // creation + confirmation email) exactly once; the other sees zero
+      // transitioned rows and skips them.
+      const { data: transitionedRows, error: updateError } = await supabase
         .from("bookings")
         .update({
           payment_status: "paid",
@@ -311,12 +319,31 @@ serve(async (req) => {
           mollie_transaction_id: payment.id,
           paid_at: new Date().toISOString(),
         })
-        .eq("id", bookingId);
+        .in("id", metadataIds)
+        .neq("payment_status", "paid")
+        .select("id");
 
       if (updateError) {
-        logStep("Warning: Failed to update booking", { error: updateError.message });
+        logStep("Warning: Failed to update bookings", { error: updateError.message });
       } else {
-        logStep("Booking updated to paid");
+        logStep("Bookings updated to paid", {
+          metadataIds,
+          transitioned: transitionedRows?.length ?? 0,
+        });
+
+        if ((transitionedRows?.length ?? 0) > 0) {
+          // Before this, bookings verified here got no invoice and no
+          // confirmation email — and the late webhook skipped them forever
+          // because they were already paid (M-26).
+          await runBookingPaidSideEffects({
+            supabase,
+            bookingIds: metadataIds,
+            paymentAmountValue: payment.amount?.value,
+            source: "verify-mollie-payment",
+            logStep,
+            notifySlackError,
+          });
+        }
       }
     }
 

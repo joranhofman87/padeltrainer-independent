@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { requireUser, corsHeaders as sharedCors } from "../_shared/auth.ts";
+import { getEnvServiceRoleKey } from "../_shared/service-role-auth.ts";
 import {
   isInvoiceBusinessProfileComplete,
   resolveAutoCreateBusinessGate,
@@ -458,6 +459,70 @@ serve(async (req) => {
       }
     }
 
+    // Check if bookings are already paid (e.g. Mollie) — also drives the
+    // dedupe paths below, which must sync a pre-existing invoice to paid.
+    const allPaid = bookings.every((b) => b.payment_status === "paid");
+
+    // M-27: a deduped draft/sent invoice whose bookings are ALL paid must be
+    // synced to paid before we return it — otherwise the paid bookings stay
+    // attached to an unpaid invoice and the player is asked to pay again when
+    // it is (auto-)sent later. Only safe when every booking ON THE INVOICE is
+    // paid: the overlap dedupe can match an invoice billing extra bookings
+    // outside this request, so those are verified too.
+    const syncDedupedInvoiceToPaid = async (existing: {
+      id: string;
+      status: string | null;
+      sent_at: string | null;
+      booking_ids: string[] | null;
+      total: number | null;
+    }): Promise<void> => {
+      if (!allPaid || (existing.status !== "draft" && existing.status !== "sent")) return;
+      const extraIds = (existing.booking_ids ?? []).filter((id) => !bookingIds.includes(id));
+      let extraPaidSum = 0;
+      if (extraIds.length > 0) {
+        const { data: extraBookings, error: extraError } = await supabase
+          .from("bookings")
+          .select("id, payment_status, payment_amount")
+          .in("id", extraIds);
+        const extraAllPaid = !extraError &&
+          (extraBookings ?? []).length === extraIds.length &&
+          (extraBookings ?? []).every((b: { payment_status: string | null }) => b.payment_status === "paid");
+        if (!extraAllPaid) return;
+        extraPaidSum = (extraBookings ?? []).reduce(
+          (sum: number, b: { payment_amount: number | null }) => sum + (Number(b.payment_amount) || 0),
+          0,
+        );
+      }
+      // Review guard: a draft/sent invoice is editable — its total may have
+      // drifted from what the bookings actually paid (extra line items added
+      // during review). Only auto-mark paid when the invoice total matches the
+      // paid sum within the per-booking cent tolerance; otherwise leave it for
+      // a human and log loudly.
+      const invoiceBookingCount = (existing.booking_ids ?? []).length || 1;
+      const requestPaidSum = bookings
+        .filter((b) => (existing.booking_ids ?? []).includes(b.id))
+        .reduce((sum, b) => sum + (Number(b.payment_amount) || 0), 0);
+      const paidSum = requestPaidSum + extraPaidSum;
+      const tolerance = Math.max(0.01, invoiceBookingCount * 0.01);
+      if (Math.abs(paidSum - (Number(existing.total) || 0)) > tolerance) {
+        logStep("Deduped invoice NOT synced to paid: total drifted from paid sum", {
+          invoiceId: existing.id, invoiceTotal: existing.total, paidSum, tolerance,
+        });
+        return;
+      }
+      const nowIso = new Date().toISOString();
+      const { error: syncError } = await supabase
+        .from("invoices")
+        .update({ status: "paid", paid_at: nowIso, ...(existing.sent_at ? {} : { sent_at: nowIso }) })
+        .eq("id", existing.id)
+        .in("status", ["draft", "sent"]);
+      if (syncError) {
+        logStep("Failed to sync deduped invoice to paid (non-fatal)", { invoiceId: existing.id, error: syncError.message });
+        return;
+      }
+      logStep("Deduped invoice synced to paid", { invoiceId: existing.id });
+    };
+
     // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings
     const recipientFilter = playerId
       ? { player_id: playerId }
@@ -468,7 +533,7 @@ serve(async (req) => {
     if (recipientFilter) {
       const dupeQuery = supabase
         .from("invoices")
-        .select("id, invoice_number")
+        .select("id, invoice_number, status, sent_at, booking_ids, total")
         .eq("trainer_id", trainerId)
         .not("status", "eq", "cancelled")
         // OVERLAP, not contains: any active invoice that already bills ANY of these
@@ -491,6 +556,7 @@ serve(async (req) => {
             existingId: exactMatch.id,
             existingNumber: exactMatch.invoice_number,
           });
+          await syncDedupedInvoiceToPaid(exactMatch);
           return new Response(
             JSON.stringify({ success: true, invoiceId: exactMatch.id, invoiceNumber: exactMatch.invoice_number, deduped: true }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -561,10 +627,7 @@ serve(async (req) => {
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + paymentTermsDays);
 
-    // Check if bookings are already paid (e.g. Mollie)
-    const allPaid = bookings.every((b) => b.payment_status === "paid");
-
-    // Determine invoice status
+    // Determine invoice status (allPaid computed above the dedupe guard)
     let invoiceStatus: string;
     if (allPaid) {
       invoiceStatus = "paid";
@@ -625,7 +688,7 @@ serve(async (req) => {
       if (insertError && insertError.code === "23505") {
         const dupeFetch = supabase
           .from("invoices")
-          .select("id, invoice_number")
+          .select("id, invoice_number, status, sent_at, booking_ids, total")
           .eq("trainer_id", trainerId)
           .not("status", "eq", "cancelled")
           .overlaps("booking_ids", bookingIds);
@@ -635,6 +698,7 @@ serve(async (req) => {
         const { data: winner } = await dupeFetch.limit(1).maybeSingle();
         if (winner) {
           logStep("Race lost - returning existing invoice", { existingId: winner.id, existingNumber: winner.invoice_number });
+          await syncDedupedInvoiceToPaid(winner);
           return new Response(
             JSON.stringify({ success: true, invoiceId: winner.id, invoiceNumber: winner.invoice_number, deduped: true }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -659,15 +723,31 @@ serve(async (req) => {
       }
     }
 
-    // Auto-forward invoice to configured bookkeeping emails
+    // Auto-forward invoice to configured bookkeeping emails. Non-fatal: the
+    // invoice is already committed, so a forward failure must never 500.
+    // M-30: the key was previously an undefined identifier here — the
+    // ReferenceError was swallowed and accountants silently never received
+    // forwarded invoices.
     const forwardEmails = invoiceProfile.invoice_forward_emails;
     if (allPaid && forwardEmails && forwardEmails.length > 0) {
       try {
-        const forwardRes = await supabase.functions.invoke("forward-invoice", {
-          body: { invoiceId: invoice.id },
-          headers: { Authorization: `Bearer ${supabaseServiceKey}` },
-        });
-        logStep("Invoice forwarded", { emails: forwardEmails.length, result: forwardRes.data });
+        const supabaseServiceKey = getEnvServiceRoleKey();
+        if (!supabaseServiceKey) {
+          logStep("Invoice forwarding skipped (non-fatal)", { reason: "missing SUPABASE_SERVICE_ROLE_KEY" });
+        } else {
+          const forwardRes = await supabase.functions.invoke("forward-invoice", {
+            body: { invoiceId: invoice.id },
+            headers: {
+              Authorization: `Bearer ${supabaseServiceKey}`,
+              apikey: supabaseServiceKey,
+            },
+          });
+          if (forwardRes.error) {
+            logStep("Invoice forwarding failed (non-fatal)", { error: String(forwardRes.error) });
+          } else {
+            logStep("Invoice forwarded", { emails: forwardEmails.length, result: forwardRes.data });
+          }
+        }
       } catch (fwdErr) {
         logStep("Invoice forwarding failed (non-fatal)", { error: String(fwdErr) });
       }

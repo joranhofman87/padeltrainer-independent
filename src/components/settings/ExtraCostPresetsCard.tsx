@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,6 +27,8 @@ export function ExtraCostPresetsCard({ trainerId, academyProfileId }: ExtraCostP
   const [presets, setPresets] = useState<Preset[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [presetToDelete, setPresetToDelete] = useState<Preset | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // New preset form
   const [newDescription, setNewDescription] = useState('');
@@ -76,7 +79,10 @@ export function ExtraCostPresetsCard({ trainerId, academyProfileId }: ExtraCostP
   };
 
   const handleDelete = async (id: string) => {
+    setDeleting(true);
     const { error } = await supabase.from('extra_cost_presets').delete().eq('id', id);
+    setDeleting(false);
+    setPresetToDelete(null);
     if (error) {
       toast.error('Kon preset niet verwijderen');
     } else {
@@ -117,7 +123,7 @@ export function ExtraCostPresetsCard({ trainerId, academyProfileId }: ExtraCostP
                       variant="ghost"
                       size="icon" aria-label="Delete"
                       className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(preset.id)}
+                      onClick={() => setPresetToDelete(preset)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -189,6 +195,17 @@ export function ExtraCostPresetsCard({ trainerId, academyProfileId }: ExtraCostP
             </div>
           </>
         )}
+
+        <ConfirmDeleteDialog
+          open={!!presetToDelete}
+          onOpenChange={(next) => { if (!next) setPresetToDelete(null); }}
+          title="Preset verwijderen?"
+          description={`Dit verwijdert "${presetToDelete?.description ?? ''}" definitief. Dit kan niet ongedaan worden gemaakt.`}
+          confirmLabel="Verwijderen"
+          cancelLabel="Annuleren"
+          loading={deleting}
+          onConfirm={() => { if (presetToDelete) void handleDelete(presetToDelete.id); }}
+        />
       </CardContent>
     </Card>
   );

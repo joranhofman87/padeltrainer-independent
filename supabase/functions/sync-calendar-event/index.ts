@@ -37,7 +37,12 @@ async function refreshAccessToken(
 
     const data = await response.json();
     if (data.error) {
-      console.error('Token refresh error:', data);
+      // Never log the full token-endpoint payload; only status + standard error fields.
+      console.error('Token refresh error:', {
+        status: response.status,
+        error: data.error,
+        error_description: data.error_description,
+      });
       return null;
     }
 

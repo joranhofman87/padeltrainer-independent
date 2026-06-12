@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { AppPage } from '@/components/ui/app-page';
 import { DashboardPageSkeleton } from '@/components/ui/dashboard-page-skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { supabase } from '@/lib/supabaseClient';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
@@ -254,6 +255,25 @@ async function fetchTrainerActivity(trainerId: string) {
   };
 }
 
+function ActivityListSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-start justify-between gap-3 border-b border-border/50 px-4 py-3 last:border-0"
+        >
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-3 w-1/4" />
+          </div>
+          <Skeleton className="h-5 w-12 rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function paymentBadgeVariant(status: string): 'success' | 'warning' | 'muted' {
   if (status === 'paid') return 'success';
   if (status === 'pending' || status === 'invoiced') return 'warning';
@@ -286,12 +306,16 @@ export default function TrainerDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: activityData } = useQuery({
+  const { data: activityData, isPending: activityPending } = useQuery({
     queryKey: ['trainer-activity', trainerId],
     queryFn: () => fetchTrainerActivity(trainerId!),
     enabled: !!trainerId,
     staleTime: 60_000,
   });
+
+  // The activity query is disabled until the stats query yields a trainerId, so
+  // isPending alone would stay true forever when no trainer profile exists.
+  const activityLoading = statsLoading || (!!trainerId && activityPending);
 
   const recentBookings = activityData?.recentBookings ?? [];
   const recentRegistrations = activityData?.recentRegistrations ?? [];
@@ -417,7 +441,9 @@ export default function TrainerDashboard() {
             onViewAll={() => navigate('/app/trainer/schedule-overview')}
           />
           <CardContent className="p-0">
-            {recentBookings.length === 0 ? (
+            {activityLoading ? (
+              <ActivityListSkeleton />
+            ) : recentBookings.length === 0 ? (
               <DashboardEmptyState
                 icon={ClipboardList}
                 message={t('bookings.empty')}
@@ -466,7 +492,9 @@ export default function TrainerDashboard() {
             onViewAll={() => navigate('/app/trainer/open-slots')}
           />
           <CardContent className="p-0">
-            {upcomingSlots.length === 0 ? (
+            {activityLoading ? (
+              <ActivityListSkeleton />
+            ) : upcomingSlots.length === 0 ? (
               <DashboardEmptyState icon={CalendarDays} message={t('availability.noSlots')} />
             ) : (
               <div>

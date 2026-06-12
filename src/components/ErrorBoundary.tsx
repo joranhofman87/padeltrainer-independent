@@ -18,12 +18,19 @@ export function isChunkLoadError(message: string): boolean {
 
 const RELOAD_ATTEMPTS_KEY = "__chunkReloadAttempts";
 
+// One failed chunk fires several handlers (vite:preloadError, unhandledrejection,
+// the error boundaries). Without this flag each of them would record a separate
+// attempt and a single failure could exhaust the whole throttle budget.
+let reloadScheduled = false;
+
 /**
  * Throttled reload to recover from stale chunks / 524 timeouts.
- * Up to 3 attempts within 5 minutes. Returns true if a reload was scheduled.
+ * Up to 3 attempts within 5 minutes. Returns true if a reload is scheduled
+ * (or already pending). Resets naturally on the reload itself.
  */
 export function tryChunkReload(): boolean {
   if (typeof window === "undefined") return false;
+  if (reloadScheduled) return true;
   try {
     const now = Date.now();
     const raw = sessionStorage.getItem(RELOAD_ATTEMPTS_KEY);
@@ -32,11 +39,41 @@ export function tryChunkReload(): boolean {
     if (recent.length >= 3) return false;
     recent.push(now);
     sessionStorage.setItem(RELOAD_ATTEMPTS_KEY, JSON.stringify(recent));
+    reloadScheduled = true;
     setTimeout(() => window.location.reload(), 500);
     return true;
   } catch {
     return false;
   }
+}
+
+// This boundary mounts OUTSIDE the i18n provider (it wraps TranslationsProvider
+// in main.tsx), so translation hooks are unavailable — pick static copy from the
+// persisted language instead. Never include component names or raw error text.
+const FALLBACK_COPY = {
+  en: {
+    title: "Something went wrong",
+    description: "An unexpected error occurred. Please try again or refresh the page.",
+    retry: "Try again",
+    refresh: "Refresh page",
+  },
+  nl: {
+    title: "Er is iets misgegaan",
+    description: "Er is een onverwachte fout opgetreden. Probeer het opnieuw of vernieuw de pagina.",
+    retry: "Probeer opnieuw",
+    refresh: "Pagina vernieuwen",
+  },
+} as const;
+
+function getFallbackCopy() {
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem("i18nextLng");
+  } catch {
+    // localStorage unavailable (privacy mode) — fall through to navigator
+  }
+  const lang = (stored || navigator.language || "en").split("-")[0];
+  return lang === "nl" ? FALLBACK_COPY.nl : FALLBACK_COPY.en;
 }
 
 interface State {
@@ -52,10 +89,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    // Try to auto-recover stale chunk errors before rendering the fallback
-    if (typeof window !== "undefined" && isChunkLoadError(error?.message || "")) {
-      tryChunkReload();
-    }
+    // No side effects here (render phase) — chunk-reload recovery happens once
+    // in componentDidCatch, so a single error can't burn multiple attempts.
     return { hasError: true, error };
   }
 
@@ -88,6 +123,8 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
+      const copy = getFallbackCopy();
+
       return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="error-boundary-fallback">
           <Card className="w-full max-w-md">
@@ -95,13 +132,13 @@ export class ErrorBoundary extends Component<Props, State> {
               <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
                 <AlertTriangle className="h-6 w-6 text-destructive" />
               </div>
-              <CardTitle className="text-xl">Something went wrong</CardTitle>
+              <CardTitle className="text-xl">{copy.title}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground text-center">
-                An unexpected error occurred. Please try again or refresh the page.
+                {copy.description}
               </p>
-              
+
               {import.meta.env.DEV && this.state.error && (
                 <div className="p-3 bg-muted rounded-md overflow-auto max-h-32">
                   <code className="text-xs text-destructive">
@@ -109,14 +146,14 @@ export class ErrorBoundary extends Component<Props, State> {
                   </code>
                 </div>
               )}
-              
+
               <div className="flex gap-2 justify-center">
                 <Button variant="outline" onClick={this.handleReset}>
-                  Try Again
+                  {copy.retry}
                 </Button>
                 <Button onClick={this.handleReload}>
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh Page
+                  {copy.refresh}
                 </Button>
               </div>
             </CardContent>

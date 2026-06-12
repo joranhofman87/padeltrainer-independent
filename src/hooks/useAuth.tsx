@@ -27,6 +27,26 @@ interface AuthContextType {
   refreshSubscription: () => Promise<void>;
 }
 
+// U-12: a transient profile/roles failure used to leave roles empty (layout guards then
+// bounce a logged-in user to the login form) and a hung fetch pinned the bootstrap
+// skeleton. Retry with backoff and time-box each attempt so the fetch always settles.
+const USER_DATA_FETCH_ATTEMPTS = 3;
+const USER_DATA_ATTEMPT_TIMEOUT_MS = 4_000;
+const USER_DATA_RETRY_BACKOFF_MS = [500, 1_000];
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// supabase-js persists the session under `sb-<project-ref>-auth-token`. Derive the
+// ref from the configured URL so this never points at a stale/old project (U-24).
+const SUPABASE_AUTH_STORAGE_KEY = (() => {
+  try {
+    const projectRef = new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split('.')[0];
+    return projectRef ? `sb-${projectRef}-auth-token` : null;
+  } catch {
+    return null;
+  }
+})();
+
 const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
@@ -58,55 +78,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lastFetchedRef = useRef<string | null>(null);
 
   const fetchUserData = async (userId: string) => {
-    try {
-      const [rolesResult, profileResult, clubResult, academyResult] = await Promise.all([
-        getUserRoles(userId),
-        getProfile(userId),
-        isUserClubManager(userId),
-        isUserAcademyManager(userId),
+    const attemptFetch = () =>
+      Promise.race([
+        Promise.all([
+          getUserRoles(userId),
+          getProfile(userId),
+          isUserClubManager(userId),
+          isUserAcademyManager(userId),
+        ]),
+        // Reject hung attempts so profileReady always resolves and the skeleton never pins
+        wait(USER_DATA_ATTEMPT_TIMEOUT_MS).then(() => {
+          throw new Error('User data fetch timed out');
+        }),
       ]);
 
-      // Check if any critical fetch failed
-      const anyFailed = rolesResult.failed || profileResult.failed || clubResult.failed || academyResult.failed;
-      
-      // Determine primary role based on priority: admin > trainer > academy > club > player
-      const userRoles = rolesResult.data;
-      const primaryRole = userRoles.includes('admin') ? 'admin'
-        : userRoles.includes('trainer') ? 'trainer'
-        : userRoles.includes('academy') ? 'academy'
-        : userRoles.includes('club') ? 'club'
-        : userRoles.includes('player') ? 'player'
-        : null;
-      
-      setRoles(userRoles);
-      setRole(primaryRole);
-      setIsClubManager(clubResult.data);
-      setIsAcademyManager(academyResult.data);
-      setProfile(profileResult.data);
-      setProfileFetchFailed(anyFailed);
-      setProfileReady(true);
+    let lastError: unknown = null;
 
-      // Apply saved language preference
-      const userProfile = profileResult.data;
-      if (userProfile?.preferred_language && userProfile.preferred_language !== i18n.language) {
-        i18n.changeLanguage(userProfile.preferred_language);
+    for (let attempt = 0; attempt < USER_DATA_FETCH_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await wait(USER_DATA_RETRY_BACKOFF_MS[attempt - 1] ?? 1_000);
       }
 
-      // Link anonymous browsing history to this user in PostHog
+      // User signed out or switched while we were retrying — drop stale results
+      if (lastFetchedRef.current !== userId) return;
+
       try {
-        identifyUser(userId, {
-          role: primaryRole,
-          email: userProfile?.email ?? null,
-          created_at: userProfile?.created_at ?? null,
-        });
-      } catch {
-        // Analytics must never break auth
+        const [rolesResult, profileResult, clubResult, academyResult] = await attemptFetch();
+
+        // Check if any critical fetch failed
+        const anyFailed = rolesResult.failed || profileResult.failed || clubResult.failed || academyResult.failed;
+        if (anyFailed && attempt < USER_DATA_FETCH_ATTEMPTS - 1) {
+          continue; // transient backend failure — retry before surfacing
+        }
+
+        if (lastFetchedRef.current !== userId) return;
+
+        // Determine primary role based on priority: admin > trainer > academy > club > player
+        const userRoles = rolesResult.data;
+        const primaryRole = userRoles.includes('admin') ? 'admin'
+          : userRoles.includes('trainer') ? 'trainer'
+          : userRoles.includes('academy') ? 'academy'
+          : userRoles.includes('club') ? 'club'
+          : userRoles.includes('player') ? 'player'
+          : null;
+
+        setRoles(userRoles);
+        setRole(primaryRole);
+        setIsClubManager(clubResult.data);
+        setIsAcademyManager(academyResult.data);
+        setProfile(profileResult.data);
+        setProfileFetchFailed(anyFailed);
+        setProfileReady(true);
+
+        // Apply saved language preference
+        const userProfile = profileResult.data;
+        if (userProfile?.preferred_language && userProfile.preferred_language !== i18n.language) {
+          i18n.changeLanguage(userProfile.preferred_language);
+        }
+
+        // Link anonymous browsing history to this user in PostHog
+        try {
+          identifyUser(userId, {
+            role: primaryRole,
+            email: userProfile?.email ?? null,
+            created_at: userProfile?.created_at ?? null,
+          });
+        } catch {
+          // Analytics must never break auth
+        }
+        return;
+      } catch (err) {
+        lastError = err;
       }
-    } catch (err) {
-      logger.error('Failed to fetch user data', err as Error, { component: 'useAuth' });
-      setProfileFetchFailed(true);
-      setProfileReady(true);
     }
+
+    logger.error('Failed to fetch user data after retries', lastError as Error, { component: 'useAuth' });
+    if (lastFetchedRef.current !== userId) return;
+    setProfileFetchFailed(true);
+    setProfileReady(true);
   };
 
   const fetchSubscription = useCallback(async () => {
@@ -161,6 +210,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshAuth = async () => {
     if (user) {
+      // Gate layouts on the in-flight refetch so an empty-roles redirect can't race it
+      setProfileReady(false);
       setProfileFetchFailed(false);
       await fetchUserData(user.id);
     }
@@ -246,10 +297,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
-        // If session restoration fails, clear stale local auth state
+        // If session restoration fails, clear stale local auth state.
+        // U-17: scope 'local' — a defensive cleanup must never revoke other devices' sessions
         if (error) {
           logger.warn('Failed to restore session, clearing local auth', { component: 'useAuth', error });
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: 'local' });
           if (isActive) setLoading(false);
           return;
         }
@@ -257,8 +309,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await applySessionState(initialSession, 'bootstrap');
       } catch (err) {
         logger.warn('Failed to bootstrap auth session', { component: 'useAuth', err });
-        // Clear potentially corrupted local state
-        try { await supabase.auth.signOut(); } catch { /* ignore */ }
+        // Clear potentially corrupted local state (local scope only — see U-17 above)
+        try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
         if (isActive) setLoading(false);
       }
     };
@@ -270,7 +322,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === 'TOKEN_REFRESHED' && !nextSession) {
           logger.warn('Token refresh failed, clearing stale session', { component: 'useAuth' });
           // Clear stale local storage immediately to stop retry loops
-          localStorage.removeItem('sb-ppkbhdiiqdusdeatgdft-auth-token');
+          if (SUPABASE_AUTH_STORAGE_KEY) {
+            localStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY);
+          }
           setUser(null);
           setSession(null);
           setLoading(false);

@@ -349,7 +349,10 @@
     "notificationsDisabledDescription": "You won't receive availability notifications",
     "unfollowConfirm": "Unfollow {{name}}?",
     "unfollowed": "Unfollowed",
-    "unfollowedDescription": "You unfollowed {{name}}"
+    "unfollowedDescription": "You unfollowed {{name}}",
+    "thisTrainer": "this trainer",
+    "unfollow": "Unfollow",
+    "unfollowConfirmTitle": "Unfollow trainer?"
   },
   "attendance": {
     "title": "Attendance",

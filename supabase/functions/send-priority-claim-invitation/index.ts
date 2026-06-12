@@ -15,6 +15,27 @@ const corsHeaders = {
 
 const APP_BASE = resolveAppBase(Deno.env.get("PUBLIC_APP_URL"));
 
+interface ClaimRow {
+  id: string;
+  claim_token: string;
+  status: string;
+  invited_at: string | null;
+  slot_id: string;
+  player_id: string | null;
+  guest_player_id: string | null;
+  profiles: { full_name: string | null; email: string | null } | null;
+  guest_players: { full_name: string | null; email: string | null } | null;
+}
+
+interface SlotRow {
+  id: string;
+  start_time: string;
+  end_time: string;
+  cyclus_name: string | null;
+  price_per_session: number | null;
+  priority_window_ends_at: string | null;
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -54,10 +75,11 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const body = await req.json();
-    const { claimIds, slotId, testEmail } = body as {
+    const { claimIds, slotId, testEmail, resend } = body as {
       claimIds?: string[];
       slotId?: string;
       testEmail?: string;
+      resend?: boolean;
     };
     const isTest = !!testEmail;
 
@@ -96,7 +118,7 @@ const handler = async (req: Request): Promise<Response> => {
     let query = supabase
       .from("slot_priority_claims")
       .select(
-        "id, claim_token, status, slot_id, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)"
+        "id, claim_token, status, invited_at, slot_id, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)"
       );
     if (authorizedIds) query = query.in("id", authorizedIds);
     else if (claimIds && claimIds.length) query = query.in("id", claimIds);
@@ -105,23 +127,41 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: claims, error: cErr } = await query;
     if (cErr) throw cErr;
     if (!claims || claims.length === 0)
-      return new Response(JSON.stringify({ sent: 0 }), {
+      return new Response(JSON.stringify({ sent: 0, skipped: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+
+    // Only pending claims are invite-eligible: a responded (claimed/declined)
+    // or expired/released claim must never receive a fresh live accept link.
+    // Already-invited claims are skipped unless the caller explicitly asks for
+    // a resend. Test sends go to the caller's own inbox with a placeholder
+    // token (see _shared/priority-claim-invite.ts), so invited_at is ignored.
+    const allClaims = claims as ClaimRow[];
+    const eligible = allClaims.filter(
+      (c) => c.status === "pending" && (isTest || resend === true || !c.invited_at)
+    );
+    const skipped = allClaims.length - eligible.length;
+    if (eligible.length === 0)
+      return new Response(JSON.stringify({ sent: 0, skipped }), {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
 
     // Fetch slot info for the first slot (assume all share or fetch per claim)
-    const slotIds = [...new Set(claims.map((c: any) => c.slot_id))];
+    const slotIds = [...new Set(eligible.map((c) => c.slot_id))];
     const { data: slots } = await supabase
       .from("availability_slots")
       .select("id, start_time, end_time, cyclus_name, price_per_session, priority_window_ends_at")
       .in("id", slotIds);
-    const slotMap = new Map((slots || []).map((s: any) => [s.id, s]));
+    const slotMap = new Map<string, SlotRow>(
+      ((slots || []) as SlotRow[]).map((s) => [s.id, s])
+    );
 
-    const resend = new Resend(resendApiKey);
+    const resendClient = new Resend(resendApiKey);
     let sent = 0;
 
-    for (const c of claims as any[]) {
+    for (const c of eligible) {
       const slot = slotMap.get(c.slot_id);
       if (!slot) continue;
       const recipientEmail = resolveRecipient({
@@ -166,7 +206,7 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
       `;
 
-      const { error: sendErr } = await resend.emails.send({
+      const { error: sendErr } = await resendClient.emails.send({
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [recipientEmail],
         subject: testEmail ? "[TEST] Reserveer je plek voor de volgende cyclus" : "Reserveer je plek voor de volgende cyclus",
@@ -185,13 +225,14 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    return new Response(JSON.stringify({ sent }), {
+    return new Response(JSON.stringify({ sent, skipped }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error(e);
-    return new Response(JSON.stringify({ error: e.message }), {
+    const message = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });

@@ -58,16 +58,15 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     bulkVatSuccess: 'Openstaande facturen bijgewerkt',
     bulkVatFailed: 'Openstaande facturen konden niet worden bijgewerkt',
     bulkVatAutoSuccess: 'Openstaande facturen bijgewerkt met nieuw BTW-tarief',
-    renumberTitle: 'Facturen hernummeren?',
-    renumberDescription: 'De factuurnummering is gewijzigd. Selecteer welke facturen hernummerd moeten worden. Betaalde facturen blijven altijd ongewijzigd.',
-    renumberDraft: 'Concepten (draft)',
-    renumberSent: 'Verzonden (sent)',
-    renumberOverdue: 'Achterstallig (overdue)',
-    renumberConfirm: 'Hernummeren',
-    renumberCancel: 'Annuleren',
-    renumberSuccess: (count) => `${count} facturen hernummerd`,
-    renumberNothing: 'Geen facturen gevonden om te hernummeren',
-    renumberError: 'Hernummeren mislukt',
+    renumberTitle: t('invoiceSettings.renumberTitle', 'Conceptfacturen hernummeren?'),
+    renumberDescription: t('invoiceSettings.renumberDescription', 'De factuurnummering is gewijzigd. Conceptfacturen krijgen automatisch een nieuw nummer. Verzonden en betaalde facturen behouden hun nummer.'),
+    renumberConfirm: t('invoiceSettings.renumberConfirm', 'Hernummeren'),
+    renumberCancel: t('invoiceSettings.renumberCancel', 'Annuleren'),
+    renumberSuccess: (count) => t('invoiceSettings.renumberSuccess', '{{count}} facturen hernummerd', { count }),
+    renumberPartial: (updated, failed) =>
+      t('invoiceSettings.renumberPartial', '{{updated}} facturen hernummerd, {{failed}} mislukt', { updated, failed }),
+    renumberNothing: t('invoiceSettings.renumberNothing', 'Geen conceptfacturen gevonden om te hernummeren'),
+    renumberError: t('invoiceSettings.renumberError', 'Hernummeren mislukt'),
   };
 
   return (

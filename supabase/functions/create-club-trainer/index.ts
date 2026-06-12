@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { evaluateClubTrainerAccess } from "../_shared/club-trainer-access.ts";
+import { PublicError, publicErrorMessage } from "../_shared/public-error.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -116,7 +117,8 @@ Deno.serve(async (req) => {
           .single();
 
         if (profileError) {
-          throw new Error(`Failed to create trainer profile: ${profileError.message}`);
+          console.error("Failed to create trainer profile:", profileError);
+          throw new PublicError("Failed to create trainer profile");
         }
         trainerId = newProfile.id;
       }
@@ -132,7 +134,8 @@ Deno.serve(async (req) => {
       });
 
       if (createError) {
-        throw new Error(`Failed to create user: ${createError.message}`);
+        console.error("Failed to create user:", createError);
+        throw new PublicError("Failed to create user account");
       }
 
       // Update their profile with name and phone
@@ -155,7 +158,8 @@ Deno.serve(async (req) => {
         .single();
 
       if (profileError) {
-        throw new Error(`Failed to create trainer profile: ${profileError.message}`);
+        console.error("Failed to create trainer profile:", profileError);
+        throw new PublicError("Failed to create trainer profile");
       }
       trainerId = newProfile.id;
     }
@@ -189,10 +193,11 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
+    // Full DB/auth detail stays in logs; the response only carries a
+    // PublicError message or the generic fallback.
     console.error("Error creating club trainer:", error);
-    const errorMessage = error instanceof Error ? error.message : "Internal server error";
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: publicErrorMessage(error, "Internal server error") }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

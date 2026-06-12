@@ -72,23 +72,64 @@ export async function fetchPlayersOverview(
   return { rows, total: Number(rows[0]?.total_count ?? 0) };
 }
 
+// get_players_overview clamps p_limit at 500 server-side; request that maximum
+// so a full fetch needs the fewest possible pipeline runs.
+const FETCH_ALL_PAGE_SIZE = 500;
+const FETCH_ALL_MAX_ROWS = 20_000;
+const FETCH_ALL_CONCURRENCY = 5;
+
 /**
  * Fetch EVERY matching player by paging through the RPC (deterministic order
  * guaranteed server-side). Replaces unbounded selects that silently truncated
- * at PostgREST's 1000-row cap. Hard safety cap: 100 pages (20k players).
+ * at PostgREST's 1000-row cap. Hard safety cap: 20k players.
+ *
+ * P-02: the previous version walked 200-row pages sequentially, so the RPC
+ * re-ran its whole membership/filter/sort pipeline once per page (50 full
+ * re-runs at 10k players, one round-trip each). The RPC has no keyset cursor
+ * and clamps p_limit at 500, so per-page recomputation can't be fully
+ * eliminated client-side; instead page 0's exact window total plans all
+ * remaining offsets up front, pages use the maximum size (2.5x fewer pipeline
+ * runs) and run concurrently in bounded batches. Offsets follow the page size
+ * the server actually honored, so a lower server-side clamp can never open
+ * gaps; rows are deduped by player_key in case data shifts mid-fetch (the old
+ * sequential walk had the same hazard, unguarded).
  */
 export async function fetchAllPlayersOverview(
   scope: PlayerScope,
   params: Omit<PlayersOverviewParams, 'page' | 'pageSize'> = {},
 ): Promise<PlayersOverviewRow[]> {
-  const pageSize = 200;
-  const all: PlayersOverviewRow[] = [];
-  for (let page = 0; page < 100; page++) {
-    const { rows, total } = await fetchPlayersOverview(scope, { ...params, page, pageSize });
-    all.push(...rows);
-    if (all.length >= total || rows.length === 0) return all;
+  const first = await fetchPlayersOverview(scope, { ...params, page: 0, pageSize: FETCH_ALL_PAGE_SIZE });
+  if (first.total > FETCH_ALL_MAX_ROWS) {
+    throw new Error('fetchAllPlayersOverview: exceeded safety cap (20k players)');
   }
-  throw new Error('fetchAllPlayersOverview: exceeded 100-page safety cap (20k players)');
+  if (first.rows.length === 0 || first.rows.length >= first.total) return first.rows;
+
+  const effectiveSize = first.rows.length;
+  const pageCount = Math.ceil(first.total / effectiveSize);
+  const pages: PlayersOverviewRow[][] = [first.rows];
+  for (let batchStart = 1; batchStart < pageCount; batchStart += FETCH_ALL_CONCURRENCY) {
+    const batchEnd = Math.min(batchStart + FETCH_ALL_CONCURRENCY, pageCount);
+    const batch: Promise<void>[] = [];
+    for (let page = batchStart; page < batchEnd; page++) {
+      batch.push(
+        fetchPlayersOverview(scope, { ...params, page, pageSize: effectiveSize }).then(({ rows }) => {
+          pages[page] = rows;
+        }),
+      );
+    }
+    await Promise.all(batch);
+  }
+
+  const seen = new Set<string>();
+  const all: PlayersOverviewRow[] = [];
+  for (const rows of pages) {
+    for (const row of rows ?? []) {
+      if (seen.has(row.player_key)) continue;
+      seen.add(row.player_key);
+      all.push(row);
+    }
+  }
+  return all;
 }
 
 /** Guest-player shape the booking dialogs consume (matches AddPlayerDialog's GuestPlayer). */

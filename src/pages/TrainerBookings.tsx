@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import {
@@ -31,6 +32,7 @@ import {
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { updateBookingStatus } from '@/lib/lessons';
+import { syncInvoicesAfterBookingRemoval } from '@/lib/invoiceSync';
 import { AppPage } from '@/components/ui/app-page';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
@@ -71,6 +73,8 @@ export default function TrainerBookings() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancellingBooking, setCancellingBooking] = useState<BookingWithDetails | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [markCancelledId, setMarkCancelledId] = useState<string | null>(null);
+  const [isMarkingCancelled, setIsMarkingCancelled] = useState(false);
   const [trainerId, setTrainerId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -148,18 +152,45 @@ export default function TrainerBookings() {
     setCancelDialogOpen(true);
   };
 
+  // Invoices reference bookings via a booking_ids array (no FK), so a
+  // cancelled booking would keep being billed. Recalculate unpaid invoices;
+  // paid invoices are never rewritten — warn the trainer instead.
+  const syncInvoicesForCancelledBookings = async (bookingIds: string[]) => {
+    try {
+      const { skippedPaidInvoiceNumbers } = await syncInvoicesAfterBookingRemoval(bookingIds);
+      if (skippedPaidInvoiceNumbers.length > 0) {
+        toast({
+          title: t('manageBookings.paidInvoiceNotUpdated', 'Paid invoice not updated'),
+          description: t(
+            'manageBookings.paidInvoiceNotUpdatedDescription',
+            'Invoice {{numbers}} is already paid and was left unchanged. Please review it manually.',
+            { numbers: skippedPaidInvoiceNumbers.join(', ') },
+          ),
+        });
+      }
+    } catch (err) {
+      logger.error('Invoice sync failed after booking cancellation', err instanceof Error ? err : new Error(String(err)), { component: 'TrainerBookings' });
+      toast({
+        title: t('common:error'),
+        description: t('manageBookings.invoiceSyncFailed', 'The booking was cancelled, but a linked invoice could not be updated. Please check the invoice.'),
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleCancelAndClose = async () => {
     if (!cancellingBooking) return;
     setIsCancelling(true);
-    
+
     const { error } = await updateBookingStatus(cancellingBooking.id, 'cancelled');
     if (error) {
       toast({ title: t('common:error'), description: t('manageBookings.cancelError', 'Failed to cancel booking'), variant: 'destructive' });
     } else {
+      await syncInvoicesForCancelledBookings([cancellingBooking.id]);
       toast({ title: t('manageBookings.lessonCancelled', 'Booking Cancelled'), description: t('manageBookings.lessonCancelledDescription', 'The booking has been cancelled and the slot is now closed.') });
       fetchBookings();
     }
-    
+
     setIsCancelling(false);
     setCancelDialogOpen(false);
     setCancellingBooking(null);
@@ -173,6 +204,8 @@ export default function TrainerBookings() {
       // Cancel the booking
       const { error } = await updateBookingStatus(cancellingBooking.id, 'cancelled');
       if (error) throw error;
+
+      await syncInvoicesForCancelledBookings([cancellingBooking.id]);
 
       // Notify followers about the reopened slot with authentication
       const slotDate = format(parseISO(cancellingBooking.availability_slots.start_time), 'EEE, MMM d');
@@ -215,21 +248,29 @@ export default function TrainerBookings() {
     }
   };
 
-  const handleMarkCancelled = async (bookingId: string) => {
-    if (!confirm(t('manageBookings.markCancelledConfirm'))) return;
-    
+  const handleMarkCancelled = (bookingId: string) => {
+    setMarkCancelledId(bookingId);
+  };
+
+  const confirmMarkCancelled = async () => {
+    if (!markCancelledId || isMarkingCancelled) return;
+    setIsMarkingCancelled(true);
+
     // Update both status and payment_status
     const { error } = await supabase
       .from('bookings')
       .update({ status: 'cancelled', payment_status: 'waived' })
-      .eq('id', bookingId);
-      
+      .eq('id', markCancelledId);
+
     if (error) {
       toast({ title: t('common:error'), description: t('manageBookings.cancelError', 'Failed to mark as cancelled'), variant: 'destructive' });
     } else {
+      await syncInvoicesForCancelledBookings([markCancelledId]);
       toast({ title: t('manageBookings.lessonCancelled'), description: t('manageBookings.lessonCancelledDescription') });
       fetchBookings();
     }
+    setIsMarkingCancelled(false);
+    setMarkCancelledId(null);
   };
 
   const handleComplete = async (bookingId: string) => {
@@ -470,6 +511,18 @@ export default function TrainerBookings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mark-cancelled confirmation */}
+      <ConfirmDeleteDialog
+        open={!!markCancelledId}
+        onOpenChange={(next) => { if (!next) setMarkCancelledId(null); }}
+        title={t('manageBookings.markCancelledConfirmTitle', 'Mark lesson as cancelled?')}
+        description={t('manageBookings.markCancelledConfirm')}
+        confirmLabel={t('manageBookings.markCancelledConfirmAction', 'Mark as cancelled')}
+        cancelLabel={t('manageBookings.keepBooking')}
+        loading={isMarkingCancelled}
+        onConfirm={() => { void confirmMarkCancelled(); }}
+      />
     </AppPage>
   );
 }

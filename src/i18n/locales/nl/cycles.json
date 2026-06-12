@@ -708,7 +708,12 @@
     "allInvited": "Uitnodigingen verstuurd",
     "days": "dagen",
     "openNow": "Nu openstellen",
-    "inviteError": "Kon de uitnodiging niet versturen. Probeer het opnieuw."
+    "inviteError": "Kon de uitnodiging niet versturen. Probeer het opnieuw.",
+    "claimAlreadyResponded": "Deze speler heeft al gereageerd — geen uitnodiging verstuurd.",
+    "nothingToInvite": "Iedereen is al uitgenodigd of heeft gereageerd.",
+    "extended": "Met 7 dagen verlengd",
+    "alreadyExtended": "De periode is zojuist al verlengd — geen extra dagen toegevoegd.",
+    "extendError": "Kon de periode niet verlengen. Probeer het opnieuw."
   },
   "fillRate": {
     "title": "Bezettingsgraad",

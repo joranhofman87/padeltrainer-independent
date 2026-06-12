@@ -7,6 +7,7 @@ import {
   usesConfiguredSlotSessionPrice,
   getRebalanceBookingIds,
   buildGuestBookingInsertRow,
+  buildRebalanceAmountGroups,
   applyFirstPayerDiscount,
   resolveSlotSessionPrice,
   calculateAddPlayerPricingPreview,
@@ -155,6 +156,66 @@ describe("getRebalanceBookingIds", () => {
         { bookingId: "c", paymentStatus: "pending", paidExternally: true },
       ]),
     ).toEqual(["a"]);
+  });
+});
+
+describe("buildRebalanceAmountGroups — rebalance preserves negotiated discounts", () => {
+  it("subtracts each row's discount from the new share (M-31)", () => {
+    const groups = buildRebalanceAmountGroups(
+      [
+        { id: "a", discount_amount: 0 },
+        { id: "b", discount_amount: 10 },
+      ],
+      40,
+    );
+    expect(groups).toEqual([
+      { paymentAmount: 40, bookingIds: ["a"] },
+      { paymentAmount: 30, bookingIds: ["b"] },
+    ]);
+  });
+
+  it("batches rows that land on the same amount", () => {
+    const groups = buildRebalanceAmountGroups(
+      [
+        { id: "a", discount_amount: 0 },
+        { id: "b" },
+        { id: "c", discount_amount: null },
+        { id: "d", discount_amount: 5 },
+      ],
+      40,
+    );
+    expect(groups).toEqual([
+      { paymentAmount: 40, bookingIds: ["a", "b", "c"] },
+      { paymentAmount: 35, bookingIds: ["d"] },
+    ]);
+  });
+
+  it("clamps at €0 when the discount exceeds the new share", () => {
+    const groups = buildRebalanceAmountGroups([{ id: "a", discount_amount: 50 }], 40);
+    expect(groups).toEqual([{ paymentAmount: 0, bookingIds: ["a"] }]);
+  });
+
+  it("rounds the resulting amount to cents", () => {
+    const groups = buildRebalanceAmountGroups(
+      [{ id: "a", discount_amount: 3.333 }],
+      26.67,
+    );
+    expect(groups).toEqual([{ paymentAmount: 23.34, bookingIds: ["a"] }]);
+  });
+
+  it("ignores negative or non-finite discounts", () => {
+    const groups = buildRebalanceAmountGroups(
+      [
+        { id: "a", discount_amount: -5 },
+        { id: "b", discount_amount: Number.NaN },
+      ],
+      40,
+    );
+    expect(groups).toEqual([{ paymentAmount: 40, bookingIds: ["a", "b"] }]);
+  });
+
+  it("returns no groups for no bookings", () => {
+    expect(buildRebalanceAmountGroups([], 40)).toEqual([]);
   });
 });
 

@@ -60,28 +60,51 @@ describe('fetchPlayersOverview', () => {
 });
 
 describe('fetchAllPlayersOverview — page-through', () => {
-  it('collects every page until total reached', async () => {
-    const total = 450;
+  /** Serves a dataset of `total` rows honoring p_limit/p_offset (clamped at `serverClamp`). */
+  const serveTotal = (total: number, serverClamp = 500) =>
     rpcMock.mockImplementation((_fn: string, args: { p_offset: number; p_limit: number }) => {
       const start = args.p_offset;
-      const rows = Array.from({ length: Math.min(args.p_limit, total - start) }, (_, i) => ({
+      const limit = Math.min(args.p_limit, serverClamp);
+      const rows = Array.from({ length: Math.max(Math.min(limit, total - start), 0) }, (_, i) => ({
         player_key: `g_${start + i}`,
         total_count: total,
       }));
       return Promise.resolve({ data: rows, error: null });
     });
+
+  it('fetches a small set in a single max-size page', async () => {
+    serveTotal(450);
     const all = await fetchAllPlayersOverview({ kind: 'academy', id: 'a1' });
     expect(all).toHaveLength(450);
     expect(new Set(all.map((r) => r.player_key)).size).toBe(450);
-    expect(rpcMock).toHaveBeenCalledTimes(3); // 200 + 200 + 50
+    expect(rpcMock).toHaveBeenCalledTimes(1); // P-02: was 3 sequential 200-row pipeline runs
   });
 
-  it('throws past the 100-page safety cap instead of looping forever', async () => {
-    rpcMock.mockResolvedValue({
-      data: Array.from({ length: 200 }, (_, i) => ({ player_key: `g_${i}`, total_count: 999999 })),
-      error: null,
-    });
+  it('plans the remaining pages from page 0 total and keeps order + uniqueness', async () => {
+    serveTotal(1200);
+    const all = await fetchAllPlayersOverview({ kind: 'academy', id: 'a1' });
+    expect(all).toHaveLength(1200);
+    expect(all[0].player_key).toBe('g_0');
+    expect(all[1199].player_key).toBe('g_1199');
+    expect(new Set(all.map((r) => r.player_key)).size).toBe(1200);
+    expect(rpcMock).toHaveBeenCalledTimes(3); // 500 + 500 + 200
+    const offsets = rpcMock.mock.calls.map((c) => (c[1] as { p_offset: number }).p_offset).sort((a, b) => a - b);
+    expect(offsets).toEqual([0, 500, 1000]);
+  });
+
+  it('aligns offsets to the page size the server actually honored', async () => {
+    serveTotal(450, 200); // hypothetical tighter server clamp — no gaps allowed
+    const all = await fetchAllPlayersOverview({ kind: 'academy', id: 'a1' });
+    expect(all).toHaveLength(450);
+    expect(new Set(all.map((r) => r.player_key)).size).toBe(450);
+    const offsets = rpcMock.mock.calls.map((c) => (c[1] as { p_offset: number }).p_offset).sort((a, b) => a - b);
+    expect(offsets).toEqual([0, 200, 400]);
+  });
+
+  it('throws past the safety cap instead of fetching unbounded pages', async () => {
+    serveTotal(999999);
     await expect(fetchAllPlayersOverview({ kind: 'academy', id: 'a1' })).rejects.toThrow('safety cap');
+    expect(rpcMock).toHaveBeenCalledTimes(1); // detected on page 0, nothing else fired
   });
 });
 

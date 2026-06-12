@@ -59,16 +59,15 @@ export function InvoiceSettingsCard({ userId, onSave }: InvoiceSettingsCardProps
     invoiceLanguageDescription: t('invoices.invoiceLanguageDescription', 'Used for invoice emails and the public payment page. Players with a language preference on their account get invoices in their own language.'),
     forwardEmails: t('invoices.forwardEmails', 'Facturen doorsturen'),
     forwardEmailsDescription: t('invoices.forwardEmailsDescription', 'Betaalde facturen worden automatisch doorgestuurd naar deze e-mailadressen (bijv. boekhoudsoftware).'),
-    renumberTitle: 'Facturen hernummeren?',
-    renumberDescription: 'De factuurnummering is gewijzigd. Selecteer welke facturen hernummerd moeten worden. Betaalde facturen blijven altijd ongewijzigd.',
-    renumberDraft: 'Concepten (draft)',
-    renumberSent: 'Verzonden (sent)',
-    renumberOverdue: 'Achterstallig (overdue)',
-    renumberConfirm: 'Hernummeren',
-    renumberCancel: 'Annuleren',
-    renumberSuccess: (count) => `${count} facturen hernummerd`,
-    renumberNothing: 'Geen facturen gevonden om te hernummeren',
-    renumberError: 'Hernummeren mislukt',
+    renumberTitle: t('invoices.renumberTitle', 'Conceptfacturen hernummeren?'),
+    renumberDescription: t('invoices.renumberDescription', 'De factuurnummering is gewijzigd. Conceptfacturen krijgen automatisch een nieuw nummer. Verzonden en betaalde facturen behouden hun nummer.'),
+    renumberConfirm: t('invoices.renumberConfirm', 'Hernummeren'),
+    renumberCancel: t('invoices.renumberCancel', 'Annuleren'),
+    renumberSuccess: (count) => t('invoices.renumberSuccess', '{{count}} facturen hernummerd', { count }),
+    renumberPartial: (updated, failed) =>
+      t('invoices.renumberPartial', '{{updated}} facturen hernummerd, {{failed}} mislukt', { updated, failed }),
+    renumberNothing: t('invoices.renumberNothing', 'Geen conceptfacturen gevonden om te hernummeren'),
+    renumberError: t('invoices.renumberError', 'Hernummeren mislukt'),
   };
 
   return (

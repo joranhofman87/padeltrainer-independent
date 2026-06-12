@@ -136,7 +136,11 @@
     "benefitsTitle": "Voordelen van deelname",
     "benefit1": "Meer zichtbaarheid via het netwerk van de academy",
     "benefit2": "Toegang tot club partnerships van de academy",
-    "benefit3": "Automatische betalingsverdelingen en facturatie"
+    "benefit3": "Automatische betalingsverdelingen en facturatie",
+    "invalidLink": "Ongeldige uitnodigingslink",
+    "notFoundOrExpired": "Deze uitnodiging is niet gevonden of verlopen",
+    "loadFailedTitle": "Kon deze uitnodiging niet laden",
+    "loadFailedDescription": "Er ging iets mis bij het laden. Je uitnodigingslink is nog geldig — controleer je verbinding en probeer het opnieuw."
   },
   "locations": {
     "title": "Academy locaties",
@@ -224,7 +228,8 @@
     "removed": "Beheerder verwijderd",
     "remove": "Verwijderen",
     "confirmRemove": "Weet je zeker dat je deze beheerder wilt verwijderen?",
-    "noTrainersAvailable": "Geen trainers beschikbaar om toe te voegen"
+    "noTrainersAvailable": "Geen trainers beschikbaar om toe te voegen",
+    "confirmRemoveTitle": "Beheerder verwijderen?"
   },
   "settings": {
     "dangerZone": "Gevaarlijke zone",
@@ -342,7 +347,15 @@
     "bannerColor": "Factuur bannerkeur",
     "bannerColorDescription": "Achtergrondkleur voor de factuurkop. handig als je logo wit of transparant is.",
     "noColor": "Geen banner",
-    "customColor": "Aangepast"
+    "customColor": "Aangepast",
+    "renumberTitle": "Conceptfacturen hernummeren?",
+    "renumberDescription": "De factuurnummering is gewijzigd. Conceptfacturen krijgen automatisch een nieuw nummer. Verzonden en betaalde facturen behouden hun nummer.",
+    "renumberConfirm": "Hernummeren",
+    "renumberCancel": "Annuleren",
+    "renumberSuccess": "{{count}} facturen hernummerd",
+    "renumberPartial": "{{updated}} facturen hernummerd, {{failed}} mislukt",
+    "renumberNothing": "Geen conceptfacturen gevonden om te hernummeren",
+    "renumberError": "Hernummeren mislukt"
   },
   "common": {
     "cancel": "Annuleren",
@@ -507,7 +520,10 @@
       "resetDonePartial": "{{count}} gereset, {{skipped}} betaalde overgeslagen"
     },
     "open": "Open",
-    "cancelled": "Geannuleerd"
+    "cancelled": "Geannuleerd",
+    "recentlySentSkipped": "Deze factuur is zojuist al verzonden",
+    "bulkNotSentList": "Niet verzonden: {{list}}",
+    "shareActions": "Factuur delen"
   },
   "warnings": {
     "ratingSpread": "Niveauverschil: {{spread}}",

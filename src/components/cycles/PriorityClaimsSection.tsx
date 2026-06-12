@@ -44,6 +44,7 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
   const [loading, setLoading] = useState(true);
   const [invitingClaimId, setInvitingClaimId] = useState<string | null>(null);
   const [sendingAll, setSendingAll] = useState(false);
+  const [extending, setExtending] = useState(false);
   // Both paths email the same claimants; block one while the other runs.
   const inviteBusy = invitingClaimId !== null || sendingAll;
 
@@ -109,9 +110,19 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
                           onClick={async () => {
                             setInvitingClaimId(c.id);
                             try {
-                              const { error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { claimIds: [c.id] } });
+                              // resend: the trainer deliberately re-invites this
+                              // one player; the function still refuses claims
+                              // that are no longer pending.
+                              const { data, error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { claimIds: [c.id], resend: true } });
                               if (error) throw error;
-                              toast.success(t('priorityClaims.invitationSent', 'Invitation sent'));
+                              const result = data as { sent?: number; skipped?: number } | null;
+                              if ((result?.sent ?? 0) > 0) {
+                                toast.success(t('priorityClaims.invitationSent', 'Invitation sent'));
+                              } else if ((result?.skipped ?? 0) > 0) {
+                                toast.info(t('priorityClaims.claimAlreadyResponded', 'This player has already responded — no invitation sent.'));
+                              } else {
+                                toast.error(t('priorityClaims.inviteError', 'Could not send the invitation. Please try again.'));
+                              }
                               await reload();
                             } catch (e) {
                               toast.error(getFriendlyErrorMessage(e, t('priorityClaims.inviteError', 'Could not send the invitation. Please try again.')));
@@ -155,9 +166,16 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
               onClick={async () => {
                 setSendingAll(true);
                 try {
-                  const { error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { slotId } });
+                  // No resend here: the function only emails pending claims
+                  // that were not invited before, so re-clicking is safe.
+                  const { data, error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { slotId } });
                   if (error) throw error;
-                  toast.success(t('priorityClaims.allInvited', 'Invitations sent'));
+                  const result = data as { sent?: number; skipped?: number } | null;
+                  if ((result?.sent ?? 0) > 0) {
+                    toast.success(t('priorityClaims.allInvited', 'Invitations sent'));
+                  } else {
+                    toast.info(t('priorityClaims.nothingToInvite', 'Everyone has already been invited or responded.'));
+                  }
                   await reload();
                 } catch (e) {
                   toast.error(getFriendlyErrorMessage(e, t('priorityClaims.inviteError', 'Could not send the invitation. Please try again.')));
@@ -173,11 +191,26 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
             <Button
               size="sm"
               variant="outline"
+              disabled={extending}
               onClick={async () => {
-                try { await extendPriorityWindow(slotId, 7); toast.success('Extended by 7 days'); onChange?.(); }
-                catch (e) { toast.error((e as Error).message); }
+                setExtending(true);
+                try {
+                  const result = await extendPriorityWindow(slotId, 7);
+                  if (result === 'extended') {
+                    toast.success(t('priorityClaims.extended', 'Extended by 7 days'));
+                  } else {
+                    toast.info(t('priorityClaims.alreadyExtended', 'The window was just extended — no extra days added.'));
+                  }
+                  await reload();
+                  onChange?.();
+                } catch (e) {
+                  toast.error(getFriendlyErrorMessage(e, t('priorityClaims.extendError', 'Could not extend the window. Please try again.')));
+                } finally {
+                  setExtending(false);
+                }
               }}
             >
+              {extending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               + 7 {t('priorityClaims.days', 'days')}
             </Button>
             <Button

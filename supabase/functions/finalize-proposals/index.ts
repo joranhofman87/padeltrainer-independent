@@ -155,8 +155,9 @@ serve(async (req: Request) => {
           .single();
 
         if (bookingError || !createdBooking) {
+          // Raw DB text stays in logs; the errors array is returned to the caller.
           console.error(`Error creating booking for assignment ${assignment.id}:`, bookingError);
-          errors.push(`Booking failed for assignment ${assignment.id}: ${bookingError?.message ?? "unknown"}`);
+          errors.push(`Booking failed for assignment ${assignment.id}`);
           continue;
         }
 
@@ -167,8 +168,9 @@ serve(async (req: Request) => {
           .from("proposed_assignments")
           .update({ status: "confirmed" })
           .eq("id", assignment.id);
-      } catch (err: any) {
-        errors.push(`Error processing assignment ${assignment.id}: ${err.message}`);
+      } catch (err) {
+        console.error(`Error processing assignment ${assignment.id}:`, err);
+        errors.push(`Error processing assignment ${assignment.id}`);
       }
     }
 
@@ -250,14 +252,14 @@ serve(async (req: Request) => {
 
               if (invoiceRes.error) {
                 console.error(`Invoice creation failed for player ${playerId}:`, String(invoiceRes.error));
-                errors.push(`Invoice failed for player ${playerId}: ${String(invoiceRes.error)}`);
+                errors.push(`Invoice failed for player ${playerId}`);
               } else {
                 invoicesCreated++;
                 console.log(`Invoice created for player ${playerId} (${bookingIds.length} bookings)`);
               }
-            } catch (err: any) {
-              console.error(`Invoice error for player ${playerId}:`, err.message);
-              errors.push(`Invoice error for player ${playerId}: ${err.message}`);
+            } catch (err) {
+              console.error(`Invoice error for player ${playerId}:`, err);
+              errors.push(`Invoice error for player ${playerId}`);
             }
           }
         }
@@ -277,10 +279,11 @@ serve(async (req: Request) => {
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
-  } catch (error: any) {
+  } catch (error) {
+    // Raw DB error text (column/constraint names) stays in logs only.
     console.error("Error in finalize-proposals:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "Failed to finalize proposals" }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }

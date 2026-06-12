@@ -15,7 +15,7 @@ interface QueueItem {
   id: string;
   user_id: string;
   notification_type: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   scheduled_for: string;
   created_at: string;
 }
@@ -147,10 +147,12 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Processing ${frequency} digest emails...`);
 
-    // Fetch unprocessed queue items
+    // Fetch pending candidate ids only. Claiming happens per-user below (with
+    // processed_at as the claim marker, since the table has no status column),
+    // so a crash mid-run strands at most one user's items — not the whole batch.
     const { data: queueItems, error: qErr } = await supabaseAdmin
       .from("notification_queue")
-      .select("*")
+      .select("id, user_id")
       .eq("scheduled_for", frequency)
       .is("processed_at", null)
       .order("created_at", { ascending: true })
@@ -169,26 +171,37 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
-    // Group by user_id
-    const byUser: Record<string, QueueItem[]> = {};
-    for (const item of queueItems as QueueItem[]) {
+    // Group candidate ids by user_id
+    const byUser: Record<string, string[]> = {};
+    for (const item of queueItems as { id: string; user_id: string }[]) {
       if (!byUser[item.user_id]) byUser[item.user_id] = [];
-      byUser[item.user_id].push(item);
+      byUser[item.user_id].push(item.id);
     }
 
     const userIds = Object.keys(byUser);
     console.log(`Processing digests for ${userIds.length} users`);
 
-    // Fetch user profiles and roles
-    const { data: profiles } = await supabaseAdmin
+    // Fetch user profiles and roles BEFORE claiming anything: a failed profile
+    // fetch must abort the run, not consume claimed items as "no email".
+    const { data: profiles, error: profErr } = await supabaseAdmin
       .from("profiles")
       .select("user_id, email, full_name")
       .in("user_id", userIds);
 
-    const { data: userRoles } = await supabaseAdmin
+    if (profErr) {
+      console.error("Error fetching profiles:", profErr);
+      throw profErr;
+    }
+
+    const { data: userRoles, error: rolesErr } = await supabaseAdmin
       .from("user_roles")
       .select("user_id, role")
       .in("user_id", userIds);
+
+    if (rolesErr) {
+      // Non-fatal: digest content only uses role for the dashboard link.
+      console.error("Error fetching roles (defaulting to player):", rolesErr);
+    }
 
     const profileMap: Record<string, { email: string; name: string }> = {};
     for (const p of profiles || []) {
@@ -201,14 +214,35 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     let processed = 0;
-    const processedIds: string[] = [];
+    let consumed = 0;
+    let failedUsers = 0;
+    let releasedItems = 0;
 
     for (const userId of userIds) {
-      const items = byUser[userId];
+      // Atomic claim: only rows this UPDATE flips from NULL belong to this run;
+      // a concurrent run claims zero of them and cannot double-send.
+      const { data: claimed, error: claimErr } = await supabaseAdmin
+        .from("notification_queue")
+        .update({ processed_at: new Date().toISOString() })
+        .in("id", byUser[userId])
+        .is("processed_at", null)
+        .select("*");
+
+      if (claimErr) {
+        console.error(`Error claiming items for user ${userId}:`, claimErr);
+        continue;
+      }
+      if (!claimed || claimed.length === 0) {
+        // Another run already claimed this user's items.
+        continue;
+      }
+
+      const items = claimed as QueueItem[];
       const profile = profileMap[userId];
       if (!profile?.email) {
+        // No address to retry against — keep the items consumed.
         console.log(`No email for user ${userId}, skipping`);
-        processedIds.push(...items.map((i) => i.id));
+        consumed += items.length;
         continue;
       }
 
@@ -216,42 +250,44 @@ const handler = async (req: Request): Promise<Response> => {
       const { subject, html } = buildDigestHtml(items, profile.name, role);
 
       try {
-        await resend.emails.send({
+        // Resend's SDK reports API failures via the error field, not by throwing.
+        const { error: sendErr } = await resend.emails.send({
           from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
           to: [profile.email],
           subject,
           html,
         });
+        if (sendErr) throw sendErr;
         processed++;
+        consumed += items.length;
       } catch (emailErr) {
         console.error(`Failed to send digest to user ${userId}:`, emailErr);
-      }
-
-      processedIds.push(...items.map((i) => i.id));
-    }
-
-    // Mark all as processed
-    if (processedIds.length > 0) {
-      const { error: updateErr } = await supabaseAdmin
-        .from("notification_queue")
-        .update({ processed_at: new Date().toISOString() })
-        .in("id", processedIds);
-
-      if (updateErr) {
-        console.error("Error marking items processed:", updateErr);
+        failedUsers++;
+        // Release the claim so the next run retries this user's digest.
+        const { error: releaseErr } = await supabaseAdmin
+          .from("notification_queue")
+          .update({ processed_at: null })
+          .in("id", items.map((i) => i.id));
+        if (releaseErr) {
+          console.error(`Error releasing claimed items for user ${userId} (digest lost):`, releaseErr);
+        } else {
+          releasedItems += items.length;
+        }
       }
     }
 
-    console.log(`Digest complete: ${processed} emails sent, ${processedIds.length} items processed`);
+    console.log(
+      `Digest complete: ${processed} emails sent, ${consumed} items processed, ${failedUsers} users failed (${releasedItems} items released for retry)`
+    );
 
     return new Response(
-      JSON.stringify({ processed, items: processedIds.length }),
+      JSON.stringify({ processed, items: consumed, failed: failedUsers, released: releasedItems }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in send-digest-emails:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }

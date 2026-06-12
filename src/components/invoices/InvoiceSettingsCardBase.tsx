@@ -14,7 +14,7 @@ import {
 import { logger } from '@/lib/logger';
 import { Badge } from '@/components/ui/badge';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
-import { renumberInvoices, type RenumberStatus } from '@/lib/renumberDraftInvoices';
+import { renumberDraftInvoices } from '@/lib/renumberDraftInvoices';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -82,15 +82,13 @@ export interface InvoiceSettingsLabels {
   bulkVatSuccess?: string;
   bulkVatFailed?: string;
   bulkVatAutoSuccess?: string;
-  // renumber dialog
+  // renumber dialog (drafts only — issued invoices keep their legal numbers)
   renumberTitle: string;
   renumberDescription: string;
-  renumberDraft: string;
-  renumberSent: string;
-  renumberOverdue: string;
   renumberConfirm: string;
   renumberCancel: string;
   renumberSuccess: (count: number) => string;
+  renumberPartial: (updated: number, failed: number) => string;
   renumberNothing: string;
   renumberError: string;
 }
@@ -172,9 +170,6 @@ export function InvoiceSettingsCardBase({
     includeYear: true,
     startNumber: 1,
   });
-  const [renumberStatuses, setRenumberStatuses] = useState<RenumberStatus[]>([
-    'draft', 'sent', 'overdue',
-  ]);
 
   useEffect(() => {
     const load = async () => {
@@ -346,31 +341,40 @@ export function InvoiceSettingsCardBase({
   };
 
   const handleRenumberDrafts = async () => {
-    if (renumberStatuses.length === 0 || !renumberOwnerId) {
+    if (!renumberOwnerId) {
       setShowRenumberDialog(false);
       return;
     }
     setRenumbering(true);
     try {
-      const result = await renumberInvoices({
+      const result = await renumberDraftInvoices({
         ownerType,
         ownerId: renumberOwnerId,
         prefix: formData.invoice_prefix,
         includeYear: formData.invoice_include_year,
-        startNumber: formData.invoice_next_number || 1,
-        statuses: renumberStatuses,
       });
       if (result.error) {
         toast({ title: labels.renumberError, description: result.error, variant: 'destructive' });
-      } else if (result.updated > 0) {
-        setFormData((prev) => ({ ...prev, invoice_next_number: result.nextNumber }));
-        await (supabase as any)
-          .from(table)
-          .update({ invoice_next_number: result.nextNumber } as any)
-          .eq(ownerColumn, ownerId);
-        toast({ title: labels.renumberSuccess(result.updated) });
       } else {
-        toast({ title: labels.renumberNothing });
+        // The next_invoice_sequence RPC already advanced the stored counter
+        // (single source of truth) — only mirror it into the form so a later
+        // save doesn't write a stale invoice_next_number back.
+        const next = result.nextNumber;
+        if (next != null) {
+          setFormData((prev) => ({ ...prev, invoice_next_number: next }));
+          setInitialNumbering((prev) => ({ ...prev, startNumber: next }));
+        }
+        if (result.failures.length > 0) {
+          toast({
+            title: labels.renumberPartial(result.updated, result.failures.length),
+            description: result.failures[0].message,
+            variant: 'destructive',
+          });
+        } else if (result.updated > 0) {
+          toast({ title: labels.renumberSuccess(result.updated) });
+        } else {
+          toast({ title: labels.renumberNothing });
+        }
       }
     } catch (err) {
       logger.error('Renumber failed', err instanceof Error ? err : new Error(String(err)), {
@@ -858,35 +862,9 @@ export function InvoiceSettingsCardBase({
             <AlertDialogTitle>{labels.renumberTitle}</AlertDialogTitle>
             <AlertDialogDescription>{labels.renumberDescription}</AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="space-y-3 py-2">
-            {(
-              [
-                { value: 'draft' as RenumberStatus, label: labels.renumberDraft },
-                { value: 'sent' as RenumberStatus, label: labels.renumberSent },
-                { value: 'overdue' as RenumberStatus, label: labels.renumberOverdue },
-              ]
-            ).map(({ value, label }) => (
-              <label key={value} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={renumberStatuses.includes(value)}
-                  onChange={(e) => {
-                    setRenumberStatuses((prev) =>
-                      e.target.checked ? [...prev, value] : prev.filter((s) => s !== value),
-                    );
-                  }}
-                  className="rounded border-input"
-                />
-                <span className="text-sm">{label}</span>
-              </label>
-            ))}
-          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={renumbering}>{labels.renumberCancel}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleRenumberDrafts}
-              disabled={renumbering || renumberStatuses.length === 0}
-            >
+            <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering}>
               {renumbering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {labels.renumberConfirm}
             </AlertDialogAction>

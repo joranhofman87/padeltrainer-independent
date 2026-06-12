@@ -5,6 +5,7 @@ import { GraduationCap, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 import { logger } from '@/lib/logger';
@@ -228,7 +229,9 @@ export default function AcademyLayout() {
             {/* Page Content */}
             <main className="flex-1 p-4 md:p-6">
               <Suspense fallback={<PageContentSkeleton />}>
-                <Outlet />
+                <RouteErrorBoundary>
+                  <Outlet />
+                </RouteErrorBoundary>
               </Suspense>
             </main>
           </SidebarInset>

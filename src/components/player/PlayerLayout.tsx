@@ -13,6 +13,8 @@ import {
 import { PlayerSidebar } from '@/components/player/PlayerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 function PlayerMobileHeader() {
   const { t } = useTranslation('player');
@@ -44,7 +46,7 @@ function PlayerMobileHeader() {
 
 export default function PlayerLayout() {
   const navigate = useNavigate();
-  const { user, roles, loading, profileReady } = useAuth();
+  const { user, roles, loading, profileReady, profileFetchFailed, refreshAuth } = useAuth();
   const authResolving = loading || (!!user && !profileReady);
 
   // Auth guard - allow player, trainer (with player role), and admin
@@ -53,12 +55,14 @@ export default function PlayerLayout() {
       if (!user) {
         navigate('/app/auth');
       } else if (roles.length === 0) {
-        navigate('/app/auth');
+        // U-12: empty roles after a failed fetch means "couldn't load", not "no account" —
+        // show the retry state below instead of bouncing a logged-in user to the login form
+        if (!profileFetchFailed) navigate('/app/auth');
       } else if (!roles.includes('player') && !roles.includes('trainer') && !roles.includes('admin')) {
         navigate('/app/auth');
       }
     }
-  }, [user, roles, authResolving, navigate]);
+  }, [user, roles, authResolving, profileFetchFailed, navigate]);
 
   if (authResolving) {
     return (
@@ -88,6 +92,14 @@ export default function PlayerLayout() {
     );
   }
 
+  if (user && roles.length === 0 && profileFetchFailed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50/80 p-4">
+        <QueryErrorState className="w-full max-w-md" onRetry={() => { void refreshAuth(); }} />
+      </div>
+    );
+  }
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
@@ -96,7 +108,9 @@ export default function PlayerLayout() {
           <PlayerMobileHeader />
           <div className="flex-1 p-4 md:p-6">
             <Suspense fallback={<PageContentSkeleton />}>
-              <Outlet />
+              <RouteErrorBoundary>
+                <Outlet />
+              </RouteErrorBoundary>
             </Suspense>
           </div>
         </SidebarInset>

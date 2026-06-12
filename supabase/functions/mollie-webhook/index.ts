@@ -7,6 +7,7 @@ import {
   parseMolliePaymentMetadata,
   usesInvoicePaidBranch,
 } from "../_shared/mollie-webhook-metadata.ts";
+import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
 import {
   evaluateInvoicePayment,
   shouldRunBookingPaidSideEffects,
@@ -159,6 +160,16 @@ async function resolveAccessToken(
   return null;
 }
 
+// HTTP status contract (M-25): Mollie retries any non-200 response on a
+// bounded backoff schedule, so the status code decides whether a failed
+// delivery is retried or permanently dropped. We return:
+//  - 200 for success AND for deliberate refusals that a retry can never fix
+//    (missing payment id, unroutable metadata/no connected account, amount
+//    mismatch, cancelled invoice, already-processed duplicate). These are
+//    Slack-alerted for manual follow-up instead.
+//  - 500 for transient infrastructure failures (DB read/write errors, Mollie
+//    API fetch failures, unexpected exceptions) so Mollie retries and the
+//    payment is not silently lost.
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -174,6 +185,7 @@ serve(async (req) => {
     const paymentId = formData.get("id") as string;
 
     if (!paymentId) {
+      // Malformed (non-Mollie) request — a retry would resend the same body.
       logStep("No payment ID in webhook");
       return new Response("OK", { status: 200 });
     }
@@ -181,12 +193,18 @@ serve(async (req) => {
     logStep("Webhook received", { paymentId });
 
     // Look up booking to find trainer for token resolution
-    const { data: bookingForToken } = await supabase
+    const { data: bookingForToken, error: bookingForTokenError } = await supabase
       .from("bookings")
       .select("slot_id, availability_slots!inner(trainer_id)")
       .eq("mollie_payment_id", paymentId)
       .limit(1)
       .maybeSingle();
+
+    // A DB error here is transient, not "unroutable" — fail so Mollie retries
+    // instead of refusing the payment forever below.
+    if (bookingForTokenError) {
+      throw new Error(`Booking lookup failed: ${bookingForTokenError.message}`);
+    }
 
     const slotsData = bookingForToken?.availability_slots as unknown as { trainer_id: string } | null;
     const trainerId = slotsData?.trainer_id;
@@ -198,11 +216,16 @@ serve(async (req) => {
 
     // If no token from booking, try resolving via invoice
     if (!recipientAccessToken) {
-      const { data: invoiceForToken } = await supabase
+      const { data: invoiceForToken, error: invoiceForTokenError } = await supabase
         .from("invoices")
         .select("academy_profile_id, trainer_id")
         .eq("mollie_payment_id", paymentId)
         .maybeSingle();
+
+      // Transient DB failure — retry, don't refuse as unroutable.
+      if (invoiceForTokenError) {
+        throw new Error(`Invoice lookup failed: ${invoiceForTokenError.message}`);
+      }
 
       if (invoiceForToken) {
         if (invoiceForToken.academy_profile_id) {
@@ -244,7 +267,8 @@ serve(async (req) => {
         "Refused payment processing: no connected Mollie account resolved",
         { paymentId, trainerId },
       );
-      // 200 so Mollie doesn't retry forever; we've alerted internally.
+      // Deliberate refusal (M-25): a retry cannot connect a Mollie account,
+      // so 200 (no retry) — we've alerted internally for manual follow-up.
       return new Response("OK", { status: 200 });
     }
 
@@ -296,11 +320,30 @@ serve(async (req) => {
         // Fetch the invoice to (a) verify the paid amount matches the invoice
         // total before flipping to paid, and (b) detect whether it was already
         // paid so duplicate webhook deliveries don't re-fire notifications.
-        const { data: invoiceForPay } = await supabase
+        const { data: invoiceForPay, error: invoiceForPayError } = await supabase
           .from("invoices")
           .select("total, status")
           .eq("id", invoiceIdFromMetadata)
           .maybeSingle();
+
+        // M-25: a transient DB failure must not silently skip the amount and
+        // cancelled-invoice guards (invoiceForPay would read as null) — fail
+        // so Mollie retries.
+        if (invoiceForPayError) {
+          throw new Error(`Invoice guard lookup failed: ${invoiceForPayError.message}`);
+        }
+
+        // Money was taken for an invoice that no longer exists — a retry can
+        // never fix that (M-25), so refuse with 200 and alert for manual review.
+        if (!invoiceForPay) {
+          logStep("BLOCKED: payment for unknown invoice", { invoiceId: invoiceIdFromMetadata, paymentId });
+          await notifySlackError(
+            "mollie-webhook",
+            "Payment received for an unknown/deleted invoice — needs manual review",
+            { paymentId, invoiceId: invoiceIdFromMetadata },
+          );
+          return new Response("OK", { status: 200 });
+        }
 
         const expectedTotal = Number(invoiceForPay?.total) || 0;
         const paidValue = parseMollieAmountValue(payment.amount?.value);
@@ -322,6 +365,7 @@ serve(async (req) => {
             "Invoice payment amount mismatch — invoice not marked paid",
             { paymentId, invoiceId: invoiceIdFromMetadata, expectedTotal, paidValue },
           );
+          // Deliberate refusal (M-25): retrying can never fix the amount.
           return new Response("OK", { status: 200 });
         }
 
@@ -336,13 +380,22 @@ serve(async (req) => {
             "Payment received for a CANCELLED invoice — needs manual refund/review",
             { paymentId, invoiceId: invoiceIdFromMetadata, paidValue },
           );
+          // Deliberate refusal (M-25): retrying can never un-cancel the invoice.
           return new Response("OK", { status: 200 });
         }
 
-        const { error: invUpdateError } = await supabase
+        // E-15: this UPDATE is the atomic idempotency claim — only the request
+        // that actually transitions the invoice to paid may notify and forward
+        // to bookkeeping. The status predicates also close the read-then-act
+        // race of the cancelled/already-paid checks above with a concurrent
+        // cancel or duplicate delivery.
+        const { data: claimedInvoiceRows, error: invUpdateError } = await supabase
           .from("invoices")
           .update({ status: "paid", paid_at: new Date().toISOString(), mollie_payment_id: paymentId })
-          .eq("id", invoiceIdFromMetadata);
+          .eq("id", invoiceIdFromMetadata)
+          .neq("status", "paid")
+          .neq("status", "cancelled")
+          .select("id, invoice_number, total");
         if (invUpdateError) {
           logStep("Failed to update invoice", { error: invUpdateError.message, invoiceId: invoiceIdFromMetadata });
           await notifySlackError(
@@ -350,43 +403,57 @@ serve(async (req) => {
             "Invoice paid webhook: DB update failed",
             { paymentId, invoiceId: invoiceIdFromMetadata, error: invUpdateError.message },
           );
-        } else {
-          logStep("Invoice marked as paid via payment link", { invoiceId: invoiceIdFromMetadata });
-
-          // Only notify on the first transition to paid — duplicate webhook
-          // deliveries must not re-send the payment_received notification.
-          if (invoiceDecision.notify) {
-            try {
-              const { data: paidInvoice } = await supabase
-                .from("invoices")
-                .select("invoice_number, total")
-                .eq("id", invoiceIdFromMetadata)
-                .single();
-              await supabase.functions.invoke("slack-notify", {
-                body: {
-                  event: "payment_received",
-                  data: {
-                    type: "invoice",
-                    invoice_number: paidInvoice?.invoice_number ?? "unknown",
-                    amount: paidInvoice?.total != null
-                      ? `€${Number(paidInvoice.total).toFixed(2)}`
-                      : (payment.amount?.value ? `€${payment.amount.value}` : "?"),
-                    payment_id: paymentId,
-                  },
-                },
-              });
-            } catch (slackErr) {
-              logStep("Slack payment_received failed (non-fatal)", { error: String(slackErr) });
-            }
-          }
+          // M-25: transient DB failure and the invoice was NOT marked paid —
+          // 500 so Mollie retries with a full, safe reprocess.
+          return new Response("Internal Server Error", { status: 500 });
         }
 
-        // Also sync linked bookings so dashboard shows correct payment status
-        const { data: invoiceData } = await supabase
+        const claimedPaidTransition = (claimedInvoiceRows?.length ?? 0) > 0;
+
+        if (claimedPaidTransition) {
+          logStep("Invoice marked as paid via payment link", { invoiceId: invoiceIdFromMetadata });
+
+          // Only notify on the first transition to paid (the claim above) —
+          // duplicate deliveries must not re-send payment_received.
+          try {
+            const paidInvoice = claimedInvoiceRows?.[0];
+            await supabase.functions.invoke("slack-notify", {
+              body: {
+                event: "payment_received",
+                data: {
+                  type: "invoice",
+                  invoice_number: paidInvoice?.invoice_number ?? "unknown",
+                  amount: paidInvoice?.total != null
+                    ? `€${Number(paidInvoice.total).toFixed(2)}`
+                    : (payment.amount?.value ? `€${payment.amount.value}` : "?"),
+                  payment_id: paymentId,
+                },
+              },
+            });
+          } catch (slackErr) {
+            logStep("Slack payment_received failed (non-fatal)", { error: String(slackErr) });
+          }
+        } else {
+          logStep("Invoice already paid — duplicate delivery, notifications skipped", {
+            invoiceId: invoiceIdFromMetadata,
+          });
+        }
+
+        // Also sync linked bookings so dashboard shows correct payment status.
+        // A transient failure here is retryable (flagged → 500 below): the
+        // notify/forward side effects are claim-gated, so a Mollie retry only
+        // re-runs this idempotent sync.
+        let linkedBookingsSyncFailed = false;
+        const { data: invoiceData, error: invoiceDataError } = await supabase
           .from("invoices")
           .select("booking_ids")
           .eq("id", invoiceIdFromMetadata)
           .single();
+
+        if (invoiceDataError) {
+          logStep("Failed to read linked bookings", { error: invoiceDataError.message, invoiceId: invoiceIdFromMetadata });
+          linkedBookingsSyncFailed = true;
+        }
 
         if (invoiceData?.booking_ids && invoiceData.booking_ids.length > 0) {
           const { error: bookingUpdateError } = await supabase
@@ -410,41 +477,55 @@ serve(async (req) => {
                 error: bookingUpdateError.message,
               },
             );
+            linkedBookingsSyncFailed = true;
           } else {
             logStep("Linked bookings updated to paid", { count: invoiceData.booking_ids.length });
           }
         }
 
-        // Forward invoice to bookkeeping emails (non-fatal — paid status already saved)
-        try {
-          logStep("forward_invoice_invoke", { invoiceId: invoiceIdFromMetadata, paymentId });
-          const forwardRes = await supabase.functions.invoke("forward-invoice", {
-            body: { invoiceId: invoiceIdFromMetadata },
-            headers: {
-              Authorization: `Bearer ${supabaseServiceKey}`,
-              apikey: supabaseServiceKey,
-            },
-          });
-          const forwardEval = evaluateForwardInvoiceWebhookResult(
-            forwardRes.data as Record<string, unknown> | null,
-            forwardRes.error,
-            { paymentId, invoiceId: invoiceIdFromMetadata },
-          );
-          logStep(forwardEval.logStep, forwardEval.context);
-          if (forwardEval.shouldWarn) {
+        // Forward invoice to bookkeeping emails (non-fatal — paid status already saved).
+        // E-15: only on the first paid transition —
+        // forward-invoice's own forwarded_at guard is read-then-act, so
+        // concurrent duplicate deliveries could double-send the bookkeeping
+        // email without this claim gate.
+        if (claimedPaidTransition) {
+          try {
+            logStep("forward_invoice_invoke", { invoiceId: invoiceIdFromMetadata, paymentId });
+            const forwardRes = await supabase.functions.invoke("forward-invoice", {
+              body: { invoiceId: invoiceIdFromMetadata },
+              headers: {
+                Authorization: `Bearer ${supabaseServiceKey}`,
+                apikey: supabaseServiceKey,
+              },
+            });
+            const forwardEval = evaluateForwardInvoiceWebhookResult(
+              forwardRes.data as Record<string, unknown> | null,
+              forwardRes.error,
+              { paymentId, invoiceId: invoiceIdFromMetadata },
+            );
+            logStep(forwardEval.logStep, forwardEval.context);
+            if (forwardEval.shouldWarn) {
+              await notifySlackError(
+                "mollie-webhook",
+                forwardEval.slackMessage,
+                forwardEval.context,
+              );
+            }
+          } catch (fwdErr) {
+            logStep("forward_invoke_exception", { error: String(fwdErr), paymentId, invoiceId: invoiceIdFromMetadata });
             await notifySlackError(
               "mollie-webhook",
-              forwardEval.slackMessage,
-              forwardEval.context,
+              "Invoice paid webhook: forward-invoice failed",
+              { paymentId, invoiceId: invoiceIdFromMetadata, error: String(fwdErr) },
             );
           }
-        } catch (fwdErr) {
-          logStep("forward_invoke_exception", { error: String(fwdErr), paymentId, invoiceId: invoiceIdFromMetadata });
-          await notifySlackError(
-            "mollie-webhook",
-            "Invoice paid webhook: forward-invoice failed",
-            { paymentId, invoiceId: invoiceIdFromMetadata, error: String(fwdErr) },
-          );
+        }
+
+        if (linkedBookingsSyncFailed) {
+          // M-25: transient DB failure while syncing linked bookings — 500 so
+          // Mollie retries. Safe: notify + forward above ran (claim-gated) on
+          // this request; the retry only re-runs the idempotent sync.
+          return new Response("Internal Server Error", { status: 500 });
         }
       }
       return new Response("OK", { status: 200 });
@@ -477,20 +558,17 @@ serve(async (req) => {
 
     logStep("Updating bookings", { bookingIds, paymentStatus, bookingStatus });
 
-    // Track whether the bookings were already paid before this webhook so
-    // duplicate deliveries don't re-send confirmation emails / re-trigger
-    // invoice creation / re-notify Slack.
-    let bookingsAlreadyPaid = false;
-
     if (payment.status === "paid") {
-      const { data: amountRows } = await supabase
+      const { data: amountRows, error: amountRowsError } = await supabase
         .from("bookings")
-        .select("id, payment_amount, payment_status")
+        .select("id, payment_amount")
         .in("id", bookingIds);
 
-      bookingsAlreadyPaid =
-        (amountRows?.length ?? 0) > 0 &&
-        (amountRows ?? []).every((b) => b.payment_status === "paid");
+      // M-25: a transient DB failure must not silently skip the amount check
+      // (expectedSum would be 0) — fail so Mollie retries.
+      if (amountRowsError) {
+        throw new Error(`Booking amount lookup failed: ${amountRowsError.message}`);
+      }
 
       const expectedSum = (amountRows || []).reduce(
         (sum, b) => sum + (Number(b.payment_amount) || 0),
@@ -511,6 +589,7 @@ serve(async (req) => {
           paidValue,
           paymentId: payment.id,
         });
+        // Deliberate refusal (M-25): retrying can never fix the amount.
         return new Response("OK", { status: 200 });
       }
     }
@@ -532,20 +611,27 @@ serve(async (req) => {
 
     // Never un-confirm a booking that's already PAID just because a stale Mollie
     // payment later failed/expired/cancelled (e.g. the player paid out-of-band
-    // in cash after starting an online payment). Only the paid transition may
-    // touch paid rows.
-    if (bookingStatus === "cancelled") {
+    // in cash after starting an online payment).
+    // For the paid transition the same predicate doubles as the atomic
+    // idempotency claim (E-15): only rows still unpaid are transitioned, and
+    // the returned rows tell us whether THIS request performed the transition
+    // — duplicate concurrent deliveries (or a verify-mollie-payment race)
+    // then cannot double-run the side effects below.
+    if (payment.status === "paid" || bookingStatus === "cancelled") {
       bookingUpdate = bookingUpdate.neq("payment_status", "paid");
     }
 
-    const { error: updateError } = await bookingUpdate;
+    const { data: transitionedRows, error: updateError } = await bookingUpdate.select("id");
 
     if (updateError) {
       logStep("Failed to update bookings", { error: updateError.message });
       throw new Error(`Failed to update bookings: ${updateError.message}`);
     }
 
-    logStep("Bookings updated successfully", { count: bookingIds.length });
+    logStep("Bookings updated successfully", {
+      count: bookingIds.length,
+      transitioned: transitionedRows?.length ?? 0,
+    });
 
     // If payment is paid, mark any matching priority claim as 'claimed'
     if (payment.status === "paid") {
@@ -571,101 +657,21 @@ serve(async (req) => {
       }
     }
 
-    // If payment is successful, auto-create invoice and send confirmation email.
-    // Skip when the bookings were already paid (duplicate webhook delivery) so
-    // we don't create duplicate invoices or re-send confirmation emails.
+    // If payment is successful, auto-create invoice and send confirmation
+    // email. E-15: gated on the atomic claim above — zero transitioned rows
+    // means the bookings were already paid (duplicate delivery, or
+    // verify-mollie-payment got there first and already ran the side effects).
+    const bookingsAlreadyPaid = (transitionedRows?.length ?? 0) === 0;
+
     if (shouldRunBookingPaidSideEffects(payment.status, bookingsAlreadyPaid)) {
-      // Auto-create invoice
-      try {
-        const { error: invoiceError } = await supabase.functions.invoke("auto-create-invoice", {
-          body: { bookingIds },
-        });
-        if (invoiceError) {
-          logStep("Auto-create invoice failed (non-fatal)", { error: String(invoiceError) });
-        } else {
-          logStep("Auto-create invoice triggered");
-        }
-      } catch (invoiceErr) {
-        logStep("Auto-create invoice error (non-fatal)", { error: String(invoiceErr) });
-      }
-      try {
-        // Fetch booking details for email (use first booking)
-        const bookingId = bookingIds[0];
-        const { data: booking } = await supabase
-          .from("bookings")
-          .select(`
-            *,
-            availability_slots!inner(
-              start_time,
-              end_time,
-              trainer_id,
-              locations(name, city)
-            ),
-            profiles!bookings_player_id_fkey(
-              full_name,
-              email
-            )
-          `)
-          .eq("id", bookingId)
-          .single();
-
-        if (booking?.profiles?.email) {
-          // Trigger confirmation email via send-email function
-          await supabase.functions.invoke("send-email", {
-            body: {
-              to: booking.profiles.email,
-              subject: "Booking Confirmed",
-              template: "booking_confirmation",
-              data: {
-                playerName: booking.profiles.full_name,
-                startTime: booking.availability_slots.start_time,
-                location: booking.availability_slots.locations?.name,
-              },
-            },
-          });
-          logStep("Confirmation email sent");
-
-          // Slack notification for payment received
-          const trainerProfileId = booking.availability_slots.trainer_id;
-          let trainerName = "Unknown";
-          if (trainerProfileId) {
-            const { data: tp } = await supabase
-              .from("trainer_profiles")
-              .select("user_id")
-              .eq("id", trainerProfileId)
-              .single();
-            if (tp?.user_id) {
-              const { data: prof } = await supabase
-                .from("profiles")
-                .select("full_name")
-                .eq("user_id", tp.user_id)
-                .single();
-              trainerName = prof?.full_name || "Unknown";
-            }
-          }
-
-          try {
-            await supabase.functions.invoke("slack-notify", {
-              body: {
-                event: "payment_received",
-                data: {
-                  player: booking.profiles.full_name,
-                  trainer: trainerName,
-                  amount: `€${payment.amount?.value || "?"}`,
-                  bookings: bookingIds.length,
-                },
-              },
-            });
-          } catch (slackErr) {
-            logStep("Slack notification failed (non-fatal)", { error: String(slackErr) });
-          }
-        }
-      } catch (emailError) {
-        logStep("Failed to send confirmation email", { 
-          error: emailError instanceof Error ? emailError.message : String(emailError) 
-        });
-        // Don't throw - email failure shouldn't fail the webhook
-      }
+      await runBookingPaidSideEffects({
+        supabase,
+        bookingIds,
+        paymentAmountValue: payment.amount?.value,
+        source: "mollie-webhook",
+        logStep,
+        notifySlackError,
+      });
     }
 
     return new Response("OK", { status: 200 });
@@ -673,7 +679,9 @@ serve(async (req) => {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
     await notifySlackError("mollie-webhook", message);
-    // Return 200 to prevent Mollie from retrying (we've logged the error)
-    return new Response("OK", { status: 200 });
+    // M-25: anything that lands here is a transient/unexpected failure
+    // (DB error, Mollie fetch failure, crash) — 500 so Mollie retries.
+    // Deliberate refusals return 200 explicitly above.
+    return new Response("Internal Server Error", { status: 500 });
   }
 });

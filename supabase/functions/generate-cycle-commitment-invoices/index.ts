@@ -21,13 +21,19 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
  * Safe by construction:
  *  - admin/service-role only.
  *  - dryRun returns the plan (incl. per-group N) without creating invoices.
- *  - auto-create-invoice creates DRAFT invoices for unpaid bookings, so a
- *    human reviews and sends them — the cron never auto-charges.
+ *  - invoices are created as DRAFTS (asDraft: true), so a human reviews and
+ *    sends them — the cron never auto-charges.
  *  - idempotent: auto-create-invoice de-dupes on booking_ids.
  *
  * N is scoped per GROUP (players sharing a slot), so a cycle with multiple
  * independent day/time groups bills each group correctly. See
  * buildCommitmentInvoicePlan.
+ *
+ * N is the CYCLE-START headcount (the agreed split-by-headcount model): only
+ * claims accepted before the cycle's start date are considered, so every run
+ * derives the same divisor — a claim trickling in after the cycle started
+ * cannot change what earlier-billed committers owe. Late claims are surfaced
+ * in the report (lateClaims) for manual handling.
  */
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -68,14 +74,34 @@ serve(async (req) => {
       // Commitments = bookings linked to a 'claimed' priority claim on these slots.
       const { data: claims } = await supabase
         .from("slot_priority_claims")
-        .select("booking_id")
+        .select("booking_id, responded_at")
         .eq("status", "claimed")
         .not("booking_id", "is", null)
         .in("slot_id", slotIds);
-      const bookingIds = (claims || [])
-        .map((c: { booking_id: string | null }) => c.booking_id)
+
+      // Cycle-start snapshot (M-19): the divisor N must be the headcount when
+      // the cycle started, identical on every run. Claims accepted AFTER the
+      // start would inflate N for late-billed bookings while earlier batches
+      // were billed at the smaller N, so they're excluded and reported instead.
+      // responded_at is stamped by both claim writers (accept RPC + webhook);
+      // a null can only be a legacy row, which predates any start date.
+      const cycleStartMs = new Date(cycle.start_date).getTime();
+      const startedClaims: Array<{ booking_id: string | null; responded_at: string | null }> = [];
+      let lateClaims = 0;
+      for (const claim of claims || []) {
+        const respondedMs = claim.responded_at ? new Date(claim.responded_at).getTime() : NaN;
+        if (Number.isFinite(respondedMs) && respondedMs > cycleStartMs) lateClaims += 1;
+        else startedClaims.push(claim);
+      }
+      const bookingIds = startedClaims
+        .map((c) => c.booking_id)
         .filter((id): id is string => !!id);
-      if (bookingIds.length === 0) continue;
+      if (bookingIds.length === 0) {
+        if (lateClaims > 0) {
+          report.push({ cycleId: cycle.id, cycleName: cycle.name, committerCount: 0, batches: [], invoiced: 0, lateClaims });
+        }
+        continue;
+      }
 
       const { data: bookings } = await supabase
         .from("bookings")
@@ -85,12 +111,11 @@ serve(async (req) => {
       const plan = buildCommitmentInvoicePlan((bookings || []) as CommitmentBooking[]);
       if (plan.committerCount === 0) continue;
 
-      // Exclude bookings already on an active (non-cancelled) invoice. The cron
-      // re-derives each player's FULL claimed batch every run and claims arrive
-      // across days, so batches grow — without this, a later run re-bills the
-      // earlier sessions (booking double-charged on an auto-sent invoice). The
-      // split divisor stays the full group headcount from the plan; only the
-      // not-yet-billed bookings are sent, each still split price/groupSize.
+      // Exclude bookings already on an active (non-cancelled) invoice, so a
+      // retried/partially-failed run never re-bills the sessions an earlier
+      // run already drafted (booking double-charged otherwise). The split
+      // divisor stays the full group headcount from the plan; only the
+      // not-yet-billed bookings are invoiced, each still split price/groupSize.
       const { data: existingInvoices } = await supabase
         .from("invoices")
         .select("booking_ids")
@@ -117,13 +142,16 @@ serve(async (req) => {
           splitAmongPlayers: b.splitAmongPlayers,
         })),
         invoiced: 0 as number,
+        lateClaims,
       };
 
       if (!dryRun) {
         for (const batch of pendingBatches) {
           try {
+            // asDraft: a human reviews and sends — the cron never issues
+            // "sent" invoices on its own (M-19, per the safety doc above).
             const res = await supabase.functions.invoke("auto-create-invoice", {
-              body: { bookingIds: batch.newBookingIds, splitAmongPlayers: batch.splitAmongPlayers },
+              body: { bookingIds: batch.newBookingIds, splitAmongPlayers: batch.splitAmongPlayers, asDraft: true },
             });
             if (res.error) {
               logStep("auto-create-invoice failed", { cycleId: cycle.id, playerKey: batch.playerKey, error: String(res.error) });

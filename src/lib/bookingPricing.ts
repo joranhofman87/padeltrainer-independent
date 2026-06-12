@@ -139,6 +139,40 @@ export function getRebalanceBookingIds(
     .map((p) => p.bookingId);
 }
 
+export type RebalanceAmountGroup = {
+  /** payment_amount to write for every booking id in this group. */
+  paymentAmount: number;
+  bookingIds: string[];
+};
+
+/**
+ * New payment_amounts for existing rows when a split share changes. Each row
+ * keeps its negotiated discount — payment = max(0, share − discount) — so
+ * discount_amount / discount_reason must NOT be rewritten by the caller.
+ * Grouped by resulting amount so callers can batch the updates.
+ */
+export function buildRebalanceAmountGroups(
+  bookings: { id: string; discount_amount?: number | null }[],
+  newShare: number,
+): RebalanceAmountGroup[] {
+  const byAmount = new Map<number, string[]>();
+  for (const booking of bookings) {
+    const discount =
+      typeof booking.discount_amount === "number" &&
+      Number.isFinite(booking.discount_amount)
+        ? Math.max(0, booking.discount_amount)
+        : 0;
+    const paymentAmount = Math.max(0, round2(newShare - discount));
+    const ids = byAmount.get(paymentAmount) ?? [];
+    ids.push(booking.id);
+    byAmount.set(paymentAmount, ids);
+  }
+  return Array.from(byAmount.entries(), ([paymentAmount, bookingIds]) => ({
+    paymentAmount,
+    bookingIds,
+  }));
+}
+
 export type GuestBookingInsertRow = {
   slot_id: string;
   guest_player_id: string;

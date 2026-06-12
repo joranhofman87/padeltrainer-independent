@@ -25,7 +25,11 @@ export type InvoicePaymentDecision = {
  *
  * @param expectedTotal invoice.total from our DB (0/unknown disables the check)
  * @param paidValue     amount Mollie reports as paid
- * @param alreadyPaid   whether the invoice was already 'paid' before this webhook
+ * @param alreadyPaid   whether the invoice was already 'paid' before this webhook.
+ *   Note (E-15): `notify` based on a pre-read is only an approximation under
+ *   concurrent duplicate deliveries — the webhook additionally gates
+ *   notifications/forwarding on its atomic claim (UPDATE filtered on
+ *   status != paid/cancelled, with .select()).
  */
 export function evaluateInvoicePayment(
   expectedTotal: number,
@@ -50,7 +54,11 @@ export function evaluateInvoicePayment(
  * email, Slack) should run. They run only on the first transition to paid.
  *
  * @param mollieStatus       payment.status reported by Mollie
- * @param bookingsAlreadyPaid whether every related booking was already 'paid'
+ * @param bookingsAlreadyPaid whether every related booking was already 'paid'.
+ *   E-15: callers derive this from the atomic claim — the bookings UPDATE
+ *   filtered on `payment_status != 'paid'` with `.select()` — so "already
+ *   paid" means "this request transitioned zero rows", which is race-safe
+ *   against duplicate concurrent deliveries (a plain pre-read is not).
  */
 export function shouldRunBookingPaidSideEffects(
   mollieStatus: string,

@@ -268,7 +268,7 @@ export default function CityLanding() {
       ...((l as any).phone && { telephone: (l as any).phone }),
     }));
 
-  const ogImageUrl = `https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/og-image?city=${encodeURIComponent(displayCity)}&count=${displayClubCount}`;
+  const ogImageUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/og-image?city=${encodeURIComponent(displayCity)}&count=${displayClubCount}`;
 
   if (loading) {
     return (

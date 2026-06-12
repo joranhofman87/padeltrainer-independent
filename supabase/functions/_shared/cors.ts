@@ -38,3 +38,32 @@ export function restrictedCors(req: Request): Record<string, string> {
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
   };
 }
+
+/** Extra exact origins via env (comma-separated), e.g. a future branded domain. */
+function envAllowedOrigins(): string[] {
+  return (Deno.env.get("ALLOWED_ORIGINS") ?? "")
+    .split(",")
+    .map((o) => o.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+}
+
+/**
+ * Origin allow-list CORS for public abuse-surface endpoints (defense in depth).
+ * Echoes the request Origin when it matches the allow-list (or the
+ * ALLOWED_ORIGINS env override); unknown browser origins get the primary
+ * domain back, so their cross-origin reads fail. Requests WITHOUT an Origin
+ * header (server-to-server, webhooks, curl) keep the legacy wide-open headers
+ * and are unaffected.
+ */
+export function corsHeadersFor(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin");
+  if (!origin) return { ...corsHeaders };
+  const allowed = ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin)) ||
+    envAllowedOrigins().includes(origin.replace(/\/+$/, ""));
+  return {
+    "Access-Control-Allow-Origin": allowed ? origin : FALLBACK_ORIGIN,
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": SHARED_HEADERS,
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  };
+}

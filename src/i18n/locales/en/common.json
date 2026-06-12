@@ -213,14 +213,15 @@
     "warningProfile": "Your profile and personal information",
     "warningBookings": "Your booking history",
     "warningData": "All associated data and preferences",
-    "confirmText": "Type DELETE to confirm",
-    "confirmTextError": "Please type DELETE to confirm",
+    "confirmText": "Type {{word}} to confirm",
+    "confirmTextError": "Please type {{word}} to confirm",
     "confirmButton": "Delete My Account",
     "deleting": "Deleting account...",
     "success": "Account Deleted",
     "successDescription": "Your account has been permanently deleted.",
     "error": "Error",
-    "errorDescription": "Failed to delete your account. Please try again."
+    "errorDescription": "Failed to delete your account. Please try again.",
+    "confirmWord": "DELETE"
   },
   "academies": "Academies",
   "findAcademies": "Find Padel Academies",
@@ -602,5 +603,21 @@
     "listView": "List view",
     "scheduleView": "Schedule view"
   },
-  "saving": "Saving…"
+  "saving": "Saving…",
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "This page ran into a problem. Your data is safe — try again or pick another page from the menu.",
+    "sectionDescription": "This section could not be loaded. You can try again or navigate elsewhere.",
+    "retry": "Try again",
+    "back": "Go back"
+  },
+  "deleteVideoConfirmTitle": "Remove video?",
+  "deleteVideoConfirmDescription": "This permanently removes \"{{title}}\" from your public profile. This cannot be undone.",
+  "deleteVideoConfirmAction": "Remove video",
+  "editorLink": {
+    "title": "Add link",
+    "urlLabel": "URL",
+    "remove": "Remove link",
+    "apply": "Apply"
+  }
 }

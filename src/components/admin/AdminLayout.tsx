@@ -11,6 +11,7 @@ import { signOut } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { AppShellSkeleton } from "@/components/AppShellSkeleton";
 import { PageContentSkeleton } from "@/components/AppShellSkeleton";
+import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 
 function AdminMobileHeader() {
   const { t } = useTranslation("admin");
@@ -93,7 +94,9 @@ export default function AdminLayout() {
           <AdminMobileHeader />
           <main className="flex-1 overflow-auto p-6">
             <Suspense fallback={<PageContentSkeleton />}>
-              <Outlet />
+              <RouteErrorBoundary>
+                <Outlet />
+              </RouteErrorBoundary>
             </Suspense>
           </main>
         </SidebarInset>

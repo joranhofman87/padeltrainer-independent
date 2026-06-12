@@ -102,6 +102,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
   // History
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -228,20 +229,23 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   };
 
   const handleSaveTemplate = async () => {
+    if (isSavingTemplate) return; // U-20: double-click inserted two identical templates
     if (!templateName.trim() || !subject.trim() || !bodyHtml.trim()) {
       toast({ title: t('emailCampaign.toasts.missingFields'), description: t('emailCampaign.toasts.missingTemplateDesc'), variant: 'destructive' });
       return;
     }
 
+    setIsSavingTemplate(true);
     try {
       if (editingTemplateId) {
-        await supabase
+        const { error } = await supabase
           .from('email_campaign_templates')
           .update({ name: templateName.trim(), subject: subject.trim(), body_html: bodyHtml })
           .eq('id', editingTemplateId);
+        if (error) throw error;
         toast({ title: t('emailCampaign.toasts.templateUpdated') });
       } else {
-        await supabase
+        const { error } = await supabase
           .from('email_campaign_templates')
           .insert({
             [ownerCol]: ownerId,
@@ -249,6 +253,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
             subject: subject.trim(),
             body_html: bodyHtml,
           } as any);
+        if (error) throw error;
         toast({ title: t('emailCampaign.toasts.templateSaved') });
       }
       setEditingTemplateId(null);
@@ -257,6 +262,8 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
     } catch (err) {
       logger.error('Error saving template', err as Error);
       toast({ title: t('emailCampaign.toasts.error'), description: t('emailCampaign.toasts.templateError'), variant: 'destructive' });
+    } finally {
+      setIsSavingTemplate(false);
     }
   };
 
@@ -803,9 +810,13 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                     variant="outline"
                     size="sm"
                     onClick={handleSaveTemplate}
-                    disabled={!templateName.trim() || !subject.trim()}
+                    disabled={isSavingTemplate || !templateName.trim() || !subject.trim()}
                   >
-                    <Save className="mr-1.5 h-3.5 w-3.5" />
+                    {isSavingTemplate ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Save className="mr-1.5 h-3.5 w-3.5" />
+                    )}
                     {editingTemplateId ? t('emailCampaign.compose.updateTemplate') : t('emailCampaign.compose.saveAsTemplate')}
                   </Button>
                 </div>

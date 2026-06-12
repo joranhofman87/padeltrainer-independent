@@ -349,7 +349,10 @@
     "notificationsDisabledDescription": "Je ontvangt geen meldingen over beschikbaarheid",
     "unfollowConfirm": "{{name}} ontvolgen?",
     "unfollowed": "Ontvolgd",
-    "unfollowedDescription": "Je volgt {{name}} niet meer"
+    "unfollowedDescription": "Je volgt {{name}} niet meer",
+    "thisTrainer": "deze trainer",
+    "unfollow": "Ontvolgen",
+    "unfollowConfirmTitle": "Trainer ontvolgen?"
   },
   "attendance": {
     "title": "Aanwezigheid",

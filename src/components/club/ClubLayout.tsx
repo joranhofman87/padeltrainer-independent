@@ -7,6 +7,7 @@ import { Building2, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, type ClubProfile } from '@/lib/club';
 import { ClubSidebar } from '@/components/club/ClubSidebar';
@@ -230,7 +231,9 @@ export default function ClubLayout() {
             <ClubMobileHeader clubName={activeClub?.location?.name} />
             <main className="flex-1">
               <Suspense fallback={<PageContentSkeleton />}>
-                <Outlet />
+                <RouteErrorBoundary>
+                  <Outlet />
+                </RouteErrorBoundary>
               </Suspense>
             </main>
           </SidebarInset>

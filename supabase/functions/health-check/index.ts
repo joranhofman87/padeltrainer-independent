@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { isServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // E-20: error strings name internal tables, RLS posture and missing secrets.
+  // Only service-role callers get that detail; everyone else gets pass/fail.
+  const includeDetail = isServiceRoleRequest(req);
 
   const start = Date.now();
   const checks: Record<string, { ok: boolean; ms?: number; error?: string }> = {};
@@ -69,12 +74,16 @@ serve(async (req) => {
 
   const allOk = Object.values(checks).every((c) => c.ok);
 
+  const publicChecks = Object.fromEntries(
+    Object.entries(checks).map(([name, check]) => [name, { ok: check.ok }]),
+  );
+
   return new Response(
     JSON.stringify({
       status: allOk ? "healthy" : "degraded",
       timestamp: new Date().toISOString(),
       uptime_ms: Date.now() - start,
-      checks,
+      checks: includeDetail ? checks : publicChecks,
     }),
     {
       status: allOk ? 200 : 503,

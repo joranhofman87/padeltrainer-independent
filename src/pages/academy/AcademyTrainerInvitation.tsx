@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, XCircle, Loader2, GraduationCap, AlertCircle, Percent } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,28 +22,39 @@ export default function AcademyTrainerInvitation() {
 
   const [invitation, setInvitation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [responding, setResponding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchInvitation() {
-      if (!token) {
-        setError('Invalid invitation link');
-        setLoading(false);
-        return;
-      }
+  const fetchInvitation = useCallback(async () => {
+    if (!token) {
+      setError(t('trainerInvitation.invalidLink', 'Invalid invitation link'));
+      setLoading(false);
+      return;
+    }
 
+    setLoading(true);
+    setLoadFailed(false);
+    try {
+      // null is a definitive "no such invitation"; a throw is a failed request
+      // (network/5xx) — the link may still be valid, so offer a retry instead.
       const data = await getAcademyInvitationByToken(token);
       if (!data) {
-        setError('This invitation was not found or has expired');
+        setError(t('trainerInvitation.notFoundOrExpired', 'This invitation was not found or has expired'));
       } else {
         setInvitation(data);
       }
+    } catch (err) {
+      logger.error('Error loading academy invitation', err as Error, { component: 'AcademyTrainerInvitation', token });
+      setLoadFailed(true);
+    } finally {
       setLoading(false);
     }
+  }, [token, t]);
 
+  useEffect(() => {
     fetchInvitation();
-  }, [token]);
+  }, [fetchInvitation]);
 
   const handleResponse = async (accept: boolean) => {
     if (!user || !token) return;
@@ -121,6 +133,19 @@ export default function AcademyTrainerInvitation() {
             <Skeleton className="h-10 w-full" />
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <QueryErrorState
+          onRetry={fetchInvitation}
+          className="w-full max-w-md"
+          title={t('trainerInvitation.loadFailedTitle', 'Could not load this invitation')}
+          description={t('trainerInvitation.loadFailedDescription', 'Something went wrong while loading. Your invitation link is still valid — check your connection and try again.')}
+        />
       </div>
     );
   }

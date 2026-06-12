@@ -1,8 +1,19 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { Loader2 } from 'lucide-react';
 
 const ShortLinkResolver = lazy(() => import('@/pages/ShortLinkResolver'));
+
+// Matches ShortLinkResolver's own loading state, so a cold visit to a shared
+// short link shows a spinner instead of a blank page while the chunk loads.
+function ShortLinkLoading() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 const SUPPORTED_LANGUAGES = ['en', 'nl'];
 const DEFAULT_LANGUAGE = 'en';
@@ -42,7 +53,7 @@ export function LanguageRouter() {
     const targetLang =
       storedLang && SUPPORTED_LANGUAGES.includes(storedLang) ? storedLang : DEFAULT_LANGUAGE;
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<ShortLinkLoading />}>
         <ShortLinkResolver handle={lang} lang={targetLang} />
       </Suspense>
     );

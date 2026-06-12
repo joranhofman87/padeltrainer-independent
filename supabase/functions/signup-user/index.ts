@@ -6,6 +6,7 @@ import {
   resolveProfileNames,
   syncProfileNamesAfterSignup,
 } from "../_shared/signupProfileSync.ts";
+import { PublicError, publicErrorMessage } from "../_shared/public-error.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -177,7 +178,7 @@ const handler = async (req: Request): Promise<Response> => {
     }: SignupRequest & { language?: string; role?: string; timezone?: string } = await req.json();
 
     if (!email || !password) {
-      throw new Error("Missing required fields: email, password");
+      throw new PublicError("Missing required fields: email, password");
     }
 
     const profileNames = resolveProfileNames({
@@ -237,7 +238,16 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (createError) {
       console.error("Error creating user:", createError);
-      throw new Error(createError.message);
+      // Duplicate that raced past the listUsers pre-check: keep the exact 400
+      // body the client classifies as EMAIL_ALREADY_REGISTERED.
+      const authErrorCode = (createError as { code?: string }).code;
+      if (authErrorCode === "email_exists" || /already (been )?registered|already exists/i.test(createError.message)) {
+        return new Response(
+          JSON.stringify({ error: "User already registered" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      throw new PublicError("Failed to create user account");
     }
 
     const user = userData.user;
@@ -360,10 +370,12 @@ const handler = async (req: Request): Promise<Response> => {
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
-  } catch (error: any) {
+  } catch (error) {
+    // Full detail (incl. raw DB/auth text) stays in logs; the response only
+    // ever carries a PublicError message or the generic fallback.
     console.error("Error in signup-user function:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: publicErrorMessage(error, "Signup failed. Please try again later.") }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }

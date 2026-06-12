@@ -281,9 +281,9 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
 
 /**
  * Send priority-claim invitation emails for the given slots (one call per slot;
- * the edge function emails every pending claim on that slot). Returns how many
- * slots were notified. Failures per slot are swallowed so one bad slot doesn't
- * abort the rest.
+ * the edge function emails every pending, not-yet-invited claim on that slot).
+ * Returns how many slots were notified. Failures per slot are swallowed so one
+ * bad slot doesn't abort the rest.
  */
 export async function notifyPriorityClaimsForSlots(slotIds: string[]): Promise<number> {
   let notified = 0;
@@ -356,19 +356,33 @@ export async function declineClaimAsManager(claimId: string, reason?: string) {
   if (error) throw error;
 }
 
-export async function extendPriorityWindow(slotId: string, extraDays: number) {
-  const { data: slot } = await supabase
+export type ExtendPriorityWindowResult = 'extended' | 'already_extended';
+
+/**
+ * Extend the priority window by `extraDays`. The update is conditional on the
+ * value read first, so a double-click or concurrent request applies at most
+ * once; the loser sees 'already_extended' instead of stacking another week.
+ */
+export async function extendPriorityWindow(slotId: string, extraDays: number): Promise<ExtendPriorityWindowResult> {
+  const { data: slot, error: readError } = await supabase
     .from('availability_slots')
     .select('priority_window_ends_at')
     .eq('id', slotId)
     .single();
-  const base = slot?.priority_window_ends_at ? new Date(slot.priority_window_ends_at) : new Date();
+  if (readError) throw readError;
+  const previousEnd: string | null = slot?.priority_window_ends_at ?? null;
+  const base = previousEnd ? new Date(previousEnd) : new Date();
   const newEnd = new Date(base.getTime() + extraDays * 24 * 60 * 60 * 1000);
-  const { error } = await supabase
+  let update = supabase
     .from('availability_slots')
     .update({ priority_window_ends_at: newEnd.toISOString() })
     .eq('id', slotId);
+  update = previousEnd === null
+    ? update.is('priority_window_ends_at', null)
+    : update.eq('priority_window_ends_at', previousEnd);
+  const { data: updated, error } = await update.select('id');
   if (error) throw error;
+  return updated && updated.length > 0 ? 'extended' : 'already_extended';
 }
 
 export async function endPriorityWindowNow(slotId: string) {
