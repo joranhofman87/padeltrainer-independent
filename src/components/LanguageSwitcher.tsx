@@ -10,6 +10,7 @@ import {
 import { Globe, Check } from 'lucide-react';
 import { SUPPORTED_LANGUAGES } from '@/components/LanguageRouter';
 import { useTranslationsContext } from '@/contexts/TranslationsContext';
+import { supabase } from '@/lib/supabaseClient';
 
 const languages = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
@@ -24,6 +25,19 @@ export function LanguageSwitcher() {
   const { translations, pathPrefix } = useTranslationsContext();
 
   const handleLanguageChange = (newLang: string) => {
+    // Persist for logged-in users: useAuth re-applies profiles.preferred_language
+    // on every session restore, which would otherwise override this choice on
+    // the next reload. Fire-and-forget; anonymous visitors keep localStorage only.
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        supabase
+          .from('profiles')
+          .update({ preferred_language: newLang } as never)
+          .eq('user_id', data.user.id)
+          .then(() => {});
+      }
+    });
+
     // If we have CMS translations, link to the translated slug
     if (translations.length > 0 && pathPrefix) {
       const translation = translations.find(t => t.language === newLang);

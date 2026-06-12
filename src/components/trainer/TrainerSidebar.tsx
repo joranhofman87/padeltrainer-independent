@@ -13,6 +13,7 @@ import {
   appSidebarShellClass,
 } from "@/components/ui/appSidebarStyles";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -566,6 +567,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
             collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
           )}>
             <ThemeToggle />
+            <LanguageSwitcher />
             <Button
               variant="ghost"
               size="icon"
@@ -580,7 +582,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
               onClick={handleLogout}
             >
               <LogOut className="h-4 w-4" />
-              {!collapsed && <span className="ml-2">Logout</span>}
+              {!collapsed && <span className="ml-2">{t("nav.logout", "Log out")}</span>}
             </Button>
           </div>
         </div>

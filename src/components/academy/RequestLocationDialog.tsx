@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getCountrySelectOptions } from '@/lib/countries';
 import { useTranslation } from 'react-i18next';
 import { MapPinPlus, Loader2 } from 'lucide-react';
 import { logger } from '@/lib/logger';
@@ -26,24 +27,12 @@ interface RequestLocationDialogProps {
   onRequestSubmitted?: () => void;
 }
 
-const COUNTRIES = [
-  { code: 'NL', name: 'Netherlands' },
-  { code: 'BE', name: 'Belgium' },
-  { code: 'DE', name: 'Germany' },
-  { code: 'ES', name: 'Spain' },
-  { code: 'FR', name: 'France' },
-  { code: 'IT', name: 'Italy' },
-  { code: 'PT', name: 'Portugal' },
-  { code: 'UK', name: 'United Kingdom' },
-  { code: 'SE', name: 'Sweden' },
-  { code: 'DK', name: 'Denmark' },
-];
 
 export function RequestLocationDialog({
   academyProfileId,
   onRequestSubmitted,
 }: RequestLocationDialogProps) {
-  const { t } = useTranslation('academy');
+  const { t, i18n } = useTranslation('academy');
   const { toast } = useToast();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -185,7 +174,7 @@ export function RequestLocationDialog({
                   <SelectValue placeholder="Select country" />
                 </SelectTrigger>
                 <SelectContent>
-                  {COUNTRIES.map((country) => (
+                  {getCountrySelectOptions(i18n.language).map((country) => (
                     <SelectItem key={country.code} value={country.code}>
                       {country.name}
                     </SelectItem>

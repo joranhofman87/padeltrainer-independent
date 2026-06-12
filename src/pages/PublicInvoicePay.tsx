@@ -729,8 +729,9 @@ export default function PublicInvoicePay() {
 
           <Separator />
 
-          {/* Line items */}
-          <div className="border rounded-lg overflow-hidden">
+          {/* Line items — overflow-x-auto: at 375px the amount column was
+              clipped with no scroll affordance (T4 finding W-10) */}
+          <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">

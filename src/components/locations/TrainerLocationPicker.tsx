@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { getCountryName } from '@/lib/countries';
 import { Check, ChevronsUpDown, MapPin, X, Building2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { logger } from '@/lib/logger';
@@ -46,10 +47,6 @@ interface TrainerLocationPickerProps {
   disabled?: boolean;
 }
 
-const COUNTRIES: Record<string, string> = {
-  NL: 'Nederland',
-};
-
 export function TrainerLocationPicker({
   selectedLocations,
   onChange,
@@ -57,7 +54,7 @@ export function TrainerLocationPicker({
   placeholder,
   disabled = false,
 }: TrainerLocationPickerProps) {
-  const { t } = useTranslation('trainer');
+  const { t, i18n } = useTranslation('trainer');
   const [open, setOpen] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,7 +172,7 @@ export function TrainerLocationPicker({
             <SelectContent>
               {availableCountries.map(country => (
                 <SelectItem key={country} value={country}>
-                  {COUNTRIES[country] || country}
+                  {getCountryName(country, i18n.language)}
                 </SelectItem>
               ))}
             </SelectContent>

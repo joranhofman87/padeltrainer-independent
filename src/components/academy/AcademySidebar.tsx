@@ -2,6 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -270,6 +271,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
             )}
           >
             <ThemeToggle />
+            <LanguageSwitcher />
             <Button
               variant="ghost"
               size="icon"

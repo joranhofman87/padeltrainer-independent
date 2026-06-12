@@ -6,6 +6,25 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-api-key",
 };
 
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  "netherlands": "NL", "nederland": "NL", "holland": "NL",
+  "spain": "ES", "españa": "ES", "espana": "ES",
+  "france": "FR", "italy": "IT", "italia": "IT",
+  "united kingdom": "GB", "uk": "GB", "great britain": "GB",
+  "germany": "DE", "deutschland": "DE", "belgium": "BE", "belgië": "BE", "belgie": "BE",
+  "denmark": "DK", "sweden": "SE", "norway": "NO", "finland": "FI",
+  "united states": "US", "usa": "US", "portugal": "PT", "austria": "AT",
+  "switzerland": "CH", "ireland": "IE", "poland": "PL", "czechia": "CZ",
+  "czech republic": "CZ", "mexico": "MX", "méxico": "MX",
+  "united arab emirates": "AE", "indonesia": "ID", "australia": "AU",
+};
+
+function normalizeCountryParam(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toUpperCase();
+  return COUNTRY_NAME_TO_CODE[trimmed.toLowerCase()] ?? trimmed;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -46,7 +65,9 @@ Deno.serve(async (req) => {
         .range(offset, offset + limit - 1)
         .order("name");
 
-      if (country) query = query.eq("country", country);
+      // locations.country stores ISO alpha-2 codes since 20260612160000; keep
+      // pre-normalization consumers working by aliasing common name queries.
+      if (country) query = query.eq("country", normalizeCountryParam(country));
       if (city) query = query.ilike("city", city);
 
       const { data, error } = await query;

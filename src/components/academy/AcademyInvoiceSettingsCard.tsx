@@ -14,7 +14,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     complete: t('invoiceSettings.complete'),
     saved: t('invoiceSettings.saved'),
     saveError: t('common.error'),
-    saving: t('common.save'),
+    saving: t('invoiceSettings.saving', 'Saving…'),
     save: t('common.save'),
     logo: t('invoiceSettings.logo'),
     logoDescription: t('invoiceSettings.logoDescription'),

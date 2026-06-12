@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import {
   Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload,
@@ -135,7 +135,6 @@ export function InvoiceSettingsCardBase({
   idPrefix = 'inv',
   onSave,
 }: InvoiceSettingsCardBaseProps) {
-  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
@@ -235,7 +234,7 @@ export function InvoiceSettingsCardBase({
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
       setLogoUrl(data.publicUrl + '?t=' + Date.now());
     } catch (err) {
-      toast({ title: labels.saveError, description: getFriendlyErrorMessage(err, labels.saveError), variant: 'destructive' });
+      toast.error(labels.saveError, { description: getFriendlyErrorMessage(err, labels.saveError) });
     }
     setUploadingLogo(false);
   };
@@ -260,13 +259,13 @@ export function InvoiceSettingsCardBase({
         logger.error('Bulk VAT update error', error instanceof Error ? error : new Error(String(error)), {
           component: 'InvoiceSettingsCardBase',
         });
-        toast({ title: labels.bulkVatFailed || labels.saveError, variant: 'destructive' });
+        toast.error(labels.bulkVatFailed || labels.saveError);
       } else {
-        toast({
-          title: isAuto
+        toast.success(
+          isAuto
             ? labels.bulkVatAutoSuccess || labels.bulkVatSuccess || labels.saved
             : (labels.bulkVatSuccess || labels.saved),
-        });
+        );
       }
     } catch (err) {
       logger.error('Bulk VAT update failed', err instanceof Error ? err : new Error(String(err)), {
@@ -305,9 +304,9 @@ export function InvoiceSettingsCardBase({
       .eq(ownerColumn, ownerId);
 
     if (error) {
-      toast({ title: labels.saveError, description: getFriendlyErrorMessage(error, labels.saveError), variant: 'destructive' });
+      toast.error(labels.saveError, { description: getFriendlyErrorMessage(error, labels.saveError) });
     } else {
-      toast({ title: labels.saved });
+      toast.success(labels.saved);
       onSave?.();
 
       if (enableBulkVat && resolvedVatRate !== initialVatRate) {
@@ -355,7 +354,7 @@ export function InvoiceSettingsCardBase({
         includeYear: formData.invoice_include_year,
       });
       if (result.error) {
-        toast({ title: labels.renumberError, description: getFriendlyErrorMessage(result.error, labels.renumberError), variant: 'destructive' });
+        toast.error(labels.renumberError, { description: getFriendlyErrorMessage(result.error, labels.renumberError) });
       } else {
         // The next_invoice_sequence RPC already advanced the stored counter
         // (single source of truth) — only mirror it into the form so a later
@@ -366,22 +365,20 @@ export function InvoiceSettingsCardBase({
           setInitialNumbering((prev) => ({ ...prev, startNumber: next }));
         }
         if (result.failures.length > 0) {
-          toast({
-            title: labels.renumberPartial(result.updated, result.failures.length),
+          toast.error(labels.renumberPartial(result.updated, result.failures.length), {
             description: getFriendlyErrorMessage(result.failures[0].message, labels.renumberError),
-            variant: 'destructive',
           });
         } else if (result.updated > 0) {
-          toast({ title: labels.renumberSuccess(result.updated) });
+          toast.success(labels.renumberSuccess(result.updated));
         } else {
-          toast({ title: labels.renumberNothing });
+          toast.success(labels.renumberNothing);
         }
       }
     } catch (err) {
       logger.error('Renumber failed', err instanceof Error ? err : new Error(String(err)), {
         component: 'InvoiceSettingsCardBase',
       });
-      toast({ title: labels.renumberError, variant: 'destructive' });
+      toast.error(labels.renumberError);
     }
     setRenumbering(false);
     setShowRenumberDialog(false);

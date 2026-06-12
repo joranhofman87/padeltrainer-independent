@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -331,6 +332,7 @@ export function PlayerSidebar() {
             )}
           >
             <ThemeToggle />
+            <LanguageSwitcher />
             <Button variant="ghost" size="icon" onClick={showReferralWidget} aria-label="Referrals">
               <Gift className="h-4 w-4 text-primary" />
             </Button>

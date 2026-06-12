@@ -13,6 +13,7 @@ import {
   appSidebarShellClass,
 } from "@/components/ui/appSidebarStyles";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -445,6 +446,7 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
             collapsed ? "flex-col items-center gap-2" : "items-center gap-2"
           )}>
             <ThemeToggle />
+            <LanguageSwitcher />
             <Button
               variant="ghost"
               size="icon"

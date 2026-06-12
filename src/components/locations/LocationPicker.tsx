@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { getActiveLocations, searchLocations, type Location } from '@/lib/locations';
-import { COUNTRIES } from '@/lib/countries';
+import { getCountryName } from '@/lib/countries';
 import { useTranslation } from 'react-i18next';
 
 interface LocationPickerProps {
@@ -55,7 +55,7 @@ export function LocationPicker({
   showCountryFilter = true,
   serverSearch = false,
 }: LocationPickerProps) {
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
   const [open, setOpen] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
@@ -205,7 +205,7 @@ export function LocationPicker({
             <SelectContent>
               {availableCountries.map(country => (
                 <SelectItem key={country} value={country}>
-                  {COUNTRIES[country] || country}
+                  {getCountryName(country, i18n.language)}
                 </SelectItem>
               ))}
             </SelectContent>

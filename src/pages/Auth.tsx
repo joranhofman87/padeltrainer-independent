@@ -17,6 +17,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { trackEvent } from '@/lib/tracking';
 import { logger } from '@/lib/logger';
@@ -319,13 +320,16 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="page-auth">
       <Card className="w-full max-w-md" data-testid="form-login">
         <CardHeader className="text-center">
-          <Link 
-            to="/" 
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-4 self-start"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('backToHome', 'Back to home')}
-          </Link>
+          <div className="flex items-center justify-between mb-4">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {t('backToHome', 'Back to home')}
+            </Link>
+            <LanguageSwitcher />
+          </div>
           <div className="mb-4">
             <span className="font-bold text-2xl">PadelTrainer<span className="text-primary">.ai</span></span>
           </div>

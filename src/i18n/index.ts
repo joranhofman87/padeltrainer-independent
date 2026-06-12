@@ -164,6 +164,11 @@ i18n
   .init({
     resources,
     fallbackLng: 'en',
+    // Reject junk detections: on /app/* routes the path detector yields "app"
+    // as the language; without supportedLngs i18next accepts it and silently
+    // falls back to English (W-03 activation bug). nl-NL → nl.
+    supportedLngs: [...SUPPORTED_LANGS],
+    nonExplicitSupportedLngs: true,
     defaultNS: 'common',
     ns: [...NAMESPACES],
     detection: {

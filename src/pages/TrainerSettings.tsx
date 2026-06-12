@@ -424,9 +424,6 @@ export default function TrainerSettings() {
                   <SelectContent>
                     <SelectItem value="nl">Nederlands</SelectItem>
                     <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Español</SelectItem>
-                    <SelectItem value="de">Deutsch</SelectItem>
-                    <SelectItem value="fr">Français</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
