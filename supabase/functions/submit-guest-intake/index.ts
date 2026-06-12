@@ -9,6 +9,59 @@ const corsHeaders = {
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
+// Payload caps: this is a public endpoint, so reject oversized input before any DB work.
+const MAX_SHORT_FIELD_LENGTH = 320;
+const MAX_ARRAY_ITEMS = 50;
+const MAX_NOTES_METADATA_BYTES = 10 * 1024;
+
+const invalidPayload = (message: string) =>
+  new Response(
+    JSON.stringify({ error: "invalid_payload", message }),
+    { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+
+/**
+ * Best-effort per-key throttle on the shared rate_limits table (same pattern as
+ * send-auth-email). Returns true when the call is allowed (under `max` within
+ * `windowMin`), false otherwise. Fails OPEN on storage errors so a transient DB
+ * hiccup never blocks a real registration.
+ */
+async function throttle(
+  admin: ReturnType<typeof createClient>,
+  identifier: string,
+  max: number,
+  windowMin: number,
+): Promise<boolean> {
+  const windowStart = new Date(Date.now() - windowMin * 60 * 1000);
+  try {
+    const { data: existing } = await admin
+      .from("rate_limits")
+      .select("id, request_count, window_start")
+      .eq("identifier", identifier)
+      .eq("endpoint", "submit-guest-intake")
+      .maybeSingle();
+
+    if (existing && new Date(existing.window_start) > windowStart) {
+      if (existing.request_count >= max) return false;
+      await admin
+        .from("rate_limits")
+        .update({ request_count: existing.request_count + 1 })
+        .eq("id", existing.id);
+      return true;
+    }
+
+    await admin
+      .from("rate_limits")
+      .upsert(
+        { identifier, endpoint: "submit-guest-intake", request_count: 1, window_start: new Date().toISOString() },
+        { onConflict: "identifier,endpoint" },
+      );
+    return true;
+  } catch (_err) {
+    return true; // fail open
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -42,6 +95,43 @@ Deno.serve(async (req) => {
       metadata,
     } = body;
 
+    // Type guards: a public caller can send any JSON shape; non-string name/email
+    // fields would otherwise reach .trim()/.toLowerCase() and throw a raw 500.
+    const shortTextFields: Record<string, unknown> = {
+      email, firstName, lastName, fullName, phone, birthDate, ratingSystem, language, cycleId,
+    };
+    for (const [field, value] of Object.entries(shortTextFields)) {
+      if (value != null && typeof value !== "string") {
+        return invalidPayload(`Field '${field}' must be a string`);
+      }
+      if (typeof value === "string" && value.length > MAX_SHORT_FIELD_LENGTH) {
+        return invalidPayload(`Field '${field}' is too long`);
+      }
+    }
+
+    const arrayFields: Record<string, unknown> = {
+      lessonTypes, preferredDays, preferredTimeWindows, preferredTrainerIds,
+    };
+    for (const [field, value] of Object.entries(arrayFields)) {
+      if (value != null && !Array.isArray(value)) {
+        return invalidPayload(`Field '${field}' must be an array`);
+      }
+      if (Array.isArray(value) && value.length > MAX_ARRAY_ITEMS) {
+        return invalidPayload(`Field '${field}' has too many items`);
+      }
+    }
+
+    if (notes != null && typeof notes !== "string") {
+      return invalidPayload("Field 'notes' must be a string");
+    }
+    if (metadata != null && (typeof metadata !== "object" || Array.isArray(metadata))) {
+      return invalidPayload("Field 'metadata' must be an object");
+    }
+    const notesMetadataBytes = JSON.stringify({ notes: notes ?? null, metadata: metadata ?? null }).length;
+    if (notesMetadataBytes > MAX_NOTES_METADATA_BYTES) {
+      return invalidPayload("Notes/metadata payload is too large");
+    }
+
     const nameFields = resolveRegistrationNameFields({
       firstName,
       lastName,
@@ -73,8 +163,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // IP-based rate limit: max 15 submissions per hour per IP (catches automated spam)
-    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    // IP-based rate limit: max 15 submissions per hour per IP (catches automated spam).
+    // X-Forwarded-For: earlier hops are caller-controlled; the LAST entry is appended
+    // by the trusted edge proxy, so key the throttle on that one.
+    const forwardedHops = (req.headers.get("x-forwarded-for") || "")
+      .split(",").map((hop) => hop.trim()).filter(Boolean);
+    const clientIp = forwardedHops[forwardedHops.length - 1] || "unknown";
     if (clientIp !== "unknown") {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { count: ipCount } = await adminClient
@@ -89,6 +183,16 @@ Deno.serve(async (req) => {
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+    }
+
+    // Recipient-based throttle: the IP key is spoofable, and each submission can
+    // drive a confirmation email to a caller-supplied address — cap per recipient.
+    const recipientOk = await throttle(adminClient, `recipient:${email.trim().toLowerCase()}`, 3, 60);
+    if (!recipientOk) {
+      return new Response(
+        JSON.stringify({ error: "rate_limited", message: "Too many submissions for this email address. Please try again later." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Check if user already has a profile (existing user)
@@ -186,7 +290,7 @@ Deno.serve(async (req) => {
         if (guestError) {
           console.error("Error creating guest player:", guestError);
           return new Response(
-            JSON.stringify({ error: guestError.message }),
+            JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -252,7 +356,7 @@ Deno.serve(async (req) => {
     if (intakeError) {
       console.error("Intake insert error:", intakeError);
       return new Response(
-        JSON.stringify({ error: intakeError.message }),
+        JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -422,7 +526,7 @@ Deno.serve(async (req) => {
         if (!sendRes.ok) {
           console.error("Registration confirmation email failed:", await sendRes.text());
         } else {
-          console.log(`Registration confirmation email sent to ${email}`);
+          console.log(`Registration confirmation email sent for intake ${intakeData?.id}`);
         }
       } catch (confErr) {
         console.error("Confirmation email failed (non-blocking):", confErr);
@@ -567,8 +671,9 @@ Deno.serve(async (req) => {
       // Non-blocking
     }
 
+    // Public endpoint: never echo raw error text (full details stay in the logs above).
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "Internal server error" }),
+      JSON.stringify({ error: "internal_error", message: "Something went wrong. Please try again later." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
       expires_at: new Date().toISOString(),
     });
 
-    console.log(`User deleted: ${target_user_id} (${targetProfile?.email}) by admin ${adminUser.id}`);
+    console.log(`User deleted: ${target_user_id} by admin ${adminUser.id}`);
 
     return new Response(
       JSON.stringify({

@@ -92,9 +92,10 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
+    // Log full detail server-side; never echo raw DB error text to callers.
     console.error("Public API error:", error);
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

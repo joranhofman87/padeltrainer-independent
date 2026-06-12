@@ -224,7 +224,7 @@ const handler = async (req: Request): Promise<Response> => {
         });
         processed++;
       } catch (emailErr) {
-        console.error(`Failed to send digest to ${profile.email}:`, emailErr);
+        console.error(`Failed to send digest to user ${userId}:`, emailErr);
       }
 
       processedIds.push(...items.map((i) => i.id));

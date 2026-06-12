@@ -6,12 +6,17 @@ export type ProfileNameFields = {
   full_name?: string | null;
 };
 
+/** Callers feed these helpers raw request payloads; coerce non-strings to "" so they never throw. */
+function toTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function buildFullName(first?: string | null, last?: string | null): string {
-  return [first?.trim(), last?.trim()].filter(Boolean).join(" ");
+  return [toTrimmedString(first), toTrimmedString(last)].filter(Boolean).join(" ");
 }
 
 export function splitFullName(name: string): { first_name: string; last_name: string } {
-  const trimmed = name.trim();
+  const trimmed = toTrimmedString(name);
   if (!trimmed) {
     return { first_name: "", last_name: "" };
   }
@@ -27,8 +32,8 @@ export function buildGuestPlayerDbFields(firstName: string, lastName: string): {
   last_name: string | null;
   full_name: string;
 } {
-  const first = firstName.trim();
-  const last = lastName.trim();
+  const first = toTrimmedString(firstName);
+  const last = toTrimmedString(lastName);
   return {
     first_name: first || null,
     last_name: last || null,
@@ -48,12 +53,12 @@ export type RegistrationNameInput = {
 export function resolveRegistrationNameFields(
   input: RegistrationNameInput,
 ): { first_name: string | null; last_name: string | null; full_name: string } {
-  const first = (input.firstName ?? input.first_name ?? "").trim();
-  const last = (input.lastName ?? input.last_name ?? "").trim();
+  const first = toTrimmedString(input.firstName ?? input.first_name);
+  const last = toTrimmedString(input.lastName ?? input.last_name);
   if (first) {
     return buildGuestPlayerDbFields(first, last);
   }
-  const legacyFull = (input.fullName ?? input.full_name ?? "").trim();
+  const legacyFull = toTrimmedString(input.fullName ?? input.full_name);
   if (legacyFull) {
     const split = splitFullName(legacyFull);
     return buildGuestPlayerDbFields(split.first_name, split.last_name);
@@ -62,18 +67,18 @@ export function resolveRegistrationNameFields(
 }
 
 export function getDisplayName(profile: ProfileNameFields): string {
-  const first = profile.first_name?.trim() ?? "";
-  const last = profile.last_name?.trim() ?? "";
+  const first = toTrimmedString(profile.first_name);
+  const last = toTrimmedString(profile.last_name);
 
   if (first && last) return `${first} ${last}`;
   if (first) return first;
   if (last) return last;
 
-  return profile.full_name?.trim() ?? "";
+  return toTrimmedString(profile.full_name);
 }
 
 export function resolveGuestNameForInvoice(guest: ProfileNameFields): string {
   const display = getDisplayName(guest);
   if (display) return display;
-  return guest.full_name?.trim() ?? "";
+  return toTrimmedString(guest.full_name);
 }

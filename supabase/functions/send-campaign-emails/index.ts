@@ -137,25 +137,66 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch recipients from campaign_recipients
+    // Campaign-level gate: atomically flip to "sending" so a concurrent or
+    // retried request bails out instead of re-sending. A campaign stuck in
+    // "sending" is only taken over when stale — edge functions are hard-killed
+    // well within 15 minutes, so by then the previous runner is dead.
+    const SENDING_STALE_MS = 15 * 60 * 1000;
+    const staleCutoff = new Date(Date.now() - SENDING_STALE_MS).toISOString();
+    const { data: gateRows, error: gateErr } = await supabase
+      .from("email_campaigns")
+      .update({ status: "sending", updated_at: new Date().toISOString() })
+      .eq("id", campaignId)
+      .or(`status.neq.sending,updated_at.lt."${staleCutoff}"`)
+      .select("id");
+
+    if (gateErr) throw gateErr;
+    if (!gateRows || gateRows.length === 0) {
+      return new Response(JSON.stringify({ error: "Campaign is already being sent" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // A stale takeover can leave rows claimed by the dead runner in "sending";
+    // release them so they are re-claimed below. Safe: the gate guarantees no
+    // other live runner. (The single row in flight when the old runner died may
+    // be re-sent — accepted over stranding it forever.)
+    await supabase
+      .from("email_campaign_recipients")
+      .update({ status: "pending" })
+      .eq("campaign_id", campaignId)
+      .eq("status", "sending");
+
+    // Atomic claim: only rows this UPDATE moves pending -> sending belong to
+    // this run; a concurrent caller claims zero rows and cannot double-send.
     const { data: recipients, error: recErr } = await supabase
       .from("email_campaign_recipients")
-      .select("*")
+      .update({ status: "sending" })
       .eq("campaign_id", campaignId)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .select();
 
-    if (recErr || !recipients || recipients.length === 0) {
+    if (recErr) {
+      // Release the gate before surfacing the error.
+      await supabase
+        .from("email_campaigns")
+        .update({ status: campaign.status })
+        .eq("id", campaignId);
+      throw recErr;
+    }
+    if (!recipients || recipients.length === 0) {
+      // Release the gate. A stale "sending" with nothing left to claim means
+      // the previous run already finished sending everything.
+      await supabase
+        .from("email_campaigns")
+        .update({ status: campaign.status === "sending" ? "sent" : campaign.status })
+        .eq("id", campaignId);
       return new Response(JSON.stringify({ error: "No recipients to send to" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // Update campaign status to sending
-    await supabase
-      .from("email_campaigns")
-      .update({ status: "sending", total_recipients: recipients.length })
-      .eq("id", campaignId);
 
     let sentCount = 0;
     let failedCount = 0;
@@ -217,13 +258,28 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Recompute totals from the table so a retried partial run reports
+    // cumulative counts instead of only this run's.
+    const countRecipients = async (status: string): Promise<number> => {
+      const { count } = await supabase
+        .from("email_campaign_recipients")
+        .select("*", { count: "exact", head: true })
+        .eq("campaign_id", campaignId)
+        .eq("status", status);
+      return count ?? 0;
+    };
+    const [sentTotal, failedTotal] = await Promise.all([
+      countRecipients("sent"),
+      countRecipients("failed"),
+    ]);
+
     // Update campaign with results
     await supabase
       .from("email_campaigns")
       .update({
         status: "sent",
-        sent_count: sentCount,
-        failed_count: failedCount,
+        sent_count: sentTotal,
+        failed_count: failedTotal,
         sent_at: new Date().toISOString(),
       })
       .eq("id", campaignId);

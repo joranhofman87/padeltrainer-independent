@@ -213,7 +213,7 @@ serve(async (req: Request) => {
         });
 
         if (emailError) {
-          console.error(`Error sending email to ${ir.email}:`, emailError);
+          console.error(`Error sending email for intake request ${ir.id}:`, emailError);
           errors.push(`Failed to send to ${ir.email}: ${emailError.message}`);
           continue;
         }

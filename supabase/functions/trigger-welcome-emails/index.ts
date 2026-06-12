@@ -186,7 +186,7 @@ const handler = async (req: Request): Promise<Response> => {
         .single();
 
       if (profile?.email && profile.email !== queueItem.email) {
-        console.log(`Email changed for user ${queueItem.user_id}: ${queueItem.email} → ${profile.email}`);
+        console.log(`Email changed for user ${queueItem.user_id}; queue item ${queueItem.id} updated to current profile email`);
         queueItem.email = profile.email;
         await supabase
           .from("onboarding_email_queue")
@@ -217,7 +217,7 @@ const handler = async (req: Request): Promise<Response> => {
           throw new Error(emailResult.error);
         }
 
-        console.log(`Welcome email sent to ${queueItem.email}:`, emailResult);
+        console.log(`Welcome email sent for queue item ${queueItem.id} (user ${queueItem.user_id}):`, emailResult);
 
         // Log the sent email (queue row already marked sent by atomic claim)
         await supabase.from("onboarding_email_logs").insert({
@@ -231,7 +231,7 @@ const handler = async (req: Request): Promise<Response> => {
 
         successCount++;
       } catch (emailError: unknown) {
-        console.error(`Failed to send welcome email to ${queueItem.email}:`, emailError);
+        console.error(`Failed to send welcome email for queue item ${queueItem.id}:`, emailError);
 
         const errorMessage = emailError instanceof Error ? emailError.message : "Unknown error";
 

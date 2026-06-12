@@ -103,7 +103,9 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: "bad_request", message: String(e) }), {
+    // Log full detail server-side; never echo raw DB error text to callers.
+    console.error("update-public-invoice-details error:", e);
+    return new Response(JSON.stringify({ error: "bad_request" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -66,6 +66,17 @@ serve(async (req) => {
       trainerProfileId,
     } = await req.json();
 
+    // Non-string name/email fields would reach .trim()/.toLowerCase() and throw a raw 500.
+    const stringFields: Record<string, unknown> = { email, firstName, lastName, fullName };
+    for (const [field, value] of Object.entries(stringFields)) {
+      if (value != null && typeof value !== "string") {
+        return new Response(
+          JSON.stringify({ error: `Field '${field}' must be a string` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const nameFields = resolveRegistrationNameFields({ firstName, lastName, fullName });
 
     if (!email || !nameFields.full_name) {

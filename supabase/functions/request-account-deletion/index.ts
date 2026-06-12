@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       expires_at: new Date().toISOString(),
     });
 
-    console.log(`User self-deleted: ${user.id} (${userProfile?.email})`);
+    console.log(`User self-deleted: ${user.id}`);
 
     return new Response(
       JSON.stringify({

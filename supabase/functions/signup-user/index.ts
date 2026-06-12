@@ -331,10 +331,10 @@ const handler = async (req: Request): Promise<Response> => {
         const errorText = await res.text();
         console.error("Resend API error:", errorText);
       } else {
-        console.log(`Welcome email sent to ${email}`);
+        console.log(`Welcome email sent for user ${user.id}`);
       }
     } else {
-      console.log(`Skipping immediate welcome email for trainer signup (${email}); onboarding queue will send`);
+      console.log(`Skipping immediate welcome email for trainer signup (user ${user.id}); onboarding queue will send`);
     }
 
     // Send Slack notification (non-blocking)

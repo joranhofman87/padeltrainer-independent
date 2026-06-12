@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       const userId = profile.user_id;
       
       try {
-        console.log(`Processing user: ${userId} (${profile.email})`);
+        console.log(`Processing user: ${userId}`);
 
         // 1. Delete calendar events
         await supabaseAdmin.from("calendar_events").delete().eq("user_id", userId);
@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
           results.errors.push(`${profile.email}: ${deleteError.message}`);
         } else {
           results.deleted.push(`${profile.email} (${userId})`);
-          console.log(`Deleted user: ${userId} (${profile.email})`);
+          console.log(`Deleted user: ${userId}`);
         }
       } catch (error) {
         console.error(`Error processing user ${userId}:`, error);
