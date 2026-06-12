@@ -788,7 +788,13 @@
         "title": "Geverifieerd badge",
         "description": "Meer vertrouwen met een geverifieerd trainer-badge"
       }
-    }
+    },
+    "managedByAcademyTitle": "Abonnement via je academie",
+    "managedByAcademyBody": "Je toegang wordt gedekt door {{academy}}. Je hebt alleen een eigen abonnement nodig als je daarnaast een onafhankelijk trainersprofiel buiten de academie wilt.",
+    "managedByAcademyHint": "Gedekt door je academie",
+    "noActiveSubscriptionHint": "Geen actief abonnement — kies een plan om verder te gaan",
+    "noPlan": "Geen plan",
+    "managedByAcademyFallbackName": "je academie"
   },
   "subscription": {
     "title": "Abonnement",

@@ -332,7 +332,10 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
                         <Badge variant="secondary" className="font-semibold">
                           {slot.split_payment
                             ? `${formatPrice(slot.price_per_session)} ${t('common:total', 'total')}`
-                            : slot.allow_single_booking && slot.max_participants > 1
+                            // Cycle prices are per player — the per-spot division
+                            // only applies to trainer-created standalone slots
+                            // (mirrors BookLesson's P-04 pricing rule).
+                            : slot.allow_single_booking && slot.max_participants > 1 && !slot.cyclus_id
                               ? `${formatPrice(slot.price_per_session / slot.max_participants)}/spot`
                               : formatPrice(slot.price_per_session)}
                         </Badge>

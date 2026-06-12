@@ -181,12 +181,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           trialEndsAt: null,
           isInTrial: false,
           isPublic: false,
+          managedByAcademy: false,
+          academyName: null,
         });
         return;
       }
 
       const tier = data.tier || 'trial';
-      
+
       setSubscription({
         isSubscribed: data.subscribed,
         tier: tier as SubscriptionTier,
@@ -194,6 +196,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         trialEndsAt: data.trialEndsAt || null,
         isInTrial: data.status === 'trialing',
         isPublic: data.isPublic ?? false,
+        managedByAcademy: data.managedByAcademy ?? false,
+        academyName: data.academyName ?? null,
       });
     } catch (err) {
       logger.error('Error fetching subscription', err as Error, { component: 'useAuth' });
@@ -204,6 +208,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         trialEndsAt: null,
         isInTrial: false,
         isPublic: false,
+        managedByAcademy: false,
+        academyName: null,
       });
     }
   }, [session?.access_token]);

@@ -8,6 +8,9 @@ export interface SubscriptionInfo {
   trialEndsAt: string | null;
   isInTrial: boolean;
   isPublic: boolean;
+  /** True when the trainer is covered by an academy's subscription (incl. its trial) */
+  managedByAcademy?: boolean;
+  academyName?: string | null;
 }
 
 // Trial configuration

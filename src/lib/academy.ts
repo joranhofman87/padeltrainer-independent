@@ -368,12 +368,21 @@ export async function recordAcademyProfileView(academyProfileId: string, session
   });
 }
 
-// Check if a trainer is part of a paid academy (subscription_status = 'active')
+// An academy entitles its trainers when its subscription is active OR its trial is still running
+function isAcademyEntitled(
+  academy: { subscription_status: string | null; trial_ends_at: string | null } | null | undefined
+): boolean {
+  if (!academy) return false;
+  if (academy.subscription_status === 'active') return true;
+  return !!academy.trial_ends_at && new Date(academy.trial_ends_at) > new Date();
+}
+
+// Check if a trainer is part of a paid academy (active subscription or trial still running)
 export async function isTrainerInPaidAcademy(trainerProfileId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('academy_trainers')
     .select(`
-      academy_profile:academy_profiles!inner(subscription_status)
+      academy_profile:academy_profiles!inner(subscription_status, trial_ends_at)
     `)
     .eq('trainer_profile_id', trainerProfileId)
     .eq('status', 'active');
@@ -383,10 +392,11 @@ export async function isTrainerInPaidAcademy(trainerProfileId: string): Promise<
     return false;
   }
 
-  return (data || []).some((row: any) => row.academy_profile?.subscription_status === 'active');
+  return (data || []).some((row: any) => isAcademyEntitled(row.academy_profile));
 }
 
 // Batch check: returns a Set of trainer profile IDs that are part of a paid academy
+// (active subscription or trial still running)
 export async function getTrainerIdsInPaidAcademies(trainerProfileIds: string[]): Promise<Set<string>> {
   if (trainerProfileIds.length === 0) return new Set();
 
@@ -394,7 +404,7 @@ export async function getTrainerIdsInPaidAcademies(trainerProfileIds: string[]):
     .from('academy_trainers')
     .select(`
       trainer_profile_id,
-      academy_profile:academy_profiles!inner(subscription_status)
+      academy_profile:academy_profiles!inner(subscription_status, trial_ends_at)
     `)
     .in('trainer_profile_id', trainerProfileIds)
     .eq('status', 'active');
@@ -406,7 +416,7 @@ export async function getTrainerIdsInPaidAcademies(trainerProfileIds: string[]):
 
   const result = new Set<string>();
   (data || []).forEach((row: any) => {
-    if (row.academy_profile?.subscription_status === 'active') {
+    if (isAcademyEntitled(row.academy_profile)) {
       result.add(row.trainer_profile_id);
     }
   });

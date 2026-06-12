@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
+import { useMarketingNamespace } from '@/hooks/useMarketingNamespace';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,6 +69,9 @@ export default function TrainersCity() {
   const navigate = useNavigate();
   useAuth(); // keep hook call: preserves context subscription + provider guard
   const { t } = useTranslation('marketing');
+  // The marketing namespace is lazy-loaded; without this the page strings
+  // render their English defaults on /nl.
+  useMarketingNamespace();
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
 
@@ -368,7 +372,7 @@ export default function TrainersCity() {
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
             <SelectTrigger className="w-full sm:w-[160px]">
               <TrendingUp className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Sort by" />
+              <SelectValue placeholder={t('trainersDirectory.sortBy', 'Sort by')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="rating">{t('cityPage.sortTopRated')}</SelectItem>
@@ -421,7 +425,7 @@ export default function TrainersCity() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <CardTitle className="text-lg truncate">
-                          {trainer.profile?.full_name || 'Trainer'}
+                          {trainer.profile?.full_name || t('trainersDirectory.trainerFallback', 'Trainer')}
                         </CardTitle>
                         {trainer.is_verified && (
                           <Badge variant="secondary" className="shrink-0">
@@ -540,7 +544,7 @@ export default function TrainersCity() {
                     {locations.slice(0, 3).map((l, i) => (
                       <span key={l.id}>
                         {i > 0 && ', '}
-                        {i === Math.min(locations.length - 1, 2) && i > 0 && 'and '}
+                        {i === Math.min(locations.length - 1, 2) && i > 0 && `${t('trainersDirectory.and', 'and')} `}
                         <LocalizedLink to={`/locations/${l.slug}`} className="text-primary hover:underline">{l.name}</LocalizedLink>
                       </span>
                     ))}
@@ -555,7 +559,7 @@ export default function TrainersCity() {
                     {academies.map((a, i) => (
                       <span key={a.id}>
                         {i > 0 && ', '}
-                        {i === academies.length - 1 && i > 0 && 'and '}
+                        {i === academies.length - 1 && i > 0 && `${t('trainersDirectory.and', 'and')} `}
                         <LocalizedLink to={`/academies/${a.slug}`} className="text-primary hover:underline">{a.name}</LocalizedLink>
                       </span>
                     ))}

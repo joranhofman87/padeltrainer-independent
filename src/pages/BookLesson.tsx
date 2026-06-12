@@ -38,6 +38,13 @@ interface SlotWithDetails {
   price_per_session?: number | null;
   max_participants?: number | null;
   allow_single_booking?: boolean | null;
+  /**
+   * P-04: marks a copy of a cycle slot that is offered as an individual session
+   * ("Losse sessies"). Cycle prices are per player, so the player pays the full
+   * price_per_session — the per-spot division for trainer-created standalone
+   * slots (allow_single_booking && max_participants > 1) must never apply.
+   */
+  fromCycle?: boolean;
   bookedPlayers?: BookedPlayerInfo[];
   averageRating?: number | null;
   ratingSystem?: string;
@@ -268,6 +275,11 @@ export default function BookLesson() {
 
       const bundles: CyclusBundle[] = [];
       const partialCyclusSlots: SlotWithDetails[] = [];
+      // P-04: cycle slots with allow_single_booking are ALSO offered as individual
+      // sessions ("Losse sessies"), unless the cycle uses split payment (its
+      // per-player amount depends on the cycle headcount, so a fixed
+      // single-session price would distort the split).
+      const cycleSingleSessionSlots: SlotWithDetails[] = [];
       Object.entries(cyclusGroups).forEach(([cyclusId, cyclusSlots]) => {
         const totalInCyclus = totalSlotsPerCyclus[cyclusId] || cyclusSlots.length;
         if (cyclusSlots.length === totalInCyclus) {
@@ -279,13 +291,25 @@ export default function BookLesson() {
             firstDate: sortedSlots[0].start_time, lastDate: sortedSlots[sortedSlots.length - 1].start_time,
             location: sortedSlots[0].location, min_group_size: newCycleSettingsMap[cyclusId]?.min_group_size,
           });
+          if (!newCycleSettingsMap[cyclusId]?.split_payment) {
+            sortedSlots.forEach((slot) => {
+              if (slot.allow_single_booking === true) {
+                // Cycle prices are per player: a single session costs the full
+                // price_per_session. The render path (SlotList/BookingSummary)
+                // divides by max_participants when allow_single_booking is set,
+                // so disable it on this copy and tag it fromCycle so handleBook
+                // also charges the full per-player price.
+                cycleSingleSessionSlots.push({ ...slot, allow_single_booking: false, fromCycle: true });
+              }
+            });
+          }
         } else {
           partialCyclusSlots.push(...cyclusSlots);
         }
       });
 
       setCyclusBundles(bundles);
-      setIndividualSlots([...standaloneSlots, ...partialCyclusSlots]);
+      setIndividualSlots([...standaloneSlots, ...partialCyclusSlots, ...cycleSingleSessionSlots]);
     }
 
     if (trainerData?.id) {
@@ -323,6 +347,21 @@ export default function BookLesson() {
         const useManualInvoicing = trainer.use_manual_invoicing;
         const cycleSettings = cycleSettingsMap[selectedCyclus.cyclus_id];
         const paymentTiming = cycleSettings?.payment_timing || (cycleSettings?.mark_as_paid ? 'manual' : (useManualInvoicing ? 'manual' : 'upfront'));
+
+        // P-03: the upfront flow redirects to Mollie, so validate the trainer's
+        // payment setup BEFORE inserting bookings — failing the check after the
+        // insert would strand orphaned 'pending' bookings that occupy capacity
+        // and distort split-payment counts. The condition mirrors the payment
+        // branch below: anything that is not approval/manual/invoice_after_weeks
+        // needs online payment.
+        if (!requiresApproval && paymentTiming !== 'manual' && paymentTiming !== 'invoice_after_weeks') {
+          const paymentSetup = await hasValidPaymentSetup(trainerId!, trainer.id, false);
+          if (!paymentSetup.valid) {
+            toast({ title: t('bookLesson.paymentNotAvailable'), description: t('bookLesson.paymentNotAvailablePlayer', 'Deze trainer kan nog geen online betalingen ontvangen. Neem contact op met de trainer.'), variant: 'destructive' });
+            setBooking(false);
+            return;
+          }
+        }
 
         const bookings = selectedCyclus.slots.map((slot) => ({
           player_id: profile.id, slot_id: slot.id, notes: notes || null,
@@ -374,12 +413,8 @@ export default function BookLesson() {
           });
           setBooked(true);
         } else {
-          const paymentSetup = await hasValidPaymentSetup(trainerId!, trainer.id, false);
-          if (!paymentSetup.valid) {
-            toast({ title: t('bookLesson.paymentNotAvailable'), description: t('bookLesson.paymentNotAvailablePlayer', 'Deze trainer kan nog geen online betalingen ontvangen. Neem contact op met de trainer.'), variant: 'destructive' });
-            setBooking(false);
-            return;
-          }
+          // Payment setup was already validated above (P-03), before the
+          // bookings were inserted — no re-check needed here.
           const { data: createdBookings } = await supabase.from('bookings').select('id')
             .eq('player_id', profile.id).in('slot_id', selectedCyclus.slots.map(s => s.id))
             .eq('status', 'pending').order('created_at', { ascending: false });
@@ -409,7 +444,11 @@ export default function BookLesson() {
       if (!selectedSlot) return;
       const maxP = selectedSlot.max_participants || 1;
       const slotPrice = getSlotPrice(selectedSlot);
-      const allowSingle = selectedSlot.allow_single_booking;
+      // P-04: cycle-derived single sessions (fromCycle) are priced per player —
+      // the player pays the full price_per_session, never a per-spot share.
+      // Trainer-created standalone slots keep the divided-price behavior.
+      const fromCycle = selectedSlot.fromCycle === true;
+      const allowSingle = selectedSlot.allow_single_booking && !fromCycle;
       const perSpotPrice = maxP > 1 && allowSingle ? slotPrice / maxP : slotPrice;
       const bookingQuantity = !allowSingle ? 1 : quantity;
       const price = allowSingle && maxP > 1 ? perSpotPrice * bookingQuantity : slotPrice;
@@ -554,6 +593,8 @@ export default function BookLesson() {
               onSelect={(slot) => {
                 setSelectedSlot(slot);
                 setSelectedCyclus(null);
+                // P-04: a cycle-derived single session is one spot for one player.
+                if (slot.fromCycle) { setQuantity(1); return; }
                 const maxP = slot.max_participants || 1;
                 const minGroup = slot.cyclus_id ? (cycleSettingsMap[slot.cyclus_id]?.min_group_size || 1) : 1;
                 if (!slot.allow_single_booking) { setQuantity(maxP); } else { setQuantity(Math.max(minGroup, 1)); }

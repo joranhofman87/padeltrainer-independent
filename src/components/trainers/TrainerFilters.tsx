@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -85,6 +86,7 @@ export function TrainerFilters({
   ratingSystems,
   activeFilterCount,
 }: TrainerFiltersProps) {
+  const { t } = useTranslation('marketing');
   const [locationOpen, setLocationOpen] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
@@ -189,7 +191,7 @@ export function TrainerFilters({
           <div className="flex flex-wrap items-end gap-3">
             {/* Location */}
             <div className="flex-1 min-w-[180px] max-w-[250px] space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Location</Label>
+              <Label className="text-xs font-medium text-muted-foreground">{t('trainersDirectory.location', 'Location')}</Label>
               <Popover open={locationOpen} onOpenChange={setLocationOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -204,15 +206,15 @@ export function TrainerFilters({
                         <span className="truncate">{selectedLocation.name}</span>
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">All locations</span>
+                      <span className="text-muted-foreground">{t('trainersDirectory.allLocations', 'All locations')}</span>
                     )}
                     <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[280px] p-0" align="start">
                   <Command shouldFilter={false}>
-                    <CommandInput 
-                      placeholder="Search clubs..." 
+                    <CommandInput
+                      placeholder={t('trainersDirectory.searchClubs', 'Search clubs...')}
                       value={locationSearch}
                       onValueChange={setLocationSearch}
                     />
@@ -220,10 +222,10 @@ export function TrainerFilters({
                       <div className="p-2 border-b">
                         <Select value={selectedCountry} onValueChange={setSelectedCountry}>
                           <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="All Countries" />
+                            <SelectValue placeholder={t('trainersDirectory.allCountries', 'All Countries')} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Countries</SelectItem>
+                            <SelectItem value="all">{t('trainersDirectory.allCountries', 'All Countries')}</SelectItem>
                             {availableCountries.map(country => (
                               <SelectItem key={country} value={country}>{country}</SelectItem>
                             ))}
@@ -232,7 +234,7 @@ export function TrainerFilters({
                       </div>
                     )}
                     <CommandList className="max-h-[250px]">
-                      <CommandEmpty>No clubs found.</CommandEmpty>
+                      <CommandEmpty>{t('trainersDirectory.noClubsFound', 'No clubs found.')}</CommandEmpty>
                       <CommandItem
                         value="all"
                         onSelect={() => selectLocation('all')}
@@ -244,7 +246,7 @@ export function TrainerFilters({
                             filters.locationId === 'all' ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        All Locations
+                        {t('trainersDirectory.allLocations', 'All locations')}
                       </CommandItem>
                       {groupedLocations.map(([city, locs]) => (
                         <CommandGroup key={city} heading={city}>
@@ -274,7 +276,7 @@ export function TrainerFilters({
 
             {/* Min Review Rating */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Min Reviews</Label>
+              <Label className="text-xs font-medium text-muted-foreground">{t('trainersDirectory.minReviews', 'Min Reviews')}</Label>
               <div className="flex gap-1">
                 {[0, 3, 4, 4.5].map((rating) => (
                   <Button
@@ -284,7 +286,7 @@ export function TrainerFilters({
                     className="h-9 text-xs px-2"
                     onClick={() => onChange({ ...filters, minRating: rating })}
                   >
-                    {rating === 0 ? 'Any' : (
+                    {rating === 0 ? t('trainersDirectory.any', 'Any') : (
                       <span className="flex items-center gap-0.5">
                         {rating}+ <Star className="h-3 w-3 fill-current" />
                       </span>
@@ -296,17 +298,17 @@ export function TrainerFilters({
 
             {/* Trainer Rating System */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">Trainer Level</Label>
+              <Label className="text-xs font-medium text-muted-foreground">{t('trainersDirectory.trainerLevel', 'Trainer Level')}</Label>
               <div className="flex gap-1.5">
                 <Select 
                   value={filters.ratingSystem || 'any'} 
                   onValueChange={(v) => onChange({ ...filters, ratingSystem: v === 'any' ? '' : v, minTrainerRating: 0 })}
                 >
                   <SelectTrigger className="h-9 text-sm w-[100px]">
-                    <SelectValue placeholder="System" />
+                    <SelectValue placeholder={t('trainersDirectory.system', 'System')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="any">Any</SelectItem>
+                    <SelectItem value="any">{t('trainersDirectory.any', 'Any')}</SelectItem>
                     {ratingSystems.map(rs => (
                       <SelectItem key={rs.code} value={rs.code}>{rs.name}</SelectItem>
                     ))}
@@ -318,12 +320,12 @@ export function TrainerFilters({
                     onValueChange={(v) => onChange({ ...filters, minTrainerRating: Number(v) })}
                   >
                     <SelectTrigger className="h-9 text-sm w-[80px]">
-                      <SelectValue placeholder="Level" />
+                      <SelectValue placeholder={t('trainersDirectory.level', 'Level')} />
                     </SelectTrigger>
                     <SelectContent>
                       {ratingOptions.map(val => (
                         <SelectItem key={val} value={String(val)}>
-                          {val === 0 ? 'Any' : (
+                          {val === 0 ? t('trainersDirectory.any', 'Any') : (
                             selectedRatingSystem.lower_is_better ? `≤${val}` : `≥${val}`
                           )}
                         </SelectItem>
@@ -348,7 +350,7 @@ export function TrainerFilters({
                 className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1"
               >
                 <CalendarCheck className="h-3.5 w-3.5 text-primary" />
-                Available
+                {t('trainersDirectory.available', 'Available')}
               </label>
             </div>
 
@@ -356,7 +358,7 @@ export function TrainerFilters({
             <CollapsibleTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 gap-1.5">
                 <SlidersHorizontal className="h-3.5 w-3.5" />
-                More
+                {t('trainersDirectory.more', 'More')}
                 {activeFilterCount > 0 && (
                   <Badge variant="secondary" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
                     {activeFilterCount}
@@ -370,7 +372,7 @@ export function TrainerFilters({
             {activeFilterCount > 0 && (
               <Button variant="ghost" size="sm" onClick={handleReset} className="h-9 text-xs gap-1">
                 <RotateCcw className="h-3 w-3" />
-                Reset
+                {t('trainersDirectory.reset', 'Reset')}
               </Button>
             )}
           </div>
@@ -381,7 +383,7 @@ export function TrainerFilters({
               <div className="flex flex-wrap gap-6">
                 {/* Experience */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium text-muted-foreground">Experience</Label>
+                  <Label className="text-xs font-medium text-muted-foreground">{t('trainersDirectory.experience', 'Experience')}</Label>
                   <div className="flex gap-1 flex-wrap">
                     {[0, 1, 3, 5, 10].map((years) => (
                       <Button
@@ -391,7 +393,7 @@ export function TrainerFilters({
                         className="h-7 text-xs px-2"
                         onClick={() => onChange({ ...filters, minExperience: years })}
                       >
-                        {years === 0 ? 'Any' : `${years}+ yr`}
+                        {years === 0 ? t('trainersDirectory.any', 'Any') : t('trainersDirectory.yearsPlus', '{{years}}+ yr', { years })}
                       </Button>
                     ))}
                   </div>
@@ -410,7 +412,7 @@ export function TrainerFilters({
                     htmlFor="verified"
                     className="text-sm font-medium leading-none cursor-pointer"
                   >
-                    Verified only
+                    {t('trainersDirectory.verifiedOnly', 'Verified only')}
                   </label>
                 </div>
               </div>
@@ -418,7 +420,7 @@ export function TrainerFilters({
               {/* Specializations */}
               {allSpecializations.length > 0 && (
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium text-muted-foreground">Specializations</Label>
+                  <Label className="text-xs font-medium text-muted-foreground">{t('trainersDirectory.specializations', 'Specializations')}</Label>
                   <div className="flex flex-wrap gap-1.5">
                     {allSpecializations.map((spec) => (
                       <Badge
@@ -440,7 +442,7 @@ export function TrainerFilters({
               {/* Certifications */}
               {allCertifications.length > 0 && (
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium text-muted-foreground">Certifications</Label>
+                  <Label className="text-xs font-medium text-muted-foreground">{t('trainersDirectory.certifications', 'Certifications')}</Label>
                   <div className="flex flex-wrap gap-1.5">
                     {allCertifications.map((cert) => (
                       <Badge

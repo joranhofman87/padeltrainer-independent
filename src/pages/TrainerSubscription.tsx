@@ -185,12 +185,22 @@ export default function TrainerSubscription() {
     }
   };
 
-  const planStatusHint =
-    currentPlan === 'starter'
+  const planStatusHint = subscription?.managedByAcademy
+    ? t('subscriptionPage.managedByAcademyHint', 'Covered by your academy')
+    : currentPlan === 'starter'
       ? t('subscriptionPage.upgradeHint')
-      : subscription?.subscriptionEnd
-        ? t('subscriptionPage.nextBilling', { date: formatDate(subscription.subscriptionEnd, 'd MMMM yyyy') })
-        : t('subscriptionPage.activeHint');
+      : !subscription?.isSubscribed
+        ? t('subscriptionPage.noActiveSubscriptionHint', 'No active subscription — choose a plan to continue')
+        : subscription?.subscriptionEnd
+          ? t('subscriptionPage.nextBilling', { date: formatDate(subscription.subscriptionEnd, 'd MMMM yyyy') })
+          : t('subscriptionPage.activeHint');
+
+  // The fallback tier from the subscription check is 'trial' — don't display an
+  // expired/none state as an active "Trial" plan
+  const currentPlanLabel =
+    subscription && !subscription.isSubscribed && !subscription.isInTrial && !subscription.managedByAcademy
+      ? t('subscriptionPage.noPlan', 'No plan')
+      : currentPlan;
 
   const primaryHeaderAction =
     currentPlan !== 'starter'
@@ -241,6 +251,30 @@ export default function TrainerSubscription() {
         primaryAction={primaryHeaderAction}
       />
 
+      {subscription?.managedByAcademy && (
+        <Card className="border-[hsl(var(--brand-200))] bg-[hsl(var(--brand-50))] shadow-sm">
+          <CardContent className="p-5 sm:p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-background">
+                <Users className="h-5 w-5 text-[hsl(var(--brand-600))]" />
+              </div>
+              <div>
+                <h2 className="font-display text-base font-semibold text-[hsl(var(--navy-900))]">
+                  {t('subscriptionPage.managedByAcademyTitle', 'Subscription via your academy')}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t(
+                    'subscriptionPage.managedByAcademyBody',
+                    'Your access is covered by {{academy}}. You only need a personal plan if you also want an independent trainer profile outside the academy.',
+                    { academy: subscription.academyName ?? t('subscriptionPage.managedByAcademyFallbackName', 'your academy') },
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border-border/80 shadow-sm">
         <CardContent className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -254,7 +288,7 @@ export default function TrainerSubscription() {
                     {t('subscriptionPage.currentPlan')}
                   </h2>
                   <Badge variant="secondary" className="capitalize">
-                    {currentPlan}
+                    {currentPlanLabel}
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{planStatusHint}</p>

@@ -785,7 +785,13 @@
         "title": "Verified badge",
         "description": "Build trust with a verified trainer badge"
       }
-    }
+    },
+    "managedByAcademyTitle": "Subscription via your academy",
+    "managedByAcademyBody": "Your access is covered by {{academy}}. You only need a personal plan if you also want an independent trainer profile outside the academy.",
+    "managedByAcademyHint": "Covered by your academy",
+    "noActiveSubscriptionHint": "No active subscription — choose a plan to continue",
+    "noPlan": "No plan",
+    "managedByAcademyFallbackName": "your academy"
   },
   "subscription": {
     "title": "Subscription",

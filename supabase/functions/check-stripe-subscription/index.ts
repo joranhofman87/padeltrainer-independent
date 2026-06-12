@@ -7,6 +7,60 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CHECK-STRIPE-SUBSCRIPTION] ${step}`, details ? JSON.stringify(details) : "");
 };
 
+// Academy-managed trainers inherit entitlement from their academy's
+// subscription, INCLUDING its trial period — payments go through the academy.
+// Returns a success Response when an active/trialing academy covers the
+// trainer, or null when there is no academy entitlement.
+const academyEntitlementResponse = async (
+  supabase: ReturnType<typeof createClient>,
+  profile: { id: string; is_public?: boolean | null },
+  corsHeaders: Record<string, string>,
+): Promise<Response | null> => {
+  const { data, error } = await supabase
+    .from("academy_trainers")
+    .select("academy_profile:academy_profiles!inner(id, name, subscription_status, trial_ends_at)")
+    .eq("trainer_profile_id", profile.id)
+    .eq("status", "active");
+
+  if (error) {
+    logStep("Academy entitlement check failed", { error: error.message });
+    return null;
+  }
+
+  type AcademyRow = {
+    academy_profile: {
+      id: string;
+      name: string | null;
+      subscription_status: string | null;
+      trial_ends_at: string | null;
+    } | null;
+  };
+
+  const now = new Date();
+  const coveringAcademy = ((data ?? []) as AcademyRow[])
+    .map((row) => row.academy_profile)
+    .find((academy) =>
+      academy !== null &&
+      (academy.subscription_status === "active" ||
+        (academy.trial_ends_at !== null && new Date(academy.trial_ends_at) > now))
+    );
+
+  if (!coveringAcademy) return null;
+
+  logStep("Trainer covered by academy subscription", { academyId: coveringAcademy.id });
+  return new Response(
+    JSON.stringify({
+      subscribed: true,
+      status: "active",
+      tier: "academy",
+      managedByAcademy: true,
+      academyName: coveringAcademy.name,
+      isPublic: profile.is_public ?? false,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+};
+
 serve(async (req) => {
   const corsHeaders = restrictedCors(req);
   if (req.method === "OPTIONS") {
@@ -109,6 +163,10 @@ serve(async (req) => {
     }
 
     if (!profile.stripe_customer_id) {
+      if (type === "trainer") {
+        const academyResponse = await academyEntitlementResponse(supabase, profile, corsHeaders);
+        if (academyResponse) return academyResponse;
+      }
       logStep("No Stripe customer found");
       return new Response(
         JSON.stringify({ subscribed: false, status: "none" }),
@@ -197,6 +255,10 @@ serve(async (req) => {
     }
 
     // No active subscription
+    if (type === "trainer") {
+      const academyResponse = await academyEntitlementResponse(supabase, profile, corsHeaders);
+      if (academyResponse) return academyResponse;
+    }
     const table = type === "trainer" ? "trainer_profiles" : type === "academy" ? "academy_profiles" : "club_profiles";
     await supabase.from(table).update({ subscription_status: "inactive" }).eq("id", profile.id);
 

@@ -37,7 +37,7 @@ import { PROVINCES } from '@/lib/provinces';
 import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
-import { getTrainerAcademy, isTrainerInPaidAcademy } from '@/lib/academy';
+import { getTrainerAcademy } from '@/lib/academy';
 import { canBeVisible } from '@/lib/subscription';
 import { toast } from 'sonner';
 import { getMarketingUrl, getAppUrl } from '@/lib/domains';
@@ -65,8 +65,7 @@ interface TrainerData {
   specializations: string[] | null;
   is_verified: boolean;
   is_public: boolean;
-  subscription_status: string | null;
-  trial_ends_at: string | null;
+  is_active_subscription: boolean | null;
   coaching_method: string | null;
   favourite_quote: string | null;
   video_url: string | null;
@@ -140,9 +139,13 @@ async function fetchTrainerData(trainerId: string, currentUserId?: string) {
   );
 
   const isOwnProfile = currentUserId === trainerData.user_id;
-  const hasActiveSubscription = trainerData.subscription_status === 'active';
-  const inPaidAcademy = await isTrainerInPaidAcademy(trainerData.id);
-  const hasSubscriptionAccess = hasActiveSubscription || inPaidAcademy;
+  // trainer_profiles_safe hides raw subscription_status/trial_ends_at; its
+  // computed is_active_subscription covers own subscription/trial and (since
+  // the P-02 migration) academy-managed entitlement. The previous
+  // subscription_status check always read undefined here, and the client-side
+  // academy fallback was blocked by RLS for visitors — every public profile
+  // rendered "Trainer Not Found".
+  const hasSubscriptionAccess = trainerData.is_active_subscription === true;
 
   if (!trainerData.is_public && !hasVerifiedClubLink && !isOwnProfile) return null;
   if (!hasSubscriptionAccess && !isOwnProfile) return null;

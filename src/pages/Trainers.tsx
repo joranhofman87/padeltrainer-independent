@@ -17,6 +17,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS } from '@/components/trainers/TrainerFilters';
 import { getBatchTrainerRatings } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
+import { useMarketingNamespace } from '@/hooks/useMarketingNamespace';
 import { SEO } from '@/components/SEO';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { logger } from '@/lib/logger';
@@ -39,7 +40,10 @@ const MAX_FEATURED = 6;
 type SortOption = 'rating' | 'experience';
 
 export default function Trainers() {
-  const { t } = useTranslation(['trainer', 'common']);
+  const { t } = useTranslation(['trainer', 'common', 'marketing']);
+  // The marketing namespace is lazy-loaded; without this the directory strings
+  // render their English defaults on /nl.
+  useMarketingNamespace();
   const { lang } = useParams<{ lang: string }>();
   const currentLang = lang || 'en';
   const [searchParams, setSearchParams] = useSearchParams();
@@ -393,8 +397,8 @@ export default function Trainers() {
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "ItemList",
-    "name": "Padel Trainers",
-    "description": "Find certified padel trainers worldwide. Browse profiles, compare rates, and book lessons.",
+    "name": t('marketing:trainersDirectory.listName', 'Padel Trainers'),
+    "description": t('marketing:trainersDirectory.listDescription', 'Find certified padel trainers worldwide. Browse profiles, compare rates, and book lessons.'),
     "numberOfItems": filteredAndSortedTrainers.length,
     "itemListElement": filteredAndSortedTrainers.slice(0, 10).map((trainer, index) => ({
       "@type": "ListItem",
@@ -413,15 +417,15 @@ export default function Trainers() {
   };
 
   const breadcrumbSchema = buildBreadcrumbList([
-    { name: 'Home', url: `/${currentLang}` },
-    { name: 'Trainers', url: `/${currentLang}/trainers` },
+    { name: t('marketing:cityPage.home', 'Home'), url: `/${currentLang}` },
+    { name: t('marketing:cityPage.trainers', 'Trainers'), url: `/${currentLang}/trainers` },
   ]);
 
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Find Padel Trainers"
-        description="Discover certified padel trainers worldwide. Compare rates, read reviews, and book lessons that match your skill level."
+        title={t('marketing:trainersDirectory.seoTitle', 'Find Padel Trainers')}
+        description={t('marketing:trainersDirectory.seoDescription', 'Discover certified padel trainers worldwide. Compare rates, read reviews, and book lessons that match your skill level.')}
         url="/trainers"
         structuredData={[structuredData, breadcrumbSchema]}
       />
@@ -429,13 +433,13 @@ export default function Trainers() {
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-2 sm:py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/app/player')}>
+            <Button variant="ghost" size="icon" aria-label={t('marketing:trainersDirectory.goBack', 'Go back')} onClick={() => navigate('/app/player')}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <span className="font-bold text-lg sm:text-xl">Find Trainers</span>
+            <span className="font-bold text-lg sm:text-xl">{t('marketing:trainersDirectory.findTrainers', 'Find Trainers')}</span>
           </div>
           {!user && (
-            <Button onClick={() => navigate(localizePath('/auth'))}>Sign In</Button>
+            <Button onClick={() => navigate(localizePath('/auth'))}>{t('common:signIn', 'Sign In')}</Button>
           )}
         </div>
       </header>
@@ -492,7 +496,7 @@ export default function Trainers() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <CardTitle className="text-base truncate">
-                                {trainer.profile?.full_name || 'Trainer'}
+                                {trainer.profile?.full_name || t('marketing:trainersDirectory.trainerFallback', 'Trainer')}
                               </CardTitle>
                               {trainer.is_verified && (
                                 <TooltipProvider>
@@ -521,7 +525,7 @@ export default function Trainers() {
                         <div className="flex items-center justify-between text-sm">
                           {trainer.experience_years && (
                             <span className="text-muted-foreground text-xs">
-                              {trainer.experience_years}y exp
+                              {t('marketing:trainersDirectory.yearsExp', '{{years}}y exp', { years: trainer.experience_years })}
                             </span>
                           )}
                         </div>
@@ -541,7 +545,7 @@ export default function Trainers() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search trainers by name, specialty..."
+                placeholder={t('marketing:cityPage.searchPlaceholder', 'Search trainers by name, specialty...')}
                 className="pl-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -550,11 +554,11 @@ export default function Trainers() {
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
               <SelectTrigger className="w-full sm:w-[160px]">
                 <TrendingUp className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Sort by" />
+                <SelectValue placeholder={t('marketing:trainersDirectory.sortBy', 'Sort by')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="rating">Top Rated</SelectItem>
-                <SelectItem value="experience">Most Experienced</SelectItem>
+                <SelectItem value="rating">{t('marketing:cityPage.sortTopRated', 'Top Rated')}</SelectItem>
+                <SelectItem value="experience">{t('marketing:cityPage.sortExperience', 'Most Experienced')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -566,7 +570,11 @@ export default function Trainers() {
                   end: Math.min(currentPage * TRAINERS_PER_PAGE, filteredAndSortedTrainers.length),
                   total: filteredAndSortedTrainers.length
                 })
-              : `${filteredAndSortedTrainers.length} trainer${filteredAndSortedTrainers.length !== 1 ? 's' : ''} found`
+              : t('marketing:trainersDirectory.trainersFound', {
+                  count: filteredAndSortedTrainers.length,
+                  defaultValue_one: '{{count}} trainer found',
+                  defaultValue_other: '{{count}} trainers found',
+                })
             }
           </p>
         </div>
@@ -594,7 +602,7 @@ export default function Trainers() {
         ) : filteredAndSortedTrainers.length === 0 ? (
           <Card className="text-center py-12">
             <CardContent>
-              <p className="text-muted-foreground mb-4">No trainers found</p>
+              <p className="text-muted-foreground mb-4">{t('marketing:trainersDirectory.noTrainersFound', 'No trainers found')}</p>
               {searchQuery || activeFilterCount > 0 ? (
                 <Button variant="outline" onClick={() => { setSearchQuery(''); setFilters(DEFAULT_FILTERS); }}>
                   {t('clearFilters')}
@@ -624,7 +632,7 @@ export default function Trainers() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <CardTitle className="text-base truncate">
-                          {trainer.profile?.full_name || 'Trainer'}
+                          {trainer.profile?.full_name || t('marketing:trainersDirectory.trainerFallback', 'Trainer')}
                         </CardTitle>
                         {trainer.is_verified && (
                           <TooltipProvider>
@@ -655,13 +663,13 @@ export default function Trainers() {
                       {trainer.hasAvailability && (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
                           <CalendarCheck className="h-3 w-3" />
-                          Available
+                          {t('marketing:trainersDirectory.available', 'Available')}
                         </Badge>
                       )}
                     </div>
                     {trainer.experience_years && (
                       <span className="text-muted-foreground text-xs">
-                        {trainer.experience_years}y exp
+                        {t('marketing:trainersDirectory.yearsExp', '{{years}}y exp', { years: trainer.experience_years })}
                       </span>
                     )}
                   </div>

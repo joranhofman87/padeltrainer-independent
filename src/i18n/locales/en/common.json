@@ -689,5 +689,6 @@
   },
   "type": {
     "event": "Event"
-  }
+  },
+  "trainerNotFound": "Trainer Not Found"
 }
