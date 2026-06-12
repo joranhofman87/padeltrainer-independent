@@ -402,7 +402,8 @@
     "downloadInvoice": "Factuur downloaden",
     "downloadingInvoice": "Factuur voorbereiden...",
     "invoicePending": "Je factuur wordt nog voorbereid. Probeer het zo opnieuw.",
-    "invoiceFailed": "Kon factuur niet downloaden. Probeer het later opnieuw."
+    "invoiceFailed": "Kon factuur niet downloaden. Probeer het later opnieuw.",
+    "note": "Opmerking"
   },
   "invoiceEdit": {
     "title": "Factuur bewerken",

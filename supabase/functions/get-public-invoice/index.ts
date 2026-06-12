@@ -29,7 +29,7 @@ serve(async (req) => {
 
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
-      .select("id, invoice_number, invoice_date, due_date, player_name, player_id, player_business_name, player_address, player_btw_number, total, subtotal, vat_amount, vat_rate, line_items, status, mollie_payment_url, academy_profile_id, trainer_id, public_token, guest_player_id, public_token_revoked_at")
+      .select("id, invoice_number, invoice_date, due_date, player_name, player_id, player_business_name, player_address, player_btw_number, total, subtotal, vat_amount, vat_rate, line_items, notes, status, mollie_payment_url, academy_profile_id, trainer_id, public_token, guest_player_id, public_token_revoked_at")
       .eq("public_token", publicToken)
       .single();
 
@@ -128,6 +128,7 @@ serve(async (req) => {
         vatAmount: invoice.vat_amount,
         vatRate: invoice.vat_rate,
         lineItems: invoice.line_items,
+        notes: invoice.notes ?? null,
         status: invoice.status,
         hasMolliePayment: !!invoice.mollie_payment_url,
         hasMollieAccount: mollieReadiness.hasMollieAccount,

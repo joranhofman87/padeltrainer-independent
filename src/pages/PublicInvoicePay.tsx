@@ -92,6 +92,7 @@ interface PublicInvoiceData {
     vatAmount: number;
     vatRate: number;
     lineItems: LineItem[];
+    notes?: string | null;
     status: string;
     hasMolliePayment: boolean;
     hasMollieAccount: boolean;
@@ -726,6 +727,13 @@ export default function PublicInvoicePay() {
               </p>
             </div>
           </div>
+
+          {invoice.notes?.trim() && (
+            <div className="rounded-lg bg-muted/50 border p-3 text-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">{t("invoice.note")}</p>
+              <p className="whitespace-pre-line">{invoice.notes}</p>
+            </div>
+          )}
 
           <Separator />
 

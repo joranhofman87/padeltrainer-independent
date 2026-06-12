@@ -397,7 +397,8 @@
     "downloadInvoice": "Download invoice",
     "downloadingInvoice": "Preparing invoice...",
     "invoicePending": "Your invoice is still being prepared. Please try again in a moment.",
-    "invoiceFailed": "Could not download invoice. Please try again later."
+    "invoiceFailed": "Could not download invoice. Please try again later.",
+    "note": "Note"
   },
   "invoiceEdit": {
     "title": "Edit Invoice",
