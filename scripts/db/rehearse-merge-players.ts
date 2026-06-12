@@ -55,7 +55,7 @@ CREATE UNIQUE INDEX unique_club_player_email ON public.club_players (club_profil
 CREATE TABLE public.bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid,
   player_id uuid, guest_player_id uuid REFERENCES public.guest_players(id) ON DELETE SET NULL,
-  status text
+  status text, payment_status text DEFAULT 'pending', paid_externally boolean DEFAULT false
 );
 CREATE TABLE public.invoices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -85,6 +85,8 @@ for (const f of [
   'supabase/migrations/20260611210000_merge_guest_players_email_conflict.sql',
   'supabase/migrations/20260611220000_relax_guest_email_uniqueness.sql',
   'supabase/migrations/20260611220001_merge_guest_players_v3.sql',
+  // M-17: unique active-booking indexes + collision-aware booking repoint
+  'supabase/migrations/20260612140000_m17_unique_active_bookings.sql',
 ]) {
   await db.exec(readFileSync(join(process.cwd(), f), 'utf8'));
 }
@@ -234,6 +236,44 @@ const q = async (sql: string) => (await db.query(sql)).rows as Record<string, un
   const third = (await q(`SELECT email FROM public.guest_players WHERE id='dddddddd-0000-0000-0000-000000000003'`))[0];
   check('shared kept-email merge succeeds; third holder untouched',
     tgt.email === 'sander@test.com' && third.email === 'sander@test.com' && typeof r === 'object', { tgt, third });
+}
+
+// M-17: booking collision on merge — redundant booking cancelled, paid one kept
+{
+  const SLOT_X = '66666666-6666-6666-6666-666666666671';
+  const SLOT_Y = '66666666-6666-6666-6666-666666666672';
+  await db.exec(`
+    INSERT INTO public.guest_players (id, academy_profile_id, full_name) VALUES
+      ('eeeeeeee-0000-0000-0000-000000000001', '${A1}', 'Col Src'),
+      ('eeeeeeee-0000-0000-0000-000000000002', '${A1}', 'Col Tgt');
+    -- SLOT_X: both booked, SOURCE one is paid -> target's gets cancelled, source repointed
+    INSERT INTO public.bookings (slot_id, guest_player_id, status, payment_status) VALUES
+      ('${SLOT_X}', 'eeeeeeee-0000-0000-0000-000000000001', 'confirmed', 'paid'),
+      ('${SLOT_X}', 'eeeeeeee-0000-0000-0000-000000000002', 'confirmed', 'pending');
+    -- SLOT_Y: both booked, neither paid -> source's gets cancelled
+    INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
+      ('${SLOT_Y}', 'eeeeeeee-0000-0000-0000-000000000001', 'pending'),
+      ('${SLOT_Y}', 'eeeeeeee-0000-0000-0000-000000000002', 'confirmed');
+  `);
+  const { r } = await rpc(MGR, `'academy','${A1}','eeeeeeee-0000-0000-0000-000000000001'::uuid,'eeeeeeee-0000-0000-0000-000000000002'::uuid`);
+  const res = r as Record<string, unknown>;
+  check('M-17 merge: 2 booking collisions deduped', res.bookings_deduped === 2, res);
+  const x = await q(`SELECT status, payment_status FROM public.bookings WHERE slot_id='${SLOT_X}' AND guest_player_id='eeeeeeee-0000-0000-0000-000000000002' ORDER BY payment_status`);
+  check('M-17 SLOT_X: paid source booking kept active on target, unpaid cancelled',
+    x.length === 2
+      && x.some(b => b.status === 'confirmed' && b.payment_status === 'paid')
+      && x.some(b => b.status === 'cancelled' && b.payment_status === 'pending'), x);
+  const y = await q(`SELECT status FROM public.bookings WHERE slot_id='${SLOT_Y}' AND guest_player_id='eeeeeeee-0000-0000-0000-000000000002' ORDER BY status`);
+  check('M-17 SLOT_Y: tie keeps target active, source cancelled',
+    y.length === 2 && y[0].status === 'cancelled' && y[1].status === 'confirmed', y);
+  let blocked = false;
+  try {
+    await db.exec(`INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES ('${SLOT_Y}', 'eeeeeeee-0000-0000-0000-000000000002', 'pending')`);
+  } catch (e) { blocked = String(e).includes('uniq_active_booking_per_slot_guest'); }
+  check('M-17 index blocks duplicate active guest booking insert', blocked);
+  await db.exec(`UPDATE public.bookings SET status='cancelled' WHERE slot_id='${SLOT_Y}' AND guest_player_id='eeeeeeee-0000-0000-0000-000000000002' AND status='confirmed'`);
+  await db.exec(`INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES ('${SLOT_Y}', 'eeeeeeee-0000-0000-0000-000000000002', 'pending')`);
+  check('M-17 rebooking after cancel still allowed', true);
 }
 
 console.log(failures ? `\n*** REHEARSAL FAILED (${failures}) ***` : '\n*** REHEARSAL PASSED ***');
