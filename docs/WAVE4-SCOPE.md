@@ -119,11 +119,14 @@ until split_count lands.
 
 Rough total: ~9 S, ~5 M, 2 L (B4 club-dedupe, M-38 credit notes).
 
-## Decisions for the maintainer
+## Decisions (taken by maintainer, 2026-06-12)
 
-1. **Admin app translation**: skip (internal tool)? — recommended skip.
-2. **M-38 credit notes**: in Wave 4 as option (a)? — recommended yes, sliced.
-3. **M-33 split_count**: in? — recommended yes (M; unlocks the cent-drift family).
-4. **B4 dedupe survivor policy**: oldest row wins / claimed-club wins; the
-   dry-run report comes to you for review before any merge runs.
-5. **NL tone**: existing nl files use informal "je" — keep for all new copy?
+1. **Admin app translation**: SKIPPED — internal tool stays English.
+2. **M-38 credit notes**: DEFERRED — not in Wave 4.
+3. **M-33 split_count**: IN, **forward-only** — new invoices write
+   split_count; existing invoices are NOT touched (no backfill, no rewriting
+   of generated invoices). Readers use column-if-present, else the legacy
+   "(1/N)" regex, indefinitely.
+4. **B4 dedupe survivor policy**: claimed club wins, else oldest row keeps its
+   slug; dry-run report reviewed by maintainer before any merge executes.
+5. **NL tone**: informal "je", consistent with the existing nl files.
