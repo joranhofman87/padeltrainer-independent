@@ -6954,6 +6954,10 @@ export type Database = {
         }
         Returns: Json
       }
+      next_invoice_sequence: {
+        Args: { p_min?: number; p_profile_id: string; p_profile_type: string }
+        Returns: number
+      }
       queue_onboarding_emails: {
         Args: {
           p_email: string
