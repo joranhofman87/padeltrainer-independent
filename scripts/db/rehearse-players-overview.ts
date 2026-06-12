@@ -16,6 +16,8 @@ const MIGRATIONS = [
   'supabase/migrations/20260611160000_players_overview_indexes.sql',
   'supabase/migrations/20260611160001_get_players_overview.sql',
   'supabase/migrations/20260611160002_get_players_overview_test.sql',
+  // P-01 revision: the contract suite below must pass against the split-join version too.
+  'supabase/migrations/20260612130000_p01_players_overview_split_meta_join.sql',
 ];
 
 const db = new PGlite();
