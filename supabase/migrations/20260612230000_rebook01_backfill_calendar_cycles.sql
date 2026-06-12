@@ -29,7 +29,11 @@
 --   (only trainer_id), so they are backfilled as trainer-owned. The trainer
 --   who teaches them will see them in their own rebooking list.
 --
--- WHY IT IS HELD BACK (docs/pending-migrations, NOT supabase/migrations)
+-- OWNER SIGN-OFF: approved 2026-06-12 ("if nothing goes out to players and it
+--   doesn't change anything else than just adding a cycle record that is fine").
+--   PGlite-rehearsed (6 assertions) before applying.
+--
+-- WHY IT WAS INITIALLY HELD BACK
 --   This creates immediately VISIBLE rows for ALL real trainers', academies'
 --   and clubs' historical calendar cycles at once: every old calendar cyclus
 --   suddenly appears in their "Inschrijvingen"/cycles overview and rebooking
